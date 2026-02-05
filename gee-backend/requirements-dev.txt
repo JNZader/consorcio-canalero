@@ -1,0 +1,63 @@
+# Development dependencies for Consorcio Canalero GEE Backend
+# Install with: pip install -r requirements-dev.txt
+
+# Include production dependencies
+-r requirements.txt
+
+# ===========================================
+# TESTING
+# ===========================================
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.12.0
+pytest-xdist>=3.5.0  # Parallel test execution
+httpx>=0.27.0  # TestClient async support
+factory-boy>=3.3.0  # Test fixtures
+faker>=22.0.0  # Fake data generation
+
+# ===========================================
+# LINTING & FORMATTING
+# ===========================================
+ruff>=0.2.0  # Fast Python linter and formatter
+black>=24.0.0  # Code formatter (backup to ruff)
+isort>=5.13.0  # Import sorting (backup to ruff)
+
+# ===========================================
+# TYPE CHECKING
+# ===========================================
+mypy>=1.8.0
+types-redis>=4.6.0
+types-python-jose>=3.3.0
+
+# ===========================================
+# SECURITY
+# ===========================================
+bandit>=1.7.0  # Security linter
+safety>=3.0.0  # Dependency vulnerability scanner
+pip-audit>=2.7.0  # Another dependency scanner
+
+# ===========================================
+# STRUCTURED LOGGING
+# ===========================================
+structlog>=24.1.0
+
+# ===========================================
+# DEBUGGING & PROFILING
+# ===========================================
+ipython>=8.20.0  # Enhanced Python shell
+ipdb>=0.13.0  # IPython debugger
+py-spy>=0.3.0  # Sampling profiler
+memory-profiler>=0.61.0  # Memory usage profiler
+
+# ===========================================
+# DOCUMENTATION
+# ===========================================
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+mkdocstrings[python]>=0.24.0
+
+# ===========================================
+# PRE-COMMIT HOOKS
+# ===========================================
+pre-commit>=3.6.0

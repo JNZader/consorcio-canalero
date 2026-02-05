@@ -1,0 +1,43 @@
+.mapWrapper {
+  aspect-ratio: 16/9;
+  min-height: 400px;
+  max-height: 700px;
+  width: 100%;
+  position: relative;
+}
+
+.legendPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.infoPanel {
+  position: absolute;
+  top: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+  max-width: 280px;
+}
+
+.legendItemBorder {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--mantine-radius-xs);
+}
+
+.legendItemLine {
+  width: 16px;
+  height: 3px;
+  border-radius: var(--mantine-radius-xs);
+}
+
+.skeletonOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}

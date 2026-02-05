@@ -1,0 +1,285 @@
+# Dependabot configuration for automated dependency updates
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+
+registries:
+  npm-registry:
+    type: npm-registry
+    url: https://registry.npmjs.org
+    replaces-base: true
+
+updates:
+  # ============================================
+  # GitHub Actions - Workflow dependencies
+  # ============================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ============================================
+  # Python/pip - Backend dependencies
+  # ============================================
+  - package-ecosystem: "pip"
+    directory: "/gee-backend"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(backend)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "backend"
+      - "automated"
+    reviewers:
+      - "maintainers"
+    ignore:
+      # Ignore major updates for critical packages (review manually)
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "earthengine-api"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # FastAPI ecosystem
+      fastapi-ecosystem:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "starlette*"
+          - "pydantic*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Google/GEE related
+      google-gee:
+        patterns:
+          - "google-*"
+          - "earthengine-*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Async and task queue
+      async-tasks:
+        patterns:
+          - "celery*"
+          - "redis*"
+          - "httpx*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Security and auth
+      security-auth:
+        patterns:
+          - "python-jose*"
+          - "cryptography*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Database and storage
+      database:
+        patterns:
+          - "supabase*"
+          - "sqlalchemy*"
+          - "alembic*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Geospatial
+      geospatial:
+        patterns:
+          - "geojson*"
+          - "shapely*"
+          - "geopandas*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Development tools
+      dev-tools:
+        patterns:
+          - "pytest*"
+          - "ruff*"
+          - "mypy*"
+          - "black*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ============================================
+  # npm - Frontend dependencies
+  # ============================================
+  - package-ecosystem: "npm"
+    directory: "/consorcio-web"
+    registries:
+      - npm-registry
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(frontend)"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "frontend"
+      - "automated"
+    reviewers:
+      - "maintainers"
+    versioning-strategy: increase
+    ignore:
+      # Ignore major updates for core frameworks
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "astro"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Astro ecosystem
+      astro-ecosystem:
+        patterns:
+          - "astro"
+          - "@astrojs/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # React ecosystem
+      react-ecosystem:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Mantine UI components
+      mantine-ui:
+        patterns:
+          - "@mantine/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Supabase
+      supabase:
+        patterns:
+          - "@supabase/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Mapping/Leaflet
+      mapping:
+        patterns:
+          - "leaflet*"
+          - "react-leaflet*"
+          - "@types/leaflet*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Styling
+      styling:
+        patterns:
+          - "tailwindcss*"
+          - "@tailwindcss/*"
+          - "@emotion/*"
+          - "@vanilla-extract/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Icons
+      icons:
+        patterns:
+          - "@tabler/icons-*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Development and build tools
+      dev-build-tools:
+        patterns:
+          - "@biomejs/*"
+          - "typescript*"
+          - "vite*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Type definitions
+      types:
+        patterns:
+          - "@types/*"
+        exclude-patterns:
+          - "@types/react*"
+          - "@types/leaflet*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ============================================
+  # Docker - Container base images
+  # ============================================
+  - package-ecosystem: "docker"
+    directory: "/gee-backend"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/consorcio-web"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

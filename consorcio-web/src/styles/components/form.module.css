@@ -1,0 +1,32 @@
+.typeButton {
+  padding: var(--mantine-spacing-md);
+  border-radius: var(--mantine-radius-md);
+  text-align: center;
+  transition: all 0.2s;
+  border: 2px solid var(--mantine-color-default-border);
+  background-color: var(--mantine-color-body);
+  cursor: pointer;
+}
+
+.typeButton:hover {
+  background-color: var(--mantine-color-institucional-light);
+}
+
+.typeButton:focus-visible {
+  outline: 2px solid var(--mantine-color-institucional-5);
+  outline-offset: 2px;
+}
+
+.typeButtonSelected {
+  border: 2px solid var(--mantine-color-institucional-6);
+  background-color: var(--mantine-color-institucional-light);
+}
+
+.mapContainer {
+  aspect-ratio: 4/3;
+  min-height: 250px;
+  max-height: 400px;
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--mantine-color-default-border);
+}

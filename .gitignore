@@ -1,0 +1,107 @@
+# ===========================================
+# MONOREPO - Consorcio Canalero
+# ===========================================
+
+# ===========================================
+# ENVIRONMENT & SECRETS
+# ===========================================
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.crt
+credentials/
+secrets/
+
+# ===========================================
+# PYTHON
+# ===========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# ===========================================
+# NODE / JAVASCRIPT
+# ===========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+.cache/
+.parcel-cache/
+.turbo/
+
+# ===========================================
+# BUILD OUTPUTS
+# ===========================================
+*.local
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+.scannerwork/
+
+# ===========================================
+# DOCKER
+# ===========================================
+docker-compose.override.yml
+
+# ===========================================
+# TESTING
+# ===========================================
+coverage/
+playwright-report/
+test-results/
+*.lcov
+
+# ===========================================
+# LOGS
+# ===========================================
+logs/
+*.log
+npm-debug.log*
+
+# ===========================================
+# OS
+# ===========================================
+.DS_Store
+Thumbs.db
+*.bak

@@ -1,0 +1,124 @@
+services:
+  # ============================================
+  # BACKEND - FastAPI with GEE
+  # ============================================
+  backend:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: consorcio-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./gee-backend/app:/app/app:ro
+      - ./gee-backend/credentials:/app/credentials:ro
+      - backend-cache:/app/.cache
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+    env_file:
+      - ./gee-backend/.env
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/app
+
+  # ============================================
+  # REDIS - Broker for Celery
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: consorcio-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # WORKER - Background Tasks
+  # ============================================
+  worker:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: consorcio-worker
+    restart: unless-stopped
+    volumes:
+      - ./gee-backend/app:/app/app:ro
+      - ./gee-backend/credentials:/app/credentials:ro
+    environment:
+      - ENVIRONMENT=development
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./gee-backend/.env
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - consorcio-network
+    command: celery -A app.core.celery_app worker --loglevel=info
+
+  # ============================================
+  # FRONTEND - React with Vite
+  # ============================================
+  frontend:
+    build:
+      context: ./consorcio-web
+      dockerfile: Dockerfile
+      target: development
+    container_name: consorcio-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./consorcio-web/src:/app/src:ro
+      - ./consorcio-web/public:/app/public:ro
+      - ./consorcio-web/.env:/app/.env:ro
+      - frontend-node-modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - VITE_API_URL=http://localhost:8000
+    env_file:
+      - ./consorcio-web/.env
+    depends_on:
+      - backend
+    networks:
+      - consorcio-network
+    command: npm run dev -- --host 0.0.0.0
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  consorcio-network:
+    driver: bridge
+    name: consorcio-network
+
+# ============================================
+# VOLUMES
+# ============================================
+volumes:
+  backend-cache:
+    name: consorcio-backend-cache
+  frontend-node-modules:
+    name: consorcio-frontend-node-modules

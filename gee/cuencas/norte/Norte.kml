@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>Norte.kml</name>
+	<StyleMap id="msn_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_ylw-pushpin</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="sh_ylw-pushpin">
+		<IconStyle>
+			<scale>1.2</scale>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff7faa00</color>
+			<width>3</width>
+		</LineStyle>
+	</Style>
+	<Style id="sn_ylw-pushpin">
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff7faa00</color>
+			<width>3</width>
+		</LineStyle>
+	</Style>
+	<Placemark>
+		<name>Norte</name>
+		<LookAt>
+			<longitude>-62.44425441435632</longitude>
+			<latitude>-32.47978181008523</latitude>
+			<altitude>0</altitude>
+			<heading>0.06684759334728227</heading>
+			<tilt>0</tilt>
+			<range>16942.31118045785</range>
+			<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<ExtendedData>
+		</ExtendedData>
+		<Polygon>
+			<outerBoundaryIs>
+				<LinearRing>
+					<coordinates>
+						-62.52745792526203,-32.54234021296012,0 -62.50801853707934,-32.53089789206557,0 -62.46803467821528,-32.5165910229785,0 -62.40338333071538,-32.49645228671,0 -62.39620420387706,-32.4642472816382,0 -62.30012921790109,-32.44557993695759,0 -62.29650098297901,-32.43164716188728,0 -62.30765742426441,-32.4309616374855,0 -62.32452659839753,-32.43509776561426,0 -62.35146226863576,-32.44496871735316,0 -62.36161785980669,-32.44351172596686,0 -62.3986501516621,-32.44919118724474,0 -62.42327770128745,-32.44595299056449,0 -62.42595602479481,-32.4448009428364,0 -62.42836061927179,-32.44272934994603,0 -62.430445829124,-32.43958500156798,0 -62.45931978543676,-32.43591568769394,0 -62.46031960661012,-32.43648940376048,0 -62.46168593073212,-32.44231283669183,0 -62.52246566049141,-32.43184445294822,0 -62.52728448170617,-32.45496301071714,0 -62.56329281576637,-32.46646394116022,0 -62.56571714720452,-32.47528185385326,0 -62.58983880829762,-32.47047267904392,0 -62.59428374617167,-32.48802568905847,0 -62.61974054888743,-32.4829350857786,0 -62.62507498706849,-32.50109323138429,0 -62.57556804138077,-32.51047541863191,0 -62.58093163423622,-32.53106002866365,0 -62.56830860678323,-32.53648845901947,0 -62.56451124916045,-32.53565073527011,0 -62.57018928086806,-32.5585570843827,0 -62.56116329349139,-32.56009838435308,0 -62.52745792526203,-32.54234021296012,0 
+					</coordinates>
+				</LinearRing>
+			</outerBoundaryIs>
+		</Polygon>
+		<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10441"></atom:link>
+	</Placemark>
+</Document>
+</kml>

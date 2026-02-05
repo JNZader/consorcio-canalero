@@ -1,0 +1,68 @@
+# ==============================================
+# GEE Backend - Git Ignore
+# ==============================================
+
+# === CREDENCIALES (CRITICO - NUNCA SUBIR) ===
+credentials/
+*.json
+!package.json
+!pyproject.json
+
+# === VARIABLES DE ENTORNO ===
+.env
+.env.local
+.env.production
+.env.*.local
+
+# === PYTHON ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# === VIRTUAL ENVIRONMENTS ===
+.venv/
+venv/
+ENV/
+env/
+
+# === IDEs ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === LOGS ===
+*.log
+logs/
+
+# === CACHE ===
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === DOCKER ===
+# No ignorar docker-compose.yml, pero si volumes locales
+docker-volumes/

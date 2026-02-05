@@ -1,0 +1,21 @@
+# Robots.txt for Consorcio Canalero 10 de Mayo
+# https://consorcio-canalero.vercel.app
+
+User-agent: *
+Allow: /
+
+# Restricted areas
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /api/
+
+# Prevent indexing of development/staging URLs
+User-agent: *
+Disallow: /*?preview=*
+Disallow: /*?draft=*
+
+# Crawl delay (optional, be nice to the server)
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://consorcio-canalero.vercel.app/sitemap.xml

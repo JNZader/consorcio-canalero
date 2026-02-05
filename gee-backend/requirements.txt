@@ -1,0 +1,34 @@
+# FastAPI
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-dotenv>=1.0.0
+pydantic[email]>=2.11.0
+pydantic-settings>=2.7.0
+
+# Google Earth Engine
+earthengine-api>=1.4.0
+google-auth>=2.37.0
+
+# Supabase (2.27+ soporta nuevas API keys sb_publishable/sb_secret)
+supabase>=2.27.0
+
+# GeoJSON/Geospatial
+geojson>=3.2.0
+shapely>=2.0.0
+
+# Auth
+python-jose[cryptography]>=3.4.0
+
+# Utils
+httpx>=0.28.0
+python-multipart>=0.0.19
+
+# Background Tasks
+celery>=5.4.0
+redis>=5.0.0
+
+# Reports & PDF
+reportlab>=4.2.0
+
+# Structured Logging
+structlog>=24.1.0

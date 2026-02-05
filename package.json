@@ -1,0 +1,54 @@
+{
+  "name": "consorcio-canalero",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de gestion para Consorcio Canalero 10 de Mayo - Bell Ville",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/consorcio-canalero.git"
+  },
+  "workspaces": [
+    "consorcio-web"
+  ],
+  "scripts": {
+    "dev": "make dev",
+    "dev:frontend": "npm run dev --workspace=consorcio-web",
+    "dev:backend": "make backend-dev",
+    "build": "make build",
+    "build:frontend": "npm run build --workspace=consorcio-web",
+    "test": "make test",
+    "test:frontend": "npm run test --workspace=consorcio-web",
+    "test:backend": "make backend-test",
+    "test:e2e": "npm run test:e2e --workspace=consorcio-web",
+    "lint": "make lint",
+    "lint:frontend": "npm run lint --workspace=consorcio-web",
+    "lint:backend": "make backend-lint",
+    "lint:fix": "npm run lint:fix --workspace=consorcio-web",
+    "format": "npm run format --workspace=consorcio-web",
+    "typecheck": "npm run typecheck --workspace=consorcio-web",
+    "docker:dev": "docker compose up -d",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:build": "docker compose build",
+    "clean": "make clean",
+    "setup": "make setup",
+    "prepare": "echo 'Run: make setup'"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "keywords": [
+    "consorcio",
+    "canalero",
+    "gestion",
+    "hidrico",
+    "gee",
+    "google-earth-engine",
+    "fastapi",
+    "react"
+  ],
+  "author": "Consorcio Canalero 10 de Mayo",
+  "license": "MIT"
+}

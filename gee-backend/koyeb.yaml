@@ -1,0 +1,57 @@
+# Koyeb deployment configuration
+# Docs: https://www.koyeb.com/docs/reference/koyeb-yaml
+
+name: gee-backend
+
+service:
+  name: gee-backend
+  type: web
+
+  definition:
+    git:
+      repository: github.com/tu-usuario/consorcio-canalero
+      branch: main
+      workdir: gee-backend
+      builder: dockerfile
+      dockerfile: Dockerfile
+
+    instance_types:
+      - type: nano
+
+    scaling:
+      min: 1
+      max: 3
+
+    ports:
+      - port: 8000
+        protocol: http
+
+    routes:
+      - path: /
+        port: 8000
+
+    health_checks:
+      - type: http
+        path: /health
+        port: 8000
+        grace_period: 30
+        interval: 30
+        timeout: 10
+        restart_limit: 3
+
+    env:
+      # Supabase
+      - key: SUPABASE_URL
+        secret: supabase-url
+      - key: SUPABASE_KEY
+        secret: supabase-key
+      # GEE (JSON como string en secret)
+      - key: GEE_SERVICE_ACCOUNT_KEY
+        secret: gee-service-account-key
+      - key: GEE_PROJECT_ID
+        value: cc10demayo
+      # App config
+      - key: CORS_ORIGINS
+        value: https://tu-frontend.vercel.app,http://localhost:4321
+      - key: DEBUG
+        value: "false"

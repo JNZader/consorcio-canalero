@@ -1,0 +1,65 @@
+# ===========================================
+# DOCKER IGNORE - Monorepo
+# ===========================================
+
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Testing
+tests/
+__tests__/
+*.test.*
+*.spec.*
+coverage/
+htmlcov/
+.pytest_cache/
+playwright-report/
+test-results/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# Local development
+docker-compose.override.yml
+Makefile
+*.local
+
+# Credentials (CRITICAL)
+credentials/
+*.pem
+*.key
+secrets/

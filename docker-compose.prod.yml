@@ -1,0 +1,193 @@
+# ===========================================
+# Docker Compose - Production
+# ===========================================
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Required files:
+#   - gee-backend/.env.production
+#   - gee-backend/credentials/gee-service-account.json
+#   - nginx/nginx.conf
+#
+# Optional:
+#   - nginx/ssl/*.pem (for HTTPS)
+
+services:
+  # ===========================================
+  # BACKEND - FastAPI with GEE
+  # ===========================================
+  backend:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/backend:${TAG:-latest}
+    container_name: consorcio-backend
+    restart: always
+    expose:
+      - "8000"
+    volumes:
+      - ./gee-backend/credentials:/app/credentials:ro
+      - backend-cache:/app/.cache
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./gee-backend/.env.production
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================
+  # REDIS - Cache & Task Queue Broker
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: consorcio-redis
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ===========================================
+  # WORKER - Celery Background Tasks
+  # ===========================================
+  worker:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/backend:${TAG:-latest}
+    container_name: consorcio-worker
+    restart: always
+    volumes:
+      - ./gee-backend/credentials:/app/credentials:ro
+      - backend-cache:/app/.cache
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./gee-backend/.env.production
+    networks:
+      - consorcio-network
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================
+  # FRONTEND - Nginx Static Server
+  # ===========================================
+  frontend:
+    build:
+      context: ./consorcio-web
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        - VITE_API_URL=${VITE_API_URL:-/api}
+        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/frontend:${TAG:-latest}
+    container_name: consorcio-frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ===========================================
+# NETWORKS
+# ===========================================
+networks:
+  consorcio-network:
+    driver: bridge
+    name: consorcio-network-prod
+
+# ===========================================
+# VOLUMES
+# ===========================================
+volumes:
+  backend-cache:
+    name: consorcio-backend-cache-prod
+  redis-data:
+    name: consorcio-redis-data-prod

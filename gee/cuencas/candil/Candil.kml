@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>Candil.kml</name>
+	<StyleMap id="msn_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_ylw-pushpin</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="sh_ylw-pushpin">
+		<IconStyle>
+			<scale>1.2</scale>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff00ffff</color>
+			<width>3</width>
+		</LineStyle>
+	</Style>
+	<Style id="sn_ylw-pushpin">
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff00ffff</color>
+			<width>3</width>
+		</LineStyle>
+	</Style>
+	<Placemark>
+		<name>Candil</name>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<ExtendedData>
+		</ExtendedData>
+		<Polygon>
+			<outerBoundaryIs>
+				<LinearRing>
+					<coordinates>
+						-62.57106443006233,-32.55848246759511,0 -62.57650993931168,-32.57899446081132,0 -62.52644251310021,-32.58820424877707,0 -62.49952782486539,-32.59273697071949,0 -62.49263636891334,-32.59351810118018,0 -62.48356139768417,-32.5951900521189,0 -62.43160495642977,-32.60441120567351,0 -62.41883162475803,-32.55190092106427,0 -62.41455671788319,-32.53069537908762,0 -62.41138034036506,-32.52956338339349,0 -62.40332594360213,-32.49644192129072,0 -62.43489995858967,-32.50634955971081,0 -62.48448506989392,-32.5223699208328,0 -62.50796893401564,-32.5309092431341,0 -62.5278022546033,-32.54250953397985,0 -62.56119358448581,-32.56004263167237,0 -62.57106443006233,-32.55848246759511,0 
+					</coordinates>
+				</LinearRing>
+			</outerBoundaryIs>
+		</Polygon>
+		<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10441"></atom:link>
+	</Placemark>
+</Document>
+</kml>
