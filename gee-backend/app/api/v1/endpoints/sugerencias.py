@@ -2,17 +2,22 @@
 API endpoints para sugerencias ciudadanas y temas de comision.
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field, EmailStr
 
 from app.services.supabase_service import get_supabase_client
 from app.auth import User, require_authenticated, require_admin_or_operator
 from app.core.logging import get_logger
-from app.core.exceptions import SuggestionNotFoundError, ValidationError
+from app.core.exceptions import (
+    AppException,
+    SuggestionNotFoundError,
+    ValidationError,
+    RateLimitExceededError,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -54,6 +59,11 @@ class SugerenciaUpdate(BaseModel):
     notas_comision: Optional[str] = None
     resolucion: Optional[str] = None
     cuenca_id: Optional[str] = None  # Cuenca asociada (opcional)
+
+
+class AgendarRequest(BaseModel):
+    """Schema para agendar sugerencia a una reunion."""
+    fecha_reunion: date
 
 
 class ResolverRequest(BaseModel):
@@ -142,7 +152,7 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
     MAX_SUGERENCIAS_POR_DIA = 3
 
     # Contar envios en las ultimas 24 horas
-    yesterday = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     count_result = supabase.table("contact_submissions") \
         .select("id", count="exact") \
@@ -159,9 +169,10 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
             contact=contact_value[:3] + "***",  # Partially masked
             submissions_today=submissions_today,
         )
-        raise HTTPException(
-            status_code=429,
-            detail=f"Has alcanzado el limite de {MAX_SUGERENCIAS_POR_DIA} sugerencias por dia. Intenta nuevamente manana."
+        raise RateLimitExceededError(
+            message=f"Has alcanzado el limite de {MAX_SUGERENCIAS_POR_DIA} sugerencias por dia. Intenta nuevamente manana.",
+            retry_after=86400,
+            limit=MAX_SUGERENCIAS_POR_DIA,
         )
 
     # Crear sugerencia
@@ -182,7 +193,11 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
 
     if not result.data:
         logger.error("Failed to create suggestion")
-        raise HTTPException(status_code=500, detail="Error al crear sugerencia")
+        raise AppException(
+            message="Error al crear sugerencia",
+            code="SUGGESTION_CREATE_ERROR",
+            status_code=500,
+        )
 
     sugerencia = result.data[0]
 
@@ -236,7 +251,7 @@ async def verificar_limite_sugerencias(
 
     supabase = get_supabase_client()
 
-    yesterday = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     count_result = supabase.table("contact_submissions") \
         .select("id", count="exact") \
@@ -323,32 +338,32 @@ async def obtener_estadisticas(
 
     supabase = get_supabase_client()
 
-    # Agrupar manualmente
-    stats = {
-        "pendiente": 0,
-        "en_agenda": 0,
-        "tratado": 0,
-        "descartado": 0,
-        "total": 0,
-        "ciudadanas": 0,
-        "internas": 0,
-    }
+    # Use individual count queries instead of fetching all records
+    stats = {}
 
-    # Obtener todos para contar
-    all_result = supabase.table("sugerencias").select("estado, tipo").execute()
+    # Count by estado
+    for estado in ["pendiente", "en_agenda", "tratado", "descartado"]:
+        result = (
+            supabase.table("sugerencias")
+            .select("id", count="exact")
+            .eq("estado", estado)
+            .limit(1)
+            .execute()
+        )
+        stats[estado] = result.count or 0
 
-    for item in all_result.data:
-        estado = item.get("estado", "pendiente")
-        tipo = item.get("tipo", "ciudadana")
+    # Count by tipo
+    for tipo_key, tipo_value in [("ciudadanas", "ciudadana"), ("internas", "interna")]:
+        result = (
+            supabase.table("sugerencias")
+            .select("id", count="exact")
+            .eq("tipo", tipo_value)
+            .limit(1)
+            .execute()
+        )
+        stats[tipo_key] = result.count or 0
 
-        if estado in stats:
-            stats[estado] += 1
-        stats["total"] += 1
-
-        if tipo == "ciudadana":
-            stats["ciudadanas"] += 1
-        else:
-            stats["internas"] += 1
+    stats["total"] = stats["pendiente"] + stats["en_agenda"] + stats["tratado"] + stats["descartado"]
 
     return stats
 
@@ -406,7 +421,11 @@ async def crear_tema_interno(
 
     if not result.data:
         logger.error("Failed to create internal topic", user_id=user.id)
-        raise HTTPException(status_code=500, detail="Error al crear tema")
+        raise AppException(
+            message="Error al crear tema",
+            code="TOPIC_CREATE_ERROR",
+            status_code=500,
+        )
 
     sugerencia = result.data[0]
 
@@ -506,8 +525,8 @@ async def actualizar_sugerencia(
     if not current.data:
         raise SuggestionNotFoundError(str(sugerencia_id))
 
-    # Preparar datos de actualizacion
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    # Preparar datos de actualizacion (Pydantic v2: model_dump)
+    update_data = {k: v for k, v in data.model_dump(exclude_none=True).items()}
 
     if not update_data:
         raise ValidationError(
@@ -530,7 +549,11 @@ async def actualizar_sugerencia(
             "Failed to update suggestion",
             suggestion_id=str(sugerencia_id),
         )
-        raise HTTPException(status_code=500, detail="Error al actualizar")
+        raise AppException(
+            message="Error al actualizar",
+            code="SUGGESTION_UPDATE_ERROR",
+            status_code=500,
+        )
 
     # Registrar cambio de estado en historial
     if data.estado and data.estado != current.data["estado"]:
@@ -563,7 +586,7 @@ async def actualizar_sugerencia(
 @router.post("/{sugerencia_id}/agendar", response_model=SugerenciaResponse)
 async def agendar_sugerencia(
     sugerencia_id: UUID,
-    fecha_reunion: date,
+    data: AgendarRequest,
     user: User = Depends(require_admin_or_operator),
 ):
     """
@@ -573,7 +596,7 @@ async def agendar_sugerencia(
     logger.info(
         "Scheduling suggestion",
         suggestion_id=str(sugerencia_id),
-        fecha_reunion=str(fecha_reunion),
+        fecha_reunion=str(data.fecha_reunion),
         user_id=user.id,
     )
 
@@ -582,7 +605,7 @@ async def agendar_sugerencia(
     result = supabase.table("sugerencias") \
         .update({
             "estado": "en_agenda",
-            "fecha_reunion": fecha_reunion.isoformat(),
+            "fecha_reunion": data.fecha_reunion.isoformat(),
         }) \
         .eq("id", str(sugerencia_id)) \
         .execute()
@@ -596,13 +619,13 @@ async def agendar_sugerencia(
         "usuario_id": user.id,
         "accion": "agendado",
         "estado_nuevo": "en_agenda",
-        "notas": f"Agendado para reunion del {fecha_reunion}",
+        "notas": f"Agendado para reunion del {data.fecha_reunion}",
     }).execute()
 
     logger.info(
         "Suggestion scheduled",
         suggestion_id=str(sugerencia_id),
-        fecha_reunion=str(fecha_reunion),
+        fecha_reunion=str(data.fecha_reunion),
         user_id=user.id,
     )
 
@@ -656,7 +679,7 @@ async def resolver_sugerencia(
     return result.data[0]
 
 
-@router.delete("/{sugerencia_id}")
+@router.delete("/{sugerencia_id}", status_code=204)
 async def eliminar_sugerencia(
     sugerencia_id: UUID,
     user: User = Depends(require_admin_or_operator),
@@ -688,4 +711,4 @@ async def eliminar_sugerencia(
         user_id=user.id,
     )
 
-    return {"message": "Sugerencia eliminada"}
+    return Response(status_code=204)

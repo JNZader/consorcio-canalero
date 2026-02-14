@@ -16,7 +16,6 @@ import { memo } from 'react';
 import type { ReactNode } from 'react';
 import { IconInfoCircle } from './ui/icons';
 import styles from '../styles/components/home.module.css';
-import MantineProvider from './MantineProvider';
 import { IconChartBar, IconClipboardList, IconMap, IconSatellite } from './ui/icons';
 
 const STATS = [
@@ -80,7 +79,7 @@ const FEATURES: Array<{ icon: ReactNode; title: string; description: string; hre
 ];
 
 /**
- * HomeContent - Contenido interno de la pagina de inicio sin MantineProvider.
+ * HomeContent - Contenido interno de la pagina de inicio.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  * Memoizado porque es completamente estatico (no tiene props ni state).
  */
@@ -252,12 +251,8 @@ export const HomeContent = memo(function HomeContent() {
 });
 
 /**
- * HomePage - Standalone component with MantineProvider.
+ * HomePage - Page component (MantineProvider is provided by main.tsx).
  */
 export default function HomePage() {
-  return (
-    <MantineProvider>
-      <HomeContent />
-    </MantineProvider>
-  );
+  return <HomeContent />;
 }

@@ -4,6 +4,7 @@ Cliente para interactuar con Supabase (PostgreSQL + Storage).
 """
 
 from supabase import create_client, Client
+from functools import lru_cache
 from typing import Optional, List, Dict, Any
 import json
 from datetime import datetime
@@ -388,7 +389,7 @@ class SupabaseService:
             pass  # RPC no existe, usar fallback
 
         # Fallback: 4 count queries paralelas (mejor que traer todos los datos)
-        # Cada query solo retorna un número, no todos los registros
+        # Cada query solo retorna un numero, no todos los registros
         stats = {}
         estados = ["pendiente", "en_revision", "resuelto", "rechazado"]
 
@@ -465,16 +466,10 @@ class SupabaseService:
         }
 
 
-# Instancia global del servicio
-_supabase_service: Optional[SupabaseService] = None
-
-
+@lru_cache(maxsize=1)
 def get_supabase_service() -> SupabaseService:
     """Obtener instancia del servicio Supabase (singleton)."""
-    global _supabase_service
-    if _supabase_service is None:
-        _supabase_service = SupabaseService()
-    return _supabase_service
+    return SupabaseService()
 
 
 def get_supabase_client() -> Client:

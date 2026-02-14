@@ -253,7 +253,7 @@ def require_roles(allowed_roles: List[str]):
         if user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere rol: {', '.join(allowed_roles)}. Tu rol: {user.role}",
+                detail="No tienes permisos para realizar esta accion",
             )
         return user
     return role_checker

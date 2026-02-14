@@ -17,26 +17,29 @@ logger = get_task_logger(__name__)
 def analyze_flood_task(self, start_date_str: str, end_date_str: str, method: str = "fusion"):
     """
     Async task to analyze floods using SAR and Optical data.
+    Uses classify_parcels which performs multi-index classification
+    including flood/waterlogging detection.
     """
     logger.info(f"Starting flood analysis: {start_date_str} to {end_date_str} using {method}")
-    
+
     try:
         # Convert strings back to date objects
         start_date = date.fromisoformat(start_date_str)
         end_date = date.fromisoformat(end_date_str)
-        
+
         monitoring = get_monitoring_service()
-        
-        # This is the heavy GEE call
-        result = monitoring.analyze_floods(
+
+        # Use classify_parcels which includes flood detection via
+        # water surface and waterlogged parcel classification
+        result = monitoring.classify_parcels(
             start_date=start_date,
             end_date=end_date,
-            method=method
+            layer_name="zona",
         )
-        
+
         logger.info("Flood analysis completed successfully")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error in flood analysis task: {str(e)}")
         # Re-raise to let Celery handle it as a failure
@@ -45,22 +48,23 @@ def analyze_flood_task(self, start_date_str: str, end_date_str: str, method: str
 @celery_app.task(name="supervised_classification_task", bind=True)
 def supervised_classification_task(self, start_date_str: str, end_date_str: str):
     """
-    Async task for land use classification using Random Forest.
+    Async task for land use classification.
+    Uses classify_parcels_by_cuenca for per-watershed classification.
     """
     logger.info(f"Starting classification task: {start_date_str} to {end_date_str}")
-    
+
     try:
         start_date = date.fromisoformat(start_date_str)
         end_date = date.fromisoformat(end_date_str)
-        
+
         monitoring = get_monitoring_service()
-        
-        # Heavy ML operation in GEE
-        result = monitoring.get_supervised_classification(
+
+        # Use classify_parcels_by_cuenca which classifies all watersheds
+        result = monitoring.classify_parcels_by_cuenca(
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
-        
+
         return result
     except Exception as e:
         logger.error(f"Error in classification task: {str(e)}")

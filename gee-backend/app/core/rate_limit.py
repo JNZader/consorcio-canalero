@@ -12,6 +12,9 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Maximum number of keys in the in-memory fallback store before cleanup
+MAX_MEMORY_ENTRIES = 10000
+
 
 class DistributedRateLimiter:
     """
@@ -182,6 +185,45 @@ class DistributedRateLimiter:
             # Fallback to memory on Redis error
             return await self._check_memory(identifier, cost)
 
+    def _cleanup_memory_store(self, now: float) -> None:
+        """
+        Remove expired entries and evict oldest keys if the store exceeds
+        MAX_MEMORY_ENTRIES to prevent unbounded memory growth.
+
+        Must be called while holding self._memory_lock.
+        """
+        window_start = now - self.window_seconds
+
+        # First pass: remove expired timestamps from all keys and delete empty keys
+        empty_keys = []
+        for key in list(self._memory_store.keys()):
+            self._memory_store[key] = [
+                t for t in self._memory_store[key]
+                if t > window_start
+            ]
+            if not self._memory_store[key]:
+                empty_keys.append(key)
+
+        for key in empty_keys:
+            del self._memory_store[key]
+
+        # Second pass: if still over limit, evict the oldest half of entries
+        if len(self._memory_store) > MAX_MEMORY_ENTRIES:
+            logger.warning(
+                "In-memory rate limit store exceeded max entries, evicting oldest half",
+                current_entries=len(self._memory_store),
+                max_entries=MAX_MEMORY_ENTRIES,
+            )
+            # Sort keys by their oldest timestamp (most stale first)
+            sorted_keys = sorted(
+                self._memory_store.keys(),
+                key=lambda k: min(self._memory_store[k]) if self._memory_store[k] else 0,
+            )
+            # Remove the oldest half
+            keys_to_remove = sorted_keys[: len(sorted_keys) // 2]
+            for key in keys_to_remove:
+                del self._memory_store[key]
+
     async def _check_memory(
         self,
         identifier: str,
@@ -192,7 +234,11 @@ class DistributedRateLimiter:
         window_start = now - self.window_seconds
 
         async with self._memory_lock:
-            # Clean old entries
+            # Periodic cleanup when store grows large
+            if len(self._memory_store) > MAX_MEMORY_ENTRIES:
+                self._cleanup_memory_store(now)
+
+            # Clean old entries for this identifier
             self._memory_store[identifier] = [
                 t for t in self._memory_store[identifier]
                 if t > window_start

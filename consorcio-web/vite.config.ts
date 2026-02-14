@@ -91,6 +91,8 @@ export default defineConfig({
             '@mantine/form',
             '@mantine/notifications',
           ],
+          'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
+          'vendor-charts': ['recharts'],
           'vendor-map': ['leaflet', 'react-leaflet'],
           'vendor-supabase': ['@supabase/supabase-js'],
           'vendor-router': ['@tanstack/react-router'],

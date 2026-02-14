@@ -2,7 +2,6 @@ import { Alert, Box, Center, Skeleton, Stack, Text } from '@mantine/core';
 import { Suspense, lazy } from 'react';
 import styles from '../styles/components/map.module.css';
 import { ErrorBoundary } from './ErrorBoundary';
-import MantineProvider from './MantineProvider';
 
 // Lazy load del componente de mapa con Leaflet
 // Esto separa Leaflet (~400KB) del bundle inicial
@@ -66,10 +65,9 @@ function MapaContenido() {
 // Export internal component for use within other MantineProvider contexts
 export { MapaContenido };
 
+/**
+ * MapaInteractivo - Page component (MantineProvider is provided by main.tsx).
+ */
 export default function MapaInteractivo() {
-  return (
-    <MantineProvider>
-      <MapaContenido />
-    </MantineProvider>
-  );
+  return <MapaContenido />;
 }

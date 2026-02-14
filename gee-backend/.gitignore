@@ -7,6 +7,7 @@ credentials/
 *.json
 !package.json
 !pyproject.json
+gee-service-account.json
 
 # === VARIABLES DE ENTORNO ===
 .env

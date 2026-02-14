@@ -1,13 +1,14 @@
-import { 
-  Badge, 
-  Button, 
-  Card, 
-  Container, 
-  Group, 
-  Stack, 
-  Table, 
-  Text, 
-  Title, 
+import {
+  Badge,
+  Button,
+  Card,
+  Container,
+  Divider,
+  Group,
+  Stack,
+  Table,
+  Text,
+  Title,
   Timeline,
   Paper,
   ActionIcon,
@@ -20,6 +21,7 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useEffect, useState } from 'react';
 import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
+import { logger } from '../../../lib/logger';
 import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
 import { LoadingState } from '../../ui';
 
@@ -52,7 +54,7 @@ export default function TramitesPanel() {
       const data = await apiFetch<Tramite[]>('/management/tramites');
       setTramites(data);
     } catch (err) {
-      console.error(err);
+      logger.error('Error fetching tramites:', err);
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,7 @@ export default function TramitesPanel() {
       a.download = `Resumen_Expediente_${id.slice(0,8)}.pdf`;
       a.click();
     } catch (err) {
-      console.error(err);
+      logger.error('Error exporting tramite:', err);
     } finally {
       setExporting(false);
     }
@@ -84,7 +86,7 @@ export default function TramitesPanel() {
       setSelectedTramite(data);
       openHistory();
     } catch (err) {
-      console.error(err);
+      logger.error('Error fetching tramite detail:', err);
     }
   };
 
@@ -111,7 +113,7 @@ export default function TramitesPanel() {
       fetchTramites();
       form.reset();
     } catch (err) {
-      console.error(err);
+      logger.error('Error creating tramite:', err);
     }
   };
 
@@ -121,8 +123,8 @@ export default function TramitesPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Gestión de Expedientes</Title>
-          <Text c="dimmed">Seguimiento de trámites en Recursos Hídricos de la Provincia</Text>
+          <Title order={2}>Gestion de Expedientes</Title>
+          <Text c="dimmed">Seguimiento de tramites en Recursos Hidricos de la Provincia</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open}>
           Nuevo Expediente
@@ -133,9 +135,9 @@ export default function TramitesPanel() {
         <Table verticalSpacing="sm">
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Título / Expediente</Table.Th>
+              <Table.Th>Titulo / Expediente</Table.Th>
               <Table.Th>Estado</Table.Th>
-              <Table.Th>Última Actualización</Table.Th>
+              <Table.Th>Ultima Actualizacion</Table.Th>
               <Table.Th>Acciones</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -174,13 +176,13 @@ export default function TramitesPanel() {
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Expediente Provincial">
         <form onSubmit={form.onSubmit(handleCreate)}>
           <Stack gap="sm">
-            <TextInput label="Título del Trámite" placeholder="Ej: Obra Canal San Marcos" required {...form.getInputProps('titulo')} />
-            <TextInput label="Número de Expediente" placeholder="Ej: 0416-00123/2026" {...form.getInputProps('numero_expediente')} />
-            <Textarea label="Descripción Inicial" placeholder="Objetivo del trámite..." {...form.getInputProps('descripcion')} />
-            <Select 
-              label="Prioridad" 
-              data={['baja', 'normal', 'alta', 'urgente']} 
-              {...form.getInputProps('prioridad')} 
+            <TextInput label="Titulo del Tramite" placeholder="Ej: Obra Canal San Marcos" required {...form.getInputProps('titulo')} />
+            <TextInput label="Numero de Expediente" placeholder="Ej: 0416-00123/2026" {...form.getInputProps('numero_expediente')} />
+            <Textarea label="Descripcion Inicial" placeholder="Objetivo del tramite..." {...form.getInputProps('descripcion')} />
+            <Select
+              label="Prioridad"
+              data={['baja', 'normal', 'alta', 'urgente']}
+              {...form.getInputProps('prioridad')}
             />
             <Button type="submit" fullWidth mt="md">Crear Expediente</Button>
           </Stack>
@@ -188,7 +190,7 @@ export default function TramitesPanel() {
       </Modal>
 
       {/* Modal Historial de Avances */}
-      <Modal opened={historyOpened} onClose={closeHistory} title="Línea de Tiempo del Expediente" size="lg">
+      <Modal opened={historyOpened} onClose={closeHistory} title="Linea de Tiempo del Expediente" size="lg">
         {selectedTramite && (
           <Stack gap="md">
             <Group justify="space-between">
@@ -196,9 +198,9 @@ export default function TramitesPanel() {
                 <Text fw={700} size="lg">{selectedTramite.titulo}</Text>
                 <Text size="sm" c="dimmed">Expediente: {selectedTramite.numero_expediente}</Text>
               </div>
-              <Button 
-                size="xs" 
-                variant="outline" 
+              <Button
+                size="xs"
+                variant="outline"
                 leftSection={<IconDownload size={14} />}
                 onClick={() => handleExport(selectedTramite.id)}
                 loading={exporting}
@@ -214,7 +216,7 @@ export default function TramitesPanel() {
                   <Text size="xs" mt={4}>{new Date(a.fecha).toLocaleString()}</Text>
                 </Timeline.Item>
               ))}
-              <Timeline.Item title="Inicio de Trámite" bulletSize={12}>
+              <Timeline.Item title="Inicio de Tramite" bulletSize={12}>
                 <Text size="xs" mt={4}>Expediente creado en el sistema</Text>
               </Timeline.Item>
             </Timeline>

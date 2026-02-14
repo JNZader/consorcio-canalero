@@ -25,7 +25,7 @@ import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection } from 'geojson';
 import type { LeafletMouseEvent, Path } from 'leaflet';
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { GeoJSON, LayersControl, MapContainer, TileLayer, Marker, CircleMarker, Popup, useMapEvents } from 'react-leaflet';
+import { GeoJSON, FeatureGroup, LayersControl, MapContainer, TileLayer, Marker, CircleMarker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
@@ -70,7 +70,7 @@ const Leyenda = memo(function Leyenda({ consorcios = [], cuencasConfig = [] }: L
   const [showConsorcios, setShowConsorcios] = useState(false);
 
   // Fallback legend items if config not loaded yet
-  const legendItems = cuencasConfig.length > 0 
+  const legendItems = cuencasConfig.length > 0
     ? [
         { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
         ...cuencasConfig.map(c => ({ color: c.color, label: `Cuenca ${c.nombre}`, type: 'fill' }))
@@ -323,20 +323,34 @@ function AddPointEvents({ onMapClick, enabled }: { onMapClick: (lat: number, lng
   return null;
 }
 
+/**
+ * Syncs the map view when center/zoom change from config,
+ * without remounting the entire MapContainer.
+ */
+function MapViewUpdater({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [map, center, zoom]);
+
+  return null;
+}
+
 export default function MapaLeaflet() {
   // Get system configuration from store
   const config = useConfigStore((state) => state.config);
-  
+
   // Use dynamic center and zoom with fallbacks
-  const center = config?.map.center 
-    ? ([config.map.center.lat, config.map.center.lng] as [number, number]) 
+  const center = config?.map.center
+    ? ([config.map.center.lat, config.map.center.lng] as [number, number])
     : MAP_CENTER;
   const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
   // Unique ID for this map instance - forces clean remount on navigation
   const mapInstanceId = useId();
 
-  // Estados para marcación manual
+  // Estados para marcacion manual
   const [markingMode, setMarkingMode] = useState(false);
   const [newPoint, setNewPoint] = useState<{ lat: number, lng: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -378,7 +392,7 @@ export default function MapaLeaflet() {
       a.download = `Ficha_Tecnica_${assetName.replace(/\s+/g, '_')}.pdf`;
       a.click();
     } catch (err) {
-      notifications.show({ title: 'Error', message: 'No se pudo generar la ficha técnica', color: 'red' });
+      notifications.show({ title: 'Error', message: 'No se pudo generar la ficha tecnica', color: 'red' });
     }
   };
 
@@ -570,14 +584,16 @@ export default function MapaLeaflet() {
   return (
     <Box ref={mapWrapperRef} pos="relative" w="100%" className={styles.mapWrapper}>
       <MapContainer
-        key={`${mapInstanceId}-${center[0]}-${zoom}`} // Force re-render if center changes
+        key={mapInstanceId}
         center={center}
         zoom={zoom}
+        preferCanvas={true}
         style={{ width: '100%', height: '100%', cursor: markingMode ? 'crosshair' : 'grab' }}
         scrollWheelZoom={true}
       >
+        <MapViewUpdater center={center} zoom={zoom} />
         <AddPointEvents onMapClick={handleMapClick} enabled={markingMode} />
-        {/* Forzar recálculo del tamaño del mapa en primera carga */}
+        {/* Forzar recalculo del tamano del mapa en primera carga */}
         <MapReadyHandler />
         <LayersControl position="topright">
           {/* Capas base */}
@@ -607,29 +623,29 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
           )}
 
-          {/* Capas overlay - key prop forces remount when data changes */}
+          {/* Capas overlay - stable keys to avoid unnecessary remounts */}
           {capas.zona && (
             <LayersControl.Overlay checked name="Zona Consorcio">
-              <GeoJSON key={`zona-${capas.zona.features.length}`} data={capas.zona} style={GEE_LAYER_STYLES.zona} />
+              <GeoJSON key="zona" data={capas.zona} style={GEE_LAYER_STYLES.zona} />
             </LayersControl.Overlay>
           )}
 
           {capas.candil && (
             <LayersControl.Overlay name="Cuenca Candil">
-              <GeoJSON key={`candil-${capas.candil.features.length}`} data={capas.candil} style={GEE_LAYER_STYLES.candil} onEachFeature={onEachFeature} />
+              <GeoJSON key="candil" data={capas.candil} style={GEE_LAYER_STYLES.candil} onEachFeature={onEachFeature} />
             </LayersControl.Overlay>
           )}
 
           {capas.ml && (
             <LayersControl.Overlay name="Cuenca ML">
-              <GeoJSON key={`ml-${capas.ml.features.length}`} data={capas.ml} style={GEE_LAYER_STYLES.ml} onEachFeature={onEachFeature} />
+              <GeoJSON key="ml" data={capas.ml} style={GEE_LAYER_STYLES.ml} onEachFeature={onEachFeature} />
             </LayersControl.Overlay>
           )}
 
           {capas.noroeste && (
             <LayersControl.Overlay name="Cuenca Noroeste">
               <GeoJSON
-                key={`noroeste-${capas.noroeste.features.length}`}
+                key="noroeste"
                 data={capas.noroeste}
                 style={GEE_LAYER_STYLES.noroeste}
                 onEachFeature={onEachFeature}
@@ -639,7 +655,7 @@ export default function MapaLeaflet() {
 
           {capas.norte && (
             <LayersControl.Overlay name="Cuenca Norte">
-              <GeoJSON key={`norte-${capas.norte.features.length}`} data={capas.norte} style={GEE_LAYER_STYLES.norte} onEachFeature={onEachFeature} />
+              <GeoJSON key="norte" data={capas.norte} style={GEE_LAYER_STYLES.norte} onEachFeature={onEachFeature} />
             </LayersControl.Overlay>
           )}
 
@@ -647,7 +663,7 @@ export default function MapaLeaflet() {
           {caminos && (
             <LayersControl.Overlay checked name="Red Vial (por Consorcio)">
               <GeoJSON
-                key={`caminos-${caminos.features.length}`}
+                key="caminos"
                 data={caminos}
                 style={(feature) => ({
                   color: feature?.properties?.color || '#888888',
@@ -659,11 +675,11 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
           )}
 
-          {/* Puntos de cruce potenciales (Caminos ∩ Drenaje) */}
+          {/* Puntos de cruce potenciales (Caminos / Drenaje) */}
           {intersections && (
             <LayersControl.Overlay name="Intersecciones (Alcantarillas potenciales)">
-              <GeoJSON 
-                data={intersections} 
+              <GeoJSON
+                data={intersections}
                 pointToLayer={(feature, latlng) => (
                   L.circleMarker(latlng, {
                     radius: 5,
@@ -678,53 +694,56 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
           )}
 
-          {/* Activos de Infraestructura Registrados */}
-          {assets.map(asset => {
-            const assetColor = 
-              asset.tipo === 'puente' ? '#f03e3e' : 
-              asset.tipo === 'alcantarilla' ? '#1971c2' : 
-              asset.tipo === 'canal' ? '#2f9e44' : '#fd7e14';
-            
-            return (
-              <LayersControl.Overlay checked key={asset.id} name={`Activo: ${asset.nombre}`}>
-                <CircleMarker 
-                  center={[asset.latitud, asset.longitud]}
-                  radius={markingMode ? 4 : 10} // Smaller while marking to avoid misclicks
-                  pathOptions={{
-                    fillColor: assetColor,
-                    color: '#ffffff',
-                    weight: 2,
-                    fillOpacity: 0.9
-                  }}
-                >
-                  <Tooltip direction="top" offset={[0, -10]}>
-                    <Text size="xs" fw={700}>{asset.nombre}</Text>
-                  </Tooltip>
-                  <Popup>
-                    <Stack gap={4}>
-                      <Text fw={700} size="sm">{asset.nombre}</Text>
-                      <Badge size="xs" variant="outline" color={assetColor}>{asset.tipo.toUpperCase()}</Badge>
-                      <Divider my={4} />
-                      <Text size="xs">Estado: <b>{asset.estado_actual.toUpperCase()}</b></Text>
-                      <Text size="xs" c="dimmed">Cuenca: {asset.cuenca}</Text>
-                      <Text size="xs" c="dimmed">Ult. Insp: {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}</Text>
-                      <Group gap={4} mt="xs">
-                        <Button size="compact-xs" variant="light" color="violet">Bitácora</Button>
-                        <Button 
-                          size="compact-xs" 
-                          variant="outline" 
-                          leftSection={<IconDownload size={12} />}
-                          onClick={() => handleExportAsset(asset.id, asset.nombre)}
-                        >
-                          Ficha PDF
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Popup>
-                </CircleMarker>
-              </LayersControl.Overlay>
-            );
-          })}
+          {/* Activos de Infraestructura Registrados - grouped in a single overlay */}
+          <LayersControl.Overlay checked name="Activos de Infraestructura">
+            <FeatureGroup>
+              {assets.map(asset => {
+                const assetColor =
+                  asset.tipo === 'puente' ? '#f03e3e' :
+                  asset.tipo === 'alcantarilla' ? '#1971c2' :
+                  asset.tipo === 'canal' ? '#2f9e44' : '#fd7e14';
+
+                return (
+                  <CircleMarker
+                    key={asset.id}
+                    center={[asset.latitud, asset.longitud]}
+                    radius={markingMode ? 4 : 10}
+                    pathOptions={{
+                      fillColor: assetColor,
+                      color: '#ffffff',
+                      weight: 2,
+                      fillOpacity: 0.9
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -10]}>
+                      <Text size="xs" fw={700}>{asset.nombre}</Text>
+                    </Tooltip>
+                    <Popup>
+                      <Stack gap={4}>
+                        <Text fw={700} size="sm">{asset.nombre}</Text>
+                        <Badge size="xs" variant="outline" color={assetColor}>{asset.tipo.toUpperCase()}</Badge>
+                        <Divider my={4} />
+                        <Text size="xs">Estado: <b>{asset.estado_actual.toUpperCase()}</b></Text>
+                        <Text size="xs" c="dimmed">Cuenca: {asset.cuenca}</Text>
+                        <Text size="xs" c="dimmed">Ult. Insp: {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}</Text>
+                        <Group gap={4} mt="xs">
+                          <Button size="compact-xs" variant="light" color="violet">Bitacora</Button>
+                          <Button
+                            size="compact-xs"
+                            variant="outline"
+                            leftSection={<IconDownload size={12} />}
+                            onClick={() => handleExportAsset(asset.id, asset.nombre)}
+                          >
+                            Ficha PDF
+                          </Button>
+                        </Group>
+                      </Stack>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+            </FeatureGroup>
+          </LayersControl.Overlay>
         </LayersControl>
 
         {/* Comparison layers - rendered outside LayersControl for proper z-index */}
@@ -758,16 +777,16 @@ export default function MapaLeaflet() {
         }
       />
 
-      {/* Boton Modo Marcación */}
-      <Paper 
-        shadow="md" 
-        p="xs" 
-        radius="md" 
+      {/* Boton Modo Marcacion */}
+      <Paper
+        shadow="md"
+        p="xs"
+        radius="md"
         style={{ position: 'absolute', top: 10, right: 60, zIndex: 1000 }}
       >
         <Tooltip label={markingMode ? "Cancelar marcacion" : "Marcar punto de interes"}>
-          <Button 
-            size="xs" 
+          <Button
+            size="xs"
             color={markingMode ? "red" : "blue"}
             variant={markingMode ? "filled" : "light"}
             onClick={() => {
@@ -782,10 +801,10 @@ export default function MapaLeaflet() {
       </Paper>
 
       {/* Modal Registro de Activo */}
-      <Modal 
-        opened={!!newPoint} 
-        onClose={() => setNewPoint(null)} 
-        title="Registrar Punto de Interés"
+      <Modal
+        opened={!!newPoint}
+        onClose={() => setNewPoint(null)}
+        title="Registrar Punto de Interes"
         centered
       >
         <form onSubmit={form.onSubmit(handleSaveAsset)}>
@@ -793,35 +812,35 @@ export default function MapaLeaflet() {
             <Text size="sm" c="dimmed">
               Ubicacion: {newPoint?.lat.toFixed(5)}, {newPoint?.lng.toFixed(5)}
             </Text>
-            <TextInput 
-              label="Nombre" 
-              placeholder="Ej: Alcantarilla campo Perez" 
+            <TextInput
+              label="Nombre"
+              placeholder="Ej: Alcantarilla campo Perez"
               required
               {...form.getInputProps('nombre')}
             />
-            <Select 
+            <Select
               label="Tipo de Activo"
               data={[
                 { value: 'alcantarilla', label: 'Alcantarilla' },
                 { value: 'puente', label: 'Puente' },
                 { value: 'canal', label: 'Canal (Punto)' },
-                { value: 'punto_critico', label: 'Punto Crítico' },
+                { value: 'punto_critico', label: 'Punto Critico' },
                 { value: 'otro', label: 'Otro' },
               ]}
               {...form.getInputProps('tipo')}
             />
-            <TextInput 
-              label="Descripción" 
+            <TextInput
+              label="Descripcion"
               placeholder="Detalles sobre el estado o acceso"
               {...form.getInputProps('descripcion')}
             />
-            <Select 
+            <Select
               label="Cuenca"
               data={config?.cuencas.map(c => ({ value: c.id, label: c.nombre })) || []}
               {...form.getInputProps('cuenca')}
             />
             <Button type="submit" loading={isSubmitting} fullWidth mt="md">
-              Guardar en Bitácora
+              Guardar en Bitacora
             </Button>
           </Stack>
         </form>

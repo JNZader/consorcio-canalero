@@ -29,6 +29,7 @@
 
 import type { Session, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
 import {
   signInWithEmail,
   signInWithGoogle,
@@ -125,15 +126,22 @@ export interface UseAuthOptions {
 export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const { autoInitialize = true } = options;
 
-  // Get state from Zustand store
-  const user = useAuthStore((state) => state.user);
-  const session = useAuthStore((state) => state.session);
-  const profile = useAuthStore((state) => state.profile);
-  const loading = useAuthStore((state) => state.loading);
-  const initialized = useAuthStore((state) => state.initialized);
-  const error = useAuthStore((state) => state.error);
-  const storeInitialize = useAuthStore((state) => state.initialize);
-  const storeReset = useAuthStore((state) => state.reset);
+  // Get state from Zustand store using a single shallow selector
+  const {
+    user, session, profile, loading, initialized, error,
+    initialize: storeInitialize, reset: storeReset
+  } = useAuthStore(
+    useShallow((state) => ({
+      user: state.user,
+      session: state.session,
+      profile: state.profile,
+      loading: state.loading,
+      initialized: state.initialized,
+      error: state.error,
+      initialize: state.initialize,
+      reset: state.reset,
+    }))
+  );
 
   // Auto-initialize on mount
   useEffect(() => {

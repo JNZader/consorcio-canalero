@@ -1,7 +1,7 @@
 import { Box, Button, Center, Group, Loader, Paper, Stack, Text, ThemeIcon } from '@mantine/core';
 import { useEffect, useState } from 'react';
+import { useRouter } from '@tanstack/react-router';
 import { useAuth, type UserRole } from '../../hooks/useAuth';
-import MantineProvider from '../MantineProvider';
 import { IconArrowLeft, IconLock } from '../ui/icons';
 
 /**
@@ -81,14 +81,16 @@ function UnauthorizedState({
  * Componente que se muestra cuando no hay sesion activa
  */
 function NotAuthenticatedState({ loginUrl }: Readonly<{ loginUrl: string }>) {
+  const router = useRouter();
+
   useEffect(() => {
     // Guardar la URL actual para redirigir despues del login
     const currentUrl = globalThis.location.pathname + globalThis.location.search;
     sessionStorage.setItem('redirectAfterLogin', currentUrl);
 
-    // Redirigir al login
-    globalThis.location.href = loginUrl;
-  }, [loginUrl]);
+    // Redirigir al login usando TanStack Router
+    router.navigate({ to: loginUrl });
+  }, [loginUrl, router]);
 
   return (
     <Center mih="100vh">
@@ -103,7 +105,7 @@ function NotAuthenticatedState({ loginUrl }: Readonly<{ loginUrl: string }>) {
 }
 
 /**
- * ProtectedRouteContent - Contenido principal del ProtectedRoute sin MantineProvider.
+ * ProtectedRouteContent - Contenido principal del ProtectedRoute.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function ProtectedRouteContent({
@@ -114,6 +116,7 @@ export function ProtectedRouteContent({
   unauthorizedMessage = 'No tienes permisos para acceder a esta seccion.',
 }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, profile, canAccess } = useAuth();
+  const router = useRouter();
   const [authState, setAuthState] = useState<
     'loading' | 'authenticated' | 'not-authenticated' | 'unauthorized'
   >('loading');
@@ -156,7 +159,7 @@ export function ProtectedRouteContent({
   if (authState === 'unauthorized') {
     // Si hay URL de redireccion, redirigir
     if (unauthorizedUrl) {
-      globalThis.location.href = unauthorizedUrl;
+      router.navigate({ to: unauthorizedUrl });
       return <LoadingState />;
     }
 
@@ -166,7 +169,7 @@ export function ProtectedRouteContent({
         message={unauthorizedMessage}
         onGoBack={() => globalThis.history.back()}
         onGoHome={() => {
-          globalThis.location.href = '/';
+          router.navigate({ to: '/' });
         }}
       />
     );
@@ -199,11 +202,7 @@ export function ProtectedRouteContent({
  * ```
  */
 export default function ProtectedRoute(props: ProtectedRouteProps) {
-  return (
-    <MantineProvider>
-      <ProtectedRouteContent {...props} />
-    </MantineProvider>
-  );
+  return <ProtectedRouteContent {...props} />;
 }
 
 /**

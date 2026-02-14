@@ -85,7 +85,6 @@ jobs:
 
       - name: Run tests
         run: npm run test:run -- --coverage
-        continue-on-error: true
 
       - name: Build
         run: npm run build
@@ -140,18 +139,17 @@ jobs:
           ruff format app/ --check
 
       - name: Type check with MyPy
-        run: mypy app/ --ignore-missing-imports || true
+        run: mypy app/ --ignore-missing-imports
 
       - name: Security scan with Bandit
-        run: bandit -r app/ -ll || true
+        run: bandit -r app/ -ll
 
       - name: Run tests
         run: |
           pytest tests/ -v \
             --cov=app \
             --cov-report=xml \
-            --cov-fail-under=50 \
-            || echo "Tests completed"
+            --cov-fail-under=50
         env:
           TESTING: "true"
 
@@ -321,16 +319,14 @@ jobs:
           KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
         run: |
           koyeb service update gee-backend \
-            --docker "${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest" \
-            || echo "Service update initiated"
+            --docker "${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}"
 
       - name: Deploy Frontend
         env:
           KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
         run: |
           koyeb service update frontend \
-            --docker "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest" \
-            || echo "Service update initiated"
+            --docker "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
 
       - name: Health Check
         id: deploy
@@ -356,7 +352,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Image |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend | \`${{ env.BACKEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend | \`${{ env.FRONTEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | \`${{ env.BACKEND_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | \`${{ env.FRONTEND_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

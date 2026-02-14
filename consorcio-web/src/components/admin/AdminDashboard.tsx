@@ -13,11 +13,13 @@ import {
   Title,
   Divider,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
 import { CONSORCIO_AREA_HA, CONSORCIO_AREA_DISPLAY, CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
 import { useConfigStore } from '../../stores/configStore';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
 import { formatDate } from '../../lib/formatters';
+import { logger } from '../../lib/logger';
 import { LoadingState } from '../ui';
 import { StatusBadge } from '../ui/StatusBadge';
 import {
@@ -49,7 +51,7 @@ const DEFAULT_CUENCA_NAMES: Record<string, string> = {
 export default function AdminDashboard() {
   const config = useConfigStore((state) => state.config);
   const [exporting, setExporting] = useState(false);
-  
+
   const {
     reports: recentReports,
     isLoading: reportsLoading,
@@ -79,9 +81,9 @@ export default function AdminDashboard() {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) throw new Error('Error al generar PDF');
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -89,9 +91,15 @@ export default function AdminDashboard() {
       a.download = `informe_gestion_integral_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
-      console.error('Export error:', error);
+      logger.error('Export error:', error);
+      notifications.show({
+        title: 'Error de exportacion',
+        message: 'No se pudo generar el PDF. Intenta nuevamente.',
+        color: 'red',
+      });
     } finally {
       setExporting(false);
     }
@@ -118,14 +126,14 @@ export default function AdminDashboard() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Panel de Gestión Integral</Title>
+          <Title order={2}>Panel de Gestion Integral</Title>
           <Text c="gray.6">Inteligencia de datos y monitoreo satelital</Text>
         </div>
         <Group>
-          <Button 
-            variant="filled" 
+          <Button
+            variant="filled"
             color="violet"
-            leftSection={<IconDownload size={18} />} 
+            leftSection={<IconDownload size={18} />}
             onClick={handleExportPDF}
             loading={exporting}
           >
@@ -134,7 +142,7 @@ export default function AdminDashboard() {
         </Group>
       </Group>
 
-      {/* Componente de Visualización Avanzada */}
+      {/* Componente de Visualizacion Avanzada */}
       <DashboardEstadisticas />
 
       <Divider my="xl" label="Detalle de Operaciones" labelPosition="center" />
@@ -179,7 +187,7 @@ export default function AdminDashboard() {
         {/* Ultimos Reportes */}
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Group justify="space-between" mb="md">
-            <Title order={4}>Últimos Reportes Vecinales</Title>
+            <Title order={4}>Ultimos Reportes Vecinales</Title>
             <Button component="a" href="/admin/reports" variant="subtle" size="xs">
               Ver todos
             </Button>

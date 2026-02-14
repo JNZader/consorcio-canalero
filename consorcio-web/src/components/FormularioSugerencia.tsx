@@ -23,7 +23,6 @@ import { useContactVerification } from '../hooks/useContactVerification';
 import { sugerenciasApi } from '../lib/api';
 import { logger } from '../lib/logger';
 import { MAX_LENGTHS, validators } from '../lib/validators';
-import MantineProvider from './MantineProvider';
 import { LiveRegionProvider } from './ui/accessibility';
 import { IconCheck, IconInfoCircle, IconShieldCheck } from './ui/icons';
 import { ContactVerificationSection } from './verification';
@@ -443,12 +442,13 @@ function FormularioContenido() {
 
 export { FormularioContenido as FormularioSugerenciaContent };
 
+/**
+ * FormularioSugerencia - Page component (MantineProvider is provided by main.tsx).
+ */
 export default function FormularioSugerencia() {
   return (
-    <MantineProvider>
-      <LiveRegionProvider>
-        <FormularioContenido />
-      </LiveRegionProvider>
-    </MantineProvider>
+    <LiveRegionProvider>
+      <FormularioContenido />
+    </LiveRegionProvider>
   );
 }

@@ -10,12 +10,13 @@ from datetime import date, datetime
 from enum import Enum
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.constants import CUENCA_AREAS_HA, CONSORCIO_AREA_HA, CONSORCIO_KM_CAMINOS, CUENCA_IDS
 from app.services.supabase_service import get_supabase_service
+from app.auth import User, require_authenticated
 
 router = APIRouter()
 
@@ -47,7 +48,9 @@ class ExportRequest(BaseModel):
 
 
 @router.get("/dashboard")
-async def get_dashboard_stats():
+async def get_dashboard_stats(
+    user: User = Depends(require_authenticated),
+):
     """
     Obtener estadisticas para el dashboard principal.
 
@@ -165,7 +168,10 @@ async def get_historical_stats(
 
 
 @router.post("/export")
-async def export_stats(request: ExportRequest):
+async def export_stats(
+    request: ExportRequest,
+    user: User = Depends(require_authenticated),
+):
     """
     Exportar estadisticas a archivo.
 
@@ -213,6 +219,39 @@ async def export_stats(request: ExportRequest):
         "records": len(items),
         "format": request.format.value,
         "data": _prepare_export_data(items, request.cuencas),
+    }
+
+
+@router.get("/summary")
+async def get_summary(
+    user: User = Depends(require_authenticated),
+):
+    """
+    Obtener resumen general del sistema.
+
+    Vista rapida del estado actual.
+    """
+    db = get_supabase_service()
+
+    dashboard = db.get_dashboard_stats()
+    reports_stats = dashboard.get("denuncias", {})
+    ultimo = dashboard.get("ultimo_analisis", {})
+
+    return {
+        "area_consorcio_ha": CONSORCIO_AREA_HA,
+        "cuencas": CUENCA_IDS,
+        "km_caminos": CONSORCIO_KM_CAMINOS,
+        "ultimo_analisis": {
+            "fecha": ultimo.get("fecha"),
+            "hectareas_inundadas": ultimo.get("hectareas_inundadas", 0),
+            "porcentaje": ultimo.get("porcentaje_area", 0),
+            "caminos_afectados": ultimo.get("caminos_afectados", 0),
+        },
+        "denuncias": {
+            "pendientes": reports_stats.get("pendiente", 0),
+            "en_revision": reports_stats.get("en_revision", 0),
+            "resueltas_total": reports_stats.get("resuelto", 0),
+        },
     }
 
 
@@ -296,34 +335,3 @@ def _generate_csv_response(
             "Content-Type": "text/csv; charset=utf-8",
         }
     )
-
-
-@router.get("/summary")
-async def get_summary():
-    """
-    Obtener resumen general del sistema.
-
-    Vista rapida del estado actual.
-    """
-    db = get_supabase_service()
-
-    dashboard = db.get_dashboard_stats()
-    reports_stats = dashboard.get("denuncias", {})
-    ultimo = dashboard.get("ultimo_analisis", {})
-
-    return {
-        "area_consorcio_ha": CONSORCIO_AREA_HA,
-        "cuencas": CUENCA_IDS,
-        "km_caminos": CONSORCIO_KM_CAMINOS,
-        "ultimo_analisis": {
-            "fecha": ultimo.get("fecha"),
-            "hectareas_inundadas": ultimo.get("hectareas_inundadas", 0),
-            "porcentaje": ultimo.get("porcentaje_area", 0),
-            "caminos_afectados": ultimo.get("caminos_afectados", 0),
-        },
-        "denuncias": {
-            "pendientes": reports_stats.get("pendiente", 0),
-            "en_revision": reports_stats.get("en_revision", 0),
-            "resueltas_total": reports_stats.get("resuelto", 0),
-        },
-    }

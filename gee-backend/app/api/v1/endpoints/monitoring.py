@@ -3,13 +3,14 @@ Monitoring Endpoints.
 Dashboard de monitoreo satelital de la cuenca.
 """
 
+import asyncio
 import time
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 
 from app.services.monitoring_service import get_monitoring_service
-from app.auth import User, get_current_user
+from app.auth import User, require_authenticated
 from app.core.logging import get_logger
-from app.core.exceptions import get_safe_error_detail
+from app.core.exceptions import AppException, get_safe_error_detail
 
 logger = get_logger(__name__)
 
@@ -25,19 +26,19 @@ _dashboard_cache = {
 }
 
 
-def _get_cached_or_fetch():
-    """Retorna datos cacheados o fetch fresh si expiró."""
+async def _get_cached_or_fetch():
+    """Retorna datos cacheados o fetch fresh si expiro."""
     now = time.time()
 
-    # Cache válido?
+    # Cache valido?
     if _dashboard_cache["data"] and now < _dashboard_cache["expires_at"]:
         logger.info("Monitoring dashboard: returning cached data")
         return _dashboard_cache["data"], True
 
-    # Fetch fresh
+    # Fetch fresh - wrap blocking GEE call in asyncio.to_thread
     logger.info("Monitoring dashboard: fetching fresh data from GEE")
     monitoring = get_monitoring_service()
-    summary = monitoring.get_monitoring_summary(days_back=30)
+    summary = await asyncio.to_thread(monitoring.get_monitoring_summary, days_back=30)
 
     if "error" not in summary:
         # Guardar en cache
@@ -49,23 +50,27 @@ def _get_cached_or_fetch():
 
 @router.get("/dashboard")
 async def get_dashboard_data(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_authenticated),
 ):
     """
     Obtener todos los datos necesarios para el dashboard de monitoreo.
 
-    Combina múltiples fuentes de datos en una sola respuesta:
-    - Resumen de estado actual (área productiva vs problemática)
+    Combina multiples fuentes de datos en una sola respuesta:
+    - Resumen de estado actual (area productiva vs problematica)
     - Alertas activas
-    - Ranking de cuencas por área problemática
+    - Ranking de cuencas por area problematica
 
     Optimizado con cache de 5 minutos para evitar llamadas repetidas a GEE.
     """
     try:
-        summary, from_cache = _get_cached_or_fetch()
+        summary, from_cache = await _get_cached_or_fetch()
 
         if "error" in summary:
-            raise HTTPException(status_code=400, detail=summary["error"])
+            raise AppException(
+                message=summary["error"],
+                code="MONITORING_DATA_ERROR",
+                status_code=400,
+            )
 
         # Extraer periodo de summary
         periodo = summary.get("periodo", {})
@@ -85,11 +90,12 @@ async def get_dashboard_data(
             "from_cache": from_cache,
         }
 
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error("Error obteniendo datos del dashboard", error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "datos del dashboard"),
+            code="DASHBOARD_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "datos del dashboard")
         )

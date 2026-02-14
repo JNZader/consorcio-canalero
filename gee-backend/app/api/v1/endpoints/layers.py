@@ -3,7 +3,7 @@ Layers Endpoints.
 CRUD para gestion de capas GeoJSON.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Response
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import json
@@ -221,7 +221,7 @@ async def update_layer(
     return db.update_layer(layer_id, data)
 
 
-@router.delete("/{layer_id}")
+@router.delete("/{layer_id}", status_code=204)
 async def delete_layer(
     layer_id: str,
     user: User = Depends(require_admin),
@@ -238,7 +238,7 @@ async def delete_layer(
         raise HTTPException(status_code=404, detail="Capa no encontrada")
 
     db.delete_layer(layer_id)
-    return {"message": "Capa eliminada", "id": layer_id}
+    return Response(status_code=204)
 
 
 @router.post("/reorder")

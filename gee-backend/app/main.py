@@ -25,6 +25,8 @@ from app.core.logging import (
 from app.core.exceptions import AppException, RateLimitExceededError
 from app.core.rate_limit import get_rate_limiter, DistributedRateLimiter
 
+# Application version constant (used in FastAPI init, root, and health endpoints)
+APP_VERSION = "1.0.0"
 
 # Configure logging based on environment
 configure_structlog(
@@ -115,6 +117,9 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     # Paths that should skip CSRF check (webhooks from external services)
     CSRF_EXEMPT_PATHS: list[str] = []
 
+    # Explicit upload paths that accept multipart/form-data without JSON content-type
+    UPLOAD_PATHS: set[str] = {"/api/v1/public/upload-photo", "/api/v1/layers/upload"}
+
     async def dispatch(self, request: Request, call_next):
         # Only check state-changing methods
         if request.method not in ["POST", "PUT", "DELETE", "PATCH"]:
@@ -151,8 +156,8 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
         # Allow multipart for file uploads, but require JSON for other requests
         if not is_multipart and not is_json:
-            # Skip for file upload endpoints
-            if "/upload" not in request.url.path:
+            # Skip for explicitly listed upload endpoints
+            if request.url.path not in self.UPLOAD_PATHS:
                 logger.warning(
                     "CSRF: Invalid content type",
                     content_type=content_type,
@@ -308,7 +313,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Consorcio Canalero API",
     description="API para gestion de analisis satelital y denuncias del Consorcio Canalero 10 de Mayo",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
@@ -420,7 +425,7 @@ async def root():
     return {
         "status": "ok",
         "service": "Consorcio Canalero GEE Backend",
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
 
@@ -452,7 +457,7 @@ async def health():
     return {
         "status": "healthy" if is_healthy else "degraded",
         "services": services,
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
 

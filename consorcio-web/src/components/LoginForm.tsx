@@ -19,11 +19,10 @@ import { useState } from 'react';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth';
 import { logger } from '../lib/logger';
 import { validateEmail } from '../lib/validators';
-import MantineProvider from './MantineProvider';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
 
 /**
- * LoginFormContent - Contenido interno del formulario de login sin MantineProvider.
+ * LoginFormContent - Contenido interno del formulario de login.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function LoginFormContent() {
@@ -290,12 +289,8 @@ export function LoginFormContent() {
 }
 
 /**
- * LoginForm - Standalone component with MantineProvider.
+ * LoginForm - Page component (MantineProvider is provided by main.tsx).
  */
 export default function LoginForm() {
-  return (
-    <MantineProvider>
-      <LoginFormContent />
-    </MantineProvider>
-  );
+  return <LoginFormContent />;
 }

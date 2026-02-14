@@ -29,7 +29,6 @@ import { useConfigStore } from '../stores/configStore';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { publicApi } from '../lib/api';
 import { logger } from '../lib/logger';
-import MantineProvider from './MantineProvider';
 import {
   AccessibleRadioGroup,
   CoordinatesInput,
@@ -140,7 +139,6 @@ function LocationSection({
           Usar mi ubicacion GPS
         </Button>
         <Button
-          onClick={onObtenerGPS} // Fixed duplicate click handler in previous code
           onClick={onToggleInputManual}
           variant="subtle"
           size="sm"
@@ -540,9 +538,9 @@ async function uploadPhotoIfExists(
 
 function FormularioContenido() {
   const config = useConfigStore((state) => state.config);
-  
-  const defaultCenter = config?.map.center 
-    ? ([config.map.center.lat, config.map.center.lng] as [number, number]) 
+
+  const defaultCenter = config?.map.center
+    ? ([config.map.center.lat, config.map.center.lng] as [number, number])
     : MAP_CENTER;
   const defaultZoom = config?.map.zoom ? config.map.zoom + 1 : 12;
 
@@ -831,10 +829,8 @@ export { FormularioContenido };
 
 export default function FormularioReporte() {
   return (
-    <MantineProvider>
-      <LiveRegionProvider>
-        <FormularioContenido />
-      </LiveRegionProvider>
-    </MantineProvider>
+    <LiveRegionProvider>
+      <FormularioContenido />
+    </LiveRegionProvider>
   );
 }

@@ -1,13 +1,13 @@
-import { 
-  Badge, 
-  Button, 
-  Card, 
-  Container, 
-  Group, 
-  Stack, 
-  Table, 
-  Text, 
-  Title, 
+import {
+  Badge,
+  Button,
+  Card,
+  Container,
+  Group,
+  Stack,
+  Table,
+  Text,
+  Title,
   Paper,
   ActionIcon,
   Modal,
@@ -24,6 +24,7 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
+import { logger } from '../../../lib/logger';
 import { IconPlus, IconCoin, IconArrowUpRight, IconArrowDownRight, IconReceipt, IconReportMoney } from '../../ui/icons';
 import { LoadingState } from '../../ui';
 
@@ -47,7 +48,7 @@ export default function FinanzasPanel() {
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string | null>('balance');
-  
+
   const [opened, { open, close }] = useDisclosure(false);
 
   const fetchFinanzas = async () => {
@@ -55,12 +56,12 @@ export default function FinanzasPanel() {
     try {
       const [gastosData, balanceData] = await Promise.all([
         apiFetch<Gasto[]>('/finance/gastos'),
-        apiFetch<Balance>('/finance/balance-summary/2026')
+        apiFetch<Balance>(`/finance/balance-summary/${new Date().getFullYear()}`)
       ]);
       setGastos(gastosData);
       setBalance(balanceData);
     } catch (err) {
-      console.error(err);
+      logger.error('Error fetching finanzas:', err);
     } finally {
       setLoading(false);
     }
@@ -89,18 +90,20 @@ export default function FinanzasPanel() {
       fetchFinanzas();
       form.reset();
     } catch (err) {
-      console.error(err);
+      logger.error('Error creating gasto:', err);
     }
   };
 
   if (loading && !balance) return <LoadingState />;
 
+  const currentYear = new Date().getFullYear();
+
   return (
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Administración Financiera</Title>
-          <Text c="dimmed">Seguimiento de gastos y ejecución presupuestaria</Text>
+          <Title order={2}>Administracion Financiera</Title>
+          <Text c="dimmed">Seguimiento de gastos y ejecucion presupuestaria</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open} color="red">
           Registrar Gasto
@@ -117,11 +120,11 @@ export default function FinanzasPanel() {
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
             <Card withBorder padding="lg" radius="md">
               <Group justify="space-between">
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Recaudación (Cuotas)</Text>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Recaudacion (Cuotas)</Text>
                 <ThemeIcon color="green" variant="light"><IconArrowUpRight size={16} /></ThemeIcon>
               </Group>
               <Text size="xl" fw={700} mt="md">${balance?.total_ingresos.toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Ingresos confirmados año 2026</Text>
+              <Text size="xs" c="dimmed">Ingresos confirmados ano {currentYear}</Text>
             </Card>
 
             <Card withBorder padding="lg" radius="md">
@@ -145,10 +148,10 @@ export default function FinanzasPanel() {
 
           <Paper withBorder p="xl" radius="md" mt="xl">
             <Group justify="space-between" mb="xl">
-              <Title order={4}>Presupuesto Asamblea 2026</Title>
+              <Title order={4}>Presupuesto Asamblea {currentYear}</Title>
               <Button variant="outline">Generar PDF Asamblea</Button>
             </Group>
-            <Text c="dimmed" ta="center" py="xl">Área de planificación presupuestaria en desarrollo...</Text>
+            <Text c="dimmed" ta="center" py="xl">Area de planificacion presupuestaria en desarrollo...</Text>
           </Paper>
         </Tabs.Panel>
 
@@ -158,8 +161,8 @@ export default function FinanzasPanel() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Fecha</Table.Th>
-                  <Table.Th>Descripción</Table.Th>
-                  <Table.Th>Categoría</Table.Th>
+                  <Table.Th>Descripcion</Table.Th>
+                  <Table.Th>Categoria</Table.Th>
                   <Table.Th>Monto</Table.Th>
                   <Table.Th>Activo Vinculado</Table.Th>
                 </Table.Tr>
@@ -188,19 +191,19 @@ export default function FinanzasPanel() {
       <Modal opened={opened} onClose={close} title="Registrar Gasto de Caja">
         <form onSubmit={form.onSubmit(handleCreateGasto)}>
           <Stack gap="sm">
-            <TextInput label="Descripción del Gasto" placeholder="Ej: Compra de 500L gasoil" required {...form.getInputProps('descripcion')} />
+            <TextInput label="Descripcion del Gasto" placeholder="Ej: Compra de 500L gasoil" required {...form.getInputProps('descripcion')} />
             <SimpleGrid cols={2}>
               <NumberInput label="Monto ($)" placeholder="0.00" required hideControls {...form.getInputProps('monto')} />
-              <Select 
-                label="Categoría" 
+              <Select
+                label="Categoria"
                 data={[
                   { value: 'combustible', label: 'Combustible' },
                   { value: 'maquinaria', label: 'Maquinaria' },
                   { value: 'sueldos', label: 'Sueldos' },
                   { value: 'obras', label: 'Obras' },
                   { value: 'administrativo', label: 'Administrativo' },
-                ]} 
-                {...form.getInputProps('categoria')} 
+                ]}
+                {...form.getInputProps('categoria')}
               />
             </SimpleGrid>
             <TextInput type="date" label="Fecha" {...form.getInputProps('fecha')} />

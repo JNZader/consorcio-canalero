@@ -4,13 +4,14 @@ Provides access to GEE assets and satellite imagery visualization.
 
 Funcionalidades:
 - Acceso a capas vectoriales (cuencas, caminos)
-- Visualización de imágenes Sentinel-2
-- Explorador de imágenes satelitales
+- Visualizacion de imagenes Sentinel-2
+- Explorador de imagenes satelitales
 """
 
 import ee
 import json
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
@@ -78,7 +79,7 @@ def initialize_gee() -> None:
 class GEEService:
     """
     Servicio para interactuar con Google Earth Engine.
-    Proporciona acceso a assets y visualización de imágenes.
+    Proporciona acceso a assets y visualizacion de imagenes.
     """
 
     # Assets paths en GEE
@@ -92,7 +93,7 @@ class GEEService:
         # Cargar assets vectoriales
         self.zona = ee.FeatureCollection(f"{self.ASSETS_BASE}/zona_cc_ampliada")
         self.caminos = ee.FeatureCollection(f"{self.ASSETS_BASE}/red_vial")
-        
+
         # Capa de canales (se asume asset llamado 'canales')
         try:
             self.canales = ee.FeatureCollection(f"{self.ASSETS_BASE}/canales")
@@ -148,16 +149,10 @@ class GEEService:
         }
 
 
-# Instancia global del servicio
-_gee_service: Optional[GEEService] = None
-
-
+@lru_cache(maxsize=1)
 def get_gee_service() -> GEEService:
     """Obtener instancia del servicio GEE (singleton)."""
-    global _gee_service
-    if _gee_service is None:
-        _gee_service = GEEService()
-    return _gee_service
+    return GEEService()
 
 
 # =========================================================================
@@ -208,7 +203,7 @@ def get_available_layers() -> List[Dict[str, str]]:
     Obtener lista de capas disponibles en GEE.
 
     Returns:
-        Lista de capas con nombre y descripción
+        Lista de capas con nombre y descripcion
     """
     return [
         {"id": "zona", "nombre": "Zona Consorcio", "descripcion": "Limite del area del consorcio"},
@@ -537,17 +532,17 @@ def get_estadisticas_consorcios() -> Dict[str, Any]:
 
 
 # =========================================================================
-# EXPLORADOR DE IMÁGENES SATELITALES
-# Permite ver imágenes de fechas específicas con diferentes visualizaciones
+# EXPLORADOR DE IMAGENES SATELITALES
+# Permite ver imagenes de fechas especificas con diferentes visualizaciones
 # =========================================================================
 
 class ImageExplorer:
     """
-    Explorador de imágenes satelitales para la zona del consorcio.
-    Permite visualizar Sentinel-2 (RGB, índices) y Sentinel-1 (SAR).
+    Explorador de imagenes satelitales para la zona del consorcio.
+    Permite visualizar Sentinel-2 (RGB, indices) y Sentinel-1 (SAR).
     """
 
-    # Presets de visualización para Sentinel-2
+    # Presets de visualizacion para Sentinel-2
     VIS_PRESETS = {
         "rgb": {
             "bands": ["B4", "B3", "B2"],
@@ -559,7 +554,7 @@ class ImageExplorer:
             "bands": ["B8", "B4", "B3"],
             "min": 0,
             "max": 5000,
-            "description": "Falso color (vegetación en rojo)",
+            "description": "Falso color (vegetacion en rojo)",
         },
         "agricultura": {
             "bands": ["B11", "B8", "B2"],
@@ -572,26 +567,26 @@ class ImageExplorer:
             "min": -0.5,
             "max": 0.5,
             "palette": ["brown", "white", "blue"],
-            "description": "Índice de agua NDWI",
+            "description": "Indice de agua NDWI",
         },
         "mndwi": {
             "index": "mndwi",
             "min": -0.5,
             "max": 0.5,
             "palette": ["brown", "white", "cyan"],
-            "description": "Índice de agua modificado MNDWI",
+            "description": "Indice de agua modificado MNDWI",
         },
         "ndvi": {
             "index": "ndvi",
             "min": -0.2,
             "max": 0.8,
             "palette": ["red", "yellow", "green", "darkgreen"],
-            "description": "Índice de vegetación NDVI",
+            "description": "Indice de vegetacion NDVI",
         },
         "inundacion": {
             "index": "flood",
             "palette": ["0000FF"],
-            "description": "Detección de agua (NDWI > 0)",
+            "description": "Deteccion de agua (NDWI > 0)",
         },
     }
 
@@ -604,7 +599,7 @@ class ImageExplorer:
         self.zona = ee.FeatureCollection(f"{self.assets_base}/zona_cc_ampliada")
 
     def _mask_clouds_s2(self, image: ee.Image) -> ee.Image:
-        """Aplicar máscara de nubes a imagen Sentinel-2."""
+        """Aplicar mascara de nubes a imagen Sentinel-2."""
         scl = image.select("SCL")
         mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))
         return image.updateMask(mask)
@@ -618,13 +613,13 @@ class ImageExplorer:
         use_median: bool = False,
     ) -> Dict[str, Any]:
         """
-        Obtener tiles de imagen Sentinel-2 para una fecha específica.
+        Obtener tiles de imagen Sentinel-2 para una fecha especifica.
 
         Args:
             target_date: Fecha objetivo
-            days_buffer: Días antes/después para buscar imágenes
-            max_cloud: Porcentaje máximo de nubes
-            visualization: Tipo de visualización (rgb, falso_color, ndwi, etc.)
+            days_buffer: Dias antes/despues para buscar imagenes
+            max_cloud: Porcentaje maximo de nubes
+            visualization: Tipo de visualizacion (rgb, falso_color, ndwi, etc.)
             use_median: Usar mediana en lugar de mosaico (mejor cobertura)
 
         Returns:
@@ -637,7 +632,7 @@ class ImageExplorer:
         use_toa = target_date.year < 2019
         collection_name = "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
 
-        # Filtrar colección
+        # Filtrar coleccion
         collection = (
             ee.ImageCollection(collection_name)
             .filterBounds(self.zona)
@@ -648,7 +643,7 @@ class ImageExplorer:
         count = collection.size().getInfo()
         if count == 0:
             return {
-                "error": "No se encontraron imágenes para la fecha seleccionada",
+                "error": "No se encontraron imagenes para la fecha seleccionada",
                 "target_date": target_date.isoformat(),
                 "days_buffer": days_buffer,
                 "max_cloud": max_cloud,
@@ -660,7 +655,7 @@ class ImageExplorer:
             lambda d: ee.Date(d).format("YYYY-MM-dd")
         ).distinct().getInfo()
 
-        # Crear composición
+        # Crear composicion
         if use_toa:
             composite = collection.mosaic().clip(self.zona)
         else:
@@ -670,10 +665,10 @@ class ImageExplorer:
             else:
                 composite = masked_collection.mosaic().clip(self.zona)
 
-        # Obtener preset de visualización
+        # Obtener preset de visualizacion
         preset = self.VIS_PRESETS.get(visualization, self.VIS_PRESETS["rgb"])
 
-        # Generar imagen según el tipo
+        # Generar imagen segun el tipo
         if "index" in preset:
             if preset["index"] == "ndwi":
                 image = composite.normalizedDifference(["B3", "B8"]).rename("index")
@@ -719,12 +714,12 @@ class ImageExplorer:
         visualization: str = "vv",
     ) -> Dict[str, Any]:
         """
-        Obtener tiles de imagen Sentinel-1 (SAR) para una fecha específica.
+        Obtener tiles de imagen Sentinel-1 (SAR) para una fecha especifica.
 
         Args:
             target_date: Fecha objetivo
-            days_buffer: Días antes/después para buscar imágenes
-            visualization: vv, vh, vv_flood (detección de agua)
+            days_buffer: Dias antes/despues para buscar imagenes
+            visualization: vv, vh, vv_flood (deteccion de agua)
 
         Returns:
             Dict con tile_url y metadata
@@ -732,7 +727,7 @@ class ImageExplorer:
         start_date = target_date - timedelta(days=days_buffer)
         end_date = target_date + timedelta(days=days_buffer)
 
-        # Filtrar colección
+        # Filtrar coleccion
         collection = (
             ee.ImageCollection("COPERNICUS/S1_GRD")
             .filterBounds(self.zona)
@@ -744,7 +739,7 @@ class ImageExplorer:
         count = collection.size().getInfo()
         if count == 0:
             return {
-                "error": "No se encontraron imágenes SAR para la fecha seleccionada",
+                "error": "No se encontraron imagenes SAR para la fecha seleccionada",
                 "target_date": target_date.isoformat(),
                 "days_buffer": days_buffer,
             }
@@ -757,12 +752,12 @@ class ImageExplorer:
         # Crear mosaico
         mosaic = collection.select("VV").mosaic().clip(self.zona)
 
-        # Visualización
+        # Visualizacion
         if visualization == "vv_flood":
-            # Detección de agua: valores < -15 dB
+            # Deteccion de agua: valores < -15 dB
             image = mosaic.lt(-15).selfMask()
             vis_params = {"palette": ["00FFFF"]}
-            description = "Detección de agua (SAR < -15 dB)"
+            description = "Deteccion de agua (SAR < -15 dB)"
         else:
             image = mosaic
             vis_params = {"min": -25, "max": 0}
@@ -789,16 +784,16 @@ class ImageExplorer:
         max_cloud: int = 40,
     ) -> Dict[str, Any]:
         """
-        Comparar imagen de inundación con imagen normal.
+        Comparar imagen de inundacion con imagen normal.
 
         Args:
-            flood_date: Fecha de inundación
-            normal_date: Fecha de referencia (sin inundación)
-            days_buffer: Días de buffer
+            flood_date: Fecha de inundacion
+            normal_date: Fecha de referencia (sin inundacion)
+            days_buffer: Dias de buffer
             max_cloud: Max nubes
 
         Returns:
-            Dict con tiles de ambas fechas y comparación
+            Dict con tiles de ambas fechas y comparacion
         """
         flood_result = self.get_sentinel2_image(
             flood_date, days_buffer, max_cloud, "inundacion"
@@ -807,7 +802,7 @@ class ImageExplorer:
             normal_date, days_buffer, max_cloud, "rgb"
         )
 
-        # También obtener RGB de inundación
+        # Tambien obtener RGB de inundacion
         flood_rgb = self.get_sentinel2_image(
             flood_date, days_buffer, max_cloud, "rgb"
         )
@@ -828,13 +823,7 @@ class ImageExplorer:
         ]
 
 
-# Instancia global del explorador
-_image_explorer: Optional[ImageExplorer] = None
-
-
+@lru_cache(maxsize=1)
 def get_image_explorer() -> ImageExplorer:
-    """Obtener instancia del explorador de imágenes (singleton)."""
-    global _image_explorer
-    if _image_explorer is None:
-        _image_explorer = ImageExplorer()
-    return _image_explorer
+    """Obtener instancia del explorador de imagenes (singleton)."""
+    return ImageExplorer()

@@ -75,6 +75,11 @@ services:
       - backend
     networks:
       - consorcio-network
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     command: celery -A app.core.celery_app worker --loglevel=info
 
   # ============================================

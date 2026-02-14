@@ -20,7 +20,6 @@ import { useState } from 'react';
 import { updatePassword, useAuth } from '../lib/auth';
 import { getSupabaseClient } from '../lib/supabase';
 import { formatDate } from '../lib/formatters';
-import MantineProvider from './MantineProvider';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
 interface ProfileFormValues {
@@ -275,10 +274,9 @@ function ProfileContent() {
   );
 }
 
+/**
+ * ProfilePanel - Page component (MantineProvider is provided by main.tsx).
+ */
 export default function ProfilePanel() {
-  return (
-    <MantineProvider>
-      <ProfileContent />
-    </MantineProvider>
-  );
+  return <ProfileContent />;
 }

@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { configApi, type SystemConfig } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface ConfigState {
   config: SystemConfig | null;
   loading: boolean;
   error: string | null;
   initialized: boolean;
-  
+
   // Actions
   fetchConfig: () => Promise<void>;
 }
@@ -31,10 +32,11 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       const config = await configApi.getSystemConfig();
       set({ config, loading: false, initialized: true });
     } catch (err) {
-      console.error('Failed to fetch system configuration:', err);
-      set({ 
-        loading: false, 
-        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuracion' 
+      logger.error('Failed to fetch system configuration:', err);
+      set({
+        loading: false,
+        initialized: true,
+        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuracion'
       });
     }
   },

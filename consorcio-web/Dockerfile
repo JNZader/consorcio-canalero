@@ -64,16 +64,16 @@ COPY vite.config.ts tsconfig.json biome.json index.html ./
 COPY public ./public
 COPY src ./src
 
-# Build arguments for environment
-ARG PUBLIC_SUPABASE_URL
-ARG PUBLIC_SUPABASE_ANON_KEY
-ARG PUBLIC_API_URL
+# Build arguments for environment (matching Vite VITE_ prefix)
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_API_URL
 
 # Set environment variables for build
 ENV NODE_ENV=production \
-    PUBLIC_SUPABASE_URL=${PUBLIC_SUPABASE_URL} \
-    PUBLIC_SUPABASE_ANON_KEY=${PUBLIC_SUPABASE_ANON_KEY} \
-    PUBLIC_API_URL=${PUBLIC_API_URL}
+    VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY \
+    VITE_API_URL=$VITE_API_URL
 
 # Build the application
 RUN npm run build

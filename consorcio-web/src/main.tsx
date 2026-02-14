@@ -17,6 +17,7 @@ import { queryClient } from './lib/query';
 import { mantineTheme } from './lib/theme';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { useAuthStore } from './stores/authStore';
+import { useConfigStore } from './stores/configStore';
 
 // Global styles
 import './styles/global.css';
@@ -26,8 +27,11 @@ import './styles/mantine-imports';
 const router = createRouter({
   routeTree,
   defaultPreload: 'intent',
-  defaultPreloadStaleTime: 0,
+  defaultPreloadStaleTime: 30_000,
 });
+
+// Prefetch system config on app init
+useConfigStore.getState().fetchConfig();
 
 // Register the router for type safety
 declare module '@tanstack/react-router' {

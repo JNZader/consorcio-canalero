@@ -272,7 +272,7 @@ export default function ReportsPanel() {
       const data = await apiFetch<SeguimientoEntry[]>(`/management/seguimiento/reporte/${id}`);
       setHistory(data);
     } catch (err) {
-      console.error(err);
+      logger.error('Error loading report history:', err);
     } finally {
       setLoadingHistory(false);
     }
@@ -307,7 +307,7 @@ export default function ReportsPanel() {
 
       notifications.show({
         title: 'Reporte actualizado',
-        message: 'El historial de gestión ha sido registrado',
+        message: 'El historial de gestion ha sido registrado',
         color: 'green',
       });
       announceRef.current('Reporte actualizado correctamente');
@@ -535,7 +535,7 @@ export default function ReportsPanel() {
                 radius="md"
               >
                 <Title order={6} mb="md" id="admin-section-label">
-                  Gestión del reporte
+                  Gestion del reporte
                 </Title>
 
                 <Stack gap="sm" aria-labelledby="admin-section-label">
@@ -547,8 +547,8 @@ export default function ReportsPanel() {
                   />
 
                   <Textarea
-                    label="Comentario Público"
-                    placeholder="Lo que el ciudadano verá..."
+                    label="Comentario Publico"
+                    placeholder="Lo que el ciudadano vera..."
                     value={publicComment}
                     onChange={(e) => setPublicComment(e.target.value)}
                     minRows={2}
@@ -556,7 +556,7 @@ export default function ReportsPanel() {
 
                   <Textarea
                     label="Notas Internas (Consorcio)"
-                    placeholder="Detalles técnicos, costos, etc..."
+                    placeholder="Detalles tecnicos, costos, etc..."
                     value={adminNotes}
                     onChange={(e) => setAdminNotes(e.target.value)}
                     minRows={2}
@@ -570,12 +570,12 @@ export default function ReportsPanel() {
                   <IconHistory size={18} />
                   <Text fw={600} size="sm">Historial de Seguimiento</Text>
                 </Group>
-                
+
                 {loadingHistory ? <Loader size="sm" /> : (
                   <Timeline active={0} bulletSize={20} lineWidth={2}>
                     {history.map((entry) => (
-                      <Timeline.Item 
-                        key={entry.id} 
+                      <Timeline.Item
+                        key={entry.id}
                         title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
                       >
                         <Text size="xs" fw={500}>{entry.comentario_publico}</Text>
@@ -597,7 +597,7 @@ export default function ReportsPanel() {
                   Cancelar
                 </Button>
                 <Button onClick={handleUpdateStatus} loading={updating}>
-                  Registrar Gestión
+                  Registrar Gestion
                 </Button>
               </Group>
             </Stack>

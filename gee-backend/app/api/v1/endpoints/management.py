@@ -2,21 +2,29 @@
 Management and Tracking Endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, HTTPException, Depends, Response
+from typing import List, Optional
 from uuid import UUID
 
 from app.services.management_service import get_management_service
-from app.auth import User, get_current_user
+from app.services.pdf_service import get_pdf_service
+from app.auth import User, require_admin_or_operator, require_authenticated
+from app.api.v1.schemas import (
+    TramiteCreate,
+    TramiteAvanceCreate,
+    SeguimientoCreate,
+    ReunionCreate,
+    AgendaItemCreate,
+)
 
 router = APIRouter()
 
-# --- Trámites Provinciales ---
+# --- Tramites Provinciales ---
 
 @router.get("/tramites")
 async def list_tramites(
     estado: Optional[str] = None,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """List administrative procedures."""
     service = get_management_service()
@@ -24,19 +32,17 @@ async def list_tramites(
 
 @router.post("/tramites")
 async def create_tramite(
-    data: Dict[str, Any],
-    user: User = Depends(get_current_user)
+    data: TramiteCreate,
+    user: User = Depends(require_admin_or_operator),
 ):
     """Create a new administrative procedure."""
-    if user.rol not in ["admin", "operador"]:
-        raise HTTPException(status_code=403, detail="No autorizado")
     service = get_management_service()
-    return service.create_tramite(data)
+    return service.create_tramite(data.model_dump(exclude_unset=True))
 
 @router.get("/tramites/{tramite_id}")
 async def get_tramite(
     tramite_id: UUID,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """Get full detail of a procedure including its advances."""
     service = get_management_service()
@@ -44,12 +50,12 @@ async def get_tramite(
 
 @router.post("/tramites/avance")
 async def add_tramite_avance(
-    data: Dict[str, Any],
-    user: User = Depends(get_current_user)
+    data: TramiteAvanceCreate,
+    user: User = Depends(require_admin_or_operator),
 ):
     """Add a progress update to a procedure."""
     service = get_management_service()
-    return service.add_tramite_avance(data)
+    return service.add_tramite_avance(data.model_dump(exclude_unset=True))
 
 # --- Trazabilidad (Seguimiento) ---
 
@@ -57,7 +63,7 @@ async def add_tramite_avance(
 async def get_history(
     entidad_tipo: str,
     entidad_id: UUID,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """Get management history for a report or suggestion."""
     if entidad_tipo not in ["reporte", "sugerencia"]:
@@ -67,23 +73,21 @@ async def get_history(
 
 @router.post("/seguimiento")
 async def add_history_entry(
-    data: Dict[str, Any],
-    user: User = Depends(get_current_user)
+    data: SeguimientoCreate,
+    user: User = Depends(require_admin_or_operator),
 ):
     """Update status and add management log for a report or suggestion."""
-    if user.rol not in ["admin", "operador"]:
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
     service = get_management_service()
     # Add the current user ID to the log
-    data["usuario_gestion"] = str(user.id)
-    return service.add_seguimiento(data)
+    payload = data.model_dump(exclude_unset=True)
+    payload["usuario_gestion"] = str(user.id)
+    return service.add_seguimiento(payload)
 
 # --- Reuniones ---
 
 @router.get("/reuniones")
 async def list_reuniones(
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """List all meetings."""
     service = get_management_service()
@@ -91,17 +95,17 @@ async def list_reuniones(
 
 @router.post("/reuniones")
 async def create_reunion(
-    data: Dict[str, Any],
-    user: User = Depends(get_current_user)
+    data: ReunionCreate,
+    user: User = Depends(require_admin_or_operator),
 ):
     """Create a new meeting."""
     service = get_management_service()
-    return service.create_reunion(data)
+    return service.create_reunion(data.model_dump(exclude_unset=True))
 
 @router.get("/reuniones/{reunion_id}/agenda")
 async def get_agenda(
     reunion_id: UUID,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """Get the agenda items for a specific meeting."""
     service = get_management_service()
@@ -110,17 +114,20 @@ async def get_agenda(
 @router.post("/reuniones/{reunion_id}/agenda")
 async def add_item(
     reunion_id: UUID,
-    payload: Dict[str, Any],
-    user: User = Depends(get_current_user)
+    payload: AgendaItemCreate,
+    user: User = Depends(require_admin_or_operator),
 ):
     """Add a new item to the meeting agenda with references."""
     service = get_management_service()
-    item_data = payload.get("item", {})
-    referencias = payload.get("referencias", [])
+    item_data = payload.item.model_dump(exclude_unset=True)
+    referencias = [ref.model_dump(exclude_unset=True) for ref in payload.referencias]
     return service.add_agenda_item(reunion_id, item_data, referencias)
 
 @router.get("/tramites/{tramite_id}/export-pdf")
-async def export_tramite_pdf(tramite_id: UUID, user: User = Depends(get_current_user)):
+async def export_tramite_pdf(
+    tramite_id: UUID,
+    user: User = Depends(require_authenticated),
+):
     service = get_management_service()
     pdf_service = get_pdf_service()
     detail = service.get_tramite_detalle(tramite_id)
@@ -128,7 +135,10 @@ async def export_tramite_pdf(tramite_id: UUID, user: User = Depends(get_current_
     return Response(content=pdf_buffer.getvalue(), media_type="application/pdf")
 
 @router.get("/seguimiento/reporte/{reporte_id}/export-pdf")
-async def export_resolution_pdf(reporte_id: UUID, user: User = Depends(get_current_user)):
+async def export_resolution_pdf(
+    reporte_id: UUID,
+    user: User = Depends(require_authenticated),
+):
     service = get_management_service()
     pdf_service = get_pdf_service()
     reporte = service.db.client.table("denuncias").select("*").eq("id", str(reporte_id)).single().execute().data
@@ -137,7 +147,9 @@ async def export_resolution_pdf(reporte_id: UUID, user: User = Depends(get_curre
     return Response(content=pdf_buffer.getvalue(), media_type="application/pdf")
 
 @router.get("/export-gestion-integral")
-async def export_integral_report(user: User = Depends(get_current_user)):
+async def export_integral_report(
+    user: User = Depends(require_authenticated),
+):
     service = get_management_service()
     pdf_service = get_pdf_service()
     # Mock aggregation for demo
@@ -154,21 +166,21 @@ async def export_integral_report(user: User = Depends(get_current_user)):
 @router.get("/reuniones/{reunion_id}/export-pdf")
 async def export_agenda_pdf(
     reunion_id: UUID,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_authenticated),
 ):
     """Export the meeting agenda in PDF format."""
     service = get_management_service()
     pdf_service = get_pdf_service()
-    
+
     # Fetch data
     reunion = service.db.client.table("reuniones").select("*").eq("id", str(reunion_id)).single().execute().data
     if not reunion:
-        raise HTTPException(status_code=404, detail="Reunión no encontrada")
-        
+        raise HTTPException(status_code=404, detail="Reunion no encontrada")
+
     agenda = service.get_agenda_detalle(reunion_id)
-    
+
     pdf_buffer = pdf_service.create_agenda_pdf(reunion, agenda)
-    
+
     return Response(
         content=pdf_buffer.getvalue(),
         media_type="application/pdf",

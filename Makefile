@@ -94,7 +94,7 @@ build: backend-build frontend-build ## Build all projects
 backend-build: ## Build backend Docker image
 	@echo "$(BLUE)Building backend Docker image...$(NC)"
 	cd $(BACKEND_DIR) && \
-		docker build -t consorcio-backend:latest --target runtime .
+		docker build -t consorcio-backend:latest --target production .
 	@echo "$(GREEN)Backend image built!$(NC)"
 
 frontend-build: ## Build frontend for production
@@ -115,7 +115,7 @@ backend-test: ## Run backend tests with coverage
 			--cov=app \
 			--cov-report=term-missing \
 			--cov-report=html:coverage_html \
-			--cov-fail-under=70 || true
+			--cov-fail-under=70
 	@echo "$(GREEN)Backend tests complete!$(NC)"
 
 frontend-test: ## Run frontend tests
@@ -133,7 +133,7 @@ backend-lint: ## Lint backend with Ruff and MyPy
 	cd $(BACKEND_DIR) && \
 		ruff check app/ --fix && \
 		ruff format app/ && \
-		mypy app/ --ignore-missing-imports || true
+		mypy app/ --ignore-missing-imports
 	@echo "$(GREEN)Backend linting complete!$(NC)"
 
 frontend-lint: ## Lint frontend with Biome
@@ -162,7 +162,7 @@ docker-up: ## Start all Docker services
 	@echo ""
 	@echo "$(BLUE)Services:$(NC)"
 	@echo "  Backend:  http://localhost:8000"
-	@echo "  Frontend: http://localhost:4321"
+	@echo "  Frontend: http://localhost:5173"
 	@echo "  Redis:    localhost:6379"
 
 docker-down: ## Stop all Docker services
@@ -277,4 +277,4 @@ status: ## Show status of all services
 	@curl -s http://localhost:8000/health 2>/dev/null && echo "" || echo "$(RED)Backend not running$(NC)"
 	@echo ""
 	@echo "$(BLUE)Frontend Status:$(NC)"
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:4321 2>/dev/null || echo "$(RED)Frontend not running$(NC)"
+	@curl -s -o /dev/null -w "%{http_code}" http://localhost:5173 2>/dev/null || echo "$(RED)Frontend not running$(NC)"

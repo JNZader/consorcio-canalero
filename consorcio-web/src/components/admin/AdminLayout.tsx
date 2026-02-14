@@ -13,7 +13,6 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import MantineProvider from '../MantineProvider';
 import ThemeToggle from '../ThemeToggle';
 import {
   IconArrowLeft,
@@ -36,12 +35,12 @@ const NAV_ITEMS = [
   { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
   { label: 'Reportes', to: '/admin/reports', icon: IconClipboardList },
   { label: 'Sugerencias', to: '/admin/sugerencias', icon: IconLightbulb },
-  { label: 'Trámites', to: '/admin/tramites', icon: IconSettings },
+  { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
   { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
-  { label: 'Padrón', to: '/admin/padron', icon: IconUser },
+  { label: 'Padron', to: '/admin/padron', icon: IconUser },
   { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
 ];
-  
+
 
 interface AdminLayoutProps {
   readonly children: React.ReactNode;
@@ -49,7 +48,7 @@ interface AdminLayoutProps {
 }
 
 /**
- * AdminLayoutContent - Contenido interno del layout de admin sin MantineProvider.
+ * AdminLayoutContent - Contenido interno del layout de admin.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLayoutProps) {
@@ -213,12 +212,8 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
 }
 
 /**
- * AdminLayout - Standalone component with MantineProvider.
+ * AdminLayout - Page component (MantineProvider is provided by main.tsx).
  */
 export default function AdminLayout(props: AdminLayoutProps) {
-  return (
-    <MantineProvider>
-      <AdminLayoutContent {...props} />
-    </MantineProvider>
-  );
+  return <AdminLayoutContent {...props} />;
 }

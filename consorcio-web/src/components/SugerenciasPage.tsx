@@ -1,10 +1,9 @@
 import { Alert, Box, Container, List, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { FormularioSugerenciaContent } from './FormularioSugerencia';
-import MantineProvider from './MantineProvider';
 import { IconInfoCircle, IconLightbulb } from './ui/icons';
 
 /**
- * SugerenciasContent - Contenido interno de la pagina de sugerencias sin MantineProvider.
+ * SugerenciasContent - Contenido interno de la pagina de sugerencias.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function SugerenciasContent() {
@@ -55,12 +54,8 @@ export function SugerenciasContent() {
 }
 
 /**
- * SugerenciasPage - Standalone component with MantineProvider.
+ * SugerenciasPage - Page component (MantineProvider is provided by main.tsx).
  */
 export default function SugerenciasPage() {
-  return (
-    <MantineProvider>
-      <SugerenciasContent />
-    </MantineProvider>
-  );
+  return <SugerenciasContent />;
 }

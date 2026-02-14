@@ -15,12 +15,11 @@ import {
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
-import MantineProvider from './MantineProvider';
 import { MapaContenido } from './MapaInteractivo';
 import { IconAlertTriangle, IconPhoto, IconSatellite } from './ui/icons';
 
 /**
- * MapaContent - Contenido interno de la pagina de mapa sin MantineProvider.
+ * MapaContent - Contenido interno de la pagina de mapa.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function MapaContent() {
@@ -110,7 +109,7 @@ export function MapaContent() {
 
             <Button
               component="a"
-              href="/denuncias"
+              href="/reportes"
               color="orange"
               leftSection={<IconAlertTriangle size={18} />}
             >
@@ -155,12 +154,8 @@ export function MapaContent() {
 }
 
 /**
- * MapaPage - Standalone component with MantineProvider.
+ * MapaPage - Page component (MantineProvider is provided by main.tsx).
  */
 export default function MapaPage() {
-  return (
-    <MantineProvider>
-      <MapaContent />
-    </MantineProvider>
-  );
+  return <MapaContent />;
 }

@@ -1,8 +1,9 @@
 """
 Management Service.
-Handles administrative procedures (trámites) and tracking for reports/suggestions.
+Handles administrative procedures (tramites) and tracking for reports/suggestions.
 """
 
+from functools import lru_cache
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 from datetime import datetime
@@ -16,7 +17,7 @@ class ManagementService:
     def __init__(self):
         self.db = get_supabase_service()
 
-    # --- Trámites ---
+    # --- Tramites ---
     def get_tramites(self, estado: Optional[str] = None) -> List[Dict[str, Any]]:
         query = self.db.client.table("tramites").select("*")
         if estado:
@@ -31,20 +32,20 @@ class ManagementService:
     def add_tramite_avance(self, avance_data: Dict[str, Any]) -> Dict[str, Any]:
         # Insert avance
         result = self.db.client.table("tramite_avances").insert(avance_data).execute()
-        
+
         # Update tramite last update and state if provided
         tramite_id = avance_data.get("tramite_id")
         update_data = {"ultima_actualizacion": datetime.now().isoformat()}
         if "nuevo_estado" in avance_data:
             update_data["estado"] = avance_data["nuevo_estado"]
-            
+
         self.db.client.table("tramites").update(update_data).eq("id", tramite_id).execute()
         return result.data[0] if result.data else {}
 
     def get_tramite_detalle(self, tramite_id: UUID) -> Dict[str, Any]:
         tramite = self.db.client.table("tramites").select("*").eq("id", str(tramite_id)).single().execute()
         avances = self.db.client.table("tramite_avances").select("*").eq("tramite_id", str(tramite_id)).order("fecha", desc=True).execute()
-        
+
         return {
             **tramite.data,
             "avances": avances.data
@@ -55,20 +56,20 @@ class ManagementService:
         """Add a tracking log entry and update the parent entity status."""
         # 1. Insert log
         result = self.db.client.table("gestion_seguimiento").insert(seguimiento_data).execute()
-        
+
         # 2. Update the entity (Reporte or Sugerencia)
         entity_id = seguimiento_data.get("entidad_id")
         entity_type = seguimiento_data.get("entidad_tipo") # 'reporte' or 'sugerencia'
         new_status = seguimiento_data.get("estado_nuevo")
-        
+
         table_name = "denuncias" if entity_type == "reporte" else "sugerencias"
-        
+
         if new_status:
             self.db.client.table(table_name).update({
                 "estado": new_status,
                 "updated_at": datetime.now().isoformat()
             }).eq("id", entity_id).execute()
-            
+
         return result.data[0] if result.data else {}
 
     def get_historial_entidad(self, entity_type: str, entity_id: UUID) -> List[Dict[str, Any]]:
@@ -90,43 +91,43 @@ class ManagementService:
         return result.data[0] if result.data else {}
 
     def get_agenda_detalle(self, reunion_id: UUID) -> List[Dict[str, Any]]:
-        """Get all items for a meeting with their references."""
-        items = self.db.client.table("agenda_items") \
-            .select("*") \
+        """Get all items for a meeting with their references using a nested select."""
+        result = self.db.client.table("agenda_items") \
+            .select("*, agenda_referencias(*)") \
             .eq("reunion_id", str(reunion_id)) \
-            .order("orden", desc=False) \
+            .order("orden") \
             .execute()
-        
+
+        # The nested select returns each item with its 'agenda_referencias' embedded
         enhanced_items = []
-        for item in items.data:
-            refs = self.db.client.table("agenda_referencias") \
-                .select("*") \
-                .eq("agenda_item_id", item["id"]) \
-                .execute()
+        for item in result.data:
+            refs = item.pop("agenda_referencias", [])
             enhanced_items.append({
                 **item,
-                "referencias": refs.data
+                "referencias": refs
             })
-            
+
         return enhanced_items
 
     def add_agenda_item(self, reunion_id: UUID, item_data: Dict[str, Any], referencias: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create agenda item and its links."""
+        """Create agenda item and its links using batch insert for references."""
         item_data["reunion_id"] = str(reunion_id)
         res_item = self.db.client.table("agenda_items").insert(item_data).execute()
-        
-        if res_item.data:
+
+        if res_item.data and referencias:
             item_id = res_item.data[0]["id"]
-            for ref in referencias:
-                ref["agenda_item_id"] = item_id
-                self.db.client.table("agenda_referencias").insert(ref).execute()
-                
+            # Prepare all references with the agenda_item_id
+            refs_with_id = [
+                {**ref, "agenda_item_id": item_id}
+                for ref in referencias
+            ]
+            # Batch insert all references in a single query
+            self.db.client.table("agenda_referencias").insert(refs_with_id).execute()
+
         return res_item.data[0] if res_item.data else {}
 
-_management_service = None
 
+@lru_cache(maxsize=1)
 def get_management_service() -> ManagementService:
-    global _management_service
-    if _management_service is None:
-        _management_service = ManagementService()
-    return _management_service
+    """Obtener instancia del servicio de gestion (singleton)."""
+    return ManagementService()

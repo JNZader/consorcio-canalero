@@ -1,10 +1,9 @@
 import { Alert, Box, Button, Container, List, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { SUPPORT_PHONE } from '../constants';
 import { FormularioContenido } from './FormularioReporte';
-import MantineProvider from './MantineProvider';
 
 /**
- * ReportesContent - Contenido interno de la pagina de reportes sin MantineProvider.
+ * ReportesContent - Contenido interno de la pagina de reportes.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function ReportesContent() {
@@ -60,12 +59,8 @@ export function ReportesContent() {
 }
 
 /**
- * ReportesPage - Standalone component with MantineProvider.
+ * ReportesPage - Page component (MantineProvider is provided by main.tsx).
  */
 export default function ReportesPage() {
-  return (
-    <MantineProvider>
-      <ReportesContent />
-    </MantineProvider>
-  );
+  return <ReportesContent />;
 }

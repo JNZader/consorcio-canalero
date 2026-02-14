@@ -3,6 +3,7 @@ GEE Layers Endpoints.
 Endpoints para obtener capas desde Google Earth Engine.
 """
 
+import asyncio
 from datetime import date
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -21,7 +22,11 @@ from app.services.gee_service import (
     initialize_gee,
 )
 from app.core.logging import get_logger
-from app.core.exceptions import get_safe_error_detail
+from app.core.exceptions import (
+    get_safe_error_detail,
+    AppException,
+    NotFoundError,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -71,26 +76,33 @@ async def get_sentinel2_tiles(
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
         gee_service = get_gee_service()
-        result = gee_service.get_sentinel2_tiles(start_date, end_date, max_cloud)
+        result = await asyncio.to_thread(
+            gee_service.get_sentinel2_tiles, start_date, end_date, max_cloud
+        )
 
         if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
+            raise NotFoundError(
+                message=result["error"],
+                code="SENTINEL2_NOT_FOUND",
+            )
 
         return result
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error("Error obteniendo tiles Sentinel-2", error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "tiles Sentinel-2"),
+            code="GEE_TILES_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "tiles Sentinel-2")
         )
 
 
@@ -114,13 +126,14 @@ async def list_consorcios_camineros() -> JSONResponse:
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        consorcios = get_consorcios_camineros()
+        consorcios = await asyncio.to_thread(get_consorcios_camineros)
         return JSONResponse(
             content={
                 "consorcios": consorcios,
@@ -132,9 +145,10 @@ async def list_consorcios_camineros() -> JSONResponse:
         )
     except Exception as e:
         logger.error("Error obteniendo consorcios camineros", error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "consorcios camineros"),
+            code="GEE_CONSORCIOS_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "consorcios camineros")
         )
 
 
@@ -154,19 +168,22 @@ async def get_caminos_consorcio(codigo: str) -> JSONResponse:
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        geojson = get_caminos_by_consorcio(codigo)
+        geojson = await asyncio.to_thread(get_caminos_by_consorcio, codigo)
         num_features = len(geojson.get("features", []))
 
         if num_features == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No se encontraron caminos para el consorcio '{codigo}'"
+            raise NotFoundError(
+                message=f"No se encontraron caminos para el consorcio '{codigo}'",
+                code="CONSORCIO_NOT_FOUND",
+                resource_type="consorcio",
+                resource_id=codigo,
             )
 
         return JSONResponse(
@@ -175,13 +192,14 @@ async def get_caminos_consorcio(codigo: str) -> JSONResponse:
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
             }
         )
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "caminos del consorcio"),
+            code="GEE_CAMINOS_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "caminos del consorcio")
         )
 
 
@@ -203,19 +221,21 @@ async def get_caminos_por_nombre_consorcio(
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        geojson = get_caminos_by_consorcio_nombre(nombre)
+        geojson = await asyncio.to_thread(get_caminos_by_consorcio_nombre, nombre)
         num_features = len(geojson.get("features", []))
 
         if num_features == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No se encontraron caminos para el consorcio '{nombre}'"
+            raise NotFoundError(
+                message=f"No se encontraron caminos para el consorcio '{nombre}'",
+                code="CONSORCIO_NOT_FOUND",
+                resource_type="consorcio",
             )
 
         return JSONResponse(
@@ -224,13 +244,14 @@ async def get_caminos_por_nombre_consorcio(
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
             }
         )
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error("Error obteniendo caminos por nombre consorcio", nombre=nombre, error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "caminos del consorcio"),
+            code="GEE_CAMINOS_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "caminos del consorcio")
         )
 
 
@@ -254,13 +275,14 @@ async def get_caminos_coloreados() -> JSONResponse:
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        result = get_caminos_con_colores()
+        result = await asyncio.to_thread(get_caminos_con_colores)
         return JSONResponse(
             content=result,
             headers={
@@ -269,9 +291,10 @@ async def get_caminos_coloreados() -> JSONResponse:
         )
     except Exception as e:
         logger.error("Error obteniendo caminos coloreados", error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "caminos coloreados"),
+            code="GEE_CAMINOS_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "caminos coloreados")
         )
 
 
@@ -291,13 +314,14 @@ async def get_estadisticas_caminos() -> JSONResponse:
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        result = get_estadisticas_consorcios()
+        result = await asyncio.to_thread(get_estadisticas_consorcios)
         return JSONResponse(
             content=result,
             headers={
@@ -306,9 +330,10 @@ async def get_estadisticas_caminos() -> JSONResponse:
         )
     except Exception as e:
         logger.error("Error obteniendo estadisticas de consorcios", error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "estadisticas de consorcios"),
+            code="GEE_STATS_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "estadisticas de consorcios")
         )
 
 
@@ -327,19 +352,20 @@ async def get_gee_layer(layer_name: str) -> JSONResponse:
     Returns:
         GeoJSON FeatureCollection
     """
-    # Intentar inicializar GEE si no está listo
+    # Intentar inicializar GEE si no esta listo
     if not _gee_initialized:
         try:
             initialize_gee()
         except Exception as e:
             logger.error("No se pudo inicializar GEE", error=str(e))
-            raise HTTPException(
+            raise AppException(
+                message="Google Earth Engine no esta disponible temporalmente",
+                code="GEE_UNAVAILABLE",
                 status_code=503,
-                detail="Google Earth Engine no esta disponible temporalmente"
             )
 
     try:
-        geojson = get_layer_geojson(layer_name)
+        geojson = await asyncio.to_thread(get_layer_geojson, layer_name)
         return JSONResponse(
             content=geojson,
             headers={
@@ -347,10 +373,16 @@ async def get_gee_layer(layer_name: str) -> JSONResponse:
             }
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=get_safe_error_detail(e, "capa"))
+        raise NotFoundError(
+            message=get_safe_error_detail(e, "capa"),
+            code="LAYER_NOT_FOUND",
+            resource_type="layer",
+            resource_id=layer_name,
+        )
     except Exception as e:
         logger.error("Error obteniendo capa GEE", layer=layer_name, error=str(e))
-        raise HTTPException(
+        raise AppException(
+            message=get_safe_error_detail(e, "capa GEE"),
+            code="GEE_LAYER_ERROR",
             status_code=500,
-            detail=get_safe_error_detail(e, "capa GEE")
         )

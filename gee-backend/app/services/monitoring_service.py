@@ -1,21 +1,22 @@
 """
 Servicio de Monitoreo Satelital de Cuenca.
 
-Implementa clasificación de parcelas en 4 categorías:
-1. Cultivo sano - Vegetación activa con NDVI alto
+Implementa clasificacion de parcelas en 4 categorias:
+1. Cultivo sano - Vegetacion activa con NDVI alto
 2. Rastrojo - Restos de cosecha, suelo sin cultivo activo
 3. Agua en superficie - Canales, lagunas, reservorios
-4. Lotes anegados - Áreas con exceso de agua afectando cultivos
+4. Lotes anegados - Areas con exceso de agua afectando cultivos
 
-También incluye:
-- Sistema de alertas automáticas
-- Integración con AlphaEarth embeddings
+Tambien incluye:
+- Sistema de alertas automaticas
+- Integracion con AlphaEarth embeddings
 - Monitoreo programado
-- Detección de cambios
+- Deteccion de cambios
 """
 
 import ee
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -25,7 +26,7 @@ from app.services.gee_service import initialize_gee, _gee_initialized
 
 
 class ParcelClass(Enum):
-    """Clases de clasificación de parcelas."""
+    """Clases de clasificacion de parcelas."""
     CULTIVO_SANO = 0
     RASTROJO = 1
     AGUA_SUPERFICIE = 2
@@ -36,52 +37,52 @@ class ParcelClass(Enum):
 @dataclass
 class ClassificationThresholds:
     """
-    Umbrales mejorados para clasificación de parcelas.
+    Umbrales mejorados para clasificacion de parcelas.
 
-    Usa múltiples índices para mejor discriminación:
-    - NDVI: Índice de vegetación (vigor de cultivos)
-    - NDWI: Índice de agua (McFeeters)
-    - MNDWI: Índice de agua modificado (mejor para agua turbia)
-    - NDMI: Índice de humedad (estrés hídrico de vegetación)
-    - BSI: Índice de suelo desnudo
+    Usa multiples indices para mejor discriminacion:
+    - NDVI: Indice de vegetacion (vigor de cultivos)
+    - NDWI: Indice de agua (McFeeters)
+    - MNDWI: Indice de agua modificado (mejor para agua turbia)
+    - NDMI: Indice de humedad (estres hidrico de vegetacion)
+    - BSI: Indice de suelo desnudo
     """
     # === AGUA EN SUPERFICIE ===
     # MNDWI es mejor que NDWI para agua turbia y poco profunda
     mndwi_agua: float = 0.15            # MNDWI > 0.15 = agua clara
-    ndwi_agua_alto: float = 0.35        # NDWI muy alto como confirmación
-    ndvi_max_agua: float = 0.1          # Vegetación muy baja para confirmar agua
+    ndwi_agua_alto: float = 0.35        # NDWI muy alto como confirmacion
+    ndvi_max_agua: float = 0.1          # Vegetacion muy baja para confirmar agua
 
     # === LOTE ANEGADO ===
     # Campos con exceso de agua pero no cuerpos de agua puros
-    mndwi_anegado_min: float = -0.1     # Algo de señal de agua
+    mndwi_anegado_min: float = -0.1     # Algo de senal de agua
     mndwi_anegado_max: float = 0.15     # Pero no agua pura
-    ndmi_anegado_min: float = 0.25      # Suelo muy húmedo
-    ndvi_anegado_max: float = 0.3       # Vegetación afectada
+    ndmi_anegado_min: float = 0.25      # Suelo muy humedo
+    ndvi_anegado_max: float = 0.3       # Vegetacion afectada
 
     # === CULTIVO SANO ===
-    ndvi_cultivo_sano: float = 0.4      # NDVI > 0.4 = vegetación activa
-    ndmi_cultivo_min: float = -0.1      # Humedad normal (no en estrés severo)
+    ndvi_cultivo_sano: float = 0.4      # NDVI > 0.4 = vegetacion activa
+    ndmi_cultivo_min: float = -0.1      # Humedad normal (no en estres severo)
     ndmi_cultivo_max: float = 0.4       # No encharcado
 
     # === SUELO DESNUDO ===
     bsi_suelo_desnudo: float = 0.05     # BSI positivo indica suelo expuesto
-    ndvi_suelo_max: float = 0.15        # Muy poca vegetación
+    ndvi_suelo_max: float = 0.15        # Muy poca vegetacion
     mndwi_suelo_max: float = -0.2       # Sin agua
 
     # === RASTROJO (por defecto) ===
-    # Todo lo que no cae en las otras categorías
-    ndvi_rastrojo_max: float = 0.4      # Vegetación media-baja
+    # Todo lo que no cae en las otras categorias
+    ndvi_rastrojo_max: float = 0.4      # Vegetacion media-baja
 
 
 @dataclass
 class AlertConfig:
-    """Configuración de alertas."""
+    """Configuracion de alertas."""
     # Umbrales de cambio para generar alerta
     cambio_anegado_pct: float = 5.0     # Alerta si anegados aumenta >5%
     cambio_agua_pct: float = 3.0        # Alerta si agua aumenta >3%
 
     # Umbrales absolutos
-    anegado_critico_pct: float = 20.0   # Alerta si >20% de área anegada
+    anegado_critico_pct: float = 20.0   # Alerta si >20% de area anegada
     agua_critico_pct: float = 10.0      # Alerta si >10% con agua superficial
 
 
@@ -90,15 +91,15 @@ class MonitoringService:
     Servicio para monitoreo satelital de la cuenca del consorcio.
 
     Funcionalidades:
-    - Clasificación de parcelas en 4 categorías
-    - Detección de cambios entre fechas
-    - Sistema de alertas automáticas
-    - Integración con AlphaEarth embeddings
+    - Clasificacion de parcelas en 4 categorias
+    - Deteccion de cambios entre fechas
+    - Sistema de alertas automaticas
+    - Integracion con AlphaEarth embeddings
     """
 
     ASSETS_BASE = f"projects/{settings.gee_project_id}/assets"
 
-    # Colores para visualización
+    # Colores para visualizacion
     CLASS_COLORS = {
         ParcelClass.CULTIVO_SANO: "#2ECC71",     # Verde
         ParcelClass.RASTROJO: "#F39C12",         # Naranja/Amarillo
@@ -131,7 +132,7 @@ class MonitoringService:
             "norte": ee.FeatureCollection(f"{self.ASSETS_BASE}/norte"),
         }
 
-        # Configuración por defecto
+        # Configuracion por defecto
         self.thresholds = ClassificationThresholds()
         self.alert_config = AlertConfig()
 
@@ -143,13 +144,13 @@ class MonitoringService:
         max_cloud: int = 30,
     ) -> Tuple[ee.Image, int]:
         """
-        Obtener composición de Sentinel-2 con máscara de nubes.
+        Obtener composicion de Sentinel-2 con mascara de nubes.
 
         Returns:
-            Tuple de (imagen compuesta, número de imágenes)
+            Tuple de (imagen compuesta, numero de imagenes)
         """
         def mask_clouds(image):
-            """Máscara de nubes usando SCL."""
+            """Mascara de nubes usando SCL."""
             scl = image.select("SCL")
             # SCL: 3=sombra, 8=nubes med, 9=nubes altas, 10=cirrus
             cloud_mask = (
@@ -173,20 +174,20 @@ class MonitoringService:
         if count == 0:
             return None, 0
 
-        # Composición mediana para reducir ruido
+        # Composicion mediana para reducir ruido
         composite = sentinel2.median().clip(geometry)
 
         return composite, count
 
     def _calculate_indices(self, image: ee.Image) -> ee.Image:
         """
-        Calcular índices espectrales para clasificación.
+        Calcular indices espectrales para clasificacion.
 
-        Índices calculados:
-        - NDVI: Vegetación
+        Indices calculados:
+        - NDVI: Vegetacion
         - NDWI: Agua (McFeeters)
         - MNDWI: Agua modificado
-        - NDMI: Humedad de vegetación
+        - NDMI: Humedad de vegetacion
         - BSI: Suelo desnudo
         """
         # NDVI = (NIR - Red) / (NIR + Red)
@@ -224,29 +225,29 @@ class MonitoringService:
         thresholds: Optional[ClassificationThresholds] = None,
     ) -> Dict[str, Any]:
         """
-        Clasificar parcelas en 4 categorías usando umbrales de índices espectrales.
+        Clasificar parcelas en 4 categorias usando umbrales de indices espectrales.
 
-        Lógica de clasificación:
-        1. Si NDWI > 0.3 → AGUA_SUPERFICIE
-        2. Si NDVI > 0.5 → CULTIVO_SANO
-        3. Si NDWI > 0.0 y NDVI < 0.3 → LOTE_ANEGADO
-        4. Resto → RASTROJO
+        Logica de clasificacion:
+        1. Si NDWI > 0.3 -> AGUA_SUPERFICIE
+        2. Si NDVI > 0.5 -> CULTIVO_SANO
+        3. Si NDWI > 0.0 y NDVI < 0.3 -> LOTE_ANEGADO
+        4. Resto -> RASTROJO
 
         Args:
-            start_date: Fecha de inicio del período
-            end_date: Fecha de fin del período
-            geometry: GeoJSON del área a analizar
+            start_date: Fecha de inicio del periodo
+            end_date: Fecha de fin del periodo
+            geometry: GeoJSON del area a analizar
             layer_name: Nombre de capa predefinida (zona, candil, ml, etc.)
-            max_cloud: Porcentaje máximo de nubes
+            max_cloud: Porcentaje maximo de nubes
             thresholds: Umbrales personalizados
 
         Returns:
-            Dict con estadísticas por clase y GeoJSON
+            Dict con estadisticas por clase y GeoJSON
         """
         # Usar umbrales personalizados o por defecto
         th = thresholds or self.thresholds
 
-        # Resolver geometría
+        # Resolver geometria
         if layer_name:
             if layer_name == "zona":
                 analysis_geometry = self.zona.geometry()
@@ -274,13 +275,13 @@ class MonitoringService:
 
         if composite is None:
             return {
-                "error": "No se encontraron imágenes Sentinel-2 con pocas nubes",
+                "error": "No se encontraron imagenes Sentinel-2 con pocas nubes",
                 "sugerencia": "Intenta aumentar el rango de fechas o el porcentaje de nubes",
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
             }
 
-        # Calcular índices
+        # Calcular indices
         with_indices = self._calculate_indices(composite)
 
         ndvi = with_indices.select("NDVI")
@@ -289,7 +290,7 @@ class MonitoringService:
         ndmi = with_indices.select("NDMI")
         bsi = with_indices.select("BSI")
 
-        # === CLASIFICACIÓN MEJORADA POR UMBRALES MULTI-ÍNDICE ===
+        # === CLASIFICACION MEJORADA POR UMBRALES MULTI-INDICE ===
 
         # Clase 2: AGUA EN SUPERFICIE
         # Usa MNDWI (mejor para agua turbia) + NDWI alto + NDVI muy bajo
@@ -299,17 +300,17 @@ class MonitoringService:
         )
 
         # Clase 3: LOTE ANEGADO
-        # Campos con exceso de agua pero aún con algo de vegetación
-        # MNDWI entre -0.1 y 0.15 (señal de agua moderada)
-        # NDMI alto (suelo muy húmedo)
-        # NDVI bajo (vegetación afectada)
+        # Campos con exceso de agua pero aun con algo de vegetacion
+        # MNDWI entre -0.1 y 0.15 (senal de agua moderada)
+        # NDMI alto (suelo muy humedo)
+        # NDVI bajo (vegetacion afectada)
         anegado = (
             agua.Not()
             .And(
-                # Opción 1: MNDWI moderado + NDVI bajo
+                # Opcion 1: MNDWI moderado + NDVI bajo
                 (mndwi.gt(th.mndwi_anegado_min).And(mndwi.lt(th.mndwi_anegado_max))
                  .And(ndvi.lt(th.ndvi_anegado_max)))
-                # Opción 2: NDMI muy alto (suelo saturado) + NDVI bajo
+                # Opcion 2: NDMI muy alto (suelo saturado) + NDVI bajo
                 .Or(ndmi.gt(th.ndmi_anegado_min).And(ndvi.lt(th.ndvi_anegado_max)))
             )
         )
@@ -336,7 +337,7 @@ class MonitoringService:
         )
 
         # Clase 1: RASTROJO (resto)
-        # Vegetación media-baja, sin agua, no es suelo desnudo puro
+        # Vegetacion media-baja, sin agua, no es suelo desnudo puro
         rastrojo = (
             agua.Not()
             .And(anegado.Not())
@@ -357,7 +358,7 @@ class MonitoringService:
             .clip(analysis_geometry)
         )
 
-        # === CALCULAR ÁREAS POR CLASE ===
+        # === CALCULAR AREAS POR CLASE ===
         area_pixel = ee.Image.pixelArea()
         area_classified = area_pixel.addBands(classified)
 
@@ -445,7 +446,7 @@ class MonitoringService:
             elif class_id == 4:
                 stats_resumen["area_suelo_desnudo_ha"] = area_ha
 
-        # Calcular porcentaje de área problemática (agua + anegado)
+        # Calcular porcentaje de area problematica (agua + anegado)
         area_problematica = stats_resumen["area_agua_ha"] + stats_resumen["area_afectada_ha"]
         pct_problematico = (area_problematica / area_total * 100) if area_total > 0 else 0
 
@@ -477,10 +478,10 @@ class MonitoringService:
                     "bsi_suelo_desnudo": th.bsi_suelo_desnudo,
                 },
             },
-            "fecha_analisis": datetime.now().isoformat(),
+            "fecha_analisis": datetime.now(timezone.utc).isoformat(),
         }
 
-        # === GENERAR TILES PARA VISUALIZACIÓN ===
+        # === GENERAR TILES PARA VISUALIZACION ===
         try:
             palette = [
                 class_colors.get(i, "#999999").replace("#", "")
@@ -533,7 +534,7 @@ class MonitoringService:
         Clasificar parcelas para todas las cuencas del consorcio.
 
         Returns:
-            Dict con clasificación por cuenca y comparación
+            Dict con clasificacion por cuenca y comparacion
         """
         resultados = {}
 
@@ -561,7 +562,7 @@ class MonitoringService:
                 "area_anegada_ha": data["resumen"]["area_anegada_ha"],
             })
 
-        # Ordenar por porcentaje problemático (mayor primero)
+        # Ordenar por porcentaje problematico (mayor primero)
         cuencas_ranking.sort(key=lambda x: x["porcentaje_problematico"], reverse=True)
 
         return {
@@ -572,7 +573,7 @@ class MonitoringService:
                 "end_date": end_date.isoformat(),
                 "max_cloud": max_cloud,
             },
-            "fecha_analisis": datetime.now().isoformat(),
+            "fecha_analisis": datetime.now(timezone.utc).isoformat(),
         }
 
     def detect_changes(
@@ -585,17 +586,17 @@ class MonitoringService:
         max_cloud: int = 30,
     ) -> Dict[str, Any]:
         """
-        Detectar cambios en clasificación entre dos períodos.
+        Detectar cambios en clasificacion entre dos periodos.
 
-        Útil para:
-        - Monitorear evolución de anegamientos
-        - Detectar nuevas áreas problemáticas
+        Util para:
+        - Monitorear evolucion de anegamientos
+        - Detectar nuevas areas problematicas
         - Generar alertas
 
         Returns:
-            Dict con comparación y cambios detectados
+            Dict con comparacion y cambios detectados
         """
-        # Clasificar período 1
+        # Clasificar periodo 1
         result1 = self.classify_parcels(
             start_date=date1_start,
             end_date=date1_end,
@@ -605,10 +606,10 @@ class MonitoringService:
 
         if "error" in result1:
             return {
-                "error": f"Error en período 1: {result1['error']}",
+                "error": f"Error en periodo 1: {result1['error']}",
             }
 
-        # Clasificar período 2
+        # Clasificar periodo 2
         result2 = self.classify_parcels(
             start_date=date2_start,
             end_date=date2_end,
@@ -618,7 +619,7 @@ class MonitoringService:
 
         if "error" in result2:
             return {
-                "error": f"Error en período 2: {result2['error']}",
+                "error": f"Error en periodo 2: {result2['error']}",
             }
 
         # Calcular cambios
@@ -645,23 +646,18 @@ class MonitoringService:
 
         if cambio_problematico > 5:
             tendencia = "empeoramiento_significativo"
-            tendencia_icon = "🔴"
-            tendencia_desc = "Aumento significativo de áreas problemáticas"
+            tendencia_desc = "Aumento significativo de areas problematicas"
         elif cambio_problematico > 1:
             tendencia = "empeoramiento_leve"
-            tendencia_icon = "🟠"
-            tendencia_desc = "Leve aumento de áreas problemáticas"
+            tendencia_desc = "Leve aumento de areas problematicas"
         elif cambio_problematico < -5:
             tendencia = "mejora_significativa"
-            tendencia_icon = "🟢"
-            tendencia_desc = "Reducción significativa de áreas problemáticas"
+            tendencia_desc = "Reduccion significativa de areas problematicas"
         elif cambio_problematico < -1:
             tendencia = "mejora_leve"
-            tendencia_icon = "🟡"
-            tendencia_desc = "Leve reducción de áreas problemáticas"
+            tendencia_desc = "Leve reduccion de areas problematicas"
         else:
             tendencia = "estable"
-            tendencia_icon = "⚪"
             tendencia_desc = "Sin cambios significativos"
 
         return {
@@ -678,12 +674,11 @@ class MonitoringService:
             "cambios_por_clase": cambios,
             "tendencia": {
                 "codigo": tendencia,
-                "icono": tendencia_icon,
                 "descripcion": tendencia_desc,
                 "cambio_total_pct": round(cambio_problematico, 2),
             },
             "layer_name": layer_name or "zona",
-            "fecha_analisis": datetime.now().isoformat(),
+            "fecha_analisis": datetime.now(timezone.utc).isoformat(),
         }
 
     def generate_alerts(
@@ -694,9 +689,9 @@ class MonitoringService:
         reference_end: Optional[date] = None,
     ) -> Dict[str, Any]:
         """
-        Generar alertas automáticas basadas en clasificación actual y cambios.
+        Generar alertas automaticas basadas en clasificacion actual y cambios.
 
-        Si se proporcionan fechas de referencia, también detecta cambios.
+        Si se proporcionan fechas de referencia, tambien detecta cambios.
 
         Returns:
             Dict con lista de alertas y su severidad
@@ -719,14 +714,13 @@ class MonitoringService:
             area_anegada = resumen.get("area_anegada_ha", 0)
             area_agua = resumen.get("area_con_agua_ha", 0)
 
-            # Alerta por área anegada crítica
+            # Alerta por area anegada critica
             if pct_problematico > self.alert_config.anegado_critico_pct:
                 alertas.append({
                     "tipo": "area_critica",
                     "severidad": "alta",
-                    "icono": "🔴",
                     "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del área con problemas hídricos",
+                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
                     "detalle": {
                         "area_anegada_ha": round(area_anegada, 2),
                         "area_agua_ha": round(area_agua, 2),
@@ -738,14 +732,13 @@ class MonitoringService:
                 alertas.append({
                     "tipo": "area_elevada",
                     "severidad": "media",
-                    "icono": "🟠",
                     "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del área con problemas",
+                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
                     "detalle": {
                         "area_anegada_ha": round(area_anegada, 2),
                         "porcentaje_total": round(pct_problematico, 2),
                     },
-                    "accion_sugerida": "Monitorear evolución en próximos días",
+                    "accion_sugerida": "Monitorear evolucion en proximos dias",
                 })
 
         # Si hay fechas de referencia, detectar cambios
@@ -766,9 +759,8 @@ class MonitoringService:
                         alertas.append({
                             "tipo": "incremento_anegamiento",
                             "severidad": "alta",
-                            "icono": "📈",
                             "cuenca": nombre_cuenca,
-                            "mensaje": f"Cuenca {nombre_cuenca.upper()}: Incremento de {cambio_pct:.1f}% en área problemática",
+                            "mensaje": f"Cuenca {nombre_cuenca.upper()}: Incremento de {cambio_pct:.1f}% en area problematica",
                             "detalle": {
                                 "cambio_porcentual": round(cambio_pct, 2),
                                 "periodo_referencia": f"{reference_start} a {reference_end}",
@@ -789,7 +781,7 @@ class MonitoringService:
                 "inicio": start_date.isoformat(),
                 "fin": end_date.isoformat(),
             },
-            "fecha_generacion": datetime.now().isoformat(),
+            "fecha_generacion": datetime.now(timezone.utc).isoformat(),
         }
 
     def get_monitoring_summary(
@@ -797,7 +789,7 @@ class MonitoringService:
         days_back: int = 30,
     ) -> Dict[str, Any]:
         """
-        Obtener resumen de monitoreo de los últimos N días.
+        Obtener resumen de monitoreo de los ultimos N dias.
 
         OPTIMIZADO: Evita llamadas redundantes a GEE.
         - classify_parcels_by_cuenca() se llama UNA sola vez
@@ -805,12 +797,12 @@ class MonitoringService:
           internamente, pero no hacemos una segunda llamada a by_cuenca
 
         Returns:
-            Dict con estado actual de la cuenca y métricas clave
+            Dict con estado actual de la cuenca y metricas clave
         """
         end_date = date.today()
         start_date = end_date - timedelta(days=days_back)
 
-        # Clasificación de toda la zona (1 llamada GEE)
+        # Clasificacion de toda la zona (1 llamada GEE)
         clasificacion = self.classify_parcels(
             start_date=start_date,
             end_date=end_date,
@@ -820,7 +812,7 @@ class MonitoringService:
         if "error" in clasificacion:
             return clasificacion
 
-        # Clasificación por cuenca (4 llamadas GEE) - hacemos esto primero
+        # Clasificacion por cuenca (4 llamadas GEE) - hacemos esto primero
         por_cuenca = self.classify_parcels_by_cuenca(
             start_date=start_date,
             end_date=end_date,
@@ -850,7 +842,7 @@ class MonitoringService:
                 "fin": end_date.isoformat(),
                 "dias": days_back,
             },
-            "fecha_actualizacion": datetime.now().isoformat(),
+            "fecha_actualizacion": datetime.now(timezone.utc).isoformat(),
         }
 
     def _generate_alerts_from_results(
@@ -871,14 +863,13 @@ class MonitoringService:
             area_anegada = resumen.get("area_anegada_ha", 0)
             area_agua = resumen.get("area_con_agua_ha", 0)
 
-            # Alerta por área anegada crítica
+            # Alerta por area anegada critica
             if pct_problematico > self.alert_config.anegado_critico_pct:
                 alertas.append({
                     "tipo": "area_critica",
                     "severidad": "alta",
-                    "icono": "🔴",
                     "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del área con problemas hídricos",
+                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
                     "detalle": {
                         "area_anegada_ha": round(area_anegada, 2),
                         "area_agua_ha": round(area_agua, 2),
@@ -890,14 +881,13 @@ class MonitoringService:
                 alertas.append({
                     "tipo": "area_elevada",
                     "severidad": "media",
-                    "icono": "🟠",
                     "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del área con problemas",
+                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
                     "detalle": {
                         "area_anegada_ha": round(area_anegada, 2),
                         "porcentaje_total": round(pct_problematico, 2),
                     },
-                    "accion_sugerida": "Monitorear evolución en próximos días",
+                    "accion_sugerida": "Monitorear evolucion en proximos dias",
                 })
 
         # Ordenar por severidad
@@ -908,7 +898,7 @@ class MonitoringService:
 
 
 # ============================================================
-# INTEGRACIÓN CON ALPHAEARTH EMBEDDINGS
+# INTEGRACION CON ALPHAEARTH EMBEDDINGS
 # ============================================================
 
 class AlphaEarthService:
@@ -916,15 +906,15 @@ class AlphaEarthService:
     Servicio para usar AlphaEarth embeddings de Google DeepMind.
 
     AlphaEarth proporciona embeddings precomputados que capturan
-    contexto espectral, espacial y temporal de imágenes satelitales.
+    contexto espectral, espacial y temporal de imagenes satelitales.
 
     Ventajas:
-    - Clasificación con pocos ejemplos (few-shot learning)
-    - Embeddings optimizados para tareas de observación terrestre
+    - Clasificacion con pocos ejemplos (few-shot learning)
+    - Embeddings optimizados para tareas de observacion terrestre
     - Menor requerimiento de datos de entrenamiento
     """
 
-    # Asset de AlphaEarth en GEE (disponible públicamente)
+    # Asset de AlphaEarth en GEE (disponible publicamente)
     ALPHAEARTH_COLLECTION = "projects/google/esa-ai-for-planetary-boundaries/satellite_embedding_v1_annual"
 
     def __init__(self):
@@ -938,18 +928,18 @@ class AlphaEarthService:
         year: int,
     ) -> ee.Image:
         """
-        Obtener embeddings de AlphaEarth para un área y año.
+        Obtener embeddings de AlphaEarth para un area y anio.
 
         Args:
-            geometry: Geometría del área
-            year: Año para los embeddings
+            geometry: Geometria del area
+            year: Anio para los embeddings
 
         Returns:
             Imagen con bandas de embedding
         """
         collection = ee.ImageCollection(self.ALPHAEARTH_COLLECTION)
 
-        # Filtrar por año
+        # Filtrar por anio
         start_date = f"{year}-01-01"
         end_date = f"{year}-12-31"
 
@@ -973,16 +963,16 @@ class AlphaEarthService:
         """
         Clasificar usando k-Nearest Neighbors con embeddings de AlphaEarth.
 
-        Esta técnica es ideal para clasificación con pocos ejemplos.
+        Esta tecnica es ideal para clasificacion con pocos ejemplos.
 
         Args:
-            geometry: Área a clasificar
-            year: Año de los embeddings
+            geometry: Area a clasificar
+            year: Anio de los embeddings
             training_samples: Muestras de entrenamiento con propiedad 'clase'
-            k: Número de vecinos para kNN
+            k: Numero de vecinos para kNN
 
         Returns:
-            Dict con clasificación y estadísticas
+            Dict con clasificacion y estadisticas
         """
         embeddings = self.get_embeddings(geometry, year)
 
@@ -1005,7 +995,7 @@ class AlphaEarthService:
         # Clasificar
         classified = embeddings.classify(classifier)
 
-        # Calcular áreas
+        # Calcular areas
         area_pixel = ee.Image.pixelArea()
         area_classified = area_pixel.addBands(classified)
 
@@ -1024,21 +1014,13 @@ class AlphaEarthService:
 # SINGLETON INSTANCES
 # ============================================================
 
-_monitoring_service: Optional[MonitoringService] = None
-_alphaearth_service: Optional[AlphaEarthService] = None
-
-
+@lru_cache(maxsize=1)
 def get_monitoring_service() -> MonitoringService:
     """Obtener instancia del servicio de monitoreo (singleton)."""
-    global _monitoring_service
-    if _monitoring_service is None:
-        _monitoring_service = MonitoringService()
-    return _monitoring_service
+    return MonitoringService()
 
 
+@lru_cache(maxsize=1)
 def get_alphaearth_service() -> AlphaEarthService:
     """Obtener instancia del servicio AlphaEarth (singleton)."""
-    global _alphaearth_service
-    if _alphaearth_service is None:
-        _alphaearth_service = AlphaEarthService()
-    return _alphaearth_service
+    return AlphaEarthService()

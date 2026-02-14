@@ -55,19 +55,24 @@ const AdminContentLoader = () => (
   </Center>
 );
 
-// Helper to wait for auth initialization
-async function waitForAuth() {
+// Helper to wait for auth initialization with timeout
+async function waitForAuth(timeoutMs = 10_000) {
   const state = useAuthStore.getState();
-  if (!state.initialized) {
-    await new Promise<void>((resolve) => {
+  if (state.initialized) return;
+
+  await Promise.race([
+    new Promise<void>((resolve) => {
       const unsubscribe = useAuthStore.subscribe((s) => {
         if (s.initialized) {
           unsubscribe();
           resolve();
         }
       });
-    });
-  }
+    }),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('Auth initialization timeout')), timeoutMs)
+    ),
+  ]);
 }
 
 const RootComponent = () => (
