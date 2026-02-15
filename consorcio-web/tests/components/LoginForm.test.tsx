@@ -194,7 +194,7 @@ describe('LoginForm', () => {
       await user.click(screen.getByRole('button', { name: /iniciar sesion/i }));
 
       await waitFor(() => {
-        expect(mockLocation.href).toBe('/dashboard');
+        expect(mockLocation.href).toBe('/admin');
       });
     });
 

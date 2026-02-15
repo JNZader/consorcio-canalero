@@ -73,7 +73,7 @@ export { default as IconX } from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 export { default as IconPhoto } from '@tabler/icons-react/dist/esm/icons/IconPhoto.mjs';
 export { default as IconReportMoney } from '@tabler/icons-react/dist/esm/icons/IconReportMoney.mjs';
 export { default as IconSearch } from '@tabler/icons-react/dist/esm/icons/IconSearch.mjs';
-export { default as IconPieChart } from '@tabler/icons-react/dist/esm/icons/IconPieChart.mjs';
+export { default as IconPieChart } from '@tabler/icons-react/dist/esm/icons/IconChartPie.mjs';
 
 // Re-export IconLayers
 export { default as IconLayers } from '@tabler/icons-react/dist/esm/icons/IconStack2.mjs';

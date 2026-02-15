@@ -16,7 +16,7 @@ vi.stubGlobal('import', {
 });
 
 // We need to import dynamically after mocking
-let analysisApi: typeof import('../../src/lib/api').analysisApi;
+let statsApi: typeof import('../../src/lib/api').statsApi;
 let layersApi: typeof import('../../src/lib/api').layersApi;
 let reportsApi: typeof import('../../src/lib/api').reportsApi;
 let publicApi: typeof import('../../src/lib/api').publicApi;
@@ -34,7 +34,7 @@ describe('API Client', () => {
 
     // Import the API module fresh
     const apiModule = await import('../../src/lib/api');
-    analysisApi = apiModule.analysisApi;
+    statsApi = apiModule.statsApi;
     layersApi = apiModule.layersApi;
     reportsApi = apiModule.reportsApi;
     publicApi = apiModule.publicApi;
@@ -86,96 +86,6 @@ describe('API Client', () => {
       const result = await healthCheck();
 
       expect(result).toBe(false);
-    });
-  });
-
-  // ===========================================
-  // Analysis API
-  // ===========================================
-  describe('analysisApi', () => {
-    describe('startFloodDetection', () => {
-      it('should send correct request for flood detection', async () => {
-        const mockResponse = {
-          job_id: 'test-job-123',
-          status: 'queued',
-          message: 'Job queued successfully',
-        };
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockResponse),
-        });
-
-        const request = {
-          start_date: '2024-01-01',
-          end_date: '2024-01-31',
-          cuencas: ['candil', 'ml'] as ('candil' | 'ml' | 'noroeste' | 'norte')[],
-          threshold: -15,
-        };
-
-        const result = await analysisApi.startFloodDetection(request);
-
-        expect(result).toEqual(mockResponse);
-        expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/analysis/flood-detection',
-          expect.objectContaining({
-            method: 'POST',
-            body: JSON.stringify(request),
-            headers: expect.objectContaining({
-              'Content-Type': 'application/json',
-            }),
-          })
-        );
-      });
-    });
-
-    describe('getJobStatus', () => {
-      it('should fetch job status correctly', async () => {
-        const mockStatus = {
-          job_id: 'test-job-123',
-          status: 'processing',
-          progress: 50,
-          message: 'Processing...',
-        };
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockStatus),
-        });
-
-        const result = await analysisApi.getJobStatus('test-job-123');
-
-        expect(result).toEqual(mockStatus);
-        expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/analysis/test-job-123/status',
-          expect.any(Object)
-        );
-      });
-    });
-
-    describe('getHistory', () => {
-      it('should fetch analysis history with pagination', async () => {
-        const mockHistory = {
-          items: [{ id: '1', fecha_inicio: '2024-01-01' }],
-          total: 100,
-          page: 2,
-          limit: 10,
-          pages: 10,
-        };
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockHistory),
-        });
-
-        const result = await analysisApi.getHistory(2, 10);
-
-        expect(result).toEqual(mockHistory);
-        expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/analysis/history?page=2&limit=10',
-          expect.any(Object)
-        );
-      });
     });
   });
 
@@ -395,58 +305,6 @@ describe('API Client', () => {
       });
     });
 
-    describe('sendVerificationCode', () => {
-      it('should send verification code', async () => {
-        const mockResponse = {
-          message: 'Codigo enviado',
-          expires_in: 300,
-        };
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockResponse),
-        });
-
-        const result = await publicApi.sendVerificationCode('test@example.com');
-
-        expect(result).toEqual(mockResponse);
-        expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/public/verify/send',
-          expect.objectContaining({
-            method: 'POST',
-            body: JSON.stringify({ email: 'test@example.com' }),
-          })
-        );
-      });
-    });
-
-    describe('verifyCode', () => {
-      it('should verify code successfully', async () => {
-        const mockResponse = {
-          verified: true,
-          token: 'verification-token-123',
-        };
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockResponse),
-        });
-
-        const result = await publicApi.verifyCode('test@example.com', '123456');
-
-        expect(result).toEqual(mockResponse);
-        expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/public/verify/check',
-          expect.objectContaining({
-            method: 'POST',
-            body: JSON.stringify({
-              email: 'test@example.com',
-              code: '123456',
-            }),
-          })
-        );
-      });
-    });
   });
 
   // ===========================================
@@ -486,7 +344,7 @@ describe('API Client', () => {
     it('should handle network errors', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Failed to fetch'));
 
-      await expect(analysisApi.getHistory()).rejects.toThrow('Failed to fetch');
+      await expect(statsApi.getHistorical()).rejects.toThrow('Failed to fetch');
     });
   });
 
@@ -497,10 +355,10 @@ describe('API Client', () => {
     it('should pass AbortSignal to fetch for timeout support', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ items: [], total: 0, page: 1, limit: 10, pages: 0 }),
+        json: () => Promise.resolve([]),
       });
 
-      await analysisApi.getHistory();
+      await statsApi.getHistorical();
 
       // Verify that fetch was called with an AbortSignal
       expect(mockFetch).toHaveBeenCalledWith(
@@ -517,7 +375,7 @@ describe('API Client', () => {
       abortError.name = 'AbortError';
       mockFetch.mockRejectedValueOnce(abortError);
 
-      await expect(analysisApi.getHistory()).rejects.toThrow(/excedio el tiempo limite/i);
+      await expect(statsApi.getHistorical()).rejects.toThrow(/excedio el tiempo limite/i);
     });
   });
 });

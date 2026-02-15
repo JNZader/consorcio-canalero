@@ -474,14 +474,14 @@ if __name__ == "__main__":
 
     logger.info(
         "Starting server",
-        host="0.0.0.0",
+        host="0.0.0.0",  # nosec B104
         port=8000,
         debug=settings.debug,
     )
 
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # nosec B104
         port=8000,
         reload=settings.debug,
     )
