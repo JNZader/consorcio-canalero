@@ -72,7 +72,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install dependencies
-        run: npm ci
+        # npm ci fails cross-platform: lockfile from Windows lacks linux rollup binaries (npm/cli#4828)
+        run: npm install --no-audit --no-fund
         working-directory: .
       - name: Lint
         run: npm run lint
