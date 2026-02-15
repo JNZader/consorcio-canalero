@@ -31,11 +31,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-          cache-dependency-path: consorcio-web/package-lock.json
-      # npm ci can't resolve cross-platform optional deps from a Windows lockfile (npm/cli#4828).
-      # npm install respects the lockfile versions but also resolves Linux-native rollup binaries.
-      - run: npm install --no-audit --no-fund --legacy-peer-deps
+      # Lockfile generated on Windows lacks Linux optional deps like
+      # @rollup/rollup-linux-x64-gnu and @biomejs/cli-linux-x64 (npm/cli#4828).
+      # Delete it so npm install resolves platform-correct binaries.
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run lint
 
   test:
@@ -47,9 +46,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-          cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm install --no-audit --no-fund --legacy-peer-deps
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run test:run
 
   build:
@@ -62,7 +59,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-          cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm install --no-audit --no-fund --legacy-peer-deps
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run build
