@@ -5,7 +5,6 @@ Tests:
 - GET /api/v1/config/system - Get system configuration
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from app import constants
 

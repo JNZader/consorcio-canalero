@@ -7,9 +7,7 @@ Tests:
 - GET /api/v1/public/health - Health check
 """
 
-import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 import io
 
 
@@ -164,7 +162,9 @@ class TestUploadPhoto:
     def test_upload_photo_success(self, client: TestClient, mock_supabase_service):
         """Should upload photo successfully."""
         # Create a fake image file
-        image_content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        image_content = (
+            b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        )
 
         response = client.post(
             "/api/v1/public/upload-photo",

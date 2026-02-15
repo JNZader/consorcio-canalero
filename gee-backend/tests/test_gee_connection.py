@@ -25,7 +25,9 @@ def test_connection():
     print("=" * 50)
 
     # 1. Cargar credenciales desde env o default
-    key_path = os.getenv("GEE_SERVICE_ACCOUNT_KEY", "./credentials/gee-service-account.json")
+    key_path = os.getenv(
+        "GEE_SERVICE_ACCOUNT_KEY", "./credentials/gee-service-account.json"
+    )
     project_id = os.getenv("GEE_PROJECT_ID", "cc10demayo")
 
     # Si el path es relativo, buscar desde la raíz del proyecto
@@ -50,10 +52,7 @@ def test_connection():
     # 2. Inicializar Earth Engine
     print(f"\n[2] Inicializando Earth Engine (proyecto: {project_id})")
     try:
-        credentials = ee.ServiceAccountCredentials(
-            key_data["client_email"],
-            key_path
-        )
+        credentials = ee.ServiceAccountCredentials(key_data["client_email"], key_path)
         ee.Initialize(credentials, project=project_id)
         print("    ✓ Conexión exitosa!")
     except Exception as e:
@@ -63,7 +62,9 @@ def test_connection():
     # 3. Test básico - obtener info de una imagen
     print("\n[3] Probando acceso a datos (imagen Sentinel-2)")
     try:
-        image = ee.Image("COPERNICUS/S2_SR_HARMONIZED/20231001T140051_20231001T140051_T20JLL")
+        image = ee.Image(
+            "COPERNICUS/S2_SR_HARMONIZED/20231001T140051_20231001T140051_T20JLL"
+        )
         info = image.getInfo()
         print(f"    ✓ Imagen accesible: {info['id']}")
         print(f"    ✓ Bandas: {len(info['bands'])}")

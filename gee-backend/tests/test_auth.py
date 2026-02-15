@@ -373,9 +373,7 @@ class TestProtectedEndpoints:
         # Should succeed (200) or at least not be 401
         assert response.status_code != 401
 
-    def test_admin_only_endpoint_as_citizen(
-        self, client, citizen_auth, auth_headers
-    ):
+    def test_admin_only_endpoint_as_citizen(self, client, citizen_auth, auth_headers):
         """Should deny citizen access to admin-only endpoints."""
         # Try to access admin endpoint
         response = client.delete(

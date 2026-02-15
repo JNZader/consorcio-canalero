@@ -100,7 +100,7 @@ backend_lint() {
   step "Backend: Lint (Ruff)"
   check_tool ruff "backend lint" || return 0
   cd "$BACKEND_DIR"
-  if ruff check app/ 2>&1 && ruff format app/ --check 2>&1; then
+  if ruff check app/ tests/ 2>&1 && ruff format app/ tests/ --check 2>&1; then
     pass "Lint OK"
   else
     fail "Lint failed"

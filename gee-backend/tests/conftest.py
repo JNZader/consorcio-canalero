@@ -10,32 +10,34 @@ Provides:
 
 import os
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from typing import Generator, Dict, Any
 
 # Set test environment variables BEFORE importing app modules
-os.environ.update({
-    "SUPABASE_URL": "http://localhost:54321",
-    "SUPABASE_KEY": "test-anon-key",
-    "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
-    "SUPABASE_JWT_SECRET": "test-jwt-secret-at-least-32-chars-long",
-    "GEE_PROJECT_ID": "test-project",
-    "REDIS_URL": "redis://localhost:6379/0",
-    "CORS_ORIGINS": "http://localhost:3000,http://localhost:4321",
-    "DEBUG": "true",
-    "FRONTEND_URL": "http://localhost:4321",
-})
+os.environ.update(
+    {
+        "SUPABASE_URL": "http://localhost:54321",
+        "SUPABASE_KEY": "test-anon-key",
+        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+        "SUPABASE_JWT_SECRET": "test-jwt-secret-at-least-32-chars-long",
+        "GEE_PROJECT_ID": "test-project",
+        "REDIS_URL": "redis://localhost:6379/0",
+        "CORS_ORIGINS": "http://localhost:3000,http://localhost:4321",
+        "DEBUG": "true",
+        "FRONTEND_URL": "http://localhost:4321",
+    }
+)
 
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.config import settings
 
 
 # ===========================================
 # Test Client Fixtures
 # ===========================================
+
 
 @pytest.fixture(scope="function")
 def client() -> Generator[TestClient, None, None]:
@@ -61,6 +63,7 @@ async def async_client() -> AsyncClient:
 # ===========================================
 # Mock Supabase Service
 # ===========================================
+
 
 @pytest.fixture
 def mock_supabase_service():
@@ -136,7 +139,9 @@ def mock_supabase_service():
         }
 
         # Mock photo upload
-        service.upload_report_photo.return_value = "https://storage.example.com/photo.jpg"
+        service.upload_report_photo.return_value = (
+            "https://storage.example.com/photo.jpg"
+        )
 
         mock.return_value = service
         yield service
@@ -146,14 +151,16 @@ def mock_supabase_service():
 # Mock GEE Service
 # ===========================================
 
+
 @pytest.fixture
 def mock_gee_service():
     """
     Mock Google Earth Engine service for testing without real GEE.
     """
-    with patch("app.services.gee_service.initialize_gee") as mock_init, \
-         patch("app.services.gee_service.GEEFloodDetector") as mock_detector:
-
+    with (
+        patch("app.services.gee_service.initialize_gee") as mock_init,
+        patch("app.services.gee_service.GEEFloodDetector") as mock_detector,
+    ):
         # Mock initialization
         mock_init.return_value = True
 
@@ -187,14 +194,16 @@ def mock_gee_service():
 # Mock JWT/Auth
 # ===========================================
 
+
 @pytest.fixture
 def mock_auth():
     """
     Mock authentication for testing protected endpoints.
     """
-    with patch("app.auth.verify_supabase_token") as mock_verify, \
-         patch("app.auth.get_user_role") as mock_role:
-
+    with (
+        patch("app.auth.verify_supabase_token") as mock_verify,
+        patch("app.auth.get_user_role") as mock_role,
+    ):
         # Default to authenticated admin user
         mock_verify.return_value = MagicMock(
             sub="test-user-id",
@@ -249,6 +258,7 @@ def citizen_auth(mock_auth):
 # Test Data Fixtures
 # ===========================================
 
+
 @pytest.fixture
 def sample_report() -> Dict[str, Any]:
     """
@@ -299,6 +309,7 @@ def sample_layer() -> Dict[str, Any]:
 # ===========================================
 # Cleanup Fixtures
 # ===========================================
+
 
 @pytest.fixture(autouse=True)
 def reset_rate_limit():
