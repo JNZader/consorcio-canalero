@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs ci-local quick before pushing
+# Install: cp .ci-local/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Or: make install-hooks
+
+ROOT=$(git rev-parse --show-toplevel)
+CI_LOCAL="$ROOT/.ci-local/ci-local.sh"
+
+if [ ! -f "$CI_LOCAL" ]; then
+  echo "Warning: ci-local.sh not found, skipping pre-push checks"
+  exit 0
+fi
+
+echo "Running CI-Local quick checks before push..."
+echo ""
+
+bash "$CI_LOCAL" quick
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "Push blocked: fix the issues above first."
+  echo "To skip: git push --no-verify (not recommended)"
+  exit 1
+fi

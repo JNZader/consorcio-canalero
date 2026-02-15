@@ -5,7 +5,8 @@
 .PHONY: help install dev build test lint clean docker-up docker-down migrate setup \
         backend-install frontend-install backend-dev frontend-dev backend-test \
         frontend-test backend-lint frontend-lint docker-build docker-logs \
-        docker-restart docker-clean format security-scan db-upgrade db-downgrade
+        docker-restart docker-clean format security-scan db-upgrade db-downgrade \
+        ci-quick ci-full install-hooks
 
 # Default target
 .DEFAULT_GOAL := help
@@ -36,6 +37,22 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "$(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
+
+# ==============================================
+# CI-LOCAL (run before push to save GitHub Actions minutes)
+# ==============================================
+ci-quick: ## Run quick CI checks locally (lint + type-check)
+	@bash ./.ci-local/ci-local.sh quick
+
+ci-full: ## Run full CI checks locally (lint + type-check + test + build)
+	@bash ./.ci-local/ci-local.sh full
+
+install-hooks: ## Install git hooks for pre-push validation
+	@echo "$(BLUE)Installing git hooks...$(NC)"
+	@cp .ci-local/hooks/pre-push .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@chmod +x .ci-local/ci-local.sh
+	@echo "$(GREEN)Git hooks installed! Pre-push will run ci-local quick.$(NC)"
 
 # ==============================================
 # SETUP & INSTALL
