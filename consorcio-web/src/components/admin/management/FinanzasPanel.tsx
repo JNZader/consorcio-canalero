@@ -9,20 +9,17 @@ import {
   Text,
   Title,
   Paper,
-  ActionIcon,
   Modal,
   TextInput,
-  Textarea,
   Select,
   NumberInput,
   SimpleGrid,
   Tabs,
-  ThemeIcon,
-  RingProgress
+  ThemeIcon
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { IconPlus, IconCoin, IconArrowUpRight, IconArrowDownRight, IconReceipt, IconReportMoney } from '../../ui/icons';
@@ -51,7 +48,7 @@ export default function FinanzasPanel() {
 
   const [opened, { open, close }] = useDisclosure(false);
 
-  const fetchFinanzas = async () => {
+  const fetchFinanzas = useCallback(async () => {
     setLoading(true);
     try {
       const [gastosData, balanceData] = await Promise.all([
@@ -65,11 +62,11 @@ export default function FinanzasPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchFinanzas();
-  }, []);
+  }, [fetchFinanzas]);
 
   const form = useForm({
     initialValues: {

@@ -48,7 +48,7 @@ export function MapComparisonSlider({ comparison, onClear, leftLayerRef }: MapCo
     isDragging.current = true;
   }, []);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  const handleTouchStart = useCallback((_e: React.TouchEvent) => {
     isDragging.current = true;
   }, []);
 

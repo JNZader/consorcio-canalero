@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { getSupabaseClient } from '../lib/supabase';
 import { logger } from '../lib/logger';
-import { isValidEmail, MAX_EMAIL_LENGTH } from '../lib/validators';
+import { isValidEmail } from '../lib/validators';
 
 export type VerificationMethod = 'google' | 'email';
 

@@ -7,7 +7,6 @@ import {
   Collapse,
   Container,
   Divider,
-  Grid,
   Group,
   Loader,
   Modal,
@@ -215,11 +214,11 @@ export default function SugerenciasPanel() {
 
   // Stats from API
   const [stats, setStats] = useState<SugerenciasStats | null>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
+  const [_loadingStats, setLoadingStats] = useState(true);
 
   // Proxima reunion
   const [proximaReunion, setProximaReunion] = useState<Sugerencia[]>([]);
-  const [loadingProxima, setLoadingProxima] = useState(true);
+  const [_loadingProxima, setLoadingProxima] = useState(true);
 
   // Create internal modal
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
@@ -494,8 +493,8 @@ export default function SugerenciasPanel() {
     );
   };
 
-  const getHistorialIcon = (accion: string) => {
-    switch (accion) {
+  const _getHistorialIcon = (_accion: string) => {
+    switch (_accion) {
       case 'creado':
         return <IconPlus size={14} />;
       case 'agendado':
@@ -507,8 +506,8 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const getHistorialColor = (accion: string): string => {
-    switch (accion) {
+  const _getHistorialColor = (_accion: string): string => {
+    switch (_accion) {
       case 'creado':
         return 'blue';
       case 'agendado':
@@ -520,8 +519,8 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const getAccionLabel = (accion: string): string => {
-    switch (accion) {
+  const _getAccionLabel = (_accion: string): string => {
+    switch (_accion) {
       case 'creado':
         return 'Sugerencia creada';
       case 'agendado':
@@ -531,7 +530,7 @@ export default function SugerenciasPanel() {
       case 'estado_cambiado':
         return 'Estado actualizado';
       default:
-        return accion;
+        return _accion;
     }
   };
 
@@ -753,7 +752,7 @@ export default function SugerenciasPanel() {
                       {loadingHistorial ? 'Cargando historial...' : 'Sin historial disponible'}
                     </Text>
                   ) : (
-                    <Timeline active={0} bulletSize={20} lineWidth={2}>
+                    <Timeline active={0} lineWidth={2}>
                       {historial.map((entry) => (
                         <Timeline.Item 
                           key={entry.id} 
@@ -761,12 +760,12 @@ export default function SugerenciasPanel() {
                         >
                           <Text size="xs" fw={500}>{entry.comentario_publico}</Text>
                           {entry.comentario_interno && (
-                            <Text size="xs" c="blue" italic>Interno: {entry.comentario_interno}</Text>
+                            <Text size="xs" c="blue" fs="italic">Interno: {entry.comentario_interno}</Text>
                           )}
                           <Text size="xs" c="dimmed" mt={2}>{formatDate(entry.fecha)}</Text>
                         </Timeline.Item>
                       ))}
-                      <Timeline.Item title="Sugerencia Creada" bulletSize={12}>
+                      <Timeline.Item title="Sugerencia Creada">
                         <Text size="xs" mt={2}>Ingresada al sistema</Text>
                       </Timeline.Item>
                     </Timeline>

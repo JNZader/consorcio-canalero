@@ -1,7 +1,6 @@
 import {
   Badge,
   Button,
-  Card,
   Container,
   Divider,
   Group,
@@ -19,7 +18,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
@@ -48,7 +47,7 @@ export default function TramitesPanel() {
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
-  const fetchTramites = async () => {
+  const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiFetch<Tramite[]>('/management/tramites');
@@ -58,7 +57,7 @@ export default function TramitesPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleExport = async (id: string) => {
     setExporting(true);
@@ -92,7 +91,7 @@ export default function TramitesPanel() {
 
   useEffect(() => {
     fetchTramites();
-  }, []);
+  }, [fetchTramites]);
 
   const form = useForm({
     initialValues: {
@@ -209,14 +208,14 @@ export default function TramitesPanel() {
               </Button>
             </Group>
             <Divider />
-            <Timeline active={0} bulletSize={24} lineWidth={2}>
+            <Timeline active={0} lineWidth={2}>
               {selectedTramite.avances.map((a) => (
                 <Timeline.Item key={a.id} title={a.titulo_avance}>
                   <Text c="dimmed" size="sm">{a.comentario}</Text>
                   <Text size="xs" mt={4}>{new Date(a.fecha).toLocaleString()}</Text>
                 </Timeline.Item>
               ))}
-              <Timeline.Item title="Inicio de Tramite" bulletSize={12}>
+              <Timeline.Item title="Inicio de Tramite">
                 <Text size="xs" mt={4}>Expediente creado en el sistema</Text>
               </Timeline.Item>
             </Timeline>

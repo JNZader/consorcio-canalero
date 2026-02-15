@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Badge,
   Box,
   Button,
@@ -14,7 +13,6 @@ import {
   Select,
   Skeleton,
   Stack,
-  Table,
   Text,
   TextInput,
   Title,
@@ -22,10 +20,10 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature } from 'geojson';
 import type { LeafletMouseEvent, Path } from 'leaflet';
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { GeoJSON, FeatureGroup, LayersControl, MapContainer, TileLayer, Marker, CircleMarker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { GeoJSON, FeatureGroup, LayersControl, MapContainer, TileLayer, CircleMarker, Popup, Tooltip as LeafletTooltip, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
@@ -40,6 +38,7 @@ import { IconGitCompare, IconLayers, IconPhoto, IconDownload, IconMap } from './
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useConfigStore } from '../stores/configStore';
 import { API_URL, getAuthToken } from '../lib/api';
+import { formatDate } from '../lib/formatters';
 import styles from '../styles/components/map.module.css';
 
 // Layer names for cuencas (constant to prevent infinite re-renders)
@@ -176,7 +175,7 @@ interface SatelliteImagePanelProps {
   readonly onClear: () => void;
 }
 
-const SatelliteImagePanel = memo(function SatelliteImagePanel({ image, onClear }: SatelliteImagePanelProps) {
+const _SatelliteImagePanel = memo(function SatelliteImagePanel({ image: _image, onClear: _onClear }: SatelliteImagePanelProps) {
   return (
     <Paper
       shadow="md"
@@ -195,14 +194,14 @@ const SatelliteImagePanel = memo(function SatelliteImagePanel({ image, onClear }
           <IconPhoto size={16} color="var(--mantine-color-blue-6)" />
           <div>
             <Text size="xs" fw={600} c="blue.7">
-              {image.sensor} - {image.target_date}
+              {_image.sensor} - {_image.target_date}
             </Text>
             <Text size="xs" c="dimmed">
-              {image.visualization_description}
+              {_image.visualization_description}
             </Text>
           </div>
         </Group>
-        <CloseButton size="sm" onClick={onClear} aria-label="Quitar imagen satelital" />
+        <CloseButton size="sm" onClick={_onClear} aria-label="Quitar imagen satelital" />
       </Group>
     </Paper>
   );
@@ -391,7 +390,7 @@ export default function MapaLeaflet() {
       a.href = url;
       a.download = `Ficha_Tecnica_${assetName.replace(/\s+/g, '_')}.pdf`;
       a.click();
-    } catch (err) {
+    } catch (_err) {
       notifications.show({ title: 'Error', message: 'No se pudo generar la ficha tecnica', color: 'red' });
     }
   };
@@ -409,7 +408,7 @@ export default function MapaLeaflet() {
         latitud: newPoint.lat,
         longitud: newPoint.lng,
         estado_actual: 'bueno',
-        tipo: values.tipo as any,
+        tipo: values.tipo as 'alcantarilla' | 'puente' | 'canal' | 'otro',
       });
       notifications.show({
         title: 'Punto registrado',
@@ -419,7 +418,7 @@ export default function MapaLeaflet() {
       setNewPoint(null);
       setMarkingMode(false);
       form.reset();
-    } catch (err) {
+    } catch (_err) {
       notifications.show({
         title: 'Error',
         message: 'No se pudo guardar el punto',
@@ -473,7 +472,7 @@ export default function MapaLeaflet() {
   const mapWrapperRef = useRef<HTMLDivElement>(null);
 
   // Clear selected image
-  const handleClearImage = useCallback(() => {
+  const _handleClearImage = useCallback(() => {
     localStorage.removeItem('consorcio_selected_image');
     window.dispatchEvent(new CustomEvent('selectedImageChange', { detail: null }));
   }, []);
@@ -680,7 +679,7 @@ export default function MapaLeaflet() {
             <LayersControl.Overlay name="Intersecciones (Alcantarillas potenciales)">
               <GeoJSON
                 data={intersections}
-                pointToLayer={(feature, latlng) => (
+                pointToLayer={(_feature, latlng) => (
                   L.circleMarker(latlng, {
                     radius: 5,
                     fillColor: "#ffffff",
@@ -715,9 +714,9 @@ export default function MapaLeaflet() {
                       fillOpacity: 0.9
                     }}
                   >
-                    <Tooltip direction="top" offset={[0, -10]}>
+                    <LeafletTooltip direction="top" offset={[0, -10]}>
                       <Text size="xs" fw={700}>{asset.nombre}</Text>
-                    </Tooltip>
+                    </LeafletTooltip>
                     <Popup>
                       <Stack gap={4}>
                         <Text fw={700} size="sm">{asset.nombre}</Text>

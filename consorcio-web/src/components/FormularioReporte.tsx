@@ -24,7 +24,7 @@ import L from 'leaflet';
 import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
-import { MAP_CENTER, MAP_DEFAULT_ZOOM, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
+import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useConfigStore } from '../stores/configStore';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { publicApi } from '../lib/api';
@@ -56,8 +56,6 @@ const markerIcon = new L.Icon({
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
 });
-
-const CENTER: [number, number] = MAP_CENTER;
 
 // Icon mapping for report types (extends base TIPOS_DENUNCIA from constants)
 const TIPO_ICONS: Record<string, ReactNode> = {
@@ -579,7 +577,6 @@ function FormularioContenido() {
     loginWithGoogle,
     sendMagicLink,
     logout,
-    resetVerificacion,
   } = useContactVerification({
     onVerified: (email, name) => {
       const displayName = name || email;

@@ -91,7 +91,7 @@ export async function apiFetch<T>(
     if (!skipAuth) {
       const token = await getAuthToken();
       if (token) {
-        authHeaders['Authorization'] = `Bearer ${token}`;
+        authHeaders.Authorization = `Bearer ${token}`;
       }
     }
 

@@ -2,7 +2,6 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Container,
   Divider,
   Group,
@@ -14,8 +13,6 @@ import {
   ActionIcon,
   Modal,
   TextInput,
-  Textarea,
-  Select,
   NumberInput,
   SimpleGrid,
   Tooltip
@@ -23,11 +20,11 @@ import {
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
-import { IconPlus, IconSearch, IconUser, IconCreditCard, IconHistory } from '../../ui/icons';
+import { IconPlus, IconSearch, IconUser, IconCreditCard } from '../../ui/icons';
 import { LoadingState } from '../../ui';
 
 // Types for this panel
@@ -60,7 +57,7 @@ export default function PadronPanel() {
   const [opened, { open, close }] = useDisclosure(false);
   const [pagoOpened, { open: openPago, close: closePago }] = useDisclosure(false);
 
-  const fetchConsorcistas = async () => {
+  const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiFetch<Consorcista[]>(`/padron/consorcistas?search=${search}`);
@@ -73,7 +70,7 @@ export default function PadronPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [search]);
 
   const fetchPagos = async (id: string) => {
     try {
@@ -90,7 +87,7 @@ export default function PadronPanel() {
   useEffect(() => {
     const timer = setTimeout(() => fetchConsorcistas(), 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [fetchConsorcistas]);
 
   const handleViewPagos = (c: Consorcista) => {
     setSelectedConsorcista(c);
@@ -180,7 +177,7 @@ export default function PadronPanel() {
                 </Table.Td>
                 <Table.Td><Text size="sm">{c.cuit}</Text></Table.Td>
                 <Table.Td>
-                  <Text size="sm" italic c="dimmed">{c.representa_a || '-'}</Text>
+                  <Text size="sm" fs="italic" c="dimmed">{c.representa_a || '-'}</Text>
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">

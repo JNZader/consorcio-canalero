@@ -89,7 +89,7 @@ function ProfileContent() {
         color: 'green',
         icon: <IconCheck size={16} />,
       });
-    } catch (error) {
+    } catch (_error) {
       notifications.show({
         title: 'Error',
         message: 'No se pudo actualizar el perfil',

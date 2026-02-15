@@ -572,7 +572,7 @@ export default function ReportsPanel() {
                 </Group>
 
                 {loadingHistory ? <Loader size="sm" /> : (
-                  <Timeline active={0} bulletSize={20} lineWidth={2}>
+                  <Timeline active={0} lineWidth={2}>
                     {history.map((entry) => (
                       <Timeline.Item
                         key={entry.id}
@@ -580,12 +580,12 @@ export default function ReportsPanel() {
                       >
                         <Text size="xs" fw={500}>{entry.comentario_publico}</Text>
                         {entry.comentario_interno && (
-                          <Text size="xs" c="blue" italic>Interno: {entry.comentario_interno}</Text>
+                          <Text size="xs" c="blue" fs="italic">Interno: {entry.comentario_interno}</Text>
                         )}
                         <Text size="xs" c="dimmed" mt={2}>{formatDate(entry.fecha, { includeTime: true })}</Text>
                       </Timeline.Item>
                     ))}
-                    <Timeline.Item title="Reporte Creado" bulletSize={12}>
+                    <Timeline.Item title="Reporte Creado">
                       <Text size="xs" mt={2}>Ingresado al sistema</Text>
                     </Timeline.Item>
                   </Timeline>

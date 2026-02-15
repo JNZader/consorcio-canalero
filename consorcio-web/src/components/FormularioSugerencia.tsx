@@ -24,7 +24,7 @@ import { sugerenciasApi } from '../lib/api';
 import { logger } from '../lib/logger';
 import { MAX_LENGTHS, validators } from '../lib/validators';
 import { LiveRegionProvider } from './ui/accessibility';
-import { IconCheck, IconInfoCircle, IconShieldCheck } from './ui/icons';
+import { IconCheck } from './ui/icons';
 import { ContactVerificationSection } from './verification';
 
 const CATEGORIAS = [

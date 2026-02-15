@@ -21,6 +21,7 @@ interface ImportMetaEnv {
   readonly MODE: string;
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: ambient Vite type declaration
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }

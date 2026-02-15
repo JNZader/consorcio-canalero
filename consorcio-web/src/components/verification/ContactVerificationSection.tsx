@@ -17,7 +17,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { validateEmail } from '../../lib/validators';
-import { IconBrandGoogle, IconCheck, IconMail, IconShieldCheck } from '../ui/icons';
+import { IconCheck, IconMail, IconShieldCheck } from '../ui/icons';
 import type { VerificationMethod } from './types';
 
 export interface ContactVerificationSectionProps {
@@ -51,6 +51,7 @@ export interface ContactVerificationSectionProps {
 function GoogleLogo() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24">
+      <title>Google logo</title>
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -75,7 +76,7 @@ export function ContactVerificationSection({
   contactoVerificado,
   userEmail,
   userName,
-  metodoVerificacion,
+  metodoVerificacion: _metodoVerificacion,
   loading,
   magicLinkSent,
   magicLinkEmail,
@@ -85,7 +86,7 @@ export function ContactVerificationSection({
   onLogout,
   verificationExplanation = 'Para enviar tu reporte, necesitamos verificar tu identidad.',
 }: ContactVerificationSectionProps) {
-  const form = useForm({
+  const _form = useForm({
     initialValues: {
       email: '',
     },
@@ -171,12 +172,12 @@ export function ContactVerificationSection({
       <Divider label="o usa tu email" labelPosition="center" />
 
       {/* Magic Link */}
-      <form onSubmit={form.onSubmit(handleMagicLinkSubmit)}>
+      <form onSubmit={_form.onSubmit(handleMagicLinkSubmit)}>
         <Stack gap="sm">
           <TextInput
             placeholder="tu@email.com"
             leftSection={<IconMail size={16} />}
-            {...form.getInputProps('email')}
+            {..._form.getInputProps('email')}
             size="md"
           />
           <Button type="submit" variant="light" fullWidth>

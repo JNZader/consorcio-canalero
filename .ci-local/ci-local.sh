@@ -68,7 +68,7 @@ frontend_lint() {
 
 frontend_typecheck() {
   step "Frontend: Type-check (TypeScript)"
-  if cd "$FRONTEND_DIR" && npx tsc --noEmit 2>&1; then
+  if cd "$FRONTEND_DIR" && ./node_modules/.bin/tsc --noEmit 2>&1; then
     pass "Types OK"
   else
     fail "Type-check failed"

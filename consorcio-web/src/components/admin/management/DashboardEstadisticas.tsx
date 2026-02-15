@@ -1,10 +1,9 @@
-import { Grid, Paper, Text, Group, Stack, Title, RingProgress, Badge } from '@mantine/core';
+import { Grid, Paper, Text, Group, Stack, Title, Badge } from '@mantine/core';
 import { BarChart, LineChart, DonutChart } from '@mantine/charts';
-import { 
-  IconReportMoney, 
-  IconAlertTriangle, 
-  IconDroplet, 
-  IconCheck,
+import {
+  IconReportMoney,
+  IconAlertTriangle,
+  IconDroplet,
   IconChartBar,
   IconChartLine,
   IconPieChart
@@ -98,7 +97,6 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
               h={300}
               data={financeData}
               dataKey="rubro"
-              type="grouped"
               series={[
                 { name: 'proyectado', color: 'gray.4', label: 'Proyectado' },
                 { name: 'real', color: 'blue.6', label: 'Real' },

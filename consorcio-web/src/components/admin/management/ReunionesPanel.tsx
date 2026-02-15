@@ -1,32 +1,28 @@
 import {
+  ActionIcon,
   Badge,
   Button,
   Card,
   Container,
+  Divider,
   Group,
-  Stack,
-  Table,
-  Text,
-  Title,
-  Paper,
-  ActionIcon,
   Modal,
+  MultiSelect,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
   TextInput,
   Textarea,
-  Select,
-  Divider,
-  List,
-  ThemeIcon,
-  SimpleGrid,
-  MultiSelect
+  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useEffect, useState, useMemo } from 'react';
-import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import { IconPlus, IconCalendar, IconArrowRight, IconLink, IconMessageDots, IconTrash } from '../../ui/icons';
 import { LoadingState } from '../../ui';
+import { IconCalendar, IconLink, IconMessageDots, IconPlus, IconTrash } from '../../ui/icons';
 
 interface Reunion {
   id: string;
@@ -43,7 +39,10 @@ interface AgendaItem {
   referencias: Array<{
     entidad_tipo: string;
     entidad_id: string;
-    metadata?: any;
+    metadata?: {
+      label?: string;
+      [key: string]: unknown;
+    };
   }>;
 }
 
@@ -65,10 +64,10 @@ export default function ReunionesPanel() {
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
 
-  const [opened, { open, close }] = useDisclosure(false);
+  const [_opened, { open: _open, close: _close }] = useDisclosure(false);
   const [agendaOpened, { open: openAgenda, close: closeAgenda }] = useDisclosure(false);
 
-  const fetchReuniones = async () => {
+  const fetchReuniones = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiFetch<Reunion[]>('/management/reuniones');
@@ -78,16 +77,19 @@ export default function ReunionesPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleExportPDF = async () => {
     if (!selectedReunion) return;
     setExporting(true);
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v1/management/reuniones/${selectedReunion.id}/export-pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await fetch(
+        `${API_URL}/api/v1/management/reuniones/${selectedReunion.id}/export-pdf`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (!response.ok) throw new Error('Error al generar PDF');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -115,34 +117,38 @@ export default function ReunionesPanel() {
   };
 
   // Cargar todas las cosas que se pueden "arrobar"
-  const fetchReferrables = async () => {
+  const fetchReferrables = useCallback(async () => {
     setLoadingEntities(true);
     try {
       const [reports, tramites, assets] = await Promise.all([
-        apiFetch<any[]>('/reports?limit=50'),
-        apiFetch<any[]>('/management/tramites'),
-        apiFetch<any[]>('/infrastructure/assets')
+        apiFetch<Array<{ id: string; tipo: string; ubicacion_texto?: string }>>(
+          '/reports?limit=50'
+        ),
+        apiFetch<Array<{ id: string; titulo: string; numero_expediente?: string }>>(
+          '/management/tramites'
+        ),
+        apiFetch<Array<{ id: string; nombre: string; tipo: string }>>('/infrastructure/assets'),
       ]);
 
       const options: EntityOption[] = [
-        ...reports.map(r => ({
+        ...reports.map((r) => ({
           value: r.id,
-          label: `${r.tipo.replace('_', ' ')} - ${r.ubicacion_texto || r.id.slice(0,5)}`,
+          label: `${r.tipo.replace('_', ' ')} - ${r.ubicacion_texto || r.id.slice(0, 5)}`,
           group: 'Reportes',
-          type: 'reporte'
+          type: 'reporte',
         })),
-        ...tramites.map(t => ({
+        ...tramites.map((t) => ({
           value: t.id,
           label: `${t.titulo} (${t.numero_expediente || 'S/N'})`,
           group: 'Tramites',
-          type: 'tramite'
+          type: 'tramite',
         })),
-        ...assets.map(a => ({
+        ...assets.map((a) => ({
           value: a.id,
           label: `${a.nombre} (${a.tipo})`,
           group: 'Infraestructura',
-          type: 'infraestructura'
-        }))
+          type: 'infraestructura',
+        })),
       ];
       setAvailableEntities(options);
     } catch (err) {
@@ -150,12 +156,15 @@ export default function ReunionesPanel() {
     } finally {
       setLoadingEntities(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchReuniones();
-    fetchReferrables();
-  }, []);
+    const loadData = async () => {
+      await fetchReuniones();
+      await fetchReferrables();
+    };
+    loadData();
+  }, [fetchReuniones, fetchReferrables]);
 
   const handleViewAgenda = (reunion: Reunion) => {
     setSelectedReunion(reunion);
@@ -167,20 +176,20 @@ export default function ReunionesPanel() {
     initialValues: {
       titulo: '',
       descripcion: '',
-      referencias: [] as string[] // IDs de las entidades seleccionadas
-    }
+      referencias: [] as string[], // IDs de las entidades seleccionadas
+    },
   });
 
   const handleAddTopic = async (values: typeof itemForm.values) => {
     if (!selectedReunion) return;
 
     // Preparar payload con metadata para la tabla de referencias
-    const selectedRefs = values.referencias.map(id => {
-      const entity = availableEntities.find(e => e.value === id);
+    const selectedRefs = values.referencias.map((id) => {
+      const entity = availableEntities.find((e) => e.value === id);
       return {
         entidad_id: id,
         entidad_tipo: entity?.type || 'otro',
-        metadata: { label: entity?.label }
+        metadata: { label: entity?.label },
       };
     });
 
@@ -191,10 +200,10 @@ export default function ReunionesPanel() {
           item: {
             titulo: values.titulo,
             descripcion: values.descripcion,
-            orden: agenda.length + 1
+            orden: agenda.length + 1,
           },
-          referencias: selectedRefs
-        })
+          referencias: selectedRefs,
+        }),
       });
 
       itemForm.reset();
@@ -213,7 +222,7 @@ export default function ReunionesPanel() {
           <Title order={2}>Reuniones de Comision</Title>
           <Text c="dimmed">Planificacion de orden del dia y actas</Text>
         </div>
-        <Button leftSection={<IconCalendar size={18} />} onClick={open} color="violet">
+        <Button leftSection={<IconCalendar size={18} />} onClick={_open} color="violet">
           Nueva Reunion
         </Button>
       </Group>
@@ -225,11 +234,17 @@ export default function ReunionesPanel() {
               <Badge color={r.estado === 'planificada' ? 'blue' : 'green'} variant="light">
                 {r.estado.toUpperCase()}
               </Badge>
-              <Text size="xs" c="dimmed">{new Date(r.fecha_reunion).toLocaleDateString()}</Text>
+              <Text size="xs" c="dimmed">
+                {new Date(r.fecha_reunion).toLocaleDateString()}
+              </Text>
             </Group>
 
-            <Text fw={700} mb="xs">{r.titulo}</Text>
-            <Text size="sm" c="dimmed" mb="md">Lugar: {r.lugar}</Text>
+            <Text fw={700} mb="xs">
+              {r.titulo}
+            </Text>
+            <Text size="sm" c="dimmed" mb="md">
+              Lugar: {r.lugar}
+            </Text>
 
             <Button
               fullWidth
@@ -250,15 +265,14 @@ export default function ReunionesPanel() {
           <Stack gap="md">
             <Group justify="space-between">
               <div>
-                <Text fw={700} size="lg">{selectedReunion.titulo}</Text>
-                <Text size="sm" c="dimmed">{new Date(selectedReunion.fecha_reunion).toLocaleString()}</Text>
+                <Text fw={700} size="lg">
+                  {selectedReunion.titulo}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {new Date(selectedReunion.fecha_reunion).toLocaleString()}
+                </Text>
               </div>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={handleExportPDF}
-                loading={exporting}
-              >
+              <Button size="xs" variant="outline" onClick={handleExportPDF} loading={exporting}>
                 Exportar PDF
               </Button>
             </Group>
@@ -267,7 +281,9 @@ export default function ReunionesPanel() {
 
             {agenda.length === 0 ? (
               <Paper p="xl" withBorder style={{ borderStyle: 'dashed' }}>
-                <Text ta="center" c="dimmed">No hay temas en la agenda todavia.</Text>
+                <Text ta="center" c="dimmed">
+                  No hay temas en la agenda todavia.
+                </Text>
               </Paper>
             ) : (
               <Stack gap="sm">
@@ -275,8 +291,12 @@ export default function ReunionesPanel() {
                   <Paper key={item.id} p="md" withBorder radius="md">
                     <Group justify="space-between" align="flex-start">
                       <div style={{ flex: 1 }}>
-                        <Text fw={600}>{index + 1}. {item.titulo}</Text>
-                        <Text size="sm" c="dimmed" mb="xs">{item.descripcion}</Text>
+                        <Text fw={600}>
+                          {index + 1}. {item.titulo}
+                        </Text>
+                        <Text size="sm" c="dimmed" mb="xs">
+                          {item.descripcion}
+                        </Text>
 
                         {/* Referencias (Los @arrobados) */}
                         {item.referencias && item.referencias.length > 0 && (
@@ -287,19 +307,26 @@ export default function ReunionesPanel() {
                                 size="xs"
                                 variant="outline"
                                 color={
-                                  ref.entidad_tipo === 'reporte' ? 'red' :
-                                  ref.entidad_tipo === 'tramite' ? 'blue' :
-                                  ref.entidad_tipo === 'infraestructura' ? 'green' : 'gray'
+                                  ref.entidad_tipo === 'reporte'
+                                    ? 'red'
+                                    : ref.entidad_tipo === 'tramite'
+                                      ? 'blue'
+                                      : ref.entidad_tipo === 'infraestructura'
+                                        ? 'green'
+                                        : 'gray'
                                 }
                                 leftSection={<IconLink size={10} />}
                               >
-                                {ref.metadata?.label || `${ref.entidad_tipo.toUpperCase()} #${ref.entidad_id.slice(0,5)}`}
+                                {ref.metadata?.label ||
+                                  `${ref.entidad_tipo.toUpperCase()} #${ref.entidad_id.slice(0, 5)}`}
                               </Badge>
                             ))}
                           </Group>
                         )}
                       </div>
-                      <ActionIcon color="red" variant="subtle"><IconTrash size={16} /></ActionIcon>
+                      <ActionIcon color="red" variant="subtle">
+                        <IconTrash size={16} />
+                      </ActionIcon>
                     </Group>
                   </Paper>
                 ))}
@@ -307,7 +334,9 @@ export default function ReunionesPanel() {
             )}
 
             <Paper p="md" bg="gray.0" radius="md">
-              <Text fw={600} size="sm" mb="sm">Agregar Tema a la Agenda</Text>
+              <Text fw={600} size="sm" mb="sm">
+                Agregar Tema a la Agenda
+              </Text>
               <form onSubmit={itemForm.onSubmit(handleAddTopic)}>
                 <Stack gap="xs">
                   <TextInput

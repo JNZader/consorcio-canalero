@@ -116,8 +116,8 @@ export default function ImageExplorerPanel() {
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const center = config?.map.center 
-      ? ([config.map.center.lat, config.map.center.lng] as [number, number]) 
+    const center = config?.map.center
+      ? ([config.map.center.lat, config.map.center.lng] as [number, number])
       : MAP_CENTER;
     const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
@@ -150,7 +150,7 @@ export default function ImageExplorerPanel() {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [config?.map.center, config?.map.zoom]);
 
   // Cargar capa zona del consorcio
   useEffect(() => {

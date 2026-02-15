@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Container,
+  Divider,
   Group,
   Paper,
   Progress,
@@ -9,36 +10,20 @@ import {
   Stack,
   Table,
   Text,
-  ThemeIcon,
   Title,
-  Divider,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import type { ReactNode } from 'react';
-import { CONSORCIO_AREA_HA, CONSORCIO_AREA_DISPLAY, CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
-import { useConfigStore } from '../../stores/configStore';
-import { useMonitoringDashboard, useReports } from '../../lib/query';
+import { useState } from 'react';
+import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
+import { API_URL, getAuthToken } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
+import { useMonitoringDashboard, useReports } from '../../lib/query';
+import { useConfigStore } from '../../stores/configStore';
 import { LoadingState } from '../ui';
 import { StatusBadge } from '../ui/StatusBadge';
-import {
-  IconClipboardList,
-  IconDownload,
-  IconMap,
-  IconPhoto,
-} from '../ui/icons';
+import { IconDownload } from '../ui/icons';
 import { DashboardEstadisticas } from './management/DashboardEstadisticas';
-import { API_URL, getAuthToken } from '../../lib/api';
-import { useState } from 'react';
-
-interface QuickStat {
-  readonly label: string;
-  readonly value: string | number;
-  readonly icon: ReactNode;
-  readonly color: string;
-  readonly description?: string;
-}
 
 // Nombres legibles de cuencas (fallback)
 const DEFAULT_CUENCA_NAMES: Record<string, string> = {
@@ -64,9 +49,6 @@ export default function AdminDashboard() {
     refetch: refetchMonitoring,
   } = useMonitoringDashboard();
 
-  // Contar reportes pendientes
-  const reportesPendientes = recentReports.filter(r => r.estado === 'pendiente').length;
-
   const handleRetry = () => {
     refetchReports();
     refetchMonitoring();
@@ -78,8 +60,8 @@ export default function AdminDashboard() {
       const token = await getAuthToken();
       const response = await fetch(`${API_URL}/api/v1/management/export-integral`, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) throw new Error('Error al generar PDF');
@@ -154,13 +136,16 @@ export default function AdminDashboard() {
             Monitoreo Satelital por Cuenca
           </Title>
           {monitoringLoading ? (
-            <Text c="gray.6" ta="center" py="md">Cargando datos...</Text>
+            <Text c="gray.6" ta="center" py="md">
+              Cargando datos...
+            </Text>
           ) : rankingCuencas.length > 0 ? (
             <Stack gap="md">
               {rankingCuencas.map((cuenca) => {
-                const cuencaConfig = config?.cuencas.find(c => c.id === cuenca.cuenca);
+                const cuencaConfig = config?.cuencas.find((c) => c.id === cuenca.cuenca);
                 const color = cuencaConfig?.color || DEFAULT_CUENCA_COLORS[cuenca.cuenca] || 'blue';
-                const nombre = cuencaConfig?.nombre || DEFAULT_CUENCA_NAMES[cuenca.cuenca] || cuenca.cuenca;
+                const nombre =
+                  cuencaConfig?.nombre || DEFAULT_CUENCA_NAMES[cuenca.cuenca] || cuenca.cuenca;
                 const progressValue = Math.min(cuenca.porcentaje_problematico * 10, 100);
                 return (
                   <div key={cuenca.cuenca}>
@@ -169,7 +154,8 @@ export default function AdminDashboard() {
                         {nombre}
                       </Text>
                       <Text size="sm" c="gray.6">
-                        {cuenca.area_anegada_ha.toFixed(1)} ha ({cuenca.porcentaje_problematico.toFixed(2)}%)
+                        {cuenca.area_anegada_ha.toFixed(1)} ha (
+                        {cuenca.porcentaje_problematico.toFixed(2)}%)
                       </Text>
                     </Group>
                     <Progress value={progressValue} color={color} size="lg" radius="xl" />
