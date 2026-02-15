@@ -27,8 +27,10 @@ logger = get_logger(__name__)
 # SCHEMAS
 # ===========================================
 
+
 class SugerenciaBase(BaseModel):
     """Base schema para sugerencias."""
+
     titulo: str = Field(..., min_length=5, max_length=200)
     descripcion: str = Field(..., min_length=10)
     categoria: Optional[str] = None
@@ -36,6 +38,7 @@ class SugerenciaBase(BaseModel):
 
 class SugerenciaCiudadanaCreate(SugerenciaBase):
     """Schema para crear sugerencia ciudadana (publica)."""
+
     contacto_nombre: Optional[str] = None
     contacto_email: Optional[EmailStr] = None
     contacto_telefono: Optional[str] = None
@@ -44,12 +47,14 @@ class SugerenciaCiudadanaCreate(SugerenciaBase):
 
 class SugerenciaInternaCreate(SugerenciaBase):
     """Schema para crear tema interno (comision)."""
+
     prioridad: Optional[str] = "normal"
     cuenca_id: Optional[str] = None  # Cuenca asociada (opcional)
 
 
 class SugerenciaUpdate(BaseModel):
     """Schema para actualizar sugerencia."""
+
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     categoria: Optional[str] = None
@@ -63,16 +68,19 @@ class SugerenciaUpdate(BaseModel):
 
 class AgendarRequest(BaseModel):
     """Schema para agendar sugerencia a una reunion."""
+
     fecha_reunion: date
 
 
 class ResolverRequest(BaseModel):
     """Schema para resolver sugerencia."""
+
     resolucion: str = Field(..., min_length=5, max_length=2000)
 
 
 class SugerenciaResponse(BaseModel):
     """Schema de respuesta para sugerencia."""
+
     id: UUID
     tipo: str
     titulo: str
@@ -93,6 +101,7 @@ class SugerenciaResponse(BaseModel):
 
 class SugerenciaListResponse(BaseModel):
     """Schema para lista paginada."""
+
     items: List[SugerenciaResponse]
     total: int
     page: int
@@ -101,6 +110,7 @@ class SugerenciaListResponse(BaseModel):
 
 class HistorialEntry(BaseModel):
     """Schema para entrada de historial."""
+
     id: UUID
     accion: str
     estado_anterior: Optional[str]
@@ -114,8 +124,10 @@ class HistorialEntry(BaseModel):
 # ENDPOINTS PUBLICOS
 # ===========================================
 
+
 class RateLimitResponse(BaseModel):
     """Respuesta con info de rate limit."""
+
     remaining: int
     limit: int
     reset_hours: int = 24
@@ -154,12 +166,14 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
     # Contar envios en las ultimas 24 horas
     yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
-    count_result = supabase.table("contact_submissions") \
-        .select("id", count="exact") \
-        .eq("contact_value", contact_value.lower()) \
-        .eq("submission_type", "sugerencia") \
-        .gte("created_at", yesterday) \
+    count_result = (
+        supabase.table("contact_submissions")
+        .select("id", count="exact")
+        .eq("contact_value", contact_value.lower())
+        .eq("submission_type", "sugerencia")
+        .gte("created_at", yesterday)
         .execute()
+    )
 
     submissions_today = count_result.count or 0
 
@@ -202,20 +216,24 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
     sugerencia = result.data[0]
 
     # Registrar envio para rate limiting
-    supabase.table("contact_submissions").insert({
-        "contact_type": contact_type,
-        "contact_value": contact_value.lower(),
-        "submission_type": "sugerencia",
-        "submission_id": sugerencia["id"],
-    }).execute()
+    supabase.table("contact_submissions").insert(
+        {
+            "contact_type": contact_type,
+            "contact_value": contact_value.lower(),
+            "submission_type": "sugerencia",
+            "submission_id": sugerencia["id"],
+        }
+    ).execute()
 
     # Registrar en historial
-    supabase.table("sugerencias_historial").insert({
-        "sugerencia_id": sugerencia["id"],
-        "accion": "creado",
-        "estado_nuevo": "pendiente",
-        "notas": f"Sugerencia ciudadana recibida (contacto verificado: {contact_type})",
-    }).execute()
+    supabase.table("sugerencias_historial").insert(
+        {
+            "sugerencia_id": sugerencia["id"],
+            "accion": "creado",
+            "estado_nuevo": "pendiente",
+            "notas": f"Sugerencia ciudadana recibida (contacto verificado: {contact_type})",
+        }
+    ).execute()
 
     remaining = MAX_SUGERENCIAS_POR_DIA - submissions_today - 1
 
@@ -253,12 +271,14 @@ async def verificar_limite_sugerencias(
 
     yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
-    count_result = supabase.table("contact_submissions") \
-        .select("id", count="exact") \
-        .eq("contact_value", contact_value.lower()) \
-        .eq("submission_type", "sugerencia") \
-        .gte("created_at", yesterday) \
+    count_result = (
+        supabase.table("contact_submissions")
+        .select("id", count="exact")
+        .eq("contact_value", contact_value.lower())
+        .eq("submission_type", "sugerencia")
+        .gte("created_at", yesterday)
         .execute()
+    )
 
     submissions_today = count_result.count or 0
     remaining = max(0, MAX_SUGERENCIAS_POR_DIA - submissions_today)
@@ -273,6 +293,7 @@ async def verificar_limite_sugerencias(
 # ===========================================
 # ENDPOINTS AUTENTICADOS (COMISION)
 # ===========================================
+
 
 @router.get("", response_model=SugerenciaListResponse)
 async def listar_sugerencias(
@@ -363,7 +384,9 @@ async def obtener_estadisticas(
         )
         stats[tipo_key] = result.count or 0
 
-    stats["total"] = stats["pendiente"] + stats["en_agenda"] + stats["tratado"] + stats["descartado"]
+    stats["total"] = (
+        stats["pendiente"] + stats["en_agenda"] + stats["tratado"] + stats["descartado"]
+    )
 
     return stats
 
@@ -378,12 +401,14 @@ async def temas_proxima_reunion(
     supabase = get_supabase_client()
 
     # Buscar temas en_agenda ordenados por prioridad
-    result = supabase.table("sugerencias") \
-        .select("*") \
-        .eq("estado", "en_agenda") \
-        .order("prioridad", desc=True) \
-        .order("created_at") \
+    result = (
+        supabase.table("sugerencias")
+        .select("*")
+        .eq("estado", "en_agenda")
+        .order("prioridad", desc=True)
+        .order("created_at")
         .execute()
+    )
 
     return result.data
 
@@ -430,13 +455,15 @@ async def crear_tema_interno(
     sugerencia = result.data[0]
 
     # Registrar en historial
-    supabase.table("sugerencias_historial").insert({
-        "sugerencia_id": sugerencia["id"],
-        "usuario_id": user.id,
-        "accion": "creado",
-        "estado_nuevo": "pendiente",
-        "notas": "Tema interno propuesto",
-    }).execute()
+    supabase.table("sugerencias_historial").insert(
+        {
+            "sugerencia_id": sugerencia["id"],
+            "usuario_id": user.id,
+            "accion": "creado",
+            "estado_nuevo": "pendiente",
+            "notas": "Tema interno propuesto",
+        }
+    ).execute()
 
     logger.info(
         "Internal topic created",
@@ -461,11 +488,13 @@ async def obtener_sugerencia(
 
     supabase = get_supabase_client()
 
-    result = supabase.table("sugerencias") \
-        .select("*") \
-        .eq("id", str(sugerencia_id)) \
-        .single() \
+    result = (
+        supabase.table("sugerencias")
+        .select("*")
+        .eq("id", str(sugerencia_id))
+        .single()
         .execute()
+    )
 
     if not result.data:
         raise SuggestionNotFoundError(str(sugerencia_id))
@@ -487,11 +516,13 @@ async def obtener_historial(
 
     supabase = get_supabase_client()
 
-    result = supabase.table("sugerencias_historial") \
-        .select("*, perfiles(nombre)") \
-        .eq("sugerencia_id", str(sugerencia_id)) \
-        .order("created_at", desc=True) \
+    result = (
+        supabase.table("sugerencias_historial")
+        .select("*, perfiles(nombre)")
+        .eq("sugerencia_id", str(sugerencia_id))
+        .order("created_at", desc=True)
         .execute()
+    )
 
     return result.data
 
@@ -516,11 +547,13 @@ async def actualizar_sugerencia(
     supabase = get_supabase_client()
 
     # Obtener estado actual
-    current = supabase.table("sugerencias") \
-        .select("estado, prioridad") \
-        .eq("id", str(sugerencia_id)) \
-        .single() \
+    current = (
+        supabase.table("sugerencias")
+        .select("estado, prioridad")
+        .eq("id", str(sugerencia_id))
+        .single()
         .execute()
+    )
 
     if not current.data:
         raise SuggestionNotFoundError(str(sugerencia_id))
@@ -539,10 +572,12 @@ async def actualizar_sugerencia(
         update_data["fecha_reunion"] = update_data["fecha_reunion"].isoformat()
 
     # Actualizar
-    result = supabase.table("sugerencias") \
-        .update(update_data) \
-        .eq("id", str(sugerencia_id)) \
+    result = (
+        supabase.table("sugerencias")
+        .update(update_data)
+        .eq("id", str(sugerencia_id))
         .execute()
+    )
 
     if not result.data:
         logger.error(
@@ -563,14 +598,16 @@ async def actualizar_sugerencia(
         elif data.estado == "tratado":
             accion = "resuelto"
 
-        supabase.table("sugerencias_historial").insert({
-            "sugerencia_id": str(sugerencia_id),
-            "usuario_id": user.id,
-            "accion": accion,
-            "estado_anterior": current.data["estado"],
-            "estado_nuevo": data.estado,
-            "notas": data.resolucion if data.estado == "tratado" else None,
-        }).execute()
+        supabase.table("sugerencias_historial").insert(
+            {
+                "sugerencia_id": str(sugerencia_id),
+                "usuario_id": user.id,
+                "accion": accion,
+                "estado_anterior": current.data["estado"],
+                "estado_nuevo": data.estado,
+                "notas": data.resolucion if data.estado == "tratado" else None,
+            }
+        ).execute()
 
         logger.info(
             "Suggestion status changed",
@@ -602,25 +639,31 @@ async def agendar_sugerencia(
 
     supabase = get_supabase_client()
 
-    result = supabase.table("sugerencias") \
-        .update({
-            "estado": "en_agenda",
-            "fecha_reunion": data.fecha_reunion.isoformat(),
-        }) \
-        .eq("id", str(sugerencia_id)) \
+    result = (
+        supabase.table("sugerencias")
+        .update(
+            {
+                "estado": "en_agenda",
+                "fecha_reunion": data.fecha_reunion.isoformat(),
+            }
+        )
+        .eq("id", str(sugerencia_id))
         .execute()
+    )
 
     if not result.data:
         raise SuggestionNotFoundError(str(sugerencia_id))
 
     # Registrar en historial
-    supabase.table("sugerencias_historial").insert({
-        "sugerencia_id": str(sugerencia_id),
-        "usuario_id": user.id,
-        "accion": "agendado",
-        "estado_nuevo": "en_agenda",
-        "notas": f"Agendado para reunion del {data.fecha_reunion}",
-    }).execute()
+    supabase.table("sugerencias_historial").insert(
+        {
+            "sugerencia_id": str(sugerencia_id),
+            "usuario_id": user.id,
+            "accion": "agendado",
+            "estado_nuevo": "en_agenda",
+            "notas": f"Agendado para reunion del {data.fecha_reunion}",
+        }
+    ).execute()
 
     logger.info(
         "Suggestion scheduled",
@@ -650,25 +693,31 @@ async def resolver_sugerencia(
 
     supabase = get_supabase_client()
 
-    result = supabase.table("sugerencias") \
-        .update({
-            "estado": "tratado",
-            "resolucion": data.resolucion,
-        }) \
-        .eq("id", str(sugerencia_id)) \
+    result = (
+        supabase.table("sugerencias")
+        .update(
+            {
+                "estado": "tratado",
+                "resolucion": data.resolucion,
+            }
+        )
+        .eq("id", str(sugerencia_id))
         .execute()
+    )
 
     if not result.data:
         raise SuggestionNotFoundError(str(sugerencia_id))
 
     # Registrar en historial
-    supabase.table("sugerencias_historial").insert({
-        "sugerencia_id": str(sugerencia_id),
-        "usuario_id": user.id,
-        "accion": "resuelto",
-        "estado_nuevo": "tratado",
-        "notas": data.resolucion,
-    }).execute()
+    supabase.table("sugerencias_historial").insert(
+        {
+            "sugerencia_id": str(sugerencia_id),
+            "usuario_id": user.id,
+            "accion": "resuelto",
+            "estado_nuevo": "tratado",
+            "notas": data.resolucion,
+        }
+    ).execute()
 
     logger.info(
         "Suggestion resolved",
@@ -697,10 +746,9 @@ async def eliminar_sugerencia(
 
     supabase = get_supabase_client()
 
-    result = supabase.table("sugerencias") \
-        .delete() \
-        .eq("id", str(sugerencia_id)) \
-        .execute()
+    result = (
+        supabase.table("sugerencias").delete().eq("id", str(sugerencia_id)).execute()
+    )
 
     if not result.data:
         raise SuggestionNotFoundError(str(sugerencia_id))

@@ -13,7 +13,7 @@ celery_app = Celery(
     "consorcio_tasks",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.services.gee_analysis_tasks"]
+    include=["app.services.gee_analysis_tasks"],
 )
 
 # Optional configuration

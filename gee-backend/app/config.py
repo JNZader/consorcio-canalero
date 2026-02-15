@@ -42,7 +42,9 @@ class Settings(BaseSettings):
     rate_limit_window: int = 60
 
     # App
-    cors_origins: str = "http://localhost:4321,http://localhost:3000,http://localhost:5173"
+    cors_origins: str = (
+        "http://localhost:4321,http://localhost:3000,http://localhost:5173"
+    )
     api_prefix: str = "/api/v1"
     debug: bool = False
     frontend_url: str = "http://localhost:4321"
@@ -62,7 +64,7 @@ class Settings(BaseSettings):
         """Retorna la secret/service_role key efectiva (nuevo o legacy)."""
         return self.supabase_secret_key or self.supabase_service_role_key
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_supabase_keys(self):
         """Validar que al menos una key de Supabase este configurada."""
         has_new = self.supabase_publishable_key is not None

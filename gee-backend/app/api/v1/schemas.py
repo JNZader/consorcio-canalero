@@ -3,9 +3,7 @@ Pydantic models for API request/response validation.
 Replaces raw Dict[str, Any] parameters with typed schemas.
 """
 
-from datetime import date, datetime
 from typing import List, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -19,11 +17,15 @@ class AssetCreate(BaseModel):
     """Schema for creating a new infrastructure asset."""
 
     nombre: str = Field(..., min_length=1, max_length=200)
-    tipo: str = Field(..., description="Tipo de activo: canal, alcantarilla, compuerta, etc.")
+    tipo: str = Field(
+        ..., description="Tipo de activo: canal, alcantarilla, compuerta, etc."
+    )
     cuenca: Optional[str] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None
-    estado_actual: str = Field(default="bueno", description="Estado: bueno, regular, malo, critico")
+    estado_actual: str = Field(
+        default="bueno", description="Estado: bueno, regular, malo, critico"
+    )
     descripcion: Optional[str] = None
     material: Optional[str] = None
     dimensiones: Optional[str] = None
@@ -46,11 +48,17 @@ class AssetUpdate(BaseModel):
 class MaintenanceLogCreate(BaseModel):
     """Schema for creating a maintenance log entry."""
 
-    infraestructura_id: str = Field(..., description="UUID del activo de infraestructura")
+    infraestructura_id: str = Field(
+        ..., description="UUID del activo de infraestructura"
+    )
     tipo_trabajo: str = Field(..., description="Tipo de trabajo realizado")
     descripcion: Optional[str] = None
-    fecha: Optional[str] = Field(default=None, description="Fecha del mantenimiento (ISO 8601)")
-    nuevo_estado: Optional[str] = Field(default="bueno", description="Estado despues del mantenimiento")
+    fecha: Optional[str] = Field(
+        default=None, description="Fecha del mantenimiento (ISO 8601)"
+    )
+    nuevo_estado: Optional[str] = Field(
+        default="bueno", description="Estado despues del mantenimiento"
+    )
     costo: Optional[float] = None
     responsable: Optional[str] = None
 
@@ -66,7 +74,9 @@ class TramiteCreate(BaseModel):
     titulo: str = Field(..., min_length=1, max_length=300)
     descripcion: Optional[str] = None
     tipo: str = Field(..., description="Tipo de tramite")
-    organismo: Optional[str] = Field(default=None, description="Organismo ante el que se tramita")
+    organismo: Optional[str] = Field(
+        default=None, description="Organismo ante el que se tramita"
+    )
     estado: str = Field(default="iniciado")
     prioridad: Optional[str] = Field(default="media")
     fecha_inicio: Optional[str] = None
@@ -88,7 +98,9 @@ class TramiteAvanceCreate(BaseModel):
     tramite_id: str = Field(..., description="UUID del tramite")
     descripcion: str = Field(..., min_length=1)
     fecha: Optional[str] = None
-    nuevo_estado: Optional[str] = Field(default=None, description="Nuevo estado del tramite si cambio")
+    nuevo_estado: Optional[str] = Field(
+        default=None, description="Nuevo estado del tramite si cambio"
+    )
     documentos: Optional[List[str]] = None
 
 
@@ -194,7 +206,9 @@ class GastoCreate(BaseModel):
     monto: float = Field(..., gt=0)
     fecha: str = Field(..., description="Fecha del gasto (YYYY-MM-DD)")
     categoria: str = Field(..., description="Categoria del gasto")
-    infraestructura_id: Optional[str] = Field(default=None, description="UUID del activo relacionado")
+    infraestructura_id: Optional[str] = Field(
+        default=None, description="UUID del activo relacionado"
+    )
     comprobante: Optional[str] = None
     proveedor: Optional[str] = None
     notas: Optional[str] = None

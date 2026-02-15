@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple
 # Magic bytes signatures for common image formats
 # Format: (magic_bytes, offset, mime_type)
 MAGIC_SIGNATURES: Dict[str, Tuple[bytes, int, str]] = {
-    "jpeg": (b"\xFF\xD8\xFF", 0, "image/jpeg"),
+    "jpeg": (b"\xff\xd8\xff", 0, "image/jpeg"),
     "png": (b"\x89PNG\r\n\x1a\n", 0, "image/png"),
     "webp": (b"WEBP", 8, "image/webp"),  # RIFF header + 4 bytes size, then WEBP
     "gif": (b"GIF8", 0, "image/gif"),
@@ -75,7 +75,7 @@ def validate_image_magic_bytes(content: bytes, claimed_type: str) -> Tuple[bool,
     normalized_claimed = claimed_type.lower().replace("image/jpg", "image/jpeg")
 
     if actual_type != normalized_claimed:
-        return False, f"El contenido del archivo no coincide con el tipo declarado"
+        return False, "El contenido del archivo no coincide con el tipo declarado"
 
     return True, actual_type
 

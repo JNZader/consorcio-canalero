@@ -5,9 +5,9 @@ Endpoints para obtener capas desde Google Earth Engine.
 
 import asyncio
 from datetime import date
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 from app.services.gee_service import (
     get_layer_geojson,
@@ -43,7 +43,7 @@ async def list_gee_layers() -> JSONResponse:
         content=get_available_layers(),
         headers={
             "Cache-Control": "public, max-age=86400",  # Cache 24 horas - lista es estatica
-        }
+        },
     )
 
 
@@ -110,6 +110,7 @@ async def get_sentinel2_tiles(
 # ENDPOINTS DE RED VIAL POR CONSORCIO CAMINERO
 # =========================================================================
 
+
 @router.get("/caminos/consorcios")
 async def list_consorcios_camineros() -> JSONResponse:
     """
@@ -141,7 +142,7 @@ async def list_consorcios_camineros() -> JSONResponse:
             },
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except Exception as e:
         logger.error("Error obteniendo consorcios camineros", error=str(e))
@@ -190,12 +191,14 @@ async def get_caminos_consorcio(codigo: str) -> JSONResponse:
             content=geojson,
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except AppException:
         raise
     except Exception as e:
-        logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
+        logger.error(
+            "Error obteniendo caminos por consorcio", codigo=codigo, error=str(e)
+        )
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -205,7 +208,7 @@ async def get_caminos_consorcio(codigo: str) -> JSONResponse:
 
 @router.get("/caminos/por-nombre")
 async def get_caminos_por_nombre_consorcio(
-    nombre: str = Query(..., description="Nombre del consorcio (ccn)")
+    nombre: str = Query(..., description="Nombre del consorcio (ccn)"),
 ) -> JSONResponse:
     """
     Obtener caminos de un consorcio caminero por nombre.
@@ -242,12 +245,14 @@ async def get_caminos_por_nombre_consorcio(
             content=geojson,
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except AppException:
         raise
     except Exception as e:
-        logger.error("Error obteniendo caminos por nombre consorcio", nombre=nombre, error=str(e))
+        logger.error(
+            "Error obteniendo caminos por nombre consorcio", nombre=nombre, error=str(e)
+        )
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -287,7 +292,7 @@ async def get_caminos_coloreados() -> JSONResponse:
             content=result,
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except Exception as e:
         logger.error("Error obteniendo caminos coloreados", error=str(e))
@@ -326,7 +331,7 @@ async def get_estadisticas_caminos() -> JSONResponse:
             content=result,
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except Exception as e:
         logger.error("Error obteniendo estadisticas de consorcios", error=str(e))
@@ -340,6 +345,7 @@ async def get_estadisticas_caminos() -> JSONResponse:
 # =========================================================================
 # ENDPOINT GENERICO DE CAPAS
 # =========================================================================
+
 
 @router.get("/{layer_name}")
 async def get_gee_layer(layer_name: str) -> JSONResponse:
@@ -370,7 +376,7 @@ async def get_gee_layer(layer_name: str) -> JSONResponse:
             content=geojson,
             headers={
                 "Cache-Control": "public, max-age=3600",  # Cache 1 hora
-            }
+            },
         )
     except ValueError as e:
         raise NotFoundError(

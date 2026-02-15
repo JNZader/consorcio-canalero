@@ -2,15 +2,16 @@
 Padron and Payments Endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import List, Optional
+from fastapi import APIRouter, Depends, Query
+from typing import Optional
 from uuid import UUID
 
 from app.services.padron_service import get_padron_service
 from app.auth import User, require_admin_or_operator, require_authenticated
-from app.api.v1.schemas import ConsorcistaCreate, ConsorcistaUpdate, PagoCreate
+from app.api.v1.schemas import ConsorcistaCreate, PagoCreate
 
 router = APIRouter()
+
 
 @router.get("/consorcistas")
 async def list_consorcistas(
@@ -20,6 +21,7 @@ async def list_consorcistas(
     service = get_padron_service()
     return service.get_consorcistas(search)
 
+
 @router.post("/consorcistas")
 async def add_consorcista(
     data: ConsorcistaCreate,
@@ -28,6 +30,7 @@ async def add_consorcista(
     service = get_padron_service()
     return service.create_consorcista(data.model_dump(exclude_unset=True))
 
+
 @router.get("/consorcistas/{consorcista_id}/pagos")
 async def get_pagos(
     consorcista_id: UUID,
@@ -35,6 +38,7 @@ async def get_pagos(
 ):
     service = get_padron_service()
     return service.get_pagos_by_consorcista(consorcista_id)
+
 
 @router.post("/pagos")
 async def register_payment(

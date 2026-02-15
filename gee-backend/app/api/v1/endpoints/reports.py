@@ -3,9 +3,9 @@ Reports Endpoints.
 Gestion de denuncias ciudadanas (admin).
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from enum import Enum
 
 from app.services.supabase_service import get_supabase_service
@@ -40,7 +40,9 @@ class ReportUpdate(BaseModel):
     """Datos para actualizar una denuncia."""
 
     estado: Optional[ReportStatus] = None
-    asignado_a: Optional[str] = Field(default=None, description="ID del operador asignado")
+    asignado_a: Optional[str] = Field(
+        default=None, description="ID del operador asignado"
+    )
     notas_internas: Optional[str] = None
     prioridad: Optional[ReportPriority] = None
     resolucion_descripcion: Optional[str] = None
@@ -173,9 +175,17 @@ async def update_report(
 
     data = updates.model_dump(exclude_unset=True)
     if "estado" in data:
-        data["estado"] = data["estado"].value if isinstance(data["estado"], ReportStatus) else data["estado"]
+        data["estado"] = (
+            data["estado"].value
+            if isinstance(data["estado"], ReportStatus)
+            else data["estado"]
+        )
     if "prioridad" in data:
-        data["prioridad"] = data["prioridad"].value if isinstance(data["prioridad"], ReportPriority) else data["prioridad"]
+        data["prioridad"] = (
+            data["prioridad"].value
+            if isinstance(data["prioridad"], ReportPriority)
+            else data["prioridad"]
+        )
 
     result = db.update_report(report_id, data, user.id)
 

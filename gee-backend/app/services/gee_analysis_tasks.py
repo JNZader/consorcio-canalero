@@ -3,24 +3,27 @@ Celery tasks for Google Earth Engine analysis.
 Handles long-running GEE operations in the background.
 """
 
-from typing import Dict, Any, Optional
 from datetime import date
 from celery.utils.log import get_task_logger
 
 from app.core.celery_app import celery_app
-from app.services.gee_service import get_gee_service, get_image_explorer
 from app.services.monitoring_service import get_monitoring_service
 
 logger = get_task_logger(__name__)
 
+
 @celery_app.task(name="analyze_flood_task", bind=True)
-def analyze_flood_task(self, start_date_str: str, end_date_str: str, method: str = "fusion"):
+def analyze_flood_task(
+    self, start_date_str: str, end_date_str: str, method: str = "fusion"
+):
     """
     Async task to analyze floods using SAR and Optical data.
     Uses classify_parcels which performs multi-index classification
     including flood/waterlogging detection.
     """
-    logger.info(f"Starting flood analysis: {start_date_str} to {end_date_str} using {method}")
+    logger.info(
+        f"Starting flood analysis: {start_date_str} to {end_date_str} using {method}"
+    )
 
     try:
         # Convert strings back to date objects
@@ -44,6 +47,7 @@ def analyze_flood_task(self, start_date_str: str, end_date_str: str, method: str
         logger.error(f"Error in flood analysis task: {str(e)}")
         # Re-raise to let Celery handle it as a failure
         raise e
+
 
 @celery_app.task(name="supervised_classification_task", bind=True)
 def supervised_classification_task(self, start_date_str: str, end_date_str: str):

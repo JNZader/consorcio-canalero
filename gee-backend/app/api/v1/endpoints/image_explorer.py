@@ -5,7 +5,6 @@ Permite explorar imagenes satelitales de fechas especificas.
 
 import asyncio
 from datetime import date
-from typing import Optional
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -19,7 +18,9 @@ router = APIRouter(prefix="/images", tags=["Image Explorer"])
 @router.get("/sentinel2")
 async def get_sentinel2_image(
     target_date: date = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
-    days_buffer: int = Query(10, ge=1, le=30, description="Dias de busqueda antes/despues"),
+    days_buffer: int = Query(
+        10, ge=1, le=30, description="Dias de busqueda antes/despues"
+    ),
     max_cloud: int = Query(40, ge=0, le=100, description="Porcentaje maximo de nubes"),
     visualization: str = Query("rgb", description="Tipo de visualizacion"),
 ):
@@ -69,7 +70,9 @@ async def get_sentinel2_image(
 @router.get("/sentinel1")
 async def get_sentinel1_image(
     target_date: date = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
-    days_buffer: int = Query(10, ge=1, le=30, description="Dias de busqueda antes/despues"),
+    days_buffer: int = Query(
+        10, ge=1, le=30, description="Dias de busqueda antes/despues"
+    ),
     visualization: str = Query("vv", description="vv o vv_flood"),
 ):
     """
@@ -152,7 +155,7 @@ async def get_available_visualizations():
         content=explorer.get_available_visualizations(),
         headers={
             "Cache-Control": "public, max-age=86400",  # Cache 24 horas - lista estatica
-        }
+        },
     )
 
 
@@ -192,7 +195,7 @@ async def get_historic_floods():
         },
         headers={
             "Cache-Control": "public, max-age=86400",  # Cache 24 horas - lista estatica
-        }
+        },
     )
 
 

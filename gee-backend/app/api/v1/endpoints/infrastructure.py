@@ -2,16 +2,17 @@
 Infrastructure and Reporting Endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Response
-from typing import List, Optional
+from fastapi import APIRouter, Depends, Response
+from typing import Optional
 from uuid import UUID
 
 from app.services.infrastructure_service import get_infrastructure_service
 from app.services.pdf_service import get_pdf_service
 from app.auth import User, require_admin_or_operator, require_authenticated
-from app.api.v1.schemas import AssetCreate, AssetUpdate, MaintenanceLogCreate
+from app.api.v1.schemas import AssetCreate, MaintenanceLogCreate
 
 router = APIRouter()
+
 
 @router.get("/assets")
 async def list_assets(
@@ -22,6 +23,7 @@ async def list_assets(
     service = get_infrastructure_service()
     return service.get_all_assets(cuenca)
 
+
 @router.post("/assets")
 async def create_asset(
     asset_data: AssetCreate,
@@ -31,6 +33,7 @@ async def create_asset(
     service = get_infrastructure_service()
     return service.create_asset(asset_data.model_dump(exclude_unset=True))
 
+
 @router.get("/potential-intersections")
 async def get_intersections(
     user: User = Depends(require_authenticated),
@@ -38,6 +41,7 @@ async def get_intersections(
     """Get points where roads cross drainage (potential culverts)."""
     service = get_infrastructure_service()
     return service.get_potential_intersections()
+
 
 @router.get("/assets/{asset_id}/history")
 async def get_asset_history(
@@ -48,6 +52,7 @@ async def get_asset_history(
     service = get_infrastructure_service()
     return service.get_asset_history(asset_id)
 
+
 @router.get("/assets/{asset_id}/export-pdf")
 async def export_asset_pdf(
     asset_id: UUID,
@@ -57,15 +62,25 @@ async def export_asset_pdf(
     service = get_infrastructure_service()
     pdf_service = get_pdf_service()
 
-    asset = service.db.client.table("infraestructura").select("*").eq("id", str(asset_id)).single().execute().data
+    asset = (
+        service.db.client.table("infraestructura")
+        .select("*")
+        .eq("id", str(asset_id))
+        .single()
+        .execute()
+        .data
+    )
     history = service.get_asset_history(asset_id)
 
     pdf_buffer = pdf_service.create_asset_ficha_pdf(asset, history)
     return Response(
         content=pdf_buffer.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=ficha_activo_{asset_id}.pdf"}
+        headers={
+            "Content-Disposition": f"attachment; filename=ficha_activo_{asset_id}.pdf"
+        },
     )
+
 
 @router.post("/maintenance")
 async def add_maintenance(
@@ -75,6 +90,7 @@ async def add_maintenance(
     """Record a new maintenance activity."""
     service = get_infrastructure_service()
     return service.add_maintenance_log(log_data.model_dump(exclude_unset=True))
+
 
 @router.get("/export-pdf")
 async def export_pdf_report(
@@ -94,9 +110,19 @@ async def export_pdf_report(
             {"nombre": "Cuenca Noroeste", "ha": 890, "pct": 24, "estado": "Critico"},
         ],
         "recent_maintenance": [
-            {"fecha": "01/02/2026", "nombre": "Canal Principal A", "tarea": "Limpieza malezas", "estado": "Completado"},
-            {"fecha": "03/02/2026", "nombre": "Alcantarilla Km 12", "tarea": "Desobstruccion", "estado": "Completado"},
-        ]
+            {
+                "fecha": "01/02/2026",
+                "nombre": "Canal Principal A",
+                "tarea": "Limpieza malezas",
+                "estado": "Completado",
+            },
+            {
+                "fecha": "03/02/2026",
+                "nombre": "Alcantarilla Km 12",
+                "tarea": "Desobstruccion",
+                "estado": "Completado",
+            },
+        ],
     }
 
     pdf_buffer = pdf_service.create_emergency_report(report_data)
@@ -104,7 +130,5 @@ async def export_pdf_report(
     return Response(
         content=pdf_buffer.getvalue(),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": "attachment; filename=informe_situacion.pdf"
-        }
+        headers={"Content-Disposition": "attachment; filename=informe_situacion.pdf"},
     )

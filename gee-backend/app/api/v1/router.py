@@ -5,9 +5,20 @@ Main API router - combines all endpoint routers.
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
-    layers, reports, stats, public, sugerencias, 
-    monitoring, gee_layers, image_explorer, config, jobs,
-    infrastructure, management, padron, finance
+    layers,
+    reports,
+    stats,
+    public,
+    sugerencias,
+    monitoring,
+    gee_layers,
+    image_explorer,
+    config,
+    jobs,
+    infrastructure,
+    management,
+    padron,
+    finance,
 )
 
 api_router = APIRouter()

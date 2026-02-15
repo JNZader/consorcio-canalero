@@ -5,7 +5,7 @@ Uses structlog for JSON-formatted, structured logging.
 
 import logging
 import sys
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, List, Optional, Set
 import structlog
 from structlog.types import EventDict, Processor
 

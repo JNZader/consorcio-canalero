@@ -164,7 +164,9 @@ class RateLimitExceededError(AppException):
 # ===========================================
 
 
-def sanitize_error_message(error: Exception, default_message: str = "Error interno del servidor") -> str:
+def sanitize_error_message(
+    error: Exception, default_message: str = "Error interno del servidor"
+) -> str:
     """
     Sanitize an error message for client exposure.
 
@@ -188,7 +190,7 @@ def sanitize_error_message(error: Exception, default_message: str = "Error inter
         "\\Users\\",
         "C:\\",
         "Traceback",
-        "File \"",
+        'File "',
         "line ",
         "raise ",
         "password",
@@ -224,4 +226,8 @@ def get_safe_error_detail(error: Exception, operation: str) -> str:
         Safe error message for HTTPException detail
     """
     safe_msg = sanitize_error_message(error, f"Error en {operation}")
-    return f"Error en {operation}: {safe_msg}" if safe_msg != f"Error en {operation}" else safe_msg
+    return (
+        f"Error en {operation}: {safe_msg}"
+        if safe_msg != f"Error en {operation}"
+        else safe_msg
+    )

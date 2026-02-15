@@ -38,12 +38,12 @@ pass() {
 
 fail() {
   echo -e "  ${RED}✗ $1${NC}"
-  ((errors++))
+  errors=$((errors + 1))
 }
 
 warn() {
   echo -e "  ${YELLOW}⚠ $1${NC}"
-  ((warnings++))
+  warnings=$((warnings + 1))
 }
 
 check_tool() {
@@ -108,12 +108,12 @@ backend_lint() {
 }
 
 backend_typecheck() {
-  step "Backend: Type-check (MyPy)"
+  step "Backend: Type-check (MyPy) [non-blocking]"
   check_tool mypy "backend type-check" || return 0
   if cd "$BACKEND_DIR" && mypy app/ --ignore-missing-imports 2>&1; then
     pass "Types OK"
   else
-    fail "Type-check failed"
+    warn "Type issues found (non-blocking, matches CI behavior)"
   fi
 }
 

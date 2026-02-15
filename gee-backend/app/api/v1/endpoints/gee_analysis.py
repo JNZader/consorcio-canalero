@@ -6,7 +6,7 @@ Endpoints para analisis avanzados (NDVI, Humedad, Inundacion).
 import asyncio
 from datetime import date
 from fastapi import APIRouter, Query, Depends
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from app.services.gee_service import get_image_explorer
 from app.auth import User, require_authenticated
@@ -16,10 +16,13 @@ from app.core.exceptions import AppException, NotFoundError, get_safe_error_deta
 router = APIRouter()
 logger = get_logger(__name__)
 
+
 @router.get("/indices")
 async def get_advanced_index_tiles(
     target_date: date = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
-    index_type: str = Query("ndvi", description="Tipo de indice (ndvi, ndwi, mndwi, falso_color)"),
+    index_type: str = Query(
+        "ndvi", description="Tipo de indice (ndvi, ndwi, mndwi, falso_color)"
+    ),
     max_cloud: int = Query(40, ge=0, le=100, description="Porcentaje maximo de nubes"),
     user: User = Depends(require_authenticated),
 ) -> Dict[str, Any]:
@@ -51,6 +54,7 @@ async def get_advanced_index_tiles(
             code="GEE_INDEX_ERROR",
             status_code=500,
         )
+
 
 @router.get("/visualizations")
 async def list_visualizations(

@@ -31,6 +31,7 @@ security = HTTPBearer(auto_error=False)
 
 class User(BaseModel):
     """Authenticated user model."""
+
     id: str
     email: Optional[str] = None
     role: str = "ciudadano"
@@ -38,6 +39,7 @@ class User(BaseModel):
 
 class TokenPayload(BaseModel):
     """JWT token payload."""
+
     sub: str
     email: Optional[str] = None
     role: Optional[str] = None
@@ -50,6 +52,7 @@ async def get_jwks() -> Dict[str, Any]:
     Caches the result for 1 hour.
     """
     import time
+
     global _jwks_cache, _jwks_cache_time
 
     # Return cached if less than 1 hour old
@@ -63,7 +66,10 @@ async def get_jwks() -> Dict[str, Any]:
             if response.status_code == 200:
                 _jwks_cache = response.json()
                 _jwks_cache_time = time.time()
-                logger.debug("JWKS fetched successfully", keys_count=len(_jwks_cache.get("keys", [])))
+                logger.debug(
+                    "JWKS fetched successfully",
+                    keys_count=len(_jwks_cache.get("keys", [])),
+                )
                 return _jwks_cache
     except Exception as e:
         logger.warning("Failed to fetch JWKS", error=str(e))
@@ -247,6 +253,7 @@ def require_roles(allowed_roles: List[str]):
     Dependency factory that requires specific roles.
     Usage: Depends(require_roles(["admin", "operador"]))
     """
+
     async def role_checker(
         user: User = Depends(get_current_user_required),
     ) -> User:
@@ -256,6 +263,7 @@ def require_roles(allowed_roles: List[str]):
                 detail="No tienes permisos para realizar esta accion",
             )
         return user
+
     return role_checker
 
 

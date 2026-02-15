@@ -10,9 +10,9 @@ Funcionalidades:
 
 import ee
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from functools import lru_cache
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 from pathlib import Path
 
 from app.config import settings
@@ -159,6 +159,7 @@ def get_gee_service() -> GEEService:
 # FUNCIONES PARA EXPORTAR CAPAS COMO GEOJSON
 # =========================================================================
 
+
 def get_layer_geojson(layer_name: str) -> Dict[str, Any]:
     """
     Obtener GeoJSON de una capa desde GEE assets.
@@ -185,7 +186,9 @@ def get_layer_geojson(layer_name: str) -> Dict[str, Any]:
     }
 
     if layer_name not in layer_mapping:
-        raise ValueError(f"Capa '{layer_name}' no encontrada. Disponibles: {list(layer_mapping.keys())}")
+        raise ValueError(
+            f"Capa '{layer_name}' no encontrada. Disponibles: {list(layer_mapping.keys())}"
+        )
 
     asset_path = layer_mapping[layer_name]
 
@@ -206,18 +209,39 @@ def get_available_layers() -> List[Dict[str, str]]:
         Lista de capas con nombre y descripcion
     """
     return [
-        {"id": "zona", "nombre": "Zona Consorcio", "descripcion": "Limite del area del consorcio"},
-        {"id": "candil", "nombre": "Cuenca Candil", "descripcion": "Cuenca hidrografica Candil"},
+        {
+            "id": "zona",
+            "nombre": "Zona Consorcio",
+            "descripcion": "Limite del area del consorcio",
+        },
+        {
+            "id": "candil",
+            "nombre": "Cuenca Candil",
+            "descripcion": "Cuenca hidrografica Candil",
+        },
         {"id": "ml", "nombre": "Cuenca ML", "descripcion": "Cuenca hidrografica ML"},
-        {"id": "noroeste", "nombre": "Cuenca Noroeste", "descripcion": "Cuenca hidrografica Noroeste"},
-        {"id": "norte", "nombre": "Cuenca Norte", "descripcion": "Cuenca hidrografica Norte"},
-        {"id": "caminos", "nombre": "Red Vial", "descripcion": "Red de caminos rurales"},
+        {
+            "id": "noroeste",
+            "nombre": "Cuenca Noroeste",
+            "descripcion": "Cuenca hidrografica Noroeste",
+        },
+        {
+            "id": "norte",
+            "nombre": "Cuenca Norte",
+            "descripcion": "Cuenca hidrografica Norte",
+        },
+        {
+            "id": "caminos",
+            "nombre": "Red Vial",
+            "descripcion": "Red de caminos rurales",
+        },
     ]
 
 
 # =========================================================================
 # FUNCIONES PARA RED VIAL POR CONSORCIO CAMINERO
 # =========================================================================
+
 
 def get_consorcios_camineros() -> List[Dict[str, Any]]:
     """
@@ -294,9 +318,7 @@ def get_caminos_by_consorcio(consorcio_codigo: str) -> Dict[str, Any]:
     num_features = len(geojson.get("features", []))
     if num_features == 0:
         # Intentar busqueda case-insensitive
-        filtered = caminos.filter(
-            ee.Filter.eq("ccc", consorcio_codigo.upper())
-        )
+        filtered = caminos.filter(ee.Filter.eq("ccc", consorcio_codigo.upper()))
         geojson = filtered.getInfo()
         num_features = len(geojson.get("features", []))
 
@@ -510,9 +532,13 @@ def get_estadisticas_consorcios() -> Dict[str, Any]:
     for ccn in stats:
         stats[ccn]["longitud_km"] = round(stats[ccn]["longitud_km"], 2)
         for j in stats[ccn]["por_jerarquia"]:
-            stats[ccn]["por_jerarquia"][j]["km"] = round(stats[ccn]["por_jerarquia"][j]["km"], 2)
+            stats[ccn]["por_jerarquia"][j]["km"] = round(
+                stats[ccn]["por_jerarquia"][j]["km"], 2
+            )
         for s in stats[ccn]["por_superficie"]:
-            stats[ccn]["por_superficie"][s]["km"] = round(stats[ccn]["por_superficie"][s]["km"], 2)
+            stats[ccn]["por_superficie"][s]["km"] = round(
+                stats[ccn]["por_superficie"][s]["km"], 2
+            )
 
     consorcios_lista = list(stats.values())
     consorcios_lista.sort(key=lambda x: -x["longitud_km"])  # Ordenar por km desc
@@ -535,6 +561,7 @@ def get_estadisticas_consorcios() -> Dict[str, Any]:
 # EXPLORADOR DE IMAGENES SATELITALES
 # Permite ver imagenes de fechas especificas con diferentes visualizaciones
 # =========================================================================
+
 
 class ImageExplorer:
     """
@@ -630,7 +657,9 @@ class ImageExplorer:
 
         # Para fechas anteriores a 2019, usar S2_HARMONIZED (TOA)
         use_toa = target_date.year < 2019
-        collection_name = "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
+        collection_name = (
+            "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
+        )
 
         # Filtrar coleccion
         collection = (
@@ -651,9 +680,12 @@ class ImageExplorer:
             }
 
         # Obtener fechas disponibles
-        dates_list = collection.aggregate_array("system:time_start").map(
-            lambda d: ee.Date(d).format("YYYY-MM-dd")
-        ).distinct().getInfo()
+        dates_list = (
+            collection.aggregate_array("system:time_start")
+            .map(lambda d: ee.Date(d).format("YYYY-MM-dd"))
+            .distinct()
+            .getInfo()
+        )
 
         # Crear composicion
         if use_toa:
@@ -745,9 +777,12 @@ class ImageExplorer:
             }
 
         # Obtener fechas disponibles
-        dates_list = collection.aggregate_array("system:time_start").map(
-            lambda d: ee.Date(d).format("YYYY-MM-dd")
-        ).distinct().getInfo()
+        dates_list = (
+            collection.aggregate_array("system:time_start")
+            .map(lambda d: ee.Date(d).format("YYYY-MM-dd"))
+            .distinct()
+            .getInfo()
+        )
 
         # Crear mosaico
         mosaic = collection.select("VV").mosaic().clip(self.zona)
@@ -803,9 +838,7 @@ class ImageExplorer:
         )
 
         # Tambien obtener RGB de inundacion
-        flood_rgb = self.get_sentinel2_image(
-            flood_date, days_buffer, max_cloud, "rgb"
-        )
+        flood_rgb = self.get_sentinel2_image(flood_date, days_buffer, max_cloud, "rgb")
 
         return {
             "flood_date": flood_date.isoformat(),

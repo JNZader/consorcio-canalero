@@ -29,10 +29,10 @@ CUENCA_AREAS_HA: Dict[str, int] = {
 
 # Colors for visualization (hex codes)
 CUENCA_COLORS: Dict[str, str] = {
-    "candil": "#2196F3",    # Blue
-    "ml": "#4CAF50",        # Green
+    "candil": "#2196F3",  # Blue
+    "ml": "#4CAF50",  # Green
     "noroeste": "#FF9800",  # Orange
-    "norte": "#9C27B0",     # Purple
+    "norte": "#9C27B0",  # Purple
 }
 
 # Cuenca display names

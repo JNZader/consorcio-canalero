@@ -5,7 +5,7 @@ Endpoints para obtener configuraciones del sistema.
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Dict, List, Any
+from typing import Dict, List
 
 from app import constants
 
@@ -42,36 +42,38 @@ class SystemConfigResponse(BaseModel):
 async def get_system_config():
     """
     Obtener la configuracion global del sistema.
-    
+
     Este endpoint retorna constantes y configuraciones necesarias
     para el funcionamiento del frontend, como coordenadas del mapa,
     datos de cuencas y parametros de analisis.
     """
-    
+
     # Preparar info de cuencas
     cuencas = []
     for cid in constants.CUENCA_IDS:
-        cuencas.append({
-            "id": cid,
-            "nombre": constants.CUENCA_NOMBRES.get(cid, cid.capitalize()),
-            "ha": constants.CUENCA_AREAS_HA.get(cid, 0),
-            "color": constants.CUENCA_COLORS.get(cid, "#808080")
-        })
-    
+        cuencas.append(
+            {
+                "id": cid,
+                "nombre": constants.CUENCA_NOMBRES.get(cid, cid.capitalize()),
+                "ha": constants.CUENCA_AREAS_HA.get(cid, 0),
+                "color": constants.CUENCA_COLORS.get(cid, "#808080"),
+            }
+        )
+
     return {
         "consorcio_area_ha": constants.CONSORCIO_AREA_HA,
         "consorcio_km_caminos": constants.CONSORCIO_KM_CAMINOS,
         "map": {
             "center": {
                 "lat": constants.MAP_CENTER_LAT,
-                "lng": constants.MAP_CENTER_LNG
+                "lng": constants.MAP_CENTER_LNG,
             },
             "zoom": constants.MAP_DEFAULT_ZOOM,
-            "bounds": constants.MAP_BOUNDS
+            "bounds": constants.MAP_BOUNDS,
         },
         "cuencas": cuencas,
         "analysis": {
             "default_max_cloud": constants.DEFAULT_MAX_CLOUD,
-            "default_days_back": constants.DEFAULT_DAYS_BACK
-        }
+            "default_days_back": constants.DEFAULT_DAYS_BACK,
+        },
     }

@@ -108,7 +108,9 @@ class SupabaseService:
 
         offset = (page - 1) * limit
         result = (
-            query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+            query.order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
         )
 
         return {
@@ -142,10 +144,7 @@ class SupabaseService:
             True si se elimino correctamente, False si no existia
         """
         result = (
-            self.client.table("analisis_gee")
-            .delete()
-            .eq("id", analysis_id)
-            .execute()
+            self.client.table("analisis_gee").delete().eq("id", analysis_id).execute()
         )
         return len(result.data) > 0 if result.data else False
 
@@ -178,9 +177,7 @@ class SupabaseService:
     def update_layer(self, layer_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Actualizar capa."""
         updates["updated_at"] = datetime.now().isoformat()
-        result = (
-            self.client.table("capas").update(updates).eq("id", layer_id).execute()
-        )
+        result = self.client.table("capas").update(updates).eq("id", layer_id).execute()
         return result.data[0] if result.data else {}
 
     def delete_layer(self, layer_id: str) -> bool:
@@ -203,9 +200,8 @@ class SupabaseService:
 
         try:
             # Intentar usar RPC optimizado (si existe)
-            result = self.client.rpc(
-                "batch_update_layer_order",
-                {"layer_updates": layer_orders}
+            self.client.rpc(
+                "batch_update_layer_order", {"layer_updates": layer_orders}
             ).execute()
             return True
         except Exception:
@@ -213,16 +209,11 @@ class SupabaseService:
 
         # Fallback: upsert batch (mas eficiente que N updates individuales)
         # Preparar datos para upsert
-        updates = [
-            {"id": item["id"], "orden": item["orden"]}
-            for item in layer_orders
-        ]
+        updates = [{"id": item["id"], "orden": item["orden"]} for item in layer_orders]
 
         # Upsert actualiza si existe el ID
         self.client.table("capas").upsert(
-            updates,
-            on_conflict="id",
-            ignore_duplicates=False
+            updates, on_conflict="id", ignore_duplicates=False
         ).execute()
 
         return True
@@ -258,7 +249,9 @@ class SupabaseService:
 
         offset = (page - 1) * limit
         result = (
-            query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+            query.order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
         )
 
         return {
@@ -377,7 +370,9 @@ class SupabaseService:
             # Intentar usar RPC optimizado (si existe)
             result = self.client.rpc("get_denuncias_stats").execute()
             if result.data:
-                stats_data = result.data[0] if isinstance(result.data, list) else result.data
+                stats_data = (
+                    result.data[0] if isinstance(result.data, list) else result.data
+                )
                 return {
                     "pendiente": stats_data.get("pendiente", 0),
                     "en_revision": stats_data.get("en_revision", 0),
@@ -410,7 +405,9 @@ class SupabaseService:
     # STORAGE
     # ===========================================
 
-    def upload_geojson(self, filename: str, content: bytes, bucket: str = "geojson") -> str:
+    def upload_geojson(
+        self, filename: str, content: bytes, bucket: str = "geojson"
+    ) -> str:
         """
         Subir archivo GeoJSON a Supabase Storage.
 
@@ -418,7 +415,9 @@ class SupabaseService:
             URL publica del archivo
         """
         path = f"capas/{filename}"
-        self.client.storage.from_(bucket).upload(path, content, {"content-type": "application/json"})
+        self.client.storage.from_(bucket).upload(
+            path, content, {"content-type": "application/json"}
+        )
         return self.client.storage.from_(bucket).get_public_url(path)
 
     def upload_analysis_result(self, analysis_id: str, geojson: Dict) -> str:

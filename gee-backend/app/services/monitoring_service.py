@@ -27,6 +27,7 @@ from app.services.gee_service import initialize_gee, _gee_initialized
 
 class ParcelClass(Enum):
     """Clases de clasificacion de parcelas."""
+
     CULTIVO_SANO = 0
     RASTROJO = 1
     AGUA_SUPERFICIE = 2
@@ -46,44 +47,46 @@ class ClassificationThresholds:
     - NDMI: Indice de humedad (estres hidrico de vegetacion)
     - BSI: Indice de suelo desnudo
     """
+
     # === AGUA EN SUPERFICIE ===
     # MNDWI es mejor que NDWI para agua turbia y poco profunda
-    mndwi_agua: float = 0.15            # MNDWI > 0.15 = agua clara
-    ndwi_agua_alto: float = 0.35        # NDWI muy alto como confirmacion
-    ndvi_max_agua: float = 0.1          # Vegetacion muy baja para confirmar agua
+    mndwi_agua: float = 0.15  # MNDWI > 0.15 = agua clara
+    ndwi_agua_alto: float = 0.35  # NDWI muy alto como confirmacion
+    ndvi_max_agua: float = 0.1  # Vegetacion muy baja para confirmar agua
 
     # === LOTE ANEGADO ===
     # Campos con exceso de agua pero no cuerpos de agua puros
-    mndwi_anegado_min: float = -0.1     # Algo de senal de agua
-    mndwi_anegado_max: float = 0.15     # Pero no agua pura
-    ndmi_anegado_min: float = 0.25      # Suelo muy humedo
-    ndvi_anegado_max: float = 0.3       # Vegetacion afectada
+    mndwi_anegado_min: float = -0.1  # Algo de senal de agua
+    mndwi_anegado_max: float = 0.15  # Pero no agua pura
+    ndmi_anegado_min: float = 0.25  # Suelo muy humedo
+    ndvi_anegado_max: float = 0.3  # Vegetacion afectada
 
     # === CULTIVO SANO ===
-    ndvi_cultivo_sano: float = 0.4      # NDVI > 0.4 = vegetacion activa
-    ndmi_cultivo_min: float = -0.1      # Humedad normal (no en estres severo)
-    ndmi_cultivo_max: float = 0.4       # No encharcado
+    ndvi_cultivo_sano: float = 0.4  # NDVI > 0.4 = vegetacion activa
+    ndmi_cultivo_min: float = -0.1  # Humedad normal (no en estres severo)
+    ndmi_cultivo_max: float = 0.4  # No encharcado
 
     # === SUELO DESNUDO ===
-    bsi_suelo_desnudo: float = 0.05     # BSI positivo indica suelo expuesto
-    ndvi_suelo_max: float = 0.15        # Muy poca vegetacion
-    mndwi_suelo_max: float = -0.2       # Sin agua
+    bsi_suelo_desnudo: float = 0.05  # BSI positivo indica suelo expuesto
+    ndvi_suelo_max: float = 0.15  # Muy poca vegetacion
+    mndwi_suelo_max: float = -0.2  # Sin agua
 
     # === RASTROJO (por defecto) ===
     # Todo lo que no cae en las otras categorias
-    ndvi_rastrojo_max: float = 0.4      # Vegetacion media-baja
+    ndvi_rastrojo_max: float = 0.4  # Vegetacion media-baja
 
 
 @dataclass
 class AlertConfig:
     """Configuracion de alertas."""
+
     # Umbrales de cambio para generar alerta
-    cambio_anegado_pct: float = 5.0     # Alerta si anegados aumenta >5%
-    cambio_agua_pct: float = 3.0        # Alerta si agua aumenta >3%
+    cambio_anegado_pct: float = 5.0  # Alerta si anegados aumenta >5%
+    cambio_agua_pct: float = 3.0  # Alerta si agua aumenta >3%
 
     # Umbrales absolutos
-    anegado_critico_pct: float = 20.0   # Alerta si >20% de area anegada
-    agua_critico_pct: float = 10.0      # Alerta si >10% con agua superficial
+    anegado_critico_pct: float = 20.0  # Alerta si >20% de area anegada
+    agua_critico_pct: float = 10.0  # Alerta si >10% con agua superficial
 
 
 class MonitoringService:
@@ -101,11 +104,11 @@ class MonitoringService:
 
     # Colores para visualizacion
     CLASS_COLORS = {
-        ParcelClass.CULTIVO_SANO: "#2ECC71",     # Verde
-        ParcelClass.RASTROJO: "#F39C12",         # Naranja/Amarillo
+        ParcelClass.CULTIVO_SANO: "#2ECC71",  # Verde
+        ParcelClass.RASTROJO: "#F39C12",  # Naranja/Amarillo
         ParcelClass.AGUA_SUPERFICIE: "#3498DB",  # Azul
-        ParcelClass.LOTE_ANEGADO: "#E74C3C",     # Rojo
-        ParcelClass.SUELO_DESNUDO: "#95A5A6",    # Gris
+        ParcelClass.LOTE_ANEGADO: "#E74C3C",  # Rojo
+        ParcelClass.SUELO_DESNUDO: "#95A5A6",  # Gris
     }
 
     CLASS_LABELS = {
@@ -149,16 +152,12 @@ class MonitoringService:
         Returns:
             Tuple de (imagen compuesta, numero de imagenes)
         """
+
         def mask_clouds(image):
             """Mascara de nubes usando SCL."""
             scl = image.select("SCL")
             # SCL: 3=sombra, 8=nubes med, 9=nubes altas, 10=cirrus
-            cloud_mask = (
-                scl.neq(3)
-                .And(scl.neq(8))
-                .And(scl.neq(9))
-                .And(scl.neq(10))
-            )
+            cloud_mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))
             return image.updateMask(cloud_mask)
 
         sentinel2 = (
@@ -262,8 +261,7 @@ class MonitoringService:
             user_geometry = ee.Geometry(geometry)
             # Intersectar con zona del consorcio
             analysis_geometry = user_geometry.intersection(
-                self.zona.geometry(),
-                ee.ErrorMargin(1)
+                self.zona.geometry(), ee.ErrorMargin(1)
             )
         else:
             analysis_geometry = self.zona.geometry()
@@ -294,9 +292,8 @@ class MonitoringService:
 
         # Clase 2: AGUA EN SUPERFICIE
         # Usa MNDWI (mejor para agua turbia) + NDWI alto + NDVI muy bajo
-        agua = (
-            mndwi.gt(th.mndwi_agua)
-            .Or(ndwi.gt(th.ndwi_agua_alto).And(ndvi.lt(th.ndvi_max_agua)))
+        agua = mndwi.gt(th.mndwi_agua).Or(
+            ndwi.gt(th.ndwi_agua_alto).And(ndvi.lt(th.ndvi_max_agua))
         )
 
         # Clase 3: LOTE ANEGADO
@@ -304,15 +301,15 @@ class MonitoringService:
         # MNDWI entre -0.1 y 0.15 (senal de agua moderada)
         # NDMI alto (suelo muy humedo)
         # NDVI bajo (vegetacion afectada)
-        anegado = (
-            agua.Not()
-            .And(
-                # Opcion 1: MNDWI moderado + NDVI bajo
-                (mndwi.gt(th.mndwi_anegado_min).And(mndwi.lt(th.mndwi_anegado_max))
-                 .And(ndvi.lt(th.ndvi_anegado_max)))
-                # Opcion 2: NDMI muy alto (suelo saturado) + NDVI bajo
-                .Or(ndmi.gt(th.ndmi_anegado_min).And(ndvi.lt(th.ndvi_anegado_max)))
+        anegado = agua.Not().And(
+            # Opcion 1: MNDWI moderado + NDVI bajo
+            (
+                mndwi.gt(th.mndwi_anegado_min)
+                .And(mndwi.lt(th.mndwi_anegado_max))
+                .And(ndvi.lt(th.ndvi_anegado_max))
             )
+            # Opcion 2: NDMI muy alto (suelo saturado) + NDVI bajo
+            .Or(ndmi.gt(th.ndmi_anegado_min).And(ndvi.lt(th.ndvi_anegado_max)))
         )
 
         # Clase 0: CULTIVO SANO
@@ -373,10 +370,12 @@ class MonitoringService:
         area_total_m2 = analysis_geometry.area()
 
         # Batch getInfo
-        result = ee.Dictionary({
-            "groups": areas.get("groups"),
-            "area_total_m2": area_total_m2,
-        }).getInfo()
+        result = ee.Dictionary(
+            {
+                "groups": areas.get("groups"),
+                "area_total_m2": area_total_m2,
+            }
+        ).getInfo()
 
         groups = result.get("groups", [])
         area_total = (result.get("area_total_m2", 0) or 0) / 10000  # ha
@@ -399,20 +398,20 @@ class MonitoringService:
         }
 
         class_colors = {
-            0: "#2ECC71",   # Verde - Cultivo sano
-            1: "#F39C12",   # Naranja - Rastrojo
-            2: "#3498DB",   # Azul - Agua
-            3: "#E74C3C",   # Rojo - Anegado
-            4: "#95A5A6",   # Gris - Suelo desnudo
+            0: "#2ECC71",  # Verde - Cultivo sano
+            1: "#F39C12",  # Naranja - Rastrojo
+            2: "#3498DB",  # Azul - Agua
+            3: "#E74C3C",  # Rojo - Anegado
+            4: "#95A5A6",  # Gris - Suelo desnudo
         }
 
         clases = {}
         stats_resumen = {
-            "area_productiva_ha": 0,      # cultivo_sano
-            "area_vulnerable_ha": 0,      # rastrojo (sin cobertura)
-            "area_agua_ha": 0,            # agua_superficie
-            "area_afectada_ha": 0,        # lote_anegado
-            "area_suelo_desnudo_ha": 0,   # suelo_desnudo
+            "area_productiva_ha": 0,  # cultivo_sano
+            "area_vulnerable_ha": 0,  # rastrojo (sin cobertura)
+            "area_agua_ha": 0,  # agua_superficie
+            "area_afectada_ha": 0,  # lote_anegado
+            "area_suelo_desnudo_ha": 0,  # suelo_desnudo
         }
 
         for grupo in groups:
@@ -447,8 +446,12 @@ class MonitoringService:
                 stats_resumen["area_suelo_desnudo_ha"] = area_ha
 
         # Calcular porcentaje de area problematica (agua + anegado)
-        area_problematica = stats_resumen["area_agua_ha"] + stats_resumen["area_afectada_ha"]
-        pct_problematico = (area_problematica / area_total * 100) if area_total > 0 else 0
+        area_problematica = (
+            stats_resumen["area_agua_ha"] + stats_resumen["area_afectada_ha"]
+        )
+        pct_problematico = (
+            (area_problematica / area_total * 100) if area_total > 0 else 0
+        )
 
         response = {
             "metodo": "clasificacion_parcelas_multiindice",
@@ -459,7 +462,9 @@ class MonitoringService:
                 "area_vulnerable_ha": round(stats_resumen["area_vulnerable_ha"], 2),
                 "area_con_agua_ha": round(stats_resumen["area_agua_ha"], 2),
                 "area_anegada_ha": round(stats_resumen["area_afectada_ha"], 2),
-                "area_suelo_desnudo_ha": round(stats_resumen["area_suelo_desnudo_ha"], 2),
+                "area_suelo_desnudo_ha": round(
+                    stats_resumen["area_suelo_desnudo_ha"], 2
+                ),
                 "area_problematica_ha": round(area_problematica, 2),
                 "porcentaje_problematico": round(pct_problematico, 2),
             },
@@ -512,9 +517,15 @@ class MonitoringService:
                 # Agregar propiedades de clase a cada feature
                 for feature in geojson.get("features", []):
                     class_id = feature.get("properties", {}).get("label", 0)
-                    feature["properties"]["class_name"] = class_names.get(class_id, "desconocido")
-                    feature["properties"]["class_label"] = class_labels.get(class_id, "Desconocido")
-                    feature["properties"]["color"] = class_colors.get(class_id, "#999999")
+                    feature["properties"]["class_name"] = class_names.get(
+                        class_id, "desconocido"
+                    )
+                    feature["properties"]["class_label"] = class_labels.get(
+                        class_id, "Desconocido"
+                    )
+                    feature["properties"]["color"] = class_colors.get(
+                        class_id, "#999999"
+                    )
 
                 response["geojson"] = geojson
             else:
@@ -556,11 +567,15 @@ class MonitoringService:
         # Calcular totales y ranking
         cuencas_ranking = []
         for nombre, data in resultados.items():
-            cuencas_ranking.append({
-                "cuenca": nombre,
-                "porcentaje_problematico": data["resumen"]["porcentaje_problematico"],
-                "area_anegada_ha": data["resumen"]["area_anegada_ha"],
-            })
+            cuencas_ranking.append(
+                {
+                    "cuenca": nombre,
+                    "porcentaje_problematico": data["resumen"][
+                        "porcentaje_problematico"
+                    ],
+                    "area_anegada_ha": data["resumen"]["area_anegada_ha"],
+                }
+            )
 
         # Ordenar por porcentaje problematico (mayor primero)
         cuencas_ranking.sort(key=lambda x: x["porcentaje_problematico"], reverse=True)
@@ -716,30 +731,34 @@ class MonitoringService:
 
             # Alerta por area anegada critica
             if pct_problematico > self.alert_config.anegado_critico_pct:
-                alertas.append({
-                    "tipo": "area_critica",
-                    "severidad": "alta",
-                    "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
-                    "detalle": {
-                        "area_anegada_ha": round(area_anegada, 2),
-                        "area_agua_ha": round(area_agua, 2),
-                        "porcentaje_total": round(pct_problematico, 2),
-                    },
-                    "accion_sugerida": "Inspeccionar sistema de drenaje de la cuenca",
-                })
+                alertas.append(
+                    {
+                        "tipo": "area_critica",
+                        "severidad": "alta",
+                        "cuenca": nombre_cuenca,
+                        "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
+                        "detalle": {
+                            "area_anegada_ha": round(area_anegada, 2),
+                            "area_agua_ha": round(area_agua, 2),
+                            "porcentaje_total": round(pct_problematico, 2),
+                        },
+                        "accion_sugerida": "Inspeccionar sistema de drenaje de la cuenca",
+                    }
+                )
             elif pct_problematico > 10:
-                alertas.append({
-                    "tipo": "area_elevada",
-                    "severidad": "media",
-                    "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
-                    "detalle": {
-                        "area_anegada_ha": round(area_anegada, 2),
-                        "porcentaje_total": round(pct_problematico, 2),
-                    },
-                    "accion_sugerida": "Monitorear evolucion en proximos dias",
-                })
+                alertas.append(
+                    {
+                        "tipo": "area_elevada",
+                        "severidad": "media",
+                        "cuenca": nombre_cuenca,
+                        "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
+                        "detalle": {
+                            "area_anegada_ha": round(area_anegada, 2),
+                            "porcentaje_total": round(pct_problematico, 2),
+                        },
+                        "accion_sugerida": "Monitorear evolucion en proximos dias",
+                    }
+                )
 
         # Si hay fechas de referencia, detectar cambios
         if reference_start and reference_end:
@@ -756,17 +775,19 @@ class MonitoringService:
                     cambio_pct = cambios["tendencia"]["cambio_total_pct"]
 
                     if cambio_pct > self.alert_config.cambio_anegado_pct:
-                        alertas.append({
-                            "tipo": "incremento_anegamiento",
-                            "severidad": "alta",
-                            "cuenca": nombre_cuenca,
-                            "mensaje": f"Cuenca {nombre_cuenca.upper()}: Incremento de {cambio_pct:.1f}% en area problematica",
-                            "detalle": {
-                                "cambio_porcentual": round(cambio_pct, 2),
-                                "periodo_referencia": f"{reference_start} a {reference_end}",
-                            },
-                            "accion_sugerida": "Verificar compuertas y canales principales",
-                        })
+                        alertas.append(
+                            {
+                                "tipo": "incremento_anegamiento",
+                                "severidad": "alta",
+                                "cuenca": nombre_cuenca,
+                                "mensaje": f"Cuenca {nombre_cuenca.upper()}: Incremento de {cambio_pct:.1f}% en area problematica",
+                                "detalle": {
+                                    "cambio_porcentual": round(cambio_pct, 2),
+                                    "periodo_referencia": f"{reference_start} a {reference_end}",
+                                },
+                                "accion_sugerida": "Verificar compuertas y canales principales",
+                            }
+                        )
 
         # Ordenar por severidad
         severidad_orden = {"alta": 0, "media": 1, "baja": 2}
@@ -830,8 +851,12 @@ class MonitoringService:
             "estado_general": {
                 "area_total_ha": clasificacion["area_total_ha"],
                 "area_productiva_ha": clasificacion["resumen"]["area_productiva_ha"],
-                "area_problematica_ha": clasificacion["resumen"]["area_problematica_ha"],
-                "porcentaje_problematico": clasificacion["resumen"]["porcentaje_problematico"],
+                "area_problematica_ha": clasificacion["resumen"][
+                    "area_problematica_ha"
+                ],
+                "porcentaje_problematico": clasificacion["resumen"][
+                    "porcentaje_problematico"
+                ],
             },
             "clasificacion": clasificacion["clases"],
             "alertas": alertas[:5],  # Top 5 alertas
@@ -865,30 +890,34 @@ class MonitoringService:
 
             # Alerta por area anegada critica
             if pct_problematico > self.alert_config.anegado_critico_pct:
-                alertas.append({
-                    "tipo": "area_critica",
-                    "severidad": "alta",
-                    "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
-                    "detalle": {
-                        "area_anegada_ha": round(area_anegada, 2),
-                        "area_agua_ha": round(area_agua, 2),
-                        "porcentaje_total": round(pct_problematico, 2),
-                    },
-                    "accion_sugerida": "Inspeccionar sistema de drenaje de la cuenca",
-                })
+                alertas.append(
+                    {
+                        "tipo": "area_critica",
+                        "severidad": "alta",
+                        "cuenca": nombre_cuenca,
+                        "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas hidricos",
+                        "detalle": {
+                            "area_anegada_ha": round(area_anegada, 2),
+                            "area_agua_ha": round(area_agua, 2),
+                            "porcentaje_total": round(pct_problematico, 2),
+                        },
+                        "accion_sugerida": "Inspeccionar sistema de drenaje de la cuenca",
+                    }
+                )
             elif pct_problematico > 10:
-                alertas.append({
-                    "tipo": "area_elevada",
-                    "severidad": "media",
-                    "cuenca": nombre_cuenca,
-                    "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
-                    "detalle": {
-                        "area_anegada_ha": round(area_anegada, 2),
-                        "porcentaje_total": round(pct_problematico, 2),
-                    },
-                    "accion_sugerida": "Monitorear evolucion en proximos dias",
-                })
+                alertas.append(
+                    {
+                        "tipo": "area_elevada",
+                        "severidad": "media",
+                        "cuenca": nombre_cuenca,
+                        "mensaje": f"Cuenca {nombre_cuenca.upper()}: {pct_problematico:.1f}% del area con problemas",
+                        "detalle": {
+                            "area_anegada_ha": round(area_anegada, 2),
+                            "porcentaje_total": round(pct_problematico, 2),
+                        },
+                        "accion_sugerida": "Monitorear evolucion en proximos dias",
+                    }
+                )
 
         # Ordenar por severidad
         severidad_orden = {"alta": 0, "media": 1, "baja": 2}
@@ -900,6 +929,7 @@ class MonitoringService:
 # ============================================================
 # INTEGRACION CON ALPHAEARTH EMBEDDINGS
 # ============================================================
+
 
 class AlphaEarthService:
     """
@@ -915,7 +945,9 @@ class AlphaEarthService:
     """
 
     # Asset de AlphaEarth en GEE (disponible publicamente)
-    ALPHAEARTH_COLLECTION = "projects/google/esa-ai-for-planetary-boundaries/satellite_embedding_v1_annual"
+    ALPHAEARTH_COLLECTION = (
+        "projects/google/esa-ai-for-planetary-boundaries/satellite_embedding_v1_annual"
+    )
 
     def __init__(self):
         """Inicializar servicio de AlphaEarth."""
@@ -944,8 +976,7 @@ class AlphaEarthService:
         end_date = f"{year}-12-31"
 
         embeddings = (
-            collection
-            .filterBounds(geometry)
+            collection.filterBounds(geometry)
             .filterDate(start_date, end_date)
             .mosaic()
             .clip(geometry)
@@ -984,9 +1015,7 @@ class AlphaEarthService:
         )
 
         # Entrenar clasificador kNN
-        classifier = ee.Classifier.minimumDistance(
-            metric="euclidean"
-        ).train(
+        classifier = ee.Classifier.minimumDistance(metric="euclidean").train(
             features=training_data,
             classProperty="clase",
             inputProperties=embeddings.bandNames(),
@@ -1013,6 +1042,7 @@ class AlphaEarthService:
 # ============================================================
 # SINGLETON INSTANCES
 # ============================================================
+
 
 @lru_cache(maxsize=1)
 def get_monitoring_service() -> MonitoringService:

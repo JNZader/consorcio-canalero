@@ -3,7 +3,7 @@ Management and Tracking Endpoints.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Response
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from app.services.management_service import get_management_service
@@ -21,6 +21,7 @@ router = APIRouter()
 
 # --- Tramites Provinciales ---
 
+
 @router.get("/tramites")
 async def list_tramites(
     estado: Optional[str] = None,
@@ -29,6 +30,7 @@ async def list_tramites(
     """List administrative procedures."""
     service = get_management_service()
     return service.get_tramites(estado)
+
 
 @router.post("/tramites")
 async def create_tramite(
@@ -39,6 +41,7 @@ async def create_tramite(
     service = get_management_service()
     return service.create_tramite(data.model_dump(exclude_unset=True))
 
+
 @router.get("/tramites/{tramite_id}")
 async def get_tramite(
     tramite_id: UUID,
@@ -47,6 +50,7 @@ async def get_tramite(
     """Get full detail of a procedure including its advances."""
     service = get_management_service()
     return service.get_tramite_detalle(tramite_id)
+
 
 @router.post("/tramites/avance")
 async def add_tramite_avance(
@@ -57,7 +61,9 @@ async def add_tramite_avance(
     service = get_management_service()
     return service.add_tramite_avance(data.model_dump(exclude_unset=True))
 
+
 # --- Trazabilidad (Seguimiento) ---
+
 
 @router.get("/seguimiento/{entidad_tipo}/{entidad_id}")
 async def get_history(
@@ -71,6 +77,7 @@ async def get_history(
     service = get_management_service()
     return service.get_historial_entidad(entidad_tipo, entidad_id)
 
+
 @router.post("/seguimiento")
 async def add_history_entry(
     data: SeguimientoCreate,
@@ -83,7 +90,9 @@ async def add_history_entry(
     payload["usuario_gestion"] = str(user.id)
     return service.add_seguimiento(payload)
 
+
 # --- Reuniones ---
+
 
 @router.get("/reuniones")
 async def list_reuniones(
@@ -92,6 +101,7 @@ async def list_reuniones(
     """List all meetings."""
     service = get_management_service()
     return service.get_reuniones()
+
 
 @router.post("/reuniones")
 async def create_reunion(
@@ -102,6 +112,7 @@ async def create_reunion(
     service = get_management_service()
     return service.create_reunion(data.model_dump(exclude_unset=True))
 
+
 @router.get("/reuniones/{reunion_id}/agenda")
 async def get_agenda(
     reunion_id: UUID,
@@ -110,6 +121,7 @@ async def get_agenda(
     """Get the agenda items for a specific meeting."""
     service = get_management_service()
     return service.get_agenda_detalle(reunion_id)
+
 
 @router.post("/reuniones/{reunion_id}/agenda")
 async def add_item(
@@ -123,6 +135,7 @@ async def add_item(
     referencias = [ref.model_dump(exclude_unset=True) for ref in payload.referencias]
     return service.add_agenda_item(reunion_id, item_data, referencias)
 
+
 @router.get("/tramites/{tramite_id}/export-pdf")
 async def export_tramite_pdf(
     tramite_id: UUID,
@@ -131,8 +144,9 @@ async def export_tramite_pdf(
     service = get_management_service()
     pdf_service = get_pdf_service()
     detail = service.get_tramite_detalle(tramite_id)
-    pdf_buffer = pdf_service.create_tramite_summary_pdf(detail, detail['avances'])
+    pdf_buffer = pdf_service.create_tramite_summary_pdf(detail, detail["avances"])
     return Response(content=pdf_buffer.getvalue(), media_type="application/pdf")
+
 
 @router.get("/seguimiento/reporte/{reporte_id}/export-pdf")
 async def export_resolution_pdf(
@@ -141,27 +155,39 @@ async def export_resolution_pdf(
 ):
     service = get_management_service()
     pdf_service = get_pdf_service()
-    reporte = service.db.client.table("denuncias").select("*").eq("id", str(reporte_id)).single().execute().data
+    reporte = (
+        service.db.client.table("denuncias")
+        .select("*")
+        .eq("id", str(reporte_id))
+        .single()
+        .execute()
+        .data
+    )
     seguimiento = service.get_historial_entidad("reporte", reporte_id)
     pdf_buffer = pdf_service.create_report_resolution_pdf(reporte, seguimiento)
     return Response(content=pdf_buffer.getvalue(), media_type="application/pdf")
+
 
 @router.get("/export-gestion-integral")
 async def export_integral_report(
     user: User = Depends(require_authenticated),
 ):
-    service = get_management_service()
+    get_management_service()
     pdf_service = get_pdf_service()
     # Mock aggregation for demo
     data = {
-        "satelite": [{"nombre": "Candil", "pct": 5, "estado": "Normal"}, {"nombre": "ML", "pct": 15, "estado": "Alerta"}],
+        "satelite": [
+            {"nombre": "Candil", "pct": 5, "estado": "Normal"},
+            {"nombre": "ML", "pct": 15, "estado": "Alerta"},
+        ],
         "cuencas_data": {
             "candil": {"reportes_count": 3, "sugerencias_count": 1},
-            "ml": {"reportes_count": 12, "sugerencias_count": 5}
-        }
+            "ml": {"reportes_count": 12, "sugerencias_count": 5},
+        },
     }
     pdf_buffer = pdf_service.create_general_impact_report_pdf(data)
     return Response(content=pdf_buffer.getvalue(), media_type="application/pdf")
+
 
 @router.get("/reuniones/{reunion_id}/export-pdf")
 async def export_agenda_pdf(
@@ -173,7 +199,14 @@ async def export_agenda_pdf(
     pdf_service = get_pdf_service()
 
     # Fetch data
-    reunion = service.db.client.table("reuniones").select("*").eq("id", str(reunion_id)).single().execute().data
+    reunion = (
+        service.db.client.table("reuniones")
+        .select("*")
+        .eq("id", str(reunion_id))
+        .single()
+        .execute()
+        .data
+    )
     if not reunion:
         raise HTTPException(status_code=404, detail="Reunion no encontrada")
 
@@ -186,5 +219,5 @@ async def export_agenda_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f"attachment; filename=agenda_reunion_{reunion_id}.pdf"
-        }
+        },
     )

@@ -17,7 +17,17 @@ router = APIRouter()
 # Constants for file validation
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-ALLOWED_GEOJSON_TYPES = {"FeatureCollection", "Feature", "Point", "LineString", "Polygon", "MultiPoint", "MultiLineString", "MultiPolygon", "GeometryCollection"}
+ALLOWED_GEOJSON_TYPES = {
+    "FeatureCollection",
+    "Feature",
+    "Point",
+    "LineString",
+    "Polygon",
+    "MultiPoint",
+    "MultiLineString",
+    "MultiPolygon",
+    "GeometryCollection",
+}
 
 
 # ===========================================
@@ -31,7 +41,9 @@ class LayerStyle(BaseModel):
     color: str = Field(default="#3388ff", description="Color del borde")
     weight: int = Field(default=2, description="Ancho del borde en px")
     fillColor: str = Field(default="#3388ff", description="Color de relleno")
-    fillOpacity: float = Field(default=0.1, ge=0, le=1, description="Opacidad del relleno")
+    fillOpacity: float = Field(
+        default=0.1, ge=0, le=1, description="Opacidad del relleno"
+    )
 
 
 class LayerCreate(BaseModel):
@@ -59,9 +71,7 @@ class LayerUpdate(BaseModel):
 class LayerReorder(BaseModel):
     """Reordenamiento de capas."""
 
-    layers: List[Dict[str, Any]] = Field(
-        ..., description="Lista de {id, orden}"
-    )
+    layers: List[Dict[str, Any]] = Field(..., description="Lista de {id, orden}")
 
 
 # ===========================================
@@ -142,7 +152,7 @@ async def upload_layer(
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Archivo muy grande. Maximo permitido: {MAX_FILE_SIZE_MB}MB"
+            detail=f"Archivo muy grande. Maximo permitido: {MAX_FILE_SIZE_MB}MB",
         )
 
     # Validate JSON structure
@@ -153,21 +163,25 @@ async def upload_layer(
 
     # Validate GeoJSON structure
     if "type" not in geojson:
-        raise HTTPException(status_code=400, detail="No es un GeoJSON valido: falta campo 'type'")
+        raise HTTPException(
+            status_code=400, detail="No es un GeoJSON valido: falta campo 'type'"
+        )
 
     if geojson["type"] not in ALLOWED_GEOJSON_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Tipo GeoJSON invalido: {geojson['type']}. Permitidos: {', '.join(ALLOWED_GEOJSON_TYPES)}"
+            detail=f"Tipo GeoJSON invalido: {geojson['type']}. Permitidos: {', '.join(ALLOWED_GEOJSON_TYPES)}",
         )
 
     # Validate FeatureCollection structure
     if geojson["type"] == "FeatureCollection":
         if "features" not in geojson or not isinstance(geojson["features"], list):
-            raise HTTPException(status_code=400, detail="FeatureCollection debe tener array 'features'")
+            raise HTTPException(
+                status_code=400, detail="FeatureCollection debe tener array 'features'"
+            )
 
     # Sanitize filename to prevent path traversal
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '', nombre.lower().replace(' ', '_'))[:100]
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "", nombre.lower().replace(" ", "_"))[:100]
     if not safe_name:
         safe_name = "layer"
     filename = f"{safe_name}.geojson"

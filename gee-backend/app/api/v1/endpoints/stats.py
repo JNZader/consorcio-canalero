@@ -10,11 +10,16 @@ from datetime import date, datetime
 from enum import Enum
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from app.constants import CUENCA_AREAS_HA, CONSORCIO_AREA_HA, CONSORCIO_KM_CAMINOS, CUENCA_IDS
+from app.constants import (
+    CUENCA_AREAS_HA,
+    CONSORCIO_AREA_HA,
+    CONSORCIO_KM_CAMINOS,
+    CUENCA_IDS,
+)
 from app.services.supabase_service import get_supabase_service
 from app.auth import User, require_authenticated
 
@@ -93,12 +98,14 @@ async def get_stats_by_cuenca(analysis_id: Optional[str] = None):
 
     cuencas = []
     for nombre, stats in stats_cuencas.items():
-        cuencas.append({
-            "nombre": nombre,
-            "hectareas_inundadas": stats.get("hectareas", 0),
-            "porcentaje": stats.get("porcentaje", 0),
-            "area_total": areas_cuencas.get(nombre, 0),
-        })
+        cuencas.append(
+            {
+                "nombre": nombre,
+                "hectareas_inundadas": stats.get("hectareas", 0),
+                "porcentaje": stats.get("porcentaje", 0),
+                "area_total": areas_cuencas.get(nombre, 0),
+            }
+        )
 
     return {
         "analysis_id": analysis.get("id"),
@@ -197,7 +204,9 @@ async def export_stats(
             created_at = item.get("created_at", "")
             if created_at:
                 try:
-                    item_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+                    item_date = datetime.fromisoformat(
+                        created_at.replace("Z", "+00:00")
+                    ).date()
                     if request.date_from and item_date < request.date_from:
                         continue
                     if request.date_to and item_date > request.date_to:
@@ -255,7 +264,9 @@ async def get_summary(
     }
 
 
-def _prepare_export_data(items: List[dict], cuencas_filter: Optional[List[str]] = None) -> List[dict]:
+def _prepare_export_data(
+    items: List[dict], cuencas_filter: Optional[List[str]] = None
+) -> List[dict]:
     """Prepare data for export."""
     export_data = []
 
@@ -294,23 +305,25 @@ def _prepare_export_data(items: List[dict], cuencas_filter: Optional[List[str]] 
 def _generate_csv_response(
     items: List[dict],
     cuencas_filter: Optional[List[str]] = None,
-    include_reports: bool = False
+    include_reports: bool = False,
 ) -> StreamingResponse:
     """Generate CSV file response."""
     export_data = _prepare_export_data(items, cuencas_filter)
 
     if not export_data:
         # Return empty CSV with headers
-        export_data = [{
-            "id": "",
-            "fecha_analisis": "",
-            "fecha_inicio": "",
-            "fecha_fin": "",
-            "hectareas_inundadas": "",
-            "porcentaje_area": "",
-            "caminos_afectados_km": "",
-            "estado": "",
-        }]
+        export_data = [
+            {
+                "id": "",
+                "fecha_analisis": "",
+                "fecha_inicio": "",
+                "fecha_fin": "",
+                "hectareas_inundadas": "",
+                "porcentaje_area": "",
+                "caminos_afectados_km": "",
+                "estado": "",
+            }
+        ]
 
     # Create CSV in memory
     output = io.StringIO()
@@ -333,5 +346,5 @@ def _generate_csv_response(
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
             "Content-Type": "text/csv; charset=utf-8",
-        }
+        },
     )

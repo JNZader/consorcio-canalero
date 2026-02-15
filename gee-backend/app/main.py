@@ -3,16 +3,14 @@ Main entry point for FastAPI application.
 Consorcio Canalero GEE Backend.
 """
 
-import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-import structlog
 
 from app.config import settings
 from app.api.v1.router import api_router
@@ -146,7 +144,12 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=403,
-                    content={"error": {"code": "CSRF_INVALID_ORIGIN", "message": "Origin not allowed"}},
+                    content={
+                        "error": {
+                            "code": "CSRF_INVALID_ORIGIN",
+                            "message": "Origin not allowed",
+                        }
+                    },
                 )
 
         # For non-file-upload requests, verify JSON content type
@@ -165,7 +168,12 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=415,
-                    content={"error": {"code": "INVALID_CONTENT_TYPE", "message": "Content-Type must be application/json"}},
+                    content={
+                        "error": {
+                            "code": "INVALID_CONTENT_TYPE",
+                            "message": "Content-Type must be application/json",
+                        }
+                    },
                 )
 
         return await call_next(request)
@@ -225,7 +233,7 @@ async def check_supabase_health() -> Dict[str, Any]:
 
         db = get_supabase_service()
         # Simple query to test connection
-        result = db.client.table("capas").select("id").limit(1).execute()
+        db.client.table("capas").select("id").limit(1).execute()
         return {"status": "healthy", "latency_ms": None}
     except Exception as e:
         logger.error("Supabase health check failed", error=str(e))
