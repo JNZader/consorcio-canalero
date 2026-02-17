@@ -82,4 +82,4 @@ class Settings(BaseSettings):
 
 
 # Instancia global de settings
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

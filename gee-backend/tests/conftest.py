@@ -69,82 +69,102 @@ async def async_client() -> AsyncClient:
 def mock_supabase_service():
     """
     Mock Supabase service for testing without real database.
+
+    Patches the service module and all endpoint modules that import
+    get_supabase_service directly, to ensure the mock is used regardless
+    of how the function is imported. Also clears the lru_cache to prevent
+    stale cached instances from being returned.
     """
-    with patch("app.services.supabase_service.get_supabase_service") as mock:
-        service = MagicMock()
+    from app.services.supabase_service import get_supabase_service
 
-        # Mock report methods
-        service.create_report.return_value = {
-            "id": "test-report-id",
-            "tipo": "desborde",
-            "descripcion": "Test description",
-            "latitud": -33.7,
-            "longitud": -63.9,
-            "estado": "pendiente",
-            "created_at": "2024-01-15T10:00:00Z",
-        }
+    # Clear lru_cache before patching to avoid returning a cached real instance
+    get_supabase_service.cache_clear()
 
-        service.get_reports.return_value = {
-            "items": [
-                {
-                    "id": "report-1",
-                    "tipo": "desborde",
-                    "estado": "pendiente",
-                    "created_at": "2024-01-15T10:00:00Z",
-                }
-            ],
-            "total": 1,
-            "page": 1,
-        }
+    service = MagicMock()
 
-        service.get_report.return_value = {
-            "id": "test-report-id",
-            "tipo": "desborde",
-            "descripcion": "Test description",
-            "estado": "pendiente",
-        }
+    # Mock report methods
+    service.create_report.return_value = {
+        "id": "test-report-id",
+        "tipo": "desborde",
+        "descripcion": "Test description",
+        "latitud": -33.7,
+        "longitud": -63.9,
+        "estado": "pendiente",
+        "created_at": "2024-01-15T10:00:00Z",
+    }
 
-        service.update_report.return_value = {
-            "id": "test-report-id",
-            "estado": "en_revision",
-        }
-
-        # Mock layer methods
-        service.get_layers.return_value = [
+    service.get_reports.return_value = {
+        "items": [
             {
-                "id": "layer-1",
-                "nombre": "Cuencas",
-                "tipo": "polygon",
-                "visible": True,
+                "id": "report-1",
+                "tipo": "desborde",
+                "estado": "pendiente",
+                "created_at": "2024-01-15T10:00:00Z",
             }
-        ]
+        ],
+        "total": 1,
+        "page": 1,
+    }
 
-        service.create_layer.return_value = {
-            "id": "new-layer-id",
-            "nombre": "Nueva Capa",
+    service.get_report.return_value = {
+        "id": "test-report-id",
+        "tipo": "desborde",
+        "descripcion": "Test description",
+        "estado": "pendiente",
+    }
+
+    service.update_report.return_value = {
+        "id": "test-report-id",
+        "estado": "en_revision",
+    }
+
+    # Mock layer methods
+    service.get_layers.return_value = [
+        {
+            "id": "layer-1",
+            "nombre": "Cuencas",
+            "tipo": "polygon",
+            "visible": True,
         }
+    ]
 
-        # Mock analysis methods
-        service.get_analysis_history.return_value = {
-            "items": [],
-            "total": 0,
-            "page": 1,
-            "limit": 10,
-            "pages": 0,
-        }
+    service.create_layer.return_value = {
+        "id": "new-layer-id",
+        "nombre": "Nueva Capa",
+    }
 
-        service.save_analysis.return_value = {
-            "id": "analysis-id",
-            "created_at": "2024-01-15T10:00:00Z",
-        }
+    # Mock analysis methods
+    service.get_analysis_history.return_value = {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "limit": 10,
+        "pages": 0,
+    }
 
-        # Mock photo upload
-        service.upload_report_photo.return_value = (
-            "https://storage.example.com/photo.jpg"
-        )
+    service.save_analysis.return_value = {
+        "id": "analysis-id",
+        "created_at": "2024-01-15T10:00:00Z",
+    }
 
-        mock.return_value = service
+    # Mock photo upload
+    service.upload_report_photo.return_value = "https://storage.example.com/photo.jpg"
+
+    # Patch at the canonical location and at all endpoint modules that import directly
+    with (
+        patch(
+            "app.services.supabase_service.get_supabase_service", return_value=service
+        ),
+        patch("app.api.v1.endpoints.public.get_supabase_service", return_value=service),
+        patch(
+            "app.api.v1.endpoints.reports.get_supabase_service", return_value=service
+        ),
+        patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=service),
+    ):
         yield service
+
+    # Clear lru_cache after test to avoid leaking the mock
+    get_supabase_service.cache_clear()
 
 
 # ===========================================

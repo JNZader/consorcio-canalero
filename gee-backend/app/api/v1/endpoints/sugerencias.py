@@ -160,6 +160,9 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
     contact_value = data.contacto_email or data.contacto_telefono
     contact_type = "email" if data.contacto_email else "phone"
 
+    # At this point we validated that either email or telefono is set
+    assert contact_value is not None
+
     # Verificar rate limit (max 3 sugerencias por dia)
     MAX_SUGERENCIAS_POR_DIA = 3
 
@@ -168,7 +171,7 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
 
     count_result = (
         supabase.table("contact_submissions")
-        .select("id", count="exact")
+        .select("id", count="exact")  # type: ignore[arg-type]
         .eq("contact_value", contact_value.lower())
         .eq("submission_type", "sugerencia")
         .gte("created_at", yesterday)
@@ -213,7 +216,7 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
             status_code=500,
         )
 
-    sugerencia = result.data[0]
+    sugerencia = result.data[0]  # type: ignore[index]
 
     # Registrar envio para rate limiting
     supabase.table("contact_submissions").insert(
@@ -221,14 +224,14 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
             "contact_type": contact_type,
             "contact_value": contact_value.lower(),
             "submission_type": "sugerencia",
-            "submission_id": sugerencia["id"],
+            "submission_id": sugerencia["id"],  # type: ignore[index,call-overload]
         }
     ).execute()
 
     # Registrar en historial
     supabase.table("sugerencias_historial").insert(
         {
-            "sugerencia_id": sugerencia["id"],
+            "sugerencia_id": sugerencia["id"],  # type: ignore[index,call-overload]
             "accion": "creado",
             "estado_nuevo": "pendiente",
             "notas": f"Sugerencia ciudadana recibida (contacto verificado: {contact_type})",
@@ -239,12 +242,12 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
 
     logger.info(
         "Public suggestion created",
-        suggestion_id=sugerencia["id"],
+        suggestion_id=sugerencia["id"],  # type: ignore[index,call-overload]
         contact_type=contact_type,
     )
 
     return {
-        "id": sugerencia["id"],
+        "id": sugerencia["id"],  # type: ignore[index,call-overload]
         "message": "Sugerencia enviada correctamente. Gracias por tu participacion.",
         "remaining_today": remaining,
     }
@@ -265,6 +268,7 @@ async def verificar_limite_sugerencias(
         )
 
     contact_value = email or telefono
+    assert contact_value is not None
     MAX_SUGERENCIAS_POR_DIA = 3
 
     supabase = get_supabase_client()
@@ -273,7 +277,7 @@ async def verificar_limite_sugerencias(
 
     count_result = (
         supabase.table("contact_submissions")
-        .select("id", count="exact")
+        .select("id", count="exact")  # type: ignore[arg-type]
         .eq("contact_value", contact_value.lower())
         .eq("submission_type", "sugerencia")
         .gte("created_at", yesterday)
@@ -320,7 +324,7 @@ async def listar_sugerencias(
     supabase = get_supabase_client()
 
     # Construir query
-    query = supabase.table("sugerencias").select("*", count="exact")
+    query = supabase.table("sugerencias").select("*", count="exact")  # type: ignore[arg-type]
 
     if tipo:
         query = query.eq("tipo", tipo)
@@ -366,7 +370,7 @@ async def obtener_estadisticas(
     for estado in ["pendiente", "en_agenda", "tratado", "descartado"]:
         result = (
             supabase.table("sugerencias")
-            .select("id", count="exact")
+            .select("id", count="exact")  # type: ignore[arg-type]
             .eq("estado", estado)
             .limit(1)
             .execute()
@@ -377,7 +381,7 @@ async def obtener_estadisticas(
     for tipo_key, tipo_value in [("ciudadanas", "ciudadana"), ("internas", "interna")]:
         result = (
             supabase.table("sugerencias")
-            .select("id", count="exact")
+            .select("id", count="exact")  # type: ignore[arg-type]
             .eq("tipo", tipo_value)
             .limit(1)
             .execute()
@@ -452,12 +456,12 @@ async def crear_tema_interno(
             status_code=500,
         )
 
-    sugerencia = result.data[0]
+    sugerencia = result.data[0]  # type: ignore[index]
 
     # Registrar en historial
     supabase.table("sugerencias_historial").insert(
         {
-            "sugerencia_id": sugerencia["id"],
+            "sugerencia_id": sugerencia["id"],  # type: ignore[index,call-overload]
             "usuario_id": user.id,
             "accion": "creado",
             "estado_nuevo": "pendiente",
@@ -467,7 +471,7 @@ async def crear_tema_interno(
 
     logger.info(
         "Internal topic created",
-        suggestion_id=sugerencia["id"],
+        suggestion_id=sugerencia["id"],  # type: ignore[index,call-overload]
         user_id=user.id,
     )
 
@@ -591,7 +595,7 @@ async def actualizar_sugerencia(
         )
 
     # Registrar cambio de estado en historial
-    if data.estado and data.estado != current.data["estado"]:
+    if data.estado and data.estado != current.data["estado"]:  # type: ignore[index,call-overload]
         accion = "estado_cambiado"
         if data.estado == "en_agenda":
             accion = "agendado"
@@ -603,7 +607,7 @@ async def actualizar_sugerencia(
                 "sugerencia_id": str(sugerencia_id),
                 "usuario_id": user.id,
                 "accion": accion,
-                "estado_anterior": current.data["estado"],
+                "estado_anterior": current.data["estado"],  # type: ignore[index,call-overload]
                 "estado_nuevo": data.estado,
                 "notas": data.resolucion if data.estado == "tratado" else None,
             }
@@ -612,12 +616,12 @@ async def actualizar_sugerencia(
         logger.info(
             "Suggestion status changed",
             suggestion_id=str(sugerencia_id),
-            old_status=current.data["estado"],
+            old_status=current.data["estado"],  # type: ignore[index,call-overload]
             new_status=data.estado,
             user_id=user.id,
         )
 
-    return result.data[0]
+    return result.data[0]  # type: ignore[index]
 
 
 @router.post("/{sugerencia_id}/agendar", response_model=SugerenciaResponse)
@@ -672,7 +676,7 @@ async def agendar_sugerencia(
         user_id=user.id,
     )
 
-    return result.data[0]
+    return result.data[0]  # type: ignore[index]
 
 
 @router.post("/{sugerencia_id}/resolver", response_model=SugerenciaResponse)
@@ -725,7 +729,7 @@ async def resolver_sugerencia(
         user_id=user.id,
     )
 
-    return result.data[0]
+    return result.data[0]  # type: ignore[index]
 
 
 @router.delete("/{sugerencia_id}", status_code=204)

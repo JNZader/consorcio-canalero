@@ -65,7 +65,7 @@ class NotFoundError(AppException):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
     ):
-        details = {}
+        details: Dict[str, Any] = {}
         if resource_type:
             details["resource_type"] = resource_type
         if resource_id:
@@ -118,7 +118,7 @@ class ValidationError(AppException):
         field: Optional[str] = None,
         errors: Optional[list] = None,
     ):
-        details = {}
+        details: Dict[str, Any] = {}
         if field:
             details["field"] = field
         if errors:
@@ -146,7 +146,7 @@ class RateLimitExceededError(AppException):
         retry_after: int = 60,
         limit: Optional[int] = None,
     ):
-        details = {"retry_after": retry_after}
+        details: Dict[str, Any] = {"retry_after": retry_after}
         if limit:
             details["limit"] = limit
 

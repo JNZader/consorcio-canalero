@@ -57,7 +57,7 @@ class SupabaseService:
         }
 
         result = self.client.table("analisis_gee").insert(record).execute()
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def update_analysis_geojson(
         self, analysis_id: str, geojson_url: str
@@ -69,7 +69,7 @@ class SupabaseService:
             .eq("id", analysis_id)
             .execute()
         )
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def get_analysis(self, analysis_id: str) -> Optional[Dict[str, Any]]:
         """Obtener un analisis por ID."""
@@ -80,7 +80,7 @@ class SupabaseService:
             .single()
             .execute()
         )
-        return result.data
+        return result.data  # type: ignore[return-value]
 
     def get_analysis_history(
         self,
@@ -101,7 +101,7 @@ class SupabaseService:
         Returns:
             Dict con items y metadata de paginacion
         """
-        query = self.client.table("analisis_gee").select("*", count="exact")
+        query = self.client.table("analisis_gee").select("*", count="exact")  # type: ignore[arg-type]
 
         if status:
             query = query.eq("status", status)
@@ -131,7 +131,7 @@ class SupabaseService:
             .limit(1)
             .execute()
         )
-        return result.data[0] if result.data else None
+        return result.data[0] if result.data else None  # type: ignore[return-value]
 
     def delete_analysis(self, analysis_id: str) -> bool:
         """
@@ -160,25 +160,25 @@ class SupabaseService:
             query = query.eq("visible", True)
 
         result = query.order("orden").execute()
-        return result.data or []
+        return result.data or []  # type: ignore[return-value]
 
     def get_layer(self, layer_id: str) -> Optional[Dict[str, Any]]:
         """Obtener una capa por ID."""
         result = (
             self.client.table("capas").select("*").eq("id", layer_id).single().execute()
         )
-        return result.data
+        return result.data  # type: ignore[return-value]
 
     def create_layer(self, layer_data: Dict[str, Any]) -> Dict[str, Any]:
         """Crear nueva capa."""
         result = self.client.table("capas").insert(layer_data).execute()
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def update_layer(self, layer_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Actualizar capa."""
         updates["updated_at"] = datetime.now().isoformat()
         result = self.client.table("capas").update(updates).eq("id", layer_id).execute()
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def delete_layer(self, layer_id: str) -> bool:
         """Eliminar capa."""
@@ -235,7 +235,8 @@ class SupabaseService:
         Obtener denuncias con filtros y paginacion.
         """
         query = self.client.table("denuncias").select(
-            "*, perfiles!denuncias_user_id_fkey(nombre, email)", count="exact"
+            "*, perfiles!denuncias_user_id_fkey(nombre, email)",
+            count="exact",  # type: ignore[arg-type]
         )
 
         if status:
@@ -284,9 +285,9 @@ class SupabaseService:
             .execute()
         )
 
-        result = report.data
-        result["historial"] = history.data or []
-        return result
+        result = report.data  # type: ignore[assignment]
+        result["historial"] = history.data or []  # type: ignore[index]
+        return result  # type: ignore[return-value]
 
     def create_report(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -310,7 +311,7 @@ class SupabaseService:
         }
 
         result = self.client.table("denuncias").insert(record).execute()
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def upload_report_photo(self, filename: str, content: bytes) -> str:
         """
@@ -357,7 +358,7 @@ class SupabaseService:
                 }
             ).execute()
 
-        return result.data[0] if result.data else {}
+        return result.data[0] if result.data else {}  # type: ignore[return-value]
 
     def get_reports_stats(self) -> Dict[str, Any]:
         """
@@ -374,11 +375,11 @@ class SupabaseService:
                     result.data[0] if isinstance(result.data, list) else result.data
                 )
                 return {
-                    "pendiente": stats_data.get("pendiente", 0),
-                    "en_revision": stats_data.get("en_revision", 0),
-                    "resuelto": stats_data.get("resuelto", 0),
-                    "rechazado": stats_data.get("rechazado", 0),
-                    "total": stats_data.get("total", 0),
+                    "pendiente": stats_data.get("pendiente", 0),  # type: ignore[union-attr]
+                    "en_revision": stats_data.get("en_revision", 0),  # type: ignore[union-attr]
+                    "resuelto": stats_data.get("resuelto", 0),  # type: ignore[union-attr]
+                    "rechazado": stats_data.get("rechazado", 0),  # type: ignore[union-attr]
+                    "total": stats_data.get("total", 0),  # type: ignore[union-attr]
                 }
         except Exception:
             pass  # RPC no existe, usar fallback
@@ -390,8 +391,8 @@ class SupabaseService:
 
         for estado in estados:
             result = (
-                self.client.table("denuncias")
-                .select("id", count="exact")
+                self.client.table("denuncias")  # type: ignore[assignment]
+                .select("id", count="exact")  # type: ignore[arg-type]
                 .eq("estado", estado)
                 .limit(1)
                 .execute()

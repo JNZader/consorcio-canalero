@@ -237,7 +237,8 @@ async def check_supabase_health() -> Dict[str, Any]:
         return {"status": "healthy", "latency_ms": None}
     except Exception as e:
         logger.error("Supabase health check failed", error=str(e))
-        return {"status": "unhealthy", "error": str(e)}
+        # Do not expose internal exception details to the client
+        return {"status": "unhealthy", "error": "supabase_check_failed"}
 
 
 async def check_redis_health() -> Dict[str, Any]:
@@ -257,7 +258,8 @@ async def check_redis_health() -> Dict[str, Any]:
             return {"status": "unavailable", "message": "Using in-memory fallback"}
     except Exception as e:
         logger.error("Redis health check failed", error=str(e))
-        return {"status": "unhealthy", "error": str(e)}
+        # Do not expose internal exception details to the client
+        return {"status": "unhealthy", "error": "redis_check_failed"}
 
 
 async def check_gee_health() -> Dict[str, Any]:
@@ -272,7 +274,8 @@ async def check_gee_health() -> Dict[str, Any]:
             return {"status": "not_initialized"}
     except Exception as e:
         logger.error("GEE health check failed", error=str(e))
-        return {"status": "unhealthy", "error": str(e)}
+        # Do not expose internal exception details to the client
+        return {"status": "unhealthy", "error": "gee_check_failed"}
 
 
 @asynccontextmanager

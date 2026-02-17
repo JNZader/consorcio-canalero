@@ -145,12 +145,12 @@ class MonitoringService:
         start_date: date,
         end_date: date,
         max_cloud: int = 30,
-    ) -> Tuple[ee.Image, int]:
+    ) -> Tuple[Optional[ee.Image], int]:
         """
         Obtener composicion de Sentinel-2 con mascara de nubes.
 
         Returns:
-            Tuple de (imagen compuesta, numero de imagenes)
+            Tuple de (imagen compuesta o None, numero de imagenes)
         """
 
         def mask_clouds(image):
@@ -377,8 +377,10 @@ class MonitoringService:
             }
         ).getInfo()
 
-        groups = result.get("groups", [])
-        area_total = (result.get("area_total_m2", 0) or 0) / 10000  # ha
+        groups = result.get("groups", []) if result else []
+        area_total = (
+            (result.get("area_total_m2", 0) if result else 0) or 0
+        ) / 10000  # ha
 
         # Procesar resultados
         class_names = {
@@ -406,12 +408,12 @@ class MonitoringService:
         }
 
         clases = {}
-        stats_resumen = {
-            "area_productiva_ha": 0,  # cultivo_sano
-            "area_vulnerable_ha": 0,  # rastrojo (sin cobertura)
-            "area_agua_ha": 0,  # agua_superficie
-            "area_afectada_ha": 0,  # lote_anegado
-            "area_suelo_desnudo_ha": 0,  # suelo_desnudo
+        stats_resumen: Dict[str, float] = {
+            "area_productiva_ha": 0.0,  # cultivo_sano
+            "area_vulnerable_ha": 0.0,  # rastrojo (sin cobertura)
+            "area_agua_ha": 0.0,  # agua_superficie
+            "area_afectada_ha": 0.0,  # lote_anegado
+            "area_suelo_desnudo_ha": 0.0,  # suelo_desnudo
         }
 
         for grupo in groups:

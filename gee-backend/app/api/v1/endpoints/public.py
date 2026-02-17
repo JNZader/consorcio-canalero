@@ -141,6 +141,7 @@ async def upload_report_photo(file: UploadFile = File(...)):
 
     # Generate safe filename based on actual type
     ext_map = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+    assert detected_type is not None
     file_ext = ext_map.get(detected_type, "jpg")
     safe_filename = f"{uuid.uuid4()}.{file_ext}"
 
