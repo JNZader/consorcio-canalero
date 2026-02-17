@@ -570,7 +570,7 @@ class ImageExplorer:
     """
 
     # Presets de visualizacion para Sentinel-2
-    VIS_PRESETS = {
+    VIS_PRESETS: Dict[str, Dict[str, Any]] = {
         "rgb": {
             "bands": ["B4", "B3", "B2"],
             "min": 0,
@@ -712,7 +712,7 @@ class ImageExplorer:
                 ndwi = composite.normalizedDifference(["B3", "B8"])
                 image = ndwi.gt(0).selfMask().rename("index")
 
-            vis_params = {
+            vis_params: Dict[str, Any] = {
                 "min": preset.get("min", 0),
                 "max": preset.get("max", 1),
                 "palette": preset.get("palette", ["white", "blue"]),
@@ -788,6 +788,7 @@ class ImageExplorer:
         mosaic = collection.select("VV").mosaic().clip(self.zona)
 
         # Visualizacion
+        vis_params: Dict[str, Any]
         if visualization == "vv_flood":
             # Deteccion de agua: valores < -15 dB
             image = mosaic.lt(-15).selfMask()

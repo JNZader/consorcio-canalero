@@ -66,7 +66,7 @@ class DistributedRateLimiter:
         self._redis_available: Optional[bool] = None
 
         # In-memory fallback storage
-        self._memory_store: dict = defaultdict(list)
+        self._memory_store: dict[str, list[float]] = defaultdict(list)
         self._memory_lock = asyncio.Lock()
 
         logger.info(
