@@ -21,6 +21,9 @@ import type {
 const VALID_USER_ROLES = ['ciudadano', 'operador', 'admin'] as const;
 export type UserRole = (typeof VALID_USER_ROLES)[number];
 
+/** Allowed hostnames for Google Earth Engine tile URLs */
+const ALLOWED_EARTH_ENGINE_HOSTNAMES = ['earthengine.googleapis.com'] as const;
+
 /**
  * Validates if a value is a valid UserRole.
  * Use this when receiving role data from API or storage.
@@ -387,8 +390,13 @@ export function isValidSelectedImage(value: unknown): value is SelectedImageShap
     // Allow template placeholders by temporarily replacing them
     const testUrl = (obj.tile_url as string).replace(/\{[xyz]\}/g, '0');
     const parsed = new URL(testUrl);
-    // Only allow HTTPS or valid Earth Engine URLs
-    if (parsed.protocol !== 'https:' && !testUrl.includes('earthengine.googleapis.com')) {
+    // Only allow HTTPS or valid Earth Engine URLs (by hostname)
+    const hostname = parsed.hostname;
+    const isEarthEngineHost = (ALLOWED_EARTH_ENGINE_HOSTNAMES as readonly string[]).includes(
+      hostname,
+    );
+    if (parsed.protocol !== 'https:' || (!isEarthEngineHost && hostname.endsWith('.googleapis.com'))) {
+      // Require HTTPS always, and only allow Earth Engine traffic to known hostnames
       return false;
     }
   } catch {
