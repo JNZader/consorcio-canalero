@@ -339,8 +339,8 @@ class DistributedRateLimiter:
             current_count = len(self._memory_store[identifier])
 
             if self._memory_store[identifier]:
-                oldest = min(self._memory_store[identifier])
-                reset_time = int(oldest + self.window_seconds - now)
+                oldest_ts = min(self._memory_store[identifier])
+                reset_time = int(oldest_ts + self.window_seconds - now)
             else:
                 reset_time = self.window_seconds
 

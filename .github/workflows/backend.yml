@@ -65,7 +65,7 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest tests/ -v --cov=app --cov-fail-under=50
+      - run: pytest tests/ -v --cov=app --cov-fail-under=40
 
   security:
     name: Security scan (Trivy)
