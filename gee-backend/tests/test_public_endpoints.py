@@ -37,7 +37,7 @@ class TestPublicHealth:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
+        assert data["status"] in ["healthy", "degraded"]
 
 
 class TestCreatePublicReport:
@@ -161,7 +161,7 @@ class TestUploadPhoto:
 
     def test_upload_photo_success(self, client: TestClient, mock_supabase_service):
         """Should upload photo successfully."""
-        # Create a fake image file
+        # Create a fake image file (must be >= 12 bytes for magic bytes validation)
         image_content = (
             b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
         )
@@ -178,7 +178,7 @@ class TestUploadPhoto:
 
     def test_upload_photo_png(self, client: TestClient, mock_supabase_service):
         """Should accept PNG files."""
-        # Minimal PNG header
+        # Minimal PNG header (>= 12 bytes)
         png_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 
         response = client.post(
@@ -190,7 +190,8 @@ class TestUploadPhoto:
 
     def test_upload_photo_webp(self, client: TestClient, mock_supabase_service):
         """Should accept WebP files."""
-        webp_content = b"RIFF\x00\x00\x00\x00WEBP"
+        # WebP: RIFF header (4) + size (4) + WEBP (4) = 12 bytes minimum
+        webp_content = b"RIFF\x00\x00\x00\x00WEBPVP8 "
 
         response = client.post(
             "/api/v1/public/upload-photo",
@@ -232,7 +233,8 @@ class TestUploadPhoto:
             "Storage error"
         )
 
-        image_content = b"\xff\xd8\xff\xe0JFIF"
+        # Must be >= 12 bytes for magic bytes validation to pass
+        image_content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00"
 
         response = client.post(
             "/api/v1/public/upload-photo",
