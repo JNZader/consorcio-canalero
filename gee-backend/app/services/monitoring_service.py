@@ -378,7 +378,9 @@ class MonitoringService:
         ).getInfo()
 
         groups = result.get("groups", []) if result else []
-        area_total = ((result.get("area_total_m2", 0) if result else 0) or 0) / 10000  # ha
+        area_total = (
+            (result.get("area_total_m2", 0) if result else 0) or 0
+        ) / 10000  # ha
 
         # Procesar resultados
         class_names = {

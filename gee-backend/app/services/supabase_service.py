@@ -235,7 +235,8 @@ class SupabaseService:
         Obtener denuncias con filtros y paginacion.
         """
         query = self.client.table("denuncias").select(
-            "*, perfiles!denuncias_user_id_fkey(nombre, email)", count="exact"  # type: ignore[arg-type]
+            "*, perfiles!denuncias_user_id_fkey(nombre, email)",
+            count="exact",  # type: ignore[arg-type]
         )
 
         if status:
