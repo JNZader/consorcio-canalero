@@ -1,0 +1,11 @@
+schema: spec-driven
+context: |
+  Monorepo: React 19 + Vite frontend (`consorcio-web`) and FastAPI backend (`gee-backend`).
+  Testing: Vitest/Playwright (frontend), Pytest (backend), pre-commit enforced.
+  Quality: Biome + Ruff + MyPy + CI gates from GitHub Actions.
+rules:
+  proposal: [Include rollback plan, identify impacted modules/contracts]
+  specs: [Use RFC 2119 keywords, Given/When/Then scenarios, include API contract checks]
+  design: [Document boundary decisions, include testability and CI strategy]
+  tasks: [Small TDD-first tasks, add mutation targets and thresholds per module]
+  verify: [Run unit/integration/e2e + mutation suites before merge]
