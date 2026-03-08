@@ -265,6 +265,44 @@ describe('API Client', () => {
         );
       });
     });
+
+    describe('resolve', () => {
+      it('should send canonical resolve payload', async () => {
+        const mockResponse = {
+          id: 'report-123',
+          status: 'resolved',
+          resolved_at: '2026-01-10T09:30:00Z',
+          resolved_by: 'operator-123',
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockResponse),
+        });
+
+        const result = await reportsApi.resolve('report-123', {
+          status: 'resolved',
+          comment: 'Incidente mitigado',
+          resolved_by: 'operator-123',
+        });
+
+        expect(result).toEqual(mockResponse);
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8000/api/v1/reports/report-123/resolve',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              report_id: 'report-123',
+              resolution: {
+                status: 'resolved',
+                comment: 'Incidente mitigado',
+                resolved_by: 'operator-123',
+              },
+            }),
+          })
+        );
+      });
+    });
   });
 
   // ===========================================

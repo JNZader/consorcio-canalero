@@ -3,6 +3,7 @@
  */
 
 import { apiFetch, API_URL, API_PREFIX, LONG_TIMEOUT, getAuthToken } from './core';
+import { buildResolvePayload, type ResolveInput, type ResolveStatus } from './reportsResolve';
 import type {
   DashboardStats,
   PublicReportCreate,
@@ -92,10 +93,18 @@ export const reportsApi = {
   /**
    * Marcar como resuelta.
    */
-  resolve: (id: string, descripcion: string): Promise<Report> =>
+  resolve: (
+    id: string,
+    resolution: ResolveInput
+  ): Promise<{
+    id: string;
+    status: ResolveStatus;
+    resolved_at: string;
+    resolved_by: string;
+  }> =>
     apiFetch(`/reports/${id}/resolve`, {
       method: 'POST',
-      body: JSON.stringify({ descripcion }),
+      body: JSON.stringify(buildResolvePayload(id, resolution)),
     }),
 
   /**

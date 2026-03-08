@@ -3,7 +3,7 @@ Reports Endpoints.
 Gestion de denuncias ciudadanas (admin).
 """
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from enum import Enum
@@ -53,6 +53,22 @@ class ReportAssign(BaseModel):
 
     operador_id: str
     notas: Optional[str] = None
+
+
+class ResolveStatus(str, Enum):
+    RESOLVED = "resolved"
+    REJECTED = "rejected"
+
+
+class ResolvePayload(BaseModel):
+    status: ResolveStatus
+    comment: str = Field(..., min_length=1, max_length=2000)
+    resolved_by: Optional[str] = Field(default=None, min_length=1)
+
+
+class ResolveReportRequest(BaseModel):
+    report_id: str
+    resolution: ResolvePayload
 
 
 # ===========================================
@@ -246,7 +262,7 @@ async def assign_report(
 @router.post("/{report_id}/resolve")
 async def resolve_report(
     report_id: str,
-    descripcion: str,
+    payload: ResolveReportRequest,
     user: User = Depends(require_admin_or_operator),
 ):
     """
@@ -259,6 +275,9 @@ async def resolve_report(
         user_id=user.id,
     )
 
+    if payload.report_id != report_id:
+        raise HTTPException(status_code=400, detail="report_id does not match path")
+
     db = get_supabase_service()
 
     # Verificar que existe
@@ -266,12 +285,22 @@ async def resolve_report(
     if not existing:
         raise ReportNotFoundError(report_id)
 
+    target_status = {
+        ResolveStatus.RESOLVED: "resuelto",
+        ResolveStatus.REJECTED: "rechazado",
+    }[payload.resolution.status]
+
     updates = {
-        "estado": "resuelto",
-        "resolucion_descripcion": descripcion,
+        "estado": target_status,
+        "resolucion_descripcion": payload.resolution.comment,
     }
 
     result = db.update_report(report_id, updates, user.id)
+
+    response_status = {
+        "resuelto": "resolved",
+        "rechazado": "rejected",
+    }.get(result.get("estado", target_status), payload.resolution.status.value)
 
     logger.info(
         "Report resolved",
@@ -279,4 +308,9 @@ async def resolve_report(
         user_id=user.id,
     )
 
-    return result
+    return {
+        "id": result.get("id", report_id),
+        "status": response_status,
+        "resolved_at": result.get("resuelto_at") or result.get("updated_at"),
+        "resolved_by": payload.resolution.resolved_by or str(user.id),
+    }
