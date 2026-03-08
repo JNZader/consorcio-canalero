@@ -212,7 +212,13 @@ class MonitoringService:
             },
         ).rename("BSI")
 
-        return image.addBands([ndvi, ndwi, mndwi, ndmi, bsi])
+        return (
+            image.addBands(ndvi)
+            .addBands(ndwi)
+            .addBands(mndwi)
+            .addBands(ndmi)
+            .addBands(bsi)
+        )
 
     def classify_parcels(
         self,

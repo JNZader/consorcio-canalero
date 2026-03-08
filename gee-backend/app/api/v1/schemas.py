@@ -105,9 +105,7 @@ class TramiteAvanceCreate(BaseModel):
     fecha: Optional[str] = None
     nuevo_estado: Optional[
         Literal["pendiente", "en_revision", "aprobado", "rechazado", "completado"]
-    ] = Field(
-        default=None, description="Nuevo estado del tramite si cambio"
-    )
+    ] = Field(default=None, description="Nuevo estado del tramite si cambio")
     documentos: Optional[List[str]] = None
 
 

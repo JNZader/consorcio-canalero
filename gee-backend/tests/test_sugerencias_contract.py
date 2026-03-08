@@ -67,7 +67,9 @@ class FakeTable:
 
     def execute(self):
         if self.name == "contact_submissions" and self.mode == "select":
-            return FakeResult(data=[], count=self.store.get("contact_submissions_count", 0))
+            return FakeResult(
+                data=[], count=self.store.get("contact_submissions_count", 0)
+            )
 
         if self.name == "sugerencias" and self.mode == "insert":
             now = datetime.now(timezone.utc).isoformat()
@@ -144,7 +146,9 @@ class FakeSupabaseClient:
 
 def test_create_public_suggestion_contract(client, monkeypatch):
     fake = FakeSupabaseClient()
-    monkeypatch.setattr("app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake)
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake
+    )
 
     response = client.post(
         "/api/v1/sugerencias/public",
@@ -167,7 +171,9 @@ def test_update_suggestion_enforces_enum_contract(
 ):
     fake = FakeSupabaseClient()
     suggestion_id = fake.store["sugerencia"]["id"]
-    monkeypatch.setattr("app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake)
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake
+    )
 
     response = client.put(
         f"/api/v1/sugerencias/{suggestion_id}",
@@ -188,7 +194,9 @@ def test_update_suggestion_enforces_enum_contract(
 def test_delete_suggestion_contract(client, admin_auth, auth_headers, monkeypatch):
     fake = FakeSupabaseClient()
     suggestion_id = fake.store["sugerencia"]["id"]
-    monkeypatch.setattr("app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake)
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", lambda: fake
+    )
 
     response = client.delete(
         f"/api/v1/sugerencias/{suggestion_id}",

@@ -564,7 +564,9 @@ async def actualizar_sugerencia(
         raise SuggestionNotFoundError(str(sugerencia_id))
 
     # Preparar datos de actualizacion (Pydantic v2: model_dump)
-    update_data = {k: v for k, v in data.model_dump(exclude_none=True, mode="json").items()}
+    update_data = {
+        k: v for k, v in data.model_dump(exclude_none=True, mode="json").items()
+    }
 
     if not update_data:
         raise ValidationError(
@@ -610,7 +612,9 @@ async def actualizar_sugerencia(
                 "accion": accion,
                 "estado_anterior": current.data["estado"],  # type: ignore[index,call-overload]
                 "estado_nuevo": data.estado.value,
-                "notas": data.resolucion if data.estado == SugerenciaEstado.TRATADO else None,
+                "notas": data.resolucion
+                if data.estado == SugerenciaEstado.TRATADO
+                else None,
             }
         ).execute()
 
