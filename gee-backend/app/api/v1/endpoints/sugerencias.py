@@ -18,6 +18,7 @@ from app.core.exceptions import (
     ValidationError,
     RateLimitExceededError,
 )
+from app.api.v1.schemas import SugerenciaEstado, SugerenciaPrioridad, SugerenciaTipo
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -48,7 +49,7 @@ class SugerenciaCiudadanaCreate(SugerenciaBase):
 class SugerenciaInternaCreate(SugerenciaBase):
     """Schema para crear tema interno (comision)."""
 
-    prioridad: Optional[str] = "normal"
+    prioridad: Optional[SugerenciaPrioridad] = SugerenciaPrioridad.NORMAL
     cuenca_id: Optional[str] = None  # Cuenca asociada (opcional)
 
 
@@ -58,8 +59,8 @@ class SugerenciaUpdate(BaseModel):
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     categoria: Optional[str] = None
-    estado: Optional[str] = None
-    prioridad: Optional[str] = None
+    estado: Optional[SugerenciaEstado] = None
+    prioridad: Optional[SugerenciaPrioridad] = None
     fecha_reunion: Optional[date] = None
     notas_comision: Optional[str] = None
     resolucion: Optional[str] = None
@@ -82,14 +83,14 @@ class SugerenciaResponse(BaseModel):
     """Schema de respuesta para sugerencia."""
 
     id: UUID
-    tipo: str
+    tipo: SugerenciaTipo
     titulo: str
     descripcion: str
     categoria: Optional[str]
     contacto_nombre: Optional[str]
     contacto_email: Optional[str]
-    estado: str
-    prioridad: str
+    estado: SugerenciaEstado
+    prioridad: SugerenciaPrioridad
     fecha_reunion: Optional[date]
     notas_comision: Optional[str]
     resolucion: Optional[str]
@@ -194,7 +195,7 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
 
     # Crear sugerencia
     sugerencia_data = {
-        "tipo": "ciudadana",
+        "tipo": SugerenciaTipo.CIUDADANA.value,
         "titulo": data.titulo,
         "descripcion": data.descripcion,
         "categoria": data.categoria,
@@ -202,8 +203,8 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
         "contacto_email": data.contacto_email,
         "contacto_telefono": data.contacto_telefono,
         "contacto_verificado": True,
-        "estado": "pendiente",
-        "prioridad": "normal",
+        "estado": SugerenciaEstado.PENDIENTE.value,
+        "prioridad": SugerenciaPrioridad.NORMAL.value,
     }
 
     result = supabase.table("sugerencias").insert(sugerencia_data).execute()
@@ -436,12 +437,12 @@ async def crear_tema_interno(
     supabase = get_supabase_client()
 
     sugerencia_data = {
-        "tipo": "interna",
+        "tipo": SugerenciaTipo.INTERNA.value,
         "titulo": data.titulo,
         "descripcion": data.descripcion,
         "categoria": data.categoria,
-        "prioridad": data.prioridad or "normal",
-        "estado": "pendiente",
+        "prioridad": (data.prioridad or SugerenciaPrioridad.NORMAL).value,
+        "estado": SugerenciaEstado.PENDIENTE.value,
         "autor_id": user.id,
         "cuenca_id": data.cuenca_id,
     }
@@ -563,7 +564,7 @@ async def actualizar_sugerencia(
         raise SuggestionNotFoundError(str(sugerencia_id))
 
     # Preparar datos de actualizacion (Pydantic v2: model_dump)
-    update_data = {k: v for k, v in data.model_dump(exclude_none=True).items()}
+    update_data = {k: v for k, v in data.model_dump(exclude_none=True, mode="json").items()}
 
     if not update_data:
         raise ValidationError(
@@ -595,11 +596,11 @@ async def actualizar_sugerencia(
         )
 
     # Registrar cambio de estado en historial
-    if data.estado and data.estado != current.data["estado"]:  # type: ignore[index,call-overload]
+    if data.estado and data.estado.value != current.data["estado"]:  # type: ignore[index,call-overload]
         accion = "estado_cambiado"
-        if data.estado == "en_agenda":
+        if data.estado == SugerenciaEstado.EN_AGENDA:
             accion = "agendado"
-        elif data.estado == "tratado":
+        elif data.estado == SugerenciaEstado.TRATADO:
             accion = "resuelto"
 
         supabase.table("sugerencias_historial").insert(
@@ -608,8 +609,8 @@ async def actualizar_sugerencia(
                 "usuario_id": user.id,
                 "accion": accion,
                 "estado_anterior": current.data["estado"],  # type: ignore[index,call-overload]
-                "estado_nuevo": data.estado,
-                "notas": data.resolucion if data.estado == "tratado" else None,
+                "estado_nuevo": data.estado.value,
+                "notas": data.resolucion if data.estado == SugerenciaEstado.TRATADO else None,
             }
         ).execute()
 
@@ -617,7 +618,7 @@ async def actualizar_sugerencia(
             "Suggestion status changed",
             suggestion_id=str(sugerencia_id),
             old_status=current.data["estado"],  # type: ignore[index,call-overload]
-            new_status=data.estado,
+            new_status=data.estado.value,
             user_id=user.id,
         )
 

@@ -48,6 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_sugerencias_fecha_reunion ON sugerencias(fecha_re
 CREATE INDEX IF NOT EXISTS idx_sugerencias_created ON sugerencias(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sugerencias_autor ON sugerencias(autor_id) WHERE autor_id IS NOT NULL;
 
+-- Compatibilidad con endpoint actual
+ALTER TABLE sugerencias
+ADD COLUMN IF NOT EXISTS contacto_verificado BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE sugerencias
+ADD COLUMN IF NOT EXISTS cuenca_id UUID;
+
 -- Historial de cambios en sugerencias
 CREATE TABLE IF NOT EXISTS sugerencias_historial (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
