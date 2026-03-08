@@ -49,10 +49,49 @@ jobs:
       - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run test:run
 
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+      - run: npm run typecheck
+
+  smoke:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+      - run: npm run test:smoke
+
+  mutation:
+    name: Mutation tests (stryker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [typecheck, smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+      - run: npm run mutation:run
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, typecheck, smoke, mutation]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
