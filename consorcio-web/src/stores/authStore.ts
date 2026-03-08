@@ -10,7 +10,7 @@
 
 import type { Session, User } from '@supabase/supabase-js';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearAuthTokenCache } from '../lib/api';
 import { logger } from '../lib/logger';
 import { parseUsuario, safeGetUserRole } from '../lib/typeGuards';
@@ -66,6 +66,26 @@ let authListenerRegistered = false;
 
 /** Unsubscribe function for auth listener (for cleanup if needed) */
 let authListenerUnsubscribe: (() => void) | null = null;
+
+const inMemoryAuthStorage = {
+  getItem: (_name: string) => null,
+  setItem: (_name: string, _value: string) => undefined,
+  removeItem: (_name: string) => undefined,
+};
+
+const authStorage = createJSONStorage(() => {
+  if (typeof window === 'undefined') {
+    return inMemoryAuthStorage;
+  }
+
+  const storage = window.localStorage;
+
+  if (typeof storage?.setItem !== 'function') {
+    return inMemoryAuthStorage;
+  }
+
+  return storage;
+});
 
 export const useAuthStore = create<AuthState & AuthActions>()(
   persist(
@@ -250,6 +270,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
     }),
     {
       name: 'cc-auth-storage',
+      storage: authStorage,
       partialize: (state) => ({
         user: state.user ? { id: state.user.id, email: state.user.email } : null,
         profile: state.profile,
