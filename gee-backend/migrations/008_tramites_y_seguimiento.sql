@@ -38,3 +38,29 @@ CREATE TABLE IF NOT EXISTS gestion_seguimiento (
 
 CREATE INDEX IF NOT EXISTS idx_tramite_expediente ON tramites(numero_expediente);
 CREATE INDEX IF NOT EXISTS idx_seguimiento_entidad ON gestion_seguimiento(entidad_tipo, entidad_id);
+
+-- Normalizar estados legacy a catalogo canonico
+UPDATE tramites
+SET estado = CASE estado
+    WHEN 'iniciado' THEN 'pendiente'
+    WHEN 'detenido' THEN 'rechazado'
+    WHEN 'finalizado' THEN 'completado'
+    ELSE estado
+END
+WHERE estado IN ('iniciado', 'detenido', 'finalizado');
+
+ALTER TABLE tramites
+ALTER COLUMN estado SET DEFAULT 'pendiente';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'tramites_estado_canonico_check'
+    ) THEN
+        ALTER TABLE tramites
+        ADD CONSTRAINT tramites_estado_canonico_check
+        CHECK (estado IN ('pendiente', 'en_revision', 'aprobado', 'rechazado', 'completado'));
+    END IF;
+END $$;

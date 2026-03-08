@@ -21,6 +21,11 @@ import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import {
+  formatTramiteEstado,
+  type TramiteEstadoCanonico,
+} from '../../../constants/tramites';
+import { filterCanonicalTramites, type RawTramiteItem } from './tramitesCanonical';
 import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
 import { LoadingState } from '../../ui';
 
@@ -28,7 +33,7 @@ interface Tramite {
   id: string;
   titulo: string;
   numero_expediente: string;
-  estado: string;
+  estado: TramiteEstadoCanonico;
   ultima_actualizacion: string;
 }
 
@@ -50,8 +55,17 @@ export default function TramitesPanel() {
   const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Tramite[]>('/management/tramites');
-      setTramites(data);
+      const data = await apiFetch<RawTramiteItem[]>('/management/tramites');
+      const { canonical, discarded } = filterCanonicalTramites(data);
+
+      for (const tramite of discarded) {
+        logger.warn('Discarding tramite with non-canonical state', {
+          tramiteId: tramite.id,
+          estado: tramite.estado,
+        });
+      }
+
+      setTramites(canonical as Tramite[]);
     } catch (err) {
       logger.error('Error fetching tramites:', err);
     } finally {
@@ -150,7 +164,7 @@ export default function TramitesPanel() {
                   </Stack>
                 </Table.Td>
                 <Table.Td>
-                  <Badge variant="light">{t.estado.replace('_', ' ').toUpperCase()}</Badge>
+                  <Badge variant="light">{formatTramiteEstado(t.estado)}</Badge>
                 </Table.Td>
                 <Table.Td>
                   <Text size="xs">{new Date(t.ultima_actualizacion).toLocaleDateString()}</Text>

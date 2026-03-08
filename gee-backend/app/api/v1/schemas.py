@@ -3,7 +3,8 @@ Pydantic models for API request/response validation.
 Replaces raw Dict[str, Any] parameters with typed schemas.
 """
 
-from typing import List, Optional
+from enum import Enum
+from typing import List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -77,7 +78,9 @@ class TramiteCreate(BaseModel):
     organismo: Optional[str] = Field(
         default=None, description="Organismo ante el que se tramita"
     )
-    estado: str = Field(default="iniciado")
+    estado: Literal[
+        "pendiente", "en_revision", "aprobado", "rechazado", "completado"
+    ] = Field(default="pendiente")
     prioridad: Optional[str] = Field(default="media")
     fecha_inicio: Optional[str] = None
 
@@ -87,7 +90,9 @@ class TramiteUpdate(BaseModel):
 
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
-    estado: Optional[str] = None
+    estado: Optional[
+        Literal["pendiente", "en_revision", "aprobado", "rechazado", "completado"]
+    ] = None
     prioridad: Optional[str] = None
     organismo: Optional[str] = None
 
@@ -98,7 +103,9 @@ class TramiteAvanceCreate(BaseModel):
     tramite_id: str = Field(..., description="UUID del tramite")
     descripcion: str = Field(..., min_length=1)
     fecha: Optional[str] = None
-    nuevo_estado: Optional[str] = Field(
+    nuevo_estado: Optional[
+        Literal["pendiente", "en_revision", "aprobado", "rechazado", "completado"]
+    ] = Field(
         default=None, description="Nuevo estado del tramite si cambio"
     )
     documentos: Optional[List[str]] = None
@@ -113,6 +120,25 @@ class SeguimientoCreate(BaseModel):
     comentario: Optional[str] = None
     accion_tomada: Optional[str] = None
     fecha: Optional[str] = None
+
+
+class SugerenciaTipo(str, Enum):
+    CIUDADANA = "ciudadana"
+    INTERNA = "interna"
+
+
+class SugerenciaEstado(str, Enum):
+    PENDIENTE = "pendiente"
+    EN_AGENDA = "en_agenda"
+    TRATADO = "tratado"
+    DESCARTADO = "descartado"
+
+
+class SugerenciaPrioridad(str, Enum):
+    BAJA = "baja"
+    NORMAL = "normal"
+    ALTA = "alta"
+    URGENTE = "urgente"
 
 
 class ReunionCreate(BaseModel):
