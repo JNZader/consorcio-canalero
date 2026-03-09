@@ -124,21 +124,23 @@ describe('mantine color scheme manager', () => {
       expect(typeof unsubscribe).toBe('function');
     });
 
-    it('should call callback on theme change', (done) => {
-      const manager = createSharedColorSchemeManager();
-      const callback = vi.fn();
+    it('should call callback on theme change', () => {
+      return new Promise<void>((resolve) => {
+        const manager = createSharedColorSchemeManager();
+        const callback = vi.fn();
 
-      manager.subscribe(callback);
+        manager.subscribe(callback);
 
-      setTimeout(() => {
-        // After subscription, setting value should eventually trigger callback
-        manager.set('dark');
-        
         setTimeout(() => {
-          // Give time for RAF and event dispatch
-          done();
-        }, 100);
-      }, 50);
+          // After subscription, setting value should eventually trigger callback
+          manager.set('dark');
+          
+          setTimeout(() => {
+            // Give time for RAF and event dispatch
+            resolve();
+          }, 100);
+        }, 50);
+      });
     });
 
     it('should support unsubscribe', () => {
@@ -170,30 +172,34 @@ describe('mantine color scheme manager', () => {
   });
 
   describe('animation frame handling', () => {
-    it('should handle requestAnimationFrame in set', (done) => {
-      const manager = createSharedColorSchemeManager();
+    it('should handle requestAnimationFrame in set', () => {
+      return new Promise<void>((resolve) => {
+        const manager = createSharedColorSchemeManager();
 
-      manager.set('dark');
+        manager.set('dark');
 
-      // Wait for RAF to complete
-      setTimeout(() => {
-        const state = globalThis.__mantineColorSchemeState;
-        expect(state?.pendingUpdate).toBeNull();
-        done();
-      }, 50);
+        // Wait for RAF to complete
+        setTimeout(() => {
+          const state = globalThis.__mantineColorSchemeState;
+          expect(state?.pendingUpdate).toBeNull();
+          resolve();
+        }, 50);
+      });
     });
 
-    it('should cancel pending RAF when new set is called', (done) => {
-      const manager = createSharedColorSchemeManager();
+    it('should cancel pending RAF when new set is called', () => {
+      return new Promise<void>((resolve) => {
+        const manager = createSharedColorSchemeManager();
 
-      manager.set('light');
-      manager.set('dark'); // Cancels previous RAF and starts new one
+        manager.set('light');
+        manager.set('dark'); // Cancels previous RAF and starts new one
 
-      setTimeout(() => {
-        const state = globalThis.__mantineColorSchemeState;
-        expect(state?.lastValue).toBe('dark');
-        done();
-      }, 50);
+        setTimeout(() => {
+          const state = globalThis.__mantineColorSchemeState;
+          expect(state?.lastValue).toBe('dark');
+          resolve();
+        }, 50);
+      });
     });
   });
 
