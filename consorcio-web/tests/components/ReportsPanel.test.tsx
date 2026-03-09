@@ -125,4 +125,79 @@ describe('ReportsPanel', () => {
     );
     expect(reportsApi.getAll).toHaveBeenCalledTimes(2);
   });
+
+  it('shows empty state when no reports are returned', async () => {
+    vi.mocked(reportsApi.getAll).mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText('No hay denuncias')).toBeInTheDocument();
+    expect(
+      screen.getByText('No se encontraron denuncias con los filtros aplicados')
+    ).toBeInTheDocument();
+  });
+
+  it('shows load error notification when list request fails', async () => {
+    vi.mocked(reportsApi.getAll).mockRejectedValueOnce(new Error('network'));
+
+    renderPanel();
+    await screen.findByText('Gestion de Denuncias');
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          message: 'No se pudieron cargar los reportes',
+          color: 'red',
+        })
+      );
+    });
+  });
+
+  it('hides map action when coordinates are missing', async () => {
+    vi.mocked(reportsApi.getAll).mockResolvedValueOnce({
+      items: [{ ...baseReport, id: 'rep-2', latitud: null, longitud: null }],
+      total: 1,
+      page: 1,
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /ver ubicacion de denuncia en el mapa/i })).not.toBeInTheDocument();
+  });
+
+  it('shows update error notification when management update fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/management/seguimiento/reporte/rep-1') {
+        return [];
+      }
+      if (path === '/management/seguimiento' && options?.method === 'POST') {
+        throw new Error('failed update');
+      }
+      return [];
+    });
+
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+    await user.click(screen.getByRole('button', { name: /ver detalle de denuncia/i }));
+
+    const modal = await screen.findByRole('dialog', { name: /detalle de denuncia/i });
+    await user.click(within(modal).getByRole('button', { name: /registrar gestion/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          message: 'No se pudo actualizar el reporte',
+          color: 'red',
+        })
+      );
+    });
+  });
 });

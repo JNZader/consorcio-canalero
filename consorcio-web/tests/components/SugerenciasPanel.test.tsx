@@ -168,4 +168,89 @@ describe('SugerenciasPanel', () => {
       expect.objectContaining({ title: 'Sugerencia actualizada', color: 'green' })
     );
   });
+
+  it('shows empty state when no suggestions are returned', async () => {
+    vi.mocked(sugerenciasApi.getAll).mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 10,
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText('No hay sugerencias')).toBeInTheDocument();
+    expect(
+      screen.getByText('No se encontraron sugerencias con los filtros aplicados')
+    ).toBeInTheDocument();
+  });
+
+  it('shows error notification when listing suggestions fails', async () => {
+    vi.mocked(sugerenciasApi.getAll).mockRejectedValueOnce(new Error('network'));
+
+    renderPanel();
+    await screen.findByText('Gestion de Sugerencias');
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          message: 'No se pudieron cargar las sugerencias',
+          color: 'red',
+        })
+      );
+    });
+  });
+
+  it('agendas a pending suggestion from detail modal', async () => {
+    const user = userEvent.setup();
+    vi.mocked(sugerenciasApi.getAll).mockResolvedValueOnce({
+      items: [{ ...suggestion, fecha_reunion: '2026-04-10' }],
+      total: 1,
+      page: 1,
+      limit: 10,
+    });
+    vi.mocked(sugerenciasApi.agendar).mockResolvedValueOnce({ id: 'sug-1' } as never);
+
+    renderPanel();
+    const row = await screen.findByRole('row', {
+      name: /limpiar desagues secundarios infraestructura ciudadana pendiente/i,
+    });
+    await user.click(within(row).getByRole('button'));
+
+    const modal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
+    await user.click(within(modal).getByRole('button', { name: /^agendar$/i }));
+
+    await waitFor(() => {
+      expect(sugerenciasApi.agendar).toHaveBeenCalledWith('sug-1', '2026-04-10');
+    });
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Sugerencia agendada', color: 'blue' })
+    );
+  });
+
+  it('shows error notification when delete fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(sugerenciasApi.delete).mockRejectedValueOnce(new Error('cannot delete'));
+
+    renderPanel();
+    const row = await screen.findByRole('row', {
+      name: /limpiar desagues secundarios infraestructura ciudadana pendiente/i,
+    });
+    await user.click(within(row).getByRole('button'));
+
+    const modal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
+    await user.click(within(modal).getByRole('button', { name: /eliminar/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          message: 'No se pudo eliminar la sugerencia',
+          color: 'red',
+        })
+      );
+    });
+  });
 });
