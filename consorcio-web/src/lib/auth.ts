@@ -2,6 +2,7 @@ import type { AuthError } from '@supabase/supabase-js';
 import { getSupabaseClient } from './supabase';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
+import { withBasePath } from './basePath';
 import { useAuthStore, type UserRole } from '../stores/authStore';
 
 // Helper para obtener cliente de forma segura
@@ -111,7 +112,7 @@ export async function signInWithGoogle(): Promise<AuthResult> {
   logger.debug('[AUTH] signInWithGoogle called');
   try {
     const client = getClient();
-    const redirectUrl = `${globalThis.location.origin}/auth/callback`;
+    const redirectUrl = `${globalThis.location.origin}${withBasePath('/auth/callback')}`;
     logger.debug('[AUTH] Redirect URL:', redirectUrl);
 
     const { data, error } = await client.auth.signInWithOAuth({
@@ -269,7 +270,7 @@ function translateAuthError(error: AuthError): string {
 export async function resetPassword(email: string): Promise<AuthResult> {
   try {
     const { error } = await getClient().auth.resetPasswordForEmail(email, {
-      redirectTo: `${globalThis.location.origin}/auth/reset-password`,
+      redirectTo: `${globalThis.location.origin}${withBasePath('/auth/reset-password')}`,
     });
 
     if (error) {
