@@ -198,3 +198,156 @@ def test_get_dashboard_stats_uses_defaults_when_no_latest_analysis():
     assert stats["ultimo_analisis"]["hectareas_inundadas"] == 0
     assert stats["denuncias_nuevas_semana"] == 2
     assert stats["denuncias"]["pendiente"] == 1
+
+
+def test_get_layers_applies_visible_filter_when_requested():
+    client = MagicMock()
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.order.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[{"id": "layer-1", "visible": True}])
+    client.table.return_value = query
+
+    service = _service_with_client(client)
+    result = service.get_layers(visible_only=True)
+
+    assert result == [{"id": "layer-1", "visible": True}]
+    query.eq.assert_called_once_with("visible", True)
+
+
+def test_get_latest_analysis_returns_first_item_or_none():
+    client = MagicMock()
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.order.return_value = query
+    query.limit.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[{"id": "last-1"}])
+    client.table.return_value = query
+
+    service = _service_with_client(client)
+    assert service.get_latest_analysis() == {"id": "last-1"}
+
+    query.execute.return_value = SimpleNamespace(data=[])
+    assert service.get_latest_analysis() is None
+
+
+def test_delete_analysis_returns_false_when_analysis_does_not_exist():
+    client = MagicMock()
+    query = MagicMock()
+    query.delete.return_value = query
+    query.eq.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[])
+    client.table.return_value = query
+
+    service = _service_with_client(client)
+    assert service.delete_analysis("missing") is False
+
+
+def test_get_reports_applies_all_supported_filters_and_pagination():
+    client = MagicMock()
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.order.return_value = query
+    query.range.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[{"id": "r-1"}], count=1)
+    client.table.return_value = query
+
+    service = _service_with_client(client)
+    result = service.get_reports(
+        page=2,
+        limit=5,
+        status="pendiente",
+        cuenca="norte",
+        tipo="desborde",
+        assigned_to="admin-9",
+    )
+
+    assert result["items"] == [{"id": "r-1"}]
+    assert result["total"] == 1
+    assert result["page"] == 2
+    assert result["limit"] == 5
+    query.eq.assert_any_call("estado", "pendiente")
+    query.eq.assert_any_call("cuenca", "norte")
+    query.eq.assert_any_call("tipo", "desborde")
+    query.eq.assert_any_call("asignado_a", "admin-9")
+    query.range.assert_called_once_with(5, 9)
+
+
+def test_get_report_embeds_history_records_when_found():
+    client = MagicMock()
+    report_query = MagicMock()
+    report_query.select.return_value = report_query
+    report_query.eq.return_value = report_query
+    report_query.single.return_value = report_query
+    report_query.execute.return_value = SimpleNamespace(data={"id": "rep-9", "estado": "pendiente"})
+
+    history_query = MagicMock()
+    history_query.select.return_value = history_query
+    history_query.eq.return_value = history_query
+    history_query.order.return_value = history_query
+    history_query.execute.return_value = SimpleNamespace(data=[{"accion": "creado"}])
+
+    def table_side_effect(name: str):
+        if name == "denuncias":
+            return report_query
+        if name == "denuncias_historial":
+            return history_query
+        raise AssertionError(name)
+
+    client.table.side_effect = table_side_effect
+    service = _service_with_client(client)
+
+    report = service.get_report("rep-9")
+    assert report is not None
+    assert report["id"] == "rep-9"
+    assert report["historial"][0]["accion"] == "creado"
+
+
+def test_create_report_maps_optional_fields_and_default_status():
+    client = MagicMock()
+    query = MagicMock()
+    query.insert.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[{"id": "new-report"}])
+    client.table.return_value = query
+
+    service = _service_with_client(client)
+    created = service.create_report(
+        {
+            "tipo": "desborde",
+            "descripcion": "Canal desbordado",
+            "latitud": -31.0,
+            "longitud": -62.0,
+            "cuenca": "candil",
+            "foto_url": "https://cdn/foto.jpg",
+            "user_id": "user-1",
+        }
+    )
+
+    assert created == {"id": "new-report"}
+    inserted = query.insert.call_args.args[0]
+    assert inserted["estado"] == "pendiente"
+    assert inserted["cuenca"] == "candil"
+    assert inserted["foto_url"] == "https://cdn/foto.jpg"
+
+
+def test_upload_helpers_use_expected_bucket_paths_and_content_types():
+    client = MagicMock()
+    bucket = MagicMock()
+    bucket.get_public_url.side_effect = lambda path: f"https://storage/{path}"
+    client.storage.from_.return_value = bucket
+    service = _service_with_client(client)
+
+    report_url = service.upload_report_photo("r1.jpg", b"img")
+    geojson_url = service.upload_geojson("layer.geojson", b"{}", bucket="geojson-test")
+    analysis_url = service.upload_analysis_result("a-1", {"type": "FeatureCollection", "features": []})
+
+    assert report_url.endswith("denuncias/r1.jpg")
+    assert geojson_url.endswith("capas/layer.geojson")
+    assert analysis_url.endswith("analisis/a-1.geojson")
+    upload_calls = [call.args[0] for call in bucket.upload.call_args_list]
+    assert "denuncias/r1.jpg" in upload_calls
+    assert "capas/layer.geojson" in upload_calls
+    assert "analisis/a-1.geojson" in upload_calls
