@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { memo } from 'react';
 import type { ReactNode } from 'react';
+import { withBasePath } from '../lib/basePath';
 import { IconInfoCircle } from './ui/icons';
 import styles from '../styles/components/home.module.css';
 import { IconChartBar, IconClipboardList, IconMap, IconSatellite } from './ui/icons';
@@ -103,14 +104,20 @@ export const HomeContent = memo(function HomeContent() {
               <Button
                 size="lg"
                 component="a"
-                href="/mapa"
+                href={withBasePath('/mapa')}
                 variant="filled"
                 color="acento"
                 c="dark.9"
               >
                 Ver Mapa
               </Button>
-              <Button size="lg" component="a" href="/reportes" variant="outline" color="white">
+              <Button
+                size="lg"
+                component="a"
+                href={withBasePath('/reportes')}
+                variant="outline"
+                color="white"
+              >
                 Reportar Problema
               </Button>
             </Group>
@@ -200,7 +207,7 @@ export const HomeContent = memo(function HomeContent() {
                 radius="md"
                 shadow="sm"
                 component="a"
-                href={feature.href}
+                href={withBasePath(feature.href)}
                 className={styles.featureCard}
                 style={{
                   background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
@@ -235,7 +242,7 @@ export const HomeContent = memo(function HomeContent() {
             <Button
               size="lg"
               component="a"
-              href="/reportes"
+              href={withBasePath('/reportes')}
               variant="filled"
               color="acento"
               c="dark.9"

@@ -18,6 +18,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { updatePassword, useAuth } from '../lib/auth';
+import { withBasePath } from '../lib/basePath';
 import { getSupabaseClient } from '../lib/supabase';
 import { formatDate } from '../lib/formatters';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
@@ -145,7 +146,7 @@ function ProfileContent() {
         <Paper p="xl" radius="md" withBorder>
           <Stack align="center" gap="md">
             <Text>Debes iniciar sesion para ver tu perfil</Text>
-            <Button component="a" href="/login">
+            <Button component="a" href={withBasePath('/login')}>
               Iniciar Sesion
             </Button>
           </Stack>

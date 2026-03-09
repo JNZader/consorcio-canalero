@@ -12,6 +12,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { signOut } from '../lib/auth';
+import { withBasePath } from '../lib/basePath';
 import { useAuthLoading, useAuthStore } from '../stores/authStore';
 import type { Usuario } from '../types';
 import { IconChartBar, IconLogout, IconUser } from './ui/icons';
@@ -69,7 +70,7 @@ function DesktopLoadingSkeleton() {
 function DesktopLoginButton() {
   return (
     <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
-      <Button component="a" href="/login" style={{ minWidth: 120 }}>
+      <Button component="a" href={withBasePath('/login')} style={{ minWidth: 120 }}>
         Iniciar Sesion
       </Button>
     </Box>
@@ -80,7 +81,11 @@ function DesktopLoginButton() {
 function StaffMenuItems() {
   return (
     <>
-      <Menu.Item leftSection={<IconChartBar size={14} />} component="a" href="/admin">
+      <Menu.Item
+        leftSection={<IconChartBar size={14} />}
+        component="a"
+        href={withBasePath('/admin')}
+      >
         Panel de Control
       </Menu.Item>
       <Menu.Divider />
@@ -126,7 +131,11 @@ function DesktopUserMenu({
 
           {isStaff && <StaffMenuItems />}
 
-          <Menu.Item leftSection={<IconUser size={14} />} component="a" href="/perfil">
+          <Menu.Item
+            leftSection={<IconUser size={14} />}
+            component="a"
+            href={withBasePath('/perfil')}
+          >
             Mi Perfil
           </Menu.Item>
 
@@ -154,7 +163,7 @@ function MobileStaffButtons({
   return (
     <Button
       component="a"
-      href="/admin"
+      href={withBasePath('/admin')}
       variant="subtle"
       color="gray"
       fullWidth
@@ -189,7 +198,7 @@ function MobileUserMenu({
 
   if (!user) {
     return (
-      <Button component="a" href="/login" fullWidth onClick={onMobileClose}>
+      <Button component="a" href={withBasePath('/login')} fullWidth onClick={onMobileClose}>
         Iniciar Sesion
       </Button>
     );
@@ -223,7 +232,7 @@ function MobileUserMenu({
 
         <Button
           component="a"
-          href="/perfil"
+          href={withBasePath('/perfil')}
           variant="subtle"
           color="gray"
           fullWidth
@@ -266,7 +275,7 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
 
   const handleLogout = async () => {
     await signOut();
-    globalThis.location.href = '/';
+    globalThis.location.href = withBasePath('/');
   };
 
   const commonProps = { user, profile, loading, isStaff, handleLogout };

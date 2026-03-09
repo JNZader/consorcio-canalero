@@ -17,6 +17,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth';
+import { withBasePath } from '../lib/basePath';
 import { logger } from '../lib/logger';
 import { validateEmail } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
@@ -77,7 +78,7 @@ export function LoginFormContent() {
             icon: <IconCheck size={16} />,
           });
           // Redirigir al admin
-          globalThis.location.href = '/admin';
+          globalThis.location.href = withBasePath('/admin');
         } else {
           notifications.show({
             title: 'Error al iniciar sesion',

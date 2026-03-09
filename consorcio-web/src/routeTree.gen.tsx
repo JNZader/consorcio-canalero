@@ -16,6 +16,7 @@ import { Center, Loader, Text, Stack } from '@mantine/core';
 
 import { RootLayout } from './components/RootLayout';
 import { useAuthStore } from './stores/authStore';
+import { withBasePath } from './lib/basePath';
 import { getSupabaseClient } from './lib/supabase';
 import { logger } from './lib/logger';
 
@@ -227,7 +228,7 @@ function AuthCallbackPage() {
 
           if (error) {
             logger.error('[AUTH CALLBACK] Exchange error:', error);
-            window.location.href = '/login?error=exchange_failed';
+            window.location.href = withBasePath('/login?error=exchange_failed');
             return;
           }
 
@@ -244,9 +245,9 @@ function AuthCallbackPage() {
 
             const role = profile?.rol;
             if (role === 'admin' || role === 'operador') {
-              window.location.href = '/admin';
+              window.location.href = withBasePath('/admin');
             } else {
-              window.location.href = '/';
+              window.location.href = withBasePath('/');
             }
             return;
           }
@@ -258,14 +259,14 @@ function AuthCallbackPage() {
 
         if (sessionData?.session) {
           logger.debug('[AUTH CALLBACK] Found existing session');
-          window.location.href = '/';
+          window.location.href = withBasePath('/');
         } else {
           logger.debug('[AUTH CALLBACK] No session found, redirecting to login');
-          window.location.href = '/login';
+          window.location.href = withBasePath('/login');
         }
       } catch (err) {
         logger.error('[AUTH CALLBACK] Exception:', err);
-        window.location.href = '/login?error=auth_failed';
+        window.location.href = withBasePath('/login?error=auth_failed');
       }
     };
 
@@ -278,7 +279,9 @@ function AuthCallbackPage() {
         <Stack align="center" gap="md" style={{ maxWidth: 600, padding: 20 }}>
           <Text size="xl" fw={700} c="red">Error de Autenticacion</Text>
           <Text c="dimmed" style={{ whiteSpace: 'pre-wrap', textAlign: 'center' }}>{debugInfo}</Text>
-          <Text size="sm" c="blue" component="a" href="/login">Volver al login</Text>
+          <Text size="sm" c="blue" component="a" href={withBasePath('/login')}>
+            Volver al login
+          </Text>
         </Stack>
       </Center>
     );

@@ -16,6 +16,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
 import { API_URL, getAuthToken } from '../../lib/api';
+import { withBasePath } from '../../lib/basePath';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
@@ -174,7 +175,7 @@ export default function AdminDashboard() {
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Group justify="space-between" mb="md">
             <Title order={4}>Ultimos Reportes Vecinales</Title>
-            <Button component="a" href="/admin/reports" variant="subtle" size="xs">
+            <Button component="a" href={withBasePath('/admin/reports')} variant="subtle" size="xs">
               Ver todos
             </Button>
           </Group>

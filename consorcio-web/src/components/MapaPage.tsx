@@ -12,6 +12,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
@@ -97,7 +98,7 @@ export function MapaContent() {
               {isCommissionMember && (
                 <Button
                   component="a"
-                  href="/admin/images"
+                  href={withBasePath('/admin/images')}
                   variant="light"
                   size="sm"
                   leftSection={<IconPhoto size={16} />}
@@ -109,7 +110,7 @@ export function MapaContent() {
 
             <Button
               component="a"
-              href="/reportes"
+              href={withBasePath('/reportes')}
               color="orange"
               leftSection={<IconAlertTriangle size={18} />}
             >
