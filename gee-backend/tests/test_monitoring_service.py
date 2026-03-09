@@ -163,3 +163,56 @@ def test_generate_alerts_includes_change_alert_when_reference_is_provided(monkey
     assert response["total_alertas"] == 1
     assert response["alertas"][0]["tipo"] == "incremento_anegamiento"
     assert response["alertas"][0]["severidad"] == "alta"
+
+
+def test_classify_parcels_by_cuenca_builds_sorted_ranking(monkeypatch):
+    service = _build_service()
+    service.cuencas = {"candil": object(), "ml": object(), "norte": object()}
+
+    def fake_classify(*, layer_name, **kwargs):
+        data = {
+            "candil": {"resumen": {"porcentaje_problematico": 22, "area_anegada_ha": 12}},
+            "ml": {"resumen": {"porcentaje_problematico": 8, "area_anegada_ha": 3}},
+            "norte": {"resumen": {"porcentaje_problematico": 35, "area_anegada_ha": 20}},
+        }[layer_name]
+        return {
+            "area_total_ha": 100,
+            "clases": {},
+            "resumen": data["resumen"],
+        }
+
+    monkeypatch.setattr(service, "classify_parcels", fake_classify)
+
+    result = service.classify_parcels_by_cuenca(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 31),
+    )
+
+    assert result["ranking_criticidad"][0]["cuenca"] == "norte"
+    assert result["ranking_criticidad"][1]["cuenca"] == "candil"
+
+
+def test_generate_alerts_returns_error_when_classification_fails(monkeypatch):
+    service = _build_service()
+    monkeypatch.setattr(service, "classify_parcels_by_cuenca", lambda **kwargs: {"error": "gee unavailable"})
+
+    response = service.generate_alerts(
+        start_date=date(2026, 2, 1),
+        end_date=date(2026, 2, 28),
+    )
+
+    assert response == {"error": "gee unavailable"}
+
+
+def test_detect_changes_returns_period_error_when_first_period_fails(monkeypatch):
+    service = _build_service()
+    monkeypatch.setattr(service, "classify_parcels", lambda **kwargs: {"error": "sin imagenes"})
+
+    result = service.detect_changes(
+        date1_start=date(2026, 1, 1),
+        date1_end=date(2026, 1, 10),
+        date2_start=date(2026, 2, 1),
+        date2_end=date(2026, 2, 10),
+    )
+
+    assert "Error en periodo 1" in result["error"]

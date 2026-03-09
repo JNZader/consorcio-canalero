@@ -29,9 +29,9 @@ class PDFService:
         styles = getSampleStyleSheet()
 
         # Colors
-        PRIMARY_BLUE = colors.hexColor("#1971c2")
-        LIGHT_BG = colors.hexColor("#f8f9fa")
-        BORDER_COLOR = colors.hexColor("#dee2e6")
+        PRIMARY_BLUE = colors.HexColor("#1971c2")
+        LIGHT_BG = colors.HexColor("#f8f9fa")
+        BORDER_COLOR = colors.HexColor("#dee2e6")
 
         # Custom styles
         title_style = ParagraphStyle(
@@ -153,7 +153,7 @@ class PDFService:
             mt.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.hexColor("#e9ecef")),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e9ecef")),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.darkslategrey),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                         ("GRID", (0, 0), (-1, -1), 0.5, BORDER_COLOR),
@@ -200,8 +200,7 @@ class PDFService:
         styles = getSampleStyleSheet()
 
         # Colors
-        colors.hexColor("#1971c2")
-        VIOLET = colors.hexColor("#7950f2")
+        VIOLET = colors.HexColor("#7950f2")
 
         # Styles
         title_style = ParagraphStyle(
@@ -437,7 +436,7 @@ class PDFService:
             Paragraph(
                 "INFORME DE GESTIÓN INTEGRAL",
                 ParagraphStyle(
-                    "T", fontSize=22, textColor=colors.hexColor("#1971c2"), alignment=1
+                    "T", fontSize=22, textColor=colors.HexColor("#1971c2"), alignment=1
                 ),
             )
         )
@@ -455,7 +454,7 @@ class PDFService:
             TableStyle(
                 [
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.hexColor("#e7f5ff")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f5ff")),
                 ]
             )
         )
