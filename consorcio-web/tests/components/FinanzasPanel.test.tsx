@@ -158,4 +158,119 @@ describe('FinanzasPanel', () => {
 
     expect(within(gastoDialog).getByLabelText(/categoria/i)).toHaveValue('viaticos');
   });
+
+  it('registers a new ingreso using a custom source', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/finance/gastos' && !options) {
+        return [];
+      }
+      if (path === '/finance/ingresos' && !options) {
+        return [];
+      }
+      if (path.startsWith('/finance/balance-summary/')) {
+        return { total_ingresos: 0, total_gastos: 0, balance: 0 };
+      }
+      if (path === '/finance/categorias') {
+        return ['obras'];
+      }
+      if (path === '/finance/fuentes') {
+        return [];
+      }
+      if (path === '/finance/ingresos' && options?.method === 'POST') {
+        return { id: 'ing-2' };
+      }
+      return {};
+    });
+
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+
+    await user.click(screen.getByRole('button', { name: /registrar ingreso/i }));
+    const ingresoDialog = await screen.findByRole('dialog', { name: /registrar ingreso/i });
+
+    await user.click(within(ingresoDialog).getByRole('button', { name: /agregar fuente/i }));
+    const sourceDialog = await screen.findByRole('dialog', { name: /nueva fuente de ingreso/i });
+    await user.type(within(sourceDialog).getByLabelText('Nombre'), 'Convenio');
+    await user.click(within(sourceDialog).getByRole('button', { name: /guardar fuente/i }));
+
+    expect(within(ingresoDialog).getByLabelText(/fuente/i)).toHaveValue('convenio');
+
+    await user.type(within(ingresoDialog).getByLabelText(/descripcion/i), 'Aporte extraordinario');
+    await user.type(within(ingresoDialog).getByLabelText(/monto \(\$\)/i), '2500');
+    await user.type(within(ingresoDialog).getByLabelText(/pagador/i), 'Provincia');
+    await user.click(within(ingresoDialog).getByRole('button', { name: /guardar ingreso/i }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/finance/ingresos',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Ingreso registrado',
+        color: 'green',
+      })
+    );
+  });
+
+  it('updates gasto category from edit modal', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/finance/gastos' && !options) {
+        return [
+          {
+            id: 'g1',
+            fecha: '2026-03-02',
+            descripcion: 'Combustible retroexcavadora',
+            monto: 12000,
+            categoria: 'combustible',
+            infraestructura: { nombre: 'Canal Norte' },
+          },
+        ];
+      }
+      if (path === '/finance/ingresos' && !options) {
+        return [];
+      }
+      if (path.startsWith('/finance/balance-summary/')) {
+        return { total_ingresos: 0, total_gastos: 12000, balance: -12000 };
+      }
+      if (path === '/finance/categorias') {
+        return ['combustible', 'obras'];
+      }
+      if (path === '/finance/fuentes') {
+        return ['subsidio'];
+      }
+      if (path === '/finance/gastos/g1' && options?.method === 'PATCH') {
+        return { id: 'g1' };
+      }
+      return {};
+    });
+
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+
+    await user.click(screen.getByRole('tab', { name: /libro de gastos/i }));
+    const row = await screen.findByRole('row', { name: /combustible retroexcavadora/i });
+    await user.click(within(row).getByRole('button'));
+
+    const editDialog = await screen.findByRole('dialog', { name: /editar categoria de gasto/i });
+    fireEvent.change(within(editDialog).getByLabelText(/categoria/i), { target: { value: 'obras' } });
+    await user.click(within(editDialog).getByRole('button', { name: /actualizar categoria/i }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/finance/gastos/g1',
+        expect.objectContaining({ method: 'PATCH' })
+      );
+    });
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Categoria actualizada', color: 'green' })
+    );
+  });
 });
