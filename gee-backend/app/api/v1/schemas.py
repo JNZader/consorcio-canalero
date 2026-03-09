@@ -6,7 +6,14 @@ Replaces raw Dict[str, Any] parameters with typed schemas.
 from enum import Enum
 from typing import List, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _normalize_checklist_items(value: Optional[List[str]]) -> Optional[List[str]]:
+    if value is None:
+        return None
+
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
 
 # ===========================================
@@ -146,8 +153,18 @@ class ReunionCreate(BaseModel):
     fecha_reunion: str = Field(..., description="Fecha y hora de la reunion (ISO 8601)")
     lugar: Optional[str] = None
     descripcion: Optional[str] = None
-    orden_del_dia: Optional[str] = None
+    orden_del_dia_items: List[str] = Field(
+        ..., description="Checklist de puntos del orden del dia"
+    )
     tipo: Optional[str] = Field(default="ordinaria")
+
+    @field_validator("orden_del_dia_items", mode="before")
+    @classmethod
+    def validate_orden_del_dia_items(cls, value: Optional[List[str]]) -> List[str]:
+        normalized_items = _normalize_checklist_items(value) or []
+        if not normalized_items:
+            raise ValueError("Debe incluir al menos un punto en el orden del dia")
+        return normalized_items
 
 
 class ReunionUpdate(BaseModel):
@@ -159,8 +176,15 @@ class ReunionUpdate(BaseModel):
     )
     lugar: Optional[str] = None
     descripcion: Optional[str] = None
-    orden_del_dia: Optional[str] = None
+    orden_del_dia_items: Optional[List[str]] = None
     tipo: Optional[str] = None
+
+    @field_validator("orden_del_dia_items", mode="before")
+    @classmethod
+    def normalize_orden_del_dia_items(
+        cls, value: Optional[List[str]]
+    ) -> Optional[List[str]]:
+        return _normalize_checklist_items(value)
 
 
 class AgendaItemCreate(BaseModel):

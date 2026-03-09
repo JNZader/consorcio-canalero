@@ -31,7 +31,7 @@ interface Reunion {
   fecha_reunion: string;
   lugar: string;
   descripcion?: string;
-  orden_del_dia?: string;
+  orden_del_dia_items?: string[];
   estado: string;
 }
 
@@ -62,6 +62,7 @@ export default function ReunionesPanel() {
   const [exporting, setExporting] = useState(false);
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [newChecklistPoint, setNewChecklistPoint] = useState('');
 
   // Entidades disponibles para referenciar
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
@@ -189,19 +190,28 @@ export default function ReunionesPanel() {
       fecha_reunion: '',
       lugar: '',
       descripcion: '',
-      orden_del_dia: '',
+      orden_del_dia_items: [''],
       tipo: 'ordinaria',
     },
     validate: {
       titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
       fecha_reunion: (value) => (!value ? 'Fecha y hora requeridas' : null),
+      orden_del_dia_items: (value) =>
+        value.some((item) => item.trim().length > 0)
+          ? null
+          : 'Agrega al menos un punto al orden del dia',
     },
   });
 
   const handleCreateReunion = async (values: typeof reunionForm.values) => {
     try {
+      const ordenDelDiaItems = values.orden_del_dia_items
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
       const payload = {
         ...values,
+        orden_del_dia_items: ordenDelDiaItems,
         fecha_reunion: new Date(values.fecha_reunion).toISOString(),
       };
 
@@ -217,6 +227,7 @@ export default function ReunionesPanel() {
       });
 
       reunionForm.reset();
+      setNewChecklistPoint('');
       closeCreate();
       await fetchReuniones();
     } catch (err) {
@@ -303,13 +314,69 @@ export default function ReunionesPanel() {
               minRows={2}
               {...reunionForm.getInputProps('descripcion')}
             />
-            <Textarea
-              label="Orden del dia"
-              placeholder="Ej: 1) Lectura del acta anterior 2) Estado financiero 3) Obras"
-              autosize
-              minRows={3}
-              {...reunionForm.getInputProps('orden_del_dia')}
-            />
+            <Stack gap="xs">
+              <Text fw={500} size="sm">
+                Orden del dia (checklist)
+              </Text>
+
+              <Group align="flex-end" gap="xs">
+                <TextInput
+                  value={newChecklistPoint}
+                  onChange={(event) => setNewChecklistPoint(event.currentTarget.value)}
+                  placeholder="Escribe un punto y pulsa Anadir"
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  type="button"
+                  variant="light"
+                  onClick={() => {
+                    const newPoint = newChecklistPoint.trim();
+                    if (!newPoint) return;
+
+                    reunionForm.insertListItem('orden_del_dia_items', newPoint);
+                    setNewChecklistPoint('');
+                  }}
+                >
+                  Anadir punto
+                </Button>
+              </Group>
+
+              <Stack gap="xs">
+                {reunionForm.values.orden_del_dia_items.map((point, index) => (
+                  <Group key={`orden-${index}`} align="flex-start" gap="xs">
+                    <Text size="sm" mt={8}>
+                      {index + 1}.
+                    </Text>
+                    <TextInput
+                      value={point}
+                      onChange={(event) =>
+                        reunionForm.setFieldValue(
+                          `orden_del_dia_items.${index}`,
+                          event.currentTarget.value
+                        )
+                      }
+                      placeholder={`Punto ${index + 1}`}
+                      style={{ flex: 1 }}
+                    />
+                    <ActionIcon
+                      type="button"
+                      color="red"
+                      variant="subtle"
+                      onClick={() => reunionForm.removeListItem('orden_del_dia_items', index)}
+                      aria-label={`Eliminar punto ${index + 1}`}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+              </Stack>
+
+              {reunionForm.errors.orden_del_dia_items ? (
+                <Text size="xs" c="red">
+                  {reunionForm.errors.orden_del_dia_items}
+                </Text>
+              ) : null}
+            </Stack>
             <Button type="submit" mt="xs">
               Crear Reunion
             </Button>
@@ -335,10 +402,14 @@ export default function ReunionesPanel() {
             <Text size="sm" c="dimmed" mb="md">
               Lugar: {r.lugar}
             </Text>
-            {r.orden_del_dia ? (
-              <Text size="sm" mb="md">
-                Orden del dia: {r.orden_del_dia}
-              </Text>
+            {r.orden_del_dia_items && r.orden_del_dia_items.length > 0 ? (
+              <ol style={{ margin: 0, paddingLeft: 18, marginBottom: 16 }}>
+                {r.orden_del_dia_items.map((item, index) => (
+                  <li key={`${r.id}-orden-${index}`}>
+                    <Text size="sm">{item}</Text>
+                  </li>
+                ))}
+              </ol>
             ) : null}
 
             <Button
@@ -371,8 +442,15 @@ export default function ReunionesPanel() {
                     {selectedReunion.descripcion}
                   </Text>
                 ) : null}
-                {selectedReunion.orden_del_dia ? (
-                  <Text size="sm">Orden del dia: {selectedReunion.orden_del_dia}</Text>
+                {selectedReunion.orden_del_dia_items &&
+                selectedReunion.orden_del_dia_items.length > 0 ? (
+                  <ol style={{ margin: 0, paddingLeft: 18 }}>
+                    {selectedReunion.orden_del_dia_items.map((item, index) => (
+                      <li key={`${selectedReunion.id}-detalle-orden-${index}`}>
+                        <Text size="sm">{item}</Text>
+                      </li>
+                    ))}
+                  </ol>
                 ) : null}
               </div>
               <Button size="xs" variant="outline" onClick={handleExportPDF} loading={exporting}>

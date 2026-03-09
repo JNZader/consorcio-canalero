@@ -37,18 +37,27 @@ def test_tramite_avance_rejects_non_canonical_state():
         )
 
 
-def test_reunion_create_accepts_orden_del_dia():
+def test_reunion_create_accepts_orden_del_dia_items():
     model = ReunionCreate(
         titulo="Reunion mensual",
         fecha_reunion="2026-03-09T10:00:00Z",
         descripcion="Temas generales",
-        orden_del_dia="1. Balance\n2. Obras",
+        orden_del_dia_items=["  Balance  ", "Obras", "   "],
     )
 
-    assert model.orden_del_dia == "1. Balance\n2. Obras"
+    assert model.orden_del_dia_items == ["Balance", "Obras"]
 
 
-def test_reunion_update_accepts_partial_orden_del_dia():
-    model = ReunionUpdate(orden_del_dia="Revision de mantenimiento")
+def test_reunion_create_requires_non_empty_checklist():
+    with pytest.raises(ValidationError):
+        ReunionCreate(
+            titulo="Reunion mensual",
+            fecha_reunion="2026-03-09T10:00:00Z",
+            orden_del_dia_items=["", "   "],
+        )
 
-    assert model.orden_del_dia == "Revision de mantenimiento"
+
+def test_reunion_update_accepts_partial_orden_del_dia_items():
+    model = ReunionUpdate(orden_del_dia_items=[" Revision de mantenimiento ", ""])
+
+    assert model.orden_del_dia_items == ["Revision de mantenimiento"]
