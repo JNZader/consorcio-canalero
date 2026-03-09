@@ -34,12 +34,12 @@
 ## Phase 5: Mutation testing backend + frontend
 
 - [x] 5.1 Configurar `mutmut` en backend (dependencias y comando dedicado) en `gee-backend/requirements-dev.txt` y configuracion del proyecto.
-- [ ] 5.2 RED: ejecutar mutacion backend sobre modulos criticos (`reports`, `sugerencias`, `schemas tramites`) y registrar baseline.
+- [x] 5.2 RED: ejecutar mutacion backend sobre modulos criticos (`reports`, `sugerencias`, `schemas tramites`) y registrar baseline.
 - [ ] 5.3 GREEN: reforzar tests backend hasta alcanzar mutation score >= 65% en alcance inicial.
 - [x] 5.4 Configurar `@stryker-mutator/core` + `@stryker-mutator/vitest-runner` en `consorcio-web/package.json` y archivo de configuracion.
 - [ ] 5.5 RED: ejecutar mutacion frontend en `src/lib/api` y `src/components/admin/management` para detectar mutantes sobrevivientes.
 - [ ] 5.6 GREEN: reforzar tests frontend hasta mutation score >= 55% en alcance inicial.
-- [ ] 5.7 REFACTOR: optimizar alcance/concurrencia de mutation jobs para mantener tiempo CI aceptable.
+- [x] 5.7 REFACTOR: optimizar alcance/concurrencia de mutation jobs para mantener tiempo CI aceptable.
 
 ## Phase 6: Verificacion integral y hardening final
 

@@ -59,6 +59,7 @@ logs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cosmic-ray.sqlite
 
 # === OS ===
 .DS_Store

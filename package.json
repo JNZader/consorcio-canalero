@@ -27,7 +27,7 @@
     "typecheck": "cd consorcio-web && npm run typecheck",
     "quality:backend": "cd gee-backend && ruff check . && mypy app/ --ignore-missing-imports && python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q",
     "quality:frontend": "cd consorcio-web && npm run lint && npm run typecheck && npm run test:run -- tests/unit/api.test.ts",
-    "mutation:backend": "cd gee-backend && mutmut run",
+    "mutation:backend": "cd gee-backend && python3 scripts/cosmic_gate.py --min-kill-rate 0.12",
     "mutation:frontend": "cd consorcio-web && npm run mutation:run",
     "docker:dev": "docker compose up -d",
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d",
