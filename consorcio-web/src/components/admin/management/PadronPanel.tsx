@@ -4,6 +4,7 @@ import {
   Button,
   Container,
   Divider,
+  FileInput,
   Group,
   Stack,
   Table,
@@ -46,6 +47,14 @@ interface Pago {
   fecha_pago?: string;
 }
 
+interface PadronImportResult {
+  filename: string;
+  processed: number;
+  upserted: number;
+  skipped: number;
+  errors: Array<{ row: number; error: string }>;
+}
+
 export default function PadronPanel() {
   const [consorcistas, setConsorcistas] = useState<Consorcista[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +67,10 @@ export default function PadronPanel() {
   
   const [opened, { open, close }] = useDisclosure(false);
   const [pagoOpened, { open: openPago, close: closePago }] = useDisclosure(false);
+  const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<PadronImportResult | null>(null);
 
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
@@ -175,6 +188,45 @@ export default function PadronPanel() {
     }
   };
 
+  const handleImportPadron = async () => {
+    if (!importFile) {
+      notifications.show({
+        title: 'Archivo requerido',
+        message: 'Selecciona un archivo CSV, XLS o XLSX para importar',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+
+      const result = await apiFetch<PadronImportResult>('/padron/consorcistas/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      setImportResult(result);
+      await fetchConsorcistas();
+
+      notifications.show({
+        title: 'Importacion completada',
+        message: `Procesadas ${result.processed} filas, ${result.upserted} aplicadas`,
+        color: result.errors.length > 0 ? 'yellow' : 'green',
+      });
+    } catch (err) {
+      handleError(err, {
+        title: 'Error al importar padron',
+        context: 'PadronPanel.handleImportPadron',
+      });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   if (loading && consorcistas.length === 0) return <LoadingState />;
 
   return (
@@ -186,6 +238,9 @@ export default function PadronPanel() {
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open} color="blue">
           Nuevo Consorcista
+        </Button>
+        <Button variant="outline" onClick={openImport}>
+          Importar CSV/XLS
         </Button>
       </Group>
 
@@ -325,6 +380,47 @@ export default function PadronPanel() {
             </Paper>
           </Stack>
         )}
+      </Modal>
+
+      <Modal
+        opened={importOpened}
+        onClose={closeImport}
+        title="Importar padron desde archivo"
+        size="lg"
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Formatos soportados: CSV, XLS y XLSX. El sistema actualiza o crea consorcistas por CUIT.
+          </Text>
+          <FileInput
+            label="Archivo"
+            placeholder="Selecciona un archivo"
+            value={importFile}
+            onChange={setImportFile}
+            accept=".csv,.xls,.xlsx"
+            clearable
+          />
+          <Button loading={importLoading} onClick={handleImportPadron}>
+            Procesar importacion
+          </Button>
+
+          {importResult && (
+            <Paper withBorder p="sm" radius="md">
+              <Text size="sm">Archivo: {importResult.filename}</Text>
+              <Text size="sm">Filas procesadas: {importResult.processed}</Text>
+              <Text size="sm">Upserts aplicados: {importResult.upserted}</Text>
+              <Text size="sm">Filas omitidas: {importResult.skipped}</Text>
+              {importResult.errors.length > 0 && (
+                <Text size="xs" c="red.7" mt="xs">
+                  {`Errores: ${importResult.errors
+                    .slice(0, 5)
+                    .map((item) => `fila ${item.row}: ${item.error}`)
+                    .join(' | ')}`}
+                </Text>
+              )}
+            </Paper>
+          )}
+        </Stack>
       </Modal>
     </Container>
   );

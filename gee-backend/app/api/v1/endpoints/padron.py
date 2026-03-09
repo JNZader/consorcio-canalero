@@ -2,7 +2,7 @@
 Padron and Payments Endpoints.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from typing import Optional
 from uuid import UUID
 
@@ -47,3 +47,34 @@ async def register_payment(
 ):
     service = get_padron_service()
     return service.registrar_pago(data.model_dump(exclude_unset=True))
+
+
+@router.post("/consorcistas/import")
+async def import_consorcistas(
+    file: UploadFile = File(...),
+    user: User = Depends(require_admin_or_operator),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Nombre de archivo requerido")
+
+    if not file.filename.lower().endswith((".csv", ".xls", ".xlsx")):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Use archivos CSV, XLS o XLSX",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacio")
+
+    service = get_padron_service()
+
+    try:
+        result = service.import_consorcistas(file.filename, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "filename": file.filename,
+        **result,
+    }
