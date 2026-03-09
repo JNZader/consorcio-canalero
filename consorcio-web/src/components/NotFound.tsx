@@ -1,4 +1,5 @@
 import { Button, Container, Stack, Text, Title } from '@mantine/core';
+import { Link } from '@tanstack/react-router';
 import { IconArrowLeft, IconMapPin } from './ui/icons';
 
 /**
@@ -24,8 +25,8 @@ export default function NotFound() {
         </Text>
 
         <Button
-          component="a"
-          href="/"
+          component={Link}
+          to="/"
           leftSection={<IconArrowLeft size={18} />}
           size="md"
           mt="md"
