@@ -43,7 +43,7 @@ jobs:
       - run: ruff check .
       - run: mypy app/ --ignore-missing-imports
       - run: python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q
-      - run: mutmut run
+      - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.12
 
   quality-frontend:
     name: Frontend quality gate

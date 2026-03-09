@@ -79,7 +79,7 @@ ENV NODE_ENV=production \
 RUN npm run build
 
 # Remove dev dependencies after build
-RUN npm prune --production
+RUN npm prune --production --legacy-peer-deps
 
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server

@@ -106,13 +106,12 @@ def main() -> int:
         f"other={summary.other} "
         f"pending={summary.pending}"
     )
-    print(
-        f"Kill rate: {summary.kill_rate:.2%} "
-        f"(required >= {args.min_kill_rate:.2%})"
-    )
+    print(f"Kill rate: {summary.kill_rate:.2%} (required >= {args.min_kill_rate:.2%})")
 
     if summary.pending > 0:
-        print("Mutation gate failed: pending mutations remain after exec", file=sys.stderr)
+        print(
+            "Mutation gate failed: pending mutations remain after exec", file=sys.stderr
+        )
         return 1
 
     if summary.kill_rate < args.min_kill_rate:
