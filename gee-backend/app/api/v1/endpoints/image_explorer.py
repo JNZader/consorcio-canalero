@@ -15,6 +15,17 @@ from app.core.exceptions import AppException, NotFoundError, get_safe_error_deta
 router = APIRouter(prefix="/images", tags=["Image Explorer"])
 
 
+def _get_explorer_or_unavailable() -> ImageExplorer:
+    try:
+        return get_image_explorer()
+    except Exception as exc:
+        raise AppException(
+            message="Google Earth Engine no esta disponible temporalmente",
+            code="GEE_UNAVAILABLE",
+            status_code=503,
+        ) from exc
+
+
 @router.get("/sentinel2")
 async def get_sentinel2_image(
     target_date: date = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),
@@ -40,7 +51,7 @@ async def get_sentinel2_image(
         tile_url para usar en mapa Leaflet/Mapbox
     """
     try:
-        explorer = get_image_explorer()
+        explorer = _get_explorer_or_unavailable()
         result = await asyncio.to_thread(
             explorer.get_sentinel2_image,
             target_date=target_date,
@@ -85,7 +96,7 @@ async def get_sentinel1_image(
     El SAR funciona con nubes y detecta agua por su respuesta oscura.
     """
     try:
-        explorer = get_image_explorer()
+        explorer = _get_explorer_or_unavailable()
         result = await asyncio.to_thread(
             explorer.get_sentinel1_image,
             target_date=target_date,
@@ -127,7 +138,7 @@ async def compare_flood_dates(
         Tiles de ambas fechas (RGB y deteccion de agua)
     """
     try:
-        explorer = get_image_explorer()
+        explorer = _get_explorer_or_unavailable()
         result = await asyncio.to_thread(
             explorer.get_flood_comparison,
             flood_date=flood_date,
@@ -220,7 +231,7 @@ async def get_historic_flood_tiles(
         )
 
     try:
-        explorer = get_image_explorer()
+        explorer = _get_explorer_or_unavailable()
         flood_date = date.fromisoformat(flood["date"])
 
         # Use larger buffer for historic floods to ensure full coverage

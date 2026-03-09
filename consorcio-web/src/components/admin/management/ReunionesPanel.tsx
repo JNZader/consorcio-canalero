@@ -56,6 +56,23 @@ interface EntityOption {
   type: string;
 }
 
+function normalizeArrayResponse<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+
+  if (payload && typeof payload === 'object') {
+    const wrapped = payload as Record<string, unknown>;
+    const arrayLike = wrapped.items ?? wrapped.data ?? wrapped.results;
+
+    if (Array.isArray(arrayLike)) {
+      return arrayLike as T[];
+    }
+  }
+
+  return [];
+}
+
 export default function ReunionesPanel() {
   const [reuniones, setReuniones] = useState<Reunion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,15 +141,21 @@ export default function ReunionesPanel() {
   const fetchReferrables = useCallback(async () => {
     setLoadingEntities(true);
     try {
-      const [reports, tramites, assets] = await Promise.all([
-        apiFetch<Array<{ id: string; tipo: string; ubicacion_texto?: string }>>(
-          '/reports?limit=50'
-        ),
-        apiFetch<Array<{ id: string; titulo: string; numero_expediente?: string }>>(
-          '/management/tramites'
-        ),
-        apiFetch<Array<{ id: string; nombre: string; tipo: string }>>('/infrastructure/assets'),
+      const [reportsRaw, tramitesRaw, assetsRaw] = await Promise.all([
+        apiFetch<unknown>('/reports?limit=50'),
+        apiFetch<unknown>('/management/tramites'),
+        apiFetch<unknown>('/infrastructure/assets'),
       ]);
+
+      const reports = normalizeArrayResponse<{ id: string; tipo: string; ubicacion_texto?: string }>(
+        reportsRaw
+      );
+      const tramites = normalizeArrayResponse<{
+        id: string;
+        titulo: string;
+        numero_expediente?: string;
+      }>(tramitesRaw);
+      const assets = normalizeArrayResponse<{ id: string; nombre: string; tipo: string }>(assetsRaw);
 
       const options: EntityOption[] = [
         ...reports.map((r) => ({
