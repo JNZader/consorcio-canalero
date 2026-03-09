@@ -5,6 +5,7 @@ Handles expenses, budgeting and financial reporting.
 
 from functools import lru_cache
 from typing import List, Dict, Any, Optional
+import uuid
 
 from app.services.supabase_service import get_supabase_service
 from app.core.logging import get_logger
@@ -48,6 +49,37 @@ class FinanceService:
             if row.get("categoria")
         }
         return sorted(categorias)
+
+    # --- Ingresos ---
+    def get_ingresos(self, fuente: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = self.db.client.table("ingresos").select("*")
+        if fuente:
+            query = query.eq("fuente", fuente)
+        result = query.order("fecha", desc=True).execute()
+        return result.data
+
+    def create_ingreso(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if "comprobante" in data and "comprobante_url" not in data:
+            data["comprobante_url"] = data.pop("comprobante")
+        result = self.db.client.table("ingresos").insert(data).execute()
+        return result.data[0] if result.data else {}
+
+    def update_ingreso(self, ingreso_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        if "comprobante" in data and "comprobante_url" not in data:
+            data["comprobante_url"] = data.pop("comprobante")
+        result = (
+            self.db.client.table("ingresos").update(data).eq("id", ingreso_id).execute()
+        )
+        return result.data[0] if result.data else {}
+
+    def get_fuentes_ingreso(self) -> List[str]:
+        ingresos = self.db.client.table("ingresos").select("fuente").execute()
+        fuentes = {
+            row.get("fuente", "").strip()
+            for row in (ingresos.data or [])
+            if row.get("fuente")
+        }
+        return sorted(fuentes)
 
     # --- Presupuestos ---
     def get_presupuestos(self) -> List[Dict[str, Any]]:
@@ -149,6 +181,8 @@ class FinanceService:
         Attempts to use an RPC for server-side aggregation.
         Falls back to fetching only the 'monto' column and summing in Python.
         """
+        ingresos_operativos_total = self._get_ingresos_operativos_total(anio)
+
         try:
             # Try optimized RPC that does SUM() on the database side
             result = self.db.client.rpc(
@@ -157,11 +191,14 @@ class FinanceService:
             ).execute()
             if result.data:
                 row = result.data[0] if isinstance(result.data, list) else result.data
+                base_ingresos = float(row.get("total_ingresos", 0) or 0)
+                total_ingresos = base_ingresos + ingresos_operativos_total
+                total_gastos = float(row.get("total_gastos", 0) or 0)
                 return {
                     "anio": anio,
-                    "total_ingresos": row.get("total_ingresos", 0),
-                    "total_gastos": row.get("total_gastos", 0),
-                    "balance": row.get("balance", 0),
+                    "total_ingresos": total_ingresos,
+                    "total_gastos": total_gastos,
+                    "balance": total_ingresos - total_gastos,
                 }
         except Exception:
             pass  # RPC not available, use fallback
@@ -175,7 +212,7 @@ class FinanceService:
             .eq("estado", "pagado")
             .execute()
         )
-        total_ingresos = sum(p["monto"] for p in ingresos.data if p.get("monto"))
+        cuotas_total = sum(p["monto"] for p in ingresos.data if p.get("monto"))
 
         # 2. Total expenses
         gastos = (
@@ -187,12 +224,42 @@ class FinanceService:
         )
         total_gastos = sum(g["monto"] for g in gastos.data if g.get("monto"))
 
+        total_ingresos = cuotas_total + ingresos_operativos_total
+
         return {
             "anio": anio,
             "total_ingresos": total_ingresos,
             "total_gastos": total_gastos,
             "balance": total_ingresos - total_gastos,
         }
+
+    def _get_ingresos_operativos_total(self, anio: int) -> float:
+        ingresos_operativos = (
+            self.db.client.table("ingresos")
+            .select("monto")
+            .gte("fecha", f"{anio}-01-01")
+            .lte("fecha", f"{anio}-12-31")
+            .execute()
+        )
+        return float(
+            sum(item["monto"] for item in ingresos_operativos.data if item.get("monto"))
+        )
+
+    def upload_finance_comprobante(
+        self,
+        content: bytes,
+        content_type: str,
+        record_type: str,
+        extension: str,
+    ) -> Dict[str, str]:
+        filename = f"{record_type}/{uuid.uuid4()}.{extension}"
+        self.db.client.storage.from_("comprobantes").upload(
+            filename,
+            content,
+            {"content-type": content_type},
+        )
+        url = self.db.client.storage.from_("comprobantes").get_public_url(filename)
+        return {"filename": filename, "url": url}
 
 
 @lru_cache(maxsize=1)

@@ -255,6 +255,32 @@ class GastoUpdate(BaseModel):
     notas: Optional[str] = None
 
 
+class IngresoCreate(BaseModel):
+    """Schema for creating an income record."""
+
+    descripcion: str = Field(..., min_length=1)
+    monto: float = Field(..., gt=0)
+    fecha: str = Field(..., description="Fecha del ingreso (YYYY-MM-DD)")
+    fuente: str = Field(..., description="Origen del ingreso")
+    comprobante_url: Optional[str] = None
+    pagador: Optional[str] = None
+    notas: Optional[str] = None
+
+
+class IngresoUpdate(BaseModel):
+    """Schema for updating an income record (partial)."""
+
+    descripcion: Optional[str] = Field(default=None, min_length=1)
+    monto: Optional[float] = Field(default=None, gt=0)
+    fecha: Optional[str] = Field(
+        default=None, description="Fecha del ingreso (YYYY-MM-DD)"
+    )
+    fuente: Optional[str] = None
+    comprobante_url: Optional[str] = None
+    pagador: Optional[str] = None
+    notas: Optional[str] = None
+
+
 class PresupuestoCreate(BaseModel):
     """Schema for creating/updating a budget."""
 
