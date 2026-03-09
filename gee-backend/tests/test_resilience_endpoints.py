@@ -22,7 +22,7 @@ def test_cors_header_present_on_error_response(client):
             headers={"Origin": "http://localhost:4321"},
         )
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     assert (
         response.headers.get("access-control-allow-origin") == "http://localhost:4321"
     )
