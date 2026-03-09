@@ -161,8 +161,12 @@ async def crear_sugerencia_publica(data: SugerenciaCiudadanaCreate):
     contact_value = data.contacto_email or data.contacto_telefono
     contact_type = "email" if data.contacto_email else "phone"
 
-    # At this point we validated that either email or telefono is set
-    assert contact_value is not None
+    # Guard explicito para typing y robustez en runtime
+    if contact_value is None:
+        raise ValidationError(
+            message="Debe proporcionar email o telefono de contacto",
+            code="CONTACT_REQUIRED",
+        )
 
     # Verificar rate limit (max 3 sugerencias por dia)
     MAX_SUGERENCIAS_POR_DIA = 3
