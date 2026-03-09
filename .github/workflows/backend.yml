@@ -83,7 +83,7 @@ jobs:
   mutation:
     name: Mutation tests (cosmic-ray)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     needs: [contract]
     steps:
       - uses: actions/checkout@v4
