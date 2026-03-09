@@ -18,8 +18,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "test:e2e": "playwright test",
-    "test:a11y": "playwright test tests/accessibility/",
+    "test:e2e": "playwright test -c tests/accessibility/playwright.config.ts",
+    "test:a11y": "playwright test -c tests/accessibility/playwright.config.ts",
     "test:smoke": "vitest run tests/unit/api.test.ts",
     "mutation:run": "stryker run",
     "generate:types": "openapi-typescript http://localhost:8000/openapi.json -o ./src/types/schema.d.ts"

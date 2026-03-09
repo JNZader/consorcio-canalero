@@ -31,23 +31,27 @@ beforeAll(() => {
 
 // Mock ResizeObserver
 beforeAll(() => {
-  global.ResizeObserver = vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  }));
+  class ResizeObserverMock {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+
+  global.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
 });
 
 // Mock IntersectionObserver
 beforeAll(() => {
-  global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-    root: null,
-    rootMargin: '',
-    thresholds: [],
-  }));
+  class IntersectionObserverMock {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+    root = null;
+    rootMargin = '';
+    thresholds: number[] = [];
+  }
+
+  global.IntersectionObserver = IntersectionObserverMock as unknown as typeof IntersectionObserver;
 });
 
 // Mock fetch globally
