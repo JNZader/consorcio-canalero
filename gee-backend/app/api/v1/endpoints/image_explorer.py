@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from app.services.gee_service import get_image_explorer
+from app.services.gee_service import get_image_explorer, ImageExplorer
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 
 router = APIRouter(prefix="/images", tags=["Image Explorer"])
@@ -150,9 +150,12 @@ async def get_available_visualizations():
     """
     Obtener lista de visualizaciones disponibles para Sentinel-2.
     """
-    explorer = get_image_explorer()
+    visualizations = [
+        {"id": key, "description": value["description"]}
+        for key, value in ImageExplorer.VIS_PRESETS.items()
+    ]
     return JSONResponse(
-        content=explorer.get_available_visualizations(),
+        content=visualizations,
         headers={
             "Cache-Control": "public, max-age=86400",  # Cache 24 horas - lista estatica
         },

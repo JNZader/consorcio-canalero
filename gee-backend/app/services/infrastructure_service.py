@@ -10,6 +10,7 @@ from datetime import datetime
 
 from app.services.supabase_service import get_supabase_service
 from app.services.gee_service import get_gee_service, _gee_initialized, initialize_gee
+from app.core.exceptions import AppException
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -18,15 +19,27 @@ logger = get_logger(__name__)
 class InfrastructureService:
     def __init__(self):
         self.db = get_supabase_service()
-        if not _gee_initialized:
-            initialize_gee()
+
+    def _get_gee_service_or_raise(self):
+        """Initialize optional GEE dependency only for GEE-backed operations."""
+        try:
+            if not _gee_initialized:
+                initialize_gee()
+            return get_gee_service()
+        except Exception as exc:
+            logger.warning("GEE unavailable for infrastructure operation", error=str(exc))
+            raise AppException(
+                message="Servicio geoespacial temporalmente no disponible",
+                code="GEE_UNAVAILABLE",
+                status_code=503,
+            ) from exc
 
     def get_potential_intersections(self) -> Dict[str, Any]:
         """
         Find intersections between roads and canals.
         If canals layer is empty, it returns an empty result (no fallback).
         """
-        gee = get_gee_service()
+        gee = self._get_gee_service_or_raise()
         roads = gee.caminos
         canals = gee.canales
 

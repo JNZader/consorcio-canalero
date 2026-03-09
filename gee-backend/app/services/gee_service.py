@@ -20,6 +20,7 @@ from app.config import settings
 
 # Global flag to track initialization
 _gee_initialized = False
+_gee_init_error: str | None = None
 
 
 def initialize_gee() -> None:
@@ -31,49 +32,50 @@ def initialize_gee() -> None:
     2. JSON key del service account
     3. Service account registrado en GEE
     """
-    global _gee_initialized
+    global _gee_initialized, _gee_init_error
 
     if _gee_initialized:
         return
 
-    # Opcion 1: Archivo de credenciales (key_file parameter)
-    if settings.gee_key_file_path:
-        key_path = Path(settings.gee_key_file_path)
-        if key_path.exists():
-            # Usar key_file en lugar de key_data para archivos JSON
+    if _gee_init_error:
+        raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+
+    try:
+        # Opcion 1: Archivo de credenciales (key_file parameter)
+        if settings.gee_key_file_path:
+            key_path = Path(settings.gee_key_file_path)
+            if key_path.exists():
+                credentials = ee.ServiceAccountCredentials(
+                    email=None,
+                    key_file=str(key_path),
+                )
+                ee.Initialize(credentials, project=settings.gee_project_id)
+                _gee_initialized = True
+                return
+
+        # Opcion 2: Variable de entorno con JSON string
+        if settings.gee_service_account_key:
+            key_json = settings.gee_service_account_key
+            key_data = json.loads(key_json)
             credentials = ee.ServiceAccountCredentials(
-                email=None,  # Se extrae automaticamente del archivo
-                key_file=str(key_path),
+                email=key_data["client_email"],
+                key_data=key_json,
             )
             ee.Initialize(credentials, project=settings.gee_project_id)
             _gee_initialized = True
             return
 
-    # Opcion 2: Variable de entorno con JSON string
-    if settings.gee_service_account_key:
-        # key_data espera el JSON como string, no como dict
-        key_json = settings.gee_service_account_key
-        key_data = json.loads(key_json)
-        credentials = ee.ServiceAccountCredentials(
-            email=key_data["client_email"],
-            key_data=key_json,  # Pasar el string original, no el dict
-        )
-        ee.Initialize(credentials, project=settings.gee_project_id)
-        _gee_initialized = True
-        return
-
-    # Opcion 3: Autenticacion por defecto (para desarrollo local)
-    try:
+        # Opcion 3: Autenticacion por defecto (para desarrollo local)
         ee.Initialize(project=settings.gee_project_id)
         _gee_initialized = True
         return
-    except Exception:
-        pass
 
-    raise ValueError(
-        "No se encontraron credenciales de GEE. "
-        "Configura GEE_KEY_FILE_PATH o GEE_SERVICE_ACCOUNT_KEY"
-    )
+    except Exception as exc:
+        _gee_init_error = str(exc)
+        raise ValueError(
+            "No se pudo inicializar GEE. "
+            "Verifica credenciales o conectividad del servicio"
+        ) from exc
 
 
 class GEEService:

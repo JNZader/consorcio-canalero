@@ -11,18 +11,19 @@ import {
   Paper,
   Modal,
   TextInput,
-  Select,
   NumberInput,
   SimpleGrid,
   Tabs,
-  ThemeIcon
+  ThemeIcon,
+  ActionIcon
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import { IconPlus, IconCoin, IconArrowUpRight, IconArrowDownRight, IconReceipt, IconReportMoney } from '../../ui/icons';
+import { IconPlus, IconCoin, IconArrowUpRight, IconArrowDownRight, IconReceipt, IconReportMoney, IconEdit } from '../../ui/icons';
 import { LoadingState } from '../../ui';
 
 interface Gasto {
@@ -45,8 +46,11 @@ export default function FinanzasPanel() {
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string | null>('balance');
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [editingGasto, setEditingGasto] = useState<Gasto | null>(null);
 
   const [opened, { open, close }] = useDisclosure(false);
+  const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
 
   const fetchFinanzas = useCallback(async () => {
     setLoading(true);
@@ -57,6 +61,8 @@ export default function FinanzasPanel() {
       ]);
       setGastos(gastosData);
       setBalance(balanceData);
+      const categories = await apiFetch<string[]>('/finance/categorias');
+      setCategoryOptions(categories);
     } catch (err) {
       logger.error('Error fetching finanzas:', err);
     } finally {
@@ -77,6 +83,12 @@ export default function FinanzasPanel() {
     }
   });
 
+  const editCategoryForm = useForm({
+    initialValues: {
+      categoria: ''
+    }
+  });
+
   const handleCreateGasto = async (values: typeof form.values) => {
     try {
       await apiFetch('/finance/gastos', {
@@ -86,8 +98,40 @@ export default function FinanzasPanel() {
       close();
       fetchFinanzas();
       form.reset();
+      notifications.show({
+        title: 'Gasto registrado',
+        message: 'El gasto fue guardado correctamente',
+        color: 'green'
+      });
     } catch (err) {
       logger.error('Error creating gasto:', err);
+    }
+  };
+
+  const handleOpenEditCategory = (gasto: Gasto) => {
+    setEditingGasto(gasto);
+    editCategoryForm.setFieldValue('categoria', gasto.categoria);
+    openEdit();
+  };
+
+  const handleUpdateCategory = async (values: typeof editCategoryForm.values) => {
+    if (!editingGasto) return;
+
+    try {
+      await apiFetch(`/finance/gastos/${editingGasto.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ categoria: values.categoria })
+      });
+      closeEdit();
+      setEditingGasto(null);
+      fetchFinanzas();
+      notifications.show({
+        title: 'Categoria actualizada',
+        message: 'La categoria del gasto fue actualizada',
+        color: 'green'
+      });
+    } catch (err) {
+      logger.error('Error updating category:', err);
     }
   };
 
@@ -162,6 +206,7 @@ export default function FinanzasPanel() {
                   <Table.Th>Categoria</Table.Th>
                   <Table.Th>Monto</Table.Th>
                   <Table.Th>Activo Vinculado</Table.Th>
+                  <Table.Th>Acciones</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -175,6 +220,11 @@ export default function FinanzasPanel() {
                     <Table.Td><Text fw={700} c="red.7">-${g.monto.toLocaleString()}</Text></Table.Td>
                     <Table.Td>
                       <Text size="xs" c="dimmed">{g.infraestructura?.nombre || '-'}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <ActionIcon variant="subtle" onClick={() => handleOpenEditCategory(g)}>
+                        <IconEdit size={16} />
+                      </ActionIcon>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -191,20 +241,30 @@ export default function FinanzasPanel() {
             <TextInput label="Descripcion del Gasto" placeholder="Ej: Compra de 500L gasoil" required {...form.getInputProps('descripcion')} />
             <SimpleGrid cols={2}>
               <NumberInput label="Monto ($)" placeholder="0.00" required hideControls {...form.getInputProps('monto')} />
-              <Select
+              <TextInput
                 label="Categoria"
-                data={[
-                  { value: 'combustible', label: 'Combustible' },
-                  { value: 'maquinaria', label: 'Maquinaria' },
-                  { value: 'sueldos', label: 'Sueldos' },
-                  { value: 'obras', label: 'Obras' },
-                  { value: 'administrativo', label: 'Administrativo' },
-                ]}
+                placeholder="Ej: combustible, maquinaria, obras"
+                description={categoryOptions.length > 0 ? `Categorias existentes: ${categoryOptions.join(', ')}` : undefined}
+                required
                 {...form.getInputProps('categoria')}
               />
             </SimpleGrid>
             <TextInput type="date" label="Fecha" {...form.getInputProps('fecha')} />
             <Button type="submit" fullWidth mt="md" color="red">Guardar Gasto</Button>
+          </Stack>
+        </form>
+      </Modal>
+
+      <Modal opened={editOpened} onClose={closeEdit} title="Editar categoria de gasto">
+        <form onSubmit={editCategoryForm.onSubmit(handleUpdateCategory)}>
+          <Stack gap="sm">
+            <TextInput
+              label="Categoria"
+              placeholder="Ej: combustible"
+              required
+              {...editCategoryForm.getInputProps('categoria')}
+            />
+            <Button type="submit" fullWidth mt="md">Actualizar categoria</Button>
           </Stack>
         </form>
       </Modal>

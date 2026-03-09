@@ -238,6 +238,21 @@ class GastoCreate(BaseModel):
     notas: Optional[str] = None
 
 
+class GastoUpdate(BaseModel):
+    """Schema for updating an expense (partial)."""
+
+    descripcion: Optional[str] = Field(default=None, min_length=1)
+    monto: Optional[float] = Field(default=None, gt=0)
+    fecha: Optional[str] = Field(default=None, description="Fecha del gasto (YYYY-MM-DD)")
+    categoria: Optional[str] = Field(default=None, description="Categoria del gasto")
+    infraestructura_id: Optional[str] = Field(
+        default=None, description="UUID del activo relacionado"
+    )
+    comprobante: Optional[str] = None
+    proveedor: Optional[str] = None
+    notas: Optional[str] = None
+
+
 class PresupuestoCreate(BaseModel):
     """Schema for creating/updating a budget."""
 

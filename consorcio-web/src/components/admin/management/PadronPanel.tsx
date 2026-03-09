@@ -53,6 +53,8 @@ export default function PadronPanel() {
   
   const [selectedConsorcista, setSelectedConsorcista] = useState<Consorcista | null>(null);
   const [pagos, setPagos] = useState<Pago[]>([]);
+  const [nuevoPagoAnio, setNuevoPagoAnio] = useState<number>(new Date().getFullYear());
+  const [nuevoPagoMonto, setNuevoPagoMonto] = useState<number | ''>('');
   
   const [opened, { open, close }] = useDisclosure(false);
   const [pagoOpened, { open: openPago, close: closePago }] = useDisclosure(false);
@@ -91,8 +93,48 @@ export default function PadronPanel() {
 
   const handleViewPagos = (c: Consorcista) => {
     setSelectedConsorcista(c);
+    setNuevoPagoAnio(new Date().getFullYear());
+    setNuevoPagoMonto('');
     fetchPagos(c.id);
     openPago();
+  };
+
+  const handleRegistrarPago = async () => {
+    if (!selectedConsorcista || !nuevoPagoMonto || nuevoPagoMonto <= 0) {
+      notifications.show({
+        title: 'Datos incompletos',
+        message: 'Ingrese anio y monto validos para registrar el pago',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    try {
+      await apiFetch('/padron/pagos', {
+        method: 'POST',
+        body: JSON.stringify({
+          consorcista_id: selectedConsorcista.id,
+          anio: nuevoPagoAnio,
+          monto: Number(nuevoPagoMonto),
+          estado: 'pagado',
+          fecha_pago: new Date().toISOString().slice(0, 10),
+        }),
+      });
+
+      notifications.show({
+        title: 'Pago registrado',
+        message: `Cuota ${nuevoPagoAnio} registrada para ${selectedConsorcista.apellido}, ${selectedConsorcista.nombre}`,
+        color: 'green',
+      });
+
+      await fetchPagos(selectedConsorcista.id);
+      setNuevoPagoMonto('');
+    } catch (err) {
+      handleError(err, {
+        title: 'Error al registrar pago',
+        context: 'PadronPanel.handleRegistrarPago',
+      });
+    }
   };
 
   const form = useForm({
@@ -256,9 +298,29 @@ export default function PadronPanel() {
             <Divider label="Registrar Nuevo Pago" labelPosition="center" />
             <Paper p="sm" bg="gray.0">
               <Group grow align="flex-end">
-                <NumberInput label="Año" defaultValue={2026} hideControls />
-                <NumberInput label="Monto" placeholder="$" hideControls />
-                <Button color="green" leftSection={<IconCreditCard size={14} />}>Registrar</Button>
+                <NumberInput
+                  label="Año"
+                  value={nuevoPagoAnio}
+                  onChange={(value) => setNuevoPagoAnio(Number(value) || new Date().getFullYear())}
+                  hideControls
+                  min={2000}
+                  max={2100}
+                />
+                <NumberInput
+                  label="Monto"
+                  placeholder="$"
+                  hideControls
+                  value={nuevoPagoMonto}
+                  onChange={(value) => {
+                    if (typeof value === 'number') {
+                      setNuevoPagoMonto(value);
+                      return;
+                    }
+                    setNuevoPagoMonto('');
+                  }}
+                  min={0}
+                />
+                <Button color="green" leftSection={<IconCreditCard size={14} />} onClick={handleRegistrarPago}>Registrar</Button>
               </Group>
             </Paper>
           </Stack>

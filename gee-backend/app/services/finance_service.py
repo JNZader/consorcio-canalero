@@ -28,6 +28,21 @@ class FinanceService:
         result = self.db.client.table("gastos").insert(data).execute()
         return result.data[0] if result.data else {}
 
+    def update_gasto(self, gasto_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing expense."""
+        result = self.db.client.table("gastos").update(data).eq("id", gasto_id).execute()
+        return result.data[0] if result.data else {}
+
+    def get_categorias(self) -> List[str]:
+        """Return deduplicated list of known expense categories."""
+        gastos = self.db.client.table("gastos").select("categoria").execute()
+        categorias = {
+            row.get("categoria", "").strip()
+            for row in (gastos.data or [])
+            if row.get("categoria")
+        }
+        return sorted(categorias)
+
     # --- Presupuestos ---
     def get_presupuestos(self) -> List[Dict[str, Any]]:
         result = (

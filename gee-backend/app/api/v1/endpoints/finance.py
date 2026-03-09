@@ -8,7 +8,7 @@ from typing import Optional
 from app.services.finance_service import get_finance_service
 from app.services.pdf_service import get_pdf_service
 from app.auth import User, require_admin_or_operator, require_authenticated
-from app.api.v1.schemas import GastoCreate
+from app.api.v1.schemas import GastoCreate, GastoUpdate
 
 router = APIRouter()
 
@@ -29,6 +29,24 @@ async def add_gasto(
 ):
     service = get_finance_service()
     return service.create_gasto(data.model_dump(exclude_unset=True))
+
+
+@router.patch("/gastos/{gasto_id}")
+async def update_gasto(
+    gasto_id: str,
+    data: GastoUpdate,
+    user: User = Depends(require_admin_or_operator),
+):
+    service = get_finance_service()
+    return service.update_gasto(gasto_id, data.model_dump(exclude_unset=True))
+
+
+@router.get("/categorias")
+async def list_categorias(
+    user: User = Depends(require_authenticated),
+):
+    service = get_finance_service()
+    return service.get_categorias()
 
 
 @router.get("/presupuestos")

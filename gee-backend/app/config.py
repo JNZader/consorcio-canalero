@@ -52,7 +52,16 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         """Retorna lista de origenes CORS permitidos."""
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+        origins = {
+            origin.strip().rstrip("/")
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        }
+
+        if self.frontend_url:
+            origins.add(self.frontend_url.strip().rstrip("/"))
+
+        return sorted(origins)
 
     @property
     def effective_publishable_key(self) -> str:
