@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.v1.schemas import TramiteCreate, TramiteUpdate, TramiteAvanceCreate
+from app.api.v1.schemas import (
+    TramiteCreate,
+    TramiteUpdate,
+    TramiteAvanceCreate,
+    ReunionCreate,
+    ReunionUpdate,
+)
 
 
 def test_tramite_create_accepts_canonical_state():
@@ -29,3 +35,20 @@ def test_tramite_avance_rejects_non_canonical_state():
             descripcion="Se presenta nota",
             nuevo_estado="finalizado",
         )
+
+
+def test_reunion_create_accepts_orden_del_dia():
+    model = ReunionCreate(
+        titulo="Reunion mensual",
+        fecha_reunion="2026-03-09T10:00:00Z",
+        descripcion="Temas generales",
+        orden_del_dia="1. Balance\n2. Obras",
+    )
+
+    assert model.orden_del_dia == "1. Balance\n2. Obras"
+
+
+def test_reunion_update_accepts_partial_orden_del_dia():
+    model = ReunionUpdate(orden_del_dia="Revision de mantenimiento")
+
+    assert model.orden_del_dia == "Revision de mantenimiento"

@@ -146,7 +146,21 @@ class ReunionCreate(BaseModel):
     fecha_reunion: str = Field(..., description="Fecha y hora de la reunion (ISO 8601)")
     lugar: Optional[str] = None
     descripcion: Optional[str] = None
+    orden_del_dia: Optional[str] = None
     tipo: Optional[str] = Field(default="ordinaria")
+
+
+class ReunionUpdate(BaseModel):
+    """Schema for updating a meeting (partial)."""
+
+    titulo: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    fecha_reunion: Optional[str] = Field(
+        default=None, description="Fecha y hora de la reunion (ISO 8601)"
+    )
+    lugar: Optional[str] = None
+    descripcion: Optional[str] = None
+    orden_del_dia: Optional[str] = None
+    tipo: Optional[str] = None
 
 
 class AgendaItemCreate(BaseModel):

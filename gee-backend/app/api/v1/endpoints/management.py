@@ -14,6 +14,7 @@ from app.api.v1.schemas import (
     TramiteAvanceCreate,
     SeguimientoCreate,
     ReunionCreate,
+    ReunionUpdate,
     AgendaItemCreate,
 )
 
@@ -111,6 +112,37 @@ async def create_reunion(
     """Create a new meeting."""
     service = get_management_service()
     return service.create_reunion(data.model_dump(exclude_unset=True))
+
+
+@router.get("/reuniones/{reunion_id}")
+async def get_reunion(
+    reunion_id: UUID,
+    user: User = Depends(require_authenticated),
+):
+    """Get a meeting detail by ID."""
+    service = get_management_service()
+    reunion = service.get_reunion_detalle(reunion_id)
+    if not reunion:
+        raise HTTPException(status_code=404, detail="Reunion no encontrada")
+    return reunion
+
+
+@router.patch("/reuniones/{reunion_id}")
+async def update_reunion(
+    reunion_id: UUID,
+    data: ReunionUpdate,
+    user: User = Depends(require_admin_or_operator),
+):
+    """Update a meeting by ID."""
+    service = get_management_service()
+    payload = data.model_dump(exclude_unset=True)
+    if not payload:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+    reunion = service.update_reunion(reunion_id, payload)
+    if not reunion:
+        raise HTTPException(status_code=404, detail="Reunion no encontrada")
+    return reunion
 
 
 @router.get("/reuniones/{reunion_id}/agenda")

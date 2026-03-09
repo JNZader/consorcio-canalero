@@ -30,6 +30,8 @@ interface Reunion {
   titulo: string;
   fecha_reunion: string;
   lugar: string;
+  descripcion?: string;
+  orden_del_dia?: string;
   estado: string;
 }
 
@@ -187,6 +189,7 @@ export default function ReunionesPanel() {
       fecha_reunion: '',
       lugar: '',
       descripcion: '',
+      orden_del_dia: '',
       tipo: 'ordinaria',
     },
     validate: {
@@ -300,6 +303,13 @@ export default function ReunionesPanel() {
               minRows={2}
               {...reunionForm.getInputProps('descripcion')}
             />
+            <Textarea
+              label="Orden del dia"
+              placeholder="Ej: 1) Lectura del acta anterior 2) Estado financiero 3) Obras"
+              autosize
+              minRows={3}
+              {...reunionForm.getInputProps('orden_del_dia')}
+            />
             <Button type="submit" mt="xs">
               Crear Reunion
             </Button>
@@ -325,6 +335,11 @@ export default function ReunionesPanel() {
             <Text size="sm" c="dimmed" mb="md">
               Lugar: {r.lugar}
             </Text>
+            {r.orden_del_dia ? (
+              <Text size="sm" mb="md">
+                Orden del dia: {r.orden_del_dia}
+              </Text>
+            ) : null}
 
             <Button
               fullWidth
@@ -351,6 +366,14 @@ export default function ReunionesPanel() {
                 <Text size="sm" c="dimmed">
                   {new Date(selectedReunion.fecha_reunion).toLocaleString()}
                 </Text>
+                {selectedReunion.descripcion ? (
+                  <Text size="sm" c="dimmed">
+                    {selectedReunion.descripcion}
+                  </Text>
+                ) : null}
+                {selectedReunion.orden_del_dia ? (
+                  <Text size="sm">Orden del dia: {selectedReunion.orden_del_dia}</Text>
+                ) : null}
               </div>
               <Button size="xs" variant="outline" onClick={handleExportPDF} loading={exporting}>
                 Exportar PDF

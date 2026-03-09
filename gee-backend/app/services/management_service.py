@@ -114,6 +114,25 @@ class ManagementService:
         result = self.db.client.table("reuniones").insert(data).execute()
         return result.data[0] if result.data else {}
 
+    def get_reunion_detalle(self, reunion_id: UUID) -> Dict[str, Any]:
+        result = (
+            self.db.client.table("reuniones")
+            .select("*")
+            .eq("id", str(reunion_id))
+            .single()
+            .execute()
+        )
+        return result.data or {}
+
+    def update_reunion(self, reunion_id: UUID, data: Dict[str, Any]) -> Dict[str, Any]:
+        result = (
+            self.db.client.table("reuniones")
+            .update(data)
+            .eq("id", str(reunion_id))
+            .execute()
+        )
+        return result.data[0] if result.data else {}
+
     def get_agenda_detalle(self, reunion_id: UUID) -> List[Dict[str, Any]]:
         """Get all items for a meeting with their references using a nested select."""
         result = (
