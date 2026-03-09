@@ -186,7 +186,9 @@ class PadronService:
 
         return {key: value for key, value in payload.items() if value is not None}
 
-    def _parse_rows(self, filename: str, content: bytes) -> List[Tuple[int, Dict[str, Any]]]:
+    def _parse_rows(
+        self, filename: str, content: bytes
+    ) -> List[Tuple[int, Dict[str, Any]]]:
         lower_name = filename.lower()
         if lower_name.endswith(".csv"):
             return self._parse_csv(content)
@@ -248,10 +250,14 @@ class PadronService:
         if sheet.nrows == 0:
             return []
 
-        headers = [str(sheet.cell_value(0, col) or "").strip() for col in range(sheet.ncols)]
+        headers = [
+            str(sheet.cell_value(0, col) or "").strip() for col in range(sheet.ncols)
+        ]
         rows: List[Tuple[int, Dict[str, Any]]] = []
         for row_idx in range(1, sheet.nrows):
-            values: Iterable[Any] = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
+            values: Iterable[Any] = [
+                sheet.cell_value(row_idx, col) for col in range(sheet.ncols)
+            ]
             row_dict = {headers[idx]: value for idx, value in enumerate(values)}
             rows.append((row_idx + 1, row_dict))
         return rows
