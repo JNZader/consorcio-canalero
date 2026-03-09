@@ -150,13 +150,10 @@ export async function signInWithGoogle(): Promise<AuthResult> {
  */
 export async function signOut(): Promise<AuthResult> {
   try {
-    const { error } = await getClient().auth.signOut();
+    const { error } = await getClient().auth.signOut({ scope: 'local' });
 
     if (error) {
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
+      logger.warn('Error al cerrar sesion en Supabase, se fuerza limpieza local:', error);
     }
 
     // Limpiar estado del store y localStorage
@@ -168,13 +165,20 @@ export async function signOut(): Promise<AuthResult> {
     }
 
     return {
-      success: true,
+      success: !error,
+      error: error ? translateAuthError(error) : undefined,
     };
   } catch (err) {
     logger.error('Error inesperado al cerrar sesion:', err);
+
+    // Fallback defensivo: limpiar estado local aunque falle Supabase
+    useAuthStore.getState().reset();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('cc-auth-storage');
+    }
+
     return {
-      success: false,
-      error: 'Error inesperado al cerrar sesion',
+      success: true,
     };
   }
 }

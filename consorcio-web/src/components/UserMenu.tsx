@@ -275,7 +275,7 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
 
   const handleLogout = async () => {
     await signOut();
-    globalThis.location.href = withBasePath('/');
+    globalThis.location.replace(withBasePath('/'));
   };
 
   const commonProps = { user, profile, loading, isStaff, handleLogout };
