@@ -35,7 +35,7 @@ Sistema integral de gestión para el Consorcio Canalero 10 de Mayo - Bell Ville,
 | **Base de datos** | Supabase (PostgreSQL) |
 | **Cache/Queue** | Redis, Celery |
 | **Infraestructura** | Docker, Nginx, GitHub Actions |
-| **Hosting** | Koyeb |
+| **Hosting** | Fly.io (backend) + GitHub Pages (frontend) |
 
 ## Estructura del Proyecto
 
@@ -169,8 +169,8 @@ El pipeline se ejecuta automáticamente en cada push:
 
 ```
 ┌─────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌────────┐
-│   Detect    │────▶│   Test   │────▶│ Security │────▶│  Build  │────▶│ Deploy │
-│   Changes   │     │ & Lint   │     │   Scan   │     │  Images │     │ Koyeb  │
+│   Detect    │────▶│   Test   │────▶│ Security │────▶│  Build  │
+│   Changes   │     │ & Lint   │     │   Scan   │     │  Images │
 └─────────────┘     └──────────┘     └──────────┘     └─────────┘     └────────┘
 ```
 
@@ -178,7 +178,7 @@ El pipeline se ejecuta automáticamente en cada push:
 
 | Secret | Descripción |
 |--------|-------------|
-| `KOYEB_TOKEN` | Token de API de Koyeb |
+| `FLY_API_TOKEN` | Token de API de Fly.io para deploy manual |
 | `VITE_SUPABASE_URL` | URL de Supabase |
 | `VITE_SUPABASE_ANON_KEY` | Anon key de Supabase |
 
@@ -186,8 +186,13 @@ El pipeline se ejecuta automáticamente en cada push:
 
 | Variable | Descripción |
 |----------|-------------|
-| `VITE_API_URL` | URL del backend en producción |
-| `BACKEND_URL` | URL para health checks |
+| `VITE_API_URL` | URL del backend en producción (usada en build Docker y en GitHub Pages) |
+
+### Workflows de despliegue
+
+- `Build and Publish Images` (`.github/workflows/deploy.yml`): construye/publica imágenes backend/frontend en GHCR al hacer push a `main`.
+- `Deploy Backend to Fly` (`.github/workflows/fly-deploy.yml`): deploy manual del backend usando `fly.toml` y `FLY_API_TOKEN`.
+- `GitHub Pages` (`.github/workflows/gh-pages.yml`): publica frontend estático y consume `VITE_API_URL` desde `vars` del repo.
 
 ## Producción
 

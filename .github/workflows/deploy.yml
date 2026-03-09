@@ -1,4 +1,4 @@
-name: Deploy
+name: Build and Publish Images
 
 on:
   push:
@@ -8,12 +8,6 @@ on:
       - 'gee-backend/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'Force deploy to production'
-        required: false
-        default: 'true'
-        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -133,46 +127,3 @@ jobs:
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
             VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
-
-  deploy:
-    name: Deploy to Koyeb
-    runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend, quality-backend, quality-frontend]
-    timeout-minutes: 10
-    environment:
-      name: production
-      url: ${{ steps.health.outputs.url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Koyeb CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | bash
-          echo "$HOME/.koyeb/bin" >> $GITHUB_PATH
-      - name: Deploy Backend
-        env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
-        run: |
-          koyeb service update gee-backend \
-            --docker "${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}"
-      - name: Deploy Frontend
-        env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
-        run: |
-          koyeb service update frontend \
-            --docker "${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
-      - name: Health Check
-        id: health
-        run: |
-          echo "Waiting for deployment..."
-          sleep 45
-          BACKEND_URL="${{ vars.BACKEND_URL || 'https://api.consorcio.koyeb.app' }}"
-          for i in {1..5}; do
-            if curl -sf "${BACKEND_URL}/health" > /dev/null; then
-              echo "Backend healthy!"
-              echo "url=${BACKEND_URL}" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            echo "Attempt $i failed, retrying..."
-            sleep 10
-          done
-          echo "Health check timeout - deployment may still be in progress"

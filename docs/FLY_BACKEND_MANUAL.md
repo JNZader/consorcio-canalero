@@ -5,7 +5,7 @@ This setup deploys only `gee-backend` on Fly.io with a single shared VM, auto st
 ## Context
 
 - Backend runtime: `gee-backend/Dockerfile` exposes `8000` and serves health at `/health`.
-- Existing CI/CD in `.github/workflows/deploy.yml` targets Koyeb; Fly is intentionally manual-only.
+- Existing CI/CD now builds/publishes images in `.github/workflows/deploy.yml`; backend deploy to Fly is manual via `.github/workflows/fly-deploy.yml`.
 
 ## 1) Create app (one time)
 
