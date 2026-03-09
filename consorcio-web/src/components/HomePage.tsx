@@ -20,7 +20,6 @@ import { IconChartBar, IconClipboardList, IconMap, IconSatellite } from './ui/ic
 
 const STATS = [
   { value: '88,277', label: 'Hectareas', sublabel: 'Area total del consorcio' },
-  { value: '4', label: 'Cuencas', sublabel: 'Candil, ML, Noroeste, Norte' },
   { value: '749', label: 'Kilometros', sublabel: 'Red de caminos rurales', hasTooltip: true },
 ];
 
