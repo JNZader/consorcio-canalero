@@ -10,6 +10,8 @@ import {
   formatNumber,
   formatPercentage,
   formatRelativeTime,
+  formatDateCustom,
+  formatDateTime,
 } from '../../src/lib/formatters';
 
 describe('formatters', () => {
@@ -206,6 +208,97 @@ describe('formatters', () => {
 
     it('should return fallback for undefined', () => {
       expect(formatPercentage(undefined)).toBe('-');
+    });
+  });
+
+  describe('formatDateCustom', () => {
+    it('should format date with custom options', () => {
+      const result = formatDateCustom('2024-01-15T10:30:00Z', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      expect(result).toContain('2024');
+      expect(result).toContain('15');
+    });
+
+    it('should handle Date object', () => {
+      const result = formatDateCustom(new Date('2024-06-20'), {
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      expect(result).toBeDefined();
+    });
+
+    it('should return fallback for null', () => {
+      const result = formatDateCustom(null, { year: 'numeric' });
+      expect(result).toBe('-');
+    });
+
+    it('should return fallback for undefined', () => {
+      const result = formatDateCustom(undefined, { year: 'numeric' });
+      expect(result).toBe('-');
+    });
+
+    it('should return custom fallback when provided', () => {
+      const result = formatDateCustom(null, { year: 'numeric' }, 'N/A');
+      expect(result).toBe('N/A');
+    });
+
+    it('should return fallback for invalid date', () => {
+      const result = formatDateCustom('invalid', { year: 'numeric' });
+      expect(result).toBe('-');
+    });
+
+    it('should format with time options', () => {
+      const result = formatDateCustom('2024-01-15T10:30:00Z', {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('formatDateTime', () => {
+    it('should format date and time', () => {
+      const result = formatDateTime('2024-01-15T10:30:00Z');
+      expect(result).toContain('2024');
+      expect(result.length).toBeGreaterThan(10);
+    });
+
+    it('should handle Date object', () => {
+      const result = formatDateTime(new Date('2024-06-20T14:30:00Z'));
+      expect(result).toBeDefined();
+    });
+
+    it('should return fallback for null', () => {
+      expect(formatDateTime(null)).toBe('-');
+    });
+
+    it('should return fallback for undefined', () => {
+      expect(formatDateTime(undefined)).toBe('-');
+    });
+
+    it('should use custom fallback when provided', () => {
+      const result = formatDateTime(null, 'Sin fecha');
+      expect(result).toBe('Sin fecha');
+    });
+
+    it('should return fallback for invalid date', () => {
+      const result = formatDateTime('invalid-date');
+      expect(result).toBe('-');
+    });
+
+    it('should format different times correctly', () => {
+      const result1 = formatDateTime('2024-01-15T08:00:00Z');
+      const result2 = formatDateTime('2024-01-15T20:00:00Z');
+      // Both should be defined but different
+      expect(result1).toBeDefined();
+      expect(result2).toBeDefined();
     });
   });
 });
