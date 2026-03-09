@@ -33,6 +33,36 @@ const router = createRouter({
   defaultPreloadStaleTime: 30_000,
 });
 
+// Recover once from stale lazy-chunk errors after a new deploy.
+const CHUNK_RELOAD_GUARD = 'cc-chunk-reload-once';
+
+function isChunkLoadError(reason: unknown): boolean {
+  const message =
+    typeof reason === 'string'
+      ? reason
+      : reason instanceof Error
+        ? reason.message
+        : typeof reason === 'object' && reason && 'message' in reason
+          ? String((reason as { message?: unknown }).message)
+          : '';
+
+  return /dynamically imported module|module script failed|chunk/i.test(message);
+}
+
+globalThis.addEventListener('unhandledrejection', (event) => {
+  if (!isChunkLoadError(event.reason)) return;
+
+  const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_GUARD) === '1';
+  if (alreadyReloaded) return;
+
+  sessionStorage.setItem(CHUNK_RELOAD_GUARD, '1');
+  globalThis.location.reload();
+});
+
+globalThis.addEventListener('load', () => {
+  sessionStorage.removeItem(CHUNK_RELOAD_GUARD);
+});
+
 // Prefetch system config on app init
 useConfigStore.getState().fetchConfig();
 
