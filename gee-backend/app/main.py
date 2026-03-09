@@ -14,7 +14,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.api.v1.router import api_router
-from app.services.gee_service import initialize_gee
 from app.core.logging import (
     get_logger,
     configure_structlog,
@@ -281,17 +280,9 @@ async def check_gee_health() -> Dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager - initialize services on startup."""
-    # Initialize Google Earth Engine
-    logger.info("Initializing Google Earth Engine...")
-    try:
-        initialize_gee()
-        logger.info("GEE initialized successfully", project=settings.gee_project_id)
-    except Exception as e:
-        logger.warning(
-            "GEE initialization failed",
-            error=str(e),
-            message="GEE features will not be available",
-        )
+    # Defer Google Earth Engine initialization to first GEE endpoint usage.
+    # This keeps cold starts fast for non-GEE requests (dashboard, reports, management).
+    logger.info("Skipping eager GEE initialization during startup")
 
     # Initialize rate limiter (tests Redis connection)
     logger.info("Initializing rate limiter...")
