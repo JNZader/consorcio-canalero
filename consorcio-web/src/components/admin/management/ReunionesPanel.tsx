@@ -18,6 +18,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
@@ -64,7 +65,7 @@ export default function ReunionesPanel() {
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
 
-  const [_opened, { open: _open, close: _close }] = useDisclosure(false);
+  const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
   const [agendaOpened, { open: openAgenda, close: closeAgenda }] = useDisclosure(false);
 
   const fetchReuniones = useCallback(async () => {
@@ -180,6 +181,51 @@ export default function ReunionesPanel() {
     },
   });
 
+  const reunionForm = useForm({
+    initialValues: {
+      titulo: '',
+      fecha_reunion: '',
+      lugar: '',
+      descripcion: '',
+      tipo: 'ordinaria',
+    },
+    validate: {
+      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
+      fecha_reunion: (value) => (!value ? 'Fecha y hora requeridas' : null),
+    },
+  });
+
+  const handleCreateReunion = async (values: typeof reunionForm.values) => {
+    try {
+      const payload = {
+        ...values,
+        fecha_reunion: new Date(values.fecha_reunion).toISOString(),
+      };
+
+      await apiFetch('/management/reuniones', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      notifications.show({
+        title: 'Reunion creada',
+        message: 'La reunion fue registrada correctamente',
+        color: 'green',
+      });
+
+      reunionForm.reset();
+      closeCreate();
+      await fetchReuniones();
+    } catch (err) {
+      logger.error('Error creating reunion:', err);
+      notifications.show({
+        title: 'No se pudo crear la reunion',
+        message: 'Revisa los datos e intenta nuevamente',
+        color: 'red',
+      });
+    }
+  };
+
   const handleAddTopic = async (values: typeof itemForm.values) => {
     if (!selectedReunion) return;
 
@@ -222,10 +268,44 @@ export default function ReunionesPanel() {
           <Title order={2}>Reuniones de Comision</Title>
           <Text c="dimmed">Planificacion de orden del dia y actas</Text>
         </div>
-        <Button leftSection={<IconCalendar size={18} />} onClick={_open} color="violet">
+        <Button leftSection={<IconCalendar size={18} />} onClick={openCreate} color="violet">
           Nueva Reunion
         </Button>
       </Group>
+
+      <Modal opened={createOpened} onClose={closeCreate} title="Nueva Reunion" size="lg">
+        <form onSubmit={reunionForm.onSubmit(handleCreateReunion)}>
+          <Stack gap="sm">
+            <TextInput
+              label="Titulo"
+              placeholder="Ej: Reunion de comision de marzo"
+              required
+              {...reunionForm.getInputProps('titulo')}
+            />
+            <TextInput
+              type="datetime-local"
+              label="Fecha y hora"
+              required
+              {...reunionForm.getInputProps('fecha_reunion')}
+            />
+            <TextInput
+              label="Lugar"
+              placeholder="Ej: Sede del consorcio"
+              {...reunionForm.getInputProps('lugar')}
+            />
+            <Textarea
+              label="Descripcion"
+              placeholder="Temas generales a tratar"
+              autosize
+              minRows={2}
+              {...reunionForm.getInputProps('descripcion')}
+            />
+            <Button type="submit" mt="xs">
+              Crear Reunion
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
 
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
         {reuniones.map((r) => (
