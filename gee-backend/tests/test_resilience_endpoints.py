@@ -23,7 +23,9 @@ def test_cors_header_present_on_error_response(client):
         )
 
     assert response.status_code == 500
-    assert response.headers.get("access-control-allow-origin") == "http://localhost:4321"
+    assert (
+        response.headers.get("access-control-allow-origin") == "http://localhost:4321"
+    )
 
 
 def test_infrastructure_service_assets_without_gee_init():

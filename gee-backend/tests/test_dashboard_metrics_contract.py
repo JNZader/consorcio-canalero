@@ -39,7 +39,9 @@ def test_finance_budget_execution_endpoint_returns_chart_rows(
         {"rubro": "obras", "proyectado": 120000.0, "real": 90000.0}
     ]
 
-    with patch("app.api.v1.endpoints.finance.get_finance_service", return_value=service):
+    with patch(
+        "app.api.v1.endpoints.finance.get_finance_service", return_value=service
+    ):
         response = client.get(
             "/api/v1/finance/presupuestos/ejecucion/2026", headers=auth_headers
         )

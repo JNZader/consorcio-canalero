@@ -243,7 +243,9 @@ class GastoUpdate(BaseModel):
 
     descripcion: Optional[str] = Field(default=None, min_length=1)
     monto: Optional[float] = Field(default=None, gt=0)
-    fecha: Optional[str] = Field(default=None, description="Fecha del gasto (YYYY-MM-DD)")
+    fecha: Optional[str] = Field(
+        default=None, description="Fecha del gasto (YYYY-MM-DD)"
+    )
     categoria: Optional[str] = Field(default=None, description="Categoria del gasto")
     infraestructura_id: Optional[str] = Field(
         default=None, description="UUID del activo relacionado"

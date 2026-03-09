@@ -30,7 +30,9 @@ class FinanceService:
 
     def update_gasto(self, gasto_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing expense."""
-        result = self.db.client.table("gastos").update(data).eq("id", gasto_id).execute()
+        result = (
+            self.db.client.table("gastos").update(data).eq("id", gasto_id).execute()
+        )
         return result.data[0] if result.data else {}
 
     def get_categorias(self) -> List[str]:
@@ -79,8 +81,7 @@ class FinanceService:
                     if not categoria:
                         continue
                     projected_by_category[categoria] = float(
-                        projected_by_category.get(categoria, 0)
-                        + float(monto_previsto)
+                        projected_by_category.get(categoria, 0) + float(monto_previsto)
                     )
 
         gastos = (

@@ -27,7 +27,9 @@ class InfrastructureService:
                 initialize_gee()
             return get_gee_service()
         except Exception as exc:
-            logger.warning("GEE unavailable for infrastructure operation", error=str(exc))
+            logger.warning(
+                "GEE unavailable for infrastructure operation", error=str(exc)
+            )
             raise AppException(
                 message="Servicio geoespacial temporalmente no disponible",
                 code="GEE_UNAVAILABLE",
