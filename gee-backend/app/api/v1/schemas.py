@@ -233,7 +233,7 @@ class GastoCreate(BaseModel):
     infraestructura_id: Optional[str] = Field(
         default=None, description="UUID del activo relacionado"
     )
-    comprobante: Optional[str] = None
+    comprobante_url: Optional[str] = None
     proveedor: Optional[str] = None
     notas: Optional[str] = None
 
@@ -250,7 +250,7 @@ class GastoUpdate(BaseModel):
     infraestructura_id: Optional[str] = Field(
         default=None, description="UUID del activo relacionado"
     )
-    comprobante: Optional[str] = None
+    comprobante_url: Optional[str] = None
     proveedor: Optional[str] = None
     notas: Optional[str] = None
 

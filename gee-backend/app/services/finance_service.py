@@ -25,11 +25,15 @@ class FinanceService:
         return result.data
 
     def create_gasto(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if "comprobante" in data and "comprobante_url" not in data:
+            data["comprobante_url"] = data.pop("comprobante")
         result = self.db.client.table("gastos").insert(data).execute()
         return result.data[0] if result.data else {}
 
     def update_gasto(self, gasto_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing expense."""
+        if "comprobante" in data and "comprobante_url" not in data:
+            data["comprobante_url"] = data.pop("comprobante")
         result = (
             self.db.client.table("gastos").update(data).eq("id", gasto_id).execute()
         )
