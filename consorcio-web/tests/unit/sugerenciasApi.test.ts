@@ -39,6 +39,12 @@ describe('sugerenciasApi', () => {
     );
   });
 
+  it('builds checkLimit request without params when contact is missing', async () => {
+    await sugerenciasApi.checkLimit();
+
+    expect(apiFetch).toHaveBeenCalledWith('/sugerencias/public/limit?', { skipAuth: true });
+  });
+
   it('builds admin list query with provided filters only', async () => {
     await sugerenciasApi.getAll({ page: 2, estado: 'pendiente', prioridad: 'alta' });
 
@@ -71,5 +77,23 @@ describe('sugerenciasApi', () => {
       expect.objectContaining({ method: 'POST' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(6, '/sugerencias/sug-1', { method: 'DELETE' });
+  });
+
+  it('calls stats and meeting endpoints', async () => {
+    await sugerenciasApi.getStats();
+    await sugerenciasApi.getProximaReunion();
+    await sugerenciasApi.createInternal({
+      titulo: 'Tema interno',
+      descripcion: 'Propuesta para proxima reunion',
+      prioridad: 'alta',
+    });
+
+    expect(apiFetch).toHaveBeenNthCalledWith(1, '/sugerencias/stats');
+    expect(apiFetch).toHaveBeenNthCalledWith(2, '/sugerencias/proxima-reunion');
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/sugerencias/interna',
+      expect.objectContaining({ method: 'POST' })
+    );
   });
 });
