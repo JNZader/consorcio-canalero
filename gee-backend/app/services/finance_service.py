@@ -38,6 +38,64 @@ class FinanceService:
         )
         return result.data
 
+    def get_budget_execution_by_category(self, anio: int) -> List[Dict[str, Any]]:
+        """Return projected vs real budget grouped by category."""
+        presupuestos = (
+            self.db.client.table("presupuestos")
+            .select("id")
+            .eq("anio", anio)
+            .limit(1)
+            .execute()
+        )
+
+        projected_by_category: Dict[str, float] = {}
+        if presupuestos.data:
+            presupuesto_id = presupuestos.data[0].get("id")
+            if presupuesto_id:
+                items = (
+                    self.db.client.table("presupuesto_items")
+                    .select("categoria,monto_previsto")
+                    .eq("presupuesto_id", presupuesto_id)
+                    .execute()
+                )
+                for item in items.data or []:
+                    categoria = item.get("categoria")
+                    monto_previsto = item.get("monto_previsto") or 0
+                    if not categoria:
+                        continue
+                    projected_by_category[categoria] = float(
+                        projected_by_category.get(categoria, 0)
+                        + float(monto_previsto)
+                    )
+
+        gastos = (
+            self.db.client.table("gastos")
+            .select("categoria,monto")
+            .gte("fecha", f"{anio}-01-01")
+            .lte("fecha", f"{anio}-12-31")
+            .execute()
+        )
+
+        actual_by_category: Dict[str, float] = {}
+        for gasto in gastos.data or []:
+            categoria = gasto.get("categoria")
+            monto = gasto.get("monto") or 0
+            if not categoria:
+                continue
+            actual_by_category[categoria] = float(
+                actual_by_category.get(categoria, 0) + float(monto)
+            )
+
+        categories = sorted(set(projected_by_category) | set(actual_by_category))
+        return [
+            {
+                "rubro": categoria,
+                "proyectado": projected_by_category.get(categoria, 0),
+                "real": actual_by_category.get(categoria, 0),
+            }
+            for categoria in categories
+        ]
+
     def get_presupuesto_detalle(self, anio: int) -> Dict[str, Any]:
         presupuesto = (
             self.db.client.table("presupuestos")

@@ -28,6 +28,10 @@ interface FloodHistoryPoint {
   anegamiento: number;
 }
 
+interface HistoricalStatsResponse {
+  items?: unknown[];
+}
+
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -148,7 +152,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
 
       const [balanceResult, budgetResult, historicalResult] = await Promise.allSettled([
         apiFetch<FinanceBalanceSummary>(`/finance/balance-summary/${currentYear}`),
-        apiFetch<unknown>('/finance/presupuestos'),
+        apiFetch<unknown>(`/finance/presupuestos/ejecucion/${currentYear}`),
         statsApi.getHistorical({ limit: 6 }),
       ]);
 
@@ -159,7 +163,11 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
       setFinanceSummary(balanceResult.status === 'fulfilled' ? balanceResult.value : null);
       setFinanceData(budgetResult.status === 'fulfilled' ? parseFinanceRows(budgetResult.value) : []);
       setFloodHistoryData(
-        historicalResult.status === 'fulfilled' ? parseFloodHistory(historicalResult.value) : []
+        historicalResult.status === 'fulfilled'
+          ? parseFloodHistory(
+              (historicalResult.value as HistoricalStatsResponse)?.items ?? historicalResult.value
+            )
+          : []
       );
     }
 
@@ -185,6 +193,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
   const reportesActivos = stats?.denuncias
     ? (stats.denuncias.pendiente ?? 0) + (stats.denuncias.en_revision ?? 0)
     : null;
+  const reportesNuevosSemana = asNumber(stats?.denuncias_nuevas_semana);
 
   const budgetRatio =
     financeSummary && financeSummary.total_ingresos > 0
@@ -284,7 +293,13 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
               <IconAlertTriangle size={32} color="var(--mantine-color-orange-6)" />
             </Group>
             <Text size="sm" mt="sm">
-              <Text span c="dimmed" fw={700}>Sin datos</Text> nuevos esta semana
+              {reportesNuevosSemana === null ? (
+                <Text span c="dimmed" fw={700}>Sin datos</Text>
+              ) : (
+                <>
+                  <Text span c="blue" fw={700}>{reportesNuevosSemana}</Text> nuevos esta semana
+                </>
+              )}
             </Text>
           </Paper>
         </Grid.Col>

@@ -7,7 +7,7 @@ from supabase import create_client, Client
 from functools import lru_cache
 from typing import Optional, List, Dict, Any
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 from app.constants import CONSORCIO_AREA_HA
@@ -402,6 +402,18 @@ class SupabaseService:
         stats["total"] = sum(stats.values())
         return stats
 
+    def get_new_reports_since_days(self, days: int = 7) -> int:
+        """Count reports created in the last N days."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        result = (
+            self.client.table("denuncias")
+            .select("id", count="exact")  # type: ignore[arg-type]
+            .gte("created_at", cutoff.isoformat())
+            .limit(1)
+            .execute()
+        )
+        return result.count or 0
+
     # ===========================================
     # STORAGE
     # ===========================================
@@ -447,6 +459,7 @@ class SupabaseService:
 
         # Stats de denuncias
         reports_stats = self.get_reports_stats()
+        new_reports_week = self.get_new_reports_since_days(days=7)
 
         return {
             "ultimo_analisis": {
@@ -462,6 +475,7 @@ class SupabaseService:
                 ),
             },
             "denuncias": reports_stats,
+            "denuncias_nuevas_semana": new_reports_week,
             "area_total_ha": CONSORCIO_AREA_HA,
         }
 

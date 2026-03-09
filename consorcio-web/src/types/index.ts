@@ -225,6 +225,7 @@ export interface DashboardStats {
   ultimo_analisis: UltimoAnalisis;
   denuncias: DenunciasResumen;
   area_total_ha: number;
+  denuncias_nuevas_semana?: number;
   // Extended stats for StatsPanel
   analisis_total?: number;
   hectareas_promedio?: number;

@@ -39,6 +39,15 @@ async def list_presupuestos(
     return service.get_presupuestos()
 
 
+@router.get("/presupuestos/ejecucion/{anio}")
+async def get_budget_execution_by_category(
+    anio: int,
+    user: User = Depends(require_authenticated),
+):
+    service = get_finance_service()
+    return service.get_budget_execution_by_category(anio)
+
+
 @router.get("/balance-summary/{anio}")
 async def get_summary(
     anio: int,
