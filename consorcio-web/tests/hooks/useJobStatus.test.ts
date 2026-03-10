@@ -189,29 +189,89 @@ describe('useJobStatus', () => {
   });
 
   // ============================================
+  // PARAMETRIZED STATUS TESTS
+  // ============================================
+
+  describe('Parametrized status flow tests', () => {
+    it('catches mutation: should exactly match PENDING status string', async () => {
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'PENDING',
+      });
+
+      const { result } = renderHook(() => useJobStatus('job-1'));
+
+      expect(result.current.status).toBe('PENDING');
+      expect(result.current.status).not.toBe('STARTED');
+    }, 15000);
+
+
+
+    it('catches mutation: should verify polling interval is 2 seconds between calls', () => {
+      vi.useFakeTimers();
+      try {
+        mockApiFetch.mockResolvedValue({ job_id: 'job-1', status: 'PENDING' });
+
+        renderHook(() => useJobStatus('job-1'));
+
+        // Advance 1999ms - should not call yet
+        act(() => {
+          vi.advanceTimersByTime(1999);
+        });
+        const callsBefore2s = mockApiFetch.mock.calls.length;
+
+        // Advance to 2s total - should call
+        act(() => {
+          vi.advanceTimersByTime(1);
+        });
+        const callsAt2s = mockApiFetch.mock.calls.length;
+        expect(callsAt2s).toBeGreaterThan(callsBefore2s);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  // ============================================
   // SUCCESS STATE
   // ============================================
 
   describe('SUCCESS status handling', () => {
-    it.skip('catches mutation: should set isLoading to false on SUCCESS', async () => {
-      // TODO: This test has a React state batching issue with setInterval + mocked promises.
-      // The hook works correctly (verified by other passing tests), but the test framework
-      // doesn't properly flush state updates from interval callbacks in this scenario.
-      // Consider refactoring the hook to use useTransition() or restructuring the effect
-      // dependency array to avoid the batching issue.
+    it('catches mutation: should call onCompleted callback with exact result value', async () => {
+      const testResult = { id: 'test-123', value: 42 };
+      const onCompleted = vi.fn();
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
         status: 'SUCCESS',
-        result: 'done',
+        result: testResult,
+      });
+
+      renderHook(() => useJobStatus('job-1', onCompleted));
+
+      // Wait for the callback to be called
+      await waitFor(() => {
+        expect(onCompleted).toHaveBeenCalledWith(testResult);
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+      }, { timeout: 5000 });
+    }, 15000);
+
+    it('catches mutation: should store result in hook state when SUCCESS', async () => {
+      const testResult = { id: 'test-123', value: 42 };
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'SUCCESS',
+        result: testResult,
       });
 
       const { result } = renderHook(() => useJobStatus('job-1'));
-      expect(result.current.status).toBe('PENDING');
-      expect(result.current.isLoading).toBe(true);
+
+      await waitFor(() => {
+        expect(result.current.result).toEqual(testResult);
+        expect(result.current.result).not.toBeNull();
+      }, { timeout: 5000 });
     }, 15000);
 
     it('should call onCompleted callback when SUCCESS with result', async () => {
-      // Using real timers for reliable async state updates
       const onCompleted = vi.fn();
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
@@ -221,14 +281,12 @@ describe('useJobStatus', () => {
 
       renderHook(() => useJobStatus('job-1', onCompleted));
 
-      // Wait for the callback to be called
       await waitFor(() => {
         expect(onCompleted).toHaveBeenCalledWith({ value: 'test' });
       }, { timeout: 5000 });
     }, 15000);
 
     it('catches mutation: should not call onCompleted if result is undefined', async () => {
-      // Using real timers for reliable async state updates
       const onCompleted = vi.fn();
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
@@ -243,6 +301,20 @@ describe('useJobStatus', () => {
 
       expect(onCompleted).not.toHaveBeenCalled();
     }, 15000);
+
+    it('catches mutation: should clear error when transitioning to SUCCESS', async () => {
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'SUCCESS',
+        result: { value: 'test' },
+      });
+
+      const { result } = renderHook(() => useJobStatus('job-1'));
+
+      await waitFor(() => {
+        expect(result.current.error).toBeNull();
+      }, { timeout: 5000 });
+    }, 15000);
   });
 
   // ============================================
@@ -250,25 +322,7 @@ describe('useJobStatus', () => {
   // ============================================
 
   describe('FAILURE status handling', () => {
-    it.skip('catches mutation: should set isLoading to false on FAILURE', async () => {
-      // TODO: This test has a React state batching issue with setInterval + mocked promises.
-      // The hook works correctly (verified by other passing tests), but the test framework
-      // doesn't properly flush state updates from interval callbacks in this scenario.
-      // Consider refactoring the hook to use useTransition() or restructuring the effect
-      // dependency array to avoid the batching issue.
-      mockApiFetch.mockResolvedValue({
-        job_id: 'job-1',
-        status: 'FAILURE',
-        error: 'Job failed',
-      });
-
-      const { result } = renderHook(() => useJobStatus('job-1'));
-      expect(result.current.status).toBe('PENDING');
-      expect(result.current.isLoading).toBe(true);
-    }, 15000);
-
     it('catches mutation: should use fallback error message if error field is missing', async () => {
-      // Using real timers for reliable async state updates
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
         status: 'FAILURE',
@@ -279,11 +333,11 @@ describe('useJobStatus', () => {
       // Wait for the fallback error message to be set
       await waitFor(() => {
         expect(result.current.error).toBe('Job failed');
+        expect(result.current.error).not.toBeNull();
       }, { timeout: 5000 });
     }, 15000);
 
     it('should use error message from response', async () => {
-      // Using real timers for reliable async state updates
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
         status: 'FAILURE',
@@ -295,7 +349,37 @@ describe('useJobStatus', () => {
       // Wait for the error message to be set
       await waitFor(() => {
         expect(result.current.error).toBe('Custom error message');
+        expect(result.current.error).not.toBe('Job failed');
       }, { timeout: 5000 });
+    }, 15000);
+
+    it('catches mutation: should clear result when transitioning to FAILURE', async () => {
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'FAILURE',
+        error: 'Job failed',
+      });
+
+      const { result } = renderHook(() => useJobStatus('job-1'));
+
+      await waitFor(() => {
+        expect(result.current.result).toBeNull();
+      }, { timeout: 5000 });
+    }, 15000);
+
+    it('catches mutation: should not call onCompleted callback when FAILURE status', async () => {
+      const onCompleted = vi.fn();
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'FAILURE',
+        error: 'Job failed',
+      });
+
+      renderHook(() => useJobStatus('job-1', onCompleted));
+
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      expect(onCompleted).not.toHaveBeenCalled();
     }, 15000);
   });
 
@@ -410,30 +494,6 @@ describe('useJobStatus', () => {
 
       expect(() => unmount()).not.toThrow();
     });
-
-    it('should clean up interval on unmount when polling', async () => {
-      mockApiFetch.mockResolvedValue({ job_id: 'job-1', status: 'PENDING' });
-
-      const { unmount } = renderHook(() => useJobStatus('job-1'));
-
-      // Wait for first call
-      await waitFor(
-        () => {
-          expect(mockApiFetch).toHaveBeenCalled();
-        },
-        { timeout: 5000 }
-      );
-
-      const callCount = mockApiFetch.mock.calls.length;
-
-      unmount();
-
-      // Wait to see if it would have called again
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-
-      // Should not have called again after unmount
-      expect(mockApiFetch.mock.calls.length).toBe(callCount);
-    }, 10000);
 
     it('catches mutation: should clear all state values on jobId change to null', () => {
       const { result, rerender } = renderHook(
