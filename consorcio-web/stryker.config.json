@@ -10,9 +10,13 @@
     "src/components/admin/management/tramitesCanonical.ts"
   ],
   "thresholds": {
-    "high": 70,
-    "low": 55,
-    "break": 55
+    "high": 85,
+    "low": 80,
+    "break": 80
+  },
+  "thresholdBreaker": {
+    "highBreaker": 85,
+    "breaking": 80
   },
   "timeoutMS": 60000,
   "allowEmpty": true,
