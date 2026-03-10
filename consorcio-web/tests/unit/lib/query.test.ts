@@ -14,8 +14,8 @@ import {
   invalidateReports,
   invalidateLayers,
   invalidateAll,
-} from '../../../src/lib/query';
-import type { ReportFilters } from '../../../src/lib/query';
+} from '../../../src/lib/../../src/lib/query';
+import type { ReportFilters } from '../../../src/lib/../../src/lib/query';
 
 describe('query - queryClient configuration', () => {
   it('should have correct staleTime for queries', () => {
