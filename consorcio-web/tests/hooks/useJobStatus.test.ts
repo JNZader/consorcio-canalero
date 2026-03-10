@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Use hoisted pattern for mocks
@@ -192,8 +192,8 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.isLoading).toBe(false);
@@ -209,8 +209,8 @@ describe('useJobStatus', () => {
 
       renderHook(() => useJobStatus('job-1', onCompleted));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(onCompleted).toHaveBeenCalledWith({ value: 'test' });
@@ -226,8 +226,8 @@ describe('useJobStatus', () => {
 
       renderHook(() => useJobStatus('job-1', onCompleted));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(onCompleted).not.toHaveBeenCalled();
@@ -248,14 +248,14 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.isLoading).toBe(false);
     });
 
-    it('catches mutation: should use fallback error message if error field is missing', () => {
+    it('catches mutation: should use fallback error message if error field is missing', async () => {
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
         status: 'FAILURE',
@@ -263,14 +263,14 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.error).toBe('Job failed');
     });
 
-    it('should use error message from response', () => {
+    it('should use error message from response', async () => {
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
         status: 'FAILURE',
@@ -279,8 +279,8 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.error).toBe('Custom error message');
@@ -298,8 +298,8 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.error).toBe('Network error');
@@ -311,8 +311,8 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.error).toBe('Timeout occurred');
@@ -323,8 +323,8 @@ describe('useJobStatus', () => {
 
       const { result } = renderHook(() => useJobStatus('job-1'));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(result.current.error).toBe('Error checking job status');
@@ -360,7 +360,7 @@ describe('useJobStatus', () => {
       expect(onCompleted).not.toHaveBeenCalled();
     });
 
-    it('catches mutation: should pass result to callback only when SUCCESS with result', () => {
+    it('catches mutation: should pass result to callback only when SUCCESS with result', async () => {
       const onCompleted = vi.fn();
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',
@@ -370,8 +370,8 @@ describe('useJobStatus', () => {
 
       renderHook(() => useJobStatus('job-1', onCompleted));
 
-      act(() => {
-        vi.advanceTimersByTime(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
       });
 
       expect(onCompleted).toHaveBeenCalledWith({ value: 42 });
