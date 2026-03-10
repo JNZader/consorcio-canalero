@@ -71,24 +71,14 @@ describe('useSelectedImage', () => {
       expect(result.current.hasSelectedImage).toBe(true);
     });
 
-    it('catches mutation: should set isLoading to false synchronously after mount', async () => {
-      const { result } = renderHook(() => useSelectedImage());
-
-      // React batches state updates, so isLoading should already be false
-      // after the first render due to the effect's finally block
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-    });
-
-    it('catches mutation: should set isLoading to exactly false after load', async () => {
-      store.set(STORAGE_KEY, JSON.stringify(baseImage));
-
+    it('catches mutation: should set isLoading to exactly false after mount', async () => {
       const { result } = renderHook(() => useSelectedImage());
 
       await waitFor(() => {
+        // Must be exactly false, not just falsy
         expect(result.current.isLoading).toBe(false);
         expect(result.current.isLoading).not.toBe(true);
+        expect(typeof result.current.isLoading).toBe('boolean');
       });
     });
 
@@ -238,7 +228,7 @@ describe('useSelectedImage', () => {
       expect(result.current.hasSelectedImage).toBe(true);
     });
 
-    it('catches mutation: should dispatch selectedImageChange event with image data', async () => {
+    it('catches mutation: should dispatch selectedImageChange custom event with detail', async () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
       const { result } = renderHook(() => useSelectedImage());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -252,6 +242,11 @@ describe('useSelectedImage', () => {
         (call: any) => call[0].type === 'selectedImageChange'
       );
       expect(customEvents.length).toBeGreaterThan(0);
+      
+      // Verify event has detail property
+      const event = customEvents[0]?.[0] as CustomEvent;
+      expect(event.detail).toBeDefined();
+      expect(event.detail).toEqual(baseImage);
 
       dispatchSpy.mockRestore();
     });
@@ -495,6 +490,26 @@ describe('useSelectedImage', () => {
   // ============================================
 
   describe('Storage event handling', () => {
+    it('catches mutation: should add storage event listener on mount', () => {
+      const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+      
+      renderHook(() => useSelectedImage());
+
+      expect(addEventListenerSpy).toHaveBeenCalledWith('storage', expect.any(Function));
+      addEventListenerSpy.mockRestore();
+    });
+
+    it('catches mutation: should remove storage event listener on unmount', () => {
+      const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
+
+      const { unmount } = renderHook(() => useSelectedImage());
+
+      unmount();
+
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('storage', expect.any(Function));
+      removeEventListenerSpy.mockRestore();
+    });
+
     it('catches mutation: should only react to STORAGE_KEY changes', async () => {
       store.set(STORAGE_KEY, JSON.stringify(baseImage));
       const { result } = renderHook(() => useSelectedImage());
@@ -502,19 +517,27 @@ describe('useSelectedImage', () => {
       // Wait for initial load
       await waitFor(() => expect(result.current.isLoading).toBe(false));
       expect(result.current.selectedImage).toEqual(baseImage);
+      
+      // Store the initial state for comparison
+      const initialSelectedImage = result.current.selectedImage;
 
-      // Change a different key
+      // Change a different key with completely different data
+      const differentImage = { ...baseImage, target_date: '2026-05-01', tile_url: 'https://different.url' };
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
             key: 'different_key',
-            newValue: JSON.stringify({ ...baseImage, target_date: '2026-05-01' }),
+            newValue: JSON.stringify(differentImage),
           })
         );
       });
 
-      // Should not change from the event about a different key
+      // State should NOT change from the event about a different key
+      expect(result.current.selectedImage).toBe(initialSelectedImage);
+      expect(result.current.selectedImage).toEqual(baseImage);
       expect(result.current.selectedImage?.target_date).toBe('2026-03-01');
+      expect(result.current.selectedImage?.tile_url).toBe('https://tiles.test/layer');
+      expect(result.current.selectedImage?.tile_url).not.toBe('https://different.url');
     });
 
     it('catches mutation: should clear when storage key is set to null', () => {
@@ -531,6 +554,333 @@ describe('useSelectedImage', () => {
       });
 
       expect(result.current.selectedImage).toBeNull();
+    });
+
+    it('catches mutation: should update state when storage event fires with new value', async () => {
+      store.set(STORAGE_KEY, JSON.stringify(baseImage));
+      const { result } = renderHook(() => useSelectedImage());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const newImage = { ...baseImage, target_date: '2026-04-01' };
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: STORAGE_KEY,
+            newValue: JSON.stringify(newImage),
+          })
+        );
+      });
+
+      expect(result.current.selectedImage?.target_date).toBe('2026-04-01');
+    });
+  });
+
+  // ============================================
+  // ADVANCED EVENT DISPATCH BEHAVIOR
+  // ============================================
+
+  describe('Advanced event dispatch behavior', () => {
+    it('catches mutation: custom event MUST have detail property with image', async () => {
+      const dispatchedEvents: CustomEvent[] = [];
+      const originalDispatch = window.dispatchEvent;
+      
+      window.dispatchEvent = vi.fn((event: Event) => {
+        dispatchedEvents.push(event as CustomEvent);
+        return originalDispatch.call(window, event);
+      });
+
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => {
+        result.current.setSelectedImage(baseImage);
+      });
+
+      // Find the selectedImageChange event
+      const changeEvent = dispatchedEvents.find(e => e.type === 'selectedImageChange');
+      expect(changeEvent).toBeDefined();
+      expect(changeEvent?.detail).toBeDefined(); // Must have detail
+      expect(changeEvent?.detail).toEqual(baseImage); // detail must be the image
+      expect(changeEvent?.detail).not.toBeUndefined(); // Catches {} mutation
+      expect(changeEvent?.detail).not.toBeNull(); // When setting image
+
+      window.dispatchEvent = originalDispatch;
+    });
+
+    it('catches mutation: custom event detail must be null when clearing image', async () => {
+      const dispatchedEvents: CustomEvent[] = [];
+      const originalDispatch = window.dispatchEvent;
+      
+      window.dispatchEvent = vi.fn((event: Event) => {
+        dispatchedEvents.push(event as CustomEvent);
+        return originalDispatch.call(window, event);
+      });
+
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => {
+        result.current.setSelectedImage(baseImage);
+      });
+
+      dispatchedEvents.length = 0; // Clear previous events
+
+      act(() => {
+        result.current.clearSelectedImage();
+      });
+
+      const clearEvent = dispatchedEvents.find(e => e.type === 'selectedImageChange');
+      expect(clearEvent).toBeDefined();
+      expect(clearEvent?.detail).toBeNull(); // Must be null, not undefined
+    });
+
+    it('catches mutation: must dispatch event even when passing null to setSelectedImage', async () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      dispatchSpy.mockClear();
+
+      act(() => {
+        result.current.setSelectedImage(null);
+      });
+
+      expect(dispatchSpy).toHaveBeenCalled();
+      const calls = dispatchSpy.mock.calls.filter(c => c[0].type === 'selectedImageChange');
+      expect(calls.length).toBeGreaterThan(0);
+
+      dispatchSpy.mockRestore();
+    });
+
+    it('catches mutation: image in state must match image in event detail', async () => {
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const testImage = {
+        ...baseImage,
+        target_date: '2026-06-15',
+        tile_url: 'https://specific.test/url',
+      };
+
+      const capturedEvents: CustomEvent[] = [];
+      const originalDispatch = window.dispatchEvent;
+      window.dispatchEvent = vi.fn((event: Event) => {
+        if (event.type === 'selectedImageChange') {
+          capturedEvents.push(event as CustomEvent);
+        }
+        return originalDispatch.call(window, event);
+      });
+
+      act(() => {
+        result.current.setSelectedImage(testImage);
+      });
+
+      const eventDetail = capturedEvents[0]?.detail;
+      expect(eventDetail?.tile_url).toBe(testImage.tile_url);
+      expect(eventDetail?.target_date).toBe(testImage.target_date);
+      expect(result.current.selectedImage?.tile_url).toBe(eventDetail?.tile_url);
+      expect(result.current.selectedImage?.target_date).toBe(eventDetail?.target_date);
+
+      window.dispatchEvent = originalDispatch;
+    });
+  });
+
+  // ============================================
+  // EVENT LISTENER CLEANUP VERIFICATION
+  // ============================================
+
+  describe('Event listener cleanup verification', () => {
+    it('catches mutation: must removeEventListener on listener hook unmount', () => {
+      const removeListenerCalls: Array<[string, Function]> = [];
+      const originalRemove = window.removeEventListener;
+
+      window.removeEventListener = vi.fn((event: string, handler: any) => {
+        removeListenerCalls.push([event, handler]);
+        return originalRemove.call(window, event, handler);
+      });
+
+      const { unmount } = renderHook(() => useSelectedImageListener());
+
+      unmount();
+
+      // Must have removed both event types
+      const events = removeListenerCalls.map(([e]) => e);
+      expect(events).toContain('selectedImageChange');
+      expect(events).toContain('storage');
+
+      window.removeEventListener = originalRemove;
+    });
+
+    it('catches mutation: both hooks must add storage listener', () => {
+      const addListenerCalls: Array<[string, Function]> = [];
+      const originalAdd = window.addEventListener;
+
+      window.addEventListener = vi.fn((event: string, handler: any) => {
+        addListenerCalls.push([event, handler]);
+        return originalAdd.call(window, event, handler);
+      });
+
+      const { unmount: unmount1 } = renderHook(() => useSelectedImage());
+      const { unmount: unmount2 } = renderHook(() => useSelectedImageListener());
+
+      // Both should have added storage listener
+      const storageListeners = addListenerCalls.filter(([e]) => e === 'storage');
+      expect(storageListeners.length).toBeGreaterThanOrEqual(2);
+
+      unmount1();
+      unmount2();
+
+      window.addEventListener = originalAdd;
+    });
+
+    it('catches mutation: must clean up exactly matching listener handlers', () => {
+      const addedListeners = new Map<string, Set<Function>>();
+      const removedListeners = new Map<string, Set<Function>>();
+      
+      const originalAdd = window.addEventListener;
+      const originalRemove = window.removeEventListener;
+
+      window.addEventListener = vi.fn((event: string, handler: any) => {
+        if (!addedListeners.has(event)) {
+          addedListeners.set(event, new Set());
+        }
+        addedListeners.get(event)!.add(handler);
+        return originalAdd.call(window, event, handler);
+      });
+
+      window.removeEventListener = vi.fn((event: string, handler: any) => {
+        if (!removedListeners.has(event)) {
+          removedListeners.set(event, new Set());
+        }
+        removedListeners.get(event)!.add(handler);
+        return originalRemove.call(window, event, handler);
+      });
+
+      const { unmount } = renderHook(() => useSelectedImageListener());
+
+      // Verify listeners were added
+      expect(addedListeners.has('selectedImageChange')).toBe(true);
+      expect(addedListeners.has('storage')).toBe(true);
+
+      unmount();
+
+      // Verify listeners were removed
+      expect(removedListeners.has('selectedImageChange')).toBe(true);
+      expect(removedListeners.has('storage')).toBe(true);
+
+      window.addEventListener = originalAdd;
+      window.removeEventListener = originalRemove;
+    });
+  });
+
+  // ============================================
+  // VALIDATION & ERROR HANDLING
+  // ============================================
+
+  describe('Validation and error handling', () => {
+    it('catches mutation: must call isValidSelectedImage to validate stored data', async () => {
+      store.set(STORAGE_KEY, JSON.stringify(baseImage));
+      isValidSelectedImageMock.mockReturnValue(true);
+
+      renderHook(() => useSelectedImage());
+
+      await waitFor(() => {
+        expect(isValidSelectedImageMock).toHaveBeenCalled();
+      });
+    });
+
+    it('catches mutation: invalid data must be removed from localStorage', async () => {
+      store.set(STORAGE_KEY, JSON.stringify({ invalid: true }));
+      isValidSelectedImageMock.mockReturnValue(false);
+
+      renderHook(() => useSelectedImage());
+
+      await waitFor(() => {
+        expect(window.localStorage.removeItem).toHaveBeenCalledWith(STORAGE_KEY);
+      });
+    });
+
+    it('catches mutation: must preserve exact selected_at timestamp format', async () => {
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const beforeDate = new Date();
+      act(() => {
+        result.current.setSelectedImage(baseImage);
+      });
+      const afterDate = new Date();
+
+      const savedImage = result.current.selectedImage;
+      expect(savedImage?.selected_at).toBeDefined();
+      
+      const savedTime = new Date(savedImage?.selected_at || '');
+      expect(savedTime.getTime()).toBeGreaterThanOrEqual(beforeDate.getTime());
+      expect(savedTime.getTime()).toBeLessThanOrEqual(afterDate.getTime() + 1000); // +1s margin
+    });
+
+    it('catches mutation: must store ALL required properties of image', async () => {
+      const { result } = renderHook(() => useSelectedImage());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const requiredFields = [
+        'tile_url',
+        'target_date',
+        'sensor',
+        'visualization',
+        'visualization_description',
+        'collection',
+        'images_count',
+      ];
+
+      act(() => {
+        result.current.setSelectedImage(baseImage);
+      });
+
+      const stored = result.current.selectedImage;
+      for (const field of requiredFields) {
+        expect(stored).toHaveProperty(field);
+        expect(stored?.[field as keyof typeof baseImage]).toBe(baseImage[field as keyof typeof baseImage]);
+      }
+    });
+  });
+
+  // ============================================
+  // SYNC FUNCTION EDGE CASES
+  // ============================================
+
+  describe('Sync function edge cases', () => {
+    it('catches mutation: getSelectedImageSync must check isValidSelectedImage', () => {
+      store.set(STORAGE_KEY, JSON.stringify(baseImage));
+      isValidSelectedImageMock.mockReturnValue(true);
+
+      const result1 = getSelectedImageSync();
+      expect(result1).toEqual(baseImage);
+
+      isValidSelectedImageMock.mockReturnValue(false);
+
+      const result2 = getSelectedImageSync();
+      expect(result2).toBeNull();
+    });
+
+    it('catches mutation: getSelectedImageSync must remove invalid data', () => {
+      store.set(STORAGE_KEY, JSON.stringify(baseImage));
+      isValidSelectedImageMock.mockReturnValue(false);
+
+      const removeItemSpy = window.localStorage.removeItem as any;
+      removeItemSpy.mockClear();
+
+      getSelectedImageSync();
+
+      expect(removeItemSpy).toHaveBeenCalledWith(STORAGE_KEY);
+    });
+
+    it('catches mutation: getSelectedImageSync must handle JSON parse errors', () => {
+      store.set(STORAGE_KEY, '{bad-json]');
+
+      const result = getSelectedImageSync();
+      expect(result).toBeNull();
+      expect(window.localStorage.removeItem).toHaveBeenCalledWith(STORAGE_KEY);
     });
   });
 });

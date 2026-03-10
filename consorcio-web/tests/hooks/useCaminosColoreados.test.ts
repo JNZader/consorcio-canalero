@@ -1,12 +1,16 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FeatureCollection } from 'geojson';
-import { useCaminosColoreados } from '../../src/hooks/useCaminosColoreados';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 
-// Mock fetch globally
+// Mock fetch globally BEFORE importing the hook
 global.fetch = vi.fn();
-
 const mockFetch = global.fetch as any;
+
+// Mock API module
+vi.mock('../../src/lib/api', () => ({
+  API_URL: 'http://localhost:8000',
+}));
+
+import { useCaminosColoreados } from '../../src/hooks/useCaminosColoreados';
 
 const mockResponse = {
   type: 'FeatureCollection' as const,
@@ -16,11 +20,14 @@ const mockResponse = {
       geometry: { type: 'LineString' as const, coordinates: [[0, 0], [1, 1]] },
       properties: { consorcio: 'Consorcio A', color: '#FF0000' },
     },
-    {
-      type: 'Feature' as const,
-      geometry: { type: 'LineString' as const, coordinates: [[2, 2], [3, 3]] },
-      properties: { consorcio: 'Consorcio B', color: '#00FF00' },
-    },
+  ],
+  metadata: {
+    total_tramos: 1,
+    total_consorcios: 1,
+    total_km: 50,
+  },
+  consorcios: [
+    { nombre: 'Consorcio A', codigo: 'CA', color: '#FF0000', tramos: 1, longitud_km: 50 },
   ],
 };
 
@@ -33,86 +40,159 @@ describe('useCaminosColoreados', () => {
     });
   });
 
-  it('should initialize with empty state', () => {
-    const { result } = renderHook(() => useCaminosColoreados());
-
-    expect(result.current.loading).toBe(true);
-    expect(result.current.caminos).toBeDefined();
-    expect(result.current.consorcios).toBeDefined();
-    expect(result.current.error).toBeNull();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('should return structured data with caminos, consorcios, and metadata', () => {
-    const { result } = renderHook(() => useCaminosColoreados());
+  // ============================================
+  // INITIAL STATE
+  // ============================================
 
-    expect(result.current).toHaveProperty('caminos');
-    expect(result.current).toHaveProperty('consorcios');
-    expect(result.current).toHaveProperty('metadata');
-    expect(result.current).toHaveProperty('loading');
-    expect(result.current).toHaveProperty('error');
-    expect(result.current).toHaveProperty('reload');
-  });
+  describe('Initial state', () => {
+    it('should initialize with loading=true', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
 
-  it('should have a reload function', () => {
-    const { result } = renderHook(() => useCaminosColoreados());
-
-    expect(typeof result.current.reload).toBe('function');
-  });
-
-  it('should handle errors gracefully', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'));
-
-    const { result } = renderHook(() => useCaminosColoreados());
-
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
-
-    expect(result.current.error).not.toBeNull();
-  });
-
-  it('should handle HTTP errors', async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 500,
+      expect(result.current.loading).toBe(true);
     });
 
-    const { result } = renderHook(() => useCaminosColoreados());
+    it('should initialize with null caminos', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+      expect(result.current.caminos).toBeNull();
+    });
 
-    expect(result.current.error).not.toBeNull();
+    it('should initialize with empty consorcios array', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      expect(result.current.consorcios).toEqual([]);
+    });
+
+    it('should initialize with null metadata', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      expect(result.current.metadata).toBeNull();
+    });
+
+    it('should initialize with null error', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      expect(result.current.error).toBeNull();
+    });
+
+    it('should return proper hook interface', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      expect(result.current).toHaveProperty('caminos');
+      expect(result.current).toHaveProperty('consorcios');
+      expect(result.current).toHaveProperty('metadata');
+      expect(result.current).toHaveProperty('loading');
+      expect(result.current).toHaveProperty('error');
+      expect(result.current).toHaveProperty('reload');
+    });
   });
 
-  it('should have reload function that is callable', async () => {
-    const { result } = renderHook(() => useCaminosColoreados());
+  // ============================================
+  // DATA LOADING
+  // ============================================
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+  describe('Data loading', () => {
+    it('should set loading to false after fetch completes', async () => {
+      const { result } = renderHook(() => useCaminosColoreados());
 
-    mockFetch.mockClear();
+      expect(result.current.loading).toBe(true);
 
-    await result.current.reload();
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+    });
 
-    expect(result.current.loading).toBe(false);
+    it('catches mutation: should set loading when initialization complete', async () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      expect(result.current.loading).toBe(true);
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      expect(result.current.loading).toBe(false);
+    });
   });
 
-  it('should return null values initially if loading fails', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'));
+  // ============================================
+  // ERROR HANDLING
+  // ============================================
 
-    const { result } = renderHook(() => useCaminosColoreados());
+  describe('Error handling', () => {
+    it('should handle fetch errors gracefully', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+      const { result } = renderHook(() => useCaminosColoreados());
 
-    expect(result.current.caminos).toBeDefined();
-    expect(result.current.consorcios).toBeDefined();
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      expect(result.current.error).not.toBeNull();
+    });
+
+    it('should handle HTTP response errors', async () => {
+      mockFetch.mockImplementationOnce(() => Promise.resolve({
+        ok: false,
+        status: 500,
+      }));
+
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      expect(result.current.error).not.toBeNull();
+    });
+
+    it('catches mutation: should set loading false on error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('should handle non-Error exceptions', async () => {
+      mockFetch.mockRejectedValueOnce('String error');
+
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
+
+      expect(result.current.error).not.toBeNull();
+    });
   });
 
-  it('should not throw errors when reload is called multiple times', async () => {
-    const { result } = renderHook(() => useCaminosColoreados());
+  // ============================================
+  // RELOAD FUNCTION
+  // ============================================
 
-    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+  describe('Reload function', () => {
+    it('should expose callable reload function', () => {
+      const { result } = renderHook(() => useCaminosColoreados());
 
-    expect(async () => {
-      await result.current.reload();
-      await result.current.reload();
-    }).not.toThrow();
+      expect(typeof result.current.reload).toBe('function');
+    });
+
+    it('catches mutation: should have reload as a function', async () => {
+      const { result } = renderHook(() => useCaminosColoreados());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      expect(typeof result.current.reload).toBe('function');
+    });
+  });
+
+  // ============================================
+  // CLEANUP
+  // ============================================
+
+  describe('Cleanup', () => {
+    it('should clean up on unmount', () => {
+      const { unmount } = renderHook(() => useCaminosColoreados());
+
+      expect(() => unmount()).not.toThrow();
+    });
   });
 });

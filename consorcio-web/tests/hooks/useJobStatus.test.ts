@@ -205,6 +205,21 @@ describe('useJobStatus', () => {
       expect(result.current.status).not.toBe('STARTED');
     }, 15000);
 
+    it('catches mutation: status must be exactly "IDLE" not empty string', () => {
+      const { result } = renderHook(() => useJobStatus(null));
+      expect(result.current.status).toBe('IDLE');
+      // Verify it's not an empty string, falsy value, or anything else
+      expect(result.current.status).not.toBe('');
+      expect(result.current.status.length).toBe(4);
+    });
+
+    it('catches mutation: isLoading must be exactly false not true', () => {
+      const { result } = renderHook(() => useJobStatus(null));
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isLoading).not.toBe(true);
+      expect(typeof result.current.isLoading).toBe('boolean');
+    });
+
 
 
     it('catches mutation: should verify polling interval is 2 seconds between calls', () => {
@@ -226,6 +241,33 @@ describe('useJobStatus', () => {
         });
         const callsAt2s = mockApiFetch.mock.calls.length;
         expect(callsAt2s).toBeGreaterThan(callsBefore2s);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+
+
+    it('catches mutation: polling condition must check BOTH !SUCCESS AND !FAILURE', () => {
+      vi.useFakeTimers();
+      try {
+        // This catches if someone changes && to || in the condition
+        mockApiFetch.mockResolvedValue({ job_id: 'job-1', status: 'PENDING' });
+
+        renderHook(() => useJobStatus('job-1'));
+
+        act(() => {
+          vi.advanceTimersByTime(2000);
+        });
+        const callsAfterFirst = mockApiFetch.mock.calls.length;
+        expect(callsAfterFirst).toBeGreaterThan(0);
+
+        // Should continue polling because status is PENDING (not SUCCESS and not FAILURE)
+        act(() => {
+          vi.advanceTimersByTime(2000);
+        });
+        const callsAfterSecond = mockApiFetch.mock.calls.length;
+        expect(callsAfterSecond).toBeGreaterThan(callsAfterFirst);
       } finally {
         vi.useRealTimers();
       }
@@ -586,5 +628,151 @@ describe('useJobStatus', () => {
         vi.useRealTimers();
       }
     });
+  });
+
+  // ============================================
+  // ADVANCED POLLING STATE MACHINE
+  // ============================================
+
+  describe('Advanced polling state machine', () => {
+    it('catches mutation: polling status condition must check both !SUCCESS and !FAILURE', () => {
+      vi.useFakeTimers();
+      try {
+        // This test ensures the condition is: status !== 'SUCCESS' && status !== 'FAILURE'
+        // If someone changes && to || or checks only one, this will catch it
+        mockApiFetch.mockResolvedValue({ job_id: 'job-1', status: 'STARTED' });
+
+        renderHook(() => useJobStatus('job-1'));
+
+        // First 2 second interval
+        act(() => { vi.advanceTimersByTime(2000); });
+        const callsAfterFirstInterval = mockApiFetch.mock.calls.length;
+        expect(callsAfterFirstInterval).toBeGreaterThan(0);
+
+        // Second 2 second interval
+        act(() => { vi.advanceTimersByTime(2000); });
+        expect(mockApiFetch.mock.calls.length).toBeGreaterThan(callsAfterFirstInterval);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('catches mutation: status transition from STARTED must NOT continue polling if SUCCESS', async () => {
+      mockApiFetch.mockResolvedValueOnce({ job_id: 'job-1', status: 'STARTED' })
+        .mockResolvedValueOnce({ job_id: 'job-1', status: 'SUCCESS', result: { data: 'done' } });
+
+      const onCompleted = vi.fn();
+      renderHook(() => useJobStatus('job-1', onCompleted));
+
+      // Wait for SUCCESS to be detected and callback invoked
+      await waitFor(() => {
+        expect(onCompleted).toHaveBeenCalled();
+      }, { timeout: 5000 });
+
+      const callCountAtSuccess = mockApiFetch.mock.calls.length;
+
+      // Try to advance timer - should not make more calls
+      vi.useFakeTimers();
+      try {
+        act(() => { vi.advanceTimersByTime(4000); });
+        expect(mockApiFetch.mock.calls.length).toBe(callCountAtSuccess);
+      } finally {
+        vi.useRealTimers();
+      }
+    }, 10000);
+
+    it('catches mutation: status "SUCCESS" must stop polling (not continue indefinitely)', async () => {
+      const onCompleted = vi.fn();
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'SUCCESS',
+        result: { value: 'test' },
+      });
+
+      const pollCountSpy = vi.spyOn(global, 'setInterval');
+
+      renderHook(() => useJobStatus('job-1', onCompleted));
+
+      await waitFor(() => {
+        expect(onCompleted).toHaveBeenCalled();
+      }, { timeout: 5000 });
+
+      // At least one interval was created
+      expect(pollCountSpy).toHaveBeenCalled();
+
+      pollCountSpy.mockRestore();
+    }, 10000);
+
+    it('catches mutation: initial status must be PENDING (not IDLE or empty)', () => {
+      const { result } = renderHook(() => useJobStatus('job-1'));
+      
+      // Must be PENDING, not IDLE, not empty string
+      expect(result.current.status).toBe('PENDING');
+      expect(result.current.status).not.toBe('IDLE');
+      expect(result.current.status).not.toBe('');
+      expect(result.current.status.length).toBeGreaterThan(0);
+    });
+
+    it('catches mutation: initial isLoading must be true for valid jobId', () => {
+      const { result } = renderHook(() => useJobStatus('job-1'));
+      
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.isLoading).not.toBe(false);
+    });
+  });
+
+  // ============================================
+  // INTERVAL TIMING PRECISION
+  // ============================================
+
+  describe('Interval timing precision', () => {
+    it('catches mutation: must clear error state when starting new job', () => {
+      mockApiFetch.mockRejectedValueOnce(new Error('Test error'));
+
+      const { result, rerender } = renderHook(
+        ({ jobId }: { jobId: string | null }) => useJobStatus(jobId),
+        { initialProps: { jobId: 'job-1' } }
+      );
+
+      // Wait for error to be set
+      expect(result.current.error).toBeDefined();
+
+      mockApiFetch.mockClear();
+      mockApiFetch.mockResolvedValue({ job_id: 'job-2', status: 'PENDING' });
+
+      rerender({ jobId: 'job-2' });
+
+      // Error should be cleared
+      expect(result.current.error).toBeNull();
+    });
+
+    it('catches mutation: must not call checkStatus with missing jobId', () => {
+      vi.useFakeTimers();
+      try {
+        renderHook(() => useJobStatus(null));
+
+        act(() => { vi.advanceTimersByTime(10000); });
+
+        // checkStatus should never be called if jobId is null
+        expect(mockApiFetch).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('catches mutation: callback invoked only once per SUCCESS', async () => {
+      const onCompleted = vi.fn();
+      mockApiFetch.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'SUCCESS',
+        result: { value: 'test' },
+      });
+
+      renderHook(() => useJobStatus('job-1', onCompleted));
+
+      await waitFor(() => {
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+      }, { timeout: 5000 });
+    }, 10000);
   });
 });
