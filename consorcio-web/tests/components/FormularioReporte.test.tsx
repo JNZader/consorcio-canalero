@@ -117,86 +117,238 @@ describe('FormularioReporte', () => {
     });
   });
 
-  it('enables submit after selecting coordinates and submits report', async () => {
-    const user = userEvent.setup();
-    renderForm();
+  describe('Form State Transitions', () => {
+    it('disables submit button before coordinates are selected', async () => {
+      const user = userEvent.setup();
+      renderForm();
 
-    await user.click(screen.getByRole('button', { name: /select-type/i }));
-    await user.type(
-      screen.getByLabelText(/descripcion/i),
-      'Canal desbordado por lluvias intensas en el sector norte'
-    );
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
 
-    const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
-    expect(submitButton).toBeDisabled();
-
-    await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
-    await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
-    expect(submitButton).not.toBeDisabled();
-
-    await user.click(submitButton);
-
-    expect(publicApi.createReport).toHaveBeenCalled();
-  });
-
-  it('shows geolocation unsupported warning when browser API is unavailable', async () => {
-    const user = userEvent.setup();
-    vi.stubGlobal('navigator', {});
-    renderForm();
-
-    await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
-
-    expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Error', color: 'red' })
-    );
-  });
-
-  it('renders blocked form state before verification', () => {
-    useContactVerificationMock.mockReturnValue({
-      contactoVerificado: false,
-      userEmail: null,
-      userName: null,
-      metodoVerificacion: 'google',
-      loading: false,
-      magicLinkSent: false,
-      magicLinkEmail: null,
-      setMetodoVerificacion: vi.fn(),
-      loginWithGoogle: vi.fn(),
-      sendMagicLink: vi.fn(),
-      logout: vi.fn(),
+      const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
+      expect(submitButton).toBeDisabled();
     });
 
-    renderForm();
+    it('enables submit button only after coordinates are set', async () => {
+      const user = userEvent.setup();
+      renderForm();
 
-    expect(screen.getAllByText(/tipo de problema/i).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
+
+      const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
+      expect(submitButton).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      expect(submitButton).not.toBeDisabled();
+    });
+
+    it('enables submit after selecting coordinates and submits report', async () => {
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
+
+      const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
+      expect(submitButton).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      expect(submitButton).not.toBeDisabled();
+
+      await user.click(submitButton);
+
+      expect(publicApi.createReport).toHaveBeenCalled();
+    });
   });
 
-  it('submits report even when photo upload fails', async () => {
-    vi.mocked(publicApi.uploadPhoto).mockRejectedValue(new Error('upload failed'));
+  describe('Geolocation Handling', () => {
+    it('shows geolocation unsupported warning when browser API is unavailable', async () => {
+      const user = userEvent.setup();
+      vi.stubGlobal('navigator', {});
+      renderForm();
 
-    const user = userEvent.setup();
-    renderForm();
+      await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
 
-    await user.click(screen.getByRole('button', { name: /select-type/i }));
-    await user.type(
-      screen.getByLabelText(/descripcion/i),
-      'Canal desbordado por lluvias intensas en el sector norte'
-    );
-    await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
-    await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
-    await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Error', color: 'red' })
+      );
+    });
 
-    await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+    it('shows error notification when GPS location retrieval fails', async () => {
+      const user = userEvent.setup();
+      const mockError = { code: 1, message: 'Permission denied' };
 
-    expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
-    expect(publicApi.createReport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        foto_url: undefined,
-      })
-    );
-    expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Aviso', color: 'yellow' })
-    );
+      vi.stubGlobal('navigator', {
+        geolocation: {
+          getCurrentPosition: (_success: unknown, error: Function) => {
+            error(mockError);
+          },
+        },
+      });
+
+      renderForm();
+      await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
+
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: 'red' })
+      );
+    });
+  });
+
+  describe('Verification State Handling', () => {
+    it.each([
+      { contactoVerificado: false, name: 'unverified user' },
+      { contactoVerificado: true, name: 'verified user' },
+    ])('renders form with verification=$contactoVerificado for $name', ({ contactoVerificado }) => {
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado,
+        userEmail: contactoVerificado ? 'vecino@example.com' : null,
+        userName: contactoVerificado ? 'Vecino' : null,
+        metodoVerificacion: 'google',
+        loading: false,
+        magicLinkSent: false,
+        magicLinkEmail: null,
+        setMetodoVerificacion: vi.fn(),
+        loginWithGoogle: vi.fn(),
+        sendMagicLink: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      renderForm();
+
+      // Just verify the component renders without error
+      expect(screen.getByText(/Nuevo Reporte/i)).toBeInTheDocument();
+    });
+
+    it('blocks submit button when contact not verified', () => {
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado: false,
+        userEmail: null,
+        userName: null,
+        metodoVerificacion: 'google',
+        loading: false,
+        magicLinkSent: false,
+        magicLinkEmail: null,
+        setMetodoVerificacion: vi.fn(),
+        loginWithGoogle: vi.fn(),
+        sendMagicLink: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      renderForm();
+
+      expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
+    });
+
+    it('renders blocked form state before verification', () => {
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado: false,
+        userEmail: null,
+        userName: null,
+        metodoVerificacion: 'google',
+        loading: false,
+        magicLinkSent: false,
+        magicLinkEmail: null,
+        setMetodoVerificacion: vi.fn(),
+        loginWithGoogle: vi.fn(),
+        sendMagicLink: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      renderForm();
+
+      expect(screen.getAllByText(/tipo de problema/i).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Photo Upload Handling', () => {
+    it('handles photo upload failure gracefully', async () => {
+      const user = userEvent.setup();
+      vi.mocked(publicApi.uploadPhoto).mockRejectedValue(new Error('upload failed'));
+
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
+      expect(publicApi.createReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          foto_url: undefined,
+        })
+      );
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: 'yellow' })
+      );
+    });
+
+    it('submits report even when photo upload fails', async () => {
+      vi.mocked(publicApi.uploadPhoto).mockRejectedValue(new Error('upload failed'));
+
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
+      expect(publicApi.createReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          foto_url: undefined,
+        })
+      );
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Aviso', color: 'yellow' })
+      );
+    });
+
+    it('shows warning notification when photo upload fails', async () => {
+      vi.mocked(publicApi.uploadPhoto).mockRejectedValue(new Error('Network error'));
+
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Test description'
+      );
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: 'yellow' })
+      );
+    });
   });
 });
