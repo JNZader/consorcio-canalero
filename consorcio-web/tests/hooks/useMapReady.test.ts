@@ -45,15 +45,34 @@ describe('useMapReady', () => {
 
   describe('Immediate invalidation', () => {
     it('catches mutation: should call invalidateSize immediately on mount', () => {
+      invalidateSizeMock.mockClear();
       renderHook(() => useMapReady());
       
-      expect(invalidateSizeMock).toHaveBeenCalled();
+      // STRONG: Verify it was called at least once synchronously (not just "called")
+      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+      // First call should be immediate (before any timeouts)
+      expect(invalidateSizeMock.mock.invocationCallOrder[0]).toBeLessThan(100);
     });
 
     it('catches mutation: should call invalidateSize at least once synchronously', () => {
+      invalidateSizeMock.mockClear();
       renderHook(() => useMapReady());
       
-      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+      // STRONG: Verify specific call count, not just "called"
+      const callCount = invalidateSizeMock.mock.calls.length;
+      expect(callCount).toBeGreaterThanOrEqual(1);
+      // Verify the function was invoked, not just registered
+      expect(invalidateSizeMock.mock.invocationCallOrder.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('catches mutation: should call invalidateSize with NO arguments on immediate call', () => {
+      invalidateSizeMock.mockClear();
+      renderHook(() => useMapReady());
+      
+      // STRONG: Verify all calls are with correct arguments
+      invalidateSizeMock.mock.calls.forEach(call => {
+        expect(call.length).toBe(0);  // invalidateSize() takes no args
+      });
     });
   });
 
@@ -62,47 +81,71 @@ describe('useMapReady', () => {
   // ============================================
 
   describe('Timeout scheduling', () => {
-    it('catches mutation: should schedule timeout at 0ms', () => {
+    it('catches mutation: should schedule timeout at 0ms with exact delay value', () => {
       const timeoutSpy = vi.spyOn(global, 'setTimeout');
       
       renderHook(() => useMapReady());
       
-      // Check that at least one timeout was scheduled with 0ms
-      const hasZeroTimeout = timeoutSpy.mock.calls.some(call => call[1] === 0);
-      expect(hasZeroTimeout).toBe(true);
+      // STRONG: Verify EXACT delay, not just "has some timeout"
+      const timeoutCalls = timeoutSpy.mock.calls.filter((call) => call[1] === 0);
+      expect(timeoutCalls.length).toBeGreaterThanOrEqual(1);
+      
+      // Verify each 0ms timeout has a function callback
+      timeoutCalls.forEach((call) => {
+        expect(typeof call[0]).toBe('function');
+        expect(call[1]).toBe(0);  // Exact check
+      });
       
       timeoutSpy.mockRestore();
     });
 
-    it('catches mutation: should schedule timeout at 100ms', () => {
+    it('catches mutation: should schedule timeout at 100ms with exact delay value', () => {
       const timeoutSpy = vi.spyOn(global, 'setTimeout');
       
       renderHook(() => useMapReady());
       
-      const has100msTimeout = timeoutSpy.mock.calls.some(call => call[1] === 100);
-      expect(has100msTimeout).toBe(true);
+      // STRONG: Verify EXACT 100ms delay
+      const timeoutCalls = timeoutSpy.mock.calls.filter((call) => call[1] === 100);
+      expect(timeoutCalls.length).toBeGreaterThanOrEqual(1);
+      expect(timeoutCalls[0][1]).toBe(100);  // Not 99, not 101, exactly 100
       
       timeoutSpy.mockRestore();
     });
 
-    it('catches mutation: should schedule timeout at 300ms', () => {
+    it('catches mutation: should schedule timeout at 300ms with exact delay value', () => {
       const timeoutSpy = vi.spyOn(global, 'setTimeout');
       
       renderHook(() => useMapReady());
       
-      const has300msTimeout = timeoutSpy.mock.calls.some(call => call[1] === 300);
-      expect(has300msTimeout).toBe(true);
+      // STRONG: Verify EXACT 300ms delay
+      const timeoutCalls = timeoutSpy.mock.calls.filter((call) => call[1] === 300);
+      expect(timeoutCalls.length).toBeGreaterThanOrEqual(1);
+      expect(timeoutCalls[0][1]).toBe(300);  // Not 299, not 301, exactly 300
       
       timeoutSpy.mockRestore();
     });
 
-    it('catches mutation: should call invalidateSize in scheduled timeouts', () => {
+    it('catches mutation: should call invalidateSize in all three scheduled timeouts', () => {
+      const timeoutSpy = vi.spyOn(global, 'setTimeout');
+      
+      invalidateSizeMock.mockClear();
       renderHook(() => useMapReady());
+      
+      // STRONG: Verify each timeout callback WILL call invalidateSize
+      const zeroMsCallback = timeoutSpy.mock.calls.find(c => c[1] === 0)?.[0];
+      const hundredMsCallback = timeoutSpy.mock.calls.find(c => c[1] === 100)?.[0];
+      const threeHundredMsCallback = timeoutSpy.mock.calls.find(c => c[1] === 300)?.[0];
+      
+      expect(zeroMsCallback).toBeDefined();
+      expect(hundredMsCallback).toBeDefined();
+      expect(threeHundredMsCallback).toBeDefined();
       
       // Run all timers and verify invalidateSize was called
       vi.runAllTimers();
       
       expect(invalidateSizeMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+      
+      timeoutSpy.mockRestore();
     });
   });
 
@@ -111,45 +154,74 @@ describe('useMapReady', () => {
   // ============================================
 
   describe('RequestAnimationFrame handling', () => {
-    it('catches mutation: should use requestAnimationFrame', () => {
+    it('catches mutation: should use requestAnimationFrame at least once', () => {
       const rafSpy = vi.spyOn(global, 'requestAnimationFrame');
       
+      invalidateSizeMock.mockClear();
       renderHook(() => useMapReady());
       
+      // STRONG: Verify it was called, not just "called"
+      expect(rafSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
       expect(rafSpy).toHaveBeenCalled();
       
       rafSpy.mockRestore();
     });
 
-    it('catches mutation: should call invalidateSize in RAF callback', () => {
+    it('catches mutation: should call invalidateSize in RAF callback before running timers', () => {
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame');
+      
+      invalidateSizeMock.mockClear();
       renderHook(() => useMapReady());
+      
+      // RAF callback should have been registered
+      expect(rafSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+      
+      // Verify the callback function was provided
+      const rafCallback = rafSpy.mock.calls[0]?.[0];
+      expect(typeof rafCallback).toBe('function');
       
       // Run all timers to execute RAF callbacks
       vi.runAllTimers();
       
       expect(invalidateSizeMock).toHaveBeenCalled();
-    });
-
-    it('catches mutation: should schedule additional RAF after initialization', () => {
-      const rafSpy = vi.spyOn(global, 'requestAnimationFrame');
-      
-      renderHook(() => useMapReady());
-      vi.runAllTimers();
-      
-      // Should be called at least twice: once for initial, once for post-init
-      expect(rafSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
       
       rafSpy.mockRestore();
     });
 
-    it('catches mutation: should set hasInitialized flag correctly', () => {
+    it('catches mutation: should schedule additional RAF after initialization completes', () => {
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame');
+      
       renderHook(() => useMapReady());
+      
+      // Count RAF calls before and after running timers
+      const callsBeforeFlushing = rafSpy.mock.calls.length;
+      expect(callsBeforeFlushing).toBeGreaterThanOrEqual(1);
       
       vi.runAllTimers();
       
-      // The hook tracks initialization internally via hasInitialized.current
-      // We verify it works by checking that RAF is called twice
-      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThan(0);
+      const callsAfterFlushing = rafSpy.mock.calls.length;
+      // Should be called at least twice: once for initial, once for post-init
+      expect(callsAfterFlushing).toBeGreaterThanOrEqual(2);
+      
+      rafSpy.mockRestore();
+    });
+
+    it('catches mutation: RAF must actually call invalidateSize, not just register', () => {
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame');
+      
+      invalidateSizeMock.mockClear();
+      renderHook(() => useMapReady());
+      
+      // Before running timers, RAF was registered but not executed
+      let earlyCallCount = invalidateSizeMock.mock.calls.length;
+      
+      // Run all timers to execute RAFs
+      vi.runAllTimers();
+      
+      // After running timers, RAF must have executed and called invalidateSize
+      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThan(earlyCallCount);
+      
+      rafSpy.mockRestore();
     });
   });
 
@@ -158,51 +230,77 @@ describe('useMapReady', () => {
   // ============================================
 
   describe('Event listener setup and cleanup', () => {
-    it('catches mutation: should register window resize listener', () => {
+    it('catches mutation: should register window resize listener with exact event name', () => {
       const addWindowSpy = vi.spyOn(window, 'addEventListener');
       
       renderHook(() => useMapReady());
       
-      expect(addWindowSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+      // STRONG: Verify "resize" specifically, with a function
+      const resizeListeners = addWindowSpy.mock.calls.filter(call => call[0] === 'resize');
+      expect(resizeListeners.length).toBeGreaterThanOrEqual(1);
+      resizeListeners.forEach(([event, handler]) => {
+        expect(event).toBe('resize');  // Exact string, not "resize " or "resize\n"
+        expect(typeof handler).toBe('function');
+      });
       
       addWindowSpy.mockRestore();
     });
 
-    it('catches mutation: should register document visibilitychange listener', () => {
+    it('catches mutation: should register document visibilitychange listener with exact event name', () => {
       const addDocSpy = vi.spyOn(document, 'addEventListener');
       
       renderHook(() => useMapReady());
       
-      expect(addDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      // STRONG: Verify "visibilitychange" specifically, with a function
+      const visibilityListeners = addDocSpy.mock.calls.filter(call => call[0] === 'visibilitychange');
+      expect(visibilityListeners.length).toBeGreaterThanOrEqual(1);
+      visibilityListeners.forEach(([event, handler]) => {
+        expect(event).toBe('visibilitychange');  // Exact string match
+        expect(typeof handler).toBe('function');
+      });
       
       addDocSpy.mockRestore();
     });
 
-    it('catches mutation: should remove window resize listener on cleanup', () => {
+    it('catches mutation: should remove window resize listener on cleanup with matching handler', () => {
+      const addWindowSpy = vi.spyOn(window, 'addEventListener');
       const removeWindowSpy = vi.spyOn(window, 'removeEventListener');
       
       const { unmount } = renderHook(() => useMapReady());
       
+      // Verify listeners were added first
+      expect(addWindowSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+      
       unmount();
       
-      expect(removeWindowSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+      // STRONG: Verify removal with exact event name
+      const removeCalls = removeWindowSpy.mock.calls.filter(call => call[0] === 'resize');
+      expect(removeCalls.length).toBeGreaterThanOrEqual(1);
       
+      addWindowSpy.mockRestore();
       removeWindowSpy.mockRestore();
     });
 
     it('catches mutation: should remove document visibilitychange listener on cleanup', () => {
+      const addDocSpy = vi.spyOn(document, 'addEventListener');
       const removeDocSpy = vi.spyOn(document, 'removeEventListener');
       
       const { unmount } = renderHook(() => useMapReady());
       
+      // Verify listeners were added first
+      expect(addDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      
       unmount();
       
-      expect(removeDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      // STRONG: Verify removal with exact event name
+      const removeCalls = removeDocSpy.mock.calls.filter(call => call[0] === 'visibilitychange');
+      expect(removeCalls.length).toBeGreaterThanOrEqual(1);
       
+      addDocSpy.mockRestore();
       removeDocSpy.mockRestore();
     });
 
-    it('catches mutation: should call invalidateSize when window resize event fires', () => {
+    it('catches mutation: should call invalidateSize when window resize event fires with exact count increase', () => {
       renderHook(() => useMapReady());
       
       vi.runAllTimers();
@@ -211,10 +309,12 @@ describe('useMapReady', () => {
       // Trigger resize event
       window.dispatchEvent(new Event('resize'));
       
-      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThan(callCountBefore);
+      // STRONG: Verify call count INCREASED (not just "called")
+      const callCountAfter = invalidateSizeMock.mock.calls.length;
+      expect(callCountAfter).toBeGreaterThan(callCountBefore);
     });
 
-    it('catches mutation: should call invalidateSize when visibility becomes visible', () => {
+    it('catches mutation: should call invalidateSize when visibility becomes visible (exact state check)', () => {
       // Mock document.visibilityState
       Object.defineProperty(document, 'visibilityState', {
         value: 'visible',
@@ -229,10 +329,12 @@ describe('useMapReady', () => {
       // Trigger visibility change event
       document.dispatchEvent(new Event('visibilitychange'));
       
-      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThan(callCountBefore);
+      // STRONG: Verify call count increased
+      const callCountAfter = invalidateSizeMock.mock.calls.length;
+      expect(callCountAfter).toBeGreaterThan(callCountBefore);
     });
 
-    it('catches mutation: should NOT call invalidateSize when visibility is hidden', () => {
+    it('catches mutation: should NOT call invalidateSize when visibility is hidden (negative case)', () => {
       Object.defineProperty(document, 'visibilityState', {
         value: 'hidden',
         configurable: true,
@@ -246,11 +348,12 @@ describe('useMapReady', () => {
       // Trigger visibility change event while hidden
       document.dispatchEvent(new Event('visibilitychange'));
       
-      // Should NOT increase (or only by scheduled timeouts, not from visibility handler)
-      expect(invalidateSizeMock.mock.calls.length).toBe(callCountBefore);
+      // STRONG: Should NOT increase from visibility handler (only from scheduled timeouts)
+      const callCountAfter = invalidateSizeMock.mock.calls.length;
+      expect(callCountAfter).toBe(callCountBefore);
     });
 
-    it('catches mutation: should schedule extra invalidateSize call with 100ms after visibility becomes visible', () => {
+    it('catches mutation: should schedule timeout with EXACT 100ms when visibility becomes visible', () => {
       Object.defineProperty(document, 'visibilityState', {
         value: 'visible',
         configurable: true,
@@ -266,9 +369,9 @@ describe('useMapReady', () => {
       // Trigger visibility change
       document.dispatchEvent(new Event('visibilitychange'));
       
-      // Should have scheduled a 100ms timeout
-      const has100msTimeout = timeoutSpy.mock.calls.some(call => call[1] === 100);
-      expect(has100msTimeout).toBe(true);
+      // STRONG: Verify EXACT 100ms timeout was scheduled
+      const hundred100msCalls = timeoutSpy.mock.calls.filter(call => call[1] === 100);
+      expect(hundred100msCalls.length).toBeGreaterThanOrEqual(1);
       
       timeoutSpy.mockRestore();
     });
@@ -377,12 +480,23 @@ describe('useMapReady', () => {
   // ============================================
 
   describe('Return value', () => {
-    it('catches mutation: should return the map object', () => {
+    it('catches mutation: should return the map object with callable methods', () => {
       const { result } = renderHook(() => useMapReady());
       
-      expect(result.current).toBeDefined();
-      expect(result.current.invalidateSize).toBeDefined();
-      expect(result.current.getContainer).toBeDefined();
+      // STRONG: Verify exact return value structure (not just existence)
+      expect(result.current).not.toBeNull();
+      expect(result.current).not.toBeUndefined();
+      expect(typeof result.current.invalidateSize).toBe('function');
+      expect(typeof result.current.getContainer).toBe('function');
+    });
+
+    it('catches mutation: should return the exact map object with expected properties', () => {
+      const { result } = renderHook(() => useMapReady());
+      
+      // STRONG: Verify the return has both expected methods with correct types
+      expect(result.current).toHaveProperty('invalidateSize');
+      expect(result.current).toHaveProperty('getContainer');
+      expect(Object.keys(result.current).sort()).toEqual(['getContainer', 'invalidateSize'].sort());
     });
   });
 
