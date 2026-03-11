@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import type { FeatureCollection } from 'geojson';
-import { useGEELayers } from '../../src/hooks/useGEELayers';
+import { useGEELayers, type GEELayerName } from '../../src/hooks/useGEELayers';
 
 // Mock fetch globally BEFORE importing the hook
 global.fetch = vi.fn();
@@ -332,6 +332,126 @@ describe('useGEELayers', () => {
       await waitFor(() => expect(result1.current.loading).toBe(false));
 
       expect(result1.current.error).not.toBeNull();
+    });
+  });
+
+  describe('Phase B - Mutation Killers - Error Messages (EXACT TEXT)', () => {
+    it('kills: error text MUST be "No se pudieron cargar las capas del mapa" when loadedCount === 0 && layerNames.length > 0', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 404,
+      });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona'], enabled: true })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Exact text assertion - kills mutations where text is different
+      expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
+      expect(result.current.error).not.toBe('Error al cargar capas del mapa');
+      expect(result.current.error).not.toBe('');
+      expect(result.current.error).not.toBeNull();
+    });
+
+    it('kills: error is null when layerNames.length === 0 (no error condition)', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: [], enabled: true })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Exact null check - kills mutations like: if (loadedCount === 0 && true)
+      expect(result.current.error).toBeNull();
+      expect(result.current.error).not.toBe('No se pudieron cargar las capas del mapa');
+    });
+
+    it('kills: error is set when 1 layer requested but 0 loaded', async () => {
+      mockFetch.mockResolvedValue({ ok: false });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona'], enabled: true })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('kills: error is set when 2 layers requested but 0 loaded', async () => {
+      mockFetch.mockResolvedValue({ ok: false });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona', 'candil'], enabled: true })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
+    });
+  });
+
+  describe('Phase B - Mutation Killers - Loading State Transitions', () => {
+    it('kills: loading is true before data loads, then false after', async () => {
+      const geoJSON = {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} }],
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => geoJSON,
+      });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona'], enabled: true })
+      );
+
+      // Immediately after render, loading should be true
+      expect(result.current.loading).toBe(true);
+
+      // After data loads
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Confirm it's false
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('kills: loading is always set to false in finally block even with errors', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona'], enabled: true })
+      );
+
+      expect(result.current.loading).toBe(true);
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Even with error, loading should be false
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).not.toBeNull();
+    });
+  });
+
+  describe('Phase B - Mutation Killers - loadedCount Logic', () => {
+    it('kills: loadedCount === 0 && layerNames.length > 0 sets error', async () => {
+      mockFetch.mockResolvedValue({ ok: false });
+
+      const { result } = renderHook(() =>
+        useGEELayers({ layerNames: ['zona', 'candil'], enabled: true })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // loadedCount = 0, layerNames.length = 2 => error set
+      expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
+      expect(result.current.layers).toEqual({});
+      expect(Object.keys(result.current.layers).length).toBe(0);
     });
   });
 });
