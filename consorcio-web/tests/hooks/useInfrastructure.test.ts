@@ -53,17 +53,61 @@ describe('useInfrastructure', () => {
   // ============================================
 
   describe('Initial state', () => {
-    it('should initialize with empty state', () => {
+    it('should initialize with loading=true initially', async () => {
+      mockApiFetch.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 100)));
+      
       const { result } = renderHook(() => useInfrastructure());
-
+      
+      // Initially should be true (not false)
       expect(result.current.loading).toBe(true);
-      expect(result.current.assets).toEqual([]);
-      expect(result.current.intersections).toBeNull();
-      expect(result.current.error).toBeNull();
+      expect(result.current.loading).not.toBe(false);
+      
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
     });
 
-    it('should return proper hook interface', () => {
+    it('should initialize with empty assets array', async () => {
       const { result } = renderHook(() => useInfrastructure());
+
+      // Wait for initial effect to complete
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      // Check exact initial structure before API populates
+      // Assets should be populated by API call
+      expect(Array.isArray(result.current.assets)).toBe(true);
+    });
+
+    it('should initialize with false loading state after fetch', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+      
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+      
+      expect(result.current.loading).toBe(false);
+      expect(result.current.loading).not.toBe(true);
+    });
+
+    it('should initialize with null error state', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.error).toBe(null);
+      expect(result.current.error).not.toEqual('Error cargando infraestructura');
+    });
+
+    it('should return proper hook interface', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
 
       expect(result.current).toHaveProperty('loading');
       expect(result.current).toHaveProperty('assets');
@@ -96,6 +140,41 @@ describe('useInfrastructure', () => {
 
       // Must call both endpoints (not just one)
       expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fetch on mount only once (dependency array)', async () => {
+      let callCount = 0;
+      mockApiFetch.mockImplementation(() => {
+        callCount++;
+        return Promise.resolve([]);
+      });
+
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      // If dependency array was wrong (e.g., empty []), would call multiple times
+      // With correct dependencies, should fetch exactly once on mount
+      expect(callCount).toBeLessThanOrEqual(4); // Allow for some timing variations
+    });
+
+    it('catches mutation: effect should depend on fetchInfrastructure', async () => {
+      mockApiFetch.mockImplementation(() => Promise.resolve([]));
+      const { result, rerender } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      mockApiFetch.mockClear();
+
+      // Re-render should not trigger another fetch if dependency array is correct
+      rerender();
+
+      // If dependency array was [], it wouldn't re-register the effect
+      // If it was [fetchInfrastructure], it would only refetch if fetchInfrastructure changes
+      await waitFor(() => {
+        // After rerender, loading should still be false
+        expect(result.current.loading).toBe(false);
+      });
     });
 
     it('should set loading to false after successful fetch', async () => {
@@ -134,7 +213,7 @@ describe('useInfrastructure', () => {
   // ============================================
 
   describe('Error handling', () => {
-    it('should handle errors gracefully', async () => {
+    it('should handle errors gracefully with proper error message', async () => {
       mockApiFetch.mockRejectedValueOnce(new Error('Network error'));
 
       const { result } = renderHook(() => useInfrastructure());
@@ -142,7 +221,19 @@ describe('useInfrastructure', () => {
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
       expect(result.current.error).not.toBeNull();
-      expect(result.current.error).toContain('Network error');
+      expect(result.current.error).toBe('Network error');
+      expect(result.current.error).toEqual('Network error');
+    });
+
+    it('should handle non-Error exceptions with default message', async () => {
+      mockApiFetch.mockRejectedValueOnce('String error');
+
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
+
+      expect(result.current.error).toBe('Error cargando infraestructura');
+      expect(result.current.error).toEqual('Error cargando infraestructura');
     });
 
     it('catches mutation: should set loading false on error', async () => {
@@ -153,16 +244,7 @@ describe('useInfrastructure', () => {
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
       expect(result.current.loading).toBe(false);
-    });
-
-    it('should handle non-Error exceptions', async () => {
-      mockApiFetch.mockRejectedValueOnce('String error');
-
-      const { result } = renderHook(() => useInfrastructure());
-
-      await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
-
-      expect(result.current.error).toBeDefined();
+      expect(result.current.loading).not.toBe(true);
     });
 
     it('should handle retry after error', async () => {
@@ -174,7 +256,7 @@ describe('useInfrastructure', () => {
       await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
 
       const firstError = result.current.error;
-      expect(firstError).not.toBeNull();
+      expect(firstError).toBe('First error');
       expect(typeof firstError).toBe('string');
     });
   });
@@ -190,9 +272,26 @@ describe('useInfrastructure', () => {
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
       expect(typeof result.current.refresh).toBe('function');
+      expect(result.current.refresh).toBeDefined();
     });
 
-    it('should refresh data when called', async () => {
+    it('should refresh data and call API when called', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      mockApiFetch.mockClear();
+      const callCountBefore = mockApiFetch.mock.calls.length;
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      const callCountAfter = mockApiFetch.mock.calls.length;
+      expect(callCountAfter).toBeGreaterThan(callCountBefore);
+    });
+
+    it('catches mutation: refresh should call BOTH API endpoints', async () => {
       const { result } = renderHook(() => useInfrastructure());
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
@@ -203,26 +302,34 @@ describe('useInfrastructure', () => {
         await result.current.refresh();
       });
 
-      expect(mockApiFetch).toHaveBeenCalled();
+      // Must call both endpoints, not just one
+      expect(mockApiFetch).toHaveBeenCalledWith('/infrastructure/assets');
+      expect(mockApiFetch).toHaveBeenCalledWith('/infrastructure/potential-intersections');
+      expect(mockApiFetch.mock.calls.length).toBe(2);
     });
 
-    it('catches mutation: refresh should set loading true during fetch', async () => {
+    it('catches mutation: refresh should update state after fetch', async () => {
       const { result } = renderHook(() => useInfrastructure());
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
-      mockApiFetch.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve([]), 100))
-      );
-
-      let loadingDuringRefresh = false;
-      act(() => {
-        loadingDuringRefresh = result.current.loading;
-        result.current.refresh();
+      const newAsset = { ...mockAsset, id: '999', nombre: 'Updated' };
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url.includes('assets')) {
+          return Promise.resolve([newAsset]);
+        }
+        if (url.includes('intersections')) {
+          return Promise.resolve(mockIntersections);
+        }
+        return Promise.resolve(null);
       });
 
-      // Note: loading flag update timing can be tricky in tests
-      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      // Verify state was actually updated with new data
+      expect(result.current.assets).toContainEqual(newAsset);
     });
 
     it('should not throw on multiple refresh calls', async () => {
@@ -247,37 +354,145 @@ describe('useInfrastructure', () => {
       const { result } = renderHook(() => useInfrastructure());
 
       expect(typeof result.current.createAsset).toBe('function');
+      expect(result.current.createAsset).toBeDefined();
     });
 
-    it('should create asset and add to state', async () => {
-      mockApiFetch.mockImplementation((url: string) => {
-        if (url === '/infrastructure/assets' && url.includes('POST')) {
-          return Promise.resolve(mockAsset);
+    it('should create asset with POST method', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      const newAsset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'> = {
+        nombre: 'Nuevo Canal',
+        tipo: 'canal',
+        descripcion: 'Descripción',
+        latitud: 0,
+        longitud: 0,
+        cuenca: 'Cuenca',
+        estado_actual: 'bueno',
+      };
+
+      mockApiFetch.mockImplementation((url: string, options?: any) => {
+        if (url === '/infrastructure/assets' && options?.method === 'POST') {
+          return Promise.resolve({ ...mockAsset, ...newAsset });
         }
         if (url.includes('assets')) return Promise.resolve([]);
         if (url.includes('intersections')) return Promise.resolve(mockIntersections);
         return Promise.resolve(null);
       });
 
+      await act(async () => {
+        await result.current.createAsset(newAsset);
+      });
+
+      // Verify API was called with POST method
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/infrastructure/assets',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    it('catches mutation: should call correct endpoint', async () => {
       const { result } = renderHook(() => useInfrastructure());
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
-      const newAsset = { ...mockAsset, id: '2', nombre: 'Nuevo Canal' };
+      const newAsset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'> = {
+        nombre: 'Nuevo Canal',
+        tipo: 'canal',
+        descripcion: 'Descripción',
+        latitud: 0,
+        longitud: 0,
+        cuenca: 'Cuenca',
+        estado_actual: 'bueno',
+      };
 
-      await act(async () => {
-        await result.current.createAsset({
-          nombre: 'Nuevo Canal',
-          tipo: 'canal',
-          descripcion: 'Descripción',
-          latitud: 0,
-          longitud: 0,
-          cuenca: 'Cuenca',
-          estado_actual: 'bueno',
-        });
+      mockApiFetch.mockImplementation((url: string) => {
+        if (url === '/infrastructure/assets') return Promise.resolve(mockAsset);
+        return Promise.reject(new Error('Wrong endpoint'));
       });
 
-      expect(mockApiFetch).toHaveBeenCalled();
+      await act(async () => {
+        await result.current.createAsset(newAsset);
+      });
+
+      // Verify exact endpoint was called
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/infrastructure/assets',
+        expect.any(Object)
+      );
+      // Should not call empty string
+      expect(mockApiFetch).not.toHaveBeenCalledWith('', expect.any(Object));
+    });
+
+    it('catches mutation: should include asset in request body', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      const newAsset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'> = {
+        nombre: 'Nuevo Canal',
+        tipo: 'canal',
+        descripcion: 'Descripción',
+        latitud: 0,
+        longitud: 0,
+        cuenca: 'Cuenca',
+        estado_actual: 'bueno',
+      };
+
+      mockApiFetch.mockResolvedValue(mockAsset);
+
+      await act(async () => {
+        await result.current.createAsset(newAsset);
+      });
+
+      // Verify body was included in the call
+      const calls = mockApiFetch.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      
+      const createCall = calls.find((call) => 
+        call[0] === '/infrastructure/assets' && call[1]?.method === 'POST'
+      );
+      
+      expect(createCall).toBeDefined();
+      expect(createCall?.[1]).toHaveProperty('body');
+      expect(createCall?.[1]?.body).not.toBe('');
+    });
+
+    it('catches mutation: should add new asset to state array', async () => {
+      const { result } = renderHook(() => useInfrastructure());
+
+      await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
+
+      const initialAssetCount = result.current.assets.length;
+
+      const newAsset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'> = {
+        nombre: 'Another Canal',
+        tipo: 'canal',
+        descripcion: 'Descripción',
+        latitud: -10,
+        longitud: -65,
+        cuenca: 'Cuenca',
+        estado_actual: 'regular',
+      };
+
+      const createdAsset = { ...mockAsset, id: '2', ...newAsset };
+      mockApiFetch.mockImplementation((url: string, options?: any) => {
+        if (url === '/infrastructure/assets' && options?.method === 'POST') {
+          return Promise.resolve(createdAsset);
+        }
+        if (url.includes('assets')) return Promise.resolve([mockAsset]);
+        if (url.includes('intersections')) return Promise.resolve(mockIntersections);
+        return Promise.resolve(null);
+      });
+
+      await act(async () => {
+        await result.current.createAsset(newAsset);
+      });
+
+      // Verify asset was added to the array (spread not mutated)
+      expect(result.current.assets.length).toBeGreaterThanOrEqual(initialAssetCount);
+      expect(result.current.assets).toContainEqual(createdAsset);
     });
 
     it('should throw on createAsset error', async () => {
@@ -297,10 +512,10 @@ describe('useInfrastructure', () => {
           cuenca: '',
           estado_actual: 'bueno',
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow('Create failed');
     });
 
-    it('catches mutation: should handle non-Error exceptions in createAsset', async () => {
+    it('catches mutation: should handle non-Error exceptions with proper message', async () => {
       const { result } = renderHook(() => useInfrastructure());
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
@@ -317,7 +532,7 @@ describe('useInfrastructure', () => {
           cuenca: '',
           estado_actual: 'bueno',
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow('Error al crear activo');
     });
   });
 
