@@ -1,0 +1,52 @@
+.heroSection {
+  position: relative;
+  overflow: hidden;
+  padding-block: calc(var(--mantine-spacing-xl) * 2);
+}
+
+.heroGradient {
+  background: linear-gradient(135deg, var(--mantine-color-institucional-7) 0%, var(--mantine-color-institucional-9) 100%);
+}
+
+[data-mantine-color-scheme="dark"] .heroGradient {
+  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, #071f18 100%);
+}
+
+.waveDecoration {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: var(--mantine-color-body);
+  clip-path: ellipse(70% 100% at 50% 100%);
+}
+
+.statsSection {
+  padding-block: calc(var(--mantine-spacing-xl) * 1.5);
+}
+
+.featuresSection {
+  padding-block: calc(var(--mantine-spacing-xl) * 1.5);
+}
+
+.ctaSection {
+  padding-block: calc(var(--mantine-spacing-xl) * 1.5);
+  background: linear-gradient(135deg, var(--mantine-color-institucional-8) 0%, var(--mantine-color-institucional-9) 100%);
+}
+
+.featureCard {
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.featureCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.featureCard:focus-visible {
+  outline: 2px solid var(--mantine-color-institucional-5);
+  outline-offset: 2px;
+  transform: translateY(-2px);
+}

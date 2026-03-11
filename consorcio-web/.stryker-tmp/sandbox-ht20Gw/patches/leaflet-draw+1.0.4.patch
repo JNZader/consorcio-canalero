@@ -1,0 +1,12 @@
+diff --git a/node_modules/leaflet-draw/dist/leaflet.draw-src.js b/node_modules/leaflet-draw/dist/leaflet.draw-src.js
+index 8f42752..c646af2 100644
+--- a/node_modules/leaflet-draw/dist/leaflet.draw-src.js
++++ b/node_modules/leaflet-draw/dist/leaflet.draw-src.js
+@@ -3154,6 +3154,7 @@ L.LatLngUtil = {
+ 		readableArea: function (area, isMetric, precision) {
+ 			var areaStr,
+ 				units,
++				type,
+ 				precision = L.Util.extend({}, defaultPrecision, precision);
+ 
+ 			if (isMetric) {

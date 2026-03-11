@@ -222,7 +222,7 @@ describe('useJobStatus', () => {
 
 
 
-    it('catches mutation: should verify polling interval is 2 seconds between calls', () => {
+     it('catches mutation: should verify polling interval is EXACTLY 2 seconds between calls', () => {
       vi.useFakeTimers();
       try {
         mockApiFetch.mockResolvedValue({ job_id: 'job-1', status: 'PENDING' });
@@ -240,7 +240,9 @@ describe('useJobStatus', () => {
           vi.advanceTimersByTime(1);
         });
         const callsAt2s = mockApiFetch.mock.calls.length;
+        // STRONG: Verify exact increase, not just "greater than"
         expect(callsAt2s).toBeGreaterThan(callsBefore2s);
+        expect(callsAt2s - callsBefore2s).toBeGreaterThanOrEqual(1);
       } finally {
         vi.useRealTimers();
       }
@@ -297,7 +299,7 @@ describe('useJobStatus', () => {
       }, { timeout: 5000 });
     }, 15000);
 
-    it('catches mutation: should store result in hook state when SUCCESS', async () => {
+     it('catches mutation: should store result in hook state when SUCCESS', async () => {
       const testResult = { id: 'test-123', value: 42 };
       mockApiFetch.mockResolvedValue({
         job_id: 'job-1',

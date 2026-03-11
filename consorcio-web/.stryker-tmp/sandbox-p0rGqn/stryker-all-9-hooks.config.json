@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npm run test:run -- tests/hooks/"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/hooks/useAuth.ts",
+    "src/hooks/useSelectedImage.ts",
+    "src/hooks/useJobStatus.ts",
+    "src/hooks/useMapReady.ts",
+    "src/hooks/useInfrastructure.ts",
+    "src/hooks/useGEELayers.ts",
+    "src/hooks/useImageComparison.ts",
+    "src/hooks/useContactVerification.ts",
+    "src/hooks/useCaminosColoreados.ts"
+  ],
+  "reporters": ["html", "json", "clear-text"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/all-9-hooks.html"
+  },
+  "timeoutMS": 30000,
+  "thresholds": {
+    "high": 85,
+    "low": 70,
+    "break": 70
+  },
+  "concurrency": 2,
+  "allowEmpty": false,
+  "cleanTempDir": true
+}

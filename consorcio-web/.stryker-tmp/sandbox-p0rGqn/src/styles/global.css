@@ -1,0 +1,490 @@
+/* Self-hosted Inter font - eliminates external CDN dependency */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+/* Estilos base */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Respetar preferencia de movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ================================
+   ESTILOS DE ACCESIBILIDAD (WCAG 2.1 AA)
+   ================================ */
+
+/* Clase para ocultar visualmente pero mantener accesible para screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Mostrar al enfocar (para skip links) */
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* Reducir animaciones para usuarios que lo prefieren */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus visible mejorado - Alta visibilidad en cualquier fondo */
+:focus-visible {
+  outline: 3px solid var(--mantine-color-blue-5);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 2px var(--mantine-color-body, white),
+    0 0 0 5px var(--mantine-color-blue-5);
+}
+
+/* Focus para modo oscuro */
+[data-mantine-color-scheme="dark"] :focus-visible {
+  outline-color: var(--mantine-color-blue-4);
+  box-shadow:
+    0 0 0 2px var(--mantine-color-dark-7),
+    0 0 0 5px var(--mantine-color-blue-4);
+}
+
+/* Sobrescribir color dimmed de Mantine para mejor contraste WCAG AA */
+/* El color dimmed por defecto tiene ratio ~4.0:1, necesitamos 4.5:1 minimo */
+:root {
+  --mantine-color-dimmed: #6b7280; /* gray-500 - ratio 5.9:1 sobre blanco */
+}
+
+[data-mantine-color-scheme="dark"] {
+  --mantine-color-dimmed: #a3a3a3; /* neutral-400 - ratio 5.5:1 sobre #1a1a1a */
+}
+
+/* Clase auxiliar para texto secundario accesible */
+.text-dimmed-accessible {
+  color: var(--mantine-color-dimmed);
+}
+
+/* Indicador de campos requeridos */
+.required-field label::after {
+  content: " *";
+  color: var(--mantine-color-red-6);
+}
+
+/* Alertas de error con borde indicador */
+[role="alert"] {
+  border-left: 4px solid var(--mantine-color-red-6);
+}
+
+/* Touch targets minimos (44x44px) - WCAG 2.5.5 */
+.touch-target-min {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Espaciado para evitar clics accidentales en movil */
+@media (pointer: coarse) {
+  button:not(.mantine-ActionIcon-root),
+  [role="button"],
+  a.mantine-Button-root {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* ================================
+   FIX LEAFLET
+   ================================ */
+
+/* Fix para Leaflet - z-index bajo para no bloquear popovers */
+.leaflet-container {
+  font-family: inherit;
+  position: relative;
+  z-index: 0 !important;
+}
+
+.leaflet-control-layers {
+  font-size: 14px;
+}
+
+/* Accesibilidad para controles de Leaflet */
+.leaflet-control-zoom a {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.leaflet-control-zoom a:focus {
+  outline: 3px solid var(--mantine-color-blue-5);
+  outline-offset: 2px;
+}
+
+/* Fix CRITICO: Mantine date picker sobre Leaflet */
+.mantine-Portal {
+  z-index: 9999 !important;
+}
+
+.mantine-Popover-dropdown {
+  z-index: 10000 !important;
+}
+
+.mantine-DatePickerInput-dropdown,
+.mantine-DatePicker-calendar {
+  z-index: 10001 !important;
+}
+
+/* Mejoras para modo oscuro en Leaflet */
+[data-mantine-color-scheme="dark"] .leaflet-container {
+  background-color: #1a1b1e;
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-tile-pane {
+  filter: brightness(0.85) contrast(1.1) saturate(0.9);
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-control-layers,
+[data-mantine-color-scheme="dark"] .leaflet-control-zoom {
+  background-color: #25262b;
+  border-color: #373a40;
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-control-layers-toggle {
+  background-color: #25262b;
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-control-layers label {
+  color: #c1c2c5;
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-control-zoom a {
+  background-color: #25262b;
+  color: #c1c2c5;
+  border-color: #373a40;
+}
+
+[data-mantine-color-scheme="dark"] .leaflet-control-zoom a:hover {
+  background-color: #373a40;
+}
+
+/* ================================
+   CARDS Y COMPONENTES
+   ================================ */
+
+/* Cards con hover sutil */
+.mantine-Card-root {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mantine-Card-root:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+}
+
+[data-mantine-color-scheme="dark"] .mantine-Card-root:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Transiciones suaves globales (respetando prefers-reduced-motion) */
+@media (prefers-reduced-motion: no-preference) {
+  .mantine-Button-root,
+  .mantine-ActionIcon-root,
+  .mantine-NavLink-root {
+    transition: all 0.15s ease;
+  }
+}
+
+/* ================================
+   ANIMACIONES
+   ================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ================================
+   SCROLLBAR PERSONALIZADA
+   ================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+[data-mantine-color-scheme="dark"] ::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+}
+
+[data-mantine-color-scheme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
+/* ================================
+   SELECCION DE TEXTO
+   ================================ */
+
+::selection {
+  background-color: var(--mantine-color-blue-2);
+  color: var(--mantine-color-blue-9);
+}
+
+[data-mantine-color-scheme="dark"] ::selection {
+  background-color: var(--mantine-color-blue-8);
+  color: var(--mantine-color-blue-0);
+}
+
+/* ================================
+   TIPOGRAFIA
+   ================================ */
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+/* ================================
+   TABLAS - Accesibilidad mejorada
+   ================================ */
+
+.mantine-Table-root {
+  font-size: 0.875rem;
+}
+
+.mantine-Table-th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--mantine-color-dimmed);
+}
+
+/* Headers de tabla con mejor contraste */
+.mantine-Table-root th {
+  background-color: var(--mantine-color-gray-0);
+}
+
+[data-mantine-color-scheme="dark"] .mantine-Table-root th {
+  background-color: var(--mantine-color-dark-6);
+}
+
+/* Caption para tablas (normalmente visualmente oculto) */
+.mantine-Table-root caption.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ================================
+   BADGES
+   ================================ */
+
+.mantine-Badge-root {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Fix para badges amarillos - asegurar contraste */
+.mantine-Badge-root[data-color="yellow"] {
+  color: var(--mantine-color-dark-9);
+}
+
+/* ================================
+   INPUTS
+   ================================ */
+
+[data-mantine-color-scheme="dark"] .mantine-Input-input {
+  background-color: var(--mantine-color-dark-6);
+  border-color: var(--mantine-color-dark-4);
+}
+
+[data-mantine-color-scheme="dark"] .mantine-Input-input:focus {
+  border-color: var(--mantine-color-blue-6);
+}
+
+/* Inputs con error */
+.mantine-Input-input[aria-invalid="true"],
+.mantine-Input-input[data-invalid="true"] {
+  border-color: var(--mantine-color-red-6);
+}
+
+/* ================================
+   MODALES - Overlay opaco para mejor contraste
+   ================================ */
+
+.mantine-Modal-overlay {
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+[data-mantine-color-scheme="dark"] .mantine-Modal-overlay {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+/* ================================
+   SKIP LINKS
+   ================================ */
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  background: var(--mantine-color-blue-filled);
+  color: white;
+  padding: 12px 24px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  z-index: 100000;
+  border-radius: 0 0 8px 0;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid var(--mantine-color-yellow-4);
+  outline-offset: 2px;
+}
+
+/* ================================
+   ALTO CONTRASTE (Modo de alto contraste del sistema)
+   ================================ */
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid CanvasText;
+  }
+
+  .mantine-Button-root {
+    border: 2px solid ButtonText;
+  }
+
+  .mantine-Badge-root {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ================================
+   PRINT STYLES
+   ================================ */
+
+@media print {
+  .skip-link,
+  .mantine-ActionIcon-root,
+  nav,
+  footer {
+    display: none !important;
+  }
+
+  main {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+  }
+}
+
+/* ================================
+   VIEW TRANSITIONS API
+   ================================ */
+
+/* Enable View Transitions for navigation */
+@view-transition {
+  navigation: auto;
+}
+
+/* Animate page transitions */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.2s;
+  animation-timing-function: ease-in-out;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}

@@ -1,12 +1,34 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import type { FeatureCollection } from 'geojson';
 import { useGEELayers } from '../../src/hooks/useGEELayers';
 
-// Mock fetch globally
+// Mock fetch globally BEFORE importing the hook
 global.fetch = vi.fn();
 
 const mockFetch = global.fetch as any;
+
+// Mock API module
+vi.mock('../../src/lib/api', () => ({
+  API_URL: 'http://localhost:8000',
+}));
+
+vi.mock('../../src/lib/logger', () => ({
+  logger: {
+    warn: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/lib/typeGuards', () => ({
+  parseFeatureCollection: (data: any) => {
+    if (data && data.type === 'FeatureCollection' && Array.isArray(data.features)) {
+      return data;
+    }
+    return null;
+  },
+}));
 
 const mockGeoJSON: FeatureCollection = {
   type: 'FeatureCollection',
@@ -26,6 +48,10 @@ describe('useGEELayers', () => {
       ok: true,
       json: async () => mockGeoJSON,
     });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   it('should initialize with loading state', () => {
@@ -48,9 +74,13 @@ describe('useGEELayers', () => {
     expect(typeof result.current.reload).toBe('function');
     
     // Call reload manually
-    await result.current.reload();
+    await act(async () => {
+      await result.current.reload();
+    });
     
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   it('should return layers as array format with name and data', () => {
