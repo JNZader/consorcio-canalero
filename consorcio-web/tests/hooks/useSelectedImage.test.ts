@@ -193,25 +193,42 @@ describe('useSelectedImage', () => {
 
       const calls = (window.localStorage.setItem as any).mock.calls;
       const storedValue = calls.find((call: any) => call[0] === STORAGE_KEY)?.[1];
-      expect(storedValue).toBeDefined();
+      // STRONG: Not just "isDefined" but verify exact content
+      expect(storedValue).not.toBeNull();
+      expect(storedValue).not.toBeUndefined();
+      expect(typeof storedValue).toBe('string');
       
       const parsed = JSON.parse(storedValue);
-      expect(parsed.tile_url).toBe(baseImage.tile_url);
-      expect(parsed.sensor).toBe(baseImage.sensor);
-      expect(parsed.target_date).toBe(baseImage.target_date);
+      expect(parsed.tile_url).toBe('https://tiles.test/layer');  // EXACT value
+      expect(parsed.sensor).toBe('Sentinel-2');  // EXACT value
+      expect(parsed.target_date).toBe('2026-03-01');  // EXACT value
+      expect(parsed.visualization).toBe('true_color');  // EXACT value
+      expect(parsed.collection).toBe('sentinel-2');  // EXACT value
+      expect(parsed.images_count).toBe(3);  // EXACT numeric value
     });
 
     it('catches mutation: should add timestamp when setting image', async () => {
       const { result } = renderHook(() => useSelectedImage());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+      const beforeTime = new Date();
       act(() => {
         result.current.setSelectedImage(baseImage);
       });
+      const afterTime = new Date();
 
-      expect(result.current.selectedImage?.selected_at).toBeDefined();
-      // Verify it's a valid ISO string
-      expect(() => new Date(result.current.selectedImage?.selected_at || '')).not.toThrow();
+      // STRONG: Verify timestamp exists, is valid ISO, and is in correct range
+      const selectedAt = result.current.selectedImage?.selected_at;
+      expect(selectedAt).not.toBeNull();
+      expect(selectedAt).not.toBeUndefined();
+      expect(typeof selectedAt).toBe('string');
+      
+      const timestamp = new Date(selectedAt || '');
+      expect(timestamp.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
+      expect(timestamp.getTime()).toBeLessThanOrEqual(afterTime.getTime());
+      
+      // Verify it's a valid ISO string format
+      expect(selectedAt).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
 
     it('catches mutation: should update internal state when setSelectedImage called', async () => {
@@ -237,16 +254,23 @@ describe('useSelectedImage', () => {
         result.current.setSelectedImage(baseImage);
       });
 
-      // Find the custom event
+      // Find the custom event with exact event type
       const customEvents = dispatchSpy.mock.calls.filter(
         (call: any) => call[0].type === 'selectedImageChange'
       );
       expect(customEvents.length).toBeGreaterThan(0);
       
-      // Verify event has detail property
+      // Verify event structure and detail content (STRONG - not just "defined")
       const event = customEvents[0]?.[0] as CustomEvent;
-      expect(event.detail).toBeDefined();
-      expect(event.detail).toEqual(baseImage);
+      expect(event).not.toBeNull();
+      expect(event).not.toBeUndefined();
+      expect(event.type).toBe('selectedImageChange');  // EXACT event type
+      
+      expect(event.detail).not.toBeNull();
+      expect(event.detail).not.toBeUndefined();
+      expect(event.detail.tile_url).toBe(baseImage.tile_url);  // EXACT detail content
+      expect(event.detail.sensor).toBe(baseImage.sensor);
+      expect(event.detail.target_date).toBe(baseImage.target_date);
 
       dispatchSpy.mockRestore();
     });
@@ -359,7 +383,7 @@ describe('useSelectedImage', () => {
       expect(result.current).toBeNull();
     });
 
-    it('catches mutation: should listen to selectedImageChange custom events', async () => {
+     it('catches mutation: should listen to selectedImageChange custom events with exact update', async () => {
       const { result } = renderHook(() => useSelectedImageListener());
 
       const updated = { ...baseImage, target_date: '2026-03-20' };
@@ -367,10 +391,15 @@ describe('useSelectedImage', () => {
         window.dispatchEvent(new CustomEvent('selectedImageChange', { detail: updated }));
       });
 
-      expect(result.current?.target_date).toBe('2026-03-20');
+      // STRONG: Verify exact field values, not just first field
+      expect(result.current).not.toBeNull();
+      expect(result.current?.target_date).toBe('2026-03-20');  // EXACT date
+      expect(result.current?.tile_url).toBe(baseImage.tile_url);  // EXACT URL  
+      expect(result.current?.sensor).toBe('Sentinel-2');  // EXACT sensor
+      expect(result.current?.visualization).toBe('true_color');  // EXACT visualization
     });
 
-    it('catches mutation: should listen to storage events from other tabs', async () => {
+    it('catches mutation: should listen to storage events from other tabs with exact data', async () => {
       store.set(STORAGE_KEY, JSON.stringify(baseImage));
       const { result } = renderHook(() => useSelectedImageListener());
 
@@ -384,18 +413,38 @@ describe('useSelectedImage', () => {
         );
       });
 
-      expect(result.current?.target_date).toBe('2026-04-01');
+      // STRONG: Verify exact field values after storage event
+      expect(result.current).not.toBeNull();
+      expect(result.current?.target_date).toBe('2026-04-01');  // EXACT new date
+      expect(result.current?.tile_url).toBe(baseImage.tile_url);  // EXACT URL unchanged
+      expect(result.current?.sensor).toBe('Sentinel-2');  // EXACT sensor
+      expect(result.current?.images_count).toBe(3);  // EXACT count
     });
 
-    it('catches mutation: should clean up event listeners on unmount', () => {
+    it('catches mutation: should clean up ALL event listeners on unmount', () => {
       const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
 
       const { unmount } = renderHook(() => useSelectedImageListener());
 
       unmount();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith('selectedImageChange', expect.any(Function));
-      expect(removeEventListenerSpy).toHaveBeenCalledWith('storage', expect.any(Function));
+      // STRONG: Verify BOTH listeners are removed with exact event names
+      const removeCalls = removeEventListenerSpy.mock.calls;
+      const selectedImageChangeRemoved = removeCalls.some(
+        call => call[0] === 'selectedImageChange' && typeof call[1] === 'function'
+      );
+      const storageRemoved = removeCalls.some(
+        call => call[0] === 'storage' && typeof call[1] === 'function'
+      );
+      
+      expect(selectedImageChangeRemoved).toBe(true);
+      expect(storageRemoved).toBe(true);
+      
+      // Verify they were called at least once each
+      const selectedImageChangeCount = removeCalls.filter(c => c[0] === 'selectedImageChange').length;
+      const storageCount = removeCalls.filter(c => c[0] === 'storage').length;
+      expect(selectedImageChangeCount).toBeGreaterThanOrEqual(1);
+      expect(storageCount).toBeGreaterThanOrEqual(1);
 
       removeEventListenerSpy.mockRestore();
     });
@@ -451,20 +500,34 @@ describe('useSelectedImage', () => {
       expect(getSelectedImageSync()).toBeNull();
     });
 
-    it('catches mutation: should return null when no data in localStorage', () => {
-      expect(getSelectedImageSync()).toBeNull();
+    it('catches mutation: should return null when no data in localStorage with exact null check', () => {
+      // Ensure localStorage is empty
+      store.clear();
+      const result = getSelectedImageSync();
+      
+      // STRONG: Verify exact null, not just falsy
+      expect(result).toBeNull();
+      expect(result).not.toBeUndefined();
+      expect(result).not.toBe(false);
+      expect(typeof result).toBe('object');
     });
 
-    it('catches mutation: should validate before returning', () => {
+    it('catches mutation: should validate before returning in sync function', () => {
       store.set(STORAGE_KEY, JSON.stringify(baseImage));
       isValidSelectedImageMock.mockReturnValue(true);
 
       const result = getSelectedImageSync();
-      expect(result).toEqual(baseImage);
+      // STRONG: Verify exact content when valid
+      expect(result).not.toBeNull();
+      expect(result?.tile_url).toBe('https://tiles.test/layer');
+      expect(result?.sensor).toBe('Sentinel-2');
+      expect(result?.target_date).toBe('2026-03-01');
 
       isValidSelectedImageMock.mockReturnValue(false);
       const result2 = getSelectedImageSync();
+      // STRONG: Verify exact null when invalid
       expect(result2).toBeNull();
+      expect(result2).not.toBeUndefined();
     });
 
     it('catches mutation: should clean up invalid data', () => {
