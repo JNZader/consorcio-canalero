@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npm run test:run"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/components/LoginForm.tsx",
+    "src/components/ProtectedRoute.tsx",
+    "src/components/Header.tsx"
+  ],
+  "reporters": ["json", "clear-text"],
+  "timeoutMS": 30000,
+  "thresholds": {
+    "high": 85,
+    "low": 70,
+    "break": null
+  },
+  "concurrency": 4,
+  "allowEmpty": false,
+  "cleanTempDir": true
+}
