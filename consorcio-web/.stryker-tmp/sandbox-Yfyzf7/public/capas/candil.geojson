@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "name": "Cuenca Candil",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "nombre": "Cuenca Candil",
+        "area_ha": 22500,
+        "color": "#3b82f6"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.75, -32.50],
+          [-62.55, -32.48],
+          [-62.50, -32.58],
+          [-62.55, -32.68],
+          [-62.70, -32.72],
+          [-62.80, -32.65],
+          [-62.82, -32.55],
+          [-62.75, -32.50]
+        ]]
+      }
+    }
+  ]
+}
