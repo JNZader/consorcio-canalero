@@ -8,20 +8,12 @@ import { getUserRole, hasRole, isAdmin, isOperadorOrAdmin } from '../../../src/l
 import { userRoleTestCases } from './setup';
 
 // Mock Supabase client
-vi.mock('../supabase', () => ({
-  getSupabaseClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn(),
-        })),
-      })),
-    })),
-  })),
+vi.mock('../../../src/lib/supabase', () => ({
+  getSupabaseClient: vi.fn(),
 }));
 
 // Mock logger
-vi.mock('../logger', () => ({
+vi.mock('../../../src/lib/logger', () => ({
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -30,7 +22,7 @@ vi.mock('../logger', () => ({
 }));
 
 // Mock typeGuards
-vi.mock('../typeGuards', () => ({
+vi.mock('../../../src/lib/typeGuards', () => ({
   safeGetUserRole: vi.fn((value) => {
     const validRoles = ['ciudadano', 'operador', 'admin'];
     return typeof value === 'string' && validRoles.includes(value) ? value : null;
