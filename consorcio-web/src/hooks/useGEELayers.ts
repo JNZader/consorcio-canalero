@@ -8,6 +8,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
 import { parseFeatureCollection } from '../lib/typeGuards';
+import {
+  processLoadResults,
+  shouldSetError,
+  layersMapToArray,
+  GENERIC_ERROR_MESSAGE,
+  NO_LAYERS_ERROR_MESSAGE,
+} from './geeLayerHelpers';
 
 // Default layer names available from GEE
 export const GEE_LAYER_NAMES = ['zona', 'candil', 'ml', 'noroeste', 'norte', 'caminos'] as const;
@@ -113,25 +120,16 @@ export function useGEELayers(options: UseGEELayersOptions = {}): UseGEELayersRes
 
     try {
       const results = await Promise.all(layerNames.map(loadLayer));
-
-      const newLayers: GEELayersMap = {};
-      let loadedCount = 0;
-
-      for (const [name, data] of results) {
-        if (data) {
-          newLayers[name] = data;
-          loadedCount++;
-        }
-      }
+      const { layers: newLayers, loadedCount } = processLoadResults(results);
 
       setLayers(newLayers);
 
       // Set error if no layers loaded
-      if (loadedCount === 0 && layerNames.length > 0) {
-        setError('No se pudieron cargar las capas del mapa');
+      if (shouldSetError(loadedCount, layerNames.length)) {
+        setError(NO_LAYERS_ERROR_MESSAGE);
       }
     } catch (err) {
-      setError('Error al cargar capas del mapa');
+      setError(GENERIC_ERROR_MESSAGE);
       logger.error('Error loading GEE layers', err);
     } finally {
       setLoading(false);
@@ -147,12 +145,7 @@ export function useGEELayers(options: UseGEELayersOptions = {}): UseGEELayersRes
   }, [enabled, reload]);
 
   // Convert layers map to array format
-  const layersArray: GEELayerData[] = Object.entries(layers)
-    .filter(([, data]) => data !== undefined)
-    .map(([name, data]) => ({
-      name: name as GEELayerName,
-      data: data as FeatureCollection,
-    }));
+  const layersArray: GEELayerData[] = layersMapToArray(layers);
 
   return {
     layers,

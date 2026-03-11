@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import type { FeatureCollection } from 'geojson';
-import { useGEELayers, type GEELayerName } from '../../src/hooks/useGEELayers';
+import { useGEELayers, type GEELayerName, GEE_LAYER_COLORS, GEE_LAYER_STYLES } from '../../src/hooks/useGEELayers';
+
 
 // Mock fetch globally BEFORE importing the hook
 global.fetch = vi.fn();
@@ -718,6 +719,159 @@ describe('useGEELayers', () => {
       await waitFor(() => expect(result.current.loading).toBe(false));
 
       expect(result.current.layers.zona).toBeUndefined();
+    });
+  });
+
+  describe('MUTATION KILLERS - Targeting Remaining Survived Mutations', () => {
+    describe('Layer colors and styles mutations', () => {
+      it('kills: GEE_LAYER_COLORS.ml must be exactly #4CAF50', () => {
+        expect(GEE_LAYER_COLORS.ml).toBe('#4CAF50');
+        expect(GEE_LAYER_COLORS.ml).not.toBe('');
+      });
+
+      it('kills: GEE_LAYER_COLORS.noroeste must be exactly #FF9800', () => {
+        expect(GEE_LAYER_COLORS.noroeste).toBe('#FF9800');
+        expect(GEE_LAYER_COLORS.noroeste).not.toBe('');
+      });
+
+      it('kills: GEE_LAYER_COLORS.norte must be exactly #9C27B0', () => {
+        expect(GEE_LAYER_COLORS.norte).toBe('#9C27B0');
+        expect(GEE_LAYER_COLORS.norte).not.toBe('');
+      });
+
+      it('kills: GEE_LAYER_COLORS.caminos must be exactly #FFEB3B', () => {
+        expect(GEE_LAYER_COLORS.caminos).toBe('#FFEB3B');
+        expect(GEE_LAYER_COLORS.caminos).not.toBe('');
+      });
+
+      it('kills: GEE_LAYER_STYLES.ml.color must be #4CAF50', () => {
+        expect(GEE_LAYER_STYLES.ml.color).toBe('#4CAF50');
+        expect(GEE_LAYER_STYLES.ml.fillColor).toBe('#4CAF50');
+      });
+
+      it('kills: GEE_LAYER_STYLES.noroeste.color must be #FF9800', () => {
+        expect(GEE_LAYER_STYLES.noroeste.color).toBe('#FF9800');
+        expect(GEE_LAYER_STYLES.noroeste.fillColor).toBe('#FF9800');
+      });
+
+      it('kills: GEE_LAYER_STYLES.norte.color must be #9C27B0', () => {
+        expect(GEE_LAYER_STYLES.norte.color).toBe('#9C27B0');
+        expect(GEE_LAYER_STYLES.norte.fillColor).toBe('#9C27B0');
+      });
+
+      it('kills: GEE_LAYER_STYLES.caminos.color must be #FFEB3B', () => {
+        expect(GEE_LAYER_STYLES.caminos.color).toBe('#FFEB3B');
+      });
+    });
+
+    describe('Loading state and response handling', () => {
+      it('kills: initial loading must be true, not false', async () => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockGeoJSON,
+        });
+
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: true, layerNames: ['zona'] })
+        );
+
+        expect(result.current.loading).toBe(true);
+        expect(result.current.loading).not.toBe(false);
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+      });
+
+      it('kills: response.ok false path must not load layer', async () => {
+        mockFetch.mockResolvedValue({
+          ok: false,
+          status: 404,
+        });
+
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: true, layerNames: ['zona'] })
+        );
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.layers.zona).not.toBeDefined();
+      });
+
+      it('kills: invalid GeoJSON must not load layer', async () => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({ type: 'NotFeatureCollection' }),
+        });
+
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: true, layerNames: ['zona'] })
+        );
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.layers.zona).not.toBeDefined();
+      });
+
+      it('kills: network error must not load layer', async () => {
+        mockFetch.mockRejectedValue(new Error('Network error'));
+
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: true, layerNames: ['zona'] })
+        );
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.layers.zona).not.toBeDefined();
+        expect(result.current.error).toBeDefined();
+      });
+    });
+
+    describe('State initialization and dependency arrays', () => {
+      it('kills: initial layers map must be empty object {}', () => {
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: false })
+        );
+
+        expect(result.current.layers).toEqual({});
+        expect(Object.keys(result.current.layers).length).toBe(0);
+      });
+
+      it('kills: reload dependency must include layerNames', async () => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockGeoJSON,
+        });
+
+        const { result, rerender } = renderHook(
+          ({ names }: { names: readonly GEELayerName[] }) =>
+            useGEELayers({ enabled: false, layerNames: names }),
+          { initialProps: { names: ['zona' as const] } }
+        );
+
+        const firstReload = result.current.reload;
+
+        rerender({ names: ['zona', 'candil'] as const });
+
+        const secondReload = result.current.reload;
+
+        // Dependency change should create new reload function
+        expect(firstReload).not.toBe(secondReload);
+      });
+
+      it('kills: loading must be false in finally block', async () => {
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => mockGeoJSON,
+        });
+
+        const { result } = renderHook(() =>
+          useGEELayers({ enabled: true, layerNames: ['zona'] })
+        );
+
+        expect(result.current.loading).toBe(true);
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.loading).toBe(false);
+      });
     });
   });
 });
