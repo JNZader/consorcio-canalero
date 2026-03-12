@@ -97,8 +97,9 @@ describe('formatters', () => {
       // Use a date well after midnight UTC to avoid timezone issues
       const result = formatDate(dateVariations.valid.epoch);
       expect(result).not.toBe('-');
-      // Epoch date with 'short' month format: "31 de dic de 1969"
-      expect(result).toMatch(/\d+.*\d+.*196[89]/);
+      // Epoch date (1970-01-01 UTC) formatted as short month
+      // May be "31 de dic de 1969" or "1 de ene de 1970" depending on timezone
+      expect(result).toMatch(/\d+.*(?:dic|ene).*196[9]|1970/);
     });
 
     it('should catch formatting errors and return fallback', () => {
