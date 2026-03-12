@@ -18,7 +18,7 @@ from app.api.v1.endpoints.sugerencias import (
     SugerenciaCiudadanaCreate,
     crear_sugerencia_publica,
 )
-from app.api.v1.schemas import ReunionCreate, TramiteCreate, SugerenciaTipo, SugerenciaEstado, SugerenciaPrioridad
+from app.api.v1.schemas import ReunionCreate, TramiteCreate
 from app.auth import User
 from app.core.exceptions import ReportNotFoundError, RateLimitExceededError
 
