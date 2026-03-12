@@ -33,7 +33,7 @@ jobs:
           cache-dependency-path: 'consorcio-web/package-lock.json'
       
       - name: Install dependencies
-        run: cd consorcio-web && npm ci
+        run: cd consorcio-web && npm ci --legacy-peer-deps
       
       - name: Run full test suite
         run: cd consorcio-web && npm test -- --run
