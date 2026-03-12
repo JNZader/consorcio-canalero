@@ -226,6 +226,28 @@ describe('ProfilePanel', () => {
       });
     });
 
+    it.each([
+      ['12345', 5, true],    // 5 chars - should error
+      ['123456', 6, false],  // 6 chars - should pass
+      ['1234567', 7, false], // 7 chars - should pass
+    ])('password with %d chars should %s error', async (password, length, shouldError) => {
+      const user = userEvent.setup();
+      renderWithMantine(<ProfilePanel />);
+
+      const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
+      await user.type(inputs[0], password);
+
+      const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
+      await user.type(confirmInputs[0], password);
+
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      await user.click(changeBtn);
+
+      if (shouldError) {
+        expect(await screen.findByText(/al menos 6 caracteres/i)).toBeInTheDocument();
+      }
+    });
+
     it('should validate password match', async () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);

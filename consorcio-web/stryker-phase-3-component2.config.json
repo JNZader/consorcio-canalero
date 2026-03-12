@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npm run test:run -- tests/components/Header.test.tsx"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/components/Header.tsx"
+  ],
+  "reporters": ["html", "json", "clear-text"],
+  "htmlReporter": {
+    "fileName": "reports/phase-3-mutation/Header/index.html"
+  },
+  "timeoutMS": 30000,
+  "thresholds": {
+    "high": 85,
+    "low": 70,
+    "break": 70
+  },
+  "concurrency": 2,
+  "allowEmpty": false,
+  "cleanTempDir": true
+}

@@ -26,7 +26,9 @@ def test_create_public_suggestion_enforces_daily_limit(client):
     supabase = MagicMock()
     supabase.table.return_value = rate_query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.post(
             "/api/v1/sugerencias/public",
             json={
@@ -76,9 +78,16 @@ def test_create_public_suggestion_persists_suggestion_submission_and_history(cli
     history_query.execute.return_value = SimpleNamespace(data=[{"id": "hist-1"}])
 
     supabase = MagicMock()
-    supabase.table.side_effect = [rate_query, create_query, submission_query, history_query]
+    supabase.table.side_effect = [
+        rate_query,
+        create_query,
+        submission_query,
+        history_query,
+    ]
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.post(
             "/api/v1/sugerencias/public",
             json={
@@ -112,14 +121,18 @@ def test_public_limit_accepts_phone_and_returns_remaining(client):
     supabase = MagicMock()
     supabase.table.return_value = rate_query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.get("/api/v1/sugerencias/public/limit?telefono=3534123456")
 
     assert response.status_code == 200
     assert response.json()["remaining"] == 1
 
 
-def test_get_sugerencias_stats_counts_by_status_and_type(client, mock_auth, auth_headers):
+def test_get_sugerencias_stats_counts_by_status_and_type(
+    client, mock_auth, auth_headers
+):
     query = MagicMock()
     query.select.return_value = query
     query.eq.return_value = query
@@ -136,7 +149,9 @@ def test_get_sugerencias_stats_counts_by_status_and_type(client, mock_auth, auth
     supabase = MagicMock()
     supabase.table.return_value = query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.get("/api/v1/sugerencias/stats", headers=auth_headers)
 
     assert response.status_code == 200
@@ -150,7 +165,9 @@ def test_get_sugerencias_stats_counts_by_status_and_type(client, mock_auth, auth
     assert stats["total"] == 10
 
 
-def test_get_sugerencias_list_applies_filters_and_pagination(client, mock_auth, auth_headers):
+def test_get_sugerencias_list_applies_filters_and_pagination(
+    client, mock_auth, auth_headers
+):
     row = {
         "id": "11111111-1111-1111-1111-111111111111",
         "tipo": "interna",
@@ -180,7 +197,9 @@ def test_get_sugerencias_list_applies_filters_and_pagination(client, mock_auth, 
     supabase = MagicMock()
     supabase.table.return_value = query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.get(
             "/api/v1/sugerencias?page=2&limit=5&tipo=interna&estado=pendiente&prioridad=alta&cuenca_id=norte",
             headers=auth_headers,
@@ -203,7 +222,9 @@ def test_update_sugerencia_rejects_empty_payload(client, admin_auth, auth_header
     supabase = MagicMock()
     supabase.table.return_value = existing_query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.put(
             "/api/v1/sugerencias/11111111-1111-1111-1111-111111111111",
             headers=auth_headers,
@@ -214,7 +235,9 @@ def test_update_sugerencia_rejects_empty_payload(client, admin_auth, auth_header
     assert response.json()["error"]["code"] == "NO_UPDATE_DATA"
 
 
-def test_agendar_sugerencia_returns_not_found_when_update_returns_empty(client, admin_auth, auth_headers):
+def test_agendar_sugerencia_returns_not_found_when_update_returns_empty(
+    client, admin_auth, auth_headers
+):
     update_query = MagicMock()
     update_query.update.return_value = update_query
     update_query.eq.return_value = update_query
@@ -223,7 +246,9 @@ def test_agendar_sugerencia_returns_not_found_when_update_returns_empty(client, 
     supabase = MagicMock()
     supabase.table.return_value = update_query
 
-    with patch("app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase):
+    with patch(
+        "app.api.v1.endpoints.sugerencias.get_supabase_client", return_value=supabase
+    ):
         response = client.post(
             "/api/v1/sugerencias/11111111-1111-1111-1111-111111111111/agendar",
             headers=auth_headers,

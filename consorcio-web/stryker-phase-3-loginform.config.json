@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npm run test:run -- tests/components/LoginForm.test.tsx"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/components/LoginForm.tsx"
+  ],
+  "reporters": ["html", "json", "clear-text"],
+  "htmlReporter": {
+    "fileName": "reports/phase-3-mutation/loginform/index.html"
+  },
+  "timeoutMS": 60000,
+  "thresholds": {
+    "high": 85,
+    "low": 50,
+    "break": 50
+  },
+  "concurrency": 4,
+  "allowEmpty": false,
+  "cleanTempDir": true
+}

@@ -46,7 +46,9 @@ def test_add_seguimiento_injects_usuario_gestion(client, mock_auth, auth_headers
     assert payload["usuario_gestion"] == "test-user-id"
 
 
-def test_seguimiento_history_rejects_invalid_entity_type(client, mock_auth, auth_headers):
+def test_seguimiento_history_rejects_invalid_entity_type(
+    client, mock_auth, auth_headers
+):
     response = client.get(
         "/api/v1/management/seguimiento/otro/7e5f1d31-a89a-43ad-85f9-8cc6d97f909e",
         headers=auth_headers,
@@ -56,7 +58,9 @@ def test_seguimiento_history_rejects_invalid_entity_type(client, mock_auth, auth
     assert response.json()["detail"] == "Tipo de entidad invalido"
 
 
-def test_update_reunion_validates_payload_and_not_found(client, mock_auth, auth_headers):
+def test_update_reunion_validates_payload_and_not_found(
+    client, mock_auth, auth_headers
+):
     service = MagicMock()
     service.update_reunion.return_value = {}
 
@@ -110,7 +114,9 @@ def test_add_agenda_item_maps_referencias(client, mock_auth, auth_headers):
     assert args[2][0]["tipo_referencia"] == "reporte"
 
 
-def test_export_agenda_pdf_handles_not_found_and_success(client, mock_auth, auth_headers):
+def test_export_agenda_pdf_handles_not_found_and_success(
+    client, mock_auth, auth_headers
+):
     query = MagicMock()
     query.select.return_value = query
     query.eq.return_value = query
@@ -124,8 +130,13 @@ def test_export_agenda_pdf_handles_not_found_and_success(client, mock_auth, auth
     pdf_service.create_agenda_pdf.return_value = BytesIO(b"%PDF-1.4 test")
 
     with (
-        patch("app.api.v1.endpoints.management.get_management_service", return_value=service),
-        patch("app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service),
+        patch(
+            "app.api.v1.endpoints.management.get_management_service",
+            return_value=service,
+        ),
+        patch(
+            "app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service
+        ),
     ):
         missing_response = client.get(
             "/api/v1/management/reuniones/7e5f1d31-a89a-43ad-85f9-8cc6d97f909e/export-pdf",
@@ -140,8 +151,13 @@ def test_export_agenda_pdf_handles_not_found_and_success(client, mock_auth, auth
     service.get_agenda_detalle.return_value = [{"id": "i1", "titulo": "Tema"}]
 
     with (
-        patch("app.api.v1.endpoints.management.get_management_service", return_value=service),
-        patch("app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service),
+        patch(
+            "app.api.v1.endpoints.management.get_management_service",
+            return_value=service,
+        ),
+        patch(
+            "app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service
+        ),
     ):
         ok_response = client.get(
             "/api/v1/management/reuniones/7e5f1d31-a89a-43ad-85f9-8cc6d97f909e/export-pdf",
@@ -150,9 +166,10 @@ def test_export_agenda_pdf_handles_not_found_and_success(client, mock_auth, auth
 
     assert ok_response.status_code == 200
     assert ok_response.headers["content-type"] == "application/pdf"
-    assert "attachment; filename=agenda_reunion_" in ok_response.headers[
-        "content-disposition"
-    ]
+    assert (
+        "attachment; filename=agenda_reunion_"
+        in ok_response.headers["content-disposition"]
+    )
 
 
 def test_tramites_crud_and_avance_endpoints(client, mock_auth, auth_headers):
@@ -165,7 +182,9 @@ def test_tramites_crud_and_avance_endpoints(client, mock_auth, auth_headers):
     with patch(
         "app.api.v1.endpoints.management.get_management_service", return_value=service
     ):
-        listed = client.get("/api/v1/management/tramites?estado=pendiente", headers=auth_headers)
+        listed = client.get(
+            "/api/v1/management/tramites?estado=pendiente", headers=auth_headers
+        )
         created = client.post(
             "/api/v1/management/tramites",
             headers=auth_headers,
@@ -231,8 +250,13 @@ def test_management_pdf_exports_return_pdf_content(client, mock_auth, auth_heade
     pdf_service.create_general_impact_report_pdf.return_value = BytesIO(b"integral-pdf")
 
     with (
-        patch("app.api.v1.endpoints.management.get_management_service", return_value=service),
-        patch("app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service),
+        patch(
+            "app.api.v1.endpoints.management.get_management_service",
+            return_value=service,
+        ),
+        patch(
+            "app.api.v1.endpoints.management.get_pdf_service", return_value=pdf_service
+        ),
     ):
         tramite_pdf = client.get(
             "/api/v1/management/tramites/7e5f1d31-a89a-43ad-85f9-8cc6d97f909e/export-pdf",

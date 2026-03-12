@@ -68,12 +68,18 @@ def test_assign_report_sets_revision_state_and_notes(client, admin_auth, auth_he
     assert response.status_code == 200
     db.update_report.assert_called_once_with(
         "rep-1",
-        {"asignado_a": "op-2", "estado": "en_revision", "notas_internas": "prioridad alta"},
+        {
+            "asignado_a": "op-2",
+            "estado": "en_revision",
+            "notas_internas": "prioridad alta",
+        },
         "test-user-id",
     )
 
 
-def test_resolve_report_defaults_resolved_by_to_current_user(client, admin_auth, auth_headers):
+def test_resolve_report_defaults_resolved_by_to_current_user(
+    client, admin_auth, auth_headers
+):
     db = MagicMock()
     db.get_report.return_value = {"id": "rep-1", "estado": "en_revision"}
     db.update_report.return_value = {

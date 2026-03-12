@@ -92,6 +92,7 @@ coverage/
 playwright-report/
 test-results/
 *.lcov
+.stryker-tmp/
 
 # ===========================================
 # LOGS
@@ -112,3 +113,9 @@ Thumbs.db
 # ===========================================
 tmpclaude-*
 RETOMA_PROYECTO.md
+
+# Build artifacts - mutation testing & coverage reports
+reports/
+consorcio-web/reports/
+.coverage/
+coverage/

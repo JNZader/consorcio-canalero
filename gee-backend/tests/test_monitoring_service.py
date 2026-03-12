@@ -42,7 +42,9 @@ def test_generate_alerts_from_results_creates_and_sorts_alerts():
     assert alerts[1]["severidad"] == "media"
 
 
-def test_get_monitoring_summary_reuses_existing_results_without_extra_calls(monkeypatch):
+def test_get_monitoring_summary_reuses_existing_results_without_extra_calls(
+    monkeypatch,
+):
     service = _build_service()
 
     classify_calls = {"count": 0}
@@ -63,7 +65,9 @@ def test_get_monitoring_summary_reuses_existing_results_without_extra_calls(monk
     monkeypatch.setattr(
         service,
         "classify_parcels_by_cuenca",
-        lambda **kwargs: {"ranking_criticidad": [{"cuenca": "norte", "porcentaje_problematico": 20}]},
+        lambda **kwargs: {
+            "ranking_criticidad": [{"cuenca": "norte", "porcentaje_problematico": 20}]
+        },
     )
     monkeypatch.setattr(
         service,
@@ -171,9 +175,13 @@ def test_classify_parcels_by_cuenca_builds_sorted_ranking(monkeypatch):
 
     def fake_classify(*, layer_name, **kwargs):
         data = {
-            "candil": {"resumen": {"porcentaje_problematico": 22, "area_anegada_ha": 12}},
+            "candil": {
+                "resumen": {"porcentaje_problematico": 22, "area_anegada_ha": 12}
+            },
             "ml": {"resumen": {"porcentaje_problematico": 8, "area_anegada_ha": 3}},
-            "norte": {"resumen": {"porcentaje_problematico": 35, "area_anegada_ha": 20}},
+            "norte": {
+                "resumen": {"porcentaje_problematico": 35, "area_anegada_ha": 20}
+            },
         }[layer_name]
         return {
             "area_total_ha": 100,
@@ -194,7 +202,11 @@ def test_classify_parcels_by_cuenca_builds_sorted_ranking(monkeypatch):
 
 def test_generate_alerts_returns_error_when_classification_fails(monkeypatch):
     service = _build_service()
-    monkeypatch.setattr(service, "classify_parcels_by_cuenca", lambda **kwargs: {"error": "gee unavailable"})
+    monkeypatch.setattr(
+        service,
+        "classify_parcels_by_cuenca",
+        lambda **kwargs: {"error": "gee unavailable"},
+    )
 
     response = service.generate_alerts(
         start_date=date(2026, 2, 1),
@@ -206,7 +218,9 @@ def test_generate_alerts_returns_error_when_classification_fails(monkeypatch):
 
 def test_detect_changes_returns_period_error_when_first_period_fails(monkeypatch):
     service = _build_service()
-    monkeypatch.setattr(service, "classify_parcels", lambda **kwargs: {"error": "sin imagenes"})
+    monkeypatch.setattr(
+        service, "classify_parcels", lambda **kwargs: {"error": "sin imagenes"}
+    )
 
     result = service.detect_changes(
         date1_start=date(2026, 1, 1),

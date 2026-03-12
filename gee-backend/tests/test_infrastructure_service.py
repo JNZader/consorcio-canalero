@@ -18,7 +18,9 @@ def test_get_gee_service_or_raise_returns_service_when_available(monkeypatch):
     gee = MagicMock()
 
     monkeypatch.setattr("app.services.infrastructure_service._gee_initialized", True)
-    monkeypatch.setattr("app.services.infrastructure_service.get_gee_service", lambda: gee)
+    monkeypatch.setattr(
+        "app.services.infrastructure_service.get_gee_service", lambda: gee
+    )
 
     assert service._get_gee_service_or_raise() is gee
 
@@ -108,7 +110,9 @@ def test_add_maintenance_log_updates_asset_when_insert_succeeds():
     service = _service_with_db(db)
 
     asset_id = str(uuid4())
-    result = service.add_maintenance_log({"infraestructura_id": asset_id, "nuevo_estado": "regular"})
+    result = service.add_maintenance_log(
+        {"infraestructura_id": asset_id, "nuevo_estado": "regular"}
+    )
 
     assert result == {"id": "log-1"}
     infra_query.eq.assert_called_once_with("id", asset_id)

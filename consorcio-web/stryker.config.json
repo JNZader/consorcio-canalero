@@ -2,19 +2,23 @@
   "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
   "testRunner": "command",
   "commandRunner": {
-    "command": "npm run test:run -- tests/unit/reportsResolve.test.ts tests/unit/tramitesCanonical.test.ts"
+    "command": "npm run test:run -- tests/hooks/useAuth.test.ts"
   },
   "coverageAnalysis": "off",
   "mutate": [
-    "src/lib/api/reportsResolve.ts",
-    "src/components/admin/management/tramitesCanonical.ts"
+    "src/hooks/useAuth.ts"
   ],
-  "thresholds": {
-    "high": 70,
-    "low": 55,
-    "break": 55
+  "reporters": ["html", "json", "clear-text"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
   },
   "timeoutMS": 60000,
-  "allowEmpty": true,
-  "concurrency": 2
+  "thresholds": {
+    "high": 70,
+    "low": 50,
+    "break": 50
+  },
+  "concurrency": 1,
+  "allowEmpty": false,
+  "cleanTempDir": true
 }

@@ -5,7 +5,9 @@ def test_get_layer_not_found_returns_404(client):
     service = MagicMock()
     service.get_layer.return_value = None
 
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=service):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=service
+    ):
         response = client.get("/api/v1/layers/missing")
 
     assert response.status_code == 404
@@ -13,7 +15,9 @@ def test_get_layer_not_found_returns_404(client):
 
 
 def test_upload_layer_rejects_invalid_json(client, mock_auth, auth_headers):
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=MagicMock()):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=MagicMock()
+    ):
         response = client.post(
             "/api/v1/layers/upload",
             headers=auth_headers,
@@ -25,8 +29,12 @@ def test_upload_layer_rejects_invalid_json(client, mock_auth, auth_headers):
     assert response.json()["detail"] == "El archivo no es JSON valido"
 
 
-def test_upload_layer_validates_geojson_type_and_structure(client, mock_auth, auth_headers):
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=MagicMock()):
+def test_upload_layer_validates_geojson_type_and_structure(
+    client, mock_auth, auth_headers
+):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=MagicMock()
+    ):
         missing_type = client.post(
             "/api/v1/layers/upload",
             headers=auth_headers,
@@ -68,13 +76,17 @@ def test_upload_layer_validates_geojson_type_and_structure(client, mock_auth, au
     assert "debe tener array 'features'" in bad_feature_collection.json()["detail"]
 
 
-def test_upload_layer_sanitizes_filename_and_creates_layer(client, mock_auth, auth_headers):
+def test_upload_layer_sanitizes_filename_and_creates_layer(
+    client, mock_auth, auth_headers
+):
     service = MagicMock()
     service.upload_geojson.return_value = "https://storage.example.com/layer.geojson"
     service.create_layer.return_value = {"id": "layer-1", "nombre": "Capa Nueva"}
 
     content = b'{"type":"FeatureCollection","features":[]}'
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=service):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=service
+    ):
         response = client.post(
             "/api/v1/layers/upload",
             headers=auth_headers,
@@ -99,7 +111,9 @@ def test_update_and_delete_layer_validate_existence(client, mock_auth, auth_head
     service = MagicMock()
     service.get_layer.side_effect = [None, {"id": "layer-1"}]
 
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=service):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=service
+    ):
         missing_update = client.put(
             "/api/v1/layers/layer-404",
             headers=auth_headers,
@@ -120,7 +134,9 @@ def test_update_and_delete_layer_validate_existence(client, mock_auth, auth_head
 def test_reorder_layers_returns_count(client, mock_auth, auth_headers):
     service = MagicMock()
 
-    with patch("app.api.v1.endpoints.layers.get_supabase_service", return_value=service):
+    with patch(
+        "app.api.v1.endpoints.layers.get_supabase_service", return_value=service
+    ):
         response = client.post(
             "/api/v1/layers/reorder",
             headers=auth_headers,
