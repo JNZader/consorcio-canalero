@@ -13,13 +13,17 @@ def test_initialize_gee_uses_key_file_when_present(monkeypatch):
     path_mock = MagicMock()
     path_mock.exists.return_value = True
     monkeypatch.setattr(gee_service, "Path", lambda _p: path_mock)
-    monkeypatch.setattr(gee_service.ee, "ServiceAccountCredentials", MagicMock(return_value="creds"))
+    monkeypatch.setattr(
+        gee_service.ee, "ServiceAccountCredentials", MagicMock(return_value="creds")
+    )
     initialize_mock = MagicMock()
     monkeypatch.setattr(gee_service.ee, "Initialize", initialize_mock)
 
     gee_service.initialize_gee()
 
-    initialize_mock.assert_called_once_with("creds", project=gee_service.settings.gee_project_id)
+    initialize_mock.assert_called_once_with(
+        "creds", project=gee_service.settings.gee_project_id
+    )
     assert gee_service._gee_initialized is True
 
 
@@ -32,13 +36,17 @@ def test_initialize_gee_uses_json_key_when_provided(monkeypatch):
         "gee_service_account_key",
         '{"client_email": "svc@example.com"}',
     )
-    monkeypatch.setattr(gee_service.ee, "ServiceAccountCredentials", MagicMock(return_value="creds"))
+    monkeypatch.setattr(
+        gee_service.ee, "ServiceAccountCredentials", MagicMock(return_value="creds")
+    )
     initialize_mock = MagicMock()
     monkeypatch.setattr(gee_service.ee, "Initialize", initialize_mock)
 
     gee_service.initialize_gee()
 
-    initialize_mock.assert_called_once_with("creds", project=gee_service.settings.gee_project_id)
+    initialize_mock.assert_called_once_with(
+        "creds", project=gee_service.settings.gee_project_id
+    )
     assert gee_service._gee_initialized is True
 
 
@@ -176,4 +184,10 @@ def test_get_available_layers_includes_expected_ids():
     layers = gee_service.get_available_layers()
 
     assert layers[0]["id"] == "zona"
-    assert {layer["id"] for layer in layers} >= {"candil", "ml", "noroeste", "norte", "caminos"}
+    assert {layer["id"] for layer in layers} >= {
+        "candil",
+        "ml",
+        "noroeste",
+        "norte",
+        "caminos",
+    }

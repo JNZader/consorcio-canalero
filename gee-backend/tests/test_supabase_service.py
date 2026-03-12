@@ -61,7 +61,15 @@ def test_reorder_layers_falls_back_to_upsert_when_rpc_fails():
 def test_get_reports_stats_uses_rpc_when_available():
     client = MagicMock()
     client.rpc.return_value.execute.return_value = SimpleNamespace(
-        data=[{"pendiente": 2, "en_revision": 3, "resuelto": 4, "rechazado": 1, "total": 10}]
+        data=[
+            {
+                "pendiente": 2,
+                "en_revision": 3,
+                "resuelto": 4,
+                "rechazado": 1,
+                "total": 10,
+            }
+        ]
     )
     service = _service_with_client(client)
 
@@ -104,7 +112,9 @@ def test_update_report_sets_resuelto_at_and_writes_history_on_status_change():
     denuncias_query = MagicMock()
     denuncias_query.update.return_value = denuncias_query
     denuncias_query.eq.return_value = denuncias_query
-    denuncias_query.execute.return_value = SimpleNamespace(data=[{"id": "rep-1", "estado": "resuelto"}])
+    denuncias_query.execute.return_value = SimpleNamespace(
+        data=[{"id": "rep-1", "estado": "resuelto"}]
+    )
 
     history_query = MagicMock()
     history_query.insert.return_value = history_query
@@ -206,7 +216,9 @@ def test_get_layers_applies_visible_filter_when_requested():
     query.select.return_value = query
     query.eq.return_value = query
     query.order.return_value = query
-    query.execute.return_value = SimpleNamespace(data=[{"id": "layer-1", "visible": True}])
+    query.execute.return_value = SimpleNamespace(
+        data=[{"id": "layer-1", "visible": True}]
+    )
     client.table.return_value = query
 
     service = _service_with_client(client)
@@ -282,7 +294,9 @@ def test_get_report_embeds_history_records_when_found():
     report_query.select.return_value = report_query
     report_query.eq.return_value = report_query
     report_query.single.return_value = report_query
-    report_query.execute.return_value = SimpleNamespace(data={"id": "rep-9", "estado": "pendiente"})
+    report_query.execute.return_value = SimpleNamespace(
+        data={"id": "rep-9", "estado": "pendiente"}
+    )
 
     history_query = MagicMock()
     history_query.select.return_value = history_query
@@ -342,7 +356,9 @@ def test_upload_helpers_use_expected_bucket_paths_and_content_types():
 
     report_url = service.upload_report_photo("r1.jpg", b"img")
     geojson_url = service.upload_geojson("layer.geojson", b"{}", bucket="geojson-test")
-    analysis_url = service.upload_analysis_result("a-1", {"type": "FeatureCollection", "features": []})
+    analysis_url = service.upload_analysis_result(
+        "a-1", {"type": "FeatureCollection", "features": []}
+    )
 
     assert report_url.endswith("denuncias/r1.jpg")
     assert geojson_url.endswith("capas/layer.geojson")

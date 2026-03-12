@@ -46,7 +46,13 @@ def test_import_consorcistas_validates_missing_filename_and_empty_file(
     missing_name = client.post(
         "/api/v1/padron/consorcistas/import",
         headers=auth_headers,
-        files={"file": ("", b"nombre,apellido,cuit\nJuan,Perez,20-12345678-1\n", "text/csv")},
+        files={
+            "file": (
+                "",
+                b"nombre,apellido,cuit\nJuan,Perez,20-12345678-1\n",
+                "text/csv",
+            )
+        },
     )
     assert missing_name.status_code == 422
 

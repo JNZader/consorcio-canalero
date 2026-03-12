@@ -44,7 +44,9 @@ def test_cleanup_memory_store_removes_expired_and_evicts_oldest(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_check_redis_allows_and_sets_expiry():
-    limiter = DistributedRateLimiter(redis_url="redis://x", max_requests=3, window_seconds=60)
+    limiter = DistributedRateLimiter(
+        redis_url="redis://x", max_requests=3, window_seconds=60
+    )
     redis_client = MagicMock()
     pipe = MagicMock()
     redis_client.pipeline.return_value = pipe
@@ -63,7 +65,9 @@ async def test_check_redis_allows_and_sets_expiry():
 
 @pytest.mark.asyncio
 async def test_check_redis_rejects_when_limit_exceeded():
-    limiter = DistributedRateLimiter(redis_url="redis://x", max_requests=3, window_seconds=60)
+    limiter = DistributedRateLimiter(
+        redis_url="redis://x", max_requests=3, window_seconds=60
+    )
     redis_client = MagicMock()
     pipe = MagicMock()
     redis_client.pipeline.return_value = pipe
@@ -79,7 +83,9 @@ async def test_check_redis_rejects_when_limit_exceeded():
 
 @pytest.mark.asyncio
 async def test_check_redis_falls_back_to_memory_on_error():
-    limiter = DistributedRateLimiter(redis_url="redis://x", max_requests=3, window_seconds=60)
+    limiter = DistributedRateLimiter(
+        redis_url="redis://x", max_requests=3, window_seconds=60
+    )
     redis_client = MagicMock()
     pipe = MagicMock()
     redis_client.pipeline.return_value = pipe

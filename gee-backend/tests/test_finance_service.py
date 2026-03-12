@@ -32,8 +32,8 @@ def test_get_categorias_and_fuentes_are_deduplicated_sorted():
     )
 
     db = MagicMock()
-    db.client.table.side_effect = (
-        lambda name: gastos_query if name == "gastos" else ingresos_query
+    db.client.table.side_effect = lambda name: (
+        gastos_query if name == "gastos" else ingresos_query
     )
 
     with patch("app.services.finance_service.get_supabase_service", return_value=db):
@@ -44,7 +44,9 @@ def test_get_categorias_and_fuentes_are_deduplicated_sorted():
 
 
 def test_create_and_update_map_legacy_comprobante_field():
-    write_query = _query_with_data([{"id": "g1", "comprobante_url": "https://cdn/x.pdf"}])
+    write_query = _query_with_data(
+        [{"id": "g1", "comprobante_url": "https://cdn/x.pdf"}]
+    )
 
     db = MagicMock()
     db.client.table.return_value = write_query
@@ -52,13 +54,19 @@ def test_create_and_update_map_legacy_comprobante_field():
     with patch("app.services.finance_service.get_supabase_service", return_value=db):
         service = FinanceService()
 
-    created = service.create_gasto({"descripcion": "x", "comprobante": "https://cdn/x.pdf"})
+    created = service.create_gasto(
+        {"descripcion": "x", "comprobante": "https://cdn/x.pdf"}
+    )
     updated = service.update_ingreso("i1", {"comprobante": "https://cdn/y.pdf"})
 
     assert created["comprobante_url"] == "https://cdn/x.pdf"
     assert updated["comprobante_url"] == "https://cdn/x.pdf"
-    assert write_query.insert.call_args.args[0]["comprobante_url"] == "https://cdn/x.pdf"
-    assert write_query.update.call_args.args[0]["comprobante_url"] == "https://cdn/y.pdf"
+    assert (
+        write_query.insert.call_args.args[0]["comprobante_url"] == "https://cdn/x.pdf"
+    )
+    assert (
+        write_query.update.call_args.args[0]["comprobante_url"] == "https://cdn/y.pdf"
+    )
 
 
 def test_budget_execution_by_category_merges_projected_and_real_values():

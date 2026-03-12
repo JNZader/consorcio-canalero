@@ -10,7 +10,9 @@ def test_analyze_flood_task_runs_classification_with_parsed_dates():
     monitoring = MagicMock()
     monitoring.classify_parcels.return_value = {"ok": True}
 
-    with patch.object(gee_analysis_tasks, "get_monitoring_service", return_value=monitoring):
+    with patch.object(
+        gee_analysis_tasks, "get_monitoring_service", return_value=monitoring
+    ):
         result = gee_analysis_tasks.analyze_flood_task.run(
             "2026-01-01",
             "2026-01-10",
@@ -29,7 +31,9 @@ def test_analyze_flood_task_re_raises_errors():
     monitoring = MagicMock()
     monitoring.classify_parcels.side_effect = RuntimeError("gee error")
 
-    with patch.object(gee_analysis_tasks, "get_monitoring_service", return_value=monitoring):
+    with patch.object(
+        gee_analysis_tasks, "get_monitoring_service", return_value=monitoring
+    ):
         with pytest.raises(RuntimeError, match="gee error"):
             gee_analysis_tasks.analyze_flood_task.run(
                 "2026-01-01",
@@ -41,7 +45,9 @@ def test_supervised_classification_task_runs_cuenca_classification():
     monitoring = MagicMock()
     monitoring.classify_parcels_by_cuenca.return_value = {"cuencas": {"norte": {}}}
 
-    with patch.object(gee_analysis_tasks, "get_monitoring_service", return_value=monitoring):
+    with patch.object(
+        gee_analysis_tasks, "get_monitoring_service", return_value=monitoring
+    ):
         result = gee_analysis_tasks.supervised_classification_task.run(
             "2026-02-01",
             "2026-02-28",
@@ -58,7 +64,9 @@ def test_supervised_classification_task_re_raises_errors():
     monitoring = MagicMock()
     monitoring.classify_parcels_by_cuenca.side_effect = ValueError("bad range")
 
-    with patch.object(gee_analysis_tasks, "get_monitoring_service", return_value=monitoring):
+    with patch.object(
+        gee_analysis_tasks, "get_monitoring_service", return_value=monitoring
+    ):
         with pytest.raises(ValueError, match="bad range"):
             gee_analysis_tasks.supervised_classification_task.run(
                 "2026-02-01",

@@ -50,7 +50,12 @@ class _FakeResult:
 
 
 class _FakeTable:
-    def __init__(self, name: str, store: dict[str, Any], client: _FakeSupabaseClient | None = None):
+    def __init__(
+        self,
+        name: str,
+        store: dict[str, Any],
+        client: _FakeSupabaseClient | None = None,
+    ):
         self.name = name
         self.store = store
         self.client = client
@@ -77,7 +82,7 @@ class _FakeTable:
         # Handle contact_submissions count queries (rate limit testing)
         if self.name == "contact_submissions" and self.mode == "select":
             count = 0
-            if self.client and hasattr(self.client, 'submissions_count'):
+            if self.client and hasattr(self.client, "submissions_count"):
                 count = self.client.submissions_count
             return _FakeResult([], count=count)
 
@@ -163,11 +168,13 @@ async def test_public_suggestion_direct_call_maps_to_mutation(monkeypatch):
     "path_id,payload_id,should_raise",
     [
         ("uuid-1", "uuid-1", False),  # IDs match, should proceed
-        ("uuid-1", "uuid-2", True),   # IDs mismatch, should raise HTTPException(400)
-        ("uuid-1", "", True),         # Empty payload ID, should raise HTTPException(400)
+        ("uuid-1", "uuid-2", True),  # IDs mismatch, should raise HTTPException(400)
+        ("uuid-1", "", True),  # Empty payload ID, should raise HTTPException(400)
     ],
 )
-async def test_resolve_report_id_mismatch(monkeypatch, path_id, payload_id, should_raise):
+async def test_resolve_report_id_mismatch(
+    monkeypatch, path_id, payload_id, should_raise
+):
     """
     Test report ID path-payload mismatch validation.
     Catches != operator mutations (e.g., != -> ==, negation removal).
@@ -216,11 +223,13 @@ async def test_resolve_report_id_mismatch(monkeypatch, path_id, payload_id, shou
 @pytest.mark.parametrize(
     "should_exist,should_raise_not_found",
     [
-        (True, False),   # Report exists, should NOT raise ReportNotFoundError
-        (False, True),   # Report missing, should raise ReportNotFoundError
+        (True, False),  # Report exists, should NOT raise ReportNotFoundError
+        (False, True),  # Report missing, should raise ReportNotFoundError
     ],
 )
-async def test_resolve_report_not_found(monkeypatch, should_exist, should_raise_not_found):
+async def test_resolve_report_not_found(
+    monkeypatch, should_exist, should_raise_not_found
+):
     """
     Test report existence check.
     Catches `not` operator and `if` condition inversions.
@@ -263,14 +272,16 @@ async def test_resolve_report_not_found(monkeypatch, should_exist, should_raise_
 @pytest.mark.parametrize(
     "submissions_today,should_raise,expected_remaining",
     [
-        (0, False, 2),    # 3 - 0 - 1 = 2
-        (1, False, 1),    # 3 - 1 - 1 = 1
-        (2, False, 0),    # 3 - 2 - 1 = 0
+        (0, False, 2),  # 3 - 0 - 1 = 2
+        (1, False, 1),  # 3 - 1 - 1 = 1
+        (2, False, 0),  # 3 - 2 - 1 = 0
         (3, True, None),  # At limit, reject
         (4, True, None),  # Over limit, reject
     ],
 )
-async def test_rate_limit_boundary(monkeypatch, submissions_today, should_raise, expected_remaining):
+async def test_rate_limit_boundary(
+    monkeypatch, submissions_today, should_raise, expected_remaining
+):
     """
     Test rate limit boundary at submissions_count >= MAX.
     Catches >= vs > operator mutations and boundary logic errors.
@@ -300,8 +311,8 @@ async def test_rate_limit_boundary(monkeypatch, submissions_today, should_raise,
 @pytest.mark.parametrize(
     "contacto_verificado,should_raise",
     [
-        (True, False),   # Verified contact, should NOT raise
-        (False, True),   # Unverified contact, should raise ValidationError
+        (True, False),  # Verified contact, should NOT raise
+        (False, True),  # Unverified contact, should raise ValidationError
     ],
 )
 async def test_contact_verification(monkeypatch, contacto_verificado, should_raise):
@@ -323,6 +334,7 @@ async def test_contact_verification(monkeypatch, contacto_verificado, should_rai
 
     if should_raise:
         from app.core.exceptions import ValidationError as AppValidationError
+
         with pytest.raises(AppValidationError) as exc_info:
             await crear_sugerencia_publica(payload)
         assert exc_info.value.code == "CONTACT_NOT_VERIFIED"
@@ -335,12 +347,14 @@ async def test_contact_verification(monkeypatch, contacto_verificado, should_rai
 @pytest.mark.parametrize(
     "contacto_email,contacto_telefono,should_raise",
     [
-        ("test@example.com", None, False),      # Email only, should proceed
-        (None, "+54911234567", False),          # Phone only, should proceed
-        (None, None, True),                     # Both None, should raise ValidationError
+        ("test@example.com", None, False),  # Email only, should proceed
+        (None, "+54911234567", False),  # Phone only, should proceed
+        (None, None, True),  # Both None, should raise ValidationError
     ],
 )
-async def test_contact_required(monkeypatch, contacto_email, contacto_telefono, should_raise):
+async def test_contact_required(
+    monkeypatch, contacto_email, contacto_telefono, should_raise
+):
     """
     Test at least one contact field (email OR phone) is provided.
     Catches AND/OR operator mutations and logic inversions.
@@ -360,6 +374,7 @@ async def test_contact_required(monkeypatch, contacto_email, contacto_telefono, 
 
     if should_raise:
         from app.core.exceptions import ValidationError as AppValidationError
+
         with pytest.raises(AppValidationError) as exc_info:
             await crear_sugerencia_publica(payload)
         assert exc_info.value.code == "CONTACT_REQUIRED"
@@ -379,7 +394,9 @@ async def test_contact_required(monkeypatch, contacto_email, contacto_telefono, 
         (2, 0),  # 3 - 2 - 1 = 0
     ],
 )
-async def test_remaining_calculation(monkeypatch, submissions_today, expected_remaining):
+async def test_remaining_calculation(
+    monkeypatch, submissions_today, expected_remaining
+):
     """
     Test remaining suggestions calculation = MAX - submissions_today - 1.
     Catches arithmetic operator mutations (- vs +, precedence).
@@ -404,9 +421,12 @@ async def test_remaining_calculation(monkeypatch, submissions_today, expected_re
 @pytest.mark.parametrize(
     "orden_del_dia_items,should_raise",
     [
-        (["Punto 1", "Punto 2"], False),      # Valid items, should NOT raise
-        ([], True),                            # Empty list, should raise ValueError
-        (["   ", "\t"], True),                # Whitespace only, after normalization empty, should raise
+        (["Punto 1", "Punto 2"], False),  # Valid items, should NOT raise
+        ([], True),  # Empty list, should raise ValueError
+        (
+            ["   ", "\t"],
+            True,
+        ),  # Whitespace only, after normalization empty, should raise
     ],
 )
 def test_schema_validator_orden_del_dia(orden_del_dia_items, should_raise):
@@ -436,9 +456,9 @@ def test_schema_validator_orden_del_dia(orden_del_dia_items, should_raise):
     "titulo,should_raise",
     [
         ("Hello World", False),  # 11 chars, should pass (min=5)
-        ("Hello", False),        # 5 chars (boundary), should pass
-        ("Hola", True),          # 4 chars, should raise ValidationError
-        ("", True),              # 0 chars, should raise ValidationError
+        ("Hello", False),  # 5 chars (boundary), should pass
+        ("Hola", True),  # 4 chars, should raise ValidationError
+        ("", True),  # 0 chars, should raise ValidationError
     ],
 )
 def test_schema_min_length_sugerencia_titulo(titulo, should_raise):
@@ -468,8 +488,8 @@ def test_schema_min_length_sugerencia_titulo(titulo, should_raise):
 @pytest.mark.parametrize(
     "titulo,should_raise",
     [
-        ("A", False),    # 1 char (boundary), should pass (min=1)
-        ("", True),      # 0 chars, should raise ValidationError
+        ("A", False),  # 1 char (boundary), should pass (min=1)
+        ("", True),  # 0 chars, should raise ValidationError
     ],
 )
 def test_schema_min_length_tramite_titulo(titulo, should_raise):

@@ -82,8 +82,8 @@ def test_get_deudores_filters_out_paid_members():
     pagos = _query([{"consorcista_id": member_1}])
 
     db = MagicMock()
-    db.client.table.side_effect = (
-        lambda name: consorcistas if name == "consorcistas" else pagos
+    db.client.table.side_effect = lambda name: (
+        consorcistas if name == "consorcistas" else pagos
     )
 
     with patch("app.services.padron_service.get_supabase_service", return_value=db):

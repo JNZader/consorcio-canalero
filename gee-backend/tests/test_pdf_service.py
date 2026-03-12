@@ -72,7 +72,11 @@ def test_generate_asset_tramite_resolution_and_integral_pdfs():
     _assert_pdf(ficha)
 
     tramite = service.create_tramite_summary_pdf(
-        {"numero_expediente": "EXP-123", "titulo": "Canal principal", "estado": "en_revision"},
+        {
+            "numero_expediente": "EXP-123",
+            "titulo": "Canal principal",
+            "estado": "en_revision",
+        },
         [
             {
                 "fecha": "2026-03-01T10:00:00Z",

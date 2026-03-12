@@ -44,7 +44,9 @@ def test_historic_flood_tiles_fallback_and_invalid_id(client):
 
     explorer = MagicMock()
     explorer.get_sentinel2_image.return_value = {"error": "no optical images"}
-    explorer.get_sentinel1_image.return_value = {"tile_url": "https://tiles/sar/{z}/{x}/{y}"}
+    explorer.get_sentinel1_image.return_value = {
+        "tile_url": "https://tiles/sar/{z}/{x}/{y}"
+    }
 
     with patch(
         "app.api.v1.endpoints.image_explorer.get_image_explorer", return_value=explorer

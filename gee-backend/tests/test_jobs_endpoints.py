@@ -3,17 +3,24 @@ from unittest.mock import MagicMock, patch
 
 
 def test_start_flood_and_classification_jobs(client, mock_auth, auth_headers):
-    with patch(
-        "app.api.v1.endpoints.jobs.analyze_flood_task.delay",
-        return_value=SimpleNamespace(id="job-flood-1"),
-    ), patch(
-        "app.api.v1.endpoints.jobs.supervised_classification_task.delay",
-        return_value=SimpleNamespace(id="job-class-1"),
+    with (
+        patch(
+            "app.api.v1.endpoints.jobs.analyze_flood_task.delay",
+            return_value=SimpleNamespace(id="job-flood-1"),
+        ),
+        patch(
+            "app.api.v1.endpoints.jobs.supervised_classification_task.delay",
+            return_value=SimpleNamespace(id="job-class-1"),
+        ),
     ):
         flood_response = client.post(
             "/api/v1/jobs/flood-analysis",
             headers=auth_headers,
-            json={"start_date": "2026-01-01", "end_date": "2026-01-10", "method": "fusion"},
+            json={
+                "start_date": "2026-01-01",
+                "end_date": "2026-01-10",
+                "method": "fusion",
+            },
         )
         class_response = client.post(
             "/api/v1/jobs/classification?start_date=2026-01-01&end_date=2026-01-10",
@@ -44,7 +51,9 @@ def test_get_job_status_returns_pending_or_result(client, mock_auth, auth_header
     failed.successful.return_value = False
     failed.result = RuntimeError("failed")
 
-    with patch("app.api.v1.endpoints.jobs.AsyncResult", side_effect=[pending, done, failed]):
+    with patch(
+        "app.api.v1.endpoints.jobs.AsyncResult", side_effect=[pending, done, failed]
+    ):
         pending_response = client.get("/api/v1/jobs/job-1", headers=auth_headers)
         done_response = client.get("/api/v1/jobs/job-2", headers=auth_headers)
         fail_response = client.get("/api/v1/jobs/job-3", headers=auth_headers)

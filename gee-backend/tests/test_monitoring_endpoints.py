@@ -8,7 +8,9 @@ def _reset_dashboard_cache() -> None:
     monitoring_endpoint._dashboard_cache["expires_at"] = 0
 
 
-def test_monitoring_dashboard_uses_cache_and_maps_response(client, mock_auth, auth_headers):
+def test_monitoring_dashboard_uses_cache_and_maps_response(
+    client, mock_auth, auth_headers
+):
     _reset_dashboard_cache()
 
     service = MagicMock()

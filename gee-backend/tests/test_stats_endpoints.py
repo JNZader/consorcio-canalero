@@ -102,9 +102,10 @@ def test_stats_export_csv_generates_download_response(client, mock_auth, auth_he
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert "attachment; filename=estadisticas_consorcio_" in response.headers[
-        "content-disposition"
-    ]
+    assert (
+        "attachment; filename=estadisticas_consorcio_"
+        in response.headers["content-disposition"]
+    )
     assert "id,fecha_analisis" in response.text
     assert "a1" in response.text
 
