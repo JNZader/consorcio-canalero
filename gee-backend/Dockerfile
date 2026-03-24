@@ -33,8 +33,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
+# Copy application code and alembic config
 COPY app/ ./app/
+COPY alembic.ini ./
 
 # Create credentials directory
 RUN mkdir -p credentials
@@ -73,8 +74,9 @@ RUN addgroup --system app && adduser --system --ingroup app app
 # Create credentials directory
 RUN mkdir -p credentials
 
-# Copy application code
+# Copy application code and alembic config
 COPY app/ ./app/
+COPY alembic.ini ./
 
 # Set ownership for the app user
 RUN chown -R app:app /app
