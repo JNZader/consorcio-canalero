@@ -15,6 +15,7 @@ from app.domains.infraestructura.models import Asset, MantenimientoLog  # noqa: 
 from app.domains.finanzas.models import Gasto, Ingreso, Presupuesto  # noqa: F401
 from app.domains.padron.models import Consorcista  # noqa: F401
 from app.domains.tramites.models import Tramite, TramiteSeguimiento  # noqa: F401
+from app.domains.capas.models import Capa  # noqa: F401
 
 # Alembic Config object
 config = context.config
