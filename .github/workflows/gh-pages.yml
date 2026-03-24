@@ -32,7 +32,7 @@ jobs:
           node-version: '20'
       - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
       - name: Build with base path
-        run: npx vite build --base /consorcio-canalero/
+        run: npx vite build --base /
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
