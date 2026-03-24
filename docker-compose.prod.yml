@@ -97,8 +97,8 @@ services:
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
       - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
       - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://cc10demayo.javierzader.com}
-      - FRONTEND_URL=${FRONTEND_URL:-https://cc10demayo.javierzader.com}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://consorcio-canalero.pages.dev}
+      - FRONTEND_URL=${FRONTEND_URL:-https://consorcio-canalero.pages.dev}
       - API_PREFIX=/api/v2
     networks:
       - consorcio-network
