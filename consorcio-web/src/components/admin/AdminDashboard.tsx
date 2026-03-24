@@ -59,7 +59,7 @@ export default function AdminDashboard() {
     setExporting(true);
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v1/management/export-integral`, {
+      const response = await fetch(`${API_URL}/api/v2/management/export-integral`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

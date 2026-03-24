@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-  '/api/v1/public/reports': {
+  '/api/v2/public/reports': {
     parameters: {
       query?: never;
       header?: never;
@@ -34,7 +34,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/public/upload-photo': {
+  '/api/v2/public/upload-photo': {
     parameters: {
       query?: never;
       header?: never;
@@ -61,7 +61,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/public/health': {
+  '/api/v2/public/health': {
     parameters: {
       query?: never;
       header?: never;
@@ -81,7 +81,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/config/system': {
+  '/api/v2/config/system': {
     parameters: {
       query?: never;
       header?: never;
@@ -105,7 +105,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/jobs/flood-analysis': {
+  '/api/v2/jobs/flood-analysis': {
     parameters: {
       query?: never;
       header?: never;
@@ -126,7 +126,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/jobs/classification': {
+  '/api/v2/jobs/classification': {
     parameters: {
       query?: never;
       header?: never;
@@ -146,7 +146,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/jobs/{job_id}': {
+  '/api/v2/jobs/{job_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -166,7 +166,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/assets': {
+  '/api/v2/infrastructure/assets': {
     parameters: {
       query?: never;
       header?: never;
@@ -190,7 +190,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/potential-intersections': {
+  '/api/v2/infrastructure/potential-intersections': {
     parameters: {
       query?: never;
       header?: never;
@@ -210,7 +210,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/assets/{asset_id}/history': {
+  '/api/v2/infrastructure/assets/{asset_id}/history': {
     parameters: {
       query?: never;
       header?: never;
@@ -230,7 +230,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/assets/{asset_id}/export-pdf': {
+  '/api/v2/infrastructure/assets/{asset_id}/export-pdf': {
     parameters: {
       query?: never;
       header?: never;
@@ -250,7 +250,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/maintenance': {
+  '/api/v2/infrastructure/maintenance': {
     parameters: {
       query?: never;
       header?: never;
@@ -270,7 +270,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/infrastructure/export-pdf': {
+  '/api/v2/infrastructure/export-pdf': {
     parameters: {
       query?: never;
       header?: never;
@@ -290,7 +290,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/tramites': {
+  '/api/v2/management/tramites': {
     parameters: {
       query?: never;
       header?: never;
@@ -314,7 +314,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/tramites/{tramite_id}': {
+  '/api/v2/management/tramites/{tramite_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -334,7 +334,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/tramites/avance': {
+  '/api/v2/management/tramites/avance': {
     parameters: {
       query?: never;
       header?: never;
@@ -354,7 +354,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/seguimiento/{entidad_tipo}/{entidad_id}': {
+  '/api/v2/management/seguimiento/{entidad_tipo}/{entidad_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -374,7 +374,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/seguimiento': {
+  '/api/v2/management/seguimiento': {
     parameters: {
       query?: never;
       header?: never;
@@ -394,7 +394,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/reuniones': {
+  '/api/v2/management/reuniones': {
     parameters: {
       query?: never;
       header?: never;
@@ -418,7 +418,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/reuniones/{reunion_id}/agenda': {
+  '/api/v2/management/reuniones/{reunion_id}/agenda': {
     parameters: {
       query?: never;
       header?: never;
@@ -442,7 +442,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/tramites/{tramite_id}/export-pdf': {
+  '/api/v2/management/tramites/{tramite_id}/export-pdf': {
     parameters: {
       query?: never;
       header?: never;
@@ -459,7 +459,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/seguimiento/reporte/{reporte_id}/export-pdf': {
+  '/api/v2/management/seguimiento/reporte/{reporte_id}/export-pdf': {
     parameters: {
       query?: never;
       header?: never;
@@ -476,7 +476,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/export-gestion-integral': {
+  '/api/v2/management/export-gestion-integral': {
     parameters: {
       query?: never;
       header?: never;
@@ -493,7 +493,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/management/reuniones/{reunion_id}/export-pdf': {
+  '/api/v2/management/reuniones/{reunion_id}/export-pdf': {
     parameters: {
       query?: never;
       header?: never;
@@ -513,7 +513,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/padron/consorcistas': {
+  '/api/v2/padron/consorcistas': {
     parameters: {
       query?: never;
       header?: never;
@@ -531,7 +531,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/padron/consorcistas/{consorcista_id}/pagos': {
+  '/api/v2/padron/consorcistas/{consorcista_id}/pagos': {
     parameters: {
       query?: never;
       header?: never;
@@ -548,7 +548,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/padron/pagos': {
+  '/api/v2/padron/pagos': {
     parameters: {
       query?: never;
       header?: never;
@@ -565,7 +565,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/finance/gastos': {
+  '/api/v2/finance/gastos': {
     parameters: {
       query?: never;
       header?: never;
@@ -583,7 +583,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/finance/presupuestos': {
+  '/api/v2/finance/presupuestos': {
     parameters: {
       query?: never;
       header?: never;
@@ -600,7 +600,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/finance/balance-summary/{anio}': {
+  '/api/v2/finance/balance-summary/{anio}': {
     parameters: {
       query?: never;
       header?: never;
@@ -617,7 +617,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/finance/export-presupuesto/{anio}': {
+  '/api/v2/finance/export-presupuesto/{anio}': {
     parameters: {
       query?: never;
       header?: never;
@@ -637,7 +637,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/layers': {
+  '/api/v2/layers': {
     parameters: {
       query?: never;
       header?: never;
@@ -666,7 +666,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/layers/{layer_id}': {
+  '/api/v2/layers/{layer_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -696,7 +696,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/layers/upload': {
+  '/api/v2/layers/upload': {
     parameters: {
       query?: never;
       header?: never;
@@ -724,7 +724,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/layers/reorder': {
+  '/api/v2/layers/reorder': {
     parameters: {
       query?: never;
       header?: never;
@@ -747,7 +747,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/reports': {
+  '/api/v2/reports': {
     parameters: {
       query?: never;
       header?: never;
@@ -775,7 +775,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/reports/stats': {
+  '/api/v2/reports/stats': {
     parameters: {
       query?: never;
       header?: never;
@@ -798,7 +798,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/reports/{report_id}': {
+  '/api/v2/reports/{report_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -828,7 +828,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/reports/{report_id}/assign': {
+  '/api/v2/reports/{report_id}/assign': {
     parameters: {
       query?: never;
       header?: never;
@@ -849,7 +849,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/reports/{report_id}/resolve': {
+  '/api/v2/reports/{report_id}/resolve': {
     parameters: {
       query?: never;
       header?: never;
@@ -870,7 +870,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/stats/dashboard': {
+  '/api/v2/stats/dashboard': {
     parameters: {
       query?: never;
       header?: never;
@@ -895,7 +895,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/stats/by-cuenca': {
+  '/api/v2/stats/by-cuenca': {
     parameters: {
       query?: never;
       header?: never;
@@ -917,7 +917,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/stats/historical': {
+  '/api/v2/stats/historical': {
     parameters: {
       query?: never;
       header?: never;
@@ -944,7 +944,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/stats/export': {
+  '/api/v2/stats/export': {
     parameters: {
       query?: never;
       header?: never;
@@ -973,7 +973,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/stats/summary': {
+  '/api/v2/stats/summary': {
     parameters: {
       query?: never;
       header?: never;
@@ -995,7 +995,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/public': {
+  '/api/v2/sugerencias/public': {
     parameters: {
       query?: never;
       header?: never;
@@ -1017,7 +1017,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/public/limit': {
+  '/api/v2/sugerencias/public/limit': {
     parameters: {
       query?: never;
       header?: never;
@@ -1037,7 +1037,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias': {
+  '/api/v2/sugerencias': {
     parameters: {
       query?: never;
       header?: never;
@@ -1058,7 +1058,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/stats': {
+  '/api/v2/sugerencias/stats': {
     parameters: {
       query?: never;
       header?: never;
@@ -1078,7 +1078,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/proxima-reunion': {
+  '/api/v2/sugerencias/proxima-reunion': {
     parameters: {
       query?: never;
       header?: never;
@@ -1098,7 +1098,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/interna': {
+  '/api/v2/sugerencias/interna': {
     parameters: {
       query?: never;
       header?: never;
@@ -1119,7 +1119,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/{sugerencia_id}': {
+  '/api/v2/sugerencias/{sugerencia_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -1149,7 +1149,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/{sugerencia_id}/historial': {
+  '/api/v2/sugerencias/{sugerencia_id}/historial': {
     parameters: {
       query?: never;
       header?: never;
@@ -1169,7 +1169,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/{sugerencia_id}/agendar': {
+  '/api/v2/sugerencias/{sugerencia_id}/agendar': {
     parameters: {
       query?: never;
       header?: never;
@@ -1190,7 +1190,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/sugerencias/{sugerencia_id}/resolver': {
+  '/api/v2/sugerencias/{sugerencia_id}/resolver': {
     parameters: {
       query?: never;
       header?: never;
@@ -1211,7 +1211,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/monitoring/dashboard': {
+  '/api/v2/monitoring/dashboard': {
     parameters: {
       query?: never;
       header?: never;
@@ -1238,7 +1238,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers': {
+  '/api/v2/gee/layers': {
     parameters: {
       query?: never;
       header?: never;
@@ -1260,7 +1260,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/tiles/sentinel2': {
+  '/api/v2/gee/layers/tiles/sentinel2': {
     parameters: {
       query?: never;
       header?: never;
@@ -1295,7 +1295,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/caminos/consorcios': {
+  '/api/v2/gee/layers/caminos/consorcios': {
     parameters: {
       query?: never;
       header?: never;
@@ -1321,7 +1321,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/caminos/consorcio/{codigo}': {
+  '/api/v2/gee/layers/caminos/consorcio/{codigo}': {
     parameters: {
       query?: never;
       header?: never;
@@ -1347,7 +1347,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/caminos/por-nombre': {
+  '/api/v2/gee/layers/caminos/por-nombre': {
     parameters: {
       query?: never;
       header?: never;
@@ -1373,7 +1373,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/caminos/coloreados': {
+  '/api/v2/gee/layers/caminos/coloreados': {
     parameters: {
       query?: never;
       header?: never;
@@ -1403,7 +1403,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/caminos/estadisticas': {
+  '/api/v2/gee/layers/caminos/estadisticas': {
     parameters: {
       query?: never;
       header?: never;
@@ -1429,7 +1429,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/gee/layers/{layer_name}': {
+  '/api/v2/gee/layers/{layer_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -1455,7 +1455,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/sentinel2': {
+  '/api/v2/images/sentinel2': {
     parameters: {
       query?: never;
       header?: never;
@@ -1487,7 +1487,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/sentinel1': {
+  '/api/v2/images/sentinel1': {
     parameters: {
       query?: never;
       header?: never;
@@ -1513,7 +1513,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/compare': {
+  '/api/v2/images/compare': {
     parameters: {
       query?: never;
       header?: never;
@@ -1538,7 +1538,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/visualizations': {
+  '/api/v2/images/visualizations': {
     parameters: {
       query?: never;
       header?: never;
@@ -1558,7 +1558,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/historic-floods': {
+  '/api/v2/images/historic-floods': {
     parameters: {
       query?: never;
       header?: never;
@@ -1580,7 +1580,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/images/historic-floods/{flood_id}': {
+  '/api/v2/images/historic-floods/{flood_id}': {
     parameters: {
       query?: never;
       header?: never;

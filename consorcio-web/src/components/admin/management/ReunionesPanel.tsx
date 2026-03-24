@@ -106,7 +106,7 @@ export default function ReunionesPanel() {
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${API_URL}/api/v1/management/reuniones/${selectedReunion.id}/export-pdf`,
+        `${API_URL}/api/v2/management/reuniones/${selectedReunion.id}/export-pdf`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

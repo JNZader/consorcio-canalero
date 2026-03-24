@@ -428,7 +428,7 @@ export default function MapaLeaflet() {
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${API_URL}/api/v1/infrastructure/assets/${assetId}/export-pdf`,
+        `${API_URL}/api/v2/infrastructure/assets/${assetId}/export-pdf`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

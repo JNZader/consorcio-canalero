@@ -303,7 +303,7 @@ export const DEFAULT_DAYS_BACK = 30;
 /**
  * API prefix for all endpoints.
  */
-export const API_PREFIX = '/api/v1';
+export const API_PREFIX = '/api/v2';
 
 /**
  * Default pagination settings.

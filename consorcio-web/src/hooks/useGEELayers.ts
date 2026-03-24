@@ -93,7 +93,7 @@ export function useGEELayers(options: UseGEELayersOptions = {}): UseGEELayersRes
   const loadLayer = useCallback(
     async (name: GEELayerName): Promise<[GEELayerName, FeatureCollection | null]> => {
       try {
-        const response = await fetch(`${API_URL}/api/v1/gee/layers/${name}`);
+        const response = await fetch(`${API_URL}/api/v2/gee/layers/${name}`);
         if (response.ok) {
           const rawData = await response.json();
 

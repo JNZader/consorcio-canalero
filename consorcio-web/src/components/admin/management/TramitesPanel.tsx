@@ -76,7 +76,7 @@ export default function TramitesPanel() {
     setExporting(true);
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v1/management/tramites/${id}/export-pdf`, {
+      const response = await fetch(`${API_URL}/api/v2/management/tramites/${id}/export-pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const blob = await response.blob();
