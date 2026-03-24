@@ -38,11 +38,23 @@ if settings.google_oauth_client_id:
         settings.google_oauth_client_secret,
     )
 
+    # Build explicit redirect URL for production (behind HTTPS proxy)
+    oauth_redirect_url = None
+    if settings.frontend_url and not settings.debug:
+        # Derive API base from frontend URL pattern
+        api_host = settings.cors_origins.split(",")[0].strip() if settings.cors_origins else ""
+        # Use the COOLIFY_URL or construct from known domain
+        import os
+        coolify_url = os.environ.get("COOLIFY_URL", "")
+        if coolify_url:
+            oauth_redirect_url = f"{coolify_url}/api/v2/auth/google/callback"
+
     router.include_router(
         fastapi_users.get_oauth_router(
             google_oauth_client,
             auth_backend,
             settings.jwt_secret,
+            redirect_url=oauth_redirect_url,
         ),
         prefix="/auth/google",
         tags=["auth"],
