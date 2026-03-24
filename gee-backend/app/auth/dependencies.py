@@ -11,18 +11,18 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User, UserRole
 from app.config import settings
-from app.db.session import get_db
+from app.db.session import get_async_db
 
 
 # --- User database adapter ---
 
 
-def get_user_db(db: Session = Depends(get_db)) -> SQLAlchemyUserDatabase:
-    return SQLAlchemyUserDatabase(db, User)
+async def get_user_db(session: AsyncSession = Depends(get_async_db)):
+    yield SQLAlchemyUserDatabase(session, User)
 
 
 # --- User manager ---
