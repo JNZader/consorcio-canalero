@@ -19,17 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create the enum type
-    categoria_enum = postgresql.ENUM(
-        "general",
-        "branding",
-        "territorio",
-        "analisis",
-        "contacto",
-        name="categoria_settings",
-        create_type=True,
-    )
-    categoria_enum.create(op.get_bind(), checkfirst=True)
+    # Create the enum type (checkfirst to avoid duplicate error)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE categoria_settings AS ENUM ('general', 'branding', 'territorio', 'analisis', 'contacto');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     op.create_table(
         "system_settings",
@@ -37,13 +34,13 @@ def upgrade() -> None:
             "id",
             sa.UUID(),
             nullable=False,
-            default=sa.text("gen_random_uuid()"),
+            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("clave", sa.String(200), nullable=False),
         sa.Column("valor", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
             "categoria",
-            sa.Enum(
+            postgresql.ENUM(
                 "general",
                 "branding",
                 "territorio",
