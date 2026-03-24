@@ -1,58 +1,40 @@
 # ===========================================
-# Docker Compose - Production
+# Docker Compose - Production (Coolify/Hetzner)
 # ===========================================
-# Usage: docker compose -f docker-compose.prod.yml up -d
+# Frontend is on Cloudflare Pages — NOT included here.
+# This runs: Postgres + Redis + Backend API + Celery Worker
 #
-# Required files:
-#   - gee-backend/.env.production
-#   - gee-backend/credentials/gee-service-account.json
-#   - nginx/nginx.conf
-#
-# Optional:
-#   - nginx/ssl/*.pem (for HTTPS)
+# Required env vars (set in Coolify):
+#   DATABASE_URL, JWT_SECRET, REDIS_PASSWORD
 
 services:
   # ===========================================
-  # BACKEND - FastAPI with GEE
+  # DATABASE - PostgreSQL + PostGIS
   # ===========================================
-  backend:
-    build:
-      context: ./gee-backend
-      dockerfile: Dockerfile
-      target: production
-    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/backend:${TAG:-latest}
-    container_name: consorcio-backend
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: consorcio-postgres
     restart: always
-    expose:
-      - "8000"
     volumes:
-      - ./gee-backend/credentials:/app/credentials:ro
-      - backend-cache:/app/.cache
+      - postgres-data:/var/lib/postgresql/data
     environment:
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
-    env_file:
-      - ./gee-backend/.env.production
+      POSTGRES_DB: consorcio
+      POSTGRES_USER: consorcio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     networks:
       - consorcio-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      test: ["CMD-SHELL", "pg_isready -U consorcio -d consorcio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
           memory: 512M
-          cpus: '0.5'
-    depends_on:
-      redis:
-        condition: service_healthy
+        reservations:
+          memory: 128M
     logging:
       driver: "json-file"
       options:
@@ -66,7 +48,12 @@ services:
     image: redis:7-alpine
     container_name: consorcio-redis
     restart: always
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme}
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-changeme}
     volumes:
       - redis-data:/data
     networks:
@@ -80,13 +67,67 @@ services:
       resources:
         limits:
           memory: 256M
-        reservations:
-          memory: 64M
     logging:
       driver: "json-file"
       options:
         max-size: "5m"
         max-file: "2"
+
+  # ===========================================
+  # BACKEND - FastAPI API
+  # ===========================================
+  backend:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-backend
+    restart: always
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - geo-data:/data/geo
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - DATABASE_URL=postgresql://consorcio:${POSTGRES_PASSWORD:-changeme}@postgres:5432/consorcio
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
+      - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://cc10demayo.javierzader.com}
+      - FRONTEND_URL=${FRONTEND_URL:-https://cc10demayo.javierzader.com}
+      - API_PREFIX=/api/v2
+      # Legacy Supabase (required until old code is fully removed)
+      - SUPABASE_URL=${SUPABASE_URL:-http://placeholder}
+      - SUPABASE_KEY=${SUPABASE_KEY:-placeholder}
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ===========================================
   # WORKER - Celery Background Tasks
@@ -96,84 +137,38 @@ services:
       context: ./gee-backend
       dockerfile: Dockerfile
       target: production
-    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/backend:${TAG:-latest}
     container_name: consorcio-worker
     restart: always
     volumes:
-      - ./gee-backend/credentials:/app/credentials:ro
-      - backend-cache:/app/.cache
+      - geo-data:/data/geo
     environment:
       - ENVIRONMENT=production
       - DEBUG=false
+      - DATABASE_URL=postgresql://consorcio:${POSTGRES_PASSWORD:-changeme}@postgres:5432/consorcio
       - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
-    env_file:
-      - ./gee-backend/.env.production
+      - JWT_SECRET=${JWT_SECRET}
+      - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
+      - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
+      - SUPABASE_URL=${SUPABASE_URL:-http://placeholder}
+      - SUPABASE_KEY=${SUPABASE_KEY:-placeholder}
     networks:
       - consorcio-network
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
     healthcheck:
       test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
-      redis:
+      postgres:
         condition: service_healthy
-      backend:
+      redis:
         condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1G
           cpus: '1'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ===========================================
-  # FRONTEND - Nginx Static Server
-  # ===========================================
-  frontend:
-    build:
-      context: ./consorcio-web
-      dockerfile: Dockerfile
-      target: runtime
-      args:
-        - VITE_API_URL=${VITE_API_URL:-/api}
-        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
-    image: ghcr.io/${GITHUB_REPOSITORY:-consorcio}/frontend:${TAG:-latest}
-    container_name: consorcio-frontend
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    networks:
-      - consorcio-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    depends_on:
-      backend:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: '0.5'
-        reservations:
-          memory: 64M
-          cpus: '0.1'
     logging:
       driver: "json-file"
       options:
@@ -186,13 +181,11 @@ services:
 networks:
   consorcio-network:
     driver: bridge
-    name: consorcio-network-prod
 
 # ===========================================
 # VOLUMES
 # ===========================================
 volumes:
-  backend-cache:
-    name: consorcio-backend-cache-prod
+  postgres-data:
   redis-data:
-    name: consorcio-redis-data-prod
+  geo-data:
