@@ -2,7 +2,9 @@
  * JWT auth adapter — authenticates against our FastAPI backend.
  */
 
-import { API_URL } from '../api/core';
+import { API_URL, API_PREFIX } from '../api/core';
+
+const AUTH_BASE = `${API_URL}${API_PREFIX}`;
 import type {
   AuthAdapter,
   AuthSession,
@@ -43,7 +45,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     formData.append('username', credentials.email);
     formData.append('password', credentials.password);
 
-    const response = await fetch(`${API_URL}/auth/jwt/login`, {
+    const response = await fetch(`${AUTH_BASE}/auth/jwt/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: formData,
@@ -68,7 +70,7 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async register(credentials: RegisterCredentials): Promise<AuthSession> {
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch(`${AUTH_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -91,7 +93,7 @@ export class JWTAuthAdapter implements AuthAdapter {
 
   async loginWithGoogle(): Promise<void> {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = `${API_URL}/auth/google/authorize`;
+    window.location.href = `${AUTH_BASE}/auth/google/authorize`;
   }
 
   async logout(): Promise<void> {
@@ -99,7 +101,7 @@ export class JWTAuthAdapter implements AuthAdapter {
 
     if (token) {
       try {
-        await fetch(`${API_URL}/auth/jwt/logout`, {
+        await fetch(`${AUTH_BASE}/auth/jwt/logout`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -123,7 +125,7 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   private async fetchCurrentUser(token: string): Promise<AuthUser> {
-    const response = await fetch(`${API_URL}/users/me`, {
+    const response = await fetch(`${AUTH_BASE}/users/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
