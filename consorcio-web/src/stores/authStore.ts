@@ -6,21 +6,32 @@
  * when multiple components try to initialize auth simultaneously.
  * The initialization promise and auth listener registration are
  * tracked at the module level, not the store level.
+ *
+ * Auth is now backed by the JWT adapter (src/lib/auth/jwt-adapter.ts).
  */
 
-import type { Session, User } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearAuthTokenCache } from '../lib/api';
+import { authAdapter, type AuthUser } from '../lib/auth';
 import { logger } from '../lib/logger';
-import { parseUsuario, safeGetUserRole } from '../lib/typeGuards';
-import { type Usuario, getSupabaseClient } from '../lib/supabase';
+import { safeGetUserRole } from '../lib/typeGuards';
+import type { Usuario } from '../types';
 
 export type UserRole = 'ciudadano' | 'operador' | 'admin';
 
+/**
+ * Lightweight user object stored in the auth state.
+ * Replaces the former Supabase User type.
+ */
+export interface StoreUser {
+  id: string;
+  email: string;
+}
+
 interface AuthState {
-  user: User | null;
-  session: Session | null;
+  user: StoreUser | null;
+  session: { access_token: string } | null;
   profile: Usuario | null;
   loading: boolean;
   error: string | null;
@@ -29,8 +40,8 @@ interface AuthState {
 }
 
 interface AuthActions {
-  setUser: (user: User | null) => void;
-  setSession: (session: Session | null) => void;
+  setUser: (user: StoreUser | null) => void;
+  setSession: (session: { access_token: string } | null) => void;
   setProfile: (profile: Usuario | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -38,8 +49,6 @@ interface AuthActions {
   setHasHydrated: (hydrated: boolean) => void;
   reset: () => void;
   initialize: () => Promise<void>;
-  loadProfile: (userId: string) => Promise<Usuario | null>;
-  syncProfile: (user: User) => Promise<Usuario | null>;
 }
 
 const initialState: AuthState = {
@@ -87,6 +96,25 @@ const authStorage = createJSONStorage(() => {
   return storage;
 });
 
+/** Map AuthUser from JWT adapter to the store's Usuario type */
+function mapAuthUserToProfile(authUser: AuthUser): Usuario {
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    nombre: [authUser.nombre, authUser.apellido].filter(Boolean).join(' ') || undefined,
+    telefono: authUser.telefono || undefined,
+    rol: authUser.role,
+  };
+}
+
+/** Map AuthUser to the lightweight StoreUser */
+function mapAuthUserToStoreUser(authUser: AuthUser): StoreUser {
+  return {
+    id: authUser.id,
+    email: authUser.email,
+  };
+}
+
 export const useAuthStore = create<AuthState & AuthActions>()(
   persist(
     (set, get) => ({
@@ -105,76 +133,6 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         set({ ...initialState, loading: false, initialized: true, _hasHydrated: true });
       },
 
-      loadProfile: async (userId: string): Promise<Usuario | null> => {
-        try {
-          const { data, error } = await getSupabaseClient()
-            .from('perfiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-
-          if (error) {
-            logger.error('Error al cargar perfil:', error);
-            return null;
-          }
-
-          // Validate API response at runtime
-          const profile = parseUsuario(data);
-          if (!profile) {
-            logger.error('Invalid profile data from API:', data);
-            return null;
-          }
-
-          return profile;
-        } catch (err) {
-          logger.error('Error al cargar perfil:', err);
-          return null;
-        }
-      },
-
-      syncProfile: async (user: User): Promise<Usuario | null> => {
-        const { loadProfile } = get();
-        try {
-          let profile = await loadProfile(user.id);
-
-          if (!profile) {
-            const newProfile: Usuario = {
-              id: user.id,
-              email: user.email || '',
-              nombre: user.user_metadata?.full_name || user.user_metadata?.name || '',
-              rol: 'ciudadano',
-            };
-
-            const { data, error } = await getSupabaseClient()
-              .from('perfiles')
-              .insert(newProfile)
-              .select()
-              .single();
-
-            if (error) {
-              if (error.code === '23505') {
-                profile = await loadProfile(user.id);
-              } else {
-                logger.error('Error al crear perfil:', error);
-                return null;
-              }
-            } else {
-              // Validate API response at runtime
-              profile = parseUsuario(data);
-              if (!profile) {
-                logger.error('Invalid profile data after creation:', data);
-                return null;
-              }
-            }
-          }
-
-          return profile;
-        } catch (err) {
-          logger.error('Error al sincronizar perfil:', err);
-          return null;
-        }
-      },
-
       initialize: async () => {
         // If already initialized, return immediately
         const { initialized } = get();
@@ -188,22 +146,18 @@ export const useAuthStore = create<AuthState & AuthActions>()(
 
         // Create the initialization promise
         initializationPromise = (async () => {
-          const { syncProfile } = get();
           set({ loading: true });
 
           try {
-            const {
-              data: { session },
-              error,
-            } = await getSupabaseClient().auth.getSession();
-
-            if (error) throw error;
+            const session = await authAdapter.getSession();
 
             if (session?.user) {
-              const profile = await syncProfile(session.user);
+              const profile = mapAuthUserToProfile(session.user);
+              const storeUser = mapAuthUserToStoreUser(session.user);
+
               set({
-                user: session.user,
-                session,
+                user: storeUser,
+                session: { access_token: session.access_token },
                 profile,
                 loading: false,
                 initialized: true,
@@ -224,16 +178,14 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             if (!authListenerRegistered) {
               authListenerRegistered = true;
 
-              const {
-                data: { subscription },
-              } = getSupabaseClient().auth.onAuthStateChange(async (event, newSession) => {
-                const currentState = get();
-
+              authListenerUnsubscribe = authAdapter.onAuthStateChange((event, newSession) => {
                 if (event === 'SIGNED_IN' && newSession?.user) {
-                  const profile = await currentState.syncProfile(newSession.user);
+                  const profile = mapAuthUserToProfile(newSession.user);
+                  const storeUser = mapAuthUserToStoreUser(newSession.user);
+
                   set({
-                    user: newSession.user,
-                    session: newSession,
+                    user: storeUser,
+                    session: { access_token: newSession.access_token },
                     profile,
                     loading: false,
                     error: null,
@@ -249,11 +201,9 @@ export const useAuthStore = create<AuthState & AuthActions>()(
                   });
                 } else if (event === 'TOKEN_REFRESHED' && newSession) {
                   clearAuthTokenCache(); // Clear cache so new token is fetched
-                  set({ session: newSession });
+                  set({ session: { access_token: newSession.access_token } });
                 }
               });
-
-              authListenerUnsubscribe = subscription.unsubscribe;
             }
           } catch (err) {
             logger.error('Error al inicializar auth:', err);

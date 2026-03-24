@@ -2,7 +2,7 @@
  * Core API module - Base fetch function, auth token handling, API configuration.
  */
 
-import { getSupabaseClient } from '../supabase';
+import { authAdapter } from '../auth';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility
@@ -21,30 +21,19 @@ const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 /**
- * Get the current authentication token from Supabase session.
- * Caches the token respecting both the cache TTL and the actual JWT expiry.
+ * Get the current authentication token from JWT adapter.
+ * Caches the token respecting the cache TTL.
  */
 export async function getAuthToken(): Promise<string | null> {
   try {
-    // Check cache first
     if (cachedToken && Date.now() < cachedToken.expiresAt) {
       return cachedToken.token;
     }
 
-    const {
-      data: { session },
-    } = await getSupabaseClient().auth.getSession();
-    const token = session?.access_token || null;
+    const token = await authAdapter.getAccessToken();
 
-    // Cache the token if valid, respecting JWT expiry
-    if (token && session?.expires_at) {
-      const expiresAt = Math.min(Date.now() + TOKEN_CACHE_TTL, session.expires_at * 1000 - 30_000);
-      cachedToken = { token, expiresAt };
-    } else if (token) {
-      cachedToken = {
-        token,
-        expiresAt: Date.now() + TOKEN_CACHE_TTL,
-      };
+    if (token) {
+      cachedToken = { token, expiresAt: Date.now() + TOKEN_CACHE_TTL };
     } else {
       cachedToken = null;
     }

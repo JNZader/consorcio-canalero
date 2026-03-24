@@ -27,7 +27,6 @@
  * ```
  */
 
-import type { Session, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
 import {
@@ -37,17 +36,17 @@ import {
   signUpWithEmail,
   type AuthResult,
 } from '../lib/auth';
-import type { Usuario } from '../lib/supabase';
-import { useAuthStore, type UserRole } from '../stores/authStore';
+import type { Usuario } from '../types';
+import { useAuthStore, type UserRole, type StoreUser } from '../stores/authStore';
 
 /**
  * Auth state returned by useAuth hook
  */
 export interface UseAuthState {
-  /** Supabase user object */
-  user: User | null;
-  /** Supabase session object */
-  session: Session | null;
+  /** User object */
+  user: StoreUser | null;
+  /** Session object */
+  session: { access_token: string } | null;
   /** User profile from database */
   profile: Usuario | null;
   /** Whether auth is currently loading */

@@ -1,12 +1,12 @@
-import type { AuthError } from '@supabase/supabase-js';
-import { getSupabaseClient } from './supabase';
+/**
+ * Authentication helper functions.
+ * Now backed by the JWT auth adapter instead of Supabase.
+ */
+
+import { authAdapter } from './auth/index';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
-import { withBasePath } from './basePath';
 import { useAuthStore, type UserRole } from '../stores/authStore';
-
-// Helper para obtener cliente de forma segura
-const getClient = () => getSupabaseClient();
 
 // Re-export types from store for backwards compatibility
 export type { UserRole };
@@ -36,27 +36,18 @@ export function useAuth() {
  */
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
   try {
-    const { data, error } = await getClient().auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
-    }
+    const session = await authAdapter.login({ email, password });
 
     return {
       success: true,
-      user: data.user ?? undefined,
+      user: { id: session.user.id, email: session.user.email },
     };
   } catch (err) {
-    logger.error('Error inesperado al iniciar sesion:', err);
+    const message = err instanceof Error ? err.message : 'Error inesperado al iniciar sesion';
+    logger.error('Error al iniciar sesion:', err);
     return {
       success: false,
-      error: 'Error inesperado al iniciar sesion',
+      error: translateAuthError(message),
     };
   }
 }
@@ -70,37 +61,24 @@ export async function signUpWithEmail(
   nombre?: string
 ): Promise<AuthResult> {
   try {
-    const { data, error } = await getClient().auth.signUp({
+    const session = await authAdapter.register({
       email,
       password,
-      options: {
-        data: {
-          full_name: nombre,
-        },
-      },
+      nombre: nombre || '',
+      apellido: '',
     });
-
-    if (error) {
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
-    }
-
-    // Verificar si necesita confirmacion de email
-    // data.user existe pero data.session es null cuando requiere confirmacion
-    const needsEmailConfirmation = Boolean(data.user && !data.session);
 
     return {
       success: true,
-      user: data.user ?? undefined,
-      needsEmailConfirmation,
+      user: { id: session.user.id, email: session.user.email },
+      needsEmailConfirmation: false,
     };
   } catch (err) {
-    logger.error('Error inesperado al crear cuenta:', err);
+    const message = err instanceof Error ? err.message : 'Error inesperado al crear cuenta';
+    logger.error('Error al crear cuenta:', err);
     return {
       success: false,
-      error: 'Error inesperado al crear cuenta',
+      error: translateAuthError(message),
     };
   }
 }
@@ -111,33 +89,11 @@ export async function signUpWithEmail(
 export async function signInWithGoogle(): Promise<AuthResult> {
   logger.debug('[AUTH] signInWithGoogle called');
   try {
-    const client = getClient();
-    const redirectUrl = `${globalThis.location.origin}${withBasePath('/auth/callback')}`;
-    logger.debug('[AUTH] Redirect URL:', redirectUrl);
-
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-      },
-    });
-
-    logger.debug('[AUTH] signInWithOAuth response:', { hasData: !!data, hasError: !!error });
-
-    if (error) {
-      logger.warn('[AUTH] OAuth error:', error.message);
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
-    }
-
-    // OAuth redirige automaticamente, no retorna usuario directamente
-    return {
-      success: true,
-    };
+    await authAdapter.loginWithGoogle();
+    // OAuth redirects automatically, won't return a user directly
+    return { success: true };
   } catch (err) {
-    logger.error('Error inesperado al conectar con Google:', err);
+    logger.error('Error al conectar con Google:', err);
     return {
       success: false,
       error: 'Error inesperado al conectar con Google',
@@ -150,11 +106,7 @@ export async function signInWithGoogle(): Promise<AuthResult> {
  */
 export async function signOut(): Promise<AuthResult> {
   try {
-    const { error } = await getClient().auth.signOut({ scope: 'local' });
-
-    if (error) {
-      logger.warn('Error al cerrar sesion en Supabase, se fuerza limpieza local:', error);
-    }
+    await authAdapter.logout();
 
     // Limpiar estado del store y localStorage
     useAuthStore.getState().reset();
@@ -164,51 +116,27 @@ export async function signOut(): Promise<AuthResult> {
       localStorage.removeItem('cc-auth-storage');
     }
 
-    return {
-      success: !error,
-      error: error ? translateAuthError(error) : undefined,
-    };
+    return { success: true };
   } catch (err) {
-    logger.error('Error inesperado al cerrar sesion:', err);
+    logger.error('Error al cerrar sesion:', err);
 
-    // Fallback defensivo: limpiar estado local aunque falle Supabase
+    // Fallback defensivo: limpiar estado local aunque falle el backend
     useAuthStore.getState().reset();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cc-auth-storage');
     }
 
-    return {
-      success: true,
-    };
+    return { success: true };
   }
 }
 
 /**
- * Obtener el rol del usuario actual con validacion en tiempo de ejecucion
+ * Obtener el rol del usuario actual con validacion en tiempo de ejecucion.
+ * Now reads from the auth store profile instead of querying Supabase directly.
  */
-export async function getUserRole(userId: string): Promise<UserRole | null> {
-  try {
-    const { data, error } = await getClient()
-      .from('perfiles')
-      .select('rol')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      logger.error('Error al obtener rol:', error);
-      return null;
-    }
-
-    // Validate the role at runtime instead of blindly asserting
-    const role = safeGetUserRole(data?.rol);
-    if (!role) {
-      logger.warn('Invalid role received from API:', data?.rol);
-    }
-    return role;
-  } catch (err) {
-    logger.error('Error al obtener rol:', err);
-    return null;
-  }
+export async function getUserRole(_userId: string): Promise<UserRole | null> {
+  const profile = useAuthStore.getState().profile;
+  return safeGetUserRole(profile?.rol);
 }
 
 /**
@@ -234,92 +162,60 @@ export async function isOperadorOrAdmin(userId: string): Promise<boolean> {
 }
 
 /**
- * Traducir errores de autenticacion de Supabase a espanol
+ * Traducir errores de autenticacion a espanol
  */
-function translateAuthError(error: AuthError): string {
+function translateAuthError(message: string): string {
   const errorMessages: Record<string, string> = {
     'Invalid login credentials': 'Email o contrasena incorrectos',
+    'LOGIN_BAD_CREDENTIALS': 'Email o contrasena incorrectos',
     'Email not confirmed': 'Debes confirmar tu email antes de iniciar sesion',
     'User already registered': 'Este email ya esta registrado',
+    'REGISTER_USER_ALREADY_EXISTS': 'Este email ya esta registrado',
     'Password should be at least 6 characters': 'La contrasena debe tener al menos 6 caracteres',
     'Unable to validate email address: invalid format': 'Formato de email invalido',
     'Signup requires a valid password': 'Se requiere una contrasena valida',
     'User not found': 'Usuario no encontrado',
     'Email rate limit exceeded': 'Demasiados intentos. Intenta de nuevo mas tarde',
-    'For security purposes, you can only request this once every 60 seconds':
-      'Por seguridad, solo puedes intentar esto una vez cada 60 segundos',
-    'New password should be different from the old password':
-      'La nueva contrasena debe ser diferente a la anterior',
+    'Error al iniciar sesion': 'Email o contrasena incorrectos',
+    'Error al registrarse': 'Error al crear la cuenta',
   };
 
   // Buscar traduccion exacta
-  if (errorMessages[error.message]) {
-    return errorMessages[error.message];
+  if (errorMessages[message]) {
+    return errorMessages[message];
   }
 
   // Buscar traduccion parcial
   for (const [key, value] of Object.entries(errorMessages)) {
-    if (error.message.toLowerCase().includes(key.toLowerCase())) {
+    if (message.toLowerCase().includes(key.toLowerCase())) {
       return value;
     }
   }
 
   // Retornar mensaje original si no hay traduccion
-  return error.message || 'Error de autenticacion';
+  return message || 'Error de autenticacion';
 }
 
 /**
- * Enviar email para restablecer contrasena
+ * Enviar email para restablecer contrasena.
+ * NOTE: Password reset via the backend is not yet implemented in the JWT adapter.
+ * This is a placeholder that returns an appropriate message.
  */
-export async function resetPassword(email: string): Promise<AuthResult> {
-  try {
-    const { error } = await getClient().auth.resetPasswordForEmail(email, {
-      redirectTo: `${globalThis.location.origin}${withBasePath('/auth/reset-password')}`,
-    });
-
-    if (error) {
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
-    }
-
-    return {
-      success: true,
-    };
-  } catch (err) {
-    logger.error('Error inesperado al enviar email de recuperacion:', err);
-    return {
-      success: false,
-      error: 'Error inesperado al enviar email de recuperacion',
-    };
-  }
+export async function resetPassword(_email: string): Promise<AuthResult> {
+  return {
+    success: false,
+    error: 'La funcion de restablecer contrasena aun no esta disponible con el nuevo sistema de autenticacion.',
+  };
 }
 
 /**
- * Actualizar contrasena del usuario
+ * Actualizar contrasena del usuario.
+ * NOTE: Password update via the backend is not yet implemented in the JWT adapter.
+ * This is a placeholder that returns an appropriate message.
  */
-export async function updatePassword(newPassword: string): Promise<AuthResult> {
-  try {
-    const { error } = await getClient().auth.updateUser({
-      password: newPassword,
-    });
-
-    if (error) {
-      return {
-        success: false,
-        error: translateAuthError(error),
-      };
-    }
-
-    return {
-      success: true,
-    };
-  } catch (err) {
-    logger.error('Error inesperado al actualizar contrasena:', err);
-    return {
-      success: false,
-      error: 'Error inesperado al actualizar contrasena',
-    };
-  }
+export async function updatePassword(_newPassword: string): Promise<AuthResult> {
+  return {
+    success: false,
+    error: 'La funcion de cambiar contrasena aun no esta disponible con el nuevo sistema de autenticacion.',
+  };
 }
