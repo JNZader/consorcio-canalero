@@ -2,7 +2,7 @@
  * Core API module - Base fetch function, auth token handling, API configuration.
  */
 
-import { authAdapter } from '../auth';
+import { authAdapter } from '../auth/index';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility

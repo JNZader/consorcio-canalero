@@ -13,7 +13,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearAuthTokenCache } from '../lib/api';
-import { authAdapter, type AuthUser } from '../lib/auth';
+import { authAdapter, type AuthUser } from '../lib/auth/index';
 import { logger } from '../lib/logger';
 import { safeGetUserRole } from '../lib/typeGuards';
 import type { Usuario } from '../types';
@@ -178,7 +178,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             if (!authListenerRegistered) {
               authListenerRegistered = true;
 
-              authListenerUnsubscribe = authAdapter.onAuthStateChange((event, newSession) => {
+              authListenerUnsubscribe = authAdapter.onAuthStateChange((event: string, newSession: { access_token: string; user: AuthUser } | null) => {
                 if (event === 'SIGNED_IN' && newSession?.user) {
                   const profile = mapAuthUserToProfile(newSession.user);
                   const storeUser = mapAuthUserToStoreUser(newSession.user);
