@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     gee_service_account_key: Optional[str] = None
     gee_project_id: str = "cc10demayo"
 
+    # Database (PostgreSQL + PostGIS)
+    database_url: str = "postgresql://consorcio:consorcio_dev@localhost:5432/consorcio"
+    database_echo: bool = False
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
