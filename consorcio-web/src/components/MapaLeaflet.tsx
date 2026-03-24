@@ -769,7 +769,7 @@ export default function MapaLeaflet() {
           {/* Activos de Infraestructura Registrados - grouped in a single overlay */}
           <LayersControl.Overlay checked name="Activos de Infraestructura">
             <FeatureGroup>
-              {assets.map((asset) => {
+              {(assets || []).map((asset) => {
                 const assetColor =
                   asset.tipo === 'puente'
                     ? '#f03e3e'

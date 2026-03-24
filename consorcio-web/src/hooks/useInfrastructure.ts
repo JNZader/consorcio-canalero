@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, unwrapItems } from '../lib/api';
 import type { FeatureCollection } from 'geojson';
 
 export interface InfrastructureAsset {
@@ -24,7 +24,7 @@ export function useInfrastructure() {
     setLoading(true);
     try {
       const [assetsData, intersectionsData] = await Promise.all([
-        apiFetch<InfrastructureAsset[]>('/infraestructura/assets'),
+        apiFetch('/infraestructura/assets').then((res) => unwrapItems<InfrastructureAsset>(res)),
         apiFetch<FeatureCollection>('/geo/intelligence/conflictos'),
       ]);
       setAssets(assetsData);

@@ -2,15 +2,15 @@
  * Layers API module - Vector layers management.
  */
 
-import { apiFetch, getAuthToken, API_URL, API_PREFIX, LONG_TIMEOUT } from './core';
+import { apiFetch, getAuthToken, API_URL, API_PREFIX, LONG_TIMEOUT, unwrapItems } from './core';
 import type { Layer } from '../../types';
 
 export const layersApi = {
   /**
    * Obtener todas las capas.
    */
-  getAll: (visibleOnly = false): Promise<Layer[]> =>
-    apiFetch(`/capas?visible_only=${visibleOnly}`),
+  getAll: async (visibleOnly = false): Promise<Layer[]> =>
+    unwrapItems<Layer>(await apiFetch(`/capas?visible_only=${visibleOnly}`)),
 
   /**
    * Obtener una capa.

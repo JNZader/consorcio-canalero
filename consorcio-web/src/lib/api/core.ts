@@ -132,6 +132,18 @@ export const healthCheck = async (): Promise<boolean> => {
 };
 
 /**
+ * Unwrap a potentially paginated response to get the items array.
+ * Handles both plain arrays and {items: T[]} responses.
+ */
+export function unwrapItems<T>(data: T[] | { items: T[] } | unknown): T[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && 'items' in (data as any)) {
+    return (data as any).items ?? [];
+  }
+  return [];
+}
+
+/**
  * Helper function to get Accept header for export format.
  * Avoids nested ternary operators (SonarQube S3358).
  */
