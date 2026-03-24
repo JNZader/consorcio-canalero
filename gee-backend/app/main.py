@@ -67,8 +67,8 @@ app = FastAPI(
     description="API para gestion territorial y operativa de consorcios canaleros",
     version=APP_VERSION,
     lifespan=lifespan,
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
 )
 
 

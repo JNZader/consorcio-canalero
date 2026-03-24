@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     )
     api_prefix: str = "/api/v2"
     debug: bool = False
+    enable_docs: bool = True
     frontend_url: str = "http://localhost:5173"
 
     @property
