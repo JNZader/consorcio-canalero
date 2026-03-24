@@ -1,0 +1,145 @@
+"""Application middleware — rate limiting, security, CSRF, logging."""
+
+import time
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.config import settings
+from app.core.logging import get_logger
+from app.core.rate_limit import DistributedRateLimiter
+
+logger = get_logger(__name__)
+
+
+class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
+    """Rate limiting middleware using distributed rate limiter with Redis."""
+
+    def __init__(self, app, rate_limiter: DistributedRateLimiter):
+        super().__init__(app)
+        self.rate_limiter = rate_limiter
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in ["/", "/health"]:
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        allowed, remaining, reset_time = await self.rate_limiter.check(client_ip)
+
+        if not allowed:
+            logger.warning(
+                "Rate limit exceeded",
+                client_ip=client_ip,
+                path=request.url.path,
+            )
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "message": "Demasiadas solicitudes. Intenta de nuevo mas tarde.",
+                        "details": {"retry_after": reset_time},
+                    }
+                },
+                headers={
+                    "Retry-After": str(reset_time),
+                    "X-RateLimit-Limit": str(self.rate_limiter.max_requests),
+                    "X-RateLimit-Remaining": str(remaining),
+                    "X-RateLimit-Reset": str(reset_time),
+                },
+            )
+
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(self.rate_limiter.max_requests)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_time)
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """CSRF protection: JSON Content-Type + Origin validation."""
+
+    CSRF_EXEMPT_PATHS: list[str] = []
+    UPLOAD_PATHS: set[str] = {"/api/v1/public/upload-photo", "/api/v1/layers/upload"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method not in ["POST", "PUT", "DELETE", "PATCH"]:
+            return await call_next(request)
+
+        if request.url.path in ["/", "/health"]:
+            return await call_next(request)
+
+        if any(request.url.path.startswith(path) for path in self.CSRF_EXEMPT_PATHS):
+            return await call_next(request)
+
+        origin = request.headers.get("origin")
+        if origin and origin not in settings.cors_origins_list:
+            logger.warning("CSRF: Invalid origin", origin=origin, path=request.url.path)
+            return JSONResponse(
+                status_code=403,
+                content={"error": {"code": "CSRF_INVALID_ORIGIN", "message": "Origin not allowed"}},
+            )
+
+        content_type = request.headers.get("content-type", "")
+        is_multipart = "multipart/form-data" in content_type
+        is_json = "application/json" in content_type
+
+        if not is_multipart and not is_json and request.url.path not in self.UPLOAD_PATHS:
+            return JSONResponse(
+                status_code=415,
+                content={"error": {"code": "INVALID_CONTENT_TYPE", "message": "Content-Type must be application/json"}},
+            )
+
+        return await call_next(request)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log all incoming requests and their responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in ["/", "/health"]:
+            return await call_next(request)
+
+        start_time = time.time()
+
+        logger.info(
+            "Request started",
+            method=request.method,
+            path=request.url.path,
+            client_ip=request.client.host if request.client else "unknown",
+        )
+
+        try:
+            response = await call_next(request)
+            duration_ms = round((time.time() - start_time) * 1000, 2)
+            logger.info(
+                "Request completed",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            return response
+        except Exception as e:
+            duration_ms = round((time.time() - start_time) * 1000, 2)
+            logger.error(
+                "Request failed",
+                method=request.method,
+                path=request.url.path,
+                error=str(e),
+                duration_ms=duration_ms,
+            )
+            raise
