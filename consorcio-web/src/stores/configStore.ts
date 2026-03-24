@@ -55,8 +55,16 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const config = await configApi.getSystemConfig();
-      set({ config, loading: false, initialized: true });
+      const apiConfig = await configApi.getSystemConfig();
+      // Merge API response with defaults — API may not have map/cuencas/analysis
+      const merged = {
+        ...DEFAULT_CONFIG,
+        ...apiConfig,
+        map: apiConfig?.map ?? DEFAULT_CONFIG.map,
+        cuencas: apiConfig?.cuencas ?? DEFAULT_CONFIG.cuencas,
+        analysis: apiConfig?.analysis ?? DEFAULT_CONFIG.analysis,
+      };
+      set({ config: merged, loading: false, initialized: true });
     } catch (err) {
       logger.error('Failed to fetch system configuration, using defaults:', err);
       set({
