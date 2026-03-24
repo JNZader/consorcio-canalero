@@ -29,19 +29,14 @@ from app.domains.geo.models import (
     TipoGeoJob,
     TipoGeoLayer,
 )
-from app.domains.geo.processing import (
-    classify_terrain as _classify_terrain,
-    clip_dem as _clip_dem,
-    compute_aspect as _compute_aspect,
-    compute_flow_accumulation as _compute_flow_accumulation,
-    compute_flow_direction as _compute_flow_direction,
-    compute_hand as _compute_hand,
-    compute_slope as _compute_slope,
-    compute_twi as _compute_twi,
-    extract_drainage_network as _extract_drainage_network,
-    fill_sinks as _fill_sinks,
-)
 from app.domains.geo.repository import GeoRepository
+
+
+def _get_processing():
+    """Lazy import of processing module — only available in geo-worker container."""
+    from app.domains.geo import processing
+
+    return processing
 
 logger = structlog.get_logger(__name__)
 
@@ -184,7 +179,7 @@ def process_dem_pipeline(
         # 1. Clip ----------------------------------------------------------
         if bbox:
             clipped = str(output_dir / "dem_clipped.tif")
-            _run_step(job_id, "clip_dem", _clip_dem, (dem_path, tuple(bbox), clipped))
+            _run_step(job_id, "clip_dem", _get_processing().clip_dem, (dem_path, tuple(bbox), clipped))
             working_dem = clipped
             outputs["clipped_dem"] = clipped
         else:
@@ -193,13 +188,13 @@ def process_dem_pipeline(
 
         # 2. Fill sinks ----------------------------------------------------
         filled = str(output_dir / "dem_filled.tif")
-        _run_step(job_id, "fill_sinks", _fill_sinks, (working_dem, filled))
+        _run_step(job_id, "fill_sinks", _get_processing().fill_sinks, (working_dem, filled))
         outputs["filled_dem"] = filled
         _progress()
 
         # 3. Slope ---------------------------------------------------------
         slope = str(output_dir / "slope.tif")
-        _run_step(job_id, "compute_slope", _compute_slope, (filled, slope))
+        _run_step(job_id, "compute_slope", _get_processing().compute_slope, (filled, slope))
         outputs["slope"] = slope
         _register_layer(
             nombre=f"slope_{area_id}",
@@ -211,7 +206,7 @@ def process_dem_pipeline(
 
         # 4. Aspect --------------------------------------------------------
         aspect = str(output_dir / "aspect.tif")
-        _run_step(job_id, "compute_aspect", _compute_aspect, (filled, aspect))
+        _run_step(job_id, "compute_aspect", _get_processing().compute_aspect, (filled, aspect))
         outputs["aspect"] = aspect
         _register_layer(
             nombre=f"aspect_{area_id}",
@@ -224,7 +219,7 @@ def process_dem_pipeline(
         # 5. Flow direction ------------------------------------------------
         flow_dir = str(output_dir / "flow_dir.tif")
         _run_step(
-            job_id, "compute_flow_direction", _compute_flow_direction, (filled, flow_dir)
+            job_id, "compute_flow_direction", _get_processing().compute_flow_direction, (filled, flow_dir)
         )
         outputs["flow_dir"] = flow_dir
         _register_layer(
@@ -240,7 +235,7 @@ def process_dem_pipeline(
         _run_step(
             job_id,
             "compute_flow_accumulation",
-            _compute_flow_accumulation,
+            _get_processing().compute_flow_accumulation,
             (flow_dir, flow_acc),
         )
         outputs["flow_acc"] = flow_acc
@@ -254,7 +249,7 @@ def process_dem_pipeline(
 
         # 7. TWI -----------------------------------------------------------
         twi = str(output_dir / "twi.tif")
-        _run_step(job_id, "compute_twi", _compute_twi, (slope, flow_acc, twi))
+        _run_step(job_id, "compute_twi", _get_processing().compute_twi, (slope, flow_acc, twi))
         outputs["twi"] = twi
         _register_layer(
             nombre=f"twi_{area_id}",
@@ -267,7 +262,7 @@ def process_dem_pipeline(
         # 8. HAND ----------------------------------------------------------
         hand = str(output_dir / "hand.tif")
         _run_step(
-            job_id, "compute_hand", _compute_hand, (filled, flow_dir, flow_acc, hand)
+            job_id, "compute_hand", _get_processing().compute_hand, (filled, flow_dir, flow_acc, hand)
         )
         outputs["hand"] = hand
         _register_layer(
@@ -283,7 +278,7 @@ def process_dem_pipeline(
         _run_step(
             job_id,
             "extract_drainage_network",
-            _extract_drainage_network,
+            _get_processing().extract_drainage_network,
             (flow_acc, 1000, drainage),
         )
         outputs["drainage"] = drainage
@@ -301,7 +296,7 @@ def process_dem_pipeline(
         _run_step(
             job_id,
             "classify_terrain",
-            _classify_terrain,
+            _get_processing().classify_terrain,
             (slope, twi, flow_acc, terrain_class),
         )
         outputs["terrain_class"] = terrain_class
@@ -343,7 +338,7 @@ def compute_slope(dem_path: str, output_path: str, job_id: str | None = None) ->
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_slope(dem_path, output_path)
+        result = _get_processing().compute_slope(dem_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -359,7 +354,7 @@ def compute_aspect(dem_path: str, output_path: str, job_id: str | None = None) -
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_aspect(dem_path, output_path)
+        result = _get_processing().compute_aspect(dem_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -377,7 +372,7 @@ def compute_flow_direction(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_flow_direction(dem_path, output_path)
+        result = _get_processing().compute_flow_direction(dem_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -395,7 +390,7 @@ def compute_flow_accumulation(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_flow_accumulation(dem_path, output_path)
+        result = _get_processing().compute_flow_accumulation(dem_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -416,7 +411,7 @@ def compute_twi(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_twi(slope_path, flow_acc_path, output_path)
+        result = _get_processing().compute_twi(slope_path, flow_acc_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -437,7 +432,7 @@ def compute_hand(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _compute_hand(dem_path, drainage_path, output_path, output_path)
+        result = _get_processing().compute_hand(dem_path, drainage_path, output_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -458,7 +453,7 @@ def extract_drainage_network(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _extract_drainage_network(flow_acc_path, threshold, output_path)
+        result = _get_processing().extract_drainage_network(flow_acc_path, threshold, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
@@ -480,7 +475,7 @@ def classify_terrain(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _classify_terrain(slope_path, twi_path, flow_acc_path, output_path)
+        result = _get_processing().classify_terrain(slope_path, twi_path, flow_acc_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}

@@ -11,7 +11,6 @@ from datetime import date
 from celery.utils.log import get_task_logger
 
 from app.core.celery_app import celery_app
-from app.services.monitoring_service import get_monitoring_service
 
 logger = get_task_logger(__name__)
 
@@ -33,6 +32,7 @@ def analyze_flood_task(
         start_date = date.fromisoformat(start_date_str)
         end_date = date.fromisoformat(end_date_str)
 
+        from app.services.monitoring_service import get_monitoring_service
         monitoring = get_monitoring_service()
 
         result = monitoring.classify_parcels(
@@ -61,6 +61,7 @@ def supervised_classification_task(self, start_date_str: str, end_date_str: str)
         start_date = date.fromisoformat(start_date_str)
         end_date = date.fromisoformat(end_date_str)
 
+        from app.services.monitoring_service import get_monitoring_service
         monitoring = get_monitoring_service()
 
         result = monitoring.classify_parcels_by_cuenca(

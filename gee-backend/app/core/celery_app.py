@@ -15,7 +15,6 @@ celery_app = Celery(
     broker=REDIS_URL,
     backend=REDIS_URL,
     include=[
-        "app.services.gee_analysis_tasks",
         "app.domains.geo.tasks",
         "app.domains.geo.gee_tasks",
         "app.domains.geo.intelligence.tasks",
