@@ -23,6 +23,8 @@ geojson>=3.2.0
 shapely>=2.0.0
 
 # Auth
+fastapi-users[sqlalchemy]>=13.0.0
+httpx-oauth>=0.16.0
 python-jose[cryptography]>=3.4.0
 
 # Utils

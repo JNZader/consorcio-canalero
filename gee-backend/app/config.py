@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     gee_service_account_key: Optional[str] = None
     gee_project_id: str = "cc10demayo"
 
+    # Auth (JWT + OAuth)
+    jwt_secret: str = "CHANGE-ME-IN-PRODUCTION"
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+
     # Database (PostgreSQL + PostGIS)
     database_url: str = "postgresql://consorcio:consorcio_dev@localhost:5432/consorcio"
     database_echo: bool = False
