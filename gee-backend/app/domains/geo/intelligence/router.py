@@ -27,11 +27,15 @@ from app.domains.geo.intelligence.schemas import (
     ZonificacionRequest,
     ZonificacionResponse,
 )
-from app.domains.geo.intelligence import service as intel_service
-
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Intelligence"])
+
+
+def _get_intel_service():
+    """Lazy import to avoid loading geopandas at startup."""
+    from app.domains.geo.intelligence import service as intel_service
+    return intel_service
 
 
 def _get_repo() -> IntelligenceRepository:
@@ -56,7 +60,7 @@ def get_dashboard(
     _user=Depends(_require_operator()),
 ):
     """Get the aggregated operational intelligence dashboard."""
-    return intel_service.get_dashboard(db)
+    return _get_intel_service().get_dashboard(db)
 
 
 # ──────────────────────────────────────────────
@@ -72,7 +76,7 @@ def calculate_hci(
 ):
     """Calculate the Hydric Criticality Index for a zone."""
     try:
-        result = intel_service.calculate_hci_for_zone(
+        result = _get_intel_service().calculate_hci_for_zone(
             db,
             payload.zona_id,
             pendiente_media=payload.pendiente_media,
@@ -183,7 +187,7 @@ def run_escorrentia(
             detail="Se requieren capas de flow_dir y flow_acc procesadas previamente",
         )
 
-    result = intel_service.run_runoff_simulation(
+    result = _get_intel_service().run_runoff_simulation(
         db,
         punto=tuple(payload.punto_inicio),
         lluvia_mm=payload.lluvia_mm,
@@ -299,5 +303,5 @@ def evaluate_alertas(
     _user=Depends(_require_operator()),
 ):
     """Evaluate alert conditions and create new alerts if thresholds are exceeded."""
-    result = intel_service.check_alerts(db)
+    result = _get_intel_service().check_alerts(db)
     return result
