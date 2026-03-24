@@ -1,7 +1,7 @@
 """add denuncias tables
 
 Revision ID: 51f85c264771
-Revises:
+Revises: 00a1b2c3d4e5
 Create Date: 2026-03-23
 """
 
@@ -14,7 +14,7 @@ from geoalchemy2 import Geometry
 
 # revision identifiers, used by Alembic.
 revision: str = "51f85c264771"
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = "00a1b2c3d4e5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
