@@ -43,6 +43,7 @@ export {
   clearAuthTokenCache,
   healthCheck,
   getExportAcceptHeader,
+  unwrapItems,
 } from './api/core';
 export type { ApiFetchOptions } from './api/core';
 
