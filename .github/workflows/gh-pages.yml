@@ -35,8 +35,6 @@ jobs:
         run: npx vite build --base /
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       # SPA fallback: copy index.html as 404.html so GH Pages
       # serves the app for any route instead of a 404 error
       - run: cp dist/index.html dist/404.html

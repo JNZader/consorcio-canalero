@@ -55,7 +55,7 @@ async def check_redis_health() -> Dict[str, Any]:
 async def check_gee_health() -> Dict[str, Any]:
     """Check Google Earth Engine connection health."""
     try:
-        from app.services.gee_service import _gee_initialized
+        from app.domains.geo.gee_service import _gee_initialized
 
         if _gee_initialized:
             return {"status": "healthy", "project": settings.gee_project_id}

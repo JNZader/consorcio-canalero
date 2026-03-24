@@ -4,9 +4,12 @@ Celery tasks for Google Earth Engine analysis.
 Handles long-running GEE operations in the background.
 These tasks run on the DEFAULT queue (not geo queue) because GEE
 is cloud-based, not GDAL-based — no heavy local computation needed.
-"""
 
-from datetime import date
+NOTE: classify_parcels and classify_parcels_by_cuenca were part of the
+legacy MonitoringService (app.services.monitoring_service) which has been
+removed. These tasks are stubs until the classification logic is migrated
+into app.domains.geo.
+"""
 
 from celery.utils.log import get_task_logger
 
@@ -21,55 +24,29 @@ def analyze_flood_task(
 ):
     """
     Async task to analyze floods using SAR and Optical data.
-    Uses classify_parcels which performs multi-index classification
-    including flood/waterlogging detection.
+    Currently a stub — classify_parcels needs migration to domain architecture.
     """
-    logger.info(
-        f"Starting flood analysis: {start_date_str} to {end_date_str} using {method}"
+    logger.warning(
+        f"analyze_flood_task called ({start_date_str} to {end_date_str}, {method}) "
+        "but classify_parcels is not yet migrated to domain architecture."
     )
-
-    try:
-        start_date = date.fromisoformat(start_date_str)
-        end_date = date.fromisoformat(end_date_str)
-
-        from app.services.monitoring_service import get_monitoring_service
-        monitoring = get_monitoring_service()
-
-        result = monitoring.classify_parcels(
-            start_date=start_date,
-            end_date=end_date,
-            layer_name="zona",
-        )
-
-        logger.info("Flood analysis completed successfully")
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in flood analysis task: {str(e)}")
-        raise e
+    raise NotImplementedError(
+        "classify_parcels not yet migrated to domain architecture. "
+        "Legacy app.services.monitoring_service has been removed."
+    )
 
 
 @celery_app.task(name="gee.supervised_classification", bind=True)
 def supervised_classification_task(self, start_date_str: str, end_date_str: str):
     """
     Async task for land use classification.
-    Uses classify_parcels_by_cuenca for per-watershed classification.
+    Currently a stub — classify_parcels_by_cuenca needs migration to domain architecture.
     """
-    logger.info(f"Starting classification task: {start_date_str} to {end_date_str}")
-
-    try:
-        start_date = date.fromisoformat(start_date_str)
-        end_date = date.fromisoformat(end_date_str)
-
-        from app.services.monitoring_service import get_monitoring_service
-        monitoring = get_monitoring_service()
-
-        result = monitoring.classify_parcels_by_cuenca(
-            start_date=start_date,
-            end_date=end_date,
-        )
-
-        return result
-    except Exception as e:
-        logger.error(f"Error in classification task: {str(e)}")
-        raise e
+    logger.warning(
+        f"supervised_classification_task called ({start_date_str} to {end_date_str}) "
+        "but classify_parcels_by_cuenca is not yet migrated to domain architecture."
+    )
+    raise NotImplementedError(
+        "classify_parcels_by_cuenca not yet migrated to domain architecture. "
+        "Legacy app.services.monitoring_service has been removed."
+    )

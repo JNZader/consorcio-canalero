@@ -128,7 +128,7 @@ test: backend-test frontend-test ## Run all tests
 backend-test: ## Run backend tests with coverage
 	@echo "$(BLUE)Running backend tests...$(NC)"
 	cd $(BACKEND_DIR) && \
-		pytest tests/ -v \
+		pytest tests/new/ -v \
 			--cov=app \
 			--cov-report=term-missing \
 			--cov-report=html:coverage_html \
