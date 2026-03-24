@@ -72,8 +72,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     """CSRF protection: JSON Content-Type + Origin validation."""
 
-    CSRF_EXEMPT_PATHS: list[str] = []
-    UPLOAD_PATHS: set[str] = {"/api/v1/public/upload-photo", "/api/v1/layers/upload"}
+    CSRF_EXEMPT_PATHS: list[str] = ["/api/v2/auth/", "/docs", "/openapi.json"]
+    UPLOAD_PATHS: set[str] = {"/api/v2/public/upload-photo", "/api/v2/capas"}
 
     async def dispatch(self, request: Request, call_next):
         if request.method not in ["POST", "PUT", "DELETE", "PATCH"]:
