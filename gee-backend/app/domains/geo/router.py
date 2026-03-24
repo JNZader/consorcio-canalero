@@ -606,3 +606,8 @@ async def get_historic_flood_tiles(
 
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
+
+# ── Include Intelligence sub-router ──
+from app.domains.geo.intelligence.router import router as intel_router
+
+router.include_router(intel_router, prefix="/intelligence")
