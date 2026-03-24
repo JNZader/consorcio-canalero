@@ -24,7 +24,8 @@ Set these in **Cloudflare Dashboard > Pages project > Settings > Environment var
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `VITE_API_URL` | `https://your-backend-url.com` | Backend API base URL |
-| `NODE_VERSION` | `20` | Required for the build |
+
+> **Node version**: Cloudflare Pages v3 uses Node 22 by default. No need to set `NODE_VERSION`.
 
 Set different `VITE_API_URL` values for Production and Preview environments.
 
