@@ -38,7 +38,7 @@ class Asset(UUIDMixin, TimestampMixin, Base):
     tipo: Mapped[str] = mapped_column(String(100), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     estado_actual: Mapped[str] = mapped_column(
-        Enum(EstadoAsset, name="estado_asset"),
+        Enum(EstadoAsset, name="estado_asset", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=EstadoAsset.BUENO,
     )

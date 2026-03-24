@@ -72,19 +72,19 @@ class Tramite(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "tramites_v2"
 
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoTramite, name="tipo_tramite"),
+        Enum(TipoTramite, name="tipo_tramite", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     solicitante: Mapped[str] = mapped_column(String(200), nullable=False)
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoTramite, name="estado_tramite"),
+        Enum(EstadoTramite, name="estado_tramite", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=EstadoTramite.INGRESADO,
     )
     prioridad: Mapped[str] = mapped_column(
-        Enum(PrioridadTramite, name="prioridad_tramite"),
+        Enum(PrioridadTramite, name="prioridad_tramite", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=PrioridadTramite.MEDIA,
     )

@@ -81,11 +81,11 @@ class GeoLayer(UUIDMixin, TimestampMixin, Base):
 
     nombre: Mapped[str] = mapped_column(String(255), nullable=False)
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoGeoLayer, name="tipo_geo_layer"),
+        Enum(TipoGeoLayer, name="tipo_geo_layer", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     fuente: Mapped[str] = mapped_column(
-        Enum(FuenteGeoLayer, name="fuente_geo_layer"),
+        Enum(FuenteGeoLayer, name="fuente_geo_layer", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     archivo_path: Mapped[str] = mapped_column(
@@ -94,7 +94,7 @@ class GeoLayer(UUIDMixin, TimestampMixin, Base):
         comment="Path to the GeoTIFF/GeoJSON file on disk",
     )
     formato: Mapped[str] = mapped_column(
-        Enum(FormatoGeoLayer, name="formato_geo_layer"),
+        Enum(FormatoGeoLayer, name="formato_geo_layer", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=FormatoGeoLayer.GEOTIFF,
     )
@@ -125,11 +125,11 @@ class GeoJob(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "geo_jobs"
 
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoGeoJob, name="tipo_geo_job"),
+        Enum(TipoGeoJob, name="tipo_geo_job", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoGeoJob, name="estado_geo_job"),
+        Enum(EstadoGeoJob, name="estado_geo_job", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=EstadoGeoJob.PENDING,
     )

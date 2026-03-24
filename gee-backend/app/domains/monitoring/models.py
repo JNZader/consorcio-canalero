@@ -49,7 +49,7 @@ class Sugerencia(UUIDMixin, TimestampMixin, Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     categoria: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoSugerencia, name="estado_sugerencia"),
+        Enum(EstadoSugerencia, name="estado_sugerencia", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=EstadoSugerencia.PENDIENTE,
     )
@@ -79,7 +79,7 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "analisis_gee"
 
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoAnalisis, name="tipo_analisis"),
+        Enum(TipoAnalisis, name="tipo_analisis", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)

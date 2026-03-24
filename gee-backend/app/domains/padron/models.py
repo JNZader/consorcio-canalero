@@ -44,7 +44,7 @@ class Consorcista(UUIDMixin, TimestampMixin, Base):
         comment="propietario, arrendatario, otro",
     )
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoConsorcista, name="estado_consorcista"),
+        Enum(EstadoConsorcista, name="estado_consorcista", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=EstadoConsorcista.ACTIVO,
     )
