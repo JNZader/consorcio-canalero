@@ -11,6 +11,7 @@ from app.db.base import Base
 # Import all models so Alembic autogenerate detects them
 from app.auth.models import User  # noqa: F401
 from app.domains.denuncias.models import Denuncia, DenunciaHistorial  # noqa: F401
+from app.domains.infraestructura.models import Asset, MantenimientoLog  # noqa: F401
 
 # Alembic Config object
 config = context.config
