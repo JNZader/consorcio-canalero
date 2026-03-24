@@ -1,53 +1,81 @@
 # CLAUDE.md - Developer Context & Setup
 
-Quick reference guide for Claude AI working on the Consorcio Canalero project.
+Quick reference for the Consorcio Canalero platform rewrite.
 
 ## Project Overview
 
-**Consorcio Canalero 10 de Mayo** - Sistema integral de gestión para el Consorcio Canalero 10 de Mayo, Bell Ville, Córdoba, Argentina.
+**Consorcio Canalero 10 de Mayo** - Sistema integral de gestion para consorcios canaleros. Self-hosted, clone-and-deploy ready.
 
 ### Stack
-- **Frontend**: React 19, TypeScript, Vite, Mantine UI, Leaflet (consorcio-web/)
-- **Backend**: FastAPI, Python 3.11, Google Earth Engine (gee-backend/)
-- **Database**: Supabase (PostgreSQL)
-- **Testing**: Pytest (backend), Vitest (frontend), Cosmic-Ray (mutations), Stryker (mutations)
-- **CI/CD**: GitHub Actions
 
-### Key Directories
+- **Frontend**: React 19, TypeScript, Vite, Mantine UI, Leaflet (`consorcio-web/`)
+- **Backend**: FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic, fastapi-users (`gee-backend/`)
+- **Database**: PostgreSQL + PostGIS (direct, no Supabase dependency)
+- **Auth**: JWT (fastapi-users) + optional Google OAuth
+- **Geo**: Google Earth Engine integration, GDAL-based geo worker
+- **Testing**: Pytest (backend), Vitest (frontend)
+- **CI/CD**: GitHub Actions, Docker Compose
+
+### Directory Structure
+
 ```
 consorcio-canalero/
-├── consorcio-web/          # React frontend (Vite)
-├── gee-backend/            # FastAPI backend
-├── docs/                   # Documentation
-├── openspec/               # Spec-Driven Development specs
-├── .github/workflows/      # CI/CD pipelines
-└── nginx/                  # Nginx config
+├── consorcio-web/              # React frontend (Vite)
+├── gee-backend/                # FastAPI backend
+│   ├── app/
+│   │   ├── api/v2/             # V2 API router aggregator
+│   │   ├── auth/               # fastapi-users auth (JWT + OAuth)
+│   │   ├── db/                 # Base, session, migrations
+│   │   │   └── migrations/     # Alembic migrations
+│   │   ├── domains/            # Screaming Architecture domains
+│   │   │   ├── capas/          # Map layers management
+│   │   │   ├── denuncias/      # Citizen reports
+│   │   │   ├── finanzas/       # Finance (ingresos, gastos, presupuestos)
+│   │   │   ├── geo/            # Geo processing + GEE + intelligence
+│   │   │   ├── infraestructura/# Assets + maintenance logs
+│   │   │   ├── monitoring/     # Sugerencias + GEE analysis tracking
+│   │   │   ├── padron/         # Consorcista registry
+│   │   │   ├── settings/       # System settings (per-deployment config)
+│   │   │   └── tramites/       # Procedures + tracking
+│   │   ├── core/               # Logging, exceptions, rate limiting
+│   │   └── shared/             # Cross-domain utilities
+│   ├── tests/new/              # Tests for new architecture
+│   └── alembic.ini
+├── setup.sh                    # Clone-and-deploy setup script
+├── docker-compose.yml
+├── openspec/                   # SDD specs
+└── docs/
 ```
+
+### Domain Architecture (Screaming Architecture)
+
+Each domain under `gee-backend/app/domains/` follows the same pattern:
+
+```
+domain/
+├── models.py       # SQLAlchemy 2.0 models (Mapped, mapped_column)
+├── schemas.py      # Pydantic v2 schemas (request/response)
+├── repository.py   # Data access layer (SELECT/INSERT/UPDATE only)
+├── service.py      # Business logic (orchestrates repository + rules)
+└── router.py       # FastAPI router (HTTP layer, dependencies)
+```
+
+Base classes: `UUIDMixin`, `TimestampMixin`, `Base` from `app.db.base`.
 
 ---
 
 ## Quick Setup
 
-### Prerequisites
 ```bash
-# Check versions
-node --version          # >= 20
-python3 --version       # >= 3.11
-docker --version
-```
+# Clone and run
+git clone <repo-url> && cd consorcio-canalero
+./setup.sh
 
-### Development Environment
-```bash
-# Backend
+# Or manual:
 cd gee-backend
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-
-# Frontend
-cd consorcio-web
-npm install
-npm run dev
+cp .env.example .env  # Edit with real values
 ```
 
 ### Key Commands
@@ -55,411 +83,122 @@ npm run dev
 **Backend**:
 ```bash
 cd gee-backend
-pytest                              # Run all tests
-pytest -v --cov=app                 # With coverage
-python3 scripts/cosmic_gate.py       # Mutation tests
-uvicorn app.main:app --reload       # Dev server
+source venv/bin/activate
+
+# Dev server
+uvicorn app.main:app --reload
+
+# Tests
+pytest tests/new/ -v                    # New architecture tests
+pytest tests/new/ -v --cov=app          # With coverage
+
+# Database
+alembic upgrade head                    # Run migrations
+alembic revision --autogenerate -m "description"  # New migration
+
+# Lint
+ruff check . && ruff format --check .
 ```
 
 **Frontend**:
 ```bash
 cd consorcio-web
-npm run dev                          # Dev server
-npm run test                         # Unit tests
-npm run test:ui                      # Test UI
-npm run mutation:test                # Mutation tests (when ready)
-npm run build                        # Production build
+npm install && npm run dev              # Dev server
+npm run test                            # Unit tests
+npm run build                           # Production build
+```
+
+**Docker**:
+```bash
+docker compose up -d                    # All services
+docker compose up -d postgres redis     # Just DB + cache
+docker compose logs -f backend          # Follow logs
 ```
 
 ---
 
-## 🧪 Mutation Testing
+## API
 
-Critical for ensuring test quality and catching subtle logic bugs.
+All new endpoints are under `/api/v2`. Key route groups:
 
-### What is Mutation Testing?
-
-Mutation testing introduces intentional bugs into code and checks if your tests catch them:
-- **Kill** = Test caught the mutation (good) ✅
-- **Survive** = Test missed the mutation (bad) ❌
-
-### Backend Status: Production Ready ✅
-
-**Current Baselines:**
-| Module | Kill Rate | Status |
-|--------|-----------|--------|
-| reports.py | 100% | ✅ |
-| sugerencias.py | 100% | ✅ |
-| schemas.py | 100% | ✅ |
-| **Total** | **100%** | ✅ **Baseline Set** |
-
-**Test Run**: `cd gee-backend && python3 scripts/cosmic_gate.py --min-kill-rate 1.0`
-**Config**: `gee-backend/.cosmic-ray.toml`
-**Tools**: Cosmic-Ray + pytest
-
-**CI/CD Gates**:
-- ✅ Enforced on every PR to main
-- ✅ Blocks merge if kill rate < 100%
-- ✅ Automatic rollback if >10% drop
-- ✅ Manual review required for 5-10% drops
-
-### Frontend Status: Phase 2 Ready 📋
-
-**Configuration**: Ready but implementation pending
-
-**Target Baselines** (Phase 2):
-| Category | Target | Status |
-|----------|--------|--------|
-| Utilities | 5 files, ≥80% | 📋 Ready |
-| Hooks | 8 hooks, ≥80% | 📋 Ready |
-| Components | 9 files, ≥80% | 📋 Ready |
-
-**When Phase 2 Launches**:
-- `cd consorcio-web && npm run mutation:test`
-- Config: `stryker.config.json`
-- Tool: Stryker JS
-- Same CI/CD enforcement as backend
-
-### Reading Reports
-
-**Backend**: After running cosmic-ray
-```bash
-cd gee-backend
-python3 scripts/cosmic_gate.py --min-kill-rate 1.0
-# Output shows: Kill rate: X% (required >= 100%)
-```
-
-**Frontend** (Phase 2): After running stryker
-```bash
-cd consorcio-web
-npm run mutation:test
-# Reports in: consorcio-web/reports/mutation/index.html
-```
-
-### Team Training Checklist ✓
-
-Before working with mutation testing:
-
-- [ ] Read [docs/MUTATION_TESTING.md](docs/MUTATION_TESTING.md) (15 min)
-- [ ] Read [docs/MUTATION_ROLLBACK.md](docs/MUTATION_ROLLBACK.md) (10 min)
-- [ ] Review [docs/MUTATION_TESTING_BASELINE.md](docs/MUTATION_TESTING_BASELINE.md) (5 min)
-- [ ] Understand mutation score ≠ code coverage
-- [ ] Know what "escaped mutation" means
-- [ ] Familiar with parametrized tests (pytest/vitest)
-- [ ] Know that weak assertions allow mutations to survive
-- [ ] Can run mutation tests locally
-- [ ] Know the CI/CD gates (100% backend, 80% frontend)
-- [ ] Know how to request threshold exceptions (rare!)
-- [ ] Reviewed example of strong vs weak tests (in MUTATION_TESTING.md)
-
-### Common Issues & Fixes
-
-**Low mutation score** → Usually means weak tests:
-```python
-# ❌ Weak: Only checks if result exists
-assert calculate_fee(100) is not None
-
-# ✅ Strong: Checks exact value
-assert calculate_fee(100) == 90
-assert calculate_fee(0) == 0
-```
-
-**Escaped mutations** → Missing edge cases:
-```python
-# ❌ Weak: Only tests happy path
-def test_process_order():
-    result = process_order(valid_order)
-    assert result.success
-
-# ✅ Strong: Tests all paths
-@pytest.mark.parametrize("order,expected", [
-    (valid_order, True),
-    (None, False),
-    ({}, False),
-    (order_with_invalid_amount, False),
-])
-def test_process_order(order, expected):
-    assert process_order(order).success == expected
-```
-
-### Documentation Links
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [MUTATION_TESTING.md](docs/MUTATION_TESTING.md) | Complete guide, team processes | Everyone |
-| [MUTATION_ROLLBACK.md](docs/MUTATION_ROLLBACK.md) | Emergency procedures, post-mortems | Team leads, on-call |
-| [MUTATION_TESTING_BASELINE.md](docs/MUTATION_TESTING_BASELINE.md) | Baseline tracking, history | Team leads, QA |
-
-### When Things Go Wrong
-
-**PR fails with "Kill rate below threshold"**:
-1. Check the error message - it shows actual vs required
-2. Review failed mutations in CI output
-3. Add parametrized tests to fix gaps
-4. Push updated tests
-5. CI re-runs automatically
-
-**Multiple modules affected simultaneously**:
-1. Don't merge - it's blocked in CI
-2. Contact team lead
-3. May need rollback + post-mortem
-
-**Production regression detected**:
-1. Automatic rollback triggered
-2. Post-mortem issue created
-3. Follow post-mortem template (see docs)
-
----
-
-## Spec-Driven Development (SDD)
-
-We use SDD for significant changes. See `openspec/` directory.
-
-### Current Changes
-
-| Change | Status | Type |
+| Prefix | Domain | Auth |
 |--------|--------|------|
-| **Consolidation Mutation Testing** | ✅ Phase 1 Complete | Documentation & Gates |
-| **Frontend Mutation Expansion** | 📋 Ready for Phase 2 | Frontend Implementation |
+| `/api/v2/auth/*` | Login, register, user mgmt | Varies |
+| `/api/v2/padron/*` | Consorcista registry | Operator+ |
+| `/api/v2/denuncias/*` | Citizen reports | Operator+ |
+| `/api/v2/finanzas/*` | Finance management | Operator+ |
+| `/api/v2/infraestructura/*` | Assets + maintenance | Operator+ |
+| `/api/v2/tramites/*` | Procedures | Operator+ |
+| `/api/v2/capas/*` | Map layers | Operator+ |
+| `/api/v2/geo/*` | Geo processing + GEE | Operator+ |
+| `/api/v2/monitoring/*` | Sugerencias + analysis | Varies |
+| `/api/v2/settings/*` | System settings | Operator+ (read), Admin (write) |
+| `/api/v2/public/*` | Public viewer, branding | No auth |
+| `/api/v2/admin/publish/*` | Layer publication | Admin |
 
-### SDD Commands
+### System Settings
 
-```bash
-# Explore an idea (no files)
-/sdd:explore mutation-testing-improvements
+Per-deployment configuration stored in `system_settings` table. Categories: `general`, `branding`, `territorio`, `analisis`, `contacto`.
 
-# Start a new change
-/sdd:new mutation-testing-consolidation
+Public branding endpoint (no auth): `GET /api/v2/public/settings/branding`
 
-# Continue to next phase
-/sdd:continue mutation-testing-consolidation
-
-# View specs
-openspec/changes/consolidation-mutation-testing/spec.md
-openspec/changes/consolidation-mutation-testing/design.md
-openspec/changes/consolidation-mutation-testing/tasks.md
-```
-
----
-
-## CI/CD Pipeline
-
-### Workflows
-
-| Workflow | Trigger | Duration | Key Gates |
-|----------|---------|----------|-----------|
-| **Backend** | Push/PR to main | ~15min | Lint, Type, Test, Contract, Mutation, Security |
-| **Frontend** | Push/PR to main | ~10min | Lint, Type, Test, Build |
-| **Mutation** | Push/PR to main | ~35min | Backend 100%, Frontend TBD |
-| **Deploy** | Push to main | ~5min | All tests must pass |
-
-### Pre-Push Checks
-
-Before pushing to origin:
-
-```bash
-# Backend
-cd gee-backend
-ruff check .                              # Lint
-ruff format --check .                     # Format
-mypy app/ --ignore-missing-imports        # Type check
-pytest tests/ -v --cov=app                # Unit tests
-python3 scripts/cosmic_gate.py             # Mutation tests ✅ IMPORTANT!
-
-# Frontend
-cd consorcio-web
-npm run lint                              # ESLint + format
-npm run type-check                        # TypeScript
-npm run test                              # Unit tests
-# npm run mutation:test                   # When Phase 2 ready
-npm run build                             # Production build check
-```
+Seed defaults: `SettingsService.seed_defaults(db)` or via `setup.sh`.
 
 ---
 
-## Git Workflow
+## Auth Model
 
-### Branch Strategy
+Three roles: `admin`, `operador`, `ciudadano`.
 
-```
-main (production)
-  ↑
-  ├── feature/mutation-testing-improvements
-  ├── fix/backend-performance-issue
-  └── docs/update-guides
-```
+- `require_admin` — admin only
+- `require_admin_or_operator` — admin + operador
+- `require_authenticated` — any logged-in user
 
-### Commit Conventions
-
-```bash
-git commit -m "feat: add mutation testing documentation"
-git commit -m "fix: improve test coverage for reports module"
-git commit -m "docs: update MUTATION_TESTING baseline"
-git commit -m "test: add parametrized tests for edge cases"
-```
-
-### PR Process
-
-1. Create feature branch
-2. Commit regularly with atomic commits
-3. Run local tests + mutation tests
-4. Push to origin
-5. Create PR with description
-6. Wait for CI (all workflows must pass)
-7. Request review from team
-8. Address feedback
-9. Merge when approved
-10. CI/CD auto-deploys to staging
+Auth dependencies use lazy imports to avoid circular deps.
 
 ---
 
-## Testing Philosophy
+## Environment Variables
 
-### Mutation Testing vs Code Coverage
+See `gee-backend/.env.example` for full reference. Key vars:
 
-| Aspect | Code Coverage | Mutation Testing |
-|--------|--------------|------------------|
-| Measures | Lines executed | Test effectiveness |
-| Can miss | Logic bugs | Weak assertions |
-| Better for | Identifying gaps | Verifying quality |
-| Target | 70-80% | 80-100% |
-
-**Key insight**: 100% coverage with 50% mutation score = exercising code but not verifying it properly.
-
-### Test Quality Checklist
-
-For any new code/test:
-
-- [ ] Tests exist (not just coverage)
-- [ ] Parametrized tests for variations
-- [ ] Edge cases covered (null, empty, boundaries)
-- [ ] Error cases explicitly tested
-- [ ] Assertions are specific (not just truthiness)
-- [ ] Tests are readable and self-documenting
-- [ ] No hard-coded test data duplication
-- [ ] Mutation tests pass (90%+ kill rate minimum)
-
----
-
-## Project Configuration
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `gee-backend/.cosmic-ray.toml` | Backend mutation testing config |
-| `consorcio-web/stryker.config.json` | Frontend mutation testing config |
-| `.github/workflows/backend.yml` | Backend CI/CD pipeline |
-| `.github/workflows/frontend.yml` | Frontend CI/CD pipeline |
-| `.github/workflows/mutation-testing.yml` | Mutation testing gates |
-| `docs/MUTATION_TESTING.md` | Team guide |
-
-### Environment Variables
-
-**Backend** (`gee-backend/.env`):
 ```env
-SUPABASE_URL=https://...
-SUPABASE_SECRET_KEY=...
-GEE_KEY_FILE_PATH=/app/credentials/gee-service-account.json
-GEE_PROJECT_ID=cc10demayo
+DATABASE_URL=postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
+JWT_SECRET=<openssl rand -hex 32>
+REDIS_URL=redis://localhost:6379/0
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+# Legacy Supabase vars still required during migration
+SUPABASE_URL=http://localhost:54321
+SUPABASE_KEY=dummy-key
 ```
 
-**Frontend** (`consorcio-web/.env`):
-```env
-VITE_API_URL=http://localhost:8000
-VITE_SUPABASE_URL=https://...
-VITE_SUPABASE_ANON_KEY=...
-```
+Frontend: `consorcio-web/.env.example` — just `VITE_API_URL`.
 
 ---
 
-## Useful Resources
+## Testing
 
-### Documentation
-- [README.md](README.md) - Project overview
-- [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) - Detailed setup
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
-- [docs/DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md) - Deployment guide
+Tests for the new architecture live in `gee-backend/tests/new/`.
 
-### Testing Guides
-- [docs/MUTATION_TESTING.md](docs/MUTATION_TESTING.md) - Mutation testing complete guide
-- [docs/MUTATION_ROLLBACK.md](docs/MUTATION_ROLLBACK.md) - Rollback & post-mortem procedures
-- [docs/MUTATION_TESTING_BASELINE.md](docs/MUTATION_TESTING_BASELINE.md) - Baseline tracking
+Fixtures in `conftest.py`:
+- `db` — per-test session with rollback (real PostgreSQL)
+- `db_session_factory` — session factory for DI override
+- `test_engine` — session-scoped engine + table creation
 
-### Specs (Spec-Driven Development)
-- `openspec/changes/consolidation-mutation-testing/` - Phase 1 (complete)
-- `openspec/changes/frontend-mutation-expansion/` - Phase 2 (ready)
+Pattern: real database, transaction-per-test, no mocking for data access.
 
 ---
 
-## Support & Questions
+## Conventions
 
-### Getting Help
-
-1. Check relevant documentation first (usually has answers)
-2. Search recent PRs/issues for similar problems
-3. Ask in #engineering-practices Slack
-4. Escalate to @javier (mutation testing owner) if needed
-
-### Reporting Issues
-
-Create issue with:
-- [ ] Clear title
-- [ ] Reproduction steps (if bug)
-- [ ] Expected vs actual behavior
-- [ ] Environment (Python/Node version, OS)
-- [ ] Screenshots/logs if applicable
-
-### Reaching Out
-
-- **Mutation testing questions**: @javier
-- **Frontend issues**: @javier
-- **Backend issues**: @javier
-- **DevOps/CI/CD**: @devops-team
-- **General questions**: Ask in Slack first
+- **Commits**: Conventional commits (`feat:`, `fix:`, `test:`, `docs:`, `refactor:`)
+- **Models**: UUID primary keys, timestamps on all tables
+- **Schemas**: Pydantic v2, `model_config = ConfigDict(from_attributes=True)`
+- **Repositories**: Stateless classes, receive `db: Session` as first arg
+- **Services**: Orchestrate repos, raise `HTTPException` for business errors
+- **Routers**: Thin HTTP layer, delegate to services
 
 ---
 
-## Quick Reference
-
-### Most Common Commands
-
-```bash
-# Check everything before pushing
-./scripts/pre-push.sh                    # If exists
-
-# Backend only
-cd gee-backend
-pytest tests/ -v
-python3 scripts/cosmic_gate.py
-
-# Frontend only
-cd consorcio-web
-npm test
-npm run build
-
-# View this file
-cat CLAUDE.md
-```
-
-### Most Common Issues
-
-| Issue | Fix |
-|-------|-----|
-| "Kill rate below threshold" | Add parametrized tests, use specific assertions |
-| "Tests pass locally, fail in CI" | Check environment differences, run full test suite |
-| "Git merge conflicts" | Resolve manually, test fully before re-pushing |
-| "CI hangs/times out" | Check for infinite loops, long-running operations |
-
-### When in Doubt
-
-1. Read relevant docs in `docs/`
-2. Check related spec in `openspec/`
-3. Look at recent PRs for similar changes
-4. Ask in Slack
-5. Don't force-push to main 🚫
-
----
-
-Last updated: 2026-03-10
+Last updated: 2026-03-24
 Maintained by: @javier
