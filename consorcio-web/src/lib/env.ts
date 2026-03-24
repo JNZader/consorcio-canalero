@@ -7,10 +7,6 @@
  * Environment configuration interface.
  */
 interface EnvConfig {
-  /** Supabase project URL */
-  SUPABASE_URL: string;
-  /** Supabase anonymous key */
-  SUPABASE_ANON_KEY: string;
   /** Backend API URL */
   API_URL: string;
   /** Current environment */
@@ -25,8 +21,8 @@ interface EnvConfig {
  * Required environment variables for production.
  * Supports both VITE_ and PUBLIC_ prefixes for backwards compatibility.
  */
-const REQUIRED_VARS_VITE = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'] as const;
-const REQUIRED_VARS_PUBLIC = ['PUBLIC_SUPABASE_URL', 'PUBLIC_SUPABASE_ANON_KEY'] as const;
+const REQUIRED_VARS_VITE = ['VITE_API_URL'] as const;
+const REQUIRED_VARS_PUBLIC = ['PUBLIC_API_URL'] as const;
 
 /**
  * Validates that all required environment variables are present.
@@ -88,8 +84,6 @@ function createEnv(): EnvConfig {
   const nodeEnv = import.meta.env.MODE as EnvConfig['NODE_ENV'];
 
   return {
-    SUPABASE_URL: getEnvString('SUPABASE_URL', ''),
-    SUPABASE_ANON_KEY: getEnvString('SUPABASE_ANON_KEY', ''),
     API_URL: getEnvString('API_URL', 'http://localhost:8000'),
     NODE_ENV: nodeEnv || 'development',
     IS_PRODUCTION: import.meta.env.PROD === true,
@@ -105,7 +99,7 @@ function createEnv(): EnvConfig {
  * ```ts
  * import { env } from '@/lib/env';
  *
- * const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+ * fetch(`${env.API_URL}/api/v2/...`);
  * ```
  */
 export const env = createEnv();
@@ -115,7 +109,7 @@ export const env = createEnv();
  * Useful for showing warnings in development.
  */
 export function isEnvConfigured(): boolean {
-  return Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
+  return Boolean(env.API_URL);
 }
 
 /**
@@ -125,11 +119,8 @@ export function isEnvConfigured(): boolean {
 export function getMissingEnvVars(): string[] {
   const missing: string[] = [];
 
-  if (!env.SUPABASE_URL) {
-    missing.push('VITE_SUPABASE_URL');
-  }
-  if (!env.SUPABASE_ANON_KEY) {
-    missing.push('VITE_SUPABASE_ANON_KEY');
+  if (!env.API_URL || env.API_URL === 'http://localhost:8000') {
+    missing.push('VITE_API_URL');
   }
 
   return missing;
