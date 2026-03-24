@@ -110,8 +110,6 @@ beforeAll(() => {
   vi.stubGlobal('import', {
     meta: {
       env: {
-        PUBLIC_SUPABASE_URL: 'http://localhost:54321',
-        PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
         PUBLIC_API_URL: 'http://localhost:8000',
         DEV: true,
         PROD: false,
