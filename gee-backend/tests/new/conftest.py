@@ -24,9 +24,6 @@ os.environ.update(
         "CORS_ORIGINS": "http://localhost:3000,http://localhost:5173",
         "DEBUG": "true",
         "FRONTEND_URL": "http://localhost:5173",
-        # Legacy Supabase placeholders (required by current config)
-        "SUPABASE_URL": "http://localhost:54321",
-        "SUPABASE_KEY": "test-key",
     }
 )
 

@@ -100,9 +100,6 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-https://cc10demayo.javierzader.com}
       - FRONTEND_URL=${FRONTEND_URL:-https://cc10demayo.javierzader.com}
       - API_PREFIX=/api/v2
-      # Legacy Supabase (required until old code is fully removed)
-      - SUPABASE_URL=${SUPABASE_URL:-http://placeholder}
-      - SUPABASE_KEY=${SUPABASE_KEY:-placeholder}
     networks:
       - consorcio-network
     healthcheck:
@@ -149,8 +146,6 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
       - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
-      - SUPABASE_URL=${SUPABASE_URL:-http://placeholder}
-      - SUPABASE_KEY=${SUPABASE_KEY:-placeholder}
     networks:
       - consorcio-network
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery

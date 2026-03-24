@@ -4,31 +4,11 @@ Carga variables de entorno y define settings.
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import model_validator
 from typing import Optional
 
 
 class Settings(BaseSettings):
     """Configuracion de la aplicacion."""
-
-    # Supabase - Soporta ambos formatos (nuevo 2025+ y legacy)
-    supabase_url: str
-
-    # Nuevo formato (2025+)
-    supabase_publishable_key: Optional[str] = None
-    supabase_secret_key: Optional[str] = None
-
-    # Legacy formato (retrocompatibilidad)
-    supabase_key: Optional[str] = None
-    supabase_service_role_key: Optional[str] = None
-
-    # JWT Secret
-    supabase_jwt_secret: str = ""
-
-    # Google Earth Engine
-    gee_key_file_path: Optional[str] = None
-    gee_service_account_key: Optional[str] = None
-    gee_project_id: str = "cc10demayo"
 
     # Auth (JWT + OAuth)
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION"
@@ -39,11 +19,16 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://consorcio:consorcio_dev@localhost:5432/consorcio"
     database_echo: bool = False
 
+    # Google Earth Engine
+    gee_key_file_path: Optional[str] = None
+    gee_service_account_key: Optional[str] = None
+    gee_project_id: str = "cc10demayo"
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
     # Contact Information
-    contact_phone: str = "+54 353 4000000"  # Phone number shown to users
+    contact_phone: str = "+54 353 4000000"
     contact_email: str = "contacto@consorcio10demayo.gob.ar"
 
     # Rate Limiting
@@ -52,11 +37,11 @@ class Settings(BaseSettings):
 
     # App
     cors_origins: str = (
-        "http://localhost:4321,http://localhost:3000,http://localhost:5173"
+        "http://localhost:3000,http://localhost:5173"
     )
-    api_prefix: str = "/api/v1"
+    api_prefix: str = "/api/v2"
     debug: bool = False
-    frontend_url: str = "http://localhost:4321"
+    frontend_url: str = "http://localhost:5173"
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -71,27 +56,6 @@ class Settings(BaseSettings):
             origins.add(self.frontend_url.strip().rstrip("/"))
 
         return sorted(origins)
-
-    @property
-    def effective_publishable_key(self) -> str:
-        """Retorna la publishable/anon key efectiva (nuevo o legacy)."""
-        return self.supabase_publishable_key or self.supabase_key or ""
-
-    @property
-    def effective_secret_key(self) -> Optional[str]:
-        """Retorna la secret/service_role key efectiva (nuevo o legacy)."""
-        return self.supabase_secret_key or self.supabase_service_role_key
-
-    @model_validator(mode="after")
-    def validate_supabase_keys(self):
-        """Validar que al menos una key de Supabase este configurada."""
-        has_new = self.supabase_publishable_key is not None
-        has_legacy = self.supabase_key is not None
-        if not has_new and not has_legacy:
-            raise ValueError(
-                "Se requiere SUPABASE_PUBLISHABLE_KEY (nuevo) o SUPABASE_KEY (legacy)"
-            )
-        return self
 
     class Config:
         env_file = ".env"
