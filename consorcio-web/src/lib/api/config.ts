@@ -47,5 +47,5 @@ export const configApi = {
    * This includes map center, cuencas stats, and analysis defaults.
    * It is a public endpoint.
    */
-  getSystemConfig: () => apiFetch<SystemConfig>('/config/system', { skipAuth: true }),
+  getSystemConfig: () => apiFetch<SystemConfig>('/public/settings/branding', { skipAuth: true }),
 };

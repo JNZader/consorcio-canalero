@@ -70,7 +70,7 @@ interface HistoricFlood {
 }
 
 // API base URL
-const API_BASE = `${API_URL}/api/v2/images`;
+const API_BASE = `${API_URL}/api/v2/geo/gee/images`;
 
 // Estilo para la capa zona (borde rojo sin relleno)
 const ZONA_STYLE = {
@@ -164,7 +164,7 @@ export default function ImageExplorerPanel() {
     if (!map) return;
 
     // Cargar GeoJSON de la zona
-    fetch(`${API_URL}/api/v2/gee/layers/zona`)
+    fetch(`${API_URL}/api/v2/geo/gee/layers/zona`)
       .then((res) => {
         if (res.ok) return res.json();
         throw new Error('No se pudo cargar la capa zona');

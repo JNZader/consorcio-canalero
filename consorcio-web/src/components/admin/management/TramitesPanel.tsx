@@ -54,7 +54,7 @@ export default function TramitesPanel() {
   const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<RawTramiteItem[]>('/management/tramites');
+      const data = await apiFetch<RawTramiteItem[]>('/tramites');
       const { canonical, discarded } = filterCanonicalTramites(data);
 
       for (const tramite of discarded) {
@@ -76,7 +76,8 @@ export default function TramitesPanel() {
     setExporting(true);
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/management/tramites/${id}/export-pdf`, {
+      // TODO: v2 does not have a dedicated tramite export-pdf endpoint yet
+      const response = await fetch(`${API_URL}/api/v2/tramites/${id}/export-pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const blob = await response.blob();
@@ -94,7 +95,7 @@ export default function TramitesPanel() {
 
   const fetchDetalle = async (id: string) => {
     try {
-      const data = await apiFetch<Tramite & { avances: Avance[] }>(`/management/tramites/${id}`);
+      const data = await apiFetch<Tramite & { avances: Avance[] }>(`/tramites/${id}`);
       setSelectedTramite(data);
       openHistory();
     } catch (err) {
@@ -117,7 +118,7 @@ export default function TramitesPanel() {
 
   const handleCreate = async (values: typeof form.values) => {
     try {
-      await apiFetch('/management/tramites', {
+      await apiFetch('/tramites', {
         method: 'POST',
         body: JSON.stringify(values),
       });

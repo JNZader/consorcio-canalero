@@ -23,7 +23,7 @@ export function useJobStatus<T>(jobId: string | null, onCompleted?: (result: T) 
     if (!jobId) return;
 
     try {
-      const data = await apiFetch<JobResponse<T>>(`/jobs/${jobId}`);
+      const data = await apiFetch<JobResponse<T>>(`/geo/jobs/${jobId}`);
       setStatus(data.status);
 
       if (data.status === 'SUCCESS' && data.result) {

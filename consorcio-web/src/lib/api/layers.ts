@@ -10,18 +10,18 @@ export const layersApi = {
    * Obtener todas las capas.
    */
   getAll: (visibleOnly = false): Promise<Layer[]> =>
-    apiFetch(`/layers?visible_only=${visibleOnly}`),
+    apiFetch(`/capas?visible_only=${visibleOnly}`),
 
   /**
    * Obtener una capa.
    */
-  get: (id: string): Promise<Layer> => apiFetch(`/layers/${id}`),
+  get: (id: string): Promise<Layer> => apiFetch(`/capas/${id}`),
 
   /**
    * Crear capa.
    */
   create: (data: Partial<Layer>): Promise<Layer> =>
-    apiFetch('/layers', {
+    apiFetch('/capas', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -30,50 +30,55 @@ export const layersApi = {
    * Actualizar capa.
    */
   update: (id: string, data: Partial<Layer>): Promise<Layer> =>
-    apiFetch(`/layers/${id}`, {
-      method: 'PUT',
+    apiFetch(`/capas/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
 
   /**
    * Eliminar capa.
    */
-  delete: (id: string): Promise<void> => apiFetch(`/layers/${id}`, { method: 'DELETE' }),
+  delete: (id: string): Promise<void> => apiFetch(`/capas/${id}`, { method: 'DELETE' }),
 
   /**
    * Reordenar capas.
    */
   reorder: (layers: { id: string; orden: number }[]): Promise<void> =>
-    apiFetch('/layers/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ layers }),
+    apiFetch('/capas/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ ordered_ids: layers.map(l => l.id) }),
     }),
 
   /**
    * Subir archivo GeoJSON.
+   * In v2, upload is done via POST /capas with JSON body (not multipart).
    */
   upload: async (file: File, nombre: string, tipo: string, color: string): Promise<Layer> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('nombre', nombre);
-    formData.append('tipo', tipo);
-    formData.append('color', color);
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LONG_TIMEOUT);
 
     try {
-      // Get auth token for authenticated upload
+      // Read file content as text (GeoJSON)
+      const fileContent = await file.text();
+      const geojsonData = JSON.parse(fileContent);
+
       const token = await getAuthToken();
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${API_URL}${API_PREFIX}/layers/upload`, {
+      const response = await fetch(`${API_URL}${API_PREFIX}/capas`, {
         method: 'POST',
         headers,
-        body: formData,
+        body: JSON.stringify({
+          nombre,
+          tipo,
+          color,
+          geojson_data: geojsonData,
+        }),
         signal: controller.signal,
       });
 

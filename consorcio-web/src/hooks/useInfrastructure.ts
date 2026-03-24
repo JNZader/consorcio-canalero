@@ -24,8 +24,8 @@ export function useInfrastructure() {
     setLoading(true);
     try {
       const [assetsData, intersectionsData] = await Promise.all([
-        apiFetch<InfrastructureAsset[]>('/infrastructure/assets'),
-        apiFetch<FeatureCollection>('/infrastructure/potential-intersections'),
+        apiFetch<InfrastructureAsset[]>('/infraestructura/assets'),
+        apiFetch<FeatureCollection>('/geo/intelligence/conflictos'),
       ]);
       setAssets(assetsData);
       setIntersections(intersectionsData);
@@ -42,7 +42,7 @@ export function useInfrastructure() {
 
   const createAsset = async (asset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'>) => {
     try {
-      const newAsset = await apiFetch<InfrastructureAsset>('/infrastructure/assets', {
+      const newAsset = await apiFetch<InfrastructureAsset>('/infraestructura/assets', {
         method: 'POST',
         body: JSON.stringify(asset),
       });

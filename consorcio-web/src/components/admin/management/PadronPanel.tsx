@@ -75,7 +75,7 @@ export default function PadronPanel() {
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Consorcista[]>(`/padron/consorcistas?search=${search}`);
+      const data = await apiFetch<Consorcista[]>(`/padron?search=${search}`);
       setConsorcistas(data);
     } catch (err) {
       handleError(err, {
@@ -89,7 +89,8 @@ export default function PadronPanel() {
 
   const fetchPagos = async (id: string) => {
     try {
-      const data = await apiFetch<Pago[]>(`/padron/consorcistas/${id}/pagos`);
+      // TODO: Pagos endpoint not implemented in v2 padron yet
+      const data = await apiFetch<Pago[]>(`/padron/${id}/pagos`).catch(() => [] as Pago[]);
       setPagos(data);
     } catch (err) {
       handleError(err, {
@@ -123,6 +124,7 @@ export default function PadronPanel() {
     }
 
     try {
+      // TODO: Pagos creation not implemented in v2 padron yet
       await apiFetch('/padron/pagos', {
         method: 'POST',
         body: JSON.stringify({
@@ -168,7 +170,7 @@ export default function PadronPanel() {
 
   const handleCreate = async (values: typeof form.values) => {
     try {
-      await apiFetch('/padron/consorcistas', {
+      await apiFetch('/padron', {
         method: 'POST',
         body: JSON.stringify(values),
       });
@@ -204,7 +206,7 @@ export default function PadronPanel() {
       const formData = new FormData();
       formData.append('file', importFile);
 
-      const result = await apiFetch<PadronImportResult>('/padron/consorcistas/import', {
+      const result = await apiFetch<PadronImportResult>('/padron/import', {
         method: 'POST',
         body: formData,
       });

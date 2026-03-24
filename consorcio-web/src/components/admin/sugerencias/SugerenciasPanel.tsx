@@ -338,7 +338,8 @@ export default function SugerenciasPanel() {
   const loadHistory = async (id: string) => {
     setLoadingHistorial(true);
     try {
-      const data = await apiFetch<SeguimientoEntry[]>(`/management/seguimiento/sugerencia/${id}`);
+      // TODO: v2 uses sugerencias/{id} with historial included, or a dedicated historial endpoint
+      const data = await apiFetch<SeguimientoEntry[]>(`/sugerencias/${id}/historial`).catch(() => [] as SeguimientoEntry[]);
       setHistorial(data);
     } catch (err) {
       console.error(err);
@@ -365,15 +366,13 @@ export default function SugerenciasPanel() {
     setUpdating(true);
     try {
       // 1. Create tracking entry (this updates suggestion status in backend via universal management service)
-      await apiFetch('/management/seguimiento', {
-        method: 'POST',
+      // In v2, update sugerencia status via PATCH /sugerencias/{id}
+      await apiFetch(`/sugerencias/${selectedSugerencia.id}`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          entidad_tipo: 'sugerencia',
-          entidad_id: selectedSugerencia.id,
-          estado_anterior: selectedSugerencia.estado,
-          estado_nuevo: newEstado,
-          comentario_interno: adminNotes,
-          comentario_publico: publicComment,
+          estado: newEstado,
+          notas_comision: adminNotes,
+          resolucion: publicComment,
         }),
       });
 

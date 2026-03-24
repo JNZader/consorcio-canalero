@@ -73,7 +73,7 @@ export function useCaminosColoreados(): UseCaminosColoreados {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/v2/gee/layers/caminos/coloreados`);
+      const response = await fetch(`${API_URL}/api/v2/geo/gee/layers/caminos/coloreados`);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

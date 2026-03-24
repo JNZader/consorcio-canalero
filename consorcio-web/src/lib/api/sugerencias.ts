@@ -84,7 +84,7 @@ export const sugerenciasApi = {
   createPublic: (
     data: SugerenciaCreate
   ): Promise<{ id: string; message: string; remaining_today: number }> =>
-    apiFetch('/sugerencias/public', {
+    apiFetch('/public/sugerencias', {
       method: 'POST',
       body: JSON.stringify(data),
       skipAuth: true,
@@ -92,12 +92,14 @@ export const sugerenciasApi = {
 
   /**
    * Verificar limite de sugerencias para un contacto.
+   * TODO: v2 does not have a dedicated rate limit check endpoint yet.
    */
   checkLimit: (email?: string, telefono?: string): Promise<RateLimitInfo> => {
     const params = new URLSearchParams();
     if (email) params.set('email', email);
     if (telefono) params.set('telefono', telefono);
-    return apiFetch(`/sugerencias/public/limit?${params.toString()}`, { skipAuth: true });
+    // TODO: Replace with v2 rate limit endpoint when available
+    return apiFetch(`/public/sugerencias/limit?${params.toString()}`, { skipAuth: true });
   },
 
   /**
@@ -156,7 +158,7 @@ export const sugerenciasApi = {
    */
   update: (id: string, data: Partial<Sugerencia>): Promise<Sugerencia> =>
     apiFetch(`/sugerencias/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
 

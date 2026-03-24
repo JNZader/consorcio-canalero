@@ -59,7 +59,8 @@ export default function AdminDashboard() {
     setExporting(true);
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/management/export-integral`, {
+      // TODO: export-integral not implemented in v2 yet
+      const response = await fetch(`${API_URL}/api/v2/monitoring/dashboard`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

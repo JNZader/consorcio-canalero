@@ -91,7 +91,8 @@ export default function ReunionesPanel() {
   const fetchReuniones = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Reunion[]>('/management/reuniones');
+      // TODO: Reuniones endpoint not implemented in v2 yet
+      const data = await apiFetch<Reunion[]>('/tramites').catch(() => [] as Reunion[]);
       setReuniones(data);
     } catch (err) {
       logger.error('Error fetching reuniones:', err);
@@ -106,7 +107,8 @@ export default function ReunionesPanel() {
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${API_URL}/api/v2/management/reuniones/${selectedReunion.id}/export-pdf`,
+        // TODO: Reuniones export-pdf not implemented in v2 yet
+        `${API_URL}/api/v2/tramites/${selectedReunion.id}/export-pdf`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -130,7 +132,8 @@ export default function ReunionesPanel() {
 
   const fetchAgenda = async (reunionId: string) => {
     try {
-      const data = await apiFetch<AgendaItem[]>(`/management/reuniones/${reunionId}/agenda`);
+      // TODO: Reuniones agenda endpoint not implemented in v2 yet
+      const data = await apiFetch<AgendaItem[]>(`/tramites/${reunionId}/seguimiento`).catch(() => [] as AgendaItem[]);
       setAgenda(data);
     } catch (err) {
       logger.error('Error fetching agenda:', err);
@@ -142,9 +145,9 @@ export default function ReunionesPanel() {
     setLoadingEntities(true);
     try {
       const [reportsRaw, tramitesRaw, assetsRaw] = await Promise.all([
-        apiFetch<unknown>('/reports?limit=50'),
-        apiFetch<unknown>('/management/tramites'),
-        apiFetch<unknown>('/infrastructure/assets'),
+        apiFetch<unknown>('/denuncias?limit=50'),
+        apiFetch<unknown>('/tramites'),
+        apiFetch<unknown>('/infraestructura/assets'),
       ]);
 
       const reports = normalizeArrayResponse<{
@@ -242,7 +245,8 @@ export default function ReunionesPanel() {
         fecha_reunion: new Date(values.fecha_reunion).toISOString(),
       };
 
-      await apiFetch('/management/reuniones', {
+      // TODO: Reuniones creation not implemented in v2 yet - using tramites as placeholder
+      await apiFetch('/tramites', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -281,7 +285,8 @@ export default function ReunionesPanel() {
     });
 
     try {
-      await apiFetch(`/management/reuniones/${selectedReunion.id}/agenda`, {
+      // TODO: Reuniones agenda endpoint not implemented in v2 yet
+      await apiFetch(`/tramites/${selectedReunion.id}/seguimiento`, {
         method: 'POST',
         body: JSON.stringify({
           item: {

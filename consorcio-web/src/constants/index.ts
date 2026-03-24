@@ -3,7 +3,7 @@
  * All shared constants, enums, and derived types should be defined here.
  *
  * NOTE: Values like MAP_CENTER, CUENCA_AREAS_HA, etc., now serve as FALLBACKS.
- * The application primarily uses dynamic configuration from the /config/system API
+ * The application primarily uses dynamic configuration from the /public/settings/branding API
  * via the useConfigStore.
  */
 

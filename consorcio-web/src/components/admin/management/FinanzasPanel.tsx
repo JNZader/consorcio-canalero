@@ -103,11 +103,11 @@ export default function FinanzasPanel() {
     setLoading(true);
     try {
       const [gastosData, ingresosData, balanceData, categories, fuentes] = await Promise.all([
-        apiFetch<Gasto[]>('/finance/gastos'),
-        apiFetch<Ingreso[]>('/finance/ingresos'),
-        apiFetch<Balance>(`/finance/balance-summary/${new Date().getFullYear()}`),
-        apiFetch<string[]>('/finance/categorias'),
-        apiFetch<string[]>('/finance/fuentes'),
+        apiFetch<Gasto[]>('/finanzas/gastos'),
+        apiFetch<Ingreso[]>('/finanzas/ingresos'),
+        apiFetch<Balance>(`/finanzas/resumen/${new Date().getFullYear()}`),
+        apiFetch<string[]>('/finanzas/gastos'),
+        apiFetch<string[]>('/finanzas/ingresos'),
       ]);
       setGastos(gastosData);
       setIngresos(ingresosData);
@@ -210,7 +210,7 @@ export default function FinanzasPanel() {
         comprobanteUrl = await uploadComprobante(gastoComprobanteFile, 'gasto');
       }
 
-      await apiFetch('/finance/gastos', {
+      await apiFetch('/finanzas/gastos', {
         method: 'POST',
         body: JSON.stringify({
           ...values,
@@ -247,7 +247,7 @@ export default function FinanzasPanel() {
         comprobanteUrl = await uploadComprobante(gastoEditComprobanteFile, 'gasto');
       }
 
-      await apiFetch(`/finance/gastos/${editingGasto.id}`, {
+      await apiFetch(`/finanzas/gastos/${editingGasto.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           categoria: values.categoria,
@@ -275,7 +275,7 @@ export default function FinanzasPanel() {
         comprobanteUrl = await uploadComprobante(ingresoComprobanteFile, 'ingreso');
       }
 
-      await apiFetch('/finance/ingresos', {
+      await apiFetch('/finanzas/ingresos', {
         method: 'POST',
         body: JSON.stringify({
           ...values,
@@ -319,7 +319,7 @@ export default function FinanzasPanel() {
         comprobanteUrl = await uploadComprobante(ingresoEditComprobanteFile, 'ingreso');
       }
 
-      await apiFetch(`/finance/ingresos/${editingIngreso.id}`, {
+      await apiFetch(`/finanzas/ingresos/${editingIngreso.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           ...values,
@@ -347,7 +347,8 @@ export default function FinanzasPanel() {
       formData.append('tipo', tipo);
       formData.append('file', file);
 
-      const result = await apiFetch<{ url: string }>('/finance/comprobantes/upload', {
+      // TODO: Comprobantes upload not implemented in v2 finanzas yet
+      const result = await apiFetch<{ url: string }>('/finanzas/comprobantes/upload', {
         method: 'POST',
         body: formData,
       });

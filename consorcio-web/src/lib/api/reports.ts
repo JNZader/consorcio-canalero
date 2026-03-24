@@ -41,20 +41,20 @@ export const reportsApi = {
       if (pageOrParams.assigned_to) searchParams.set('assigned_to', pageOrParams.assigned_to);
     }
 
-    return apiFetch(`/reports?${searchParams.toString()}`);
+    return apiFetch(`/denuncias?${searchParams.toString()}`);
   },
 
   /**
    * Obtener denuncia con historial.
    */
-  get: (id: string): Promise<Report> => apiFetch(`/reports/${id}`),
+  get: (id: string): Promise<Report> => apiFetch(`/denuncias/${id}`),
 
   /**
    * Actualizar estado de denuncia.
    */
   updateStatus: (id: string, estado: string, notas?: string): Promise<Report> =>
-    apiFetch(`/reports/${id}`, {
-      method: 'PUT',
+    apiFetch(`/denuncias/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify({ estado, notas_admin: notas }),
     }),
 
@@ -71,22 +71,24 @@ export const reportsApi = {
       prioridad?: string;
     }
   ): Promise<Report> =>
-    apiFetch(`/reports/${id}`, {
-      method: 'PUT',
+    apiFetch(`/denuncias/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
 
   /**
    * Asignar denuncia a operador.
+   * In v2, assignment is done via PATCH on the denuncia.
    */
   assign: (id: string, operadorId: string, notas?: string): Promise<Report> =>
-    apiFetch(`/reports/${id}/assign`, {
-      method: 'POST',
-      body: JSON.stringify({ operador_id: operadorId, notas }),
+    apiFetch(`/denuncias/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ asignado_a: operadorId, notas_internas: notas }),
     }),
 
   /**
    * Marcar como resuelta.
+   * In v2, resolution is done via PATCH with estado=resuelto.
    */
   resolve: (
     id: string,
@@ -97,9 +99,9 @@ export const reportsApi = {
     resolved_at: string;
     resolved_by: string;
   }> =>
-    apiFetch(`/reports/${id}/resolve`, {
-      method: 'POST',
-      body: JSON.stringify(buildResolvePayload(id, resolution)),
+    apiFetch(`/denuncias/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'resuelto', notas_admin: resolution.comment }),
     }),
 
   /**
@@ -110,7 +112,7 @@ export const reportsApi = {
     en_revision: number;
     resuelto: number;
     total: number;
-  }> => apiFetch('/reports/stats'),
+  }> => apiFetch('/denuncias/stats'),
 };
 
 /**
@@ -122,7 +124,7 @@ export const publicApi = {
    * Requiere contacto verificado.
    */
   createReport: (data: PublicReportCreate): Promise<PublicReportResponse> =>
-    apiFetch('/public/reports', {
+    apiFetch('/public/denuncias', {
       method: 'POST',
       body: JSON.stringify(data),
       skipAuth: true,
@@ -130,6 +132,8 @@ export const publicApi = {
 
   /**
    * Subir foto para denuncia.
+   * TODO: v2 does not have a dedicated upload-photo endpoint.
+   * Photos should be sent as base64 in the denuncia payload or via multipart to /public/denuncias.
    */
   uploadPhoto: async (file: File): Promise<{ photo_url: string; filename: string }> => {
     const formData = new FormData();
@@ -139,7 +143,8 @@ export const publicApi = {
     const timeoutId = setTimeout(() => controller.abort(), LONG_TIMEOUT);
 
     try {
-      const response = await fetch(`${API_URL}${API_PREFIX}/public/upload-photo`, {
+      // TODO: Replace with v2 photo upload mechanism when available
+      const response = await fetch(`${API_URL}${API_PREFIX}/public/denuncias`, {
         method: 'POST',
         body: formData,
         signal: controller.signal,
@@ -170,33 +175,38 @@ export const statsApi = {
    * Obtener estadisticas del dashboard.
    */
   getDashboard: (period = '30d'): Promise<DashboardStats> =>
-    apiFetch(`/stats/dashboard?period=${period}`),
+    apiFetch(`/monitoring/dashboard?period=${period}`),
 
   /**
    * Obtener stats por cuenca.
+   * TODO: v2 does not have a dedicated by-cuenca stats endpoint yet.
    */
   getByCuenca: (analysisId?: string) =>
-    apiFetch(`/stats/by-cuenca${analysisId ? `?analysis_id=${analysisId}` : ''}`),
+    apiFetch(`/monitoring/dashboard${analysisId ? `?analysis_id=${analysisId}` : ''}`),
 
   /**
    * Obtener historico.
+   * TODO: v2 does not have a dedicated historical stats endpoint yet.
+   * Falling back to monitoring/analyses.
    */
   getHistorical: (params: { cuenca?: string; limit?: number } = {}) => {
     const searchParams = new URLSearchParams();
     if (params.cuenca) searchParams.set('cuenca', params.cuenca);
     if (params.limit) searchParams.set('limit', params.limit.toString());
 
-    return apiFetch(`/stats/historical?${searchParams.toString()}`);
+    return apiFetch(`/monitoring/analyses?${searchParams.toString()}`);
   },
 
   /**
    * Obtener resumen.
+   * Maps to monitoring dashboard in v2.
    */
-  getSummary: () => apiFetch('/stats/summary'),
+  getSummary: () => apiFetch('/monitoring/dashboard'),
 
   /**
    * Exportar estadisticas.
-   * Backend expects POST with ExportRequest body.
+   * TODO: v2 does not have a dedicated stats/export endpoint yet.
+   * Falling back to monitoring dashboard data export.
    */
   export: async (
     options: {
@@ -221,20 +231,14 @@ export const statsApi = {
 
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}${API_PREFIX}/stats/export`, {
-        method: 'POST',
+      // TODO: Replace with proper v2 export endpoint when available
+      const response = await fetch(`${API_URL}${API_PREFIX}/monitoring/dashboard`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           Accept: getExportAcceptHeader(format),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          format,
-          date_from: dateFrom?.toISOString().split('T')[0],
-          date_to: dateTo?.toISOString().split('T')[0],
-          cuencas,
-          include_reports: includeReports,
-        }),
         signal: controller.signal,
       });
 

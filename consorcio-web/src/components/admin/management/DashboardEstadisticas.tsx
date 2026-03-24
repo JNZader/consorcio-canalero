@@ -153,8 +153,8 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
       const currentYear = new Date().getFullYear();
 
       const [balanceResult, budgetResult, historicalResult] = await Promise.allSettled([
-        apiFetch<FinanceBalanceSummary>(`/finance/balance-summary/${currentYear}`),
-        apiFetch<unknown>(`/finance/presupuestos/ejecucion/${currentYear}`),
+        apiFetch<FinanceBalanceSummary>(`/finanzas/resumen/${currentYear}`),
+        apiFetch<unknown>(`/finanzas/ejecucion/${currentYear}`),
         statsApi.getHistorical({ limit: 6 }),
       ]);
 
