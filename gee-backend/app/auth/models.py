@@ -24,7 +24,7 @@ class User(SQLAlchemyBaseUserTableUUID, TimestampMixin, Base):
     apellido: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     telefono: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role"),
+        Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=UserRole.CIUDADANO,
     )
