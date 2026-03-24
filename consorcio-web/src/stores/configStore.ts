@@ -43,7 +43,7 @@ interface ConfigState {
  * Falls back to DEFAULT_CONFIG when the API is unavailable.
  */
 export const useConfigStore = create<ConfigState>((set, get) => ({
-  config: null,
+  config: DEFAULT_CONFIG,
   loading: false,
   error: null,
   initialized: false,
