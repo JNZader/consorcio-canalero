@@ -7,6 +7,7 @@ Each domain owns its own prefix and tags.
 
 from fastapi import APIRouter
 
+from app.api.v2.public import admin_publish_router, public_router
 from app.auth.router import router as auth_router
 from app.domains.denuncias.router import router as denuncias_router
 from app.domains.infraestructura.router import router as infraestructura_router
@@ -35,3 +36,7 @@ api_router.include_router(geo_router, prefix="/geo")
 
 # Monitoring has no prefix on its router — paths are /sugerencias and /monitoring/*
 api_router.include_router(monitoring_router)
+
+# Public-facing endpoints (no auth) and admin publication workflow
+api_router.include_router(public_router)
+api_router.include_router(admin_publish_router)

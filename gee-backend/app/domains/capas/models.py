@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     Enum,
     Integer,
     String,
@@ -66,6 +67,9 @@ class Capa(UUIDMixin, TimestampMixin, Base):
     )
     es_publica: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    publicacion_fecha: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
     )
 
     def __repr__(self) -> str:
