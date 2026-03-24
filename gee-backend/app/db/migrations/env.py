@@ -24,6 +24,7 @@ from app.domains.geo.intelligence.models import (  # noqa: F401
     PuntoConflicto,
     AlertaGeo,
 )
+from app.domains.settings.models import SystemSettings  # noqa: F401
 
 # Alembic Config object
 config = context.config
