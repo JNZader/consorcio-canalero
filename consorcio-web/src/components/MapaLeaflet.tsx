@@ -23,7 +23,18 @@ import { notifications } from '@mantine/notifications';
 import type { Feature } from 'geojson';
 import type { LeafletMouseEvent, Path } from 'leaflet';
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { GeoJSON, FeatureGroup, LayersControl, MapContainer, TileLayer, CircleMarker, Popup, Tooltip as LeafletTooltip, useMapEvents, useMap } from 'react-leaflet';
+import {
+  GeoJSON,
+  FeatureGroup,
+  LayersControl,
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Popup,
+  Tooltip as LeafletTooltip,
+  useMapEvents,
+  useMap,
+} from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
@@ -51,7 +62,9 @@ const CUENCAS_LAYER_NAMES = ['zona', 'candil', 'ml', 'noroeste', 'norte'] as con
  */
 function LegendItemIndicator({ item }: { item: { color: string; type: string } }) {
   if (item.type === 'border') {
-    return <Box className={styles.legendItemBorder} style={{ border: `2px solid ${item.color}` }} />;
+    return (
+      <Box className={styles.legendItemBorder} style={{ border: `2px solid ${item.color}` }} />
+    );
   }
   if (item.type === 'line') {
     return <Box className={styles.legendItemLine} style={{ backgroundColor: item.color }} />;
@@ -69,21 +82,32 @@ const Leyenda = memo(function Leyenda({ consorcios = [], cuencasConfig = [] }: L
   const [showConsorcios, setShowConsorcios] = useState(false);
 
   // Fallback legend items if config not loaded yet
-  const legendItems = cuencasConfig.length > 0
-    ? [
-        { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
-        ...cuencasConfig.map(c => ({ color: c.color, label: `Cuenca ${c.nombre}`, type: 'fill' }))
-      ]
-    : [
-        { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
-        { color: '#2196F3', label: 'Cuenca Candil', type: 'fill' },
-        { color: '#4CAF50', label: 'Cuenca ML', type: 'fill' },
-        { color: '#FF9800', label: 'Cuenca Noroeste', type: 'fill' },
-        { color: '#9C27B0', label: 'Cuenca Norte', type: 'fill' },
-      ];
+  const legendItems =
+    cuencasConfig.length > 0
+      ? [
+          { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
+          ...cuencasConfig.map((c) => ({
+            color: c.color,
+            label: `Cuenca ${c.nombre}`,
+            type: 'fill',
+          })),
+        ]
+      : [
+          { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
+          { color: '#2196F3', label: 'Cuenca Candil', type: 'fill' },
+          { color: '#4CAF50', label: 'Cuenca ML', type: 'fill' },
+          { color: '#FF9800', label: 'Cuenca Noroeste', type: 'fill' },
+          { color: '#9C27B0', label: 'Cuenca Norte', type: 'fill' },
+        ];
 
   return (
-    <Paper shadow="md" p="sm" radius="md" className={styles.legendPanel} style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+    <Paper
+      shadow="md"
+      p="sm"
+      radius="md"
+      className={styles.legendPanel}
+      style={{ maxHeight: '80vh', overflowY: 'auto' }}
+    >
       <Text fw={600} size="sm" mb="xs">
         Leyenda
       </Text>
@@ -100,7 +124,11 @@ const Leyenda = memo(function Leyenda({ consorcios = [], cuencasConfig = [] }: L
         {consorcios.length > 0 && (
           <>
             <Divider my={4} />
-            <Group gap="xs" style={{ cursor: 'pointer' }} onClick={() => setShowConsorcios(!showConsorcios)}>
+            <Group
+              gap="xs"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setShowConsorcios(!showConsorcios)}
+            >
               <Text fw={600} size="xs" c="dimmed">
                 Red Vial ({consorcios.length} consorcios)
               </Text>
@@ -121,7 +149,12 @@ const Leyenda = memo(function Leyenda({ consorcios = [], cuencasConfig = [] }: L
                         borderRadius: 1,
                       }}
                     />
-                    <Text size="xs" truncate style={{ maxWidth: 150 }} title={`${c.nombre} - ${c.longitud_km} km`}>
+                    <Text
+                      size="xs"
+                      truncate
+                      style={{ maxWidth: 150 }}
+                      title={`${c.nombre} - ${c.longitud_km} km`}
+                    >
                       {c.codigo} ({c.longitud_km.toFixed(0)} km)
                     </Text>
                   </Group>
@@ -175,7 +208,10 @@ interface SatelliteImagePanelProps {
   readonly onClear: () => void;
 }
 
-const _SatelliteImagePanel = memo(function SatelliteImagePanel({ image: _image, onClear: _onClear }: SatelliteImagePanelProps) {
+const _SatelliteImagePanel = memo(function SatelliteImagePanel({
+  image: _image,
+  onClear: _onClear,
+}: SatelliteImagePanelProps) {
   return (
     <Paper
       shadow="md"
@@ -252,7 +288,11 @@ const ViewModePanel = memo(function ViewModePanel({
       value: 'single',
       label: (
         <Tooltip
-          label={singleImageInfo ? `${singleImageInfo.sensor} - ${singleImageInfo.date}` : 'Imagen satelital'}
+          label={
+            singleImageInfo
+              ? `${singleImageInfo.sensor} - ${singleImageInfo.date}`
+              : 'Imagen satelital'
+          }
           position="bottom"
           withArrow
         >
@@ -270,7 +310,11 @@ const ViewModePanel = memo(function ViewModePanel({
       value: 'comparison',
       label: (
         <Tooltip
-          label={comparisonInfo ? `Comparar: ${comparisonInfo.leftDate} vs ${comparisonInfo.rightDate}` : 'Comparacion'}
+          label={
+            comparisonInfo
+              ? `Comparar: ${comparisonInfo.leftDate} vs ${comparisonInfo.rightDate}`
+              : 'Comparacion'
+          }
           position="bottom"
           withArrow
         >
@@ -311,7 +355,10 @@ const ViewModePanel = memo(function ViewModePanel({
 });
 
 // Componente para capturar clics y añadir puntos
-function AddPointEvents({ onMapClick, enabled }: { onMapClick: (lat: number, lng: number) => void, enabled: boolean }) {
+function AddPointEvents({
+  onMapClick,
+  enabled,
+}: { onMapClick: (lat: number, lng: number) => void; enabled: boolean }) {
   useMapEvents({
     click(e) {
       if (enabled) {
@@ -351,7 +398,7 @@ export default function MapaLeaflet() {
 
   // Estados para marcacion manual
   const [markingMode, setMarkingMode] = useState(false);
-  const [newPoint, setNewPoint] = useState<{ lat: number, lng: number } | null>(null);
+  const [newPoint, setNewPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm({
@@ -380,9 +427,12 @@ export default function MapaLeaflet() {
   const handleExportAsset = async (assetId: string, assetName: string) => {
     try {
       const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v1/infrastructure/assets/${assetId}/export-pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await fetch(
+        `${API_URL}/api/v1/infrastructure/assets/${assetId}/export-pdf`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (!response.ok) throw new Error('Error al generar PDF');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -391,7 +441,11 @@ export default function MapaLeaflet() {
       a.download = `Ficha_Tecnica_${assetName.replace(/\s+/g, '_')}.pdf`;
       a.click();
     } catch (_err) {
-      notifications.show({ title: 'Error', message: 'No se pudo generar la ficha tecnica', color: 'red' });
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo generar la ficha tecnica',
+        color: 'red',
+      });
     }
   };
 
@@ -612,7 +666,10 @@ export default function MapaLeaflet() {
 
           {/* Satellite image from Image Explorer (only when in single image mode) */}
           {showSingleImage && selectedImage && (
-            <LayersControl.Overlay checked name={`${selectedImage.sensor} (${selectedImage.target_date})`}>
+            <LayersControl.Overlay
+              checked
+              name={`${selectedImage.sensor} (${selectedImage.target_date})`}
+            >
               <TileLayer
                 url={selectedImage.tile_url}
                 attribution="&copy; Google Earth Engine"
@@ -631,13 +688,23 @@ export default function MapaLeaflet() {
 
           {capas.candil && (
             <LayersControl.Overlay name="Cuenca Candil">
-              <GeoJSON key="candil" data={capas.candil} style={GEE_LAYER_STYLES.candil} onEachFeature={onEachFeature} />
+              <GeoJSON
+                key="candil"
+                data={capas.candil}
+                style={GEE_LAYER_STYLES.candil}
+                onEachFeature={onEachFeature}
+              />
             </LayersControl.Overlay>
           )}
 
           {capas.ml && (
             <LayersControl.Overlay name="Cuenca ML">
-              <GeoJSON key="ml" data={capas.ml} style={GEE_LAYER_STYLES.ml} onEachFeature={onEachFeature} />
+              <GeoJSON
+                key="ml"
+                data={capas.ml}
+                style={GEE_LAYER_STYLES.ml}
+                onEachFeature={onEachFeature}
+              />
             </LayersControl.Overlay>
           )}
 
@@ -654,7 +721,12 @@ export default function MapaLeaflet() {
 
           {capas.norte && (
             <LayersControl.Overlay name="Cuenca Norte">
-              <GeoJSON key="norte" data={capas.norte} style={GEE_LAYER_STYLES.norte} onEachFeature={onEachFeature} />
+              <GeoJSON
+                key="norte"
+                data={capas.norte}
+                style={GEE_LAYER_STYLES.norte}
+                onEachFeature={onEachFeature}
+              />
             </LayersControl.Overlay>
           )}
 
@@ -679,16 +751,16 @@ export default function MapaLeaflet() {
             <LayersControl.Overlay name="Intersecciones (Alcantarillas potenciales)">
               <GeoJSON
                 data={intersections}
-                pointToLayer={(_feature, latlng) => (
+                pointToLayer={(_feature, latlng) =>
                   L.circleMarker(latlng, {
                     radius: 5,
-                    fillColor: "#ffffff",
-                    color: "#000000",
+                    fillColor: '#ffffff',
+                    color: '#000000',
                     weight: 1,
                     opacity: 1,
-                    fillOpacity: 0.8
+                    fillOpacity: 0.8,
                   })
-                )}
+                }
               />
             </LayersControl.Overlay>
           )}
@@ -696,11 +768,15 @@ export default function MapaLeaflet() {
           {/* Activos de Infraestructura Registrados - grouped in a single overlay */}
           <LayersControl.Overlay checked name="Activos de Infraestructura">
             <FeatureGroup>
-              {assets.map(asset => {
+              {assets.map((asset) => {
                 const assetColor =
-                  asset.tipo === 'puente' ? '#f03e3e' :
-                  asset.tipo === 'alcantarilla' ? '#1971c2' :
-                  asset.tipo === 'canal' ? '#2f9e44' : '#fd7e14';
+                  asset.tipo === 'puente'
+                    ? '#f03e3e'
+                    : asset.tipo === 'alcantarilla'
+                      ? '#1971c2'
+                      : asset.tipo === 'canal'
+                        ? '#2f9e44'
+                        : '#fd7e14';
 
                 return (
                   <CircleMarker
@@ -711,22 +787,37 @@ export default function MapaLeaflet() {
                       fillColor: assetColor,
                       color: '#ffffff',
                       weight: 2,
-                      fillOpacity: 0.9
+                      fillOpacity: 0.9,
                     }}
                   >
                     <LeafletTooltip direction="top" offset={[0, -10]}>
-                      <Text size="xs" fw={700}>{asset.nombre}</Text>
+                      <Text size="xs" fw={700}>
+                        {asset.nombre}
+                      </Text>
                     </LeafletTooltip>
                     <Popup>
                       <Stack gap={4}>
-                        <Text fw={700} size="sm">{asset.nombre}</Text>
-                        <Badge size="xs" variant="outline" color={assetColor}>{asset.tipo.toUpperCase()}</Badge>
+                        <Text fw={700} size="sm">
+                          {asset.nombre}
+                        </Text>
+                        <Badge size="xs" variant="outline" color={assetColor}>
+                          {asset.tipo.toUpperCase()}
+                        </Badge>
                         <Divider my={4} />
-                        <Text size="xs">Estado: <b>{asset.estado_actual.toUpperCase()}</b></Text>
-                        <Text size="xs" c="dimmed">Cuenca: {asset.cuenca}</Text>
-                        <Text size="xs" c="dimmed">Ult. Insp: {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}</Text>
+                        <Text size="xs">
+                          Estado: <b>{asset.estado_actual.toUpperCase()}</b>
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Cuenca: {asset.cuenca}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Ult. Insp:{' '}
+                          {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}
+                        </Text>
                         <Group gap={4} mt="xs">
-                          <Button size="compact-xs" variant="light" color="violet">Bitacora</Button>
+                          <Button size="compact-xs" variant="light" color="violet">
+                            Bitacora
+                          </Button>
                           <Button
                             size="compact-xs"
                             variant="outline"
@@ -768,10 +859,15 @@ export default function MapaLeaflet() {
         onViewModeChange={setViewMode}
         hasSingleImage={!!selectedImage}
         hasComparison={isComparisonAvailable}
-        singleImageInfo={selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null}
+        singleImageInfo={
+          selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null
+        }
         comparisonInfo={
           imageComparison?.left && imageComparison?.right
-            ? { leftDate: imageComparison.left.target_date, rightDate: imageComparison.right.target_date }
+            ? {
+                leftDate: imageComparison.left.target_date,
+                rightDate: imageComparison.right.target_date,
+              }
             : null
         }
       />
@@ -783,18 +879,18 @@ export default function MapaLeaflet() {
         radius="md"
         style={{ position: 'absolute', top: 10, right: 60, zIndex: 1000 }}
       >
-        <Tooltip label={markingMode ? "Cancelar marcacion" : "Marcar punto de interes"}>
+        <Tooltip label={markingMode ? 'Cancelar marcacion' : 'Marcar punto de interes'}>
           <Button
             size="xs"
-            color={markingMode ? "red" : "blue"}
-            variant={markingMode ? "filled" : "light"}
+            color={markingMode ? 'red' : 'blue'}
+            variant={markingMode ? 'filled' : 'light'}
             onClick={() => {
               setMarkingMode(!markingMode);
               setNewPoint(null);
             }}
             leftSection={<IconMap size={16} />}
           >
-            {markingMode ? "Modo Activo (Haz clic)" : "Marcar Punto"}
+            {markingMode ? 'Modo Activo (Haz clic)' : 'Marcar Punto'}
           </Button>
         </Tooltip>
       </Paper>
@@ -835,7 +931,7 @@ export default function MapaLeaflet() {
             />
             <Select
               label="Cuenca"
-              data={config?.cuencas.map(c => ({ value: c.id, label: c.nombre })) || []}
+              data={config?.cuencas.map((c) => ({ value: c.id, label: c.nombre })) || []}
               {...form.getInputProps('cuenca')}
             />
             <Button type="submit" loading={isSubmitting} fullWidth mt="md">

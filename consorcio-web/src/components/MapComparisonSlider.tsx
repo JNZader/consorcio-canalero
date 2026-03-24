@@ -25,7 +25,11 @@ function daysBetween(date1: string, date2: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function MapComparisonSlider({ comparison, onClear, leftLayerRef }: MapComparisonSliderProps) {
+export function MapComparisonSlider({
+  comparison,
+  onClear,
+  leftLayerRef,
+}: MapComparisonSliderProps) {
   const [sliderPosition, setSliderPosition] = useState(50); // percentage
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -209,7 +213,9 @@ export function MapComparisonSlider({ comparison, onClear, leftLayerRef }: MapCo
               <Badge size="sm" color="blue" variant="light">
                 {comparison.left.sensor}
               </Badge>
-              <Text size="xs" c="dimmed">vs</Text>
+              <Text size="xs" c="dimmed">
+                vs
+              </Text>
               <Badge size="sm" color="green" variant="light">
                 {comparison.right.sensor}
               </Badge>

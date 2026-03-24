@@ -20,17 +20,10 @@ export default function NotFound() {
         </Title>
 
         <Text c="dimmed" ta="center" maw={400}>
-          La pagina que buscas no existe o fue movida.
-          Verifica la URL o vuelve al inicio.
+          La pagina que buscas no existe o fue movida. Verifica la URL o vuelve al inicio.
         </Text>
 
-        <Button
-          component={Link}
-          to="/"
-          leftSection={<IconArrowLeft size={18} />}
-          size="md"
-          mt="md"
-        >
+        <Button component={Link} to="/" leftSection={<IconArrowLeft size={18} />} size="md" mt="md">
           Volver al inicio
         </Button>
       </Stack>

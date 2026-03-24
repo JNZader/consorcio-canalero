@@ -104,7 +104,9 @@ function SugerenciasTableContent({
       <Center py="xl">
         <Stack align="center" gap="md">
           <Loader />
-          <Text size="sm" c="gray.6">Cargando sugerencias...</Text>
+          <Text size="sm" c="gray.6">
+            Cargando sugerencias...
+          </Text>
         </Stack>
       </Center>
     );
@@ -145,11 +147,17 @@ function SugerenciasTableContent({
               </Table.Td>
               <Table.Td>
                 <Badge variant="outline" size="sm">
-                  {CATEGORIA_OPTIONS.find((c) => c.value === sug.categoria)?.label || sug.categoria || 'Sin categoria'}
+                  {CATEGORIA_OPTIONS.find((c) => c.value === sug.categoria)?.label ||
+                    sug.categoria ||
+                    'Sin categoria'}
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <Badge color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'} size="sm" variant="light">
+                <Badge
+                  color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'}
+                  size="sm"
+                  variant="light"
+                >
                   {sug.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
                 </Badge>
               </Table.Td>
@@ -180,7 +188,7 @@ function StatsCard({
   label,
   value,
   color,
-  icon: Icon
+  icon: Icon,
 }: {
   label: string;
   value: number;
@@ -365,8 +373,8 @@ export default function SugerenciasPanel() {
           estado_anterior: selectedSugerencia.estado,
           estado_nuevo: newEstado,
           comentario_interno: adminNotes,
-          comentario_publico: publicComment
-        })
+          comentario_publico: publicComment,
+        }),
       });
 
       notifications.show({
@@ -540,8 +548,7 @@ export default function SugerenciasPanel() {
     const query = searchQuery.toLowerCase();
     return sugerencias.filter(
       (sug) =>
-        sug.titulo.toLowerCase().includes(query) ||
-        sug.descripcion.toLowerCase().includes(query)
+        sug.titulo.toLowerCase().includes(query) || sug.descripcion.toLowerCase().includes(query)
     );
   }, [sugerencias, searchQuery]);
 
@@ -588,13 +595,22 @@ export default function SugerenciasPanel() {
 
         {/* Proxima Reunion Section */}
         {proximaReunion.length > 0 && (
-          <Paper shadow="sm" p="lg" radius="md" mb="xl" withBorder style={{ borderColor: 'var(--mantine-color-blue-3)' }}>
+          <Paper
+            shadow="sm"
+            p="lg"
+            radius="md"
+            mb="xl"
+            withBorder
+            style={{ borderColor: 'var(--mantine-color-blue-3)' }}
+          >
             <Group gap="xs" mb="md">
               <ThemeIcon color="blue" size="md" variant="light">
                 <IconCalendar size={16} />
               </ThemeIcon>
               <Title order={4}>Temas para Proxima Reunion</Title>
-              <Badge color="blue" variant="light">{proximaReunion.length} temas</Badge>
+              <Badge color="blue" variant="light">
+                {proximaReunion.length} temas
+              </Badge>
             </Group>
             <Stack gap="xs">
               {proximaReunion.map((sug) => (
@@ -602,23 +618,43 @@ export default function SugerenciasPanel() {
                   key={sug.id}
                   p="sm"
                   radius="sm"
-                  style={{ background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))', cursor: 'pointer' }}
+                  style={{
+                    background:
+                      'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))',
+                    cursor: 'pointer',
+                  }}
                   onClick={() => handleViewDetail(sug)}
                 >
                   <Group justify="space-between">
                     <div style={{ flex: 1 }}>
                       <Group gap="xs">
-                        <Text size="sm" fw={500}>{sug.titulo}</Text>
-                        <Badge size="xs" color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'} variant="light">
+                        <Text size="sm" fw={500}>
+                          {sug.titulo}
+                        </Text>
+                        <Badge
+                          size="xs"
+                          color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'}
+                          variant="light"
+                        >
                           {sug.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
                         </Badge>
                         {sug.prioridad !== 'normal' && (
-                          <Badge size="xs" color={PRIORIDAD_OPTIONS.find(p => p.value === sug.prioridad)?.color || 'gray'} variant="dot">
-                            {PRIORIDAD_OPTIONS.find(p => p.value === sug.prioridad)?.label || sug.prioridad}
+                          <Badge
+                            size="xs"
+                            color={
+                              PRIORIDAD_OPTIONS.find((p) => p.value === sug.prioridad)?.color ||
+                              'gray'
+                            }
+                            variant="dot"
+                          >
+                            {PRIORIDAD_OPTIONS.find((p) => p.value === sug.prioridad)?.label ||
+                              sug.prioridad}
                           </Badge>
                         )}
                       </Group>
-                      <Text size="xs" c="dimmed" lineClamp={1}>{sug.descripcion}</Text>
+                      <Text size="xs" c="dimmed" lineClamp={1}>
+                        {sug.descripcion}
+                      </Text>
                     </div>
                     {sug.fecha_reunion && (
                       <Badge color="blue" variant="outline" size="sm">
@@ -688,53 +724,88 @@ export default function SugerenciasPanel() {
           {selectedSugerencia && (
             <Stack gap="md">
               <div>
-                <Text size="sm" fw={500}>Titulo</Text>
+                <Text size="sm" fw={500}>
+                  Titulo
+                </Text>
                 <Text>{selectedSugerencia.titulo}</Text>
               </div>
 
               <div>
-                <Text size="sm" fw={500}>Descripcion</Text>
-                <Paper p="sm" style={{ background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' }} radius="sm">
+                <Text size="sm" fw={500}>
+                  Descripcion
+                </Text>
+                <Paper
+                  p="sm"
+                  style={{
+                    background:
+                      'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))',
+                  }}
+                  radius="sm"
+                >
                   <Text size="sm">{selectedSugerencia.descripcion}</Text>
                 </Paper>
               </div>
 
               <Group>
                 <div>
-                  <Text size="sm" fw={500}>Categoria</Text>
+                  <Text size="sm" fw={500}>
+                    Categoria
+                  </Text>
                   <Badge variant="outline">
-                    {CATEGORIA_OPTIONS.find((c) => c.value === selectedSugerencia.categoria)?.label || 'Sin categoria'}
+                    {CATEGORIA_OPTIONS.find((c) => c.value === selectedSugerencia.categoria)
+                      ?.label || 'Sin categoria'}
                   </Badge>
                 </div>
                 <div>
-                  <Text size="sm" fw={500}>Tipo</Text>
-                  <Badge color={selectedSugerencia.tipo === 'ciudadana' ? 'blue' : 'violet'} variant="light">
+                  <Text size="sm" fw={500}>
+                    Tipo
+                  </Text>
+                  <Badge
+                    color={selectedSugerencia.tipo === 'ciudadana' ? 'blue' : 'violet'}
+                    variant="light"
+                  >
                     {selectedSugerencia.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
                   </Badge>
                 </div>
                 <div>
-                  <Text size="sm" fw={500}>Fecha</Text>
-                  <Text size="sm" c="gray.6">{formatDate(selectedSugerencia.created_at)}</Text>
+                  <Text size="sm" fw={500}>
+                    Fecha
+                  </Text>
+                  <Text size="sm" c="gray.6">
+                    {formatDate(selectedSugerencia.created_at)}
+                  </Text>
                 </div>
               </Group>
 
               {selectedSugerencia.contacto_nombre && (
                 <div>
-                  <Text size="sm" fw={500}>Contacto</Text>
+                  <Text size="sm" fw={500}>
+                    Contacto
+                  </Text>
                   <Text size="sm" c="gray.6">
                     {selectedSugerencia.contacto_nombre}
                     {selectedSugerencia.contacto_email && ` - ${selectedSugerencia.contacto_email}`}
-                    {selectedSugerencia.contacto_telefono && ` - ${selectedSugerencia.contacto_telefono}`}
+                    {selectedSugerencia.contacto_telefono &&
+                      ` - ${selectedSugerencia.contacto_telefono}`}
                   </Text>
                 </div>
               )}
 
               {/* Historial section */}
-              <Paper p="md" style={{ background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }} radius="md">
+              <Paper
+                p="md"
+                style={{
+                  background:
+                    'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
+                }}
+                radius="md"
+              >
                 <Group justify="space-between" mb="sm">
                   <Group gap="xs">
                     <IconHistory size={18} />
-                    <Text size="sm" fw={600}>Historial de Gestión</Text>
+                    <Text size="sm" fw={600}>
+                      Historial de Gestión
+                    </Text>
                   </Group>
                   <Button
                     variant="subtle"
@@ -754,19 +825,27 @@ export default function SugerenciasPanel() {
                   ) : (
                     <Timeline active={0} lineWidth={2}>
                       {historial.map((entry) => (
-                        <Timeline.Item 
-                          key={entry.id} 
+                        <Timeline.Item
+                          key={entry.id}
                           title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
                         >
-                          <Text size="xs" fw={500}>{entry.comentario_publico}</Text>
+                          <Text size="xs" fw={500}>
+                            {entry.comentario_publico}
+                          </Text>
                           {entry.comentario_interno && (
-                            <Text size="xs" c="blue" fs="italic">Interno: {entry.comentario_interno}</Text>
+                            <Text size="xs" c="blue" fs="italic">
+                              Interno: {entry.comentario_interno}
+                            </Text>
                           )}
-                          <Text size="xs" c="dimmed" mt={2}>{formatDate(entry.fecha)}</Text>
+                          <Text size="xs" c="dimmed" mt={2}>
+                            {formatDate(entry.fecha)}
+                          </Text>
                         </Timeline.Item>
                       ))}
                       <Timeline.Item title="Sugerencia Creada">
-                        <Text size="xs" mt={2}>Ingresada al sistema</Text>
+                        <Text size="xs" mt={2}>
+                          Ingresada al sistema
+                        </Text>
                       </Timeline.Item>
                     </Timeline>
                   )}
@@ -775,8 +854,17 @@ export default function SugerenciasPanel() {
 
               {/* Agendar section */}
               {selectedSugerencia.estado === 'pendiente' && (
-                <Paper p="md" style={{ background: 'light-dark(var(--mantine-color-violet-0), var(--mantine-color-dark-5))' }} radius="md">
-                  <Text size="sm" fw={600} mb="md">Agendar para Reunion</Text>
+                <Paper
+                  p="md"
+                  style={{
+                    background:
+                      'light-dark(var(--mantine-color-violet-0), var(--mantine-color-dark-5))',
+                  }}
+                  radius="md"
+                >
+                  <Text size="sm" fw={600} mb="md">
+                    Agendar para Reunion
+                  </Text>
                   <Group>
                     <DatePickerInput
                       label="Fecha de reunion"
@@ -800,8 +888,17 @@ export default function SugerenciasPanel() {
               )}
 
               {/* Admin section */}
-              <Paper p="md" style={{ background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))' }} radius="md">
-                <Title order={6} size="sm" fw={600} mb="md">Gestión de la sugerencia</Title>
+              <Paper
+                p="md"
+                style={{
+                  background:
+                    'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
+                }}
+                radius="md"
+              >
+                <Title order={6} size="sm" fw={600} mb="md">
+                  Gestión de la sugerencia
+                </Title>
                 <Stack gap="sm">
                   <Select
                     label="Cambiar Estado"
@@ -809,7 +906,7 @@ export default function SugerenciasPanel() {
                     value={newEstado}
                     onChange={(v) => setNewEstado(v || 'pendiente')}
                   />
-                  
+
                   <Textarea
                     label="Comentario Público"
                     placeholder="Lo que el vecino verá en su seguimiento..."
@@ -841,8 +938,12 @@ export default function SugerenciasPanel() {
                   Eliminar
                 </Button>
                 <Group>
-                  <Button variant="light" onClick={closeDetail}>Cancelar</Button>
-                  <Button onClick={handleUpdate} loading={updating}>Registrar Gestión</Button>
+                  <Button variant="light" onClick={closeDetail}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpdate} loading={updating}>
+                    Registrar Gestión
+                  </Button>
                 </Group>
               </Group>
             </Stack>
@@ -884,7 +985,9 @@ export default function SugerenciasPanel() {
               />
             </Group>
             <Group justify="flex-end" mt="md">
-              <Button variant="light" onClick={closeCreate}>Cancelar</Button>
+              <Button variant="light" onClick={closeCreate}>
+                Cancelar
+              </Button>
               <Button onClick={handleCreateInternal} loading={creating}>
                 Crear Tema
               </Button>

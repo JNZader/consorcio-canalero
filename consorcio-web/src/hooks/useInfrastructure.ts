@@ -25,7 +25,7 @@ export function useInfrastructure() {
     try {
       const [assetsData, intersectionsData] = await Promise.all([
         apiFetch<InfrastructureAsset[]>('/infrastructure/assets'),
-        apiFetch<FeatureCollection>('/infrastructure/potential-intersections')
+        apiFetch<FeatureCollection>('/infrastructure/potential-intersections'),
       ]);
       setAssets(assetsData);
       setIntersections(intersectionsData);
@@ -44,9 +44,9 @@ export function useInfrastructure() {
     try {
       const newAsset = await apiFetch<InfrastructureAsset>('/infrastructure/assets', {
         method: 'POST',
-        body: JSON.stringify(asset)
+        body: JSON.stringify(asset),
       });
-      setAssets(prev => [...prev, newAsset]);
+      setAssets((prev) => [...prev, newAsset]);
       return newAsset;
     } catch (err) {
       throw err instanceof Error ? err : new Error('Error al crear activo');

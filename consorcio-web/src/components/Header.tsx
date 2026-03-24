@@ -127,13 +127,7 @@ export const HeaderContent = memo(function HeaderContent() {
           <nav aria-label="Navegacion principal" id="primary-nav">
             <Group gap="sm" visibleFrom="sm">
               {PUBLIC_LINKS.map((link) => (
-                <Button
-                  key={link.to}
-                  component={Link}
-                  to={link.to}
-                  variant="subtle"
-                  color="gray"
-                >
+                <Button key={link.to} component={Link} to={link.to} variant="subtle" color="gray">
                   {link.label}
                 </Button>
               ))}

@@ -31,7 +31,10 @@ export const GEE_LAYER_COLORS: Record<GEELayerName, string> = {
 };
 
 // Default styles for GeoJSON layers (Leaflet PathOptions)
-export const GEE_LAYER_STYLES: Record<GEELayerName, { color: string; weight: number; fillOpacity: number; fillColor?: string }> = {
+export const GEE_LAYER_STYLES: Record<
+  GEELayerName,
+  { color: string; weight: number; fillOpacity: number; fillColor?: string }
+> = {
   zona: { color: '#FF0000', weight: 3, fillOpacity: 0 },
   candil: { color: '#2196F3', weight: 2, fillOpacity: 0.1, fillColor: '#2196F3' },
   ml: { color: '#4CAF50', weight: 2, fillOpacity: 0.1, fillColor: '#4CAF50' },

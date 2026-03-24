@@ -21,9 +21,10 @@ export const NO_LAYERS_ERROR_MESSAGE = 'No se pudieron cargar las capas del mapa
  * @param results Array of [layerName, layerData] tuples
  * @returns Object with processed layers map and count of successfully loaded layers
  */
-export function processLoadResults(
-  results: Array<[GEELayerName, FeatureCollection | null]>
-): { layers: GEELayersMap; loadedCount: number } {
+export function processLoadResults(results: Array<[GEELayerName, FeatureCollection | null]>): {
+  layers: GEELayersMap;
+  loadedCount: number;
+} {
   const layers: GEELayersMap = {};
   let loadedCount = 0;
 

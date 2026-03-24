@@ -31,7 +31,9 @@ export function SugerenciasContent() {
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" mt="xl">
           <Alert color="blue" title="Como funciona" icon={<IconInfoCircle size={20} />}>
             <List size="sm" spacing="xs">
-              <List.Item>Verifica tu contacto (email o WhatsApp) para enviar sugerencias.</List.Item>
+              <List.Item>
+                Verifica tu contacto (email o WhatsApp) para enviar sugerencias.
+              </List.Item>
               <List.Item>Puedes enviar hasta 3 sugerencias por dia.</List.Item>
               <List.Item>
                 Las sugerencias son revisadas por la comision en sus reuniones periodicas.

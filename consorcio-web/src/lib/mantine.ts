@@ -2,11 +2,13 @@ import { type MantineColorSchemeManager, localStorageColorSchemeManager } from '
 
 // Extender globalThis para el estado compartido del tema
 declare global {
-  var __mantineColorSchemeState: {
-    lastValue: string | null;
-    pendingUpdate: number | null;
-    isUpdating: boolean;
-  } | undefined;
+  var __mantineColorSchemeState:
+    | {
+        lastValue: string | null;
+        pendingUpdate: number | null;
+        isUpdating: boolean;
+      }
+    | undefined;
 }
 
 /**
@@ -52,7 +54,9 @@ export function createSharedColorSchemeManager({
         }
         state.pendingUpdate = requestAnimationFrame(() => {
           state.isUpdating = true;
-          globalThis.dispatchEvent(new CustomEvent('mantine-color-scheme-change', { detail: value }));
+          globalThis.dispatchEvent(
+            new CustomEvent('mantine-color-scheme-change', { detail: value })
+          );
           state.isUpdating = false;
           state.pendingUpdate = null;
         });
@@ -72,7 +76,10 @@ export function createSharedColorSchemeManager({
       };
 
       if (globalThis.window !== undefined) {
-        globalThis.addEventListener('mantine-color-scheme-change', handleCustomEvent as EventListener);
+        globalThis.addEventListener(
+          'mantine-color-scheme-change',
+          handleCustomEvent as EventListener
+        );
       }
 
       return () => {

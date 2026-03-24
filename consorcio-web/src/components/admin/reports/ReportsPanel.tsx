@@ -301,8 +301,8 @@ export default function ReportsPanel() {
           estado_anterior: selectedReport.estado,
           estado_nuevo: newStatus,
           comentario_interno: adminNotes,
-          comentario_publico: publicComment
-        })
+          comentario_publico: publicComment,
+        }),
       });
 
       notifications.show({
@@ -409,7 +409,11 @@ export default function ReportsPanel() {
               w={150}
               aria-label="Filtrar por categoria de la denuncia"
             />
-            <Button variant="light" onClick={loadReports} aria-label="Actualizar lista de denuncias">
+            <Button
+              variant="light"
+              onClick={loadReports}
+              aria-label="Actualizar lista de denuncias"
+            >
               Actualizar
             </Button>
           </Group>
@@ -530,7 +534,8 @@ export default function ReportsPanel() {
               <Paper
                 p="md"
                 style={{
-                  background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
+                  background:
+                    'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
                 }}
                 radius="md"
               >
@@ -568,25 +573,37 @@ export default function ReportsPanel() {
               <div>
                 <Group gap="xs" mb="sm">
                   <IconHistory size={18} />
-                  <Text fw={600} size="sm">Historial de Seguimiento</Text>
+                  <Text fw={600} size="sm">
+                    Historial de Seguimiento
+                  </Text>
                 </Group>
 
-                {loadingHistory ? <Loader size="sm" /> : (
+                {loadingHistory ? (
+                  <Loader size="sm" />
+                ) : (
                   <Timeline active={0} lineWidth={2}>
                     {history.map((entry) => (
                       <Timeline.Item
                         key={entry.id}
                         title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
                       >
-                        <Text size="xs" fw={500}>{entry.comentario_publico}</Text>
+                        <Text size="xs" fw={500}>
+                          {entry.comentario_publico}
+                        </Text>
                         {entry.comentario_interno && (
-                          <Text size="xs" c="blue" fs="italic">Interno: {entry.comentario_interno}</Text>
+                          <Text size="xs" c="blue" fs="italic">
+                            Interno: {entry.comentario_interno}
+                          </Text>
                         )}
-                        <Text size="xs" c="dimmed" mt={2}>{formatDate(entry.fecha, { includeTime: true })}</Text>
+                        <Text size="xs" c="dimmed" mt={2}>
+                          {formatDate(entry.fecha, { includeTime: true })}
+                        </Text>
                       </Timeline.Item>
                     ))}
                     <Timeline.Item title="Reporte Creado">
-                      <Text size="xs" mt={2}>Ingresado al sistema</Text>
+                      <Text size="xs" mt={2}>
+                        Ingresado al sistema
+                      </Text>
                     </Timeline.Item>
                   </Timeline>
                 )}

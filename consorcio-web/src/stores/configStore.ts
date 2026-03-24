@@ -36,7 +36,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       set({
         loading: false,
         initialized: true,
-        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuracion'
+        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuracion',
       });
     }
   },

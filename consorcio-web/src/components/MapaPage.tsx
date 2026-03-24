@@ -34,20 +34,23 @@ export function MapaContent() {
   const selectedImage = useSelectedImageListener();
 
   // Construir estadisticas dinamicas desde la API (solo denuncias)
-  const dynamicStats = isCommissionMember && stats ? [
-    {
-      id: 'denuncias',
-      value: stats.denuncias?.pendiente?.toString() || '0',
-      label: 'Denuncias activas',
-      color: 'red',
-    },
-    {
-      id: 'resueltas',
-      value: stats.denuncias?.resuelto?.toString() || '0',
-      label: 'Resueltas este mes',
-      color: 'green',
-    },
-  ] : [];
+  const dynamicStats =
+    isCommissionMember && stats
+      ? [
+          {
+            id: 'denuncias',
+            value: stats.denuncias?.pendiente?.toString() || '0',
+            label: 'Denuncias activas',
+            color: 'red',
+          },
+          {
+            id: 'resueltas',
+            value: stats.denuncias?.resuelto?.toString() || '0',
+            label: 'Resueltas este mes',
+            color: 'green',
+          },
+        ]
+      : [];
 
   return (
     <Box
@@ -127,26 +130,24 @@ export function MapaContent() {
         {/* Estadisticas rapidas - Solo visible para miembros de la comision */}
         {isCommissionMember && (
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-            {statsLoading ? (
-              // Skeleton mientras cargan los datos
-              Array.from({ length: 2 }).map((_, i) => (
-                <Card key={`skeleton-${i}`} shadow="sm" padding="md" radius="md">
-                  <Skeleton height={24} width={80} mb="xs" />
-                  <Skeleton height={16} width={100} />
-                </Card>
-              ))
-            ) : (
-              dynamicStats.map((stat) => (
-                <Card key={stat.id} shadow="sm" padding="md" radius="md">
-                  <Text size="xl" fw={700} c={stat.color}>
-                    {stat.value}
-                  </Text>
-                  <Text size="sm" c="gray.6">
-                    {stat.label}
-                  </Text>
-                </Card>
-              ))
-            )}
+            {statsLoading
+              ? // Skeleton mientras cargan los datos
+                Array.from({ length: 2 }).map((_, i) => (
+                  <Card key={`skeleton-${i}`} shadow="sm" padding="md" radius="md">
+                    <Skeleton height={24} width={80} mb="xs" />
+                    <Skeleton height={16} width={100} />
+                  </Card>
+                ))
+              : dynamicStats.map((stat) => (
+                  <Card key={stat.id} shadow="sm" padding="md" radius="md">
+                    <Text size="xl" fw={700} c={stat.color}>
+                      {stat.value}
+                    </Text>
+                    <Text size="sm" c="gray.6">
+                      {stat.label}
+                    </Text>
+                  </Card>
+                ))}
           </SimpleGrid>
         )}
       </Container>

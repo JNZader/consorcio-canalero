@@ -76,7 +76,11 @@ export function showNotification(
  * Show error notification from an Error object or unknown error.
  * Extracts the message automatically.
  */
-export function showErrorFromException(title: string, error: unknown, fallback = 'Error desconocido'): void {
+export function showErrorFromException(
+  title: string,
+  error: unknown,
+  fallback = 'Error desconocido'
+): void {
   const message = error instanceof Error ? error.message : fallback;
   showError(title, message);
 }

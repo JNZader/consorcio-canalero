@@ -128,8 +128,14 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
 
   // Get state from Zustand store using a single shallow selector
   const {
-    user, session, profile, loading, initialized, error,
-    initialize: storeInitialize, reset: storeReset
+    user,
+    session,
+    profile,
+    loading,
+    initialized,
+    error,
+    initialize: storeInitialize,
+    reset: storeReset,
   } = useAuthStore(
     useShallow((state) => ({
       user: state.user,

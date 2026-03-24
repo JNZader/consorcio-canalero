@@ -8,10 +8,7 @@
  */
 
 import type { FeatureCollection, Geometry } from 'geojson';
-import type {
-  LayerStyle,
-  Usuario,
-} from '../types';
+import type { LayerStyle, Usuario } from '../types';
 
 // ===========================================
 // USER / AUTH TYPE GUARDS
@@ -393,9 +390,12 @@ export function isValidSelectedImage(value: unknown): value is SelectedImageShap
     // Only allow HTTPS or valid Earth Engine URLs (by hostname)
     const hostname = parsed.hostname;
     const isEarthEngineHost = (ALLOWED_EARTH_ENGINE_HOSTNAMES as readonly string[]).includes(
-      hostname,
+      hostname
     );
-    if (parsed.protocol !== 'https:' || (!isEarthEngineHost && hostname.endsWith('.googleapis.com'))) {
+    if (
+      parsed.protocol !== 'https:' ||
+      (!isEarthEngineHost && hostname.endsWith('.googleapis.com'))
+    ) {
       // Require HTTPS always, and only allow Earth Engine traffic to known hostnames
       return false;
     }

@@ -215,8 +215,8 @@ export function AuthForReportModal({
           <Text fw={600}>{sentEmail}</Text>
           <Alert color="blue" title="Siguiente paso">
             <Text size="sm">
-              Haz click en el link del email para verificar tu identidad.
-              Despues podras completar tu reporte.
+              Haz click en el link del email para verificar tu identidad. Despues podras completar
+              tu reporte.
             </Text>
           </Alert>
           <Button variant="subtle" onClick={() => setStep('choose')}>

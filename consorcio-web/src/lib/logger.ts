@@ -111,7 +111,8 @@ export const logger = {
    */
   child(prefix: string) {
     return {
-      debug: (message: string, ...args: unknown[]) => logger.debug(`[${prefix}] ${message}`, ...args),
+      debug: (message: string, ...args: unknown[]) =>
+        logger.debug(`[${prefix}] ${message}`, ...args),
       info: (message: string, ...args: unknown[]) => logger.info(`[${prefix}] ${message}`, ...args),
       warn: (message: string, ...args: unknown[]) => logger.warn(`[${prefix}] ${message}`, ...args),
       error: (message: string, error?: unknown, ...args: unknown[]) =>

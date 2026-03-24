@@ -34,10 +34,7 @@ function getRoleLabel(rol: string | undefined): string {
 }
 
 // Helper to get user initials
-function getInitials(
-  profile: { nombre?: string } | null,
-  user: { email?: string } | null
-): string {
+function getInitials(profile: { nombre?: string } | null, user: { email?: string } | null): string {
   if (profile?.nombre) {
     return profile.nombre
       .split(' ')

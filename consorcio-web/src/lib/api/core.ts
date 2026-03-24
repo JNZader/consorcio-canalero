@@ -6,7 +6,8 @@ import { getSupabaseClient } from '../supabase';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility
-export const API_URL = import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
+export const API_URL =
+  import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
 export const API_PREFIX = '/api/v1';
 
 // Timeouts en milisegundos
@@ -30,15 +31,14 @@ export async function getAuthToken(): Promise<string | null> {
       return cachedToken.token;
     }
 
-    const { data: { session } } = await getSupabaseClient().auth.getSession();
+    const {
+      data: { session },
+    } = await getSupabaseClient().auth.getSession();
     const token = session?.access_token || null;
 
     // Cache the token if valid, respecting JWT expiry
     if (token && session?.expires_at) {
-      const expiresAt = Math.min(
-        Date.now() + TOKEN_CACHE_TTL,
-        session.expires_at * 1000 - 30_000
-      );
+      const expiresAt = Math.min(Date.now() + TOKEN_CACHE_TTL, session.expires_at * 1000 - 30_000);
       cachedToken = { token, expiresAt };
     } else if (token) {
       cachedToken = {
@@ -74,10 +74,7 @@ export interface ApiFetchOptions extends RequestInit {
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
-export async function apiFetch<T>(
-  endpoint: string,
-  options: ApiFetchOptions = {}
-): Promise<T> {
+export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
   const url = `${API_URL}${API_PREFIX}${endpoint}`;
   const { timeout = DEFAULT_TIMEOUT, skipAuth = false, ...fetchOptions } = options;
 

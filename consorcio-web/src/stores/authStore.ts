@@ -192,7 +192,10 @@ export const useAuthStore = create<AuthState & AuthActions>()(
           set({ loading: true });
 
           try {
-            const { data: { session }, error } = await getSupabaseClient().auth.getSession();
+            const {
+              data: { session },
+              error,
+            } = await getSupabaseClient().auth.getSession();
 
             if (error) throw error;
 
@@ -221,34 +224,34 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             if (!authListenerRegistered) {
               authListenerRegistered = true;
 
-              const { data: { subscription } } = getSupabaseClient().auth.onAuthStateChange(
-                async (event, newSession) => {
-                  const currentState = get();
+              const {
+                data: { subscription },
+              } = getSupabaseClient().auth.onAuthStateChange(async (event, newSession) => {
+                const currentState = get();
 
-                  if (event === 'SIGNED_IN' && newSession?.user) {
-                    const profile = await currentState.syncProfile(newSession.user);
-                    set({
-                      user: newSession.user,
-                      session: newSession,
-                      profile,
-                      loading: false,
-                      error: null,
-                    });
-                  } else if (event === 'SIGNED_OUT') {
-                    clearAuthTokenCache();
-                    set({
-                      user: null,
-                      session: null,
-                      profile: null,
-                      loading: false,
-                      error: null,
-                    });
-                  } else if (event === 'TOKEN_REFRESHED' && newSession) {
-                    clearAuthTokenCache(); // Clear cache so new token is fetched
-                    set({ session: newSession });
-                  }
+                if (event === 'SIGNED_IN' && newSession?.user) {
+                  const profile = await currentState.syncProfile(newSession.user);
+                  set({
+                    user: newSession.user,
+                    session: newSession,
+                    profile,
+                    loading: false,
+                    error: null,
+                  });
+                } else if (event === 'SIGNED_OUT') {
+                  clearAuthTokenCache();
+                  set({
+                    user: null,
+                    session: null,
+                    profile: null,
+                    loading: false,
+                    error: null,
+                  });
+                } else if (event === 'TOKEN_REFRESHED' && newSession) {
+                  clearAuthTokenCache(); // Clear cache so new token is fetched
+                  set({ session: newSession });
                 }
-              );
+              });
 
               authListenerUnsubscribe = subscription.unsubscribe;
             }

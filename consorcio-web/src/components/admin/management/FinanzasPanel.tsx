@@ -94,7 +94,8 @@ export default function FinanzasPanel() {
   const [opened, { open, close }] = useDisclosure(false);
   const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
   const [ingresoOpened, { open: openIngreso, close: closeIngreso }] = useDisclosure(false);
-  const [editIngresoOpened, { open: openEditIngreso, close: closeEditIngreso }] = useDisclosure(false);
+  const [editIngresoOpened, { open: openEditIngreso, close: closeEditIngreso }] =
+    useDisclosure(false);
   const [categoryOpened, { open: openCategory, close: closeCategory }] = useDisclosure(false);
   const [sourceOpened, { open: openSource, close: closeSource }] = useDisclosure(false);
 
@@ -561,7 +562,12 @@ export default function FinanzasPanel() {
                     </Table.Td>
                     <Table.Td>
                       {ingreso.comprobante_url ? (
-                        <Anchor href={ingreso.comprobante_url} target="_blank" rel="noreferrer" size="sm">
+                        <Anchor
+                          href={ingreso.comprobante_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          size="sm"
+                        >
                           Ver archivo
                         </Anchor>
                       ) : (
@@ -757,9 +763,18 @@ export default function FinanzasPanel() {
       <Modal opened={editIngresoOpened} onClose={closeEditIngreso} title="Editar ingreso">
         <form onSubmit={editIngresoForm.onSubmit(handleUpdateIngreso)}>
           <Stack gap="sm">
-            <TextInput label="Descripcion" required {...editIngresoForm.getInputProps('descripcion')} />
+            <TextInput
+              label="Descripcion"
+              required
+              {...editIngresoForm.getInputProps('descripcion')}
+            />
             <SimpleGrid cols={2}>
-              <NumberInput label="Monto ($)" required hideControls {...editIngresoForm.getInputProps('monto')} />
+              <NumberInput
+                label="Monto ($)"
+                required
+                hideControls
+                {...editIngresoForm.getInputProps('monto')}
+              />
               <Select
                 label="Fuente"
                 placeholder="Selecciona fuente"

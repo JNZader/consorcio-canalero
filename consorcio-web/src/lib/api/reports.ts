@@ -4,12 +4,7 @@
 
 import { apiFetch, API_URL, API_PREFIX, LONG_TIMEOUT, getAuthToken } from './core';
 import { buildResolvePayload, type ResolveInput, type ResolveStatus } from './reportsResolve';
-import type {
-  DashboardStats,
-  PublicReportCreate,
-  PublicReportResponse,
-  Report,
-} from '../../types';
+import type { DashboardStats, PublicReportCreate, PublicReportResponse, Report } from '../../types';
 
 export const reportsApi = {
   /**

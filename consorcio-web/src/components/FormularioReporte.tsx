@@ -691,7 +691,9 @@ function FormularioContenido() {
       } catch (error) {
         logger.error('Error enviando denuncia:', error);
         const message =
-          error instanceof Error ? error.message : 'No se pudo enviar la denuncia. Intenta nuevamente.';
+          error instanceof Error
+            ? error.message
+            : 'No se pudo enviar la denuncia. Intenta nuevamente.';
         showNotification('Error', message, 'red');
         announce('Error al enviar la denuncia. Intenta nuevamente.', 'assertive');
       } finally {

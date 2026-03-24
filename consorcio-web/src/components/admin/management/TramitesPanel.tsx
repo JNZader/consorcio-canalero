@@ -14,17 +14,14 @@ import {
   Modal,
   TextInput,
   Textarea,
-  Select
+  Select,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import {
-  formatTramiteEstado,
-  type TramiteEstadoCanonico,
-} from '../../../constants/tramites';
+import { formatTramiteEstado, type TramiteEstadoCanonico } from '../../../constants/tramites';
 import { filterCanonicalTramites, type RawTramiteItem } from './tramitesCanonical';
 import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
 import { LoadingState } from '../../ui';
@@ -48,7 +45,9 @@ export default function TramitesPanel() {
   const [tramites, setTramites] = useState<Tramite[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [selectedTramite, setSelectedTramite] = useState<(Tramite & { avances: Avance[] }) | null>(null);
+  const [selectedTramite, setSelectedTramite] = useState<(Tramite & { avances: Avance[] }) | null>(
+    null
+  );
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
@@ -78,13 +77,13 @@ export default function TramitesPanel() {
     try {
       const token = await getAuthToken();
       const response = await fetch(`${API_URL}/api/v1/management/tramites/${id}/export-pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Resumen_Expediente_${id.slice(0,8)}.pdf`;
+      a.download = `Resumen_Expediente_${id.slice(0, 8)}.pdf`;
       a.click();
     } catch (err) {
       logger.error('Error exporting tramite:', err);
@@ -112,15 +111,15 @@ export default function TramitesPanel() {
       titulo: '',
       numero_expediente: '',
       descripcion: '',
-      prioridad: 'normal'
-    }
+      prioridad: 'normal',
+    },
   });
 
   const handleCreate = async (values: typeof form.values) => {
     try {
       await apiFetch('/management/tramites', {
         method: 'POST',
-        body: JSON.stringify(values)
+        body: JSON.stringify(values),
       });
       close();
       fetchTramites();
@@ -159,8 +158,12 @@ export default function TramitesPanel() {
               <Table.Tr key={t.id}>
                 <Table.Td>
                   <Stack gap={0}>
-                    <Text fw={500} size="sm">{t.titulo}</Text>
-                    <Text size="xs" c="dimmed">Nro: {t.numero_expediente || 'S/N'}</Text>
+                    <Text fw={500} size="sm">
+                      {t.titulo}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Nro: {t.numero_expediente || 'S/N'}
+                    </Text>
                   </Stack>
                 </Table.Td>
                 <Table.Td>
@@ -189,27 +192,51 @@ export default function TramitesPanel() {
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Expediente Provincial">
         <form onSubmit={form.onSubmit(handleCreate)}>
           <Stack gap="sm">
-            <TextInput label="Titulo del Tramite" placeholder="Ej: Obra Canal San Marcos" required {...form.getInputProps('titulo')} />
-            <TextInput label="Numero de Expediente" placeholder="Ej: 0416-00123/2026" {...form.getInputProps('numero_expediente')} />
-            <Textarea label="Descripcion Inicial" placeholder="Objetivo del tramite..." {...form.getInputProps('descripcion')} />
+            <TextInput
+              label="Titulo del Tramite"
+              placeholder="Ej: Obra Canal San Marcos"
+              required
+              {...form.getInputProps('titulo')}
+            />
+            <TextInput
+              label="Numero de Expediente"
+              placeholder="Ej: 0416-00123/2026"
+              {...form.getInputProps('numero_expediente')}
+            />
+            <Textarea
+              label="Descripcion Inicial"
+              placeholder="Objetivo del tramite..."
+              {...form.getInputProps('descripcion')}
+            />
             <Select
               label="Prioridad"
               data={['baja', 'normal', 'alta', 'urgente']}
               {...form.getInputProps('prioridad')}
             />
-            <Button type="submit" fullWidth mt="md">Crear Expediente</Button>
+            <Button type="submit" fullWidth mt="md">
+              Crear Expediente
+            </Button>
           </Stack>
         </form>
       </Modal>
 
       {/* Modal Historial de Avances */}
-      <Modal opened={historyOpened} onClose={closeHistory} title="Linea de Tiempo del Expediente" size="lg">
+      <Modal
+        opened={historyOpened}
+        onClose={closeHistory}
+        title="Linea de Tiempo del Expediente"
+        size="lg"
+      >
         {selectedTramite && (
           <Stack gap="md">
             <Group justify="space-between">
               <div>
-                <Text fw={700} size="lg">{selectedTramite.titulo}</Text>
-                <Text size="sm" c="dimmed">Expediente: {selectedTramite.numero_expediente}</Text>
+                <Text fw={700} size="lg">
+                  {selectedTramite.titulo}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Expediente: {selectedTramite.numero_expediente}
+                </Text>
               </div>
               <Button
                 size="xs"
@@ -225,15 +252,23 @@ export default function TramitesPanel() {
             <Timeline active={0} lineWidth={2}>
               {selectedTramite.avances.map((a) => (
                 <Timeline.Item key={a.id} title={a.titulo_avance}>
-                  <Text c="dimmed" size="sm">{a.comentario}</Text>
-                  <Text size="xs" mt={4}>{new Date(a.fecha).toLocaleString()}</Text>
+                  <Text c="dimmed" size="sm">
+                    {a.comentario}
+                  </Text>
+                  <Text size="xs" mt={4}>
+                    {new Date(a.fecha).toLocaleString()}
+                  </Text>
                 </Timeline.Item>
               ))}
               <Timeline.Item title="Inicio de Tramite">
-                <Text size="xs" mt={4}>Expediente creado en el sistema</Text>
+                <Text size="xs" mt={4}>
+                  Expediente creado en el sistema
+                </Text>
               </Timeline.Item>
             </Timeline>
-            <Button variant="light" fullWidth>Agregar Nuevo Avance</Button>
+            <Button variant="light" fullWidth>
+              Agregar Nuevo Avance
+            </Button>
           </Stack>
         )}
       </Modal>

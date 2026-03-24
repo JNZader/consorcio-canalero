@@ -1,7 +1,7 @@
 /**
  * Centralized constants for the Consorcio Canalero application.
  * All shared constants, enums, and derived types should be defined here.
- * 
+ *
  * NOTE: Values like MAP_CENTER, CUENCA_AREAS_HA, etc., now serve as FALLBACKS.
  * The application primarily uses dynamic configuration from the /config/system API
  * via the useConfigStore.
@@ -322,7 +322,8 @@ export const PAGINATION_DEFAULTS = {
  * Support phone number for emergencies.
  * Supports VITE_ and PUBLIC_ prefixes for backwards compatibility.
  */
-export const SUPPORT_PHONE = import.meta.env.VITE_SUPPORT_PHONE || import.meta.env.PUBLIC_SUPPORT_PHONE || '+543534000000';
+export const SUPPORT_PHONE =
+  import.meta.env.VITE_SUPPORT_PHONE || import.meta.env.PUBLIC_SUPPORT_PHONE || '+543534000000';
 
 /**
  * Support phone display text.

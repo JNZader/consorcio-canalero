@@ -39,11 +39,15 @@ const KM_POR_CONSORCIO = [
 
 const KilometrosTooltip = (
   <Stack gap={4}>
-    <Text size="xs" fw={600} mb={4}>Km por Consorcio Caminero:</Text>
+    <Text size="xs" fw={600} mb={4}>
+      Km por Consorcio Caminero:
+    </Text>
     {KM_POR_CONSORCIO.map((c) => (
       <Group key={c.codigo} justify="space-between" gap="xl">
         <Text size="xs">{c.nombre}</Text>
-        <Text size="xs" fw={600}>{c.km} km</Text>
+        <Text size="xs" fw={600}>
+          {c.km} km
+        </Text>
       </Group>
     ))}
   </Stack>

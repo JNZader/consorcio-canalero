@@ -75,7 +75,13 @@ export default function PieChart({ data, size = 180, showLegend = true, title }:
         aria-label="Grafico circular de distribucion de datos"
       >
         {slices.map((slice) => (
-          <path key={slice.label} d={slice.pathD} fill={slice.color} stroke="white" strokeWidth="2" />
+          <path
+            key={slice.label}
+            d={slice.pathD}
+            fill={slice.color}
+            stroke="white"
+            strokeWidth="2"
+          />
         ))}
         {/* Center circle for donut effect */}
         <circle cx={center} cy={center} r={radius * 0.5} fill="var(--mantine-color-body)" />

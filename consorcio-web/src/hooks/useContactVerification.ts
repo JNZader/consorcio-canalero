@@ -76,7 +76,8 @@ export function useContactVerification(
   // Derivar estado de verificacion del auth store
   const contactoVerificado = !!user && initialized;
   const userEmail = user?.email || null;
-  const userName = profile?.nombre || user?.user_metadata?.full_name || user?.user_metadata?.name || null;
+  const userName =
+    profile?.nombre || user?.user_metadata?.full_name || user?.user_metadata?.name || null;
 
   // Notificar cuando se verifica
   useEffect(() => {

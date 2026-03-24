@@ -68,4 +68,9 @@ export type { MonitoringDashboardData } from './api/monitoring';
 
 // Config exports
 export { configApi } from './api/config';
-export type { SystemConfig, MapConfig as MapConfigType, CuencaConfig, AnalysisConfig } from './api/config';
+export type {
+  SystemConfig,
+  MapConfig as MapConfigType,
+  CuencaConfig,
+  AnalysisConfig,
+} from './api/config';

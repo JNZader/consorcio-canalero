@@ -5,13 +5,7 @@
 
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import {
-  type Layer,
-  layersApi,
-  monitoringApi,
-  reportsApi,
-  statsApi,
-} from './api';
+import { type Layer, layersApi, monitoringApi, reportsApi, statsApi } from './api';
 
 // ===========================================
 // QUERY CLIENT

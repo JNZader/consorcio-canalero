@@ -81,7 +81,7 @@ const ZONA_STYLE = {
 
 export default function ImageExplorerPanel() {
   const config = useConfigStore((state) => state.config);
-  
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -110,7 +110,13 @@ export default function ImageExplorerPanel() {
   const { selectedImage, setSelectedImage, clearSelectedImage } = useSelectedImage();
 
   // Image comparison
-  const { comparison, setLeftImage, setRightImage, clearComparison, isReady: comparisonReady } = useImageComparison();
+  const {
+    comparison,
+    setLeftImage,
+    setRightImage,
+    clearComparison,
+    isReady: comparisonReady,
+  } = useImageComparison();
 
   // Initialize map
   useEffect(() => {
@@ -301,12 +307,14 @@ export default function ImageExplorerPanel() {
       visualization_description: result.visualization_description,
       collection: result.collection,
       images_count: result.images_count,
-      flood_info: result.flood_info ? {
-        id: result.flood_info.id,
-        name: result.flood_info.name,
-        description: result.flood_info.description,
-        severity: result.flood_info.severity,
-      } : undefined,
+      flood_info: result.flood_info
+        ? {
+            id: result.flood_info.id,
+            name: result.flood_info.name,
+            description: result.flood_info.description,
+            severity: result.flood_info.severity,
+          }
+        : undefined,
       selected_at: new Date().toISOString(),
     };
   }, [result]);
@@ -620,7 +628,9 @@ export default function ImageExplorerPanel() {
                 mt="md"
                 variant={isCurrentImageSelected ? 'light' : 'filled'}
                 color={isCurrentImageSelected ? 'green' : 'blue'}
-                leftSection={isCurrentImageSelected ? <IconCheck size={18} /> : <IconPhoto size={18} />}
+                leftSection={
+                  isCurrentImageSelected ? <IconCheck size={18} /> : <IconPhoto size={18} />
+                }
                 onClick={handleSelectImage}
                 disabled={isCurrentImageSelected}
               >
@@ -698,7 +708,9 @@ export default function ImageExplorerPanel() {
                 <Badge variant="light" color="blue">
                   {comparison.left?.target_date || 'Sin seleccionar'}
                 </Badge>
-                <Text size="sm" c="dimmed">vs</Text>
+                <Text size="sm" c="dimmed">
+                  vs
+                </Text>
                 <Badge variant="light" color="green">
                   {comparison.right?.target_date || 'Sin seleccionar'}
                 </Badge>

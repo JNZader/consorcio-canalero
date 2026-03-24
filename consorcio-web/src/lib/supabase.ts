@@ -6,7 +6,8 @@ export type { Denuncia, Usuario } from '../types';
 // Environment variables from .env
 // Supports VITE_ prefix (and legacy PUBLIC_ for backwards compatibility)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Singleton global para evitar crear multiples clientes
 let supabaseClient: SupabaseClient | null = null;

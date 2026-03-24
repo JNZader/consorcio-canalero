@@ -269,14 +269,20 @@ function FormularioContenido() {
       }
 
       if (remainingToday !== null && remainingToday <= 0) {
-        showNotification('Limite alcanzado', 'Has alcanzado el limite de sugerencias por dia', 'orange');
+        showNotification(
+          'Limite alcanzado',
+          'Has alcanzado el limite de sugerencias por dia',
+          'orange'
+        );
         return;
       }
 
       setEnviando(true);
 
       try {
-        const result = await sugerenciasApi.createPublic(buildSugerenciaPayload(values, userEmail, userName));
+        const result = await sugerenciasApi.createPublic(
+          buildSugerenciaPayload(values, userEmail, userName)
+        );
         showNotification('Sugerencia enviada', result.message, 'green', <IconCheck size={16} />);
         setRemainingToday(result.remaining_today);
         setEnviado(true);
@@ -398,7 +404,11 @@ function FormularioContenido() {
             </FormFieldWithSkeleton>
 
             {/* Categoria */}
-            <FormFieldWithSkeleton label="Categoria" isVerified={contactoVerificado} skeletonHeight={36}>
+            <FormFieldWithSkeleton
+              label="Categoria"
+              isVerified={contactoVerificado}
+              skeletonHeight={36}
+            >
               <Select
                 label="Categoria"
                 placeholder="Selecciona una categoria"

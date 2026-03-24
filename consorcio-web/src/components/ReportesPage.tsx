@@ -44,7 +44,13 @@ export function ReportesContent() {
               directamente:
             </Text>
             <Stack gap="xs">
-              <Button component="a" href={`tel:${SUPPORT_PHONE}`} color="red" variant="light" fullWidth>
+              <Button
+                component="a"
+                href={`tel:${SUPPORT_PHONE}`}
+                color="red"
+                variant="light"
+                fullWidth
+              >
                 Llamar al Consorcio
               </Button>
               <Button component="a" href="tel:103" color="orange" variant="light" fullWidth>

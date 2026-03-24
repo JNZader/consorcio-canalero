@@ -105,8 +105,14 @@ export function ContactVerificationSection({
       <Alert color="green" icon={<IconShieldCheck size={20} />} title="Identidad verificada">
         <Group justify="space-between" align="center">
           <Stack gap={4}>
-            {userName && <Text size="sm" fw={500}>{userName}</Text>}
-            <Text size="sm" c="dimmed">{userEmail}</Text>
+            {userName && (
+              <Text size="sm" fw={500}>
+                {userName}
+              </Text>
+            )}
+            <Text size="sm" c="dimmed">
+              {userEmail}
+            </Text>
           </Stack>
           <Button size="xs" variant="subtle" onClick={onLogout}>
             Cambiar
@@ -140,8 +146,8 @@ export function ContactVerificationSection({
         <Text fw={600}>{magicLinkEmail}</Text>
         <Alert color="blue" title="Siguiente paso">
           <Text size="sm">
-            Haz click en el link del email para verificar tu identidad.
-            Despues podras completar tu reporte.
+            Haz click en el link del email para verificar tu identidad. Despues podras completar tu
+            reporte.
           </Text>
         </Alert>
         <Button variant="subtle" onClick={() => onMetodoChange('google')}>

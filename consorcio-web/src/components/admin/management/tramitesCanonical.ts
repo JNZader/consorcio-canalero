@@ -1,7 +1,4 @@
-import {
-  isCanonicalTramiteEstado,
-  type TramiteEstadoCanonico,
-} from '../../../constants/tramites';
+import { isCanonicalTramiteEstado, type TramiteEstadoCanonico } from '../../../constants/tramites';
 
 export interface RawTramiteItem {
   id: string;

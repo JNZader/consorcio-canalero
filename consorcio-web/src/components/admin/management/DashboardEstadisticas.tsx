@@ -6,7 +6,7 @@ import {
   IconDroplet,
   IconChartBar,
   IconChartLine,
-  IconPieChart
+  IconPieChart,
 } from '../../ui/icons';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { apiFetch, statsApi } from '../../../lib/api';
@@ -77,7 +77,9 @@ function parseFinanceRows(payload: unknown): FinanceChartRow[] {
               ? row.nombre
               : null;
       const proyectado =
-        asNumber(row.proyectado) ?? asNumber(row.presupuestado) ?? asNumber(row.monto_presupuestado);
+        asNumber(row.proyectado) ??
+        asNumber(row.presupuestado) ??
+        asNumber(row.monto_presupuestado);
       const real = asNumber(row.real) ?? asNumber(row.ejecutado) ?? asNumber(row.monto_ejecutado);
 
       if (!rubro || (proyectado === null && real === null)) {
@@ -161,7 +163,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
       }
 
       setFinanceSummary(balanceResult.status === 'fulfilled' ? balanceResult.value : null);
-      setFinanceData(budgetResult.status === 'fulfilled' ? parseFinanceRows(budgetResult.value) : []);
+      setFinanceData(
+        budgetResult.status === 'fulfilled' ? parseFinanceRows(budgetResult.value) : []
+      );
       setFloodHistoryData(
         historicalResult.status === 'fulfilled'
           ? parseFloodHistory(
@@ -227,7 +231,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
 
   return (
     <Stack gap="lg">
-      <Title order={2} size="h3">Resumen de Gestión</Title>
+      <Title order={2} size="h3">
+        Resumen de Gestión
+      </Title>
 
       <Grid>
         {/* KPI Cards */}
@@ -235,7 +241,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder>
             <Group justify="space-between">
               <Stack gap={0}>
-                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Presupuesto Ejecutado</Text>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                  Presupuesto Ejecutado
+                </Text>
                 <Text size="xl" fw={700}>
                   {financeSummary
                     ? `${formatCurrency(financeSummary.total_gastos)} / ${formatCurrency(financeSummary.total_ingresos)}`
@@ -246,10 +254,15 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
             </Group>
             <Text size="sm" mt="sm">
               {budgetRatio === null ? (
-                <Text span c="dimmed" fw={700}>Sin datos</Text>
+                <Text span c="dimmed" fw={700}>
+                  Sin datos
+                </Text>
               ) : (
                 <>
-                  <Text span c="green" fw={700}>{budgetRatio}%</Text> del total anual
+                  <Text span c="green" fw={700}>
+                    {budgetRatio}%
+                  </Text>{' '}
+                  del total anual
                 </>
               )}
             </Text>
@@ -260,7 +273,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder>
             <Group justify="space-between">
               <Stack gap={0}>
-                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Anegamiento Promedio</Text>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                  Anegamiento Promedio
+                </Text>
                 <Text size="xl" fw={700}>
                   {avgAnegamiento === null ? 'Sin datos' : `${avgAnegamiento.toFixed(1)}%`}
                 </Text>
@@ -269,7 +284,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
             </Group>
             <Text size="sm" mt="sm">
               {floodVariation === null ? (
-                <Text span c="dimmed" fw={700}>Sin datos</Text>
+                <Text span c="dimmed" fw={700}>
+                  Sin datos
+                </Text>
               ) : (
                 <>
                   <Text span c={floodVariation >= 0 ? 'red' : 'green'} fw={700}>
@@ -287,17 +304,26 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder>
             <Group justify="space-between">
               <Stack gap={0}>
-                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Reportes Activos</Text>
-                <Text size="xl" fw={700}>{reportesActivos === null ? 'Sin datos' : reportesActivos}</Text>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                  Reportes Activos
+                </Text>
+                <Text size="xl" fw={700}>
+                  {reportesActivos === null ? 'Sin datos' : reportesActivos}
+                </Text>
               </Stack>
               <IconAlertTriangle size={32} color="var(--mantine-color-orange-6)" />
             </Group>
             <Text size="sm" mt="sm">
               {reportesNuevosSemana === null ? (
-                <Text span c="dimmed" fw={700}>Sin datos</Text>
+                <Text span c="dimmed" fw={700}>
+                  Sin datos
+                </Text>
               ) : (
                 <>
-                  <Text span c="blue" fw={700}>{reportesNuevosSemana}</Text> nuevos esta semana
+                  <Text span c="blue" fw={700}>
+                    {reportesNuevosSemana}
+                  </Text>{' '}
+                  nuevos esta semana
                 </>
               )}
             </Text>
@@ -309,7 +335,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder>
             <Group mb="lg">
               <IconChartBar size={20} />
-              <Title order={4} size="h4">Ejecución Presupuestaria por Rubro</Title>
+              <Title order={4} size="h4">
+                Ejecución Presupuestaria por Rubro
+              </Title>
             </Group>
             {financeData.length > 0 ? (
               <BarChart
@@ -336,7 +364,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder h="100%">
             <Group mb="lg">
               <IconPieChart size={20} />
-              <Title order={4} size="h4">Estado de Reportes</Title>
+              <Title order={4} size="h4">
+                Estado de Reportes
+              </Title>
             </Group>
             {hasReportChartData ? (
               <>
@@ -357,7 +387,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
                         <Badge color={s.color.split('.')[0]} variant="filled" size="xs" circle />
                         <Text size="xs">{s.name}</Text>
                       </Group>
-                      <Text size="xs" fw={700}>{s.value}</Text>
+                      <Text size="xs" fw={700}>
+                        {s.value}
+                      </Text>
                     </Group>
                   ))}
                 </Stack>
@@ -374,7 +406,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
           <Paper p="md" radius="md" withBorder>
             <Group mb="lg">
               <IconChartLine size={20} />
-              <Title order={4} size="h4">Evolución de Anegamiento Satelital (%)</Title>
+              <Title order={4} size="h4">
+                Evolución de Anegamiento Satelital (%)
+              </Title>
             </Group>
             {floodHistoryData.length > 0 ? (
               <LineChart

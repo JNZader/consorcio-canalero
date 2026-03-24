@@ -147,15 +147,19 @@ export default function ReunionesPanel() {
         apiFetch<unknown>('/infrastructure/assets'),
       ]);
 
-      const reports = normalizeArrayResponse<{ id: string; tipo: string; ubicacion_texto?: string }>(
-        reportsRaw
-      );
+      const reports = normalizeArrayResponse<{
+        id: string;
+        tipo: string;
+        ubicacion_texto?: string;
+      }>(reportsRaw);
       const tramites = normalizeArrayResponse<{
         id: string;
         titulo: string;
         numero_expediente?: string;
       }>(tramitesRaw);
-      const assets = normalizeArrayResponse<{ id: string; nombre: string; tipo: string }>(assetsRaw);
+      const assets = normalizeArrayResponse<{ id: string; nombre: string; tipo: string }>(
+        assetsRaw
+      );
 
       const options: EntityOption[] = [
         ...reports.map((r) => ({

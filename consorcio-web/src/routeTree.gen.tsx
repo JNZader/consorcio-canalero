@@ -10,7 +10,13 @@
  * Performance: Uses lazy loading for all page components to reduce initial bundle size.
  */
 
-import { createRoute, createRootRoute, redirect, Outlet, useLocation } from '@tanstack/react-router';
+import {
+  createRoute,
+  createRootRoute,
+  redirect,
+  Outlet,
+  useLocation,
+} from '@tanstack/react-router';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Center, Loader, Text, Stack } from '@mantine/core';
 
@@ -205,13 +211,19 @@ function AuthCallbackPage() {
         const errorParam = urlParams.get('error');
         const errorDescription = urlParams.get('error_description');
 
-        logger.debug('[AUTH CALLBACK] URL params:', { code: code ? 'present' : 'missing', errorParam, errorDescription });
+        logger.debug('[AUTH CALLBACK] URL params:', {
+          code: code ? 'present' : 'missing',
+          errorParam,
+          errorDescription,
+        });
 
         if (errorParam) {
           const errorMsg = `OAuth Error: ${errorParam} - ${errorDescription || 'Sin descripcion'}`;
           logger.error('[AUTH CALLBACK]', errorMsg);
           setError(errorMsg);
-          setDebugInfo(`Error de Supabase/Google: ${errorParam}\nDescripcion: ${errorDescription || 'N/A'}\n\nRevisa la configuracion de OAuth en Supabase Dashboard.`);
+          setDebugInfo(
+            `Error de Supabase/Google: ${errorParam}\nDescripcion: ${errorDescription || 'N/A'}\n\nRevisa la configuracion de OAuth en Supabase Dashboard.`
+          );
           return; // No redirigir, mostrar error
         }
 
@@ -223,7 +235,7 @@ function AuthCallbackPage() {
           logger.debug('[AUTH CALLBACK] Exchange result:', {
             hasSession: !!data?.session,
             hasUser: !!data?.user,
-            error: error?.message
+            error: error?.message,
           });
 
           if (error) {
@@ -277,8 +289,12 @@ function AuthCallbackPage() {
     return (
       <Center mih="100vh">
         <Stack align="center" gap="md" style={{ maxWidth: 600, padding: 20 }}>
-          <Text size="xl" fw={700} c="red">Error de Autenticacion</Text>
-          <Text c="dimmed" style={{ whiteSpace: 'pre-wrap', textAlign: 'center' }}>{debugInfo}</Text>
+          <Text size="xl" fw={700} c="red">
+            Error de Autenticacion
+          </Text>
+          <Text c="dimmed" style={{ whiteSpace: 'pre-wrap', textAlign: 'center' }}>
+            {debugInfo}
+          </Text>
           <Text size="sm" c="blue" component="a" href={withBasePath('/login')}>
             Volver al login
           </Text>
@@ -292,7 +308,9 @@ function AuthCallbackPage() {
       <Stack align="center" gap="md">
         <Loader size="lg" />
         <Text c="dimmed">Autenticando...</Text>
-        <Text size="xs" c="gray">{debugInfo}</Text>
+        <Text size="xs" c="gray">
+          {debugInfo}
+        </Text>
       </Stack>
     </Center>
   );
@@ -339,10 +357,7 @@ const perfilRoute = createRoute({
     }
   },
   component: () => (
-    <RootLayout
-      title="Mi Perfil"
-      description="Gestiona tu perfil de usuario."
-    >
+    <RootLayout title="Mi Perfil" description="Gestiona tu perfil de usuario.">
       <Suspense fallback={<PageLoader />}>
         <ProfilePanel />
       </Suspense>

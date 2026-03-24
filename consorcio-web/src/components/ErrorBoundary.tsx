@@ -50,9 +50,11 @@ async function sendToErrorApi(errorContext: ErrorContext): Promise<void> {
  */
 function sendToSentry(error: Error, errorContext: ErrorContext): boolean {
   // Check if Sentry is available on the global scope
-  const Sentry = (globalThis as Record<string, unknown>).Sentry as {
-    captureException?: (error: Error, options?: { extra?: ErrorContext }) => void;
-  } | undefined;
+  const Sentry = (globalThis as Record<string, unknown>).Sentry as
+    | {
+        captureException?: (error: Error, options?: { extra?: ErrorContext }) => void;
+      }
+    | undefined;
 
   if (Sentry?.captureException) {
     Sentry.captureException(error, { extra: errorContext });
@@ -66,9 +68,11 @@ function sendToSentry(error: Error, errorContext: ErrorContext): boolean {
  * LogRocket SDK should be initialized in the app entry point.
  */
 function sendToLogRocket(error: Error): boolean {
-  const LogRocket = (globalThis as Record<string, unknown>).LogRocket as {
-    captureException?: (error: Error) => void;
-  } | undefined;
+  const LogRocket = (globalThis as Record<string, unknown>).LogRocket as
+    | {
+        captureException?: (error: Error) => void;
+      }
+    | undefined;
 
   if (LogRocket?.captureException) {
     LogRocket.captureException(error);

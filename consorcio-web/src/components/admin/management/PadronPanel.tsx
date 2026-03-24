@@ -16,7 +16,7 @@ import {
   TextInput,
   NumberInput,
   SimpleGrid,
-  Tooltip
+  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
@@ -59,12 +59,12 @@ export default function PadronPanel() {
   const [consorcistas, setConsorcistas] = useState<Consorcista[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  
+
   const [selectedConsorcista, setSelectedConsorcista] = useState<Consorcista | null>(null);
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [nuevoPagoAnio, setNuevoPagoAnio] = useState<number>(new Date().getFullYear());
   const [nuevoPagoMonto, setNuevoPagoMonto] = useState<number | ''>('');
-  
+
   const [opened, { open, close }] = useDisclosure(false);
   const [pagoOpened, { open: openPago, close: closePago }] = useDisclosure(false);
   const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
@@ -157,20 +157,20 @@ export default function PadronPanel() {
       cuit: '',
       representa_a: '',
       email: '',
-      telefono: ''
+      telefono: '',
     },
     validate: {
       cuit: (value) => (!isValidCUIT(value) ? 'CUIT invalido' : null),
       nombre: (value) => (value.length < 2 ? 'Nombre requerido' : null),
       apellido: (value) => (value.length < 2 ? 'Apellido requerido' : null),
-    }
+    },
   });
 
   const handleCreate = async (values: typeof form.values) => {
     try {
       await apiFetch('/padron/consorcistas', {
         method: 'POST',
-        body: JSON.stringify(values)
+        body: JSON.stringify(values),
       });
       notifications.show({
         title: 'Consorcista registrado',
@@ -245,8 +245,8 @@ export default function PadronPanel() {
       </Group>
 
       <Paper shadow="sm" p="md" radius="md" mb="md">
-        <TextInput 
-          placeholder="Buscar por Nombre, Apellido o CUIT..." 
+        <TextInput
+          placeholder="Buscar por Nombre, Apellido o CUIT..."
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -269,12 +269,18 @@ export default function PadronPanel() {
                 <Table.Td>
                   <Group gap="sm">
                     <IconUser size={16} color="gray" />
-                    <Text fw={500} size="sm">{c.apellido}, {c.nombre}</Text>
+                    <Text fw={500} size="sm">
+                      {c.apellido}, {c.nombre}
+                    </Text>
                   </Group>
                 </Table.Td>
-                <Table.Td><Text size="sm">{c.cuit}</Text></Table.Td>
                 <Table.Td>
-                  <Text size="sm" fs="italic" c="dimmed">{c.representa_a || '-'}</Text>
+                  <Text size="sm">{c.cuit}</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm" fs="italic" c="dimmed">
+                    {c.representa_a || '-'}
+                  </Text>
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
@@ -295,21 +301,43 @@ export default function PadronPanel() {
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Consorcista" size="lg">
         <form onSubmit={form.onSubmit(handleCreate)}>
           <SimpleGrid cols={2} spacing="sm">
-            <TextInput label="Nombre" placeholder="Ej: Juan" required {...form.getInputProps('nombre')} />
-            <TextInput label="Apellido" placeholder="Ej: Perez" required {...form.getInputProps('apellido')} />
+            <TextInput
+              label="Nombre"
+              placeholder="Ej: Juan"
+              required
+              {...form.getInputProps('nombre')}
+            />
+            <TextInput
+              label="Apellido"
+              placeholder="Ej: Perez"
+              required
+              {...form.getInputProps('apellido')}
+            />
           </SimpleGrid>
-          <TextInput label="CUIT" placeholder="20-XXXXXXXX-X" required mt="sm" {...form.getInputProps('cuit')} />
-          <TextInput 
-            label="En representación de..." 
-            placeholder="Empresa, Sucesión o Establecimiento" 
-            mt="sm" 
-            {...form.getInputProps('representa_a')} 
+          <TextInput
+            label="CUIT"
+            placeholder="20-XXXXXXXX-X"
+            required
+            mt="sm"
+            {...form.getInputProps('cuit')}
+          />
+          <TextInput
+            label="En representación de..."
+            placeholder="Empresa, Sucesión o Establecimiento"
+            mt="sm"
+            {...form.getInputProps('representa_a')}
           />
           <SimpleGrid cols={2} mt="sm">
-            <TextInput label="Email" placeholder="email@ejemplo.com" {...form.getInputProps('email')} />
+            <TextInput
+              label="Email"
+              placeholder="email@ejemplo.com"
+              {...form.getInputProps('email')}
+            />
             <TextInput label="Teléfono" placeholder="+54..." {...form.getInputProps('telefono')} />
           </SimpleGrid>
-          <Button type="submit" fullWidth mt="xl">Guardar en Padrón</Button>
+          <Button type="submit" fullWidth mt="xl">
+            Guardar en Padrón
+          </Button>
         </form>
       </Modal>
 
@@ -318,10 +346,14 @@ export default function PadronPanel() {
         {selectedConsorcista && (
           <Stack gap="md">
             <Box>
-              <Text fw={700} size="lg">{selectedConsorcista.apellido}, {selectedConsorcista.nombre}</Text>
-              <Text size="sm" c="dimmed">CUIT: {selectedConsorcista.cuit}</Text>
+              <Text fw={700} size="lg">
+                {selectedConsorcista.apellido}, {selectedConsorcista.nombre}
+              </Text>
+              <Text size="sm" c="dimmed">
+                CUIT: {selectedConsorcista.cuit}
+              </Text>
             </Box>
-            
+
             <Table withColumnBorders>
               <Table.Thead>
                 <Table.Tr>
@@ -332,8 +364,8 @@ export default function PadronPanel() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {[2026, 2025, 2024].map(anio => {
-                  const pago = pagos.find(p => p.anio === anio);
+                {[2026, 2025, 2024].map((anio) => {
+                  const pago = pagos.find((p) => p.anio === anio);
                   return (
                     <Table.Tr key={anio}>
                       <Table.Td fw={600}>{anio}</Table.Td>
@@ -343,13 +375,15 @@ export default function PadronPanel() {
                           {pago?.estado || 'PENDIENTE'}
                         </Badge>
                       </Table.Td>
-                      <Table.Td>{pago?.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString() : '-'}</Table.Td>
+                      <Table.Td>
+                        {pago?.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString() : '-'}
+                      </Table.Td>
                     </Table.Tr>
-                  )
+                  );
                 })}
               </Table.Tbody>
             </Table>
-            
+
             <Divider label="Registrar Nuevo Pago" labelPosition="center" />
             <Paper p="sm" bg="gray.0">
               <Group grow align="flex-end">
@@ -375,7 +409,13 @@ export default function PadronPanel() {
                   }}
                   min={0}
                 />
-                <Button color="green" leftSection={<IconCreditCard size={14} />} onClick={handleRegistrarPago}>Registrar</Button>
+                <Button
+                  color="green"
+                  leftSection={<IconCreditCard size={14} />}
+                  onClick={handleRegistrarPago}
+                >
+                  Registrar
+                </Button>
               </Group>
             </Paper>
           </Stack>

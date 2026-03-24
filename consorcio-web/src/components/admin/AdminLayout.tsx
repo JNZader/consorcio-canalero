@@ -41,7 +41,6 @@ const NAV_ITEMS = [
   { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
 ];
 
-
 interface AdminLayoutProps {
   readonly children: React.ReactNode;
   readonly currentPath?: string;
@@ -130,7 +129,9 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
 
                 <Menu.Dropdown>
                   <Menu.Label>Cuenta</Menu.Label>
-                  <Menu.Item component={Link} to="/perfil" leftSection={<IconUser size={16} />}>Perfil</Menu.Item>
+                  <Menu.Item component={Link} to="/perfil" leftSection={<IconUser size={16} />}>
+                    Perfil
+                  </Menu.Item>
                   <Menu.Item leftSection={<IconSettings size={16} />}>Configuracion</Menu.Item>
                   <Menu.Divider />
                   <Menu.Item component={Link} to="/" leftSection={<IconHome size={16} />}>

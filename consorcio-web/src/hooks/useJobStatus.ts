@@ -51,7 +51,7 @@ export function useJobStatus<T>(jobId: string | null, onCompleted?: (result: T) 
 
     setIsLoading(true);
     setStatus('PENDING');
-    
+
     // Start polling
     const interval = setInterval(() => {
       if (status !== 'SUCCESS' && status !== 'FAILURE') {
