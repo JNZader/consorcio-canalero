@@ -1,4 +1,4 @@
-import type { User } from '@supabase/supabase-js';
+import type { StoreUser } from '../stores/authStore';
 import {
   Avatar,
   Box,
@@ -98,7 +98,7 @@ function DesktopUserMenu({
   isStaff,
   handleLogout,
 }: Readonly<{
-  user: User | null;
+  user: StoreUser | null;
   profile: Usuario | null;
   loading: boolean;
   isStaff: boolean;
@@ -182,7 +182,7 @@ function MobileUserMenu({
   handleLogout,
   onMobileClose,
 }: Readonly<{
-  user: User | null;
+  user: StoreUser | null;
   profile: Usuario | null;
   loading: boolean;
   isStaff: boolean;
@@ -256,7 +256,7 @@ function MobileUserMenu({
 
 /**
  * UserMenu - Componente que maneja la UI de autenticacion.
- * Se carga de forma lazy para evitar cargar Supabase en el bundle inicial.
+ * Se carga de forma lazy para reducir el bundle inicial.
  *
  * Uses useAuthLoading hook which returns true when:
  * - Auth is still loading

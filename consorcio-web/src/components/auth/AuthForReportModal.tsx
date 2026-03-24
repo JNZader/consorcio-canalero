@@ -1,6 +1,7 @@
 /**
- * Modal de autenticación para reportes públicos.
- * Ofrece Google OAuth (1 click) y Magic Link (cualquier email).
+ * Modal de autenticacion para reportes publicos.
+ * Ofrece Google OAuth (1 click) y email login.
+ * Now backed by JWT auth adapter.
  */
 
 import {
@@ -18,7 +19,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useState } from 'react';
-import { getSupabaseClient } from '../../lib/supabase';
+import { authAdapter } from '../../lib/auth/index';
 import { logger } from '../../lib/logger';
 import { IconCheck, IconMail } from '../ui/icons';
 
@@ -59,21 +60,7 @@ export function AuthForReportModal({
   const handleGoogleLogin = useCallback(async () => {
     setStep('loading');
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/reportes?auth=success`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
+      await authAdapter.loginWithGoogle();
       // El redirect sucede automaticamente
     } catch (error) {
       logger.error('Error en login con Google:', error);
@@ -86,39 +73,14 @@ export function AuthForReportModal({
     }
   }, []);
 
-  const handleMagicLink = useCallback(async (values: { email: string }) => {
-    setStep('loading');
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email: values.email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/reportes?auth=success`,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setSentEmail(values.email);
-      setStep('magic-link-sent');
-      notifications.show({
-        title: 'Link enviado',
-        message: `Revisa tu email ${values.email}`,
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
-    } catch (error) {
-      logger.error('Error enviando magic link:', error);
-      const message = error instanceof Error ? error.message : 'No se pudo enviar el email';
-      notifications.show({
-        title: 'Error',
-        message,
-        color: 'red',
-      });
-      setStep('choose');
-    }
+  const handleMagicLink = useCallback(async (_values: { email: string }) => {
+    // Magic links are not supported with the JWT adapter.
+    // Show informative message instead.
+    notifications.show({
+      title: 'No disponible',
+      message: 'El acceso por magic link no esta disponible. Usa Google o crea una cuenta en la pagina de login.',
+      color: 'yellow',
+    });
   }, []);
 
   const handleClose = useCallback(() => {
@@ -182,7 +144,7 @@ export function AuthForReportModal({
 
           <Divider label="o usa tu email" labelPosition="center" />
 
-          {/* Magic Link */}
+          {/* Magic Link (informational — redirects to login) */}
           <form onSubmit={form.onSubmit(handleMagicLink)}>
             <Stack gap="sm">
               <TextInput

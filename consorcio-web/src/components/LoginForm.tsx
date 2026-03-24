@@ -67,7 +67,7 @@ export function LoginFormContent() {
 
     try {
       if (mode === 'login') {
-        // Iniciar sesion con Supabase
+        // Iniciar sesion
         const result = await signInWithEmail(values.email, values.password);
 
         if (result.success) {
@@ -88,7 +88,7 @@ export function LoginFormContent() {
           });
         }
       } else {
-        // Registrar nuevo usuario con Supabase
+        // Registrar nuevo usuario
         const result = await signUpWithEmail(values.email, values.password, values.nombre);
 
         if (result.success) {
@@ -149,7 +149,7 @@ export function LoginFormContent() {
         });
         setLoading(false);
       }
-      // Si es exitoso, Supabase redirigira automaticamente
+      // Si es exitoso, el backend redirigira automaticamente
     } catch (error) {
       logger.error('Error al conectar con Google:', error);
       notifications.show({

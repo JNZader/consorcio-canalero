@@ -1,17 +1,18 @@
 /**
- * Hook para verificacion de contacto usando Supabase Auth.
+ * Hook para verificacion de contacto.
  *
  * Soporta:
- * - Google OAuth (1 click)
- * - Magic Link (cualquier email)
+ * - Google OAuth (1 click) via JWT adapter
+ * - Magic Link (disabled — requires backend support)
  *
- * Simplificado de la version anterior que usaba WhatsApp.
+ * Simplified from the former Supabase-backed version.
  */
 
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { getSupabaseClient } from '../lib/supabase';
+import { authAdapter } from '../lib/auth/index';
+import { signOut } from '../lib/auth';
 import { logger } from '../lib/logger';
 import { isValidEmail } from '../lib/validators';
 
@@ -76,8 +77,7 @@ export function useContactVerification(
   // Derivar estado de verificacion del auth store
   const contactoVerificado = !!user && initialized;
   const userEmail = user?.email || null;
-  const userName =
-    profile?.nombre || user?.user_metadata?.full_name || user?.user_metadata?.name || null;
+  const userName = profile?.nombre || null;
 
   // Notificar cuando se verifica
   useEffect(() => {
@@ -86,25 +86,11 @@ export function useContactVerification(
     }
   }, [contactoVerificado, userEmail, userName, onVerified]);
 
-  // Login con Google OAuth
+  // Login con Google OAuth via JWT adapter
   const loginWithGoogle = useCallback(async () => {
     setLoading(true);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}${window.location.pathname}?auth=success`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
+      await authAdapter.loginWithGoogle();
       // El redirect sucede automaticamente
     } catch (error) {
       logger.error('Error en login con Google:', error);
@@ -117,9 +103,8 @@ export function useContactVerification(
     }
   }, []);
 
-  // Enviar magic link
+  // Enviar magic link — not supported with JWT adapter
   const sendMagicLink = useCallback(async (email: string) => {
-    // Validacion usando validador centralizado
     if (!isValidEmail(email)) {
       notifications.show({
         title: 'Email invalido',
@@ -129,45 +114,17 @@ export function useContactVerification(
       return;
     }
 
-    setLoading(true);
-    try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}${window.location.pathname}?auth=success`,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setMagicLinkSent(true);
-      setMagicLinkEmail(email);
-      notifications.show({
-        title: 'Link enviado',
-        message: `Revisa tu email ${email}`,
-        color: 'green',
-      });
-    } catch (error) {
-      logger.error('Error enviando magic link:', error);
-      const message = error instanceof Error ? error.message : 'No se pudo enviar el email';
-      notifications.show({
-        title: 'Error',
-        message,
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
+    notifications.show({
+      title: 'No disponible',
+      message: 'El acceso por magic link no esta disponible. Usa Google o crea una cuenta.',
+      color: 'yellow',
+    });
   }, []);
 
   // Logout
   const logout = useCallback(async () => {
     try {
-      const supabase = getSupabaseClient();
-      await supabase.auth.signOut();
+      await signOut();
       notifications.show({
         title: 'Sesion cerrada',
         message: 'Has cerrado sesion correctamente',

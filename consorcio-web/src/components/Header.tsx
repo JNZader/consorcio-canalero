@@ -17,7 +17,7 @@ import { Suspense, lazy, memo, useEffect, useRef } from 'react';
 import styles from '../styles/components/header.module.css';
 import ThemeToggle from './ThemeToggle';
 
-// Lazy load UserMenu para evitar cargar Supabase (~58KB) en el bundle inicial
+// Lazy load UserMenu para reducir el bundle inicial
 const UserMenu = lazy(() => import('./UserMenu'));
 
 // Links publicos (visibles para todos)

@@ -19,7 +19,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
-import { getSupabaseClient } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { formatDate } from '../lib/formatters';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
@@ -73,16 +73,13 @@ function ProfileContent() {
 
     setSaving(true);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase
-        .from('perfiles')
-        .update({
+      await apiFetch('/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
           nombre: values.nombre,
           telefono: values.telefono,
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
+        }),
+      });
 
       notifications.show({
         title: 'Perfil actualizado',
@@ -266,7 +263,7 @@ function ProfileContent() {
           <Stack gap="md">
             <Title order={3}>Cuenta</Title>
             <Text size="sm" c="dimmed">
-              Miembro desde: {formatDate(user.created_at)}
+              Cuenta activa
             </Text>
           </Stack>
         </Paper>

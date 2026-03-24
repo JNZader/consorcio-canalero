@@ -1,6 +1,6 @@
 /**
  * Centralized type definitions for the Consorcio Canalero application.
- * Consolidates types from api.ts and supabase.ts.
+ * Consolidates types used across the application.
  */
 
 // Re-export constant types for convenience (S7764: use direct export)
@@ -65,7 +65,7 @@ export interface DenunciaBase {
 }
 
 /**
- * Full Denuncia interface from Supabase.
+ * Full Denuncia interface from API.
  */
 export interface Denuncia extends DenunciaBase {
   id?: string;

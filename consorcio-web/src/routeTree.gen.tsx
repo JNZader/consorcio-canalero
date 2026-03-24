@@ -23,7 +23,7 @@ import { Center, Loader, Text, Stack } from '@mantine/core';
 import { RootLayout } from './components/RootLayout';
 import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
-import { getSupabaseClient } from './lib/supabase';
+import { authAdapter } from './lib/auth/index';
 import { logger } from './lib/logger';
 
 // Lazy load all page components for better performance
@@ -203,16 +203,14 @@ function AuthCallbackPage() {
       setDebugInfo(`URL: ${window.location.href}`);
 
       try {
-        const supabase = getSupabaseClient();
-
-        // Get the code from URL params (PKCE flow)
+        // Get params from URL (backend Google OAuth callback)
         const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
+        const token = urlParams.get('token') || urlParams.get('access_token');
         const errorParam = urlParams.get('error');
         const errorDescription = urlParams.get('error_description');
 
         logger.debug('[AUTH CALLBACK] URL params:', {
-          code: code ? 'present' : 'missing',
+          token: token ? 'present' : 'missing',
           errorParam,
           errorDescription,
         });
@@ -222,40 +220,28 @@ function AuthCallbackPage() {
           logger.error('[AUTH CALLBACK]', errorMsg);
           setError(errorMsg);
           setDebugInfo(
-            `Error de Supabase/Google: ${errorParam}\nDescripcion: ${errorDescription || 'N/A'}\n\nRevisa la configuracion de OAuth en Supabase Dashboard.`
+            `Error de Google OAuth: ${errorParam}\nDescripcion: ${errorDescription || 'N/A'}\n\nRevisa la configuracion de OAuth en el backend.`
           );
           return; // No redirigir, mostrar error
         }
 
-        if (code) {
-          // Exchange the code for a session (PKCE flow)
-          logger.debug('[AUTH CALLBACK] Exchanging code for session...');
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (token) {
+          // Store the token and fetch user profile
+          logger.debug('[AUTH CALLBACK] Got token, storing and fetching profile...');
+          localStorage.setItem('consorcio_auth_token', token);
 
-          logger.debug('[AUTH CALLBACK] Exchange result:', {
-            hasSession: !!data?.session,
-            hasUser: !!data?.user,
-            error: error?.message,
-          });
+          // Fetch user profile to populate the store
+          const session = await authAdapter.getSession();
 
-          if (error) {
-            logger.error('[AUTH CALLBACK] Exchange error:', error);
-            window.location.href = withBasePath('/login?error=exchange_failed');
-            return;
-          }
+          if (session?.user) {
+            logger.debug('[AUTH CALLBACK] Session established:', { role: session.user.role });
 
-          if (data.session) {
-            logger.debug('[AUTH CALLBACK] Session established, checking profile...');
-            // Successfully authenticated - check role
-            const { data: profile } = await supabase
-              .from('perfiles')
-              .select('rol')
-              .eq('id', data.session.user.id)
-              .single();
+            // Re-initialize auth store with the new session
+            const store = useAuthStore.getState();
+            store.reset();
+            await store.initialize();
 
-            logger.debug('[AUTH CALLBACK] Profile:', { rol: profile?.rol });
-
-            const role = profile?.rol;
+            const role = session.user.role;
             if (role === 'admin' || role === 'operador') {
               window.location.href = withBasePath('/admin');
             } else {
@@ -265,11 +251,11 @@ function AuthCallbackPage() {
           }
         }
 
-        // Fallback: try to get existing session
-        logger.debug('[AUTH CALLBACK] No code, checking existing session...');
-        const { data: sessionData } = await supabase.auth.getSession();
+        // Fallback: check existing session
+        logger.debug('[AUTH CALLBACK] No token in URL, checking existing session...');
+        const existingSession = await authAdapter.getSession();
 
-        if (sessionData?.session) {
+        if (existingSession) {
           logger.debug('[AUTH CALLBACK] Found existing session');
           window.location.href = withBasePath('/');
         } else {
