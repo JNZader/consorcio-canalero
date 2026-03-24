@@ -2,9 +2,10 @@
  * JWT auth adapter — authenticates against our FastAPI backend.
  */
 
-import { API_URL, API_PREFIX } from '../api/core';
-
-const AUTH_BASE = `${API_URL}${API_PREFIX}`;
+// Resolve API URL without importing from api/core (avoids circular dependency)
+const API_URL =
+  import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
+const AUTH_BASE = `${API_URL}/api/v2`;
 import type {
   AuthAdapter,
   AuthSession,
