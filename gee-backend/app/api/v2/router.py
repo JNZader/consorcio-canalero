@@ -14,6 +14,7 @@ from app.domains.padron.router import router as padron_router
 from app.domains.finanzas.router import router as finanzas_router
 from app.domains.tramites.router import router as tramites_router
 from app.domains.capas.router import router as capas_router
+from app.domains.geo.router import router as geo_router
 from app.domains.monitoring.router import router as monitoring_router
 
 api_router = APIRouter(prefix="/api/v2")
@@ -28,6 +29,9 @@ api_router.include_router(padron_router)
 api_router.include_router(finanzas_router)
 api_router.include_router(tramites_router)
 api_router.include_router(capas_router)
+
+# Geo processing + GEE endpoints
+api_router.include_router(geo_router, prefix="/geo")
 
 # Monitoring has no prefix on its router — paths are /sugerencias and /monitoring/*
 api_router.include_router(monitoring_router)
