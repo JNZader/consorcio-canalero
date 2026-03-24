@@ -9,10 +9,7 @@ import uuid
 from datetime import date
 from typing import Any, Optional
 
-import geopandas as gpd
 import structlog
-from geoalchemy2.shape import from_shape, to_shape
-from shapely.geometry import Point, shape
 from sqlalchemy.orm import Session
 
 from app.domains.geo.intelligence.calculations import (
@@ -124,9 +121,9 @@ def calculate_hci_for_zone(
 
 def detect_conflicts(
     db: Session,
-    canales_gdf: gpd.GeoDataFrame,
-    caminos_gdf: gpd.GeoDataFrame,
-    drenajes_gdf: gpd.GeoDataFrame,
+    canales_gdf: "gpd.GeoDataFrame",
+    caminos_gdf: "gpd.GeoDataFrame",
+    drenajes_gdf: "gpd.GeoDataFrame",
     flow_acc_path: str,
     slope_path: str,
     buffer_m: float = 50.0,
@@ -145,6 +142,8 @@ def detect_conflicts(
     Returns:
         dict with count and summary of detected conflicts.
     """
+    from geoalchemy2.shape import from_shape
+
     result_gdf = detectar_puntos_conflicto(
         canales_gdf=canales_gdf,
         caminos_gdf=caminos_gdf,
@@ -264,6 +263,8 @@ def generate_zones(
     if gdf.empty:
         return {"zonas_creadas": 0, "zonas": []}
 
+    from geoalchemy2.shape import from_shape
+
     zonas = []
     for idx, row in gdf.iterrows():
         wkt = from_shape(row.geometry, srid=4326)
@@ -296,7 +297,7 @@ def generate_zones(
 
 def calculate_canal_priorities(
     db: Session,
-    canales_gdf: gpd.GeoDataFrame,
+    canales_gdf: "gpd.GeoDataFrame",
     flow_acc_path: str,
     slope_path: str,
 ) -> list[dict[str, Any]]:
@@ -311,6 +312,9 @@ def calculate_canal_priorities(
     Returns:
         List of canal priority dicts, sorted by priority descending.
     """
+    import geopandas as gpd
+    from geoalchemy2.shape import to_shape
+
     zonas_criticas_gdf = None
     try:
         zonas_criticas = intel_repo.get_zonas_criticas(db, "alto")
@@ -349,11 +353,11 @@ def calculate_canal_priorities(
 
 def calculate_road_risks(
     db: Session,
-    caminos_gdf: gpd.GeoDataFrame,
+    caminos_gdf: "gpd.GeoDataFrame",
     flow_acc_path: str,
     slope_path: str,
     twi_path: str,
-    drainage_gdf: Optional[gpd.GeoDataFrame] = None,
+    drainage_gdf: Optional["gpd.GeoDataFrame"] = None,
 ) -> list[dict[str, Any]]:
     """Score all roads by flooding risk and return ranked list.
 

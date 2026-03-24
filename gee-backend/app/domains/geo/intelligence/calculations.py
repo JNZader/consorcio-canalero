@@ -11,24 +11,18 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
-import geopandas as gpd
 import numpy as np
-import rasterio
-from rasterio.transform import rowcol
 from shapely.geometry import LineString, Point, mapping
-from whitebox import WhiteboxTools
 
-# ---------------------------------------------------------------------------
-# WhiteboxTools singleton (reuse from processing module)
-# ---------------------------------------------------------------------------
-
-_wbt: WhiteboxTools | None = None
+_wbt = None
 
 
-def _get_wbt() -> WhiteboxTools:
+def _get_wbt():
     """Lazily initialise a WhiteboxTools instance (verbose off)."""
     global _wbt  # noqa: PLW0603
     if _wbt is None:
+        from whitebox import WhiteboxTools
+
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
     return _wbt
@@ -114,15 +108,15 @@ def clasificar_nivel_riesgo(indice: float) -> str:
 
 
 def detectar_puntos_conflicto(
-    canales_gdf: gpd.GeoDataFrame,
-    caminos_gdf: gpd.GeoDataFrame,
-    drenajes_gdf: gpd.GeoDataFrame,
+    canales_gdf: "gpd.GeoDataFrame",
+    caminos_gdf: "gpd.GeoDataFrame",
+    drenajes_gdf: "gpd.GeoDataFrame",
     flow_acc_path: str,
     slope_path: str,
     buffer_m: float = 50.0,
     flow_acc_threshold: float = 500.0,
     slope_threshold: float = 5.0,
-) -> gpd.GeoDataFrame:
+) -> "gpd.GeoDataFrame":
     """Detect infrastructure conflict points where canals, roads, and drainage cross.
 
     Uses buffer + intersection to find crossings, then filters by
@@ -141,6 +135,10 @@ def detectar_puntos_conflicto(
     Returns:
         GeoDataFrame with conflict points and attributes.
     """
+    import geopandas as gpd
+    import rasterio
+    from rasterio.transform import rowcol
+
     conflicts: list[dict[str, Any]] = []
 
     pairs = [
@@ -262,6 +260,9 @@ def simular_escorrentia(
     Returns:
         GeoJSON FeatureCollection with the traced flow path and stats.
     """
+    import rasterio
+    from rasterio.transform import rowcol
+
     # D8 direction encoding (WhiteboxTools convention):
     # 1=E, 2=NE, 4=N, 8=NW, 16=W, 32=SW, 64=S, 128=SE
     d8_offsets = {
@@ -373,7 +374,7 @@ def generar_zonificacion(
     dem_path: str,
     flow_acc_path: str,
     threshold: int = 2000,
-) -> gpd.GeoDataFrame:
+) -> "gpd.GeoDataFrame":
     """Generate operational zones using WhiteboxTools watershed delineation.
 
     Args:
@@ -384,6 +385,9 @@ def generar_zonificacion(
     Returns:
         GeoDataFrame with sub-basin polygons.
     """
+    import geopandas as gpd
+    import rasterio
+
     wbt = _get_wbt()
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -457,7 +461,7 @@ def calcular_prioridad_canal(
     canal_geom: Any,
     flow_acc_path: str,
     slope_path: str,
-    zonas_criticas_gdf: Optional[gpd.GeoDataFrame] = None,
+    zonas_criticas_gdf: Optional["gpd.GeoDataFrame"] = None,
 ) -> float:
     """Score a canal based on upstream accumulation, slope, and proximity to critical zones.
 
@@ -504,7 +508,7 @@ def calcular_riesgo_camino(
     flow_acc_path: str,
     slope_path: str,
     twi_path: str,
-    drainage_gdf: Optional[gpd.GeoDataFrame] = None,
+    drainage_gdf: Optional["gpd.GeoDataFrame"] = None,
 ) -> float:
     """Calculate road flooding risk score.
 
@@ -657,6 +661,9 @@ def _sample_raster_along_line(
         points = [line_geom.interpolate(f, normalized=True) for f in fractions]
     except Exception:
         return []
+
+    import rasterio
+    from rasterio.transform import rowcol
 
     values: list[float] = []
     try:

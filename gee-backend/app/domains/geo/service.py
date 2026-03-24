@@ -18,7 +18,6 @@ from app.domains.geo.models import (
     TipoGeoJob,
 )
 from app.domains.geo.repository import GeoRepository
-from app.domains.geo.tasks import process_dem_pipeline
 
 repo = GeoRepository()
 
@@ -48,6 +47,8 @@ def submit_pipeline_job(
     Returns:
         The newly created GeoJob (estado=PENDING, celery_task_id set).
     """
+    from app.domains.geo.tasks import process_dem_pipeline
+
     area_id = area_id or str(uuid.uuid4())[:8]
 
     job = repo.create_job(

@@ -20,7 +20,7 @@ from app.domains.monitoring.router import router as monitoring_router
 from app.domains.settings.router import router as settings_router
 from app.domains.settings.router import public_settings_router
 
-api_router = APIRouter(prefix="/api/v2")
+api_router = APIRouter()
 
 # Auth (login, register, user management)
 api_router.include_router(auth_router)

@@ -11,7 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.api.v2.router import api_v2_router
+from app.api.v2.router import api_router as api_v2_router
 from app.core.logging import (
     get_logger,
     configure_structlog,
