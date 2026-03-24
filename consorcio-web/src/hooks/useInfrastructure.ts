@@ -23,12 +23,22 @@ export function useInfrastructure() {
   const fetchInfrastructure = useCallback(async () => {
     setLoading(true);
     try {
-      const [assetsData, intersectionsData] = await Promise.all([
-        apiFetch('/infraestructura/assets').then((res) => unwrapItems<InfrastructureAsset>(res)),
-        apiFetch<FeatureCollection>('/geo/intelligence/conflictos'),
-      ]);
+      // Fetch assets (public-ish, may work without auth)
+      const assetsData = await apiFetch('/infraestructura/assets')
+        .then((res) => unwrapItems<InfrastructureAsset>(res))
+        .catch(() => [] as InfrastructureAsset[]);
       setAssets(assetsData);
-      setIntersections(intersectionsData);
+
+      // Fetch intersections separately (requires auth, may fail)
+      try {
+        const intersectionsData = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');
+        // Validate it's actual GeoJSON before setting
+        if (intersectionsData && intersectionsData.type === 'FeatureCollection') {
+          setIntersections(intersectionsData);
+        }
+      } catch {
+        // Silently skip — user may not be authenticated
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando infraestructura');
     } finally {
