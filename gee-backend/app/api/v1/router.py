@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
     management,
     padron,
     finance,
+    geo,
 )
 
 api_router = APIRouter()
@@ -65,6 +66,12 @@ api_router.include_router(
     finance.router,
     prefix="/finance",
     tags=["Finanzas y Presupuesto"],
+)
+
+api_router.include_router(
+    geo.router,
+    prefix="/geo",
+    tags=["Geo Processing"],
 )
 api_router.include_router(
     layers.router,

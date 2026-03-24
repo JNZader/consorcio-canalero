@@ -1,0 +1,31 @@
+# Geo Worker dependencies — lean, no FastAPI stack
+# GDAL/OGR bindings come from the base image
+
+# Raster analysis
+rasterio>=1.4.0
+richdem>=0.3.4
+
+# WhiteboxTools (hydrology)
+whitebox>=2.3.0
+
+# Vector/geometry
+geopandas>=1.0.0
+shapely>=2.0.0
+numpy>=1.26.0
+
+# Task queue
+celery>=5.4.0
+redis>=5.0.0
+
+# Database (for storing results)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+geoalchemy2>=0.17.0
+
+# Logging
+structlog>=24.1.0
+
+# Config
+python-dotenv>=1.0.0
+pydantic>=2.11.0
+pydantic-settings>=2.7.0
