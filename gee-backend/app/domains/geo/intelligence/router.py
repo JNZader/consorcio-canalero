@@ -144,9 +144,10 @@ def detect_conflictos(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ):
-    """Run conflict detection (dispatches Celery task for full analysis).
+    """Dispatch conflict detection as a background Celery task.
 
-    For now returns a placeholder. Full execution via task_detect_all_conflicts.
+    Loads canal/road/drainage data from GEE assets and GeoLayers,
+    then detects intersection points filtered by flow accumulation and slope.
     """
     from app.domains.geo.intelligence.tasks import task_detect_all_conflicts
 
@@ -227,13 +228,26 @@ def generate_zonas(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ):
-    """Generate operational zones from DEM (dispatches Celery task).
-
-    For now returns a placeholder. Full execution via task_generate_zonification.
-    """
+    """Dispatch zone generation from DEM as a background Celery task."""
     from app.domains.geo.intelligence.tasks import task_generate_zonification
 
     task = task_generate_zonification.delay(str(payload.dem_layer_id), payload.threshold)
+    return {"task_id": task.id, "status": "submitted"}
+
+
+@router.post("/hci/batch", response_model=dict)
+def batch_calculate_hci(
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+):
+    """Dispatch batch HCI calculation for all zones as a background Celery task.
+
+    Extracts per-zone raster statistics from slope, flow_acc, and TWI layers
+    and calculates HCI for every operational zone.
+    """
+    from app.domains.geo.intelligence.tasks import task_calculate_hci_all_zones
+
+    task = task_calculate_hci_all_zones.delay()
     return {"task_id": task.id, "status": "submitted"}
 
 
@@ -305,3 +319,18 @@ def evaluate_alertas(
     """Evaluate alert conditions and create new alerts if thresholds are exceeded."""
     result = _get_intel_service().check_alerts(db)
     return result
+
+
+@router.post("/alertas/{alerta_id}/desactivar", response_model=AlertaResponse)
+def deactivate_alerta(
+    alerta_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Deactivate (dismiss) an active alert."""
+    alerta = repo.deactivate_alerta(db, alerta_id)
+    if alerta is None:
+        raise HTTPException(status_code=404, detail="Alerta no encontrada")
+    db.commit()
+    return alerta
