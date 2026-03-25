@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 from kombu import Queue
 from dotenv import load_dotenv
 
@@ -41,6 +42,19 @@ celery_app.conf.update(
     # Route geo.* tasks to the geo queue
     task_routes={
         "geo.*": {"queue": "geo", "routing_key": "geo"},
+    },
+    # Periodic task schedule (Celery Beat)
+    beat_schedule={
+        "evaluate-alerts-periodic": {
+            "task": "app.domains.geo.intelligence.tasks.task_evaluate_alerts",
+            "schedule": crontab(minute="0", hour="*/6"),
+            "options": {"queue": "geo"},
+        },
+        "refresh-mat-views-periodic": {
+            "task": "app.domains.geo.intelligence.tasks.task_refresh_materialized_views",
+            "schedule": crontab(minute="30", hour="*/6"),
+            "options": {"queue": "geo"},
+        },
     },
 )
 
