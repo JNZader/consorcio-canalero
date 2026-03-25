@@ -280,10 +280,117 @@ def supervised_classification_task(
             k: v for k, v in fc_result.items() if k != "error"
         }
 
+        # ── Pixel-level classification via GEE reduceRegion ──
+        # Uses NDVI + NDWI thresholds to classify land cover and compute
+        # area percentages per class (water, dense veg, sparse veg, bare soil)
+        try:
+            import ee
+
+            days_buf = (end_date - start_date).days or 10
+            use_toa = start_date.year < 2019
+            collection_name = (
+                "COPERNICUS/S2_HARMONIZED"
+                if use_toa
+                else "COPERNICUS/S2_SR_HARMONIZED"
+            )
+            zona = explorer.zona
+
+            collection = (
+                ee.ImageCollection(collection_name)
+                .filterBounds(zona)
+                .filterDate(
+                    (start_date - __import__("datetime").timedelta(days=days_buf)).isoformat(),
+                    (start_date + __import__("datetime").timedelta(days=days_buf)).isoformat(),
+                )
+                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 60))
+            )
+
+            img_count = collection.size().getInfo()
+            if img_count > 0:
+                composite = collection.median().clip(zona)
+
+                ndvi = composite.normalizedDifference(["B8", "B4"]).rename("ndvi")
+                ndwi = composite.normalizedDifference(["B3", "B8"]).rename("ndwi")
+
+                # Classification rules:
+                #   water:            NDWI > 0.3
+                #   dense_vegetation: NDVI > 0.5 (and not water)
+                #   sparse_vegetation: 0.2 < NDVI <= 0.5 (and not water)
+                #   bare_soil:        NDVI <= 0.2 (and not water)
+                water = ndwi.gt(0.3)
+                dense_veg = ndvi.gt(0.5).And(water.Not())
+                sparse_veg = ndvi.gt(0.2).And(ndvi.lte(0.5)).And(water.Not())
+                bare_soil = ndvi.lte(0.2).And(water.Not())
+
+                classified = (
+                    ee.Image(0)
+                    .where(water, 1)
+                    .where(dense_veg, 2)
+                    .where(sparse_veg, 3)
+                    .where(bare_soil, 4)
+                    .rename("classification")
+                    .clip(zona)
+                )
+
+                # Count pixels per class using reduceRegion
+                class_names = {
+                    1: "agua",
+                    2: "vegetacion_densa",
+                    3: "vegetacion_rala",
+                    4: "suelo_desnudo",
+                }
+
+                pixel_counts = {}
+                total_pixels = 0
+                for class_val, class_name in class_names.items():
+                    mask = classified.eq(class_val)
+                    count_img = mask.rename("count")
+                    stats = count_img.reduceRegion(
+                        reducer=ee.Reducer.sum(),
+                        geometry=zona.geometry(),
+                        scale=10,
+                        maxPixels=1e9,
+                        bestEffort=True,
+                    ).getInfo()
+                    px_count = int(stats.get("count", 0))
+                    pixel_counts[class_name] = px_count
+                    total_pixels += px_count
+
+                # Compute percentages
+                classification_stats = {}
+                for class_name, px_count in pixel_counts.items():
+                    pct = round((px_count / total_pixels) * 100.0, 2) if total_pixels > 0 else 0.0
+                    classification_stats[class_name] = {
+                        "pixeles": px_count,
+                        "porcentaje": pct,
+                    }
+
+                resultado["classification"] = {
+                    "stats": classification_stats,
+                    "total_pixels": total_pixels,
+                    "thresholds": {
+                        "agua": "NDWI > 0.3",
+                        "vegetacion_densa": "NDVI > 0.5",
+                        "vegetacion_rala": "0.2 < NDVI <= 0.5",
+                        "suelo_desnudo": "NDVI <= 0.2",
+                    },
+                    "scale_m": 10,
+                }
+            else:
+                resultado["classification"] = {
+                    "warning": "No images available for classification stats"
+                }
+        except Exception as cls_err:
+            logger.warning(
+                "supervised_classification_task.classification_stats_failed",
+                error=str(cls_err),
+            )
+            resultado["classification"] = {"error": str(cls_err)}
+
         resultado["start_date"] = start_date_str
         resultado["end_date"] = end_date_str
         resultado["status"] = "completed"
-        resultado["classification_type"] = "ndvi_based"
+        resultado["classification_type"] = "ndvi_ndwi_based"
 
         # Persist results
         if analisis_id:
