@@ -1,287 +1,157 @@
 # Consorcio Canalero 10 de Mayo
 
-Sistema integral de gestión para el Consorcio Canalero 10 de Mayo - Bell Ville, Córdoba, Argentina.
+Sistema integral de gestión para consorcios canaleros — Bell Ville, Córdoba, Argentina.
 
-[![CI/CD Pipeline](https://github.com/YOUR_USERNAME/consorcio-canalero/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/consorcio-canalero/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Self-hosted, clone-and-deploy ready.
 
-## Características Principales
-
-### Monitoreo Satelital e Inteligencia Espacial
-- **Detección de Inundaciones**: Análisis automático usando Sentinel-1 (Radar) y Sentinel-2 (Óptico)
-- **Intersecciones Inteligentes**: Cálculo automático de cruces entre caminos y canales
-- **Puntos de Interés (POI)**: Marcación manual en mapa para registro de activos
-
-### Gestión de Infraestructura y Activos
-- **Bitácora de Mantenimiento**: Registro de reparaciones, limpiezas y obras con fotos y costos
-- **Fichas Técnicas**: Generación de PDFs técnicos para cada activo
-
-### Administración y Padrón
-- **Padrón de Consorcistas**: Registro con validación de CUIT y gestión de representación
-- **Recaudación**: Control de pago de cuotas anuales con historial
-- **Gestión de Trámites**: Seguimiento de expedientes ante Recursos Hídricos
-
-### Sistema de Reportes y Sugerencias
-- **Reportes Ciudadanos**: Denuncias con verificación de identidad
-- **Buzón de Sugerencias**: Propuestas para reuniones de comisión
-- **Planificación de Reuniones**: Constructor de Orden del Día
-
-## Tech Stack
+## Stack
 
 | Componente | Tecnología |
 |------------|------------|
 | **Frontend** | React 19, TypeScript, Vite, Mantine UI, Leaflet |
-| **Backend** | FastAPI, Python 3.11, Google Earth Engine |
-| **Base de datos** | Supabase (PostgreSQL) |
-| **Cache/Queue** | Redis, Celery |
-| **Infraestructura** | Docker, Nginx, GitHub Actions |
-| **Hosting** | Fly.io (backend) + GitHub Pages (frontend) |
+| **Backend** | FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic |
+| **Auth** | JWT + Google OAuth (fastapi-users) |
+| **Database** | PostgreSQL + PostGIS |
+| **Geo** | Google Earth Engine, GDAL worker |
+| **Queue** | Redis + Celery (async geo tasks) |
+| **Testing** | Pytest (backend), Vitest (frontend), Playwright (E2E) |
+| **CI/CD** | GitHub Actions, Docker Compose |
+| **Deploy** | Coolify on Hetzner (backend), Cloudflare Pages (frontend) |
+
+## Dominios
+
+El backend usa **Screaming Architecture** — cada dominio bajo `gee-backend/app/domains/` tiene su propio `models/schemas/repository/service/router`:
+
+| Dominio | Descripción |
+|---------|-------------|
+| `padron` | Registro de consorcistas (CUIT, representación, cuotas) |
+| `denuncias` | Reportes ciudadanos con verificación de identidad |
+| `finanzas` | Ingresos, gastos, presupuestos |
+| `infraestructura` | Activos, bitácora de mantenimiento, fichas técnicas |
+| `tramites` | Expedientes ante Recursos Hídricos |
+| `capas` | Capas del mapa (publicación admin) |
+| `geo` | Procesamiento geoespacial + GEE + intelligence dashboard |
+| `monitoring` | Sugerencias + análisis GEE tracking |
+| `reuniones` | Planificación de reuniones, orden del día |
+| `settings` | Configuración por deployment (branding, territorio, contacto) |
+
+Funcionalidades transversales: exportación PDF (5 tipos de documento), invitaciones de usuario, dashboard de inteligencia.
 
 ## Estructura del Proyecto
 
 ```
 consorcio-canalero/
-├── consorcio-web/          # Frontend React
-│   ├── src/
-│   │   ├── components/     # Componentes React
-│   │   ├── hooks/          # Custom hooks
-│   │   ├── lib/            # Utilidades y API
-│   │   ├── stores/         # Estado global (Zustand)
-│   │   └── types/          # TypeScript types
-│   └── Dockerfile
-├── gee-backend/            # Backend FastAPI
+├── consorcio-web/              # React frontend (Vite)
+├── gee-backend/                # FastAPI backend
 │   ├── app/
-│   │   ├── api/v1/         # Endpoints REST
-│   │   ├── services/       # Lógica de negocio
-│   │   └── core/           # Configuración
-│   └── Dockerfile
-├── nginx/                  # Configuración Nginx
-├── .github/workflows/      # CI/CD pipelines
-├── docker-compose.yml      # Desarrollo
-└── docker-compose.prod.yml # Producción
+│   │   ├── api/v2/             # V2 API router aggregator
+│   │   ├── auth/               # fastapi-users auth (JWT + OAuth)
+│   │   ├── db/                 # Base, session, migrations (Alembic)
+│   │   ├── domains/            # Screaming Architecture (10 dominios)
+│   │   ├── core/               # Logging, exceptions, rate limiting
+│   │   └── shared/             # Cross-domain utilities
+│   └── tests/new/              # Tests nueva arquitectura
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── setup.sh                    # Clone-and-deploy setup script
+└── openspec/                   # SDD specs
 ```
-
-## Requisitos
-
-- Node.js >= 20
-- Python >= 3.11
-- Docker & Docker Compose
-- Make (opcional)
 
 ## Inicio Rápido
 
-### 1. Clonar y configurar
+### Con setup.sh (recomendado)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/consorcio-canalero.git
+git clone https://github.com/JNZader/consorcio-canalero.git
 cd consorcio-canalero
-
-# Copiar archivos de configuración
-cp gee-backend/.env.example gee-backend/.env
-cp consorcio-web/.env.example consorcio-web/.env
+./setup.sh
 ```
 
-### 2. Configurar credenciales
-
-**Backend (`gee-backend/.env`):**
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_PUBLISHABLE_KEY=your-anon-key
-SUPABASE_SECRET_KEY=your-service-role-key
-GEE_KEY_FILE_PATH=/app/credentials/gee-service-account.json
-GEE_PROJECT_ID=cc10demayo
-```
-
-**Frontend (`consorcio-web/.env`):**
-```env
-VITE_API_URL=http://localhost:8000
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### 3. Desarrollo con Docker (Recomendado)
+### Manual
 
 ```bash
-# Iniciar todos los servicios
-make dev
-# o
-docker compose up -d
-
-# Ver logs
-docker compose logs -f
-
-# Detener
-docker compose down
-```
-
-**Servicios disponibles:**
-- Frontend: http://localhost:5173
-- Backend: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-
-### 4. Desarrollo local (sin Docker)
-
-```bash
-# Setup completo
-make setup
-
-# Backend (terminal 1)
+# Backend
 cd gee-backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env  # Editar con valores reales
 uvicorn app.main:app --reload
 
-# Frontend (terminal 2)
+# Frontend (otra terminal)
 cd consorcio-web
 npm install
 npm run dev
 ```
 
-## Comandos Disponibles
+### Docker
 
 ```bash
-# Desarrollo
-make dev              # Iniciar todos los servicios
-make logs             # Ver logs
-make stop             # Detener servicios
-
-# Testing
-make test             # Ejecutar todos los tests
-make test-frontend    # Solo tests del frontend
-make test-backend     # Solo tests del backend
-
-# Linting
-make lint             # Lint todo
-make lint-fix         # Auto-fix linting
-
-# Docker
-make docker-build     # Construir imágenes
-make docker-prod      # Ejecutar en modo producción
-
-# Limpieza
-make clean            # Limpiar artefactos
+docker compose up -d                    # Todos los servicios
+docker compose up -d postgres redis     # Solo DB + cache
+docker compose logs -f backend          # Seguir logs
 ```
 
-## CI/CD Pipeline
+## Variables de Entorno
 
-El pipeline se ejecuta automáticamente en cada push:
+**Backend** (`gee-backend/.env.example`):
 
+```env
+DATABASE_URL=postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
+JWT_SECRET=<openssl rand -hex 32>
+REDIS_URL=redis://localhost:6379/0
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
-┌─────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌────────┐
-│   Detect    │────▶│   Test   │────▶│ Security │────▶│  Build  │
-│   Changes   │     │ & Lint   │     │   Scan   │     │  Images │
-└─────────────┘     └──────────┘     └──────────┘     └─────────┘     └────────┘
-```
 
-### GitHub Secrets Requeridos
+**Frontend** (`consorcio-web/.env.example`): solo `VITE_API_URL`.
 
-| Secret | Descripción |
-|--------|-------------|
-| `FLY_API_TOKEN` | Token de API de Fly.io para deploy manual |
-| `VITE_SUPABASE_URL` | URL de Supabase |
-| `VITE_SUPABASE_ANON_KEY` | Anon key de Supabase |
+## API
 
-### GitHub Variables
+Todos los endpoints nuevos bajo `/api/v2`. Documentación interactiva en `/docs`.
 
-| Variable | Descripción |
-|----------|-------------|
-| `VITE_API_URL` | URL del backend en producción (usada en build Docker y en GitHub Pages) |
+| Prefijo | Dominio | Auth |
+|---------|---------|------|
+| `/api/v2/auth/*` | Login, registro, usuarios | Varies |
+| `/api/v2/padron/*` | Padrón de consorcistas | Operator+ |
+| `/api/v2/denuncias/*` | Reportes ciudadanos | Operator+ |
+| `/api/v2/finanzas/*` | Finanzas | Operator+ |
+| `/api/v2/infraestructura/*` | Activos + mantenimiento | Operator+ |
+| `/api/v2/tramites/*` | Trámites | Operator+ |
+| `/api/v2/capas/*` | Capas del mapa | Operator+ |
+| `/api/v2/geo/*` | Geo + GEE | Operator+ |
+| `/api/v2/monitoring/*` | Sugerencias + análisis | Varies |
+| `/api/v2/settings/*` | Configuración sistema | Operator+ / Admin |
+| `/api/v2/public/*` | Viewer público, branding | Sin auth |
 
-### Workflows de despliegue
+### Roles
 
-- `Build and Publish Images` (`.github/workflows/deploy.yml`): construye/publica imágenes backend/frontend en GHCR al hacer push a `main`.
-- `Deploy Backend to Fly` (`.github/workflows/fly-deploy.yml`): deploy manual del backend usando `fly.toml` y `FLY_API_TOKEN`.
-- `GitHub Pages` (`.github/workflows/gh-pages.yml`): publica frontend estático y consume `VITE_API_URL` desde `vars` del repo.
+Tres roles: `admin`, `operador`, `ciudadano`.
 
-## Producción
+## Tests
 
 ```bash
-# Crear archivo de producción
-cp gee-backend/.env.production.example gee-backend/.env.production
-# Editar con valores de producción
+# Backend
+cd gee-backend && source venv/bin/activate
+pytest tests/new/ -v
+pytest tests/new/ -v --cov=app
 
-# Ejecutar
-docker compose -f docker-compose.prod.yml up -d
+# Frontend
+cd consorcio-web
+npm run test
+
+# Lint
+cd gee-backend && ruff check . && ruff format --check .
 ```
 
-### Arquitectura en Producción
+## Deploy
 
-```
-                    ┌──────────────┐
-                    │   Internet   │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-                    │    Nginx     │ :80/:443
-                    │  (Frontend)  │
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-       ┌──────▼──────┐     │     ┌──────▼──────┐
-       │   Static    │     │     │    /api/*   │
-       │   Assets    │     │     │    Proxy    │
-       └─────────────┘     │     └──────┬──────┘
-                           │            │
-                    ┌──────▼───────┐    │
-                    │   Backend    │◀───┘
-                    │   FastAPI    │ :8000
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-       ┌──────▼──────┐ ┌───▼────┐ ┌─────▼─────┐
-       │   Supabase  │ │  GEE   │ │   Redis   │
-       │  PostgreSQL │ │  API   │ │   Cache   │
-       └─────────────┘ └────────┘ └─────┬─────┘
-                                        │
-                                 ┌──────▼──────┐
-                                 │   Celery    │
-                                 │   Worker    │
-                                 └─────────────┘
-```
-
-## Informes PDF
-
-El sistema genera 5 tipos de documentos:
-1. Informe de Gestión Integral
-2. Ficha Técnica de Activo
-3. Resumen de Expediente Provincial
-4. Constancia de Resolución de Reporte
-5. Orden del Día para Reuniones
-
-## Endpoints Principales
-
-| Endpoint | Descripción |
-|----------|-------------|
-| `/health` | Health check |
-| `/api/v1/reports` | Gestión de reportes |
-| `/api/v1/sugerencias` | Buzón de sugerencias |
-| `/api/v1/monitoring` | Dashboard de monitoreo |
-| `/api/v1/layers` | Capas del mapa |
-| `/api/v1/gee_layers` | Capas de Google Earth Engine |
-| `/docs` | Documentación OpenAPI |
-
-## Contribuir
-
-1. Fork el repositorio
-2. Crear branch (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit (`git commit -m 'Agregar nueva funcionalidad'`)
-4. Push (`git push origin feature/nueva-funcionalidad`)
-5. Abrir Pull Request
-
-### Pre-commit Hooks
-
-```bash
-pip install pre-commit
-pre-commit install
-```
+- **Backend**: Coolify on Hetzner — builds from `docker-compose.prod.yml`
+- **Frontend**: Cloudflare Pages — builds from `consorcio-web/`
+- **CI/CD**: GitHub Actions pipeline (test → build → deploy)
 
 ## Licencia
 
-MIT License - ver [LICENSE](LICENSE) para detalles.
+MIT License — ver [LICENSE](LICENSE).
 
 ---
 
-Desarrollado para el **Consorcio Canalero 10 de Mayo** - Bell Ville, Córdoba, Argentina
+Desarrollado para el **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
