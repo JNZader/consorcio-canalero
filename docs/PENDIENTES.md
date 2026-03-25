@@ -24,10 +24,7 @@
 - ~~Hooks pre-push~~ ✅ Graceful fallback sin Docker (fix en javi-forge + local)
 - ~~README + CONTRIBUTING~~ ✅ Reescritos sin Supabase
 - ~~@supabase/supabase-js~~ ✅ Ya limpio
-- ~~Celery Worker en Coolify~~ ✅ Recurso separado con Dockerfile.worker
-- ~~Pre-push hooks~~ ✅ Fix upstream (javi-forge) + local — Docker graceful fallback
-- ~~README.md + CONTRIBUTING.md~~ ✅ Reescritos sin Supabase
-- ~~@supabase/supabase-js~~ ✅ Ya limpio (removido en sesión anterior)
+- ~~Tests backend~~ ✅ Testcontainers PostGIS (3-tier fallback)
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -120,9 +117,9 @@ Reescrito completo. Sin referencias a Supabase, con stack actual y 10 dominios d
 ### 12. ~~CONTRIBUTING.md desactualizado~~ ✅ HECHO (2026-03-25)
 Reescrito con screaming architecture, conventional commits, y workaround de hooks documentado.
 
-### 13. Tests unitarios backend
-Los tests en `tests/new/` necesitan PostgreSQL + PostGIS local para correr.
-- Considerar testcontainers o docker-compose para test DB
+### 13. ~~Tests unitarios backend~~ ✅ HECHO (2026-03-25)
+Testcontainers con `postgis/postgis:16-3.4`. 3-tier fallback: Docker → TEST_DATABASE_URL → exit con instrucciones.
+Per-test transaction rollback preservado. `pytest tests/new/ -v` just works si Docker está corriendo.
 
 ### 14. ~~@supabase/supabase-js en package.json~~ ✅ YA LIMPIO
 No está en package.json ni hay imports. Fue removido en sesión anterior.
