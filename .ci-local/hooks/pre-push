@@ -1,24 +1,32 @@
-#!/usr/bin/env bash
-# Pre-push hook: runs ci-local quick before pushing
+#!/bin/bash
+# Pre-push: CI checks via javi-forge
 # Install: cp .ci-local/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 # Or: make install-hooks
+# To skip: git push --no-verify
+set -e
 
-ROOT=$(git rev-parse --show-toplevel)
-CI_LOCAL="$ROOT/.ci-local/ci-local.sh"
-
-if [ ! -f "$CI_LOCAL" ]; then
-  echo "Warning: ci-local.sh not found, skipping pre-push checks"
-  exit 0
-fi
-
-echo "Running CI-Local quick checks before push..."
-echo ""
-
-bash "$CI_LOCAL" quick
-
-if [ $? -ne 0 ]; then
-  echo ""
-  echo "Push blocked: fix the issues above first."
-  echo "To skip: git push --no-verify (not recommended)"
-  exit 1
+if docker info &>/dev/null; then
+  echo "PRE-PUSH: Docker running — running full CI simulation..."
+  if command -v javi-forge &>/dev/null; then
+    javi-forge ci
+  else
+    npx javi-forge ci
+  fi || {
+    echo ""
+    echo "CI FAILED — push aborted. Fix the issues above."
+    echo "To skip: git push --no-verify"
+    exit 1
+  }
+else
+  echo "⚠ Docker not running — running quick checks only (lint + typecheck)"
+  if command -v javi-forge &>/dev/null; then
+    javi-forge ci --quick --no-docker --no-security --no-ci-ghagga
+  else
+    npx javi-forge ci --quick --no-docker --no-security --no-ci-ghagga
+  fi || {
+    echo ""
+    echo "QUICK CHECKS FAILED — push aborted. Fix the issues above."
+    echo "To skip: git push --no-verify"
+    exit 1
+  }
 fi
