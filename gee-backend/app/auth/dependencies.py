@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 from fastapi_users.authentication import (
     AuthenticationBackend,
@@ -11,9 +11,10 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import User, UserRole
+from app.auth.models import PreAuthorizedEmail, User, UserRole
 from app.config import settings
 from app.db.session import get_async_db
 
@@ -31,6 +32,27 @@ async def get_user_db(session: AsyncSession = Depends(get_async_db)):
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = settings.jwt_secret
     verification_token_secret = settings.jwt_secret
+
+    async def on_after_register(
+        self, user: User, request: Request | None = None
+    ) -> None:
+        """Check pre-authorized emails and auto-assign role on registration."""
+        # Get the async session from the user_db internals
+        session: AsyncSession = self.user_db.session
+
+        result = await session.execute(
+            select(PreAuthorizedEmail).where(
+                PreAuthorizedEmail.email == user.email,
+                PreAuthorizedEmail.claimed == False,  # noqa: E712
+            )
+        )
+        pre_auth = result.scalar_one_or_none()
+
+        if pre_auth is not None:
+            user.role = pre_auth.role
+            pre_auth.claimed = True
+            session.add(user)
+            await session.commit()
 
 
 def get_user_manager(
