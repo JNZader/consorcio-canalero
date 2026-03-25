@@ -731,11 +731,12 @@ test.describe('Capas CRUD', () => {
     // Reorder might return 200 or 204
     expect(reorderRes.status()).toBeLessThan(300);
 
-    // 5. DELETE the capa
+    // 5. DELETE the capa (returns 204 No Content, requires admin)
     const deleteRes = await request.delete(`${API_BASE}/api/v2/capas/${capaId}`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
     });
-    expect(deleteRes.ok()).toBeTruthy();
+    // Accept 204 (success) or log unexpected status for debugging
+    expect(deleteRes.status()).toBe(204);
   });
 });
 
