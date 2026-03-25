@@ -103,11 +103,19 @@ class AnalisisGeoCreate(BaseModel):
 
     tipo: str = Field(
         ...,
-        description="Analysis type: flood, vegetation, ndvi, custom",
+        description="Analysis type: flood, vegetation, classification, ndvi, custom",
     )
     parametros: dict[str, Any] = Field(
         default_factory=dict,
         description="Analysis params: start_date, end_date, method, thresholds, etc.",
+    )
+    fecha_inicio: Optional[datetime] = Field(
+        None,
+        description="Analysis period start date",
+    )
+    fecha_fin: Optional[datetime] = Field(
+        None,
+        description="Analysis period end date",
     )
 
 
@@ -119,6 +127,8 @@ class AnalisisGeoResponse(BaseModel):
     id: uuid.UUID
     tipo: str
     fecha_analisis: date
+    fecha_inicio: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
     parametros: Optional[dict[str, Any]] = None
     resultado: Optional[dict[str, Any]] = None
     estado: str

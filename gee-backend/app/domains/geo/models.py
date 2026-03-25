@@ -2,11 +2,12 @@
 
 import enum
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
     Date,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -80,6 +81,7 @@ class TipoAnalisisGee(str, enum.Enum):
 
     FLOOD = "flood"
     VEGETATION = "vegetation"
+    CLASSIFICATION = "classification"
     NDVI = "ndvi"
     CUSTOM = "custom"
 
@@ -202,6 +204,16 @@ class AnalisisGeo(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     fecha_analisis: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_inicio: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="Analysis period start date",
+    )
+    fecha_fin: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="Analysis period end date",
+    )
     parametros: Mapped[Optional[dict]] = mapped_column(
         JSON,
         nullable=True,
