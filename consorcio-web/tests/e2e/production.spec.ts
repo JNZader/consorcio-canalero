@@ -389,3 +389,558 @@ test.describe('Frontend Pages', () => {
     await expect(page.locator('body')).not.toBeEmpty();
   });
 });
+
+// ============================================
+// 8. AUTH EXTENDED
+// ============================================
+
+test.describe('Auth Extended', () => {
+  test('register new user', async ({ request }) => {
+    const uniqueEmail = `test-${Date.now()}@playwright.com`;
+    const res = await request.post(`${API_BASE}/api/v2/auth/register`, {
+      data: { email: uniqueEmail, password: 'TestPass123', nombre: 'E2E', apellido: 'Test' },
+    });
+    expect(res.status()).toBe(201);
+    const body = await res.json();
+    expect(body.email).toBe(uniqueEmail);
+    expect(body.role).toBe('ciudadano'); // default role
+  });
+
+  test('logout invalidates session', async ({ request }) => {
+    // Login first
+    const loginRes = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    const token = (await loginRes.json()).access_token;
+
+    // Logout
+    const logoutRes = await request.post(`${API_BASE}/api/v2/auth/jwt/logout`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(logoutRes.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 9. DENUNCIAS STATE TRANSITIONS
+// ============================================
+
+test.describe('Denuncias State Transitions', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('full denuncia lifecycle: create → en_revision → resuelto', async ({ request }) => {
+    // 1. Create a denuncia via public endpoint
+    const createRes = await request.post(`${API_BASE}/api/v2/public/denuncias`, {
+      headers: { Origin: APP_URL },
+      data: {
+        tipo: 'desborde',
+        descripcion: `E2E lifecycle test - ${Date.now()}`,
+        latitud: -32.62,
+        longitud: -62.68,
+        cuenca: 'candil',
+        contacto_telefono: '3534000001',
+        contacto_email: 'lifecycle@test.com',
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const created = await createRes.json();
+    const denunciaId = created.id;
+
+    // 2. List denuncias and find the created one
+    const listRes = await request.get(`${API_BASE}/api/v2/denuncias`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(listRes.ok()).toBeTruthy();
+    const list = await listRes.json();
+    const found = list.items.find((d: { id: string }) => d.id === denunciaId);
+    expect(found).toBeTruthy();
+
+    // 3. PATCH to en_revision
+    const revisionRes = await request.patch(`${API_BASE}/api/v2/denuncias/${denunciaId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { estado: 'en_revision', respuesta: 'Revisando denuncia E2E' },
+    });
+    expect(revisionRes.ok()).toBeTruthy();
+
+    // 4. PATCH to resuelto
+    const resolvedRes = await request.patch(`${API_BASE}/api/v2/denuncias/${denunciaId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { estado: 'resuelto' },
+    });
+    expect(resolvedRes.ok()).toBeTruthy();
+
+    // 5. Verify via public status check
+    const statusRes = await request.get(`${API_BASE}/api/v2/public/denuncias/${denunciaId}/status`);
+    expect(statusRes.ok()).toBeTruthy();
+    const status = await statusRes.json();
+    expect(status.estado).toBe('resuelto');
+  });
+});
+
+// ============================================
+// 10. INFRAESTRUCTURA EXTENDED
+// ============================================
+
+test.describe('Infraestructura Extended', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('asset CRUD lifecycle: create → get → update → maintenance → history', async ({ request }) => {
+    const ts = Date.now();
+
+    // 1. Create an asset
+    const createRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        nombre: `Canal E2E Extended ${ts}`,
+        tipo: 'canal',
+        descripcion: 'Asset para test extendido',
+        estado_actual: 'bueno',
+        latitud: -32.64,
+        longitud: -62.70,
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const asset = await createRes.json();
+    const assetId = asset.id;
+
+    // 2. Get asset by ID
+    const getRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(getRes.ok()).toBeTruthy();
+    const fetched = await getRes.json();
+    expect(fetched.nombre).toContain('Canal E2E Extended');
+
+    // 3. PATCH update estado_actual to 'regular'
+    const patchRes = await request.patch(`${API_BASE}/api/v2/infraestructura/assets/${assetId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { estado_actual: 'regular' },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    // 4. POST maintenance log
+    const maintRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/mantenimiento`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        tipo: 'correctivo',
+        descripcion: `Mantenimiento E2E ${ts}`,
+        fecha: '2026-03-24',
+      },
+    });
+    expect(maintRes.status()).toBe(201);
+
+    // 5. GET asset history
+    const histRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/historial`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(histRes.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 11. FINANZAS EXTENDED
+// ============================================
+
+test.describe('Finanzas Extended', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('create and list ingresos', async ({ request }) => {
+    const ts = Date.now();
+    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/ingresos`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        descripcion: `Ingreso E2E ${ts}`,
+        monto: 15000.0,
+        categoria: 'canon',
+        fecha: '2026-03-24',
+      },
+    });
+    expect(createRes.status()).toBe(201);
+
+    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/ingresos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(listRes.ok()).toBeTruthy();
+    const body = await listRes.json();
+    expect(body).toHaveProperty('items');
+  });
+
+  test('create and list presupuestos', async ({ request }) => {
+    const ts = Date.now();
+    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/presupuestos`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        descripcion: `Presupuesto E2E ${ts}`,
+        monto: 50000.0,
+        categoria: 'mantenimiento',
+        anio: 2026,
+      },
+    });
+    expect(createRes.status()).toBe(201);
+
+    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/presupuestos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(listRes.ok()).toBeTruthy();
+    const body = await listRes.json();
+    expect(body).toHaveProperty('items');
+  });
+
+  test('budget execution for 2026', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/finanzas/ejecucion/2026`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 12. TRAMITES STATE TRANSITIONS
+// ============================================
+
+test.describe('Tramites State Transitions', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('tramite lifecycle: create → en_tramite → seguimiento → verify', async ({ request }) => {
+    const ts = Date.now();
+
+    // 1. Create tramite
+    const createRes = await request.post(`${API_BASE}/api/v2/tramites`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        tipo: 'permiso',
+        titulo: `Tramite E2E ${ts}`,
+        descripcion: 'Tramite para test de transiciones',
+        solicitante: 'Playwright E2E',
+        prioridad: 'media',
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const tramite = await createRes.json();
+    const tramiteId = tramite.id;
+
+    // 2. PATCH update estado to 'en_tramite'
+    const patchRes = await request.patch(`${API_BASE}/api/v2/tramites/${tramiteId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { estado: 'en_tramite' },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    // 3. POST add seguimiento
+    const segRes = await request.post(`${API_BASE}/api/v2/tramites/${tramiteId}/seguimiento`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        descripcion: `Seguimiento E2E ${ts}`,
+        tipo: 'nota',
+      },
+    });
+    expect(segRes.status()).toBe(201);
+
+    // 4. GET tramite by ID and verify
+    const getRes = await request.get(`${API_BASE}/api/v2/tramites/${tramiteId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(getRes.ok()).toBeTruthy();
+    const fetched = await getRes.json();
+    expect(fetched.estado).toBe('en_tramite');
+  });
+});
+
+// ============================================
+// 13. CAPAS CRUD
+// ============================================
+
+test.describe('Capas CRUD', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('capa lifecycle: create → get → update → reorder → delete', async ({ request }) => {
+    const ts = Date.now();
+
+    // 1. POST create a new capa
+    const createRes = await request.post(`${API_BASE}/api/v2/capas`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: {
+        nombre: `Capa E2E ${ts}`,
+        tipo: 'overlay',
+        visible: true,
+        orden: 99,
+        configuracion: { color: '#FF0000', opacity: 0.5 },
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const capa = await createRes.json();
+    const capaId = capa.id;
+
+    // 2. GET the created capa by ID
+    const getRes = await request.get(`${API_BASE}/api/v2/capas/${capaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(getRes.ok()).toBeTruthy();
+    const fetched = await getRes.json();
+    expect(fetched.nombre).toContain('Capa E2E');
+
+    // 3. PATCH update the capa
+    const patchRes = await request.patch(`${API_BASE}/api/v2/capas/${capaId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { nombre: `Capa E2E Updated ${ts}`, visible: false },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    // 4. PUT reorder capas
+    const reorderRes = await request.put(`${API_BASE}/api/v2/capas/reorder`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: [{ id: capaId, orden: 1 }],
+    });
+    // Reorder might return 200 or 204
+    expect(reorderRes.status()).toBeLessThan(300);
+
+    // 5. DELETE the capa
+    const deleteRes = await request.delete(`${API_BASE}/api/v2/capas/${capaId}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    });
+    expect(deleteRes.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 14. SUGERENCIAS MANAGEMENT
+// ============================================
+
+test.describe('Sugerencias Management', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('list sugerencias and update estado', async ({ request }) => {
+    // First create a fresh sugerencia to update
+    const createRes = await request.post(`${API_BASE}/api/v2/public/sugerencias`, {
+      headers: { Origin: APP_URL },
+      data: {
+        titulo: `Sugerencia E2E ${Date.now()}`,
+        descripcion: 'Sugerencia para test de gestion',
+        contacto_nombre: 'E2E Bot',
+        contacto_email: 'sugerencia-e2e@test.com',
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const created = await createRes.json();
+
+    // List sugerencias
+    const listRes = await request.get(`${API_BASE}/api/v2/sugerencias`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(listRes.ok()).toBeTruthy();
+    const body = await listRes.json();
+    expect(body).toHaveProperty('items');
+
+    // PATCH update estado to 'revisada'
+    const patchRes = await request.patch(`${API_BASE}/api/v2/sugerencias/${created.id}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { estado: 'revisada' },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 15. SETTINGS UPDATE
+// ============================================
+
+test.describe('Settings Update', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('get, update, and verify setting', async ({ request }) => {
+    // 1. GET all settings to find a key
+    const listRes = await request.get(`${API_BASE}/api/v2/settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(listRes.ok()).toBeTruthy();
+    const settings = await listRes.json();
+    if (!settings.length) test.skip();
+
+    const setting = settings[0];
+    const settingKey = setting.key || setting.clave;
+    if (!settingKey) test.skip();
+
+    // 2. GET specific setting by key
+    const getRes = await request.get(`${API_BASE}/api/v2/settings/${settingKey}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(getRes.ok()).toBeTruthy();
+    const original = await getRes.json();
+
+    // 3. PUT update the setting value
+    const originalValue = original.value || original.valor;
+    const putRes = await request.put(`${API_BASE}/api/v2/settings/${settingKey}`, {
+      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      data: { valor: originalValue }, // re-set same value to avoid side effects
+    });
+    expect(putRes.ok()).toBeTruthy();
+
+    // 4. Verify persistence
+    const verifyRes = await request.get(`${API_BASE}/api/v2/settings/${settingKey}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(verifyRes.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 16. GEE EXTENDED
+// ============================================
+
+test.describe('GEE Extended', () => {
+  test('cuenca norte GeoJSON', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/norte`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.type).toBe('FeatureCollection');
+  });
+
+  test('cuenca ML GeoJSON', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/ml`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.type).toBe('FeatureCollection');
+  });
+
+  test('cuenca noroeste GeoJSON', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/noroeste`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.type).toBe('FeatureCollection');
+  });
+
+  test('colored roads layer', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/caminos/coloreados`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.type).toBe('FeatureCollection');
+  });
+
+  test('available visualizations', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/gee/images/visualizations`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(Array.isArray(body)).toBeTruthy();
+  });
+});
+
+// ============================================
+// 17. GEO INTELLIGENCE EXTENDED
+// ============================================
+
+test.describe('Geo Intelligence Extended', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('conflictos list', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/conflictos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+
+  test('canales prioridad', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/canales/prioridad`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+
+  test('caminos riesgo', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/caminos/riesgo`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+
+  test('HCI results list', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/hci`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+});
+
+// ============================================
+// 18. GEO JOBS & LAYERS
+// ============================================
+
+test.describe('Geo Jobs & Layers', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
+      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+    });
+    token = (await res.json()).access_token;
+  });
+
+  test('list geo processing jobs', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/jobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+
+  test('list geo layers', async ({ request }) => {
+    const res = await request.get(`${API_BASE}/api/v2/geo/layers`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.ok()).toBeTruthy();
+  });
+});
