@@ -12,6 +12,7 @@ pytest-cov>=4.1.0
 pytest-asyncio>=0.23.0
 pytest-mock>=3.12.0
 pytest-xdist>=3.5.0  # Parallel test execution
+testcontainers>=4.0.0  # Auto-spin PostgreSQL+PostGIS for tests
 mutmut>=3.2.0  # Mutation testing
 cosmic-ray>=8.3.0  # Temporary mutation gate for CI
 httpx>=0.27.0  # TestClient async support
