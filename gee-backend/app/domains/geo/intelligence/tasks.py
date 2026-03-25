@@ -384,3 +384,24 @@ def task_evaluate_alerts() -> dict:
         raise
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Materialized View Refresh
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(queue="geo", name="geo.intelligence.refresh_materialized_views")
+def task_refresh_materialized_views() -> dict:
+    """Refresh all geo materialized views (zone stats, alert summary, conflict density)."""
+    deps = _get_deps()
+    db = _get_db()
+    try:
+        result = deps["intel_repo"].refresh_materialized_views(db)
+        logger.info("matviews.refreshed", views=result)
+        return {"status": "completed", **result}
+    except Exception:
+        logger.error("matviews.refresh_failed", exc_info=True)
+        raise
+    finally:
+        db.close()
