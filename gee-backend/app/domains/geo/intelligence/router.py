@@ -49,6 +49,29 @@ def _require_operator():
     return require_admin_or_operator
 
 
+def _require_admin():
+    """Return the admin dependency at call time (lazy import)."""
+    from app.auth import require_admin
+
+    return require_admin
+
+
+# ──────────────────────────────────────────────
+# MATERIALIZED VIEW REFRESH
+# ──────────────────────────────────────────────
+
+
+@router.post("/refresh-views", response_model=dict)
+def refresh_views(
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_admin()),
+):
+    """Refresh all geo materialized views. Admin only."""
+    results = repo.refresh_materialized_views(db)
+    return {"status": "refreshed", "views": results}
+
+
 # ──────────────────────────────────────────────
 # DASHBOARD
 # ──────────────────────────────────────────────
@@ -56,11 +79,55 @@ def _require_operator():
 
 @router.get("/dashboard", response_model=DashboardInteligente)
 def get_dashboard(
+    use_mv: bool = Query(
+        default=True,
+        description="Use materialized view for faster response",
+    ),
     db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
 ):
-    """Get the aggregated operational intelligence dashboard."""
-    return _get_intel_service().get_dashboard(db)
+    """Get the aggregated operational intelligence dashboard.
+
+    When use_mv=True (default), reads from mv_dashboard_geo_stats and
+    mv_alertas_resumen for fast, pre-computed results. Set use_mv=False
+    to compute live from source tables.
+    """
+    if not use_mv:
+        return _get_intel_service().get_dashboard(db)
+
+    stats = repo.get_dashboard_stats(db)
+    alertas = repo.get_alertas_resumen(db)
+
+    if not stats:
+        # Mat view is empty (never refreshed) — fall back to live
+        return _get_intel_service().get_dashboard(db)
+
+    # Build zonas_por_nivel from mv_hci_por_zona counts
+    hci_all, _ = repo.get_hci_por_zona(db, page=1, limit=10000)
+    zonas_por_nivel: dict[str, int] = {"bajo": 0, "medio": 0, "alto": 0, "critico": 0}
+    for row in hci_all:
+        nivel = row.get("nivel_riesgo", "")
+        if nivel in zonas_por_nivel:
+            zonas_por_nivel[nivel] += 1
+
+    total_zonas = stats.get("total_zonas_operativas", 0)
+    at_risk = (
+        zonas_por_nivel.get("medio", 0)
+        + zonas_por_nivel.get("alto", 0)
+        + zonas_por_nivel.get("critico", 0)
+    )
+    pct_risk = (at_risk / total_zonas * 100.0) if total_zonas > 0 else 0.0
+
+    return {
+        "porcentaje_area_riesgo": round(pct_risk, 2),
+        "canales_criticos": 0,
+        "caminos_vulnerables": 0,
+        "conflictos_activos": stats.get("total_conflictos", 0),
+        "alertas_activas": stats.get("total_alertas_activas", 0),
+        "zonas_por_nivel": zonas_por_nivel,
+        "evolucion_temporal": [],
+    }
 
 
 # ──────────────────────────────────────────────
@@ -96,11 +163,31 @@ def list_hci(
     zona_id: Optional[uuid.UUID] = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    use_mv: bool = Query(
+        default=False,
+        description="Use mv_hci_por_zona (latest per zone, no zone_id filter)",
+    ),
+    cuenca: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
 ):
-    """List HCI results with optional zone filter."""
+    """List HCI results with optional zone filter.
+
+    When use_mv=True, reads from mv_hci_por_zona which returns only the
+    latest HCI per zone (ignores zona_id filter, supports cuenca filter).
+    """
+    if use_mv:
+        items, total = repo.get_hci_por_zona(
+            db, page=page, limit=limit, cuenca_filter=cuenca
+        )
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+        }
+
     items, total = repo.get_indices_hidricos(
         db, zona_id=zona_id, page=page, limit=limit
     )
