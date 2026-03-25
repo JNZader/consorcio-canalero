@@ -50,12 +50,12 @@ celery_app.conf.update(
     # Periodic task schedule (Celery Beat)
     beat_schedule={
         "evaluate-alerts-periodic": {
-            "task": "app.domains.geo.intelligence.tasks.task_evaluate_alerts",
+            "task": "geo.intelligence.evaluate_alerts",
             "schedule": crontab(minute="0", hour=f"*/{GEO_ALERT_EVAL_HOURS}"),
             "options": {"queue": "geo"},
         },
         "refresh-mat-views-periodic": {
-            "task": "app.domains.geo.intelligence.tasks.task_refresh_materialized_views",
+            "task": "geo.intelligence.refresh_materialized_views",
             "schedule": crontab(minute="30", hour=f"*/{GEO_MATVIEW_REFRESH_HOURS}"),
             "options": {"queue": "geo"},
         },
