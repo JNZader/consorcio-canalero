@@ -733,9 +733,12 @@ test.describe('Capas CRUD', () => {
 
     // 5. DELETE the capa (returns 204 No Content, requires admin)
     const deleteRes = await request.delete(`${API_BASE}/api/v2/capas/${capaId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Origin: APP_URL,
+        'Content-Type': 'application/json',
+      },
     });
-    // Accept 204 (success) or log unexpected status for debugging
     expect(deleteRes.status()).toBe(204);
   });
 });
