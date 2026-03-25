@@ -20,6 +20,7 @@ from app.domains.geo.schemas import (
     GeoLayerListResponse,
     GeoLayerResponse,
 )
+from app.domains.geo.service import dispatch_job
 
 logger = get_logger(__name__)
 
@@ -61,18 +62,14 @@ def submit_geo_job(
     """
     Submit a new geo processing job (requiere operador).
 
-    The job is created in PENDING state. A Celery task will be
+    The job is created in PENDING state. A Celery task is
     dispatched to the geo-worker for actual processing.
     """
-    job = repo.create_job(
+    job = dispatch_job(
         db,
         tipo=payload.tipo,
         parametros=payload.parametros,
     )
-    db.commit()
-
-    # TODO: dispatch Celery task based on job.tipo and update celery_task_id
-
     return job
 
 
