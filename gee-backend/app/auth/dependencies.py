@@ -1,5 +1,6 @@
 """Auth dependencies — user manager, backends, and role guards."""
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -29,9 +30,30 @@ async def get_user_db(session: AsyncSession = Depends(get_async_db)):
 # --- User manager ---
 
 
+logger = logging.getLogger(__name__)
+
+
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = settings.jwt_secret
     verification_token_secret = settings.jwt_secret
+
+    async def on_after_forgot_password(
+        self, user: User, token: str, request: Request | None = None
+    ) -> None:
+        """Handle forgot-password token generation.
+
+        When SMTP is configured, this should send the reset email.
+        For now, we build the reset URL and log it so the admin
+        can manually deliver it or test the flow.
+        """
+        reset_url = f"{settings.frontend_url}/reset-password?token={token}"
+        logger.info(
+            "Password reset requested for %s — reset URL: %s",
+            user.email,
+            reset_url,
+        )
+        # TODO: Send email via SMTP when configured.
+        # See PENDIENTES.md: "Necesita configurar envio de email (SMTP o servicio)"
 
     async def on_after_register(
         self, user: User, request: Request | None = None

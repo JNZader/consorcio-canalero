@@ -178,6 +178,9 @@ function translateAuthError(message: string): string {
     'Email rate limit exceeded': 'Demasiados intentos. Intenta de nuevo mas tarde',
     'Error al iniciar sesion': 'Email o contrasena incorrectos',
     'Error al registrarse': 'Error al crear la cuenta',
+    'RESET_PASSWORD_BAD_TOKEN': 'El enlace de recuperacion es invalido o ya expiro.',
+    'RESET_PASSWORD_INVALID_PASSWORD':
+      'La contrasena no cumple los requisitos minimos de seguridad.',
   };
 
   // Buscar traduccion exacta
@@ -198,8 +201,8 @@ function translateAuthError(message: string): string {
 
 /**
  * Enviar email para restablecer contrasena.
- * NOTE: Password reset via the backend is not yet implemented in the JWT adapter.
- * This is a placeholder that returns an appropriate message.
+ * Calls POST /api/v2/auth/forgot-password.
+ * fastapi-users always returns 202 to prevent email enumeration.
  */
 export async function resetPassword(email: string): Promise<AuthResult> {
   try {
@@ -218,9 +221,8 @@ export async function resetPassword(email: string): Promise<AuthResult> {
 }
 
 /**
- * Actualizar contrasena del usuario.
- * NOTE: Password update via the backend is not yet implemented in the JWT adapter.
- * This is a placeholder that returns an appropriate message.
+ * Actualizar contrasena del usuario autenticado.
+ * Uses PATCH /users/me from fastapi-users.
  */
 export async function updatePassword(newPassword: string): Promise<AuthResult> {
   try {
@@ -233,5 +235,35 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   } catch (err) {
     logger.error('Error al actualizar password:', err);
     return { success: false, error: 'Error al cambiar la contrasena.' };
+  }
+}
+
+/**
+ * Restablecer contrasena usando token de reset (desde enlace de email).
+ * Calls POST /api/v2/auth/reset-password with the token and new password.
+ */
+export async function resetPasswordWithToken(
+  token: string,
+  newPassword: string
+): Promise<AuthResult> {
+  try {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const res = await fetch(`${API_URL}/api/v2/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password: newPassword }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      const detail = error.detail || 'RESET_PASSWORD_BAD_TOKEN';
+      throw new Error(detail);
+    }
+
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error al restablecer la contrasena.';
+    logger.error('Error al restablecer password con token:', err);
+    return { success: false, error: translateAuthError(message) };
   }
 }
