@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.domains.geo.intelligence.models import (
@@ -360,3 +360,88 @@ class IntelligenceRepository:
             "zonas_por_nivel": zonas_por_nivel,
             "evolucion_temporal": [],  # Computed in service layer
         }
+
+    # ── MATERIALIZED VIEWS ─────────────────────────
+
+    def refresh_materialized_views(self, db: Session) -> dict[str, str]:
+        """Refresh all 3 geo materialized views concurrently.
+
+        Requires the unique indexes to exist (created by migration).
+        Returns a dict with view names and their refresh status.
+        """
+        views = [
+            "mv_dashboard_geo_stats",
+            "mv_hci_por_zona",
+            "mv_alertas_resumen",
+        ]
+        results: dict[str, str] = {}
+        for view in views:
+            try:
+                db.execute(
+                    text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}")
+                )
+                results[view] = "ok"
+            except Exception as exc:
+                # If the view has no data yet, CONCURRENTLY fails — fallback
+                db.rollback()
+                try:
+                    db.execute(text(f"REFRESH MATERIALIZED VIEW {view}"))
+                    results[view] = "ok (non-concurrent)"
+                except Exception as inner_exc:
+                    results[view] = f"error: {inner_exc!s}"
+        db.commit()
+        return results
+
+    def get_dashboard_stats(self, db: Session) -> dict[str, Any]:
+        """Read pre-computed dashboard KPIs from mv_dashboard_geo_stats."""
+        row = db.execute(
+            text("SELECT * FROM mv_dashboard_geo_stats LIMIT 1")
+        ).mappings().first()
+
+        if row is None:
+            return {}
+        return dict(row)
+
+    def get_hci_por_zona(
+        self,
+        db: Session,
+        *,
+        page: int = 1,
+        limit: int = 50,
+        cuenca_filter: Optional[str] = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Read latest HCI per zone from mv_hci_por_zona (paginated)."""
+        where_clause = ""
+        params: dict[str, Any] = {}
+        if cuenca_filter:
+            where_clause = "WHERE cuenca = :cuenca"
+            params["cuenca"] = cuenca_filter
+
+        # Total count
+        count_sql = f"SELECT COUNT(*) FROM mv_hci_por_zona {where_clause}"
+        total: int = db.execute(text(count_sql), params).scalar_one()
+
+        # Paginated data
+        offset = (page - 1) * limit
+        data_sql = (
+            f"SELECT zona_id, zona_nombre, cuenca, superficie_ha, "
+            f"indice_final, nivel_riesgo, fecha_calculo "
+            f"FROM mv_hci_por_zona {where_clause} "
+            f"ORDER BY indice_final DESC "
+            f"OFFSET :offset LIMIT :limit"
+        )
+        params["offset"] = offset
+        params["limit"] = limit
+
+        rows = db.execute(text(data_sql), params).mappings().all()
+        return [dict(r) for r in rows], total
+
+    def get_alertas_resumen(self, db: Session) -> dict[str, Any]:
+        """Read active alerts summary from mv_alertas_resumen."""
+        row = db.execute(
+            text("SELECT * FROM mv_alertas_resumen LIMIT 1")
+        ).mappings().first()
+
+        if row is None:
+            return {}
+        return dict(row)
