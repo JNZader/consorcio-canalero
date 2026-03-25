@@ -402,17 +402,20 @@ def check_alerts(db: Session) -> dict[str, Any]:
     """Evaluate alert conditions across all zones.
 
     Checks:
-    - Zones with HCI > 75 (critico) that don't have an active alert.
-    - TODO: rainfall events, SAR change detection.
+    - Zones with HCI >= 75 (critico) → critico alert.
+    - Zones with HCI >= 50 (alto) → advertencia alert.
+    - Deduplication: skips zones that already have an active alert.
 
     Returns:
-        dict with new alerts created.
+        dict with new alerts created and active total.
     """
-    zonas_criticas = intel_repo.get_zonas_criticas(db, "critico")
     alertas_existentes = intel_repo.get_alertas_activas(db)
     zonas_con_alerta = {a.zona_id for a in alertas_existentes}
 
     nuevas = 0
+
+    # Critical zones (HCI >= 75)
+    zonas_criticas = intel_repo.get_zonas_criticas(db, "critico")
     for zona in zonas_criticas:
         if zona.id not in zonas_con_alerta:
             intel_repo.create_alerta(
@@ -426,6 +429,25 @@ def check_alerts(db: Session) -> dict[str, Any]:
                 zona_id=zona.id,
                 datos={"cuenca": zona.cuenca},
             )
+            zonas_con_alerta.add(zona.id)
+            nuevas += 1
+
+    # Warning zones (HCI >= 50, alto level) — skip those already alerted above
+    zonas_alto = intel_repo.get_zonas_criticas(db, "alto")
+    for zona in zonas_alto:
+        if zona.id not in zonas_con_alerta:
+            intel_repo.create_alerta(
+                db,
+                tipo="umbral_superado",
+                mensaje=(
+                    f"La zona '{zona.nombre}' presenta nivel alto "
+                    f"de indice hidrico"
+                ),
+                nivel="advertencia",
+                zona_id=zona.id,
+                datos={"cuenca": zona.cuenca},
+            )
+            zonas_con_alerta.add(zona.id)
             nuevas += 1
 
     if nuevas > 0:
