@@ -69,6 +69,8 @@ class TipoGeoJob(str, enum.Enum):
     HAND = "hand"
     DRAINAGE = "drainage"
     TERRAIN_CLASS = "terrain_class"
+    GEE_FLOOD = "gee_flood"
+    GEE_CLASSIFICATION = "gee_classification"
 
 
 # ── Models ───────────────────────────────────────
