@@ -91,8 +91,7 @@ export default function ReunionesPanel() {
   const fetchReuniones = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: Reuniones endpoint not implemented in v2 yet
-      const data = await apiFetch<Reunion[]>('/tramites').catch(() => [] as Reunion[]);
+      const data = await apiFetch<Reunion[]>('/reuniones').catch(() => [] as Reunion[]);
       setReuniones(data);
     } catch (err) {
       logger.error('Error fetching reuniones:', err);
@@ -107,8 +106,8 @@ export default function ReunionesPanel() {
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        // TODO: Reuniones export-pdf not implemented in v2 yet
-        `${API_URL}/api/v2/tramites/${selectedReunion.id}/export-pdf`,
+        // TODO: PDF export not implemented yet — deferred to separate task
+        `${API_URL}/api/v2/reuniones/${selectedReunion.id}/export-pdf`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -132,8 +131,7 @@ export default function ReunionesPanel() {
 
   const fetchAgenda = async (reunionId: string) => {
     try {
-      // TODO: Reuniones agenda endpoint not implemented in v2 yet
-      const data = await apiFetch<AgendaItem[]>(`/tramites/${reunionId}/seguimiento`).catch(() => [] as AgendaItem[]);
+      const data = await apiFetch<AgendaItem[]>(`/reuniones/${reunionId}/agenda`).catch(() => [] as AgendaItem[]);
       setAgenda(data);
     } catch (err) {
       logger.error('Error fetching agenda:', err);
@@ -245,8 +243,7 @@ export default function ReunionesPanel() {
         fecha_reunion: new Date(values.fecha_reunion).toISOString(),
       };
 
-      // TODO: Reuniones creation not implemented in v2 yet - using tramites as placeholder
-      await apiFetch('/tramites', {
+      await apiFetch('/reuniones', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -285,15 +282,12 @@ export default function ReunionesPanel() {
     });
 
     try {
-      // TODO: Reuniones agenda endpoint not implemented in v2 yet
-      await apiFetch(`/tramites/${selectedReunion.id}/seguimiento`, {
+      await apiFetch(`/reuniones/${selectedReunion.id}/agenda`, {
         method: 'POST',
         body: JSON.stringify({
-          item: {
-            titulo: values.titulo,
-            descripcion: values.descripcion,
-            orden: agenda.length + 1,
-          },
+          titulo: values.titulo,
+          descripcion: values.descripcion,
+          orden: agenda.length + 1,
           referencias: selectedRefs,
         }),
       });
