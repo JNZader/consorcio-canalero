@@ -195,12 +195,14 @@ test.describe('Authenticated CRUD', () => {
     });
     expect(listRes.ok()).toBeTruthy();
 
+    const ts = Date.now().toString().slice(-8);
+    const cuit = `20-${ts.padStart(8, '0')}-5`;
     const createRes = await request.post(`${API_BASE}/api/v2/padron`, {
       headers: { Authorization: `Bearer ${authToken}`, Origin: APP_URL },
       data: {
         nombre: 'Playwright',
         apellido: 'Test',
-        cuit: '20-99887766-5',
+        cuit,
         estado: 'activo',
       },
     });
@@ -533,18 +535,19 @@ test.describe('Infraestructura Extended', () => {
     expect(patchRes.ok()).toBeTruthy();
 
     // 4. POST maintenance log
-    const maintRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/mantenimiento`, {
+    const maintRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/maintenance`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
       data: {
-        tipo: 'correctivo',
-        descripcion: `Mantenimiento E2E ${ts}`,
-        fecha: '2026-03-24',
+        tipo_trabajo: 'Limpieza correctiva',
+        descripcion: `Mantenimiento E2E detallado ${ts}`,
+        fecha_trabajo: '2026-03-24',
+        realizado_por: 'Playwright E2E',
       },
     });
     expect(maintRes.status()).toBe(201);
 
     // 5. GET asset history
-    const histRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/historial`, {
+    const histRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/history`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(histRes.ok()).toBeTruthy();
@@ -572,7 +575,7 @@ test.describe('Finanzas Extended', () => {
       data: {
         descripcion: `Ingreso E2E ${ts}`,
         monto: 15000.0,
-        categoria: 'canon',
+        categoria: 'cuotas',
         fecha: '2026-03-24',
       },
     });
@@ -588,23 +591,22 @@ test.describe('Finanzas Extended', () => {
 
   test('create and list presupuestos', async ({ request }) => {
     const ts = Date.now();
-    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/presupuestos`, {
+    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/presupuesto`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
       data: {
-        descripcion: `Presupuesto E2E ${ts}`,
-        monto: 50000.0,
-        categoria: 'mantenimiento',
         anio: 2026,
+        rubro: `rubro-e2e-${ts}`,
+        monto_proyectado: 50000.0,
       },
     });
     expect(createRes.status()).toBe(201);
 
-    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/presupuestos`, {
+    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/presupuesto`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(listRes.ok()).toBeTruthy();
     const body = await listRes.json();
-    expect(body).toHaveProperty('items');
+    expect(Array.isArray(body)).toBeTruthy();
   });
 
   test('budget execution for 2026', async ({ request }) => {
@@ -658,8 +660,7 @@ test.describe('Tramites State Transitions', () => {
     const segRes = await request.post(`${API_BASE}/api/v2/tramites/${tramiteId}/seguimiento`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
       data: {
-        descripcion: `Seguimiento E2E ${ts}`,
-        tipo: 'nota',
+        comentario: `Seguimiento E2E detallado ${ts}`,
       },
     });
     expect(segRes.status()).toBe(201);
@@ -696,10 +697,11 @@ test.describe('Capas CRUD', () => {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
       data: {
         nombre: `Capa E2E ${ts}`,
-        tipo: 'overlay',
+        tipo: 'polygon',
+        fuente: 'local',
         visible: true,
         orden: 99,
-        configuracion: { color: '#FF0000', opacity: 0.5 },
+        estilo: { color: '#FF0000', weight: 2, fillColor: '#FF0000', fillOpacity: 0.5 },
       },
     });
     expect(createRes.status()).toBe(201);
@@ -724,7 +726,7 @@ test.describe('Capas CRUD', () => {
     // 4. PUT reorder capas
     const reorderRes = await request.put(`${API_BASE}/api/v2/capas/reorder`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: [{ id: capaId, orden: 1 }],
+      data: { ordered_ids: [capaId] },
     });
     // Reorder might return 200 or 204
     expect(reorderRes.status()).toBeLessThan(300);
@@ -806,26 +808,25 @@ test.describe('Settings Update', () => {
     if (!settings.length) test.skip();
 
     const setting = settings[0];
-    const settingKey = setting.key || setting.clave;
+    const settingKey = setting.clave;
     if (!settingKey) test.skip();
 
-    // 2. GET specific setting by key
-    const getRes = await request.get(`${API_BASE}/api/v2/settings/${settingKey}`, {
+    // 2. GET specific setting by key (route: /key/{clave})
+    const getRes = await request.get(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(getRes.ok()).toBeTruthy();
     const original = await getRes.json();
 
-    // 3. PUT update the setting value
-    const originalValue = original.value || original.valor;
-    const putRes = await request.put(`${API_BASE}/api/v2/settings/${settingKey}`, {
+    // 3. PUT update the setting value (re-set same value to avoid side effects)
+    const putRes = await request.put(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
       headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: { valor: originalValue }, // re-set same value to avoid side effects
+      data: { valor: original.valor },
     });
     expect(putRes.ok()).toBeTruthy();
 
     // 4. Verify persistence
-    const verifyRes = await request.get(`${API_BASE}/api/v2/settings/${settingKey}`, {
+    const verifyRes = await request.get(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(verifyRes.ok()).toBeTruthy();
