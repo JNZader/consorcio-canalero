@@ -10,6 +10,10 @@ load_dotenv()
 # Redis URL configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# Configurable periodic task intervals (hours)
+GEO_ALERT_EVAL_HOURS = int(os.environ.get("GEO_ALERT_EVAL_HOURS", "6"))
+GEO_MATVIEW_REFRESH_HOURS = int(os.environ.get("GEO_MATVIEW_REFRESH_HOURS", "6"))
+
 # Create Celery instance
 celery_app = Celery(
     "consorcio_tasks",
@@ -47,12 +51,12 @@ celery_app.conf.update(
     beat_schedule={
         "evaluate-alerts-periodic": {
             "task": "app.domains.geo.intelligence.tasks.task_evaluate_alerts",
-            "schedule": crontab(minute="0", hour="*/6"),
+            "schedule": crontab(minute="0", hour=f"*/{GEO_ALERT_EVAL_HOURS}"),
             "options": {"queue": "geo"},
         },
         "refresh-mat-views-periodic": {
             "task": "app.domains.geo.intelligence.tasks.task_refresh_materialized_views",
-            "schedule": crontab(minute="30", hour="*/6"),
+            "schedule": crontab(minute="30", hour=f"*/{GEO_MATVIEW_REFRESH_HOURS}"),
             "options": {"queue": "geo"},
         },
     },
