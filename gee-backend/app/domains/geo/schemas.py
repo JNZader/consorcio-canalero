@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domains.geo.models import TipoGeoJob
+
 
 # ──────────────────────────────────────────────
 # JOB SCHEMAS
@@ -15,9 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class GeoJobCreate(BaseModel):
     """Payload to submit a geo processing job."""
 
-    tipo: str = Field(
+    tipo: TipoGeoJob = Field(
         ...,
-        description="Job type: dem_pipeline, slope, aspect, flow_dir, etc.",
+        description="Job type: dem_pipeline, slope, aspect, flow_dir, gee_flood, gee_classification, etc.",
     )
     parametros: dict[str, Any] = Field(
         default_factory=dict,
