@@ -7,6 +7,7 @@ Each domain owns its own prefix and tags.
 
 from fastapi import APIRouter
 
+from app.api.v2.admin import router as admin_users_router
 from app.api.v2.public import admin_publish_router, public_router
 from app.auth.router import router as auth_router
 from app.domains.denuncias.router import router as denuncias_router
@@ -46,3 +47,6 @@ api_router.include_router(settings_router)
 api_router.include_router(public_router)
 api_router.include_router(public_settings_router)
 api_router.include_router(admin_publish_router)
+
+# Admin user management (list users, set roles)
+api_router.include_router(admin_users_router)
