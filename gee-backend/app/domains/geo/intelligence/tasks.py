@@ -47,24 +47,40 @@ def _get_db():
 
 @celery_app.task(queue="geo", name="geo.intelligence.calculate_hci_all")
 def task_calculate_hci_all_zones(
-    pendiente_media: float = 0.5,
-    acumulacion_media: float = 0.5,
-    twi_medio: float = 0.5,
     proximidad_canal_m: float = 500.0,
     historial_inundacion: float = 0.3,
 ) -> dict:
+    """Calculate HCI for all zones using per-zone raster statistics.
+
+    Extracts mean slope, mean flow accumulation, and mean TWI from GeoLayers
+    for each ZonaOperativa geometry. Falls back to default values if rasters
+    are unavailable.
+    """
     deps = _get_deps()
     db = _get_db()
     try:
         zonas, total = deps["intel_repo"].get_zonas(db, page=1, limit=1000)
+        if not zonas:
+            return {"status": "skipped", "reason": "No zones available"}
+
+        # Load raster paths (optional — will use defaults if not found)
+        slope_path = _get_layer_path(db, deps, deps["TipoGeoLayer"].SLOPE)
+        flow_acc_path = _get_layer_path(db, deps, deps["TipoGeoLayer"].FLOW_ACC)
+        twi_path = _get_layer_path(db, deps, deps["TipoGeoLayer"].TWI)
+
         results = []
         for zona in zonas:
             try:
+                # Extract per-zone raster stats
+                zona_stats = _extract_zone_raster_stats(
+                    zona, slope_path, flow_acc_path, twi_path
+                )
+
                 result = deps["intel_service"].calculate_hci_for_zone(
                     db, zona.id,
-                    pendiente_media=pendiente_media,
-                    acumulacion_media=acumulacion_media,
-                    twi_medio=twi_medio,
+                    pendiente_media=zona_stats["pendiente_media"],
+                    acumulacion_media=zona_stats["acumulacion_media"],
+                    twi_medio=zona_stats["twi_medio"],
                     proximidad_canal_m=proximidad_canal_m,
                     historial_inundacion=historial_inundacion,
                 )
@@ -78,6 +94,96 @@ def task_calculate_hci_all_zones(
         raise
     finally:
         db.close()
+
+
+def _get_layer_path(db, deps, tipo) -> str | None:
+    """Get the file path for the latest GeoLayer of a given type."""
+    layers, _ = deps["geo_repo"].get_layers(db, tipo_filter=tipo, page=1, limit=1)
+    if layers and layers[0].archivo_path:
+        return layers[0].archivo_path
+    return None
+
+
+def _extract_zone_raster_stats(
+    zona,
+    slope_path: str | None,
+    flow_acc_path: str | None,
+    twi_path: str | None,
+) -> dict:
+    """Extract mean raster values within a zone polygon.
+
+    Uses rasterio masking to compute zonal statistics. Returns normalized
+    values in [0, 1] suitable for HCI calculation. Falls back to defaults
+    if rasters are unavailable or extraction fails.
+    """
+    import numpy as np
+
+    defaults = {
+        "pendiente_media": 0.5,
+        "acumulacion_media": 0.5,
+        "twi_medio": 0.5,
+    }
+
+    try:
+        from geoalchemy2.shape import to_shape
+
+        zone_geom = to_shape(zona.geometria)
+    except Exception:
+        return defaults
+
+    stats = {}
+
+    # Slope: normalize against 45 degrees (reasonable max)
+    stats["pendiente_media"] = _zonal_mean_normalized(
+        slope_path, zone_geom, max_val=45.0, default=0.5
+    )
+
+    # Flow accumulation: normalize against 10,000 (high accumulation)
+    stats["acumulacion_media"] = _zonal_mean_normalized(
+        flow_acc_path, zone_geom, max_val=10_000.0, default=0.5
+    )
+
+    # TWI: normalize against 20 (typical TWI range 0-20)
+    stats["twi_medio"] = _zonal_mean_normalized(
+        twi_path, zone_geom, max_val=20.0, default=0.5
+    )
+
+    return stats
+
+
+def _zonal_mean_normalized(
+    raster_path: str | None,
+    zone_geom,
+    max_val: float,
+    default: float,
+) -> float:
+    """Compute mean raster value within a polygon, normalized to [0, 1]."""
+    if raster_path is None:
+        return default
+
+    try:
+        import numpy as np
+        import rasterio
+        from rasterio.mask import mask as rasterio_mask
+
+        with rasterio.open(raster_path) as src:
+            out_image, _ = rasterio_mask(
+                src, [zone_geom], crop=True, nodata=src.nodata or -9999
+            )
+            data = out_image[0]
+            nodata = src.nodata or -9999
+            valid = data[data != nodata]
+
+            if valid.size == 0:
+                return default
+
+            mean_val = float(np.mean(valid))
+            return min(max(mean_val / max_val, 0.0), 1.0)
+    except Exception:
+        logger.warning(
+            "hci.raster_extraction_failed", raster=raster_path, exc_info=True
+        )
+        return default
 
 
 # ---------------------------------------------------------------------------
