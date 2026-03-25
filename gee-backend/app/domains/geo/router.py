@@ -14,6 +14,9 @@ from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import (
+    AnalisisGeoCreate,
+    AnalisisGeoListResponse,
+    AnalisisGeoResponse,
     GeoJobCreate,
     GeoJobListResponse,
     GeoJobResponse,
@@ -392,22 +395,108 @@ async def get_gee_layer(layer_name: str) -> JSONResponse:
         )
 
 
-# ── GEE Analyze ──
+# ── GEE Analysis CRUD ──
 
 
-@gee_router.post("/analyze")
-async def submit_gee_analysis(
-    start_date: date = Query(..., description="Fecha de inicio"),
-    end_date: date = Query(..., description="Fecha de fin"),
-    method: str = Query("fusion", description="Metodo de analisis"),
+@gee_router.post("/analysis", response_model=AnalisisGeoResponse, status_code=201)
+def submit_gee_analysis(
+    payload: AnalisisGeoCreate,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
 ):
-    """Submit a GEE analysis job (flood detection / classification)."""
-    from app.domains.geo.gee_tasks import analyze_flood_task
+    """
+    Submit a new GEE analysis (flood detection / classification).
 
-    task = analyze_flood_task.delay(
-        start_date.isoformat(), end_date.isoformat(), method
+    Creates an AnalisisGeo record in PENDING state and dispatches
+    the corresponding Celery task in the background.
+    """
+    from datetime import date as _date
+
+    from app.domains.geo.gee_tasks import (
+        analyze_flood_task,
+        supervised_classification_task,
     )
-    return {"task_id": task.id, "status": "submitted"}
+    from app.domains.geo.models import TipoAnalisisGee
+
+    # Validate tipo
+    valid_tipos = [t.value for t in TipoAnalisisGee]
+    if payload.tipo not in valid_tipos:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tipo invalido '{payload.tipo}'. Valores validos: {valid_tipos}",
+        )
+
+    # Create analysis record
+    analisis = repo.create_analisis(
+        db,
+        tipo=payload.tipo,
+        fecha_analisis=_date.today(),
+        parametros=payload.parametros,
+    )
+    db.commit()
+    db.refresh(analisis)
+
+    # Dispatch appropriate task
+    start_date = payload.parametros.get("start_date", _date.today().isoformat())
+    end_date = payload.parametros.get("end_date", _date.today().isoformat())
+    method = payload.parametros.get("method", "fusion")
+
+    if payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
+        task = analyze_flood_task.delay(
+            start_date, end_date, method, analisis_id=str(analisis.id)
+        )
+    else:
+        task = supervised_classification_task.delay(
+            start_date, end_date, analisis_id=str(analisis.id)
+        )
+
+    # Store celery_task_id
+    repo.update_analisis_status(db, analisis.id, celery_task_id=task.id)
+    db.commit()
+    db.refresh(analisis)
+
+    return analisis
+
+
+@gee_router.get("/analysis", response_model=dict)
+def list_gee_analyses(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    tipo: Optional[str] = None,
+    estado: Optional[str] = None,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
+    """List GEE analyses with pagination and optional filters."""
+    items, total = repo.get_analisis_list(
+        db,
+        page=page,
+        limit=limit,
+        tipo_filter=tipo,
+        estado_filter=estado,
+    )
+    return {
+        "items": [AnalisisGeoListResponse.model_validate(a) for a in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@gee_router.get("/analysis/{analisis_id}", response_model=AnalisisGeoResponse)
+def get_gee_analysis(
+    analisis_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
+    """Get GEE analysis detail/result by ID."""
+    analisis = repo.get_analisis_by_id(db, analisis_id)
+    if analisis is None:
+        raise HTTPException(status_code=404, detail="Analisis GEE no encontrado")
+    return analisis
 
 
 # ── GEE Images (Image Explorer) ──
