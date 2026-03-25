@@ -424,7 +424,8 @@ def compute_twi(
 @celery_app.task(queue="geo", name="geo.compute_hand")
 def compute_hand(
     dem_path: str,
-    drainage_path: str,
+    flow_dir_path: str,
+    flow_acc_path: str,
     output_path: str,
     job_id: str | None = None,
 ) -> dict:
@@ -432,7 +433,7 @@ def compute_hand(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _get_processing().compute_hand(dem_path, drainage_path, output_path, output_path)
+        result = _get_processing().compute_hand(dem_path, flow_dir_path, flow_acc_path, output_path)
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
