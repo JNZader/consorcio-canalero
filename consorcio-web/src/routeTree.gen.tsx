@@ -33,6 +33,8 @@ const MapaPage = lazy(() => import('./components/MapaPage'));
 const ReportesPage = lazy(() => import('./components/ReportesPage'));
 const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
 const SugerenciasPage = lazy(() => import('./components/SugerenciasPage'));
+const ForgotPasswordForm = lazy(() => import('./components/auth/ForgotPasswordForm'));
+const ResetPasswordForm = lazy(() => import('./components/auth/ResetPasswordForm'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
 // Admin components - lazy load only the content, not the layout
@@ -138,6 +140,45 @@ const loginRoute = createRoute({
       </Suspense>
     </RootLayout>
   ),
+});
+
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/forgot-password',
+  component: () => (
+    <RootLayout
+      title="Recuperar Contrasena"
+      description="Recupera el acceso a tu cuenta del Consorcio Canalero 10 de Mayo."
+      noindex={true}
+    >
+      <Suspense fallback={<PageLoader />}>
+        <ForgotPasswordForm />
+      </Suspense>
+    </RootLayout>
+  ),
+});
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/reset-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: (search.token as string) || '',
+  }),
+  component: () => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const { token } = resetPasswordRoute.useSearch();
+    return (
+      <RootLayout
+        title="Nueva Contrasena"
+        description="Restablece tu contrasena del Consorcio Canalero 10 de Mayo."
+        noindex={true}
+      >
+        <Suspense fallback={<PageLoader />}>
+          <ResetPasswordForm token={token} />
+        </Suspense>
+      </RootLayout>
+    );
+  },
 });
 
 const mapaRoute = createRoute({
@@ -460,6 +501,8 @@ export const routeTree = rootRouteWithComponent.addChildren([
   // Public
   indexRoute,
   loginRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
   mapaRoute,
   reportesRoute,
   sugerenciasRoute,
