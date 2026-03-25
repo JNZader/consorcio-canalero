@@ -17,6 +17,7 @@
 - ~~SDD geo-architecture~~ ✅ 5 fases, 21 tasks, 26 commits (ver detalle abajo)
 - ~~Clasificación GEE (flood/vegetation)~~ ✅ Incluido en geo-architecture
 - ~~Reuniones~~ ✅ Dominio CRUD completo (9 endpoints, 25+ tests, agenda items con referencias)
+- ~~Export PDF~~ ✅ 4 endpoints (tramite, asset, reunión, gestión integral) con branding dinámico
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -49,13 +50,13 @@ Dominio completo en `gee-backend/app/domains/reuniones/`. 9 endpoints bajo `/api
 Frontend actualizado (`ReunionesPanel.tsx` → `/api/v2/reuniones`). Estado workflow: planificada→en_curso→finalizada.
 Agenda items con referencias cruzadas a tramites/infraestructura. 25+ tests.
 
-### 4. Export PDF
-Endpoints de generación de PDF no implementados en v2:
-- Tramite export-pdf
-- Asset ficha técnica export-pdf
-- Reunión agenda export-pdf
-- Gestión integral export-pdf
-- **Referencia**: El viejo `pdf_service.py` fue eliminado — la lógica de ReportLab necesita reimplementarse
+### 4. ~~Export PDF~~ ✅ HECHO (2026-03-25)
+4 endpoints de generación PDF con ReportLab + branding dinámico desde SettingsService.
+- `GET /api/v2/tramites/{id}/export-pdf` — Ficha trámite + seguimientos
+- `GET /api/v2/infraestructura/assets/{id}/export-pdf` — Ficha técnica + mantenimientos
+- `GET /api/v2/reuniones/{id}/export-pdf` — Agenda + asistentes
+- `GET /api/v2/finanzas/resumen/{year}/export-pdf` — Informe gestión integral
+- **Módulo**: `app/shared/pdf/` (base.py + builders.py), 25 tests
 
 ### 5. ~~SDD: Rediseño de arquitectura geo~~ ✅ HECHO (2026-03-25)
 21 tasks en 5 fases — 26 commits atómicos. Migraciones aplicadas en producción.
