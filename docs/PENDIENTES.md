@@ -20,6 +20,14 @@
 - ~~Export PDF~~ ✅ 4 endpoints (tramite, asset, reunión, gestión integral) con branding dinámico
 - ~~Invitaciones~~ ✅ Batch invite + auto-assign role on register (14 tests)
 - ~~Password reset frontend~~ ✅ UI completa (SMTP diferido — logs por ahora)
+- ~~Celery Worker en Coolify~~ ✅ Dockerfile.worker + recurso en Coolify (worker + beat)
+- ~~Hooks pre-push~~ ✅ Graceful fallback sin Docker (fix en javi-forge + local)
+- ~~README + CONTRIBUTING~~ ✅ Reescritos sin Supabase
+- ~~@supabase/supabase-js~~ ✅ Ya limpio
+- ~~Celery Worker en Coolify~~ ✅ Recurso separado con Dockerfile.worker
+- ~~Pre-push hooks~~ ✅ Fix upstream (javi-forge) + local — Docker graceful fallback
+- ~~README.md + CONTRIBUTING.md~~ ✅ Reescritos sin Supabase
+- ~~@supabase/supabase-js~~ ✅ Ya limpio (removido en sesión anterior)
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -94,34 +102,30 @@ Frontend completo: ForgotPasswordForm + ResetPasswordForm + rutas + link en logi
 Backend hooks ya existían (fastapi-users). SMTP **NO configurado** — el token se loguea en backend logs.
 **Decisión**: SMTP diferido — pocos usuarios, admin tiene contacto directo. Alternativas documentadas en engram (Gmail SMTP, Resend, SendGrid, Mailgun).
 
-### 9. Celery Worker como recurso Coolify
-- Recurso Dockerfile individual en Coolify
-- Mismo repo, base directory `gee-backend`
-- Custom start command: `celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery`
-- Sin dominio (no recibe HTTP)
+### 9. ~~Celery Worker como recurso Coolify~~ ✅ HECHO (2026-03-25)
+Recurso `celery-worker` en Coolify, mismo Dockerfile, start command:
+`celery -A app.core.celery_app worker --beat --loglevel=info --concurrency=2 -Q celery,geo`
+Incluye beat para tareas periódicas (alertas cada 6h + refresh mat views cada 6h).
 
 ---
 
 ## Deuda técnica
 
-### 10. Pre-commit/pre-push hooks rotos
-Los hooks de javi-forge requieren Docker corriendo + venv en PATH.
-- Usar `--no-verify` mientras tanto
-- Considerar simplificar hooks o usar lint-staged
+### 10. ~~Pre-commit/pre-push hooks rotos~~ ✅ HECHO (2026-03-25)
+Fix en javi-forge (upstream) + consorcio-canalero (local). Docker no disponible → graceful fallback a quick checks (lint + typecheck). Fix también aplicado al template en javi-forge para que todos los repos futuros hereden el comportamiento.
 
-### 11. README.md desactualizado
-Referencia Supabase, arquitectura vieja, endpoints v1.
-- Reescribir basándose en CLAUDE.md (que sí está actualizado)
+### 11. ~~README.md desactualizado~~ ✅ HECHO (2026-03-25)
+Reescrito completo. Sin referencias a Supabase, con stack actual y 10 dominios documentados.
 
-### 12. CONTRIBUTING.md desactualizado
-Referencia flujos de CI/CD que ya no existen.
+### 12. ~~CONTRIBUTING.md desactualizado~~ ✅ HECHO (2026-03-25)
+Reescrito con screaming architecture, conventional commits, y workaround de hooks documentado.
 
 ### 13. Tests unitarios backend
 Los tests en `tests/new/` necesitan PostgreSQL + PostGIS local para correr.
 - Considerar testcontainers o docker-compose para test DB
 
-### 14. @supabase/supabase-js en package.json
-Verificar si fue removido. Si aún está, eliminar + npm install.
+### 14. ~~@supabase/supabase-js en package.json~~ ✅ YA LIMPIO
+No está en package.json ni hay imports. Fue removido en sesión anterior.
 
 ---
 
