@@ -1,126 +1,112 @@
 # Guía de Contribución
 
-Gracias por tu interés en contribuir al proyecto Consorcio Canalero.
+## Branch Strategy
 
-## Código de Conducta
+- `main` — producción estable
+- `feature/*` — nuevas funcionalidades
+- `fix/*` — corrección de bugs
 
-Este proyecto sigue un código de conducta inclusivo y respetuoso. Por favor, sé amable y constructivo en todas las interacciones.
+PRs van directo a `main`. No hay branch `develop`.
 
-## Cómo Contribuir
+## Commits
 
-### Reportar Bugs
+Conventional commits obligatorio:
 
-1. Verifica que el bug no haya sido reportado previamente
-2. Abre un issue con el template de bug report
-3. Incluye pasos para reproducir el problema
-4. Incluye el comportamiento esperado vs actual
-5. Agrega screenshots si es relevante
+```
+feat: agregar exportación PDF de reuniones
+fix: corregir cálculo de cuotas en finanzas
+test: agregar tests para padron repository
+docs: actualizar README con nuevos dominios
+refactor: extraer lógica de validación CUIT a shared
+```
 
-### Sugerir Funcionalidades
+Commits atómicos — un cambio lógico por commit.
 
-1. Abre un issue con el template de feature request
-2. Describe el problema que resuelve
-3. Proporciona ejemplos de uso
-4. Considera el impacto en usuarios existentes
+## Arquitectura del Backend
 
-### Pull Requests
+Screaming Architecture. Cada dominio bajo `gee-backend/app/domains/` sigue este patrón:
 
-1. **Fork** el repositorio
-2. **Crea un branch** desde `develop`:
-   ```bash
-   git checkout -b feature/mi-funcionalidad develop
-   ```
-3. **Haz commits** siguiendo el estándar:
-   ```
-   feat: agregar nueva funcionalidad
-   fix: corregir bug en X
-   docs: actualizar documentación
-   style: formatear código
-   refactor: reestructurar X sin cambiar comportamiento
-   test: agregar tests para Y
-   chore: actualizar dependencias
-   ```
-4. **Ejecuta los tests** localmente:
-   ```bash
-   make test
-   make lint
-   ```
-5. **Push** a tu fork:
-   ```bash
-   git push origin feature/mi-funcionalidad
-   ```
-6. **Abre un Pull Request** hacia `develop`
+```
+domain/
+├── models.py       # SQLAlchemy 2.0 (Mapped, mapped_column)
+├── schemas.py      # Pydantic v2 (ConfigDict(from_attributes=True))
+├── repository.py   # Data access — recibe db: Session, stateless
+├── service.py      # Business logic — orquesta repos, lanza HTTPException
+└── router.py       # HTTP layer — thin, delega a service
+```
 
-## Estándares de Código
+Base classes: `UUIDMixin`, `TimestampMixin`, `Base` desde `app.db.base`.
 
-### Frontend (TypeScript/React)
+**No crear archivos sueltos.** Si algo no pertenece a un dominio, va en `app/shared/`.
 
-- Usa TypeScript estricto
-- Sigue las reglas de Biome (ejecuta `npm run lint:fix`)
-- Componentes funcionales con hooks
-- Nombra archivos en PascalCase para componentes
-- Escribe tests para lógica compleja
+## Pre-commit Hooks
 
-### Backend (Python/FastAPI)
-
-- Sigue PEP 8 y las reglas de Ruff
-- Usa type hints en todas las funciones
-- Documenta endpoints con docstrings
-- Escribe tests con pytest
-- Cobertura mínima: 50%
-
-### Git
-
-- Commits atómicos (un cambio lógico por commit)
-- Mensajes descriptivos en español o inglés
-- Squash commits antes de merge si es necesario
-
-## Setup de Desarrollo
+El proyecto tiene pre-commit hooks configurados pero requieren Docker corriendo. Si no tenés Docker activo:
 
 ```bash
-# Clonar
-git clone https://github.com/YOUR_USERNAME/consorcio-canalero.git
-cd consorcio-canalero
-
-# Setup
-make setup
-
-# Pre-commit hooks
-pip install pre-commit
-pre-commit install
-
-# Desarrollo
-make dev
+git commit --no-verify -m "feat: tu mensaje"
 ```
 
 ## Tests
 
+### Backend (pytest)
+
 ```bash
-# Todos los tests
-make test
-
-# Solo frontend
-make test-frontend
-
-# Solo backend
-make test-backend
-
-# Con coverage
-cd gee-backend && pytest --cov=app --cov-report=html
+cd gee-backend && source venv/bin/activate
+pytest tests/new/ -v                    # Correr tests
+pytest tests/new/ -v --cov=app          # Con coverage
 ```
 
-## Estructura de Branches
+Patrón: base de datos real (PostgreSQL), transacción por test con rollback, sin mocking para data access.
 
-- `main` - Producción estable
-- `develop` - Desarrollo activo
-- `feature/*` - Nuevas funcionalidades
-- `fix/*` - Corrección de bugs
-- `hotfix/*` - Fixes urgentes para producción
+Fixtures principales en `conftest.py`: `db`, `db_session_factory`, `test_engine`.
+
+### Frontend (vitest)
+
+```bash
+cd consorcio-web
+npm run test
+```
+
+### E2E (playwright)
+
+```bash
+cd consorcio-web
+npx playwright test
+```
+
+### Lint
+
+```bash
+# Backend
+cd gee-backend && ruff check . && ruff format --check .
+
+# Frontend
+cd consorcio-web && npm run lint
+```
+
+## Setup de Desarrollo
+
+```bash
+git clone https://github.com/JNZader/consorcio-canalero.git
+cd consorcio-canalero
+./setup.sh
+
+# O manual:
+cd gee-backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env  # Editar con valores reales
+```
+
+## Pull Requests
+
+1. Crear branch desde `main`: `git checkout -b feature/mi-funcionalidad`
+2. Hacer cambios siguiendo la arquitectura de dominios
+3. Correr tests y lint localmente
+4. Push y abrir PR contra `main`
+5. Describir qué cambia y por qué en el PR
 
 ## Preguntas
 
-Si tienes preguntas, abre un issue con la etiqueta `question`.
-
----
-
-¡Gracias por contribuir!
+Abrí un issue con la etiqueta `question`.
