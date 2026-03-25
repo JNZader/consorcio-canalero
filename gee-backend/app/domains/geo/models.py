@@ -2,9 +2,11 @@
 
 import enum
 import uuid
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import (
+    Date,
     Enum,
     ForeignKey,
     Integer,
@@ -71,6 +73,15 @@ class TipoGeoJob(str, enum.Enum):
     TERRAIN_CLASS = "terrain_class"
     GEE_FLOOD = "gee_flood"
     GEE_CLASSIFICATION = "gee_classification"
+
+
+class TipoAnalisisGee(str, enum.Enum):
+    """Types of GEE analyses."""
+
+    FLOOD = "flood"
+    VEGETATION = "vegetation"
+    NDVI = "ndvi"
+    CUSTOM = "custom"
 
 
 # ── Models ───────────────────────────────────────
@@ -170,3 +181,63 @@ class GeoJob(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<GeoJob {self.id} tipo={self.tipo} estado={self.estado}>"
+
+
+class AnalisisGeo(UUIDMixin, TimestampMixin, Base):
+    """A GEE analysis request tracked in the geo domain.
+
+    Separate from monitoring.AnalisisGee — this model tracks analysis
+    requests submitted through the geo domain pipeline, with Celery
+    task lifecycle (estado, celery_task_id) and richer result metadata.
+    """
+
+    __tablename__ = "geo_analisis_gee"
+
+    tipo: Mapped[str] = mapped_column(
+        Enum(
+            TipoAnalisisGee,
+            name="tipo_analisis_geo",
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+    )
+    fecha_analisis: Mapped[date] = mapped_column(Date, nullable=False)
+    parametros: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Input params: date range, region, thresholds, method",
+    )
+    resultado: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Output: stats, metrics, tile URLs, classification %",
+    )
+    estado: Mapped[str] = mapped_column(
+        Enum(
+            EstadoGeoJob,
+            name="estado_geo_job",
+            values_callable=lambda x: [e.value for e in x],
+            create_constraint=False,
+        ),
+        nullable=False,
+        default=EstadoGeoJob.PENDING,
+    )
+    error: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Error message if analysis failed",
+    )
+    celery_task_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Celery async result ID",
+    )
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        comment="User who requested the analysis",
+    )
+
+    def __repr__(self) -> str:
+        return f"<AnalisisGeo {self.id} tipo={self.tipo} estado={self.estado}>"
