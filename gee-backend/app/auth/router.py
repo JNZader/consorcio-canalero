@@ -22,6 +22,20 @@ router.include_router(
     tags=["auth"],
 )
 
+# Password reset: /auth/forgot-password, /auth/reset-password
+router.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/auth",
+    tags=["auth"],
+)
+
+# Email verification: /auth/request-verify-token, /auth/verify
+router.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+
 # User management: /users/me, /users/{id}
 router.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),

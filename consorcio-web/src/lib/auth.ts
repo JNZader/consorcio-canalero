@@ -201,11 +201,20 @@ function translateAuthError(message: string): string {
  * NOTE: Password reset via the backend is not yet implemented in the JWT adapter.
  * This is a placeholder that returns an appropriate message.
  */
-export async function resetPassword(_email: string): Promise<AuthResult> {
-  return {
-    success: false,
-    error: 'La funcion de restablecer contrasena aun no esta disponible con el nuevo sistema de autenticacion.',
-  };
+export async function resetPassword(email: string): Promise<AuthResult> {
+  try {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const res = await fetch(`${API_URL}/api/v2/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    // fastapi-users always returns 202 to prevent email enumeration
+    return { success: true };
+  } catch (err) {
+    logger.error('Error al solicitar reset de password:', err);
+    return { success: false, error: 'Error al enviar el email de recuperacion.' };
+  }
 }
 
 /**
@@ -213,9 +222,16 @@ export async function resetPassword(_email: string): Promise<AuthResult> {
  * NOTE: Password update via the backend is not yet implemented in the JWT adapter.
  * This is a placeholder that returns an appropriate message.
  */
-export async function updatePassword(_newPassword: string): Promise<AuthResult> {
-  return {
-    success: false,
-    error: 'La funcion de cambiar contrasena aun no esta disponible con el nuevo sistema de autenticacion.',
-  };
+export async function updatePassword(newPassword: string): Promise<AuthResult> {
+  try {
+    const { apiFetch } = await import('./api/core');
+    await apiFetch('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ password: newPassword }),
+    });
+    return { success: true };
+  } catch (err) {
+    logger.error('Error al actualizar password:', err);
+    return { success: false, error: 'Error al cambiar la contrasena.' };
+  }
 }
