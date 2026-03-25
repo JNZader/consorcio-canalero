@@ -18,6 +18,8 @@
 - ~~Clasificación GEE (flood/vegetation)~~ ✅ Incluido en geo-architecture
 - ~~Reuniones~~ ✅ Dominio CRUD completo (9 endpoints, 25+ tests, agenda items con referencias)
 - ~~Export PDF~~ ✅ 4 endpoints (tramite, asset, reunión, gestión integral) con branding dinámico
+- ~~Invitaciones~~ ✅ Batch invite + auto-assign role on register (14 tests)
+- ~~Password reset frontend~~ ✅ UI completa (SMTP diferido — logs por ahora)
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -83,15 +85,14 @@ Agenda items con referencias cruzadas a tramites/infraestructura. 25+ tests.
 
 ## Mejoras
 
-### 7. Endpoint de invitación de usuarios
-Para invitar miembros de la comisión con roles elevados (operador/admin).
-- `POST /api/v2/admin/invite` — recibe lista de emails y roles
-- Opción: pre-autorizar emails para auto-asignar rol al registrarse
+### 7. ~~Endpoint de invitación de usuarios~~ ✅ HECHO (2026-03-25)
+Modelo `PreAuthorizedEmail` + 3 endpoints admin (POST batch invite, GET pending, DELETE revoke).
+Auto-assign role on register si el email está pre-autorizado. 14 tests.
 
-### 8. Password reset / update
-`resetPassword()` y `updatePassword()` son stubs en `consorcio-web/src/lib/auth.ts`.
-- fastapi-users tiene `get_reset_password_router()` — solo falta incluirlo
-- Necesita configurar envío de email (SMTP o servicio)
+### 8. ~~Password reset / update~~ ✅ HECHO (2026-03-25)
+Frontend completo: ForgotPasswordForm + ResetPasswordForm + rutas + link en login.
+Backend hooks ya existían (fastapi-users). SMTP **NO configurado** — el token se loguea en backend logs.
+**Decisión**: SMTP diferido — pocos usuarios, admin tiene contacto directo. Alternativas documentadas en engram (Gmail SMTP, Resend, SendGrid, Mailgun).
 
 ### 9. Celery Worker como recurso Coolify
 - Recurso Dockerfile individual en Coolify
