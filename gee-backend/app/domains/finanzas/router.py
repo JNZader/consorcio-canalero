@@ -83,7 +83,7 @@ def create_gasto(
     user=Depends(_require_operator()),
 ):
     """Crear un nuevo gasto (requiere operador)."""
-    return service.create_gasto(db, payload, usuario_id=uuid.UUID(user.id))
+    return service.create_gasto(db, payload, usuario_id=uuid.UUID(str(user.id)))
 
 
 @router.patch("/gastos/{gasto_id}", response_model=GastoResponse)
@@ -142,7 +142,7 @@ def create_ingreso(
     user=Depends(_require_operator()),
 ):
     """Crear un nuevo ingreso (requiere operador)."""
-    return service.create_ingreso(db, payload, usuario_id=uuid.UUID(user.id))
+    return service.create_ingreso(db, payload, usuario_id=uuid.UUID(str(user.id)))
 
 
 @router.patch("/ingresos/{ingreso_id}", response_model=IngresoResponse)

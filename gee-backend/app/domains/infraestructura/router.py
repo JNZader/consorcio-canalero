@@ -131,7 +131,7 @@ def add_maintenance_log(
 ):
     """Registrar actividad de mantenimiento (requiere operador)."""
     return service.add_maintenance_log(
-        db, asset_id, payload, usuario_id=uuid.UUID(user.id)
+        db, asset_id, payload, usuario_id=uuid.UUID(str(user.id))
     )
 
 

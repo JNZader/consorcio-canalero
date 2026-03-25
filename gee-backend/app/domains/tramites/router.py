@@ -91,7 +91,7 @@ def create_tramite(
     user=Depends(_require_operator()),
 ):
     """Crear un nuevo tramite (requiere operador)."""
-    tramite = service.create(db, payload, usuario_id=uuid.UUID(user.id))
+    tramite = service.create(db, payload, usuario_id=uuid.UUID(str(user.id)))
     return TramiteCreateResponse(
         id=tramite.id,
         message="Tramite creado exitosamente.",
@@ -108,7 +108,7 @@ def update_tramite(
     user=Depends(_require_operator()),
 ):
     """Actualizar estado/resolucion de un tramite (requiere operador)."""
-    return service.update(db, tramite_id, payload, operator_id=uuid.UUID(user.id))
+    return service.update(db, tramite_id, payload, operator_id=uuid.UUID(str(user.id)))
 
 
 @router.post(
@@ -125,5 +125,5 @@ def add_seguimiento(
 ):
     """Agregar seguimiento a un tramite (requiere operador)."""
     return service.add_seguimiento(
-        db, tramite_id, payload, operator_id=uuid.UUID(user.id)
+        db, tramite_id, payload, operator_id=uuid.UUID(str(user.id))
     )

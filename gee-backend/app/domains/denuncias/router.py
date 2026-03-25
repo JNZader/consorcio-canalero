@@ -115,4 +115,4 @@ def update_denuncia(
     user=Depends(_require_operator()),
 ):
     """Actualizar estado/respuesta de una denuncia (requiere operador)."""
-    return service.update(db, denuncia_id, payload, operator_id=uuid.UUID(user.id))
+    return service.update(db, denuncia_id, payload, operator_id=uuid.UUID(str(user.id)))
