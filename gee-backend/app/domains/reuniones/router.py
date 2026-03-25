@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -160,3 +161,30 @@ def delete_agenda_item(
 ):
     """Eliminar un tema de la agenda (requiere operador)."""
     service.delete_agenda_item(db, reunion_id, item_id)
+
+
+# ──────────────────────────────────────────────
+# PDF EXPORT
+# ──────────────────────────────────────────────
+
+
+@router.get("/{reunion_id}/export-pdf")
+def export_reunion_pdf(
+    reunion_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: ReunionService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Exportar agenda de reunion como PDF (requiere operador)."""
+    from app.shared.pdf import build_reunion_pdf, get_branding
+
+    reunion = service.get_by_id(db, reunion_id)
+    branding = get_branding(db)
+    pdf_buffer = build_reunion_pdf(reunion, branding)
+
+    filename = f"reunion-{reunion_id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

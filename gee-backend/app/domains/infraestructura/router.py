@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -148,3 +149,30 @@ def get_stats(
 ):
     """Estadisticas agregadas de infraestructura (requiere operador)."""
     return service.get_stats(db)
+
+
+# ──────────────────────────────────────────────
+# PDF EXPORT
+# ──────────────────────────────────────────────
+
+
+@router.get("/assets/{asset_id}/export-pdf")
+def export_asset_pdf(
+    asset_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: InfraestructuraService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Exportar ficha tecnica de asset como PDF (requiere operador)."""
+    from app.shared.pdf import build_asset_pdf, get_branding
+
+    asset = service.get_asset(db, asset_id)
+    branding = get_branding(db)
+    pdf_buffer = build_asset_pdf(asset, branding)
+
+    filename = f"asset-{asset_id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

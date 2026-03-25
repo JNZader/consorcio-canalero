@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -209,3 +210,58 @@ def get_financial_summary(
 ):
     """Resumen financiero anual: total ingresos, gastos y balance."""
     return service.get_financial_summary(db, year)
+
+
+# ──────────────────────────────────────────────
+# PDF EXPORT
+# ──────────────────────────────────────────────
+
+
+@router.get("/resumen/{year}/export-pdf")
+def export_financial_summary_pdf(
+    year: int,
+    db: Session = Depends(get_db),
+    service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Exportar resumen financiero anual como PDF (requiere operador)."""
+    from app.shared.pdf import build_finanzas_pdf, get_branding
+
+    summary = service.get_financial_summary(db, year)
+    execution = service.get_budget_execution(db, year)
+    branding = get_branding(db)
+
+    # summary may be a Pydantic model or dict
+    if hasattr(summary, "model_dump"):
+        summary_dict = summary.model_dump()
+    elif hasattr(summary, "__dict__"):
+        summary_dict = {
+            "total_ingresos": getattr(summary, "total_ingresos", 0),
+            "total_gastos": getattr(summary, "total_gastos", 0),
+            "balance": getattr(summary, "balance", 0),
+        }
+    else:
+        summary_dict = summary
+
+    # execution items may be Pydantic models or dicts
+    execution_list = []
+    for item in execution:
+        if hasattr(item, "model_dump"):
+            execution_list.append(item.model_dump())
+        elif isinstance(item, dict):
+            execution_list.append(item)
+        else:
+            execution_list.append({
+                "rubro": getattr(item, "rubro", ""),
+                "proyectado": getattr(item, "proyectado", 0),
+                "real": getattr(item, "real", 0),
+            })
+
+    pdf_buffer = build_finanzas_pdf(summary_dict, execution_list, year, branding)
+
+    filename = f"finanzas-resumen-{year}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -126,4 +127,31 @@ def add_seguimiento(
     """Agregar seguimiento a un tramite (requiere operador)."""
     return service.add_seguimiento(
         db, tramite_id, payload, operator_id=uuid.UUID(str(user.id))
+    )
+
+
+# ──────────────────────────────────────────────
+# PDF EXPORT
+# ──────────────────────────────────────────────
+
+
+@router.get("/{tramite_id}/export-pdf")
+def export_tramite_pdf(
+    tramite_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: TramiteService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Exportar tramite como PDF (requiere operador)."""
+    from app.shared.pdf import build_tramite_pdf, get_branding
+
+    tramite = service.get_by_id(db, tramite_id)
+    branding = get_branding(db)
+    pdf_buffer = build_tramite_pdf(tramite, branding)
+
+    filename = f"tramite-{tramite_id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
