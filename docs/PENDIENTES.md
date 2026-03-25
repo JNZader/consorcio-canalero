@@ -13,6 +13,10 @@
 
 ---
 
+## Completados (sesión 2026-03-25)
+- ~~SDD geo-architecture~~ ✅ 5 fases, 21 tasks, 26 commits (ver detalle abajo)
+- ~~Clasificación GEE (flood/vegetation)~~ ✅ Incluido en geo-architecture
+
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
 - ~~Frontend login flow UI~~ ✅ 4 tests E2E pasando (form, login, error, Google)
@@ -52,36 +56,26 @@ Endpoints de generación de PDF no implementados en v2:
 - Gestión integral export-pdf
 - **Referencia**: El viejo `pdf_service.py` fue eliminado — la lógica de ReportLab necesita reimplementarse
 
-### 5. SDD: Rediseño de arquitectura geo (PRÓXIMA SESIÓN)
-**Arrancar con**: `/sdd-new geo-architecture`
+### 5. ~~SDD: Rediseño de arquitectura geo~~ ✅ HECHO (2026-03-25)
+21 tasks en 5 fases — 26 commits atómicos. Migraciones aplicadas en producción.
 
-Decisiones de arquitectura tomadas:
-- **GEE Analysis**: On-demand (botón "Analizar" en dashboard), Celery task, resultados en tabla `analisis_gee`
-- **DEM Pipeline**: Local en PC del dev con Docker/GDAL, NO en server. Subir resultados al server
-- **Intelligence (HCI, conflictos)**: Vistas materializadas en PostGIS, refresh a pedido o periódico
-- **Celery**: Mínimo — solo para GEE analysis (tarda minutos) y refresh de vistas materializadas
-- **Dashboard stats**: Vista materializada con refresh a pedido
-- **Alertas**: Celery beat periódico o manual
+**Fase 1 — Bug Fixes**: dispatch_job() en router, fix compute_hand() signature
+**Fase 2 — GEE Classification**: modelo AnalisisGeo, flood/classification tasks implementadas
+**Fase 3 — Intelligence**: conflict detection, batch HCI con zonal stats, alertas con dedup
+**Fase 4 — Materialized Views**: 3 vistas (dashboard, HCI por zona, alertas resumen) + refresh endpoint
+**Fase 5 — Celery Beat**: 2 tareas periódicas cada 6h (alertas + mat views), configurable via env vars
 
-| Tipo | Trigger | Procesamiento | Storage |
-|------|---------|---------------|---------|
-| GEE Analysis | Botón dashboard | Celery task (cloud GEE) | `analisis_gee` |
-| DEM Pipeline | Manual desde PC dev | Docker local GDAL | GeoTIFF + `geo_layers` |
-| HCI / Conflictos | Botón "Recalcular" | Síncrono o Celery | Vistas materializadas |
-| Alertas | Cron o manual | Celery beat | `alertas_geo` |
-| Dashboard stats | Cada consulta | Vista materializada | Refresh a pedido |
+**Archivos nuevos/modificados**:
+- `geo/models.py` — AnalisisGeo + TipoAnalisisGee enum
+- `geo/gee_tasks.py` — flood analysis + supervised classification (reemplazo de stubs)
+- `geo/intelligence/tasks.py` — conflict detection, batch HCI, mat view refresh
+- `geo/intelligence/service.py` — alertas critico/advertencia con dedup
+- `geo/intelligence/router.py` — endpoints reales + POST /hci/batch + refresh-views
+- `core/celery_app.py` — beat_schedule con env vars configurables
+- 3 migraciones Alembic (tabla + mat views + campos fecha)
+- 4 archivos de tests nuevos (test_geo_analisis, test_geo_intelligence, test_geo_matviews, test_celery_beat)
 
-**Archivos existentes**:
-- `gee-backend/Dockerfile.geo` — imagen GDAL para DEM processing
-- `gee-backend/app/domains/geo/tasks.py` — tasks Celery (10 pasos DEM)
-- `gee-backend/app/domains/geo/processing.py` — funciones puras (rasterio, whiteboxtools)
-- `gee-backend/app/domains/geo/gee_service.py` — servicio GEE extraído
-- `gee-backend/app/domains/geo/intelligence/` — cálculos de inteligencia operativa
-
-### 6. Clasificación GEE (flood/vegetation)
-`analyze_flood_task` y `supervised_classification_task` son stubs — la lógica de clasificación estaba en el legacy `MonitoringService` (~1000 líneas) que fue eliminado.
-- **Migrar a**: `gee-backend/app/domains/geo/gee_service.py` o nuevo módulo
-- **Incluir en el SDD de geo-architecture**
+### 6. ~~Clasificación GEE (flood/vegetation)~~ ✅ HECHO (incluido en etapa 5)
 
 ---
 
