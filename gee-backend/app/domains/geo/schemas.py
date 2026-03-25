@@ -1,7 +1,7 @@
 """Pydantic v2 schemas for the geo domain."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -90,4 +90,52 @@ class GeoLayerListResponse(BaseModel):
     fuente: str
     formato: str
     area_id: Optional[str] = None
+    created_at: datetime
+
+
+# ──────────────────────────────────────────────
+# GEE ANALYSIS SCHEMAS
+# ──────────────────────────────────────────────
+
+
+class AnalisisGeoCreate(BaseModel):
+    """Payload to submit a GEE analysis."""
+
+    tipo: str = Field(
+        ...,
+        description="Analysis type: flood, vegetation, ndvi, custom",
+    )
+    parametros: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Analysis params: start_date, end_date, method, thresholds, etc.",
+    )
+
+
+class AnalisisGeoResponse(BaseModel):
+    """Full GEE analysis detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tipo: str
+    fecha_analisis: date
+    parametros: Optional[dict[str, Any]] = None
+    resultado: Optional[dict[str, Any]] = None
+    estado: str
+    error: Optional[str] = None
+    celery_task_id: Optional[str] = None
+    usuario_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnalisisGeoListResponse(BaseModel):
+    """Lightweight GEE analysis for list endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tipo: str
+    fecha_analisis: date
+    estado: str
     created_at: datetime
