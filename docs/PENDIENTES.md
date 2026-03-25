@@ -16,6 +16,7 @@
 ## Completados (sesión 2026-03-25)
 - ~~SDD geo-architecture~~ ✅ 5 fases, 21 tasks, 26 commits (ver detalle abajo)
 - ~~Clasificación GEE (flood/vegetation)~~ ✅ Incluido en geo-architecture
+- ~~Reuniones~~ ✅ Dominio CRUD completo (9 endpoints, 25+ tests, agenda items con referencias)
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -43,10 +44,10 @@ Login funciona por API (Swagger) pero el flujo en el frontend necesita verificac
 - Google OAuth → redirect a Google → callback → guarda token
 - **Archivos**: `consorcio-web/src/stores/authStore.ts`, `consorcio-web/src/lib/auth/jwt-adapter.ts`
 
-### 3. Reuniones
-El panel de reuniones (`ReunionesPanel.tsx`) no tiene backend v2 — el endpoint `/management/reuniones` no existe.
-- **Opción A**: Crear dominio `reuniones` en el backend
-- **Opción B**: Integrar con el dominio `tramites` como tipo especial
+### 3. ~~Reuniones~~ ✅ HECHO (2026-03-25)
+Dominio completo en `gee-backend/app/domains/reuniones/`. 9 endpoints bajo `/api/v2/reuniones`.
+Frontend actualizado (`ReunionesPanel.tsx` → `/api/v2/reuniones`). Estado workflow: planificada→en_curso→finalizada.
+Agenda items con referencias cruzadas a tramites/infraestructura. 25+ tests.
 
 ### 4. Export PDF
 Endpoints de generación de PDF no implementados en v2:
