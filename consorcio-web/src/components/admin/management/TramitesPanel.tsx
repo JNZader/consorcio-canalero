@@ -54,7 +54,8 @@ export default function TramitesPanel() {
   const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<RawTramiteItem[]>('/tramites');
+      const response = await apiFetch<{ items: RawTramiteItem[]; total: number }>('/tramites');
+      const data = response.items ?? [];
       const { canonical, discarded } = filterCanonicalTramites(data);
 
       for (const tramite of discarded) {
