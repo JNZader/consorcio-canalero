@@ -147,7 +147,7 @@ export default function DemPipelinePanel() {
             <Button
               leftSection={<IconPlayerPlay size={18} />}
               onClick={handleSubmit}
-              loading={state === 'submitting'}
+              loading={(state as string) === 'submitting'}
               size="md"
             >
               Generar DEM
@@ -196,7 +196,7 @@ export default function DemPipelinePanel() {
               }
             >
               <TerrainViewer3D
-                basinsGeoJson={basins ?? undefined}
+                basinsGeoJson={(basins as Record<string, unknown>) ?? undefined}
                 height={500}
               />
             </Suspense>

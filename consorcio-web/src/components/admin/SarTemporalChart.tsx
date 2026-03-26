@@ -93,8 +93,8 @@ export default function SarTemporalChart({ data }: SarTemporalChartProps) {
               label={{ value: 'VV (dB)', angle: -90, position: 'insideLeft', fontSize: 12 }}
             />
             <Tooltip
-              formatter={(value: number) => [`${value.toFixed(2)} dB`, 'VV Mean']}
-              labelFormatter={(label: string) => `Fecha: ${label}`}
+              formatter={(value: any) => [`${(value as number).toFixed(2)} dB`, 'VV Mean']}
+              labelFormatter={(label: any) => `Fecha: ${label}`}
             />
 
             {/* VV time series line */}

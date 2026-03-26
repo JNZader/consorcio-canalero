@@ -205,7 +205,7 @@ export default function SarTemporalPanel() {
             <Button
               leftSection={<IconChartLine size={18} />}
               onClick={handleSubmit}
-              loading={state === 'submitting'}
+              loading={(state as string) === 'submitting'}
               size="md"
             >
               Ejecutar Analisis SAR Temporal
