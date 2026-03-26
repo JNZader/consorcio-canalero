@@ -63,6 +63,12 @@ class MonitoringService:
         db.refresh(sugerencia)
         return sugerencia
 
+    def get_sugerencias_stats(self, db: Session) -> dict[str, Any]:
+        return self.repo.get_sugerencias_stats(db)
+
+    def get_proxima_reunion(self, db: Session) -> list[Sugerencia]:
+        return self.repo.get_proxima_reunion(db)
+
     # ── ANALYSES ───────────────────────────────
 
     def get_analysis(self, db: Session, analysis_id: uuid.UUID) -> AnalisisGee:

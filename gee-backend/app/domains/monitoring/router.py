@@ -87,6 +87,34 @@ def list_sugerencias(
 # ──────────────────────────────────────────────
 
 
+@router.get(
+    "/sugerencias/stats",
+    response_model=dict,
+    tags=["sugerencias"],
+)
+def get_sugerencias_stats(
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Estadisticas agregadas de sugerencias (requiere operador)."""
+    return service.get_sugerencias_stats(db)
+
+
+@router.get(
+    "/sugerencias/proxima-reunion",
+    response_model=list[SugerenciaListResponse],
+    tags=["sugerencias"],
+)
+def get_proxima_reunion(
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Sugerencias agendadas para la proxima reunion (requiere operador)."""
+    return service.get_proxima_reunion(db)
+
+
 @router.patch(
     "/sugerencias/{sugerencia_id}",
     response_model=SugerenciaResponse,

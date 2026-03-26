@@ -86,6 +86,43 @@ class MonitoringRepository:
         db.flush()
         return sugerencia
 
+    def get_sugerencias_stats(self, db: Session) -> dict[str, Any]:
+        """Aggregate counts of sugerencias by estado and tipo."""
+        estado_rows = db.execute(
+            select(Sugerencia.estado, func.count()).group_by(Sugerencia.estado)
+        ).all()
+        por_estado = {row[0]: row[1] for row in estado_rows}
+
+        total = sum(por_estado.values())
+
+        # Count by whether the sugerencia has a usuario_id (interna) or not (ciudadana)
+        ciudadanas: int = db.execute(
+            select(func.count())
+            .select_from(Sugerencia)
+            .where(Sugerencia.usuario_id.is_(None))
+        ).scalar_one()
+        internas = total - ciudadanas
+
+        return {
+            "pendiente": por_estado.get(EstadoSugerencia.PENDIENTE, 0),
+            "en_agenda": por_estado.get(EstadoSugerencia.REVISADA, 0),
+            "tratado": por_estado.get(EstadoSugerencia.IMPLEMENTADA, 0),
+            "descartado": por_estado.get(EstadoSugerencia.DESCARTADA, 0),
+            "total": total,
+            "ciudadanas": ciudadanas,
+            "internas": internas,
+        }
+
+    def get_proxima_reunion(self, db: Session) -> list[Sugerencia]:
+        """Return sugerencias in 'revisada' (en_agenda) state, ordered by creation."""
+        stmt = (
+            select(Sugerencia)
+            .where(Sugerencia.estado == EstadoSugerencia.REVISADA)
+            .order_by(Sugerencia.created_at.desc())
+            .limit(20)
+        )
+        return list(db.execute(stmt).scalars().all())
+
     # ── ANALISIS GEE ───────────────────────────
 
     def save_analysis(
