@@ -339,7 +339,8 @@ export default function SugerenciasPanel() {
     setLoadingHistorial(true);
     try {
       // TODO: v2 uses sugerencias/{id} with historial included, or a dedicated historial endpoint
-      const data = await apiFetch<SeguimientoEntry[]>(`/sugerencias/${id}/historial`).catch(() => [] as SeguimientoEntry[]);
+      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(`/sugerencias/${id}/historial`).catch(() => [] as SeguimientoEntry[]);
+      const data = Array.isArray(response) ? response : (response.items ?? []);
       setHistorial(data);
     } catch (err) {
       console.error(err);

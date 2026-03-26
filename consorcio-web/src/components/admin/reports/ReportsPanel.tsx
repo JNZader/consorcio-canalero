@@ -269,7 +269,8 @@ export default function ReportsPanel() {
   const loadHistory = async (id: string) => {
     setLoadingHistory(true);
     try {
-      const data = await apiFetch<SeguimientoEntry[]>(`/management/seguimiento/reporte/${id}`);
+      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(`/management/seguimiento/reporte/${id}`);
+      const data = Array.isArray(response) ? response : (response.items ?? []);
       setHistory(data);
     } catch (err) {
       logger.error('Error loading report history:', err);

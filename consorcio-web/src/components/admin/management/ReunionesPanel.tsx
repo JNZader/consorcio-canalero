@@ -132,7 +132,8 @@ export default function ReunionesPanel() {
 
   const fetchAgenda = async (reunionId: string) => {
     try {
-      const data = await apiFetch<AgendaItem[]>(`/reuniones/${reunionId}/agenda`).catch(() => [] as AgendaItem[]);
+      const response = await apiFetch<AgendaItem[] | { items: AgendaItem[] }>(`/reuniones/${reunionId}/agenda`).catch(() => [] as AgendaItem[]);
+      const data = Array.isArray(response) ? response : (response.items ?? []);
       setAgenda(data);
     } catch (err) {
       logger.error('Error fetching agenda:', err);

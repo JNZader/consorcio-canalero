@@ -99,21 +99,27 @@ export default function FinanzasPanel() {
   const [categoryOpened, { open: openCategory, close: closeCategory }] = useDisclosure(false);
   const [sourceOpened, { open: openSource, close: closeSource }] = useDisclosure(false);
 
+  const normalizeArray = <T,>(response: T[] | { items: T[] }): T[] =>
+    Array.isArray(response) ? response : (response.items ?? []);
+
   const fetchFinanzas = useCallback(async () => {
     setLoading(true);
     try {
-      const [gastosData, ingresosData, balanceData, categories, fuentes] = await Promise.all([
-        apiFetch<Gasto[]>('/finanzas/gastos'),
-        apiFetch<Ingreso[]>('/finanzas/ingresos'),
+      const [gastosRaw, ingresosRaw, balanceData] = await Promise.all([
+        apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos'),
+        apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos'),
         apiFetch<Balance>(`/finanzas/resumen/${new Date().getFullYear()}`),
-        apiFetch<string[]>('/finanzas/gastos'),
-        apiFetch<string[]>('/finanzas/ingresos'),
       ]);
+      const gastosData = normalizeArray(gastosRaw);
+      const ingresosData = normalizeArray(ingresosRaw);
       setGastos(gastosData);
       setIngresos(ingresosData);
       setBalance(balanceData);
-      setCategoryOptions(categories.length > 0 ? categories : DEFAULT_CATEGORIES);
-      setSourceOptions(fuentes.length > 0 ? fuentes : DEFAULT_INCOME_SOURCES);
+      // Extract unique categories from gastos and sources from ingresos
+      const cats = [...new Set(gastosData.map((g) => g.categoria).filter(Boolean))];
+      const srcs = [...new Set(ingresosData.map((i) => i.fuente).filter(Boolean))];
+      setCategoryOptions(cats.length > 0 ? cats : DEFAULT_CATEGORIES);
+      setSourceOptions(srcs.length > 0 ? srcs : DEFAULT_INCOME_SOURCES);
     } catch (err) {
       logger.error('Error fetching finanzas:', err);
     } finally {

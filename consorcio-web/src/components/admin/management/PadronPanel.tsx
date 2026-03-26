@@ -75,7 +75,8 @@ export default function PadronPanel() {
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Consorcista[]>(`/padron?search=${search}`);
+      const response = await apiFetch<Consorcista[] | { items: Consorcista[] }>(`/padron?search=${search}`);
+      const data = Array.isArray(response) ? response : (response.items ?? []);
       setConsorcistas(data);
     } catch (err) {
       handleError(err, {
@@ -90,7 +91,8 @@ export default function PadronPanel() {
   const fetchPagos = async (id: string) => {
     try {
       // TODO: Pagos endpoint not implemented in v2 padron yet
-      const data = await apiFetch<Pago[]>(`/padron/${id}/pagos`).catch(() => [] as Pago[]);
+      const response = await apiFetch<Pago[] | { items: Pago[] }>(`/padron/${id}/pagos`).catch(() => [] as Pago[]);
+      const data = Array.isArray(response) ? response : (response.items ?? []);
       setPagos(data);
     } catch (err) {
       handleError(err, {
