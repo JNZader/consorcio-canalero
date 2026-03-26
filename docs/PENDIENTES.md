@@ -134,8 +134,8 @@ No está en package.json ni hay imports. Fue removido en sesión anterior.
 ### 15. DEM real de Copernicus
 Cargar DEM del área del consorcio y probar el pipeline geo completo.
 
-### 16. Monitoreo SAR temporal
-Sentinel-1/2 series temporales para detección de inundaciones.
+### 16. ~~Monitoreo SAR temporal~~ ✅ HECHO (2026-03-26)
+Series temporales VV Sentinel-1 con detección de anomalías (mean-2*std). Celery task + chart recharts + admin panel.
 
 ### 17. ~~Rate limiting por usuario~~ ✅ HECHO (2026-03-26)
 Autenticado → `user:{uuid}`, no autenticado → `ip:{address}`. Cambio solo en middleware.
