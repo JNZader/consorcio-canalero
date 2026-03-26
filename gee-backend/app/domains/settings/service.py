@@ -93,6 +93,19 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
         "categoria": "contacto",
         "descripcion": "Email de contacto",
     },
+    # ── mapa ──
+    {
+        "clave": "mapa/imagen_principal",
+        "valor": None,
+        "categoria": "mapa",
+        "descripcion": "Parametros de la imagen satelital seleccionada para el mapa principal",
+    },
+    {
+        "clave": "mapa/imagen_comparacion",
+        "valor": None,
+        "categoria": "mapa",
+        "descripcion": "Parametros de comparacion de imagenes satelitales",
+    },
 ]
 
 
@@ -131,6 +144,26 @@ class SettingsService:
         db.commit()
         db.refresh(existing)
         return existing
+
+    def upsert_setting(
+        self,
+        db: Session,
+        key: str,
+        valor: Any,
+        categoria: str,
+        descripcion: Optional[str] = None,
+    ) -> SystemSettings:
+        """Insert or update a setting by key."""
+        setting = self.repo.upsert(
+            db,
+            clave=key,
+            valor=valor,
+            categoria=categoria,
+            descripcion=descripcion,
+        )
+        db.commit()
+        db.refresh(setting)
+        return setting
 
     def get_all_settings(self, db: Session) -> list[SystemSettings]:
         """Return all settings."""

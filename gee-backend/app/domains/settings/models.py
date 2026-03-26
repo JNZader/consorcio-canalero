@@ -16,6 +16,7 @@ class CategoriaSettings(str, enum.Enum):
     TERRITORIO = "territorio"
     ANALISIS = "analisis"
     CONTACTO = "contacto"
+    MAPA = "mapa"
 
 
 class SystemSettings(UUIDMixin, TimestampMixin, Base):

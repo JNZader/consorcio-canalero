@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.settings.schemas import (
     BrandingResponse,
+    ImagenComparacionParams,
+    ImagenMapaParams,
+    ImagenMapaResponse,
     SettingResponse,
     SettingsByCategoryResponse,
     SettingUpdate,
@@ -114,4 +117,81 @@ def get_public_branding(
         logo_url=service.get_setting(db, "branding/logo_url"),
         color_primario=service.get_setting(db, "branding/color_primario"),
         color_secundario=service.get_setting(db, "branding/color_secundario"),
+    )
+
+
+# ──────────────────────────────────────────────
+# MAP IMAGE SELECTION (public read, operator+ write)
+# ──────────────────────────────────────────────
+
+
+@public_settings_router.get("/mapa/imagen", response_model=ImagenMapaResponse)
+def get_public_mapa_imagen(
+    db: Session = Depends(get_db),
+    service: SettingsService = Depends(get_service),
+):
+    """Get saved map image parameters (public, no auth)."""
+    principal_raw = service.get_setting(db, "mapa/imagen_principal")
+    comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
+
+    principal = ImagenMapaParams(**principal_raw) if principal_raw else None
+    comparacion = (
+        ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
+    )
+
+    return ImagenMapaResponse(
+        imagen_principal=principal,
+        imagen_comparacion=comparacion,
+    )
+
+
+@router.put("/mapa/imagen-principal", response_model=ImagenMapaResponse)
+def save_mapa_imagen_principal(
+    payload: ImagenMapaParams,
+    db: Session = Depends(get_db),
+    service: SettingsService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Save the selected main image parameters (operator+)."""
+    service.upsert_setting(
+        db,
+        key="mapa/imagen_principal",
+        valor=payload.model_dump(),
+        categoria="mapa",
+        descripcion="Parametros de la imagen satelital seleccionada para el mapa principal",
+    )
+
+    # Return full response
+    comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
+    comparacion = (
+        ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
+    )
+    return ImagenMapaResponse(
+        imagen_principal=payload,
+        imagen_comparacion=comparacion,
+    )
+
+
+@router.put("/mapa/imagen-comparacion", response_model=ImagenMapaResponse)
+def save_mapa_imagen_comparacion(
+    payload: ImagenComparacionParams,
+    db: Session = Depends(get_db),
+    service: SettingsService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Save the comparison image parameters (operator+)."""
+    service.upsert_setting(
+        db,
+        key="mapa/imagen_comparacion",
+        valor=payload.model_dump(),
+        categoria="mapa",
+        descripcion="Parametros de comparacion de imagenes satelitales",
+    )
+
+    # Return full response
+    principal_raw = service.get_setting(db, "mapa/imagen_principal")
+    principal = ImagenMapaParams(**principal_raw) if principal_raw else None
+    return ImagenMapaResponse(
+        imagen_principal=principal,
+        imagen_comparacion=payload,
     )
