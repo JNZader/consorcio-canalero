@@ -78,5 +78,8 @@ export { default as IconPieChart } from '@tabler/icons-react/dist/esm/icons/Icon
 // Re-export IconLayers
 export { default as IconLayers } from '@tabler/icons-react/dist/esm/icons/IconStack2.mjs';
 
+// Terrain / Mountain icon for DEM Pipeline
+export { default as IconMountain } from '@tabler/icons-react/dist/esm/icons/IconMountain.mjs';
+
 // Alias for IconLightbulb
 export { default as IconLightbulb } from '@tabler/icons-react/dist/esm/icons/IconBulb.mjs';
