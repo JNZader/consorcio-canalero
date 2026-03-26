@@ -11,25 +11,46 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'robots.txt', 'capas/*.geojson'],
       manifest: {
         name: 'Consorcio Canalero 10 de Mayo',
-        short_name: 'Consorcio',
-        description: 'Gestion y monitoreo de cuencas hidricas',
-        theme_color: '#228be6',
+        short_name: 'CC10M',
+        description:
+          'Sistema de gestion y monitoreo del Consorcio Canalero 10 de Mayo - Infraestructura hidrica para el desarrollo agricola',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        theme_color: '#2d9970',
+        background_color: '#0f1f1a',
+        lang: 'es-AR',
+        dir: 'ltr',
+        categories: ['utilities', 'productivity', 'government'],
         icons: [
           {
-            src: 'pwa-192x192.png', // User needs to provide these icons later
-            sizes: '192x192',
-            type: 'image/png',
+            src: '/favicon.ico',
+            sizes: '48x48 72x72 96x96 128x128 256x256',
+            type: 'image/x-icon',
+          },
+        ],
+        shortcuts: [
+          {
+            name: 'Ver Mapa',
+            short_name: 'Mapa',
+            description: 'Acceder al mapa interactivo de canales',
+            url: '/mapa',
           },
           {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
+            name: 'Reportar Incidente',
+            short_name: 'Reportar',
+            description: 'Reportar un incidente en los canales',
+            url: '/denuncias',
           },
         ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         runtimeCaching: [
+          // Static assets from CDNs — CacheFirst (long-lived, rarely change)
           {
             urlPattern: /^https:\/\/server\.arcgisonline\.com\/.*/i,
             handler: 'CacheFirst',
@@ -37,7 +58,7 @@ export default defineConfig({
               cacheName: 'arcgis-tiles',
               expiration: {
                 maxEntries: 500,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
               },
             },
           },
@@ -48,11 +69,43 @@ export default defineConfig({
               cacheName: 'leaflet-assets',
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 Year
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
               },
             },
-          }
-        ]
+          },
+          {
+            urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-tiles',
+              expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+            },
+          },
+          // API calls — NetworkFirst (try network, fall back to cache when offline)
+          {
+            urlPattern: /\/api\/v2\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-responses',
+              networkTimeoutSeconds: 10,
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 24, // 24 hours
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          // Health check — NetworkOnly (never cache, just check connectivity)
+          {
+            urlPattern: /\/health$/,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
     }),
   ],
