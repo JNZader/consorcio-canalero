@@ -502,6 +502,38 @@ def get_gee_analysis(
 # ── GEE Images (Image Explorer) ──
 
 
+@gee_router.get("/images/available-dates")
+async def get_available_image_dates(
+    year: int = Query(..., ge=2015, le=2030, description="Ano"),
+    month: int = Query(..., ge=1, le=12, description="Mes"),
+    sensor: str = Query("sentinel2", description="Sensor: sentinel2 o sentinel1"),
+    max_cloud: int = Query(60, ge=0, le=100, description="Porcentaje maximo de nubes (solo S2)"),
+):
+    """Obtener fechas con imagenes disponibles para un mes dado."""
+    svc = _ensure_gee()
+    try:
+        explorer = svc["get_image_explorer"]()
+        result = await asyncio.to_thread(
+            explorer.get_available_dates,
+            year=year,
+            month=month,
+            sensor=sensor,
+            max_cloud=max_cloud,
+        )
+        return JSONResponse(
+            content=result,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    except AppException:
+        raise
+    except Exception as e:
+        raise AppException(
+            message=get_safe_error_detail(e, "fechas disponibles"),
+            code="AVAILABLE_DATES_ERROR",
+            status_code=500,
+        )
+
+
 @gee_router.get("/images/sentinel2")
 async def get_sentinel2_image(
     target_date: date = Query(..., description="Fecha objetivo (YYYY-MM-DD)"),

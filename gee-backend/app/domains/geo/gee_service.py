@@ -11,6 +11,7 @@ Funcionalidades:
 - Estadisticas de red vial por consorcio caminero
 """
 
+import calendar
 import ee
 import json
 from datetime import date, timedelta
@@ -661,6 +662,71 @@ class ImageExplorer:
             "visualization_description": description,
             "sensor": "Sentinel-1",
             "collection": "COPERNICUS/S1_GRD",
+        }
+
+    def get_available_dates(
+        self,
+        year: int,
+        month: int,
+        sensor: str = "sentinel2",
+        max_cloud: int = 60,
+    ) -> Dict[str, Any]:
+        """Get list of dates with available imagery for a given month.
+
+        This is a lightweight query — only retrieves dates, not full images.
+        """
+        start_date = date(year, month, 1)
+        last_day = calendar.monthrange(year, month)[1]
+        end_date = date(year, month, last_day)
+        # GEE filterDate is exclusive on end, so add one day
+        end_date_exclusive = end_date + timedelta(days=1)
+
+        if sensor == "sentinel2":
+            use_toa = year < 2019
+            collection_name = (
+                "COPERNICUS/S2_HARMONIZED"
+                if use_toa
+                else "COPERNICUS/S2_SR_HARMONIZED"
+            )
+            collection = (
+                ee.ImageCollection(collection_name)
+                .filterBounds(self.zona)
+                .filterDate(
+                    start_date.isoformat(), end_date_exclusive.isoformat()
+                )
+                .filter(
+                    ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", max_cloud)
+                )
+            )
+        else:
+            collection = (
+                ee.ImageCollection("COPERNICUS/S1_GRD")
+                .filterBounds(self.zona)
+                .filterDate(
+                    start_date.isoformat(), end_date_exclusive.isoformat()
+                )
+                .filter(ee.Filter.eq("instrumentMode", "IW"))
+                .filter(
+                    ee.Filter.listContains(
+                        "transmitterReceiverPolarisation", "VV"
+                    )
+                )
+            )
+
+        dates_list = (
+            collection.aggregate_array("system:time_start")
+            .map(lambda d: ee.Date(d).format("YYYY-MM-dd"))
+            .distinct()
+            .sort()
+            .getInfo()
+        )
+
+        return {
+            "dates": sorted(dates_list) if dates_list else [],
+            "sensor": sensor,
+            "year": year,
+            "month": month,
+            "total": len(dates_list) if dates_list else 0,
         }
 
     def get_flood_comparison(
