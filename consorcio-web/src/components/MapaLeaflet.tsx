@@ -22,7 +22,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import type { Feature } from 'geojson';
 import type { LeafletMouseEvent, Path } from 'leaflet';
-import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   GeoJSON,
   FeatureGroup,
@@ -389,11 +389,22 @@ export default function MapaLeaflet() {
   // Get system configuration from store
   const config = useConfigStore((state) => state.config);
 
-  // Use dynamic center and zoom with fallbacks
-  const center = config?.map.center
-    ? ([config.map.center.lat, config.map.center.lng] as [number, number])
-    : MAP_CENTER;
-  const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
+  // Memoize center and zoom to prevent MapViewUpdater from resetting the
+  // map viewport on every re-render (e.g. during comparison slider drag).
+  // Without useMemo, a new array reference is created each render, which
+  // triggers the useEffect inside MapViewUpdater and calls map.setView(),
+  // snapping the map back to default zoom.
+  const center = useMemo<[number, number]>(
+    () =>
+      config?.map.center
+        ? [config.map.center.lat, config.map.center.lng]
+        : MAP_CENTER,
+    [config?.map.center?.lat, config?.map.center?.lng]
+  );
+  const zoom = useMemo(
+    () => config?.map.zoom ?? MAP_DEFAULT_ZOOM,
+    [config?.map.zoom]
+  );
 
   // Unique ID for this map instance - forces clean remount on navigation
   const mapInstanceId = useId();
