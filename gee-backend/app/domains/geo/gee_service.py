@@ -753,6 +753,76 @@ class ImageExplorer:
             "normal_rgb": normal_result,
         }
 
+    def get_sar_time_series(
+        self,
+        start_date: date,
+        end_date: date,
+        scale: int = 100,
+    ) -> Dict[str, Any]:
+        """Compute mean VV backscatter time series over the zona geometry.
+
+        Filters Sentinel-1 GRD IW VV collection by date range,
+        then for each image computes the zonal mean VV via reduceRegion.
+
+        Returns:
+            Dict with dates, vv_mean, image_count, scale_m.
+        """
+        collection = (
+            ee.ImageCollection("COPERNICUS/S1_GRD")
+            .filterBounds(self.zona)
+            .filterDate(start_date.isoformat(), end_date.isoformat())
+            .filter(ee.Filter.eq("instrumentMode", "IW"))
+            .filter(
+                ee.Filter.listContains("transmitterReceiverPolarisation", "VV")
+            )
+            .select("VV")
+        )
+
+        count = collection.size().getInfo()
+        if count == 0:
+            return {
+                "dates": [],
+                "vv_mean": [],
+                "image_count": 0,
+                "scale_m": scale,
+                "warning": "No Sentinel-1 images found in date range",
+            }
+
+        def _extract_vv_mean(image: ee.Image) -> ee.Feature:
+            """Map function: compute mean VV over zona for a single image."""
+            img_date = ee.Date(image.get("system:time_start")).format(
+                "YYYY-MM-dd"
+            )
+            stats = image.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=self.zona.geometry(),
+                scale=scale,
+                bestEffort=True,
+            )
+            return ee.Feature(
+                None,
+                {"date": img_date, "vv_mean": stats.get("VV")},
+            )
+
+        features = collection.map(_extract_vv_mean)
+        results = features.getInfo()["features"]
+
+        dates: List[str] = []
+        vv_mean: List[float] = []
+        for feat in results:
+            props = feat.get("properties", {})
+            vv_val = props.get("vv_mean")
+            if vv_val is not None:
+                dates.append(props["date"])
+                vv_mean.append(round(float(vv_val), 4))
+
+        return {
+            "dates": dates,
+            "vv_mean": vv_mean,
+            "image_count": len(dates),
+            "scale_m": scale,
+        }
+
     def get_available_visualizations(self) -> List[Dict[str, str]]:
         """Obtener lista de visualizaciones disponibles."""
         return [
