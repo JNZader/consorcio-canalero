@@ -25,6 +25,12 @@ geoalchemy2>=0.17.0
 # Logging
 structlog>=24.1.0
 
+# Google Earth Engine (for DEM download in geo-worker)
+earthengine-api>=1.4.0
+
+# HTTP client (for downloading DEM files from GEE URLs)
+requests>=2.31.0
+
 # Config
 python-dotenv>=1.0.0
 pydantic>=2.11.0
