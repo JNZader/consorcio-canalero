@@ -84,6 +84,7 @@ class TipoAnalisisGee(str, enum.Enum):
     CLASSIFICATION = "classification"
     NDVI = "ndvi"
     CUSTOM = "custom"
+    SAR_TEMPORAL = "sar_temporal"
 
 
 # ── Models ───────────────────────────────────────
