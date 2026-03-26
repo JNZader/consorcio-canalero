@@ -28,6 +28,7 @@
     "@deck.gl/core": "^9.2.11",
     "@deck.gl/layers": "^9.2.11",
     "@deck.gl/react": "^9.2.11",
+    "@deck.gl/widgets": "^9.2.11",
     "@emotion/react": "^11.14.0",
     "@fontsource/inter": "^5.2.8",
     "@luma.gl/core": "^9.2.6",
