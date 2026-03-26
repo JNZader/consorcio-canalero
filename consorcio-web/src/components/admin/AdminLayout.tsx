@@ -25,6 +25,7 @@ import {
   IconLogout,
   IconMap,
   IconPhoto,
+  IconSatellite,
   IconSettings,
   IconUser,
 } from '../ui/icons';
@@ -33,6 +34,7 @@ import {
 const NAV_ITEMS = [
   { label: 'Dashboard', to: '/admin', icon: IconChartBar },
   { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
+  { label: 'Monitoreo SAR', to: '/admin/sar-temporal', icon: IconSatellite },
   { label: 'Reportes', to: '/admin/reports', icon: IconClipboardList },
   { label: 'Sugerencias', to: '/admin/sugerencias', icon: IconLightbulb },
   { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },

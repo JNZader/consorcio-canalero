@@ -46,6 +46,7 @@ const TramitesPanel = lazy(() => import('./components/admin/management/TramitesP
 const ReunionesPanel = lazy(() => import('./components/admin/management/ReunionesPanel'));
 const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel'));
 const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasPanel'));
+const SarTemporalPanel = lazy(() => import('./components/admin/SarTemporalPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -495,6 +496,12 @@ const adminFinanzasRoute = createRoute({
   component: () => <FinanzasPanel />,
 });
 
+const adminSarTemporalRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/sar-temporal',
+  component: () => <SarTemporalPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -503,6 +510,7 @@ const adminFinanzasRoute = createRoute({
 const adminRouteTree = adminLayoutRoute.addChildren([
   adminIndexRoute,
   adminImagesRoute,
+  adminSarTemporalRoute,
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,
