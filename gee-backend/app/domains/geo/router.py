@@ -3,10 +3,11 @@
 import asyncio
 import uuid
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
@@ -17,6 +18,8 @@ from app.domains.geo.schemas import (
     AnalisisGeoCreate,
     AnalisisGeoListResponse,
     AnalisisGeoResponse,
+    DemPipelineRequest,
+    DemPipelineResponse,
     GeoJobCreate,
     GeoJobListResponse,
     GeoJobResponse,
@@ -161,6 +164,133 @@ def get_geo_layer(
     if layer is None:
         raise HTTPException(status_code=404, detail="Geo layer no encontrado")
     return layer
+
+
+@router.get("/layers/{layer_id}/file")
+def get_geo_layer_file(
+    layer_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
+    """Serve a GeoLayer file (GeoTIFF or GeoJSON) for download or frontend rendering.
+
+    Returns a streaming response with the appropriate content-type.
+    """
+    layer = repo.get_layer_by_id(db, layer_id)
+    if layer is None:
+        raise HTTPException(status_code=404, detail="Geo layer no encontrado")
+
+    file_path = Path(layer.archivo_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Archivo no encontrado en disco: {layer.archivo_path}",
+        )
+
+    # Determine content type based on format
+    content_type_map = {
+        "geotiff": "image/tiff",
+        "geojson": "application/geo+json",
+    }
+    content_type = content_type_map.get(layer.formato, "application/octet-stream")
+
+    def _file_iterator():
+        with open(file_path, "rb") as f:
+            while chunk := f.read(8192):
+                yield chunk
+
+    return StreamingResponse(
+        _file_iterator(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{file_path.name}"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+# ──────────────────────────────────────────────
+# DEM PIPELINE
+# ──────────────────────────────────────────────
+
+
+def _require_admin():
+    """Return the admin dependency at call time."""
+    from app.auth import require_admin
+
+    return require_admin
+
+
+@router.post("/dem-pipeline", response_model=DemPipelineResponse, status_code=201)
+def trigger_dem_pipeline(
+    payload: DemPipelineRequest = DemPipelineRequest(),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+):
+    """Trigger the full DEM pipeline: download from GEE + terrain analysis + basin delineation.
+
+    Admin only. Returns a job ID for status polling via GET /jobs/{job_id}.
+    """
+    from app.domains.geo.models import TipoGeoJob
+
+    job = dispatch_job(
+        db,
+        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+        parametros={
+            "area_id": payload.area_id,
+            "min_basin_area_ha": payload.min_basin_area_ha,
+        },
+    )
+    return DemPipelineResponse(
+        job_id=job.id,
+        tipo=job.tipo,
+        estado=job.estado,
+    )
+
+
+@router.get("/basins", response_model=dict)
+def get_basins(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    """Get the latest basin polygons as GeoJSON (public endpoint for map display).
+
+    Returns the GeoJSON content of the most recent BASINS GeoLayer.
+    """
+    import json as _json
+
+    from app.domains.geo.models import TipoGeoLayer
+
+    layers, total = repo.get_layers(
+        db,
+        page=1,
+        limit=1,
+        tipo_filter=TipoGeoLayer.BASINS.value,
+    )
+
+    if not layers:
+        return {"type": "FeatureCollection", "features": [], "total": 0}
+
+    latest_layer = layers[0]
+    file_path = Path(latest_layer.archivo_path)
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Archivo de basins no encontrado en disco",
+        )
+
+    with open(file_path) as f:
+        geojson = _json.load(f)
+
+    geojson["metadata"] = {
+        "layer_id": str(latest_layer.id),
+        "area_id": latest_layer.area_id,
+        "created_at": latest_layer.created_at.isoformat(),
+    }
+
+    return geojson
 
 
 # ──────────────────────────────────────────────
