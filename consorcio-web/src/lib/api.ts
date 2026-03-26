@@ -67,6 +67,14 @@ export type {
 export { monitoringApi } from './api/monitoring';
 export type { MonitoringDashboardData } from './api/monitoring';
 
+// Map Image exports
+export { mapImageApi } from './api/mapImage';
+export type {
+  ImagenMapaParams,
+  ImagenComparacionParams,
+  ImagenMapaResponse,
+} from './api/mapImage';
+
 // Config exports
 export { configApi } from './api/config';
 export type {

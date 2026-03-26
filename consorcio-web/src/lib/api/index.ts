@@ -51,3 +51,13 @@ export type {
 // ===========================================
 export { monitoringApi } from './monitoring';
 export type { MonitoringDashboardData } from './monitoring';
+
+// ===========================================
+// MAP IMAGE EXPORTS
+// ===========================================
+export { mapImageApi } from './mapImage';
+export type {
+  ImagenMapaParams,
+  ImagenComparacionParams,
+  ImagenMapaResponse,
+} from './mapImage';
