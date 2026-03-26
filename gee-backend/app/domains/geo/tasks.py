@@ -22,6 +22,7 @@ import structlog
 
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
+import app.auth.models  # noqa: F401 — register User table for FK resolution
 from app.domains.geo.models import (
     EstadoGeoJob,
     FormatoGeoLayer,
