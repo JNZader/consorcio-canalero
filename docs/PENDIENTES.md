@@ -131,8 +131,9 @@ No está en package.json ni hay imports. Fue removido en sesión anterior.
 
 ## Nice to have (futuro)
 
-### 15. DEM real de Copernicus
-Cargar DEM del área del consorcio y probar el pipeline geo completo.
+### 15. ~~DEM real de Copernicus~~ ✅ HECHO (2026-03-26)
+DEM Copernicus GLO-30 desde GEE + pipeline 10 pasos + delineación de cuencas automática + viewer 3D deck.gl.
+POST /geo/dem-pipeline ejecuta todo en un click. Cuencas reemplazan las 4 manuales.
 
 ### 16. ~~Monitoreo SAR temporal~~ ✅ HECHO (2026-03-26)
 Series temporales VV Sentinel-1 con detección de anomalías (mean-2*std). Celery task + chart recharts + admin panel.
