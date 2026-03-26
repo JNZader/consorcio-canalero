@@ -605,10 +605,33 @@ export default function ImageExplorerPanel() {
                       <Badge
                         key={date}
                         size="sm"
-                        variant="light"
+                        variant={result.target_date === date ? 'filled' : 'light'}
                         style={{ cursor: 'pointer' }}
                         onClick={() => {
                           setSelectedDate(new Date(date));
+                          // Auto-fetch with days_buffer=0 to get this exact date
+                          setLoading(true);
+                          setError(null);
+                          const endpoint = sensor === 'sentinel2' ? 'sentinel2' : 'sentinel1';
+                          const params = new URLSearchParams({
+                            target_date: date,
+                            days_buffer: '0',
+                            visualization: visualization,
+                          });
+                          if (sensor === 'sentinel2') {
+                            params.append('max_cloud', maxCloud);
+                          }
+                          fetch(`${API_BASE}/${endpoint}?${params}`)
+                            .then((res) => {
+                              if (!res.ok) return res.json().then((e) => { throw new Error(e.detail || 'Error'); });
+                              return res.json();
+                            })
+                            .then((data: ImageResult) => {
+                              setResult(data);
+                              updateTileLayer(data.tile_url);
+                            })
+                            .catch((err) => setError(err instanceof Error ? err.message : 'Error'))
+                            .finally(() => setLoading(false));
                         }}
                       >
                         {date}
