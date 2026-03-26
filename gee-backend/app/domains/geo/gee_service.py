@@ -113,6 +113,40 @@ class GEEService:
             "norte": ee.FeatureCollection(f"{self.ASSETS_BASE}/norte"),
         }
 
+    def get_dem_download_url(
+        self,
+        geometry: ee.Geometry | None = None,
+        scale: int = 30,
+    ) -> Dict[str, Any]:
+        """Get a download URL for the Copernicus GLO-30 DEM clipped to a geometry.
+
+        Args:
+            geometry: Optional ee.Geometry to clip. Defaults to self.zona.
+            scale: Pixel resolution in meters (default 30).
+
+        Returns:
+            Dict with download_url, scale, and crs.
+        """
+        region = geometry or self.zona.geometry()
+        dem = ee.Image("COPERNICUS/DEM/GLO30/V20").select("DEM")
+        clipped = dem.clip(region)
+
+        url = clipped.getDownloadURL(
+            {
+                "format": "GEO_TIFF",
+                "scale": scale,
+                "region": region,
+                "crs": "EPSG:4326",
+            }
+        )
+
+        return {
+            "download_url": url,
+            "scale": scale,
+            "crs": "EPSG:4326",
+            "image": "COPERNICUS/DEM/GLO30/V20",
+        }
+
     def get_sentinel2_tiles(
         self,
         start_date: date,
