@@ -40,6 +40,7 @@ import L from 'leaflet';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
 import { useInfrastructure } from '../hooks/useInfrastructure';
+import { usePublicLayers } from '../hooks/usePublicLayers';
 import { MapReadyHandler } from '../hooks/useMapReady';
 import { useSelectedImageListener, type SelectedImage } from '../hooks/useSelectedImage';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -48,6 +49,7 @@ import { IconGitCompare, IconLayers, IconPhoto, IconDownload, IconMap } from './
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useConfigStore } from '../stores/configStore';
+import { useCanAccess } from '../stores/authStore';
 import { API_URL, getAuthToken } from '../lib/api';
 import { formatDate } from '../lib/formatters';
 import styles from '../styles/components/map.module.css';
@@ -413,6 +415,9 @@ export default function MapaLeaflet() {
     },
   });
 
+  // Check if user is admin/operator (controls visibility of draw/mark tools)
+  const isOperator = useCanAccess(['admin', 'operador']);
+
   // Use centralized hook for loading GEE layers (sin caminos - se cargan aparte)
   const { layers: capas, loading: loadingCapas } = useGEELayers({
     layerNames: CUENCAS_LAYER_NAMES,
@@ -423,6 +428,9 @@ export default function MapaLeaflet() {
 
   // Infraestructura y puntos de cruce (alcantarillas potenciales)
   const { assets, intersections, loading: loadingInfra, createAsset } = useInfrastructure();
+
+  // Public vector layers (admin-published, no auth required)
+  const { layers: publicLayers, loading: loadingPublicLayers } = usePublicLayers();
 
   const handleExportAsset = async (assetId: string, assetName: string) => {
     try {
@@ -484,7 +492,7 @@ export default function MapaLeaflet() {
     }
   };
 
-  const loading = loadingCapas || loadingCaminos || loadingInfra;
+  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers;
   const [selectedFeature, setSelectedFeature] = useState<GeoJSON.Feature | null>(null);
 
   // Get selected satellite image from localStorage (set in ImageExplorer)
@@ -642,11 +650,11 @@ export default function MapaLeaflet() {
         center={center}
         zoom={zoom}
         preferCanvas={true}
-        style={{ width: '100%', height: '100%', cursor: markingMode ? 'crosshair' : 'grab' }}
+        style={{ width: '100%', height: '100%', cursor: isOperator && markingMode ? 'crosshair' : 'grab' }}
         scrollWheelZoom={true}
       >
         <MapViewUpdater center={center} zoom={zoom} />
-        <AddPointEvents onMapClick={handleMapClick} enabled={markingMode} />
+        <AddPointEvents onMapClick={handleMapClick} enabled={isOperator && markingMode} />
         {/* Forzar recalculo del tamano del mapa en primera carga */}
         <MapReadyHandler />
         <LayersControl position="topright">
@@ -766,6 +774,27 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
           )}
 
+          {/* Public vector layers (admin-published, no auth required) */}
+          {publicLayers.map((layer) => (
+            <LayersControl.Overlay
+              key={layer.id}
+              checked
+              name={layer.nombre}
+            >
+              <GeoJSON
+                key={`public-${layer.id}`}
+                data={layer.geojson_data!}
+                style={() => ({
+                  color: (layer.estilo?.color as string) || '#3388ff',
+                  weight: (layer.estilo?.weight as number) || 2,
+                  fillOpacity: (layer.estilo?.fillOpacity as number) || 0.1,
+                  fillColor: (layer.estilo?.fillColor as string) || (layer.estilo?.color as string) || '#3388ff',
+                })}
+                onEachFeature={onEachFeature}
+              />
+            </LayersControl.Overlay>
+          ))}
+
           {/* Activos de Infraestructura Registrados - grouped in a single overlay */}
           <LayersControl.Overlay checked name="Activos de Infraestructura">
             <FeatureGroup>
@@ -873,30 +902,32 @@ export default function MapaLeaflet() {
         }
       />
 
-      {/* Boton Modo Marcacion */}
-      <Paper
-        shadow="md"
-        p="xs"
-        radius="md"
-        style={{ position: 'absolute', top: 10, right: 60, zIndex: 1000 }}
-      >
-        <Tooltip label={markingMode ? 'Cancelar marcacion' : 'Marcar punto de interes'}>
-          <Button
-            size="xs"
-            color={markingMode ? 'red' : 'blue'}
-            variant={markingMode ? 'filled' : 'light'}
-            onClick={() => {
-              setMarkingMode(!markingMode);
-              setNewPoint(null);
-            }}
-            leftSection={<IconMap size={16} />}
-          >
-            {markingMode ? 'Modo Activo (Haz clic)' : 'Marcar Punto'}
-          </Button>
-        </Tooltip>
-      </Paper>
+      {/* Boton Modo Marcacion — solo visible para admin/operador */}
+      {isOperator && (
+        <Paper
+          shadow="md"
+          p="xs"
+          radius="md"
+          style={{ position: 'absolute', top: 10, right: 60, zIndex: 1000 }}
+        >
+          <Tooltip label={markingMode ? 'Cancelar marcacion' : 'Marcar punto de interes'}>
+            <Button
+              size="xs"
+              color={markingMode ? 'red' : 'blue'}
+              variant={markingMode ? 'filled' : 'light'}
+              onClick={() => {
+                setMarkingMode(!markingMode);
+                setNewPoint(null);
+              }}
+              leftSection={<IconMap size={16} />}
+            >
+              {markingMode ? 'Modo Activo (Haz clic)' : 'Marcar Punto'}
+            </Button>
+          </Tooltip>
+        </Paper>
+      )}
 
-      {/* Modal Registro de Activo */}
+      {/* Modal Registro de Activo — solo para admin/operador */}
       <Modal
         opened={!!newPoint}
         onClose={() => setNewPoint(null)}
