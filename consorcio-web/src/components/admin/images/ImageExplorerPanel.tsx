@@ -479,7 +479,7 @@ export default function ImageExplorerPanel() {
         const endpoint = sensor === 'sentinel2' ? 'sentinel2' : 'sentinel1';
         const params = new URLSearchParams({
           target_date: dateStr,
-          days_buffer: '0',
+          days_buffer: '1',
           visualization,
         });
 
