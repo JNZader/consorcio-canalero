@@ -25,6 +25,9 @@
 - ~~README + CONTRIBUTING~~ ✅ Reescritos sin Supabase
 - ~~@supabase/supabase-js~~ ✅ Ya limpio
 - ~~Tests backend~~ ✅ Testcontainers PostGIS (3-tier fallback)
+- ~~Rate limiter por usuario~~ ✅ user:{uuid} / ip:{address}
+- ~~PWA offline~~ ✅ CacheFirst + NetworkFirst + SPA fallback
+- ~~Google OAuth~~ ✅ id_token + callback fix
 
 ## Completados (sesión 2026-03-24)
 - ~~Google OAuth redirect http→https~~ ✅ Funciona con --proxy-headers + COOLIFY_URL
@@ -134,11 +137,11 @@ Cargar DEM del área del consorcio y probar el pipeline geo completo.
 ### 16. Monitoreo SAR temporal
 Sentinel-1/2 series temporales para detección de inundaciones.
 
-### 17. Rate limiting por usuario
-Actualmente es por IP — cambiar a por usuario autenticado.
+### 17. ~~Rate limiting por usuario~~ ✅ HECHO (2026-03-26)
+Autenticado → `user:{uuid}`, no autenticado → `ip:{address}`. Cambio solo en middleware.
 
 ### 18. WhatsApp Bot
 Plan documentado en `docs/PLAN_WHATSAPP_BOT.md`.
 
-### 19. PWA offline
-Service worker ya genera, pero no hay estrategia de cache offline.
+### 19. ~~PWA offline~~ ✅ HECHO (2026-03-26)
+CacheFirst para estáticos/tiles, NetworkFirst para API (24h), SPA fallback offline. Manifest integrado.
