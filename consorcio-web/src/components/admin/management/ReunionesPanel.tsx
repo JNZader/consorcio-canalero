@@ -91,7 +91,8 @@ export default function ReunionesPanel() {
   const fetchReuniones = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Reunion[]>('/reuniones').catch(() => [] as Reunion[]);
+      const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones').catch(() => ({ items: [] as Reunion[], total: 0 }));
+      const data = normalizeArrayResponse<Reunion>(response);
       setReuniones(data);
     } catch (err) {
       logger.error('Error fetching reuniones:', err);
