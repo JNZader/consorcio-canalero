@@ -93,8 +93,26 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async loginWithGoogle(): Promise<void> {
-    // Redirect to backend Google OAuth endpoint
-    window.location.href = `${AUTH_BASE}/auth/google/authorize`;
+    // Fetch the Google OAuth authorization URL from the backend.
+    // fastapi-users returns {"authorization_url": "https://accounts.google.com/..."}
+    const response = await fetch(`${AUTH_BASE}/auth/google/authorize`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo iniciar la autenticacion con Google');
+    }
+
+    const data = await response.json();
+    const authUrl = data.authorization_url;
+
+    if (!authUrl) {
+      throw new Error('No se recibio la URL de autorizacion de Google');
+    }
+
+    // Redirect the browser to Google's OAuth consent page
+    window.location.href = authUrl;
   }
 
   async logout(): Promise<void> {

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     debug: bool = False
     enable_docs: bool = True
     frontend_url: str = "http://localhost:5173"
+    api_base_url: str = ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
 
     @property
     def cors_origins_list(self) -> list[str]:
