@@ -484,3 +484,328 @@ def classify_terrain(
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
         raise
+
+
+# ── DEM Full Pipeline Tasks ────────────────────
+
+
+def _get_gee_service():
+    """Lazy import of gee_service — only available when GEE is configured."""
+    from app.domains.geo.gee_service import GEEService, _ensure_initialized
+
+    _ensure_initialized()
+    return GEEService()
+
+
+@celery_app.task(queue="geo", name="geo.download_dem_from_gee")
+def download_dem_from_gee_task(
+    area_id: str,
+    job_id: str | None = None,
+) -> dict:
+    """Download Copernicus GLO-30 DEM from GEE for the zona geometry.
+
+    Registers the result as a GeoLayer with tipo=DEM_RAW.
+    Returns the DEM file path for chaining.
+    """
+    if job_id:
+        _update_job(job_id, estado=EstadoGeoJob.RUNNING, progreso=5)
+
+    try:
+        # Get zona geometry from GEE assets
+        gee_svc = _get_gee_service()
+        zona_geojson = gee_svc.zona.geometry().getInfo()
+
+        output_dir = Path(f"/data/geo/{area_id}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        dem_path = str(output_dir / "dem_raw.tif")
+
+        _run_step(
+            job_id or "no-job",
+            "download_dem_from_gee",
+            _get_processing().download_dem_from_gee,
+            (zona_geojson, dem_path),
+        )
+
+        # Register as GeoLayer
+        _register_layer(
+            nombre=f"dem_raw_{area_id}",
+            tipo=TipoGeoLayer.DEM_RAW,
+            archivo_path=dem_path,
+            area_id=area_id,
+        )
+
+        if job_id:
+            _update_job(job_id, progreso=15)
+
+        logger.info("download_dem_from_gee.done", area_id=area_id, dem_path=dem_path)
+        return {"dem_path": dem_path, "area_id": area_id}
+
+    except Exception:
+        if job_id:
+            _update_job(
+                job_id,
+                estado=EstadoGeoJob.FAILED,
+                error=traceback.format_exc(),
+            )
+        raise
+
+
+@celery_app.task(queue="geo", name="geo.delineate_basins")
+def delineate_basins_task(
+    area_id: str,
+    flow_dir_path: str,
+    min_area_ha: float = 10.0,
+    job_id: str | None = None,
+    store_zonas: bool = True,
+) -> dict:
+    """Delineate watershed basins from flow direction raster.
+
+    Vectorizes basins, filters micro-basins, registers GeoLayer(BASINS),
+    and optionally creates ZonaOperativa records.
+    """
+    if job_id:
+        _update_job(job_id, estado=EstadoGeoJob.RUNNING)
+
+    try:
+        output_dir = Path(flow_dir_path).parent
+        basins_raster = str(output_dir / "basins.tif")
+        basins_geojson = str(output_dir / "basins.geojson")
+
+        result_path = _run_step(
+            job_id or "no-job",
+            "delineate_basins",
+            _get_processing().delineate_basins,
+            (flow_dir_path, basins_raster, basins_geojson),
+            {"min_area_ha": min_area_ha},
+        )
+
+        # Register as GeoLayer
+        _register_layer(
+            nombre=f"basins_{area_id}",
+            tipo=TipoGeoLayer.BASINS,
+            archivo_path=basins_geojson,
+            area_id=area_id,
+            formato=FormatoGeoLayer.GEOJSON,
+        )
+
+        # Optionally create ZonaOperativa records
+        zonas_created = 0
+        if store_zonas:
+            import json as _json
+
+            from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+            intel_repo = IntelligenceRepository()
+
+            with open(basins_geojson) as f:
+                basins_data = _json.load(f)
+
+            db = _get_db()
+            try:
+                for feature in basins_data.get("features", []):
+                    props = feature.get("properties", {})
+                    basin_id = props.get("basin_id", 0)
+                    area_ha = props.get("area_ha", 0.0)
+                    geom_json = _json.dumps(feature["geometry"])
+
+                    intel_repo.create_zona(
+                        db,
+                        nombre=f"basin_{area_id}_{basin_id}",
+                        geometria=f"SRID=4326;{geom_json}",
+                        cuenca="auto_delineated",
+                        superficie_ha=area_ha,
+                    )
+                    zonas_created += 1
+
+                db.commit()
+            finally:
+                db.close()
+
+        if job_id:
+            _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
+
+        logger.info(
+            "delineate_basins.done",
+            area_id=area_id,
+            basins_geojson=basins_geojson,
+            zonas_created=zonas_created,
+        )
+        return {
+            "basins_geojson": basins_geojson,
+            "basins_raster": basins_raster,
+            "zonas_created": zonas_created,
+        }
+
+    except Exception:
+        if job_id:
+            _update_job(
+                job_id,
+                estado=EstadoGeoJob.FAILED,
+                error=traceback.format_exc(),
+            )
+        raise
+
+
+@celery_app.task(queue="geo", name="geo.run_full_dem_pipeline")
+def run_full_dem_pipeline(
+    area_id: str,
+    min_basin_area_ha: float = 10.0,
+    job_id: str | None = None,
+) -> dict:
+    """Full DEM pipeline: download from GEE → terrain analysis → basin delineation.
+
+    Orchestrates three stages sequentially:
+        1. Download DEM from GEE (Copernicus GLO-30)
+        2. Run existing 10-step terrain pipeline (fill, slope, aspect, etc.)
+        3. Delineate watershed basins and store as ZonaOperativa
+
+    Args:
+        area_id: Identifier for the processing area.
+        min_basin_area_ha: Minimum basin area for filtering.
+        job_id: Pre-created GeoJob id.
+
+    Returns:
+        dict with all output paths and summary.
+    """
+    # Create job if not provided
+    if job_id is None:
+        db = _get_db()
+        try:
+            job = repo.create_job(
+                db,
+                tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+                parametros={
+                    "area_id": area_id,
+                    "min_basin_area_ha": min_basin_area_ha,
+                },
+            )
+            db.commit()
+            job_id = str(job.id)
+        finally:
+            db.close()
+
+    _update_job(job_id, estado=EstadoGeoJob.RUNNING, progreso=0)
+
+    try:
+        # ── Stage 1: Download DEM from GEE ──
+        logger.info("full_dem_pipeline.stage1_download", area_id=area_id)
+        _update_job(job_id, progreso=5)
+
+        gee_svc = _get_gee_service()
+        zona_geojson = gee_svc.zona.geometry().getInfo()
+
+        output_dir = Path(f"/data/geo/{area_id}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        dem_path = str(output_dir / "dem_raw.tif")
+
+        _get_processing().download_dem_from_gee(zona_geojson, dem_path)
+
+        _register_layer(
+            nombre=f"dem_raw_{area_id}",
+            tipo=TipoGeoLayer.DEM_RAW,
+            archivo_path=dem_path,
+            area_id=area_id,
+        )
+        _update_job(job_id, progreso=15)
+
+        # ── Stage 2: Run existing terrain pipeline ──
+        logger.info("full_dem_pipeline.stage2_terrain", area_id=area_id)
+
+        # Call the pipeline function directly (not via Celery .delay)
+        pipeline_result = process_dem_pipeline(
+            area_id=area_id,
+            dem_path=dem_path,
+            bbox=None,
+            job_id=None,  # Don't create a sub-job; we manage status ourselves
+        )
+
+        _update_job(job_id, progreso=85)
+
+        # ── Stage 3: Basin delineation ──
+        logger.info("full_dem_pipeline.stage3_basins", area_id=area_id)
+
+        flow_dir_path = pipeline_result["outputs"].get("flow_dir")
+        if not flow_dir_path:
+            raise RuntimeError("Terrain pipeline did not produce flow_dir output")
+
+        basins_raster = str(output_dir / "output" / area_id / "basins.tif")
+        basins_geojson = str(output_dir / "output" / area_id / "basins.geojson")
+
+        _get_processing().delineate_basins(
+            flow_dir_path,
+            basins_raster,
+            basins_geojson,
+            min_area_ha=min_basin_area_ha,
+        )
+
+        _register_layer(
+            nombre=f"basins_{area_id}",
+            tipo=TipoGeoLayer.BASINS,
+            archivo_path=basins_geojson,
+            area_id=area_id,
+            formato=FormatoGeoLayer.GEOJSON,
+        )
+
+        # Store basins as ZonaOperativa records
+        import json as _json
+
+        from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+        intel_repo = IntelligenceRepository()
+        zonas_created = 0
+
+        with open(basins_geojson) as f:
+            basins_data = _json.load(f)
+
+        db = _get_db()
+        try:
+            for feature in basins_data.get("features", []):
+                props = feature.get("properties", {})
+                basin_id = props.get("basin_id", 0)
+                area_ha = props.get("area_ha", 0.0)
+                geom_json = _json.dumps(feature["geometry"])
+
+                intel_repo.create_zona(
+                    db,
+                    nombre=f"basin_{area_id}_{basin_id}",
+                    geometria=f"SRID=4326;{geom_json}",
+                    cuenca="auto_delineated",
+                    superficie_ha=area_ha,
+                )
+                zonas_created += 1
+            db.commit()
+        finally:
+            db.close()
+
+        # ── Done ──
+        all_outputs = {
+            "dem_raw": dem_path,
+            "basins_raster": basins_raster,
+            "basins_geojson": basins_geojson,
+            "zonas_created": zonas_created,
+            **pipeline_result.get("outputs", {}),
+        }
+
+        _update_job(
+            job_id,
+            estado=EstadoGeoJob.COMPLETED,
+            progreso=100,
+            resultado=all_outputs,
+        )
+
+        logger.info(
+            "full_dem_pipeline.done",
+            area_id=area_id,
+            job_id=job_id,
+            zonas_created=zonas_created,
+        )
+        return {"job_id": job_id, "status": "completed", "outputs": all_outputs}
+
+    except Exception:
+        _update_job(
+            job_id,
+            estado=EstadoGeoJob.FAILED,
+            error=traceback.format_exc(),
+        )
+        logger.error("full_dem_pipeline.failed", area_id=area_id, exc_info=True)
+        raise
