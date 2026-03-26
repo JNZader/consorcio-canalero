@@ -93,7 +93,6 @@ if settings.google_oauth_client_id:
 
         authorization_url = await google_oauth_client.get_authorization_url(
             redirect_url,
-            scope=["openid", "email", "profile"],
         )
         return {"authorization_url": authorization_url}
 
