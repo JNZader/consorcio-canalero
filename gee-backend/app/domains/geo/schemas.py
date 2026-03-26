@@ -105,7 +105,7 @@ class AnalisisGeoCreate(BaseModel):
 
     tipo: str = Field(
         ...,
-        description="Analysis type: flood, vegetation, classification, ndvi, custom",
+        description="Analysis type: flood, vegetation, classification, ndvi, custom, sar_temporal",
     )
     parametros: dict[str, Any] = Field(
         default_factory=dict,
