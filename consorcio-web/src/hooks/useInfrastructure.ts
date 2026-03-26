@@ -29,15 +29,17 @@ export function useInfrastructure() {
         .catch(() => [] as InfrastructureAsset[]);
       setAssets(assetsData);
 
-      // Fetch intersections separately (requires auth, may fail)
-      try {
-        const intersectionsData = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');
-        // Validate it's actual GeoJSON before setting
-        if (intersectionsData && intersectionsData.type === 'FeatureCollection') {
-          setIntersections(intersectionsData);
+      // Fetch intersections only if authenticated (requires operator role)
+      const token = localStorage.getItem('consorcio_auth_token');
+      if (token) {
+        try {
+          const intersectionsData = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');
+          if (intersectionsData && intersectionsData.type === 'FeatureCollection') {
+            setIntersections(intersectionsData);
+          }
+        } catch {
+          // Silently skip — user may lack permissions
         }
-      } catch {
-        // Silently skip — user may not be authenticated
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando infraestructura');
