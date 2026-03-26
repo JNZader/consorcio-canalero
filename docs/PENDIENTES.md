@@ -140,8 +140,6 @@ Sentinel-1/2 series temporales para detección de inundaciones.
 ### 17. ~~Rate limiting por usuario~~ ✅ HECHO (2026-03-26)
 Autenticado → `user:{uuid}`, no autenticado → `ip:{address}`. Cambio solo en middleware.
 
-### 18. WhatsApp Bot
-Plan documentado en `docs/PLAN_WHATSAPP_BOT.md`.
 
 ### 19. ~~PWA offline~~ ✅ HECHO (2026-03-26)
 CacheFirst para estáticos/tiles, NetworkFirst para API (24h), SPA fallback offline. Manifest integrado.
