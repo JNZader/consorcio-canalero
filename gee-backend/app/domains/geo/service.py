@@ -49,8 +49,10 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
         compute_hand,
         compute_slope,
         compute_twi,
+        delineate_basins_task,
         extract_drainage_network,
         process_dem_pipeline,
+        run_full_dem_pipeline,
     )
 
     return {
@@ -65,6 +67,8 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
         TipoGeoJob.TERRAIN_CLASS: lambda p: classify_terrain.delay(**p),
         TipoGeoJob.GEE_FLOOD: lambda p: analyze_flood_task.delay(**p),
         TipoGeoJob.GEE_CLASSIFICATION: lambda p: supervised_classification_task.delay(**p),
+        TipoGeoJob.DEM_FULL_PIPELINE: lambda p: run_full_dem_pipeline.delay(**p),
+        TipoGeoJob.BASIN_DELINEATION: lambda p: delineate_basins_task.delay(**p),
     }
 
 
