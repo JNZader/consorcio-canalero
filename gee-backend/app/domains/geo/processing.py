@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
 from rasterio.features import shapes
 from rasterio.mask import mask as rasterio_mask
 from rasterio.transform import from_bounds
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, shape
 from whitebox import WhiteboxTools
 
 # ---------------------------------------------------------------------------
@@ -511,3 +512,151 @@ def classify_terrain(
         dst.write(classified, 1)
 
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# k) Download DEM from Google Earth Engine
+# ---------------------------------------------------------------------------
+
+
+def download_dem_from_gee(
+    zona_geometry: dict[str, Any],
+    output_path: str,
+    scale: int = 30,
+) -> str:
+    """Download Copernicus GLO-30 DEM from GEE, clipped to a zona geometry.
+
+    Uses ``ee.Image.getDownloadURL()`` with GeoTIFF format and ``requests``
+    to stream the file to disk.  Suitable for small-to-medium areas
+    (~30km x 30km at 30m ≈ 4 MB).
+
+    Args:
+        zona_geometry: GeoJSON geometry dict (Polygon/MultiPolygon) defining
+            the area of interest.
+        output_path: Where to write the downloaded GeoTIFF.
+        scale: Pixel resolution in meters (default 30 for GLO-30).
+
+    Returns:
+        output_path on success.
+
+    Raises:
+        RuntimeError: If GEE is not initialized or the download fails.
+    """
+    import ee
+    import requests
+
+    dem = ee.Image("COPERNICUS/DEM/GLO30/V20").select("DEM")
+    region = ee.Geometry(zona_geometry)
+    clipped = dem.clip(region)
+
+    url = clipped.getDownloadURL(
+        {
+            "format": "GEO_TIFF",
+            "scale": scale,
+            "region": region,
+            "crs": "EPSG:4326",
+        }
+    )
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    response = requests.get(url, stream=True, timeout=300)
+    response.raise_for_status()
+
+    with open(output_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# l) Delineate watershed basins
+# ---------------------------------------------------------------------------
+
+
+def delineate_basins(
+    flow_dir_path: str,
+    output_raster_path: str,
+    output_geojson_path: str,
+    min_area_ha: float = 10.0,
+) -> str:
+    """Delineate watershed basins from a D8 flow direction raster.
+
+    Steps:
+        1. Run WhiteboxTools ``basins()`` on the flow direction raster.
+        2. Vectorize the resulting basin raster using ``rasterio.features.shapes``.
+        3. Filter out micro-basins smaller than *min_area_ha* hectares.
+        4. Write the remaining polygons to a GeoJSON file.
+
+    Args:
+        flow_dir_path: Path to D8 flow direction raster (from ``compute_flow_direction``).
+        output_raster_path: Where to write the intermediate basin raster.
+        output_geojson_path: Where to write the vectorized basin polygons.
+        min_area_ha: Minimum basin area in hectares; smaller basins are discarded.
+
+    Returns:
+        output_geojson_path on success.
+    """
+    Path(output_raster_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_geojson_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Run WBT basins
+    wbt = _get_wbt()
+    wbt.basins(flow_dir_path, output_raster_path)
+
+    # 2. Vectorize
+    with rasterio.open(output_raster_path) as src:
+        basin_data = src.read(1)
+        transform = src.transform
+        crs = src.crs
+
+    features: list[dict[str, Any]] = []
+    for geom, basin_id in shapes(basin_data, transform=transform):
+        if basin_id == 0:
+            continue  # skip nodata / background
+
+        poly = shape(geom)
+        # 3. Compute area in hectares (approximate for EPSG:4326)
+        # Use a rough conversion: 1 degree lat ≈ 111_320 m
+        # For better accuracy, reproject — but this is good enough for filtering
+        centroid = poly.centroid
+        lat_rad = np.radians(centroid.y)
+        # meters per degree
+        m_per_deg_lat = 111_320.0
+        m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
+
+        bounds = poly.bounds  # (minx, miny, maxx, maxy)
+        width_m = (bounds[2] - bounds[0]) * m_per_deg_lon
+        height_m = (bounds[3] - bounds[1]) * m_per_deg_lat
+        # Use shapely area in deg^2, convert to m^2
+        area_m2 = poly.area * m_per_deg_lat * m_per_deg_lon
+        area_ha = area_m2 / 10_000.0
+
+        if area_ha < min_area_ha:
+            continue
+
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "basin_id": int(basin_id),
+                    "area_ha": round(area_ha, 2),
+                },
+            }
+        )
+
+    geojson = {
+        "type": "FeatureCollection",
+        "crs": {
+            "type": "name",
+            "properties": {"name": str(crs) if crs else "EPSG:4326"},
+        },
+        "features": features,
+    }
+
+    with open(output_geojson_path, "w") as f:
+        json.dump(geojson, f)
+
+    return output_geojson_path
