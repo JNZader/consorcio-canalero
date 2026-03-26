@@ -415,6 +415,7 @@ def submit_gee_analysis(
 
     from app.domains.geo.gee_tasks import (
         analyze_flood_task,
+        sar_temporal_task,
         supervised_classification_task,
     )
     from app.domains.geo.models import TipoAnalisisGee
@@ -442,7 +443,18 @@ def submit_gee_analysis(
     end_date = payload.parametros.get("end_date", _date.today().isoformat())
     method = payload.parametros.get("method", "fusion")
 
-    if payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
+    if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
+        # Validate date range for SAR temporal
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=422,
+                detail="start_date debe ser anterior a end_date",
+            )
+        scale = payload.parametros.get("scale", 100)
+        task = sar_temporal_task.delay(
+            start_date, end_date, scale, analisis_id=str(analisis.id)
+        )
+    elif payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
         task = analyze_flood_task.delay(
             start_date, end_date, method, analisis_id=str(analisis.id)
         )
