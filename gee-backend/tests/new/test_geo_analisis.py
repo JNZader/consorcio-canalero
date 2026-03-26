@@ -62,7 +62,7 @@ class TestAnalisisGeoModel:
         assert TipoAnalisisGee.CLASSIFICATION.value == "classification"
 
     def test_all_tipo_analisis_values(self):
-        expected = {"flood", "vegetation", "classification", "ndvi", "custom"}
+        expected = {"flood", "vegetation", "classification", "ndvi", "custom", "sar_temporal"}
         actual = {e.value for e in TipoAnalisisGee}
         assert expected == actual
 
