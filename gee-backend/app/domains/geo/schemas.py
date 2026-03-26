@@ -151,3 +151,33 @@ class AnalisisGeoListResponse(BaseModel):
     fecha_analisis: date
     estado: str
     created_at: datetime
+
+
+# ──────────────────────────────────────────────
+# DEM PIPELINE SCHEMAS
+# ──────────────────────────────────────────────
+
+
+class DemPipelineRequest(BaseModel):
+    """Payload to trigger the full DEM pipeline (download + process + basins)."""
+
+    area_id: str = Field(
+        default="zona_principal",
+        description="Identifier for the processing area",
+    )
+    min_basin_area_ha: float = Field(
+        default=10.0,
+        ge=0.0,
+        description="Minimum basin area in hectares (basins below this are filtered out)",
+    )
+
+
+class DemPipelineResponse(BaseModel):
+    """Response after triggering a DEM pipeline job."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: uuid.UUID
+    tipo: str
+    estado: str
+    message: str = "Pipeline DEM iniciado correctamente"
