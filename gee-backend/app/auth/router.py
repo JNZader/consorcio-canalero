@@ -75,6 +75,8 @@ if settings.google_oauth_client_id:
     # ── Custom OAuth endpoints (authorize + callback) ──
     # We don't use fastapi-users' get_oauth_router because BearerTransport
     # returns JSON on callback — but the browser needs a redirect to the frontend.
+    from jose import jwt as jose_jwt
+
     from app.auth.dependencies import get_jwt_strategy
     from app.auth.models import User, UserRole
     from app.db.session import get_async_db
@@ -93,6 +95,7 @@ if settings.google_oauth_client_id:
 
         authorization_url = await google_oauth_client.get_authorization_url(
             redirect_url,
+            scope=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"],
         )
         return {"authorization_url": authorization_url}
 
@@ -130,10 +133,17 @@ if settings.google_oauth_client_id:
             # Exchange authorization code for Google access token
             oauth_token = await google_oauth_client.get_access_token(code, redirect_url)
 
-            # Get user identity from Google
-            account_id, account_email = await google_oauth_client.get_id_email(
-                oauth_token["access_token"]
-            )
+            # Decode the id_token to get user info (no People API needed)
+            id_token = oauth_token.get("id_token")
+            if not id_token:
+                return RedirectResponse(
+                    url=f"{frontend_callback}?{urlencode({'error': 'no_id_token', 'error_description': 'Google did not return an id_token'})}"
+                )
+
+            # Decode without verification — we already trust Google's token endpoint
+            id_info = jose_jwt.get_unverified_claims(id_token)
+            account_email = id_info.get("email")
+            account_id = id_info.get("sub")
 
             if not account_email:
                 return RedirectResponse(
