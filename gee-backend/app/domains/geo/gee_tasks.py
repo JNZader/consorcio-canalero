@@ -15,8 +15,10 @@ Each task:
 
 from __future__ import annotations
 
+import math
 import traceback
 import uuid
+from typing import Any
 
 from celery.utils.log import get_task_logger
 
@@ -411,6 +413,169 @@ def supervised_classification_task(
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
         logger.error("supervised_classification_task.failed", error=str(exc))
+
+        if analisis_id:
+            try:
+                repo.update_analisis_status(
+                    db,
+                    uuid.UUID(analisis_id),
+                    estado=Estado.FAILED,
+                    error=error_msg[:2000],
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        raise
+    finally:
+        db.close()
+
+
+# ── Pure function: anomaly detection ──────────────────────
+
+
+def detect_vv_anomalies(
+    dates: list[str],
+    vv_values: list[float],
+    sigma: float = 2.0,
+) -> dict[str, Any]:
+    """Detect anomalies in a VV backscatter time series.
+
+    An anomaly is a date where VV drops below baseline - sigma * std,
+    indicating potential waterlogging (lower VV = smoother/wetter surface).
+
+    Args:
+        dates: ISO date strings, same length as vv_values.
+        vv_values: Mean VV backscatter values (dB).
+        sigma: Number of standard deviations for threshold (default 2.0).
+
+    Returns:
+        Dict with baseline, std, threshold, and anomalies list.
+    """
+    if not vv_values:
+        return {
+            "baseline": None,
+            "std": None,
+            "threshold": None,
+            "anomalies": [],
+        }
+
+    n = len(vv_values)
+    baseline = sum(vv_values) / n
+    variance = sum((v - baseline) ** 2 for v in vv_values) / n
+    std = math.sqrt(variance)
+    threshold = baseline - sigma * std
+
+    anomalies = [
+        {"date": dates[i], "vv": round(vv_values[i], 4)}
+        for i in range(n)
+        if vv_values[i] < threshold
+    ]
+
+    return {
+        "baseline": round(baseline, 4),
+        "std": round(std, 4),
+        "threshold": round(threshold, 4),
+        "anomalies": anomalies,
+    }
+
+
+# ── Celery task: SAR temporal analysis ───────────────────
+
+
+@celery_app.task(name="gee.sar_temporal", bind=True)
+def sar_temporal_task(
+    self,
+    start_date_str: str,
+    end_date_str: str,
+    scale: int = 100,
+    analisis_id: str | None = None,
+):
+    """
+    SAR temporal analysis: VV backscatter time series + anomaly detection.
+
+    Computes mean VV per Sentinel-1 image over the zona geometry,
+    then flags dates where VV drops below baseline - 2*std.
+
+    Args:
+        start_date_str: Analysis start date (ISO format).
+        end_date_str: Analysis end date (ISO format).
+        scale: Pixel scale in meters for reduceRegion (default 100).
+        analisis_id: Optional AnalisisGeo record ID for status tracking.
+    """
+    deps = _get_deps()
+    db = deps["SessionLocal"]()
+    repo = deps["repo"]
+    Estado = deps["EstadoGeoJob"]
+
+    # Mark as running
+    if analisis_id:
+        repo.update_analisis_status(
+            db, uuid.UUID(analisis_id), estado=Estado.RUNNING
+        )
+        db.commit()
+
+    try:
+        from datetime import date
+
+        start_date = date.fromisoformat(start_date_str)
+        end_date = date.fromisoformat(end_date_str)
+
+        gee = _get_gee()
+        explorer = gee["explorer"]
+
+        # Step 1: Generate time series via GEE
+        time_series = explorer.get_sar_time_series(
+            start_date=start_date,
+            end_date=end_date,
+            scale=scale,
+        )
+
+        # Step 2: Detect anomalies
+        anomaly_result = detect_vv_anomalies(
+            dates=time_series["dates"],
+            vv_values=time_series["vv_mean"],
+        )
+
+        # Step 3: Build resultado
+        resultado = {
+            "dates": time_series["dates"],
+            "vv_mean": time_series["vv_mean"],
+            "image_count": time_series["image_count"],
+            "baseline": anomaly_result["baseline"],
+            "std": anomaly_result["std"],
+            "threshold": anomaly_result["threshold"],
+            "anomalies": anomaly_result["anomalies"],
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "scale_m": scale,
+            "status": "completed",
+        }
+
+        # Include warning if no images found
+        if "warning" in time_series:
+            resultado["warning"] = time_series["warning"]
+
+        # Persist results
+        if analisis_id:
+            repo.update_analisis_status(
+                db,
+                uuid.UUID(analisis_id),
+                estado=Estado.COMPLETED,
+                resultado=resultado,
+            )
+            db.commit()
+
+        logger.info(
+            "sar_temporal_task.completed",
+            analisis_id=analisis_id,
+            image_count=time_series["image_count"],
+        )
+        return resultado
+
+    except Exception as exc:
+        error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        logger.error("sar_temporal_task.failed", error=str(exc))
 
         if analisis_id:
             try:
