@@ -267,27 +267,41 @@ function AuthCallbackPage() {
         }
 
         if (token) {
-          // Store the token and fetch user profile
-          logger.debug('[AUTH CALLBACK] Got token, storing and fetching profile...');
+          // Store the token and fetch user profile from /users/me
+          logger.debug('[AUTH CALLBACK] Got token, fetching user profile...');
           localStorage.setItem('consorcio_auth_token', token);
 
-          // Fetch user profile to populate the store
-          const session = await authAdapter.getSession();
+          const API_URL = import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
+          const profileRes = await fetch(`${API_URL}/api/v2/users/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-          if (session?.user) {
-            logger.debug('[AUTH CALLBACK] Session established:', { role: session.user.role });
+          if (profileRes.ok) {
+            const userData = await profileRes.json();
+            const user = {
+              id: userData.id,
+              email: userData.email,
+              nombre: userData.nombre || '',
+              apellido: userData.apellido || '',
+              role: userData.role || 'ciudadano',
+            };
+            localStorage.setItem('consorcio_auth_user', JSON.stringify(user));
+            logger.debug('[AUTH CALLBACK] Profile saved:', { role: user.role });
 
-            // Re-initialize auth store with the new session
+            // Re-initialize auth store
             const store = useAuthStore.getState();
             store.reset();
             await store.initialize();
 
-            const role = session.user.role;
-            if (role === 'admin' || role === 'operador') {
+            if (user.role === 'admin' || user.role === 'operador') {
               window.location.href = withBasePath('/admin');
             } else {
               window.location.href = withBasePath('/');
             }
+            return;
+          } else {
+            logger.error('[AUTH CALLBACK] Failed to fetch profile:', profileRes.status);
+            setError(`Error al obtener perfil: ${profileRes.status}`);
             return;
           }
         }
