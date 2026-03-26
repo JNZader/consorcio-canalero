@@ -1,13 +1,19 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { isValidImageComparisonMock, loggerMock } = vi.hoisted(() => ({
+const { isValidImageComparisonMock, loggerMock, mapImageApiMock } = vi.hoisted(() => ({
   isValidImageComparisonMock: vi.fn(),
   loggerMock: {
     error: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
+  },
+  mapImageApiMock: {
+    getImageParams: vi.fn().mockResolvedValue({ imagen_principal: null, imagen_comparacion: null }),
+    saveImagenPrincipal: vi.fn().mockResolvedValue({}),
+    saveImagenComparacion: vi.fn().mockResolvedValue({}),
+    regenerateTile: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -17,6 +23,10 @@ vi.mock('../../src/lib/typeGuards', () => ({
 
 vi.mock('../../src/lib/logger', () => ({
   logger: loggerMock,
+}));
+
+vi.mock('../../src/lib/api/mapImage', () => ({
+  mapImageApi: mapImageApiMock,
 }));
 
 import { useImageComparison, useImageComparisonListener } from '../../src/hooks/useImageComparison';
