@@ -1,9 +1,17 @@
 /**
  * Hook for managing selected satellite image across all map views.
- * Uses localStorage to persist the selection between page navigations.
+ *
+ * Persistence strategy (dual):
+ * 1. localStorage — fast, per-browser, used as primary cache
+ * 2. Backend (system_settings) — stores PARAMETERS only (not tile URLs)
+ *    so any browser can regenerate the tile from GEE on page load
+ *
+ * GEE tile URLs are TEMPORARY and expire. The backend stores the params
+ * (sensor, date, visualization, etc.) and we regenerate the tile on load.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { mapImageApi, type ImagenMapaParams } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
 import { isValidSelectedImage } from '../lib/typeGuards';
 
@@ -27,8 +35,48 @@ export interface SelectedImage {
 }
 
 /**
+ * Extract the backend-persistable params from a SelectedImage.
+ * We only store what's needed to regenerate the tile — NOT the tile URL itself.
+ */
+function toBackendParams(image: SelectedImage): ImagenMapaParams {
+  return {
+    sensor: image.sensor,
+    target_date: image.target_date,
+    visualization: image.visualization,
+    max_cloud: null, // Not stored in SelectedImage; backend uses default
+    days_buffer: 10, // Default; the exact buffer used during search
+  };
+}
+
+/**
+ * Persist image params to backend (fire-and-forget).
+ * Failures are logged but do NOT block the UI.
+ */
+function persistToBackend(image: SelectedImage | null): void {
+  if (image) {
+    mapImageApi.saveImagenPrincipal(toBackendParams(image)).catch((err) => {
+      logger.warn('Failed to persist image params to backend:', err);
+    });
+  } else {
+    // Save null to clear the backend setting
+    mapImageApi
+      .saveImagenPrincipal({
+        sensor: '',
+        target_date: '',
+        visualization: '',
+        max_cloud: null,
+        days_buffer: 10,
+      })
+      .catch(() => {
+        // Silently ignore — clearing is best-effort
+      });
+  }
+}
+
+/**
  * Hook to get and set the currently selected satellite image.
  * The image is stored in localStorage so it persists across page navigations.
+ * Additionally persists params to the backend for cross-browser/device sync.
  */
 export function useSelectedImage() {
   const [selectedImage, setSelectedImageState] = useState<SelectedImage | null>(null);
@@ -91,9 +139,11 @@ export function useSelectedImage() {
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(imageWithTimestamp));
       setSelectedImageState(imageWithTimestamp);
+      persistToBackend(imageWithTimestamp);
     } else {
       localStorage.removeItem(STORAGE_KEY);
       setSelectedImageState(null);
+      persistToBackend(null);
     }
 
     // Dispatch custom event for same-tab updates
@@ -104,6 +154,7 @@ export function useSelectedImage() {
   const clearSelectedImage = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setSelectedImageState(null);
+    persistToBackend(null);
     window.dispatchEvent(new CustomEvent('selectedImageChange', { detail: null }));
   }, []);
 
@@ -122,24 +173,49 @@ export function useSelectedImage() {
 /**
  * Hook to listen for selected image changes without ability to modify.
  * Useful for map components that just need to display the layer.
+ *
+ * If localStorage is empty on mount, attempts to fetch saved params from
+ * the backend and regenerate the tile URL from GEE.
  */
 export function useSelectedImageListener() {
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
+  const fetchedFromBackend = useRef(false);
 
   useEffect(() => {
     // Load initial value with validation
+    let hasLocal = false;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (isValidSelectedImage(parsed)) {
           setSelectedImage(parsed as SelectedImage);
+          hasLocal = true;
         } else {
           localStorage.removeItem(STORAGE_KEY);
         }
       }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
+    }
+
+    // If no local image, try fetching from backend
+    if (!hasLocal && !fetchedFromBackend.current) {
+      fetchedFromBackend.current = true;
+      restoreFromBackend()
+        .then((restored) => {
+          if (restored) {
+            setSelectedImage(restored);
+            // Also cache in localStorage for fast future loads
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+            window.dispatchEvent(
+              new CustomEvent('selectedImageChange', { detail: restored })
+            );
+          }
+        })
+        .catch((err) => {
+          logger.warn('Failed to restore image from backend:', err);
+        });
     }
 
     // Listen for custom events (same tab)
@@ -180,6 +256,38 @@ export function useSelectedImageListener() {
   }, []);
 
   return selectedImage;
+}
+
+/**
+ * Fetch saved params from backend and regenerate a fresh tile URL from GEE.
+ * Returns a full SelectedImage or null if nothing is saved / regeneration fails.
+ */
+async function restoreFromBackend(): Promise<SelectedImage | null> {
+  try {
+    const response = await mapImageApi.getImageParams();
+    const params = response.imagen_principal;
+
+    if (!params || !params.sensor || !params.target_date) {
+      return null;
+    }
+
+    // Regenerate the tile URL by calling the GEE imagery endpoint
+    const result = await mapImageApi.regenerateTile(params);
+
+    return {
+      tile_url: result.tile_url,
+      target_date: result.target_date,
+      sensor: result.sensor as 'Sentinel-1' | 'Sentinel-2',
+      visualization: result.visualization,
+      visualization_description: result.visualization_description,
+      collection: result.collection,
+      images_count: result.images_count,
+      selected_at: new Date().toISOString(),
+    };
+  } catch (err) {
+    logger.warn('Could not restore image from backend:', err);
+    return null;
+  }
 }
 
 /**

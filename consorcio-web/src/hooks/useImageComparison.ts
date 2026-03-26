@@ -4,6 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { mapImageApi } from '../lib/api/mapImage';
+import { logger } from '../lib/logger';
 import { isValidImageComparison } from '../lib/typeGuards';
 import type { SelectedImage } from './useSelectedImage';
 
@@ -13,6 +15,35 @@ export interface ImageComparison {
   left: SelectedImage;
   right: SelectedImage;
   enabled: boolean;
+}
+
+/**
+ * Persist comparison params to backend (fire-and-forget).
+ */
+function persistComparisonToBackend(comparison: ImageComparison | null): void {
+  const payload = comparison
+    ? {
+        enabled: comparison.enabled,
+        left: {
+          sensor: comparison.left.sensor,
+          target_date: comparison.left.target_date,
+          visualization: comparison.left.visualization,
+          max_cloud: null,
+          days_buffer: 10,
+        },
+        right: {
+          sensor: comparison.right.sensor,
+          target_date: comparison.right.target_date,
+          visualization: comparison.right.visualization,
+          max_cloud: null,
+          days_buffer: 10,
+        },
+      }
+    : { enabled: false, left: null, right: null };
+
+  mapImageApi.saveImagenComparacion(payload).catch((err) => {
+    logger.warn('Failed to persist comparison params to backend:', err);
+  });
 }
 
 /**
@@ -53,6 +84,7 @@ export function useImageComparison() {
         enabled: prev?.enabled ?? true,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newComparison));
+      persistComparisonToBackend(newComparison);
       window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: newComparison }));
       return newComparison;
     });
@@ -67,6 +99,7 @@ export function useImageComparison() {
         enabled: prev?.enabled ?? true,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newComparison));
+      persistComparisonToBackend(newComparison);
       window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: newComparison }));
       return newComparison;
     });
@@ -87,6 +120,7 @@ export function useImageComparison() {
   const clearComparison = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setComparisonState(null);
+    persistComparisonToBackend(null);
     window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: null }));
   }, []);
 
