@@ -508,13 +508,13 @@ export default function MapaLeaflet() {
   // Auto-switch to best available mode when options change
   // biome-ignore lint/correctness/useExhaustiveDependencies: only trigger on availability changes
   useEffect(() => {
-    // If comparison becomes available and we're on base, switch to comparison
-    if (isComparisonAvailable && viewMode === 'base') {
-      setViewMode('comparison');
-    }
-    // If single image becomes available and we're on base (and no comparison), switch to single
-    else if (selectedImage && viewMode === 'base' && !isComparisonAvailable) {
+    // If single image becomes available and we're on base, switch to single (preferred default)
+    if (selectedImage && viewMode === 'base') {
       setViewMode('single');
+    }
+    // If comparison becomes available and we're on base (and no single image), switch to comparison
+    else if (isComparisonAvailable && viewMode === 'base' && !selectedImage) {
+      setViewMode('comparison');
     }
     // If current mode is no longer available, switch to best available
     else if (viewMode === 'comparison' && !isComparisonAvailable) {
