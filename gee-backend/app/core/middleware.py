@@ -1,9 +1,11 @@
 """Application middleware — rate limiting, security, CSRF, logging."""
 
 import time
+from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
@@ -11,6 +13,29 @@ from app.core.logging import get_logger
 from app.core.rate_limit import DistributedRateLimiter
 
 logger = get_logger(__name__)
+
+
+def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
+    """Extract user ID from a Bearer JWT token without hitting the database.
+
+    Returns the ``sub`` claim (user UUID) on success, or ``None`` if the header
+    is missing, malformed, or the token is invalid/expired.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization[len("Bearer "):]
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_exp": True},
+        )
+        user_id: Optional[str] = payload.get("sub")
+        return user_id if user_id else None
+    except JWTError:
+        return None
 
 
 class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
@@ -24,12 +49,17 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/", "/health"]:
             return await call_next(request)
 
+        # Prefer per-user rate limiting when authenticated; fall back to IP.
         client_ip = request.client.host if request.client else "unknown"
-        allowed, remaining, reset_time = await self.rate_limiter.check(client_ip)
+        user_id = _extract_user_id_from_token(request.headers.get("authorization"))
+        rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
+
+        allowed, remaining, reset_time = await self.rate_limiter.check(rate_limit_key)
 
         if not allowed:
             logger.warning(
                 "Rate limit exceeded",
+                rate_limit_key=rate_limit_key,
                 client_ip=client_ip,
                 path=request.url.path,
             )
