@@ -1,42 +1,31 @@
 # ==============================================
-# Celery Worker + Beat - Reuses production build
+# Celery Worker + Beat - GDAL + geo deps
 # ==============================================
 
-FROM python:3.11-slim AS build
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+# Install Python pip and build essentials
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install ALL dependencies (backend + geo)
+COPY requirements.txt requirements-geo.txt ./
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt -r requirements-geo.txt
 
-# --- Worker stage ---
-FROM python:3.11-slim
-
-WORKDIR /app
-
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-
-COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=build /usr/local/bin /usr/local/bin
-
-RUN addgroup --system app && adduser --system --ingroup app app
+# Copy application code
+COPY app/ ./app/
+COPY alembic.ini ./
 
 # Create data directory for geo processing outputs
-RUN mkdir -p /data/geo && chown -R app:app /data
-
-COPY app/ ./app/
-
-RUN chown -R app:app /app
-
-USER app
+RUN mkdir -p /data/geo
 
 # No EXPOSE, no HEALTHCHECK — worker has no HTTP
 
