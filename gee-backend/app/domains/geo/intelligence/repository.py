@@ -73,6 +73,84 @@ class IntelligenceRepository:
         db.flush()
         return zona
 
+    def get_zonas_as_geojson(
+        self,
+        db: Session,
+        *,
+        bbox: tuple[float, float, float, float] | None = None,
+        tolerance: float = 0.001,
+        limit: int = 500,
+        cuenca_filter: str | None = None,
+    ) -> dict:
+        """Return ZonaOperativa records as a GeoJSON FeatureCollection.
+
+        Uses PostGIS ``ST_AsGeoJSON(ST_Simplify(...))`` so geometry
+        simplification and serialisation happen entirely in the database.
+
+        Args:
+            db: Database session.
+            bbox: Optional (minx, miny, maxx, maxy) bounding box filter.
+            tolerance: Simplification tolerance in degrees (default ~100 m).
+            limit: Maximum number of features returned.
+            cuenca_filter: Optional watershed name filter.
+
+        Returns:
+            A GeoJSON FeatureCollection dict.
+        """
+        geojson_col = func.ST_AsGeoJSON(
+            func.ST_Simplify(ZonaOperativa.geometria, tolerance)
+        ).label("geojson")
+
+        stmt = select(
+            ZonaOperativa.id,
+            ZonaOperativa.nombre,
+            ZonaOperativa.cuenca,
+            ZonaOperativa.superficie_ha,
+            geojson_col,
+        )
+
+        if cuenca_filter:
+            stmt = stmt.where(ZonaOperativa.cuenca == cuenca_filter)
+
+        if bbox is not None:
+            minx, miny, maxx, maxy = bbox
+            envelope = func.ST_MakeEnvelope(minx, miny, maxx, maxy, 4326)
+            stmt = stmt.where(
+                func.ST_Intersects(ZonaOperativa.geometria, envelope)
+            )
+
+        stmt = stmt.order_by(ZonaOperativa.nombre).limit(limit)
+
+        rows = db.execute(stmt).all()
+
+        import json as _json
+
+        features = []
+        for row in rows:
+            geometry = _json.loads(row.geojson) if row.geojson else None
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geometry,
+                    "properties": {
+                        "id": str(row.id),
+                        "nombre": row.nombre,
+                        "cuenca": row.cuenca,
+                        "superficie_ha": row.superficie_ha,
+                    },
+                }
+            )
+
+        return {
+            "type": "FeatureCollection",
+            "features": features,
+            "metadata": {
+                "total": len(features),
+                "tolerance": tolerance,
+                "bbox": list(bbox) if bbox else None,
+            },
+        }
+
     def get_zonas_criticas(
         self, db: Session, nivel_riesgo_min: str = "alto"
     ) -> list[ZonaOperativa]:
