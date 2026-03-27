@@ -166,7 +166,7 @@ class DemPipelineRequest(BaseModel):
         description="Identifier for the processing area",
     )
     min_basin_area_ha: float = Field(
-        default=10.0,
+        default=10000.0,
         ge=0.0,
         description="Minimum basin area in hectares (basins below this are filtered out)",
     )

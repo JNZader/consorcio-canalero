@@ -68,7 +68,7 @@ export default function DemPipelinePanel() {
     fetchBasins,
   } = useDemPipeline();
 
-  const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(10);
+  const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(10000);
 
   // On mount, try to fetch existing layers and basins
   useEffect(() => {
@@ -80,6 +80,7 @@ export default function DemPipelinePanel() {
     submit(undefined, minBasinAreaHa);
   }, [submit, minBasinAreaHa]);
 
+  const demRawLayer = layers.find((l) => l.tipo === 'dem_raw');
   const drainageLayers = layers.filter((l) => l.tipo === 'drainage');
   const drainageGeoJson = drainageLayers.length > 0 ? undefined : undefined;
 
@@ -125,11 +126,11 @@ export default function DemPipelinePanel() {
                 description="Cuencas menores a este valor se descartan"
                 value={minBasinAreaHa}
                 onChange={(val) =>
-                  setMinBasinAreaHa(typeof val === 'number' ? val : 10)
+                  setMinBasinAreaHa(typeof val === 'number' ? val : 10000)
                 }
-                min={1}
-                max={1000}
-                step={5}
+                min={1000}
+                max={50000}
+                step={1000}
                 w={260}
               />
             </Group>
@@ -196,6 +197,7 @@ export default function DemPipelinePanel() {
               }
             >
               <TerrainViewer3D
+                demLayerId={demRawLayer?.id}
                 height={500}
               />
             </Suspense>
