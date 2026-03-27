@@ -128,7 +128,7 @@ class GEEService:
             Dict with download_url, scale, and crs.
         """
         region = geometry or self.zona.geometry()
-        dem = ee.Image("COPERNICUS/DEM/GLO30/V1").select("DEM")
+        dem = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").mosaic()
         clipped = dem.clip(region)
 
         url = clipped.getDownloadURL(
@@ -144,7 +144,7 @@ class GEEService:
             "download_url": url,
             "scale": scale,
             "crs": "EPSG:4326",
-            "image": "COPERNICUS/DEM/GLO30/V1",
+            "image": "COPERNICUS/DEM/GLO30",
         }
 
     def get_sentinel2_tiles(

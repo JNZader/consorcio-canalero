@@ -545,7 +545,8 @@ def download_dem_from_gee(
     import ee
     import requests
 
-    dem = ee.Image("COPERNICUS/DEM/GLO30/V1").select("DEM")
+    # Copernicus DEM is an ImageCollection (tiles), not a single Image
+    dem = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").mosaic()
     region = ee.Geometry(zona_geometry)
     clipped = dem.clip(region)
 
