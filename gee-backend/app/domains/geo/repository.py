@@ -170,6 +170,15 @@ class GeoRepository:
         db.flush()
         return layer
 
+    def delete_layers_by_area_id(self, db: Session, area_id: str) -> int:
+        """Delete all GeoLayer records for a given area_id. Returns count deleted."""
+        from sqlalchemy import delete
+
+        stmt = delete(GeoLayer).where(GeoLayer.area_id == area_id)
+        result = db.execute(stmt)
+        db.flush()
+        return result.rowcount
+
     # ── ANALISIS GEO READ ─────────────────────────
 
     def get_analisis_by_id(

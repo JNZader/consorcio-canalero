@@ -73,6 +73,15 @@ class IntelligenceRepository:
         db.flush()
         return zona
 
+    def delete_zonas_by_cuenca(self, db: Session, cuenca: str) -> int:
+        """Delete all ZonaOperativa records for a given cuenca. Returns count deleted."""
+        from sqlalchemy import delete
+
+        stmt = delete(ZonaOperativa).where(ZonaOperativa.cuenca == cuenca)
+        result = db.execute(stmt)
+        db.flush()
+        return result.rowcount
+
     def get_zonas_as_geojson(
         self,
         db: Session,

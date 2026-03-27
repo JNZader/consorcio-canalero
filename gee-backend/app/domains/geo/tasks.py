@@ -585,7 +585,7 @@ def download_dem_from_gee_task(
 def delineate_basins_task(
     area_id: str,
     flow_dir_path: str,
-    min_area_ha: float = 10.0,
+    min_area_ha: float = 10000.0,
     job_id: str | None = None,
     store_zonas: bool = True,
 ) -> dict:
@@ -680,7 +680,7 @@ def delineate_basins_task(
 @celery_app.task(queue="geo", name="geo.run_full_dem_pipeline")
 def run_full_dem_pipeline(
     area_id: str,
-    min_basin_area_ha: float = 10.0,
+    min_basin_area_ha: float = 10000.0,
     job_id: str | None = None,
 ) -> dict:
     """Full DEM pipeline: download from GEE → terrain analysis → basin delineation.
@@ -716,6 +716,39 @@ def run_full_dem_pipeline(
             db.close()
 
     _update_job(job_id, estado=EstadoGeoJob.RUNNING, progreso=0)
+
+    # ── Cleanup previous run artifacts ──
+    logger.info("full_dem_pipeline.cleanup_start", area_id=area_id)
+    db = _get_db()
+    try:
+        from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+        intel_repo = IntelligenceRepository()
+
+        layers_deleted = repo.delete_layers_by_area_id(db, area_id)
+        zonas_deleted = intel_repo.delete_zonas_by_cuenca(db, "auto_delineated")
+        db.commit()
+
+        logger.info(
+            "full_dem_pipeline.cleanup_done",
+            area_id=area_id,
+            layers_deleted=layers_deleted,
+            zonas_deleted=zonas_deleted,
+        )
+    finally:
+        db.close()
+
+    # Clean output directory contents (not the directory itself)
+    output_dir = Path(f"/data/geo/{area_id}/output")
+    if output_dir.exists():
+        import shutil
+
+        for child in output_dir.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        logger.info("full_dem_pipeline.output_dir_cleaned", path=str(output_dir))
 
     try:
         # ── Stage 1: Download DEM from GEE ──
