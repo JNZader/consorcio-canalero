@@ -1,15 +1,15 @@
 /**
- * TerrainViewer3D - 3D terrain visualization using deck.gl.
+ * TerrainViewer3D - 3D terrain visualization using deck.gl TerrainLayer.
  *
- * Renders DEM elevation data as a terrain mesh with color gradient
- * (green for low elevation, brown/white for high) and optional
- * drainage network overlay.
+ * Renders terrain-RGB elevation tiles as a 3D mesh with optional colorized
+ * texture overlay. Uses high vertical exaggeration (default 15x) because
+ * Bell Ville terrain is very flat (elevation ~80-120m).
  *
- * Uses deck.gl's BitmapLayer + SimpleMeshLayer for terrain rendering
- * with vertical exaggeration suitable for flat terrain (5x-10x).
+ * deck.gl TerrainLayer decodes Mapbox Terrain-RGB tiles natively:
+ *   elevation = (R * 65536 + G * 256 + B) * 0.1 - 10000
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -22,30 +22,38 @@ import {
   Title,
 } from '@mantine/core';
 import { IconAlertTriangle } from '../ui/icons';
+import { API_URL } from '../../lib/api';
 
-// Lazy-load deck.gl to avoid bundling when not used
+// Lazy-loaded deck.gl modules
 let DeckGL: any = null;
-let BitmapLayer: any = null;
-let GeoJsonLayer: any = null;
+let TerrainLayer: any = null;
 
 async function loadDeckGL() {
   if (DeckGL) return;
-  const [deckMod, layersMod] = await Promise.all([
+  const [deckMod, geoLayersMod] = await Promise.all([
     import('@deck.gl/react'),
-    import('@deck.gl/layers'),
+    import('@deck.gl/geo-layers'),
   ]);
   DeckGL = deckMod.default || deckMod.DeckGL;
-  BitmapLayer = layersMod.BitmapLayer;
-  GeoJsonLayer = layersMod.GeoJsonLayer;
+  TerrainLayer = geoLayersMod.TerrainLayer;
 }
 
+/**
+ * Mapbox Terrain-RGB elevation decoder values.
+ * elevation = R * 6553.6 + G * 25.6 + B * 0.1 - 10000
+ */
+const TERRAIN_RGB_DECODER = {
+  rScaler: 6553.6,
+  gScaler: 25.6,
+  bScaler: 0.1,
+  offset: -10000,
+} as const;
+
 interface TerrainViewer3DProps {
-  /** URL to fetch the DEM GeoTIFF (GET /geo/layers/{id}/file) */
-  readonly demUrl?: string;
-  /** GeoJSON data for drainage network overlay */
-  readonly drainageGeoJson?: Record<string, unknown> | null;
-  /** GeoJSON data for basin polygons overlay */
-  readonly basinsGeoJson?: Record<string, unknown> | null;
+  /** UUID of the DEM layer for terrain-RGB tiles */
+  readonly demLayerId?: string;
+  /** UUID of a layer to use as texture (colorized tiles draped on terrain) */
+  readonly textureLayerId?: string;
   /** Center coordinates [longitude, latitude] */
   readonly center?: [number, number];
   /** Initial zoom level */
@@ -56,32 +64,35 @@ interface TerrainViewer3DProps {
 
 // Default center: Bell Ville, Cordoba, Argentina
 const DEFAULT_CENTER: [number, number] = [-62.69, -32.63];
-const DEFAULT_ZOOM = 11;
+const DEFAULT_ZOOM = 12;
+
+// Vertical exaggeration range for flat terrain
+const MIN_EXAGGERATION = 1;
+const MAX_EXAGGERATION = 30;
+const DEFAULT_EXAGGERATION = 15;
 
 /**
- * Color scale for terrain: green (low) -> yellow -> brown -> white (high)
+ * Build a tile URL template for the backend tile proxy.
+ * Uses {x}, {y}, {z} placeholders that deck.gl replaces per tile.
  */
-const ELEVATION_COLORS: [number, number, number, number][] = [
-  [34, 139, 34, 200],   // forest green (low)
-  [144, 238, 144, 200], // light green
-  [255, 255, 102, 200], // yellow
-  [210, 180, 140, 200], // tan/brown
-  [139, 90, 43, 200],   // saddle brown
-  [255, 255, 255, 200], // white (high)
-];
+function buildTerrainTileUrl(layerId: string, encoding?: string): string {
+  const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
+  if (encoding) {
+    return `${base}?encoding=${encodeURIComponent(encoding)}`;
+  }
+  return base;
+}
 
 export default function TerrainViewer3D({
-  demUrl,
-  drainageGeoJson,
-  basinsGeoJson,
+  demLayerId,
+  textureLayerId,
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
   height = 500,
 }: TerrainViewer3DProps) {
   const [deckLoaded, setDeckLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [exaggeration, setExaggeration] = useState(8);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
 
   // Load deck.gl lazily
   useEffect(() => {
@@ -106,60 +117,40 @@ export default function TerrainViewer3D({
     [center, zoom],
   );
 
+  /**
+   * Apply vertical exaggeration by scaling the elevation decoder.
+   * Multiplying rScaler/gScaler/bScaler by N effectively scales
+   * all decoded elevation values by N.
+   */
+  const elevationDecoder = useMemo(
+    () => ({
+      rScaler: TERRAIN_RGB_DECODER.rScaler * exaggeration,
+      gScaler: TERRAIN_RGB_DECODER.gScaler * exaggeration,
+      bScaler: TERRAIN_RGB_DECODER.bScaler * exaggeration,
+      offset: TERRAIN_RGB_DECODER.offset * exaggeration,
+    }),
+    [exaggeration],
+  );
+
   const layers = useMemo(() => {
-    if (!deckLoaded || !GeoJsonLayer) return [];
+    if (!deckLoaded || !TerrainLayer || !demLayerId) return [];
 
-    const result: unknown[] = [];
-
-    // Basin polygons layer
-    if (basinsGeoJson) {
-      result.push(
-        new GeoJsonLayer({
-          id: 'basins-layer',
-          data: basinsGeoJson,
-          filled: true,
-          stroked: true,
-          getFillColor: [100, 150, 255, 80],
-          getLineColor: [30, 80, 200, 200],
-          getLineWidth: 2,
-          lineWidthMinPixels: 1,
-          pickable: true,
-          autoHighlight: true,
-          highlightColor: [100, 150, 255, 150],
-        }),
-      );
-    }
-
-    // Drainage network layer
-    if (drainageGeoJson) {
-      result.push(
-        new GeoJsonLayer({
-          id: 'drainage-layer',
-          data: drainageGeoJson,
-          filled: false,
-          stroked: true,
-          getLineColor: [0, 100, 255, 220],
-          getLineWidth: 3,
-          lineWidthMinPixels: 1,
-          pickable: false,
-        }),
-      );
-    }
-
-    return result;
-  }, [deckLoaded, basinsGeoJson, drainageGeoJson]);
-
-  const getTooltip = useCallback((info: { object?: { properties?: Record<string, unknown> } }) => {
-    if (!info.object?.properties) return null;
-    const props = info.object.properties;
-    if (props.basin_id !== undefined) {
-      return {
-        text: `Basin ${props.basin_id}\nArea: ${props.area_ha} ha`,
-        style: { backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff' },
-      };
-    }
-    return null;
-  }, []);
+    return [
+      new TerrainLayer({
+        id: 'terrain-layer',
+        minZoom: 0,
+        maxZoom: 15,
+        elevationData: buildTerrainTileUrl(demLayerId, 'terrain-rgb'),
+        texture: textureLayerId
+          ? buildTerrainTileUrl(textureLayerId)
+          : buildTerrainTileUrl(demLayerId),
+        elevationDecoder,
+        meshMaxError: 10,
+        color: [255, 255, 255],
+        operation: 'terrain+draw',
+      }),
+    ];
+  }, [deckLoaded, demLayerId, textureLayerId, elevationDecoder]);
 
   if (loadError) {
     return (
@@ -184,6 +175,19 @@ export default function TerrainViewer3D({
     );
   }
 
+  if (!demLayerId) {
+    return (
+      <Alert
+        icon={<IconAlertTriangle size={16} />}
+        title="Sin capa DEM"
+        color="yellow"
+      >
+        No hay capa DEM disponible para visualizar en 3D. Ejecuta el pipeline
+        DEM primero.
+      </Alert>
+    );
+  }
+
   return (
     <Stack gap="sm">
       <Group justify="space-between" align="flex-end">
@@ -192,22 +196,26 @@ export default function TerrainViewer3D({
           <Text size="xs" c="dimmed">
             Exageracion vertical:
           </Text>
-          <Box w={120}>
+          <Box w={140}>
             <Slider
               value={exaggeration}
               onChange={setExaggeration}
-              min={1}
-              max={20}
+              min={MIN_EXAGGERATION}
+              max={MAX_EXAGGERATION}
               step={1}
               size="xs"
               label={(val) => `${val}x`}
+              marks={[
+                { value: 1, label: '1x' },
+                { value: 15, label: '15x' },
+                { value: 30, label: '30x' },
+              ]}
             />
           </Box>
         </Group>
       </Group>
 
       <Paper
-        ref={containerRef}
         radius="md"
         withBorder
         style={{
@@ -225,12 +233,11 @@ export default function TerrainViewer3D({
               keyboard: true,
             }}
             layers={layers}
-            getTooltip={getTooltip}
             style={{ width: '100%', height: '100%' }}
           />
         )}
 
-        {/* Legend */}
+        {/* Elevation info overlay */}
         <Box
           style={{
             position: 'absolute',
@@ -243,52 +250,14 @@ export default function TerrainViewer3D({
           }}
         >
           <Text size="xs" c="white" fw={600} mb={4}>
-            Leyenda
+            Terreno 3D
           </Text>
-          <Group gap={4}>
-            {ELEVATION_COLORS.map((color, i) => (
-              <Box
-                key={i}
-                style={{
-                  width: 16,
-                  height: 12,
-                  backgroundColor: `rgba(${color[0]},${color[1]},${color[2]},${color[3] / 255})`,
-                  borderRadius: 2,
-                }}
-              />
-            ))}
-          </Group>
-          <Group justify="space-between" mt={2}>
-            <Text size="xs" c="gray.4">Bajo</Text>
-            <Text size="xs" c="gray.4">Alto</Text>
-          </Group>
-          {basinsGeoJson && (
-            <Group gap={4} mt={4}>
-              <Box
-                style={{
-                  width: 12,
-                  height: 12,
-                  backgroundColor: 'rgba(100,150,255,0.5)',
-                  border: '1px solid rgba(30,80,200,0.8)',
-                  borderRadius: 2,
-                }}
-              />
-              <Text size="xs" c="gray.4">Cuencas</Text>
-            </Group>
-          )}
-          {drainageGeoJson && (
-            <Group gap={4} mt={2}>
-              <Box
-                style={{
-                  width: 12,
-                  height: 2,
-                  backgroundColor: 'rgba(0,100,255,0.9)',
-                  borderRadius: 1,
-                }}
-              />
-              <Text size="xs" c="gray.4">Drenaje</Text>
-            </Group>
-          )}
+          <Text size="xs" c="gray.4">
+            Exageracion: {exaggeration}x
+          </Text>
+          <Text size="xs" c="gray.4">
+            Arrastre para rotar, scroll para zoom
+          </Text>
         </Box>
       </Paper>
     </Stack>
