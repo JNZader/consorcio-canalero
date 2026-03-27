@@ -764,12 +764,14 @@ def run_full_dem_pipeline(
                 props = feature.get("properties", {})
                 basin_id = props.get("basin_id", 0)
                 area_ha = props.get("area_ha", 0.0)
-                geom_json = _json.dumps(feature["geometry"])
+                from shapely.geometry import shape as _shape
+
+                geom_wkt = _shape(feature["geometry"]).wkt
 
                 intel_repo.create_zona(
                     db,
                     nombre=f"basin_{area_id}_{basin_id}",
-                    geometria=f"SRID=4326;{geom_json}",
+                    geometria=f"SRID=4326;{geom_wkt}",
                     cuenca="auto_delineated",
                     superficie_ha=area_ha,
                 )
