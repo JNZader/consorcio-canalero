@@ -249,6 +249,83 @@ def trigger_dem_pipeline(
     )
 
 
+# ──────────────────────────────────────────────
+# TILE PROXY (forwards to geo-worker tile service)
+# ──────────────────────────────────────────────
+
+
+@router.get("/layers/{layer_id}/tiles/{z}/{x}/{y}.png")
+async def proxy_tile(
+    layer_id: uuid.UUID,
+    z: int,
+    x: int,
+    y: int,
+    colormap: Optional[str] = Query(default=None),
+    encoding: Optional[str] = Query(default=None),
+    _user=Depends(_require_authenticated()),
+):
+    """Proxy tile requests to the geo-worker tile service.
+
+    Forwards the request to the internal tile service running on the
+    geo-worker container and streams the response back to the client.
+    """
+    import httpx
+
+    from app.config import settings
+
+    # Build the upstream URL
+    params = {}
+    if colormap:
+        params["colormap"] = colormap
+    if encoding:
+        params["encoding"] = encoding
+
+    upstream_url = (
+        f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(upstream_url, params=params)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail="Tile service no disponible (geo-worker sin respuesta)",
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="Tile service timeout",
+        )
+
+    # 204 = empty tile (outside bounds)
+    if resp.status_code == 204:
+        return StreamingResponse(
+            iter([]),
+            status_code=204,
+        )
+
+    # Forward error responses
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=resp.json().get("detail", "Error en tile service"),
+        )
+
+    return StreamingResponse(
+        iter([resp.content]),
+        media_type="image/png",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+# ──────────────────────────────────────────────
+# BASINS (PostGIS)
+# ──────────────────────────────────────────────
+
+
 @router.get("/basins", response_model=dict)
 def get_basins(
     bbox: Optional[str] = Query(

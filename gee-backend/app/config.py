@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Geo Worker tile service (internal URL within Docker network)
+    geo_worker_tile_url: str = "http://geo-worker:8001"
+
     # Contact Information
     contact_phone: str = "+54 353 4000000"
     contact_email: str = "contacto@consorcio10demayo.gob.ar"
