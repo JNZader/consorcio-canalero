@@ -8,6 +8,7 @@ These are the computational building blocks for the DEM pipeline.
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from rasterio.mask import mask as rasterio_mask
 from rasterio.transform import from_bounds
 from shapely.geometry import box, mapping, shape
 from whitebox import WhiteboxTools
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # WhiteboxTools singleton
@@ -675,3 +678,54 @@ def delineate_basins(
         json.dump(geojson, f)
 
     return output_geojson_path
+
+
+# ---------------------------------------------------------------------------
+# m) Convert GeoTIFF to Cloud-Optimized GeoTIFF (COG)
+# ---------------------------------------------------------------------------
+
+
+def convert_to_cog(input_path: str, output_path: str | None = None) -> str:
+    """Convert a GeoTIFF to Cloud-Optimized GeoTIFF (COG) format.
+
+    Uses rio-cogeo for proper COG creation with overviews and tiling.
+    If output_path is not provided, creates a .cog.tif alongside the input.
+
+    Args:
+        input_path: Path to the input GeoTIFF.
+        output_path: Where to write the COG. Defaults to ``{input}.cog.tif``.
+
+    Returns:
+        output_path on success.
+
+    Raises:
+        RuntimeError: If COG conversion fails.
+    """
+    from rio_cogeo.cogeo import cog_translate
+    from rio_cogeo.profiles import cog_profiles
+
+    if output_path is None:
+        p = Path(input_path)
+        output_path = str(p.with_suffix(".cog.tif"))
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Use DEFLATE profile — good compression for terrain data
+    output_profile = cog_profiles.get("deflate")
+
+    config = {
+        "GDAL_NUM_THREADS": "ALL_CPUS",
+        "GDAL_TIFF_OVR_BLOCKSIZE": "512",
+    }
+
+    cog_translate(
+        input_path,
+        output_path,
+        output_profile,
+        overview_level=5,
+        overview_resampling="nearest",
+        config=config,
+        quiet=True,
+    )
+
+    return output_path
