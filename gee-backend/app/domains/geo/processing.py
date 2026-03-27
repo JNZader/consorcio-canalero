@@ -561,12 +561,26 @@ def download_dem_from_gee(
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+    # Download to a temporary file first
+    tmp_path = str(Path(output_path).with_suffix(".tmp.tif"))
+
     response = requests.get(url, stream=True, timeout=300)
     response.raise_for_status()
 
-    with open(output_path, "wb") as f:
+    with open(tmp_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
+
+    # Re-compress with DEFLATE (WhiteboxTools doesn't support GEE's compression)
+    import rasterio
+
+    with rasterio.open(tmp_path) as src:
+        profile = src.profile.copy()
+        profile.update(compress="deflate", predictor=2)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(src.read())
+
+    Path(tmp_path).unlink(missing_ok=True)
 
     return output_path
 
