@@ -29,6 +29,9 @@ COPY --from=build /usr/local/bin /usr/local/bin
 
 RUN addgroup --system app && adduser --system --ingroup app app
 
+# Create data directory for geo processing outputs
+RUN mkdir -p /data/geo && chown -R app:app /data
+
 COPY app/ ./app/
 
 RUN chown -R app:app /app
