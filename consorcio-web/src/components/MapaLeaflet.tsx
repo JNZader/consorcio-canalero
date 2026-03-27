@@ -39,6 +39,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useBasins } from '../hooks/useBasins';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
+import { useGeoLayers, GEO_LAYER_LABELS, buildTileUrl } from '../hooks/useGeoLayers';
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePublicLayers } from '../hooks/usePublicLayers';
@@ -447,6 +448,9 @@ export default function MapaLeaflet() {
   // Basin polygons from PostGIS (public, no auth required)
   const { basins, loading: loadingBasins } = useBasins();
 
+  // DEM pipeline raster layers for tile overlays (authenticated)
+  const { layers: demLayers, loading: loadingDemLayers } = useGeoLayers();
+
   const handleExportAsset = async (assetId: string, assetName: string) => {
     try {
       const token = await getAuthToken();
@@ -507,7 +511,7 @@ export default function MapaLeaflet() {
     }
   };
 
-  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers || loadingBasins;
+  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers || loadingBasins || loadingDemLayers;
   const [selectedFeature, setSelectedFeature] = useState<GeoJSON.Feature | null>(null);
 
   // Get selected satellite image from localStorage (set in ImageExplorer)
@@ -785,6 +789,21 @@ export default function MapaLeaflet() {
               />
             </LayersControl.Overlay>
           )}
+
+          {/* DEM pipeline raster layers as XYZ tile overlays */}
+          {demLayers.map((layer) => (
+            <LayersControl.Overlay
+              key={`dem-${layer.id}`}
+              name={`DEM: ${GEO_LAYER_LABELS[layer.tipo] || layer.nombre}`}
+            >
+              <TileLayer
+                url={buildTileUrl(layer.id)}
+                opacity={0.7}
+                maxZoom={18}
+                tms={false}
+              />
+            </LayersControl.Overlay>
+          ))}
 
           {/* Caminos coloreados por consorcio caminero */}
           {caminos && (
