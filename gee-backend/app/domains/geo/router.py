@@ -251,46 +251,49 @@ def trigger_dem_pipeline(
 
 @router.get("/basins", response_model=dict)
 def get_basins(
+    bbox: Optional[str] = Query(
+        default=None,
+        description="Bounding box filter: minx,miny,maxx,maxy (EPSG:4326)",
+    ),
+    tolerance: float = Query(
+        default=0.001,
+        ge=0.0,
+        le=1.0,
+        description="ST_Simplify tolerance in degrees (~0.001 = 100m)",
+    ),
+    limit: int = Query(default=500, ge=1, le=1000),
+    cuenca: Optional[str] = Query(default=None, description="Filter by cuenca name"),
     db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
 ):
-    """Get the latest basin polygons as GeoJSON (public endpoint for map display).
+    """Get basin polygons as GeoJSON FeatureCollection from PostGIS (public).
 
-    Returns the GeoJSON content of the most recent BASINS GeoLayer.
+    Queries the ``zonas_operativas`` table using ``ST_AsGeoJSON`` +
+    ``ST_Simplify`` for efficient geometry serialisation.  Supports
+    bounding-box spatial filtering and cuenca name filtering.
     """
-    import json as _json
+    from app.domains.geo.intelligence.repository import IntelligenceRepository
 
-    from app.domains.geo.models import TipoGeoLayer
+    parsed_bbox: tuple[float, float, float, float] | None = None
+    if bbox:
+        try:
+            parts = [float(p.strip()) for p in bbox.split(",")]
+            if len(parts) != 4:
+                raise ValueError("bbox must have exactly 4 values")
+            parsed_bbox = (parts[0], parts[1], parts[2], parts[3])
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=422,
+                detail="bbox debe ser 4 floats separados por coma: minx,miny,maxx,maxy",
+            )
 
-    layers, total = repo.get_layers(
+    intel_repo = IntelligenceRepository()
+    return intel_repo.get_zonas_as_geojson(
         db,
-        page=1,
-        limit=1,
-        tipo_filter=TipoGeoLayer.BASINS.value,
+        bbox=parsed_bbox,
+        tolerance=tolerance,
+        limit=limit,
+        cuenca_filter=cuenca,
     )
-
-    if not layers:
-        return {"type": "FeatureCollection", "features": [], "total": 0}
-
-    latest_layer = layers[0]
-    file_path = Path(latest_layer.archivo_path)
-
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Archivo de basins no encontrado en disco",
-        )
-
-    with open(file_path) as f:
-        geojson = _json.load(f)
-
-    geojson["metadata"] = {
-        "layer_id": str(latest_layer.id),
-        "area_id": latest_layer.area_id,
-        "created_at": latest_layer.created_at.isoformat(),
-    }
-
-    return geojson
 
 
 # ──────────────────────────────────────────────
