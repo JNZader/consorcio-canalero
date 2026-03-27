@@ -81,5 +81,8 @@ export { default as IconLayers } from '@tabler/icons-react/dist/esm/icons/IconSt
 // Terrain / Mountain icon for DEM Pipeline
 export { default as IconMountain } from '@tabler/icons-react/dist/esm/icons/IconMountain.mjs';
 
+// 3D cube icon for terrain viewer toggle
+export { default as Icon3dCubeSphere } from '@tabler/icons-react/dist/esm/icons/IconCube3dSphere.mjs';
+
 // Alias for IconLightbulb
 export { default as IconLightbulb } from '@tabler/icons-react/dist/esm/icons/IconBulb.mjs';

@@ -6,18 +6,27 @@ import {
   Container,
   Group,
   Paper,
+  SegmentedControl,
   SimpleGrid,
   Skeleton,
   Stack,
   Text,
   Title,
+  Tooltip,
 } from '@mantine/core';
+import { Suspense, lazy, useState } from 'react';
 import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
+import { useGeoLayers } from '../hooks/useGeoLayers';
 import { MapaContenido } from './MapaInteractivo';
-import { IconAlertTriangle, IconPhoto, IconSatellite } from './ui/icons';
+import { IconAlertTriangle, IconMap, IconPhoto, IconSatellite, Icon3dCubeSphere } from './ui/icons';
+
+// Lazy-load TerrainViewer3D to avoid bundling deck.gl/geo-layers when not used
+const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
+
+type MapViewMode = '2d' | '3d';
 
 /**
  * MapaContent - Contenido interno de la pagina de mapa.
@@ -32,6 +41,13 @@ export function MapaContent() {
 
   // Get selected satellite image
   const selectedImage = useSelectedImageListener();
+
+  // DEM layers — find the dem_raw layer for 3D terrain
+  const { layers: demLayers } = useGeoLayers();
+  const demRawLayer = demLayers.find((l) => l.tipo === 'dem_raw');
+
+  // 2D/3D view toggle
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
 
   // Construir estadisticas dinamicas desde la API (solo denuncias)
   const dynamicStats =
@@ -111,20 +127,80 @@ export function MapaContent() {
               )}
             </Group>
 
-            <Button
-              component="a"
-              href={withBasePath('/reportes')}
-              color="orange"
-              leftSection={<IconAlertTriangle size={18} />}
-            >
-              Reportar Incidente
-            </Button>
+            <Group gap="md">
+              {/* 2D / 3D toggle */}
+              <SegmentedControl
+                size="sm"
+                value={mapViewMode}
+                onChange={(value) => setMapViewMode(value as MapViewMode)}
+                data={[
+                  {
+                    value: '2d',
+                    label: (
+                      <Tooltip label="Mapa 2D (Leaflet)" position="bottom" withArrow>
+                        <Group gap={4}>
+                          <IconMap size={16} />
+                          <Text size="xs">2D</Text>
+                        </Group>
+                      </Tooltip>
+                    ),
+                  },
+                  {
+                    value: '3d',
+                    disabled: !demRawLayer,
+                    label: (
+                      <Tooltip
+                        label={
+                          demRawLayer
+                            ? 'Vista 3D del terreno (deck.gl)'
+                            : 'Sin capa DEM disponible — ejecuta el pipeline primero'
+                        }
+                        position="bottom"
+                        withArrow
+                      >
+                        <Group gap={4}>
+                          <Icon3dCubeSphere size={16} />
+                          <Text size="xs">3D</Text>
+                        </Group>
+                      </Tooltip>
+                    ),
+                  },
+                ]}
+              />
+
+              <Button
+                component="a"
+                href={withBasePath('/reportes')}
+                color="orange"
+                leftSection={<IconAlertTriangle size={18} />}
+              >
+                Reportar Incidente
+              </Button>
+            </Group>
           </Group>
         </Paper>
 
-        {/* Mapa - usa el contenido directo para evitar provider anidado */}
+        {/* Mapa 2D o Terreno 3D */}
         <Paper shadow="sm" radius="md" style={{ overflow: 'hidden' }} mb="md">
-          <MapaContenido />
+          {mapViewMode === '2d' ? (
+            <MapaContenido />
+          ) : (
+            <Suspense
+              fallback={
+                <Box p="xl" style={{ minHeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Stack align="center" gap="md">
+                    <Skeleton circle height={48} width={48} />
+                    <Text size="sm" c="dimmed">Cargando visualizador 3D...</Text>
+                  </Stack>
+                </Box>
+              }
+            >
+              <TerrainViewer3D
+                demLayerId={demRawLayer?.id}
+                height={600}
+              />
+            </Suspense>
+          )}
         </Paper>
 
         {/* Estadisticas rapidas - Solo visible para miembros de la comision */}
