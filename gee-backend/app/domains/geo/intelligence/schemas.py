@@ -23,6 +23,10 @@ class ZonaOperativaResponse(BaseModel):
     nombre: str
     cuenca: str
     superficie_ha: float
+    geometria: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Zone boundary as GeoJSON geometry object (Polygon)",
+    )
     created_at: datetime
     updated_at: datetime
 
