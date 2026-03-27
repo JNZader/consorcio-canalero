@@ -163,7 +163,7 @@ def process_dem_pipeline(
 
     _update_job(job_id, estado=EstadoGeoJob.RUNNING, progreso=0)
 
-    output_dir = Path(dem_path).parent / "output" / area_id
+    output_dir = Path(dem_path).parent / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     outputs: dict[str, str] = {}
