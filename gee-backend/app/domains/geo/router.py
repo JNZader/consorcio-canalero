@@ -262,12 +262,14 @@ async def proxy_tile(
     y: int,
     colormap: Optional[str] = Query(default=None),
     encoding: Optional[str] = Query(default=None),
-    _user=Depends(_require_authenticated()),
 ):
-    """Proxy tile requests to the geo-worker tile service.
+    """Proxy tile requests to the geo-worker tile service (public).
 
     Forwards the request to the internal tile service running on the
     geo-worker container and streams the response back to the client.
+
+    Public endpoint — Leaflet TileLayer cannot set custom auth headers
+    on tile requests, and DEM tiles are not sensitive data.
     """
     import httpx
 
