@@ -37,6 +37,7 @@ import {
 } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { useBasins } from '../hooks/useBasins';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
 import { useInfrastructure } from '../hooks/useInfrastructure';
@@ -443,6 +444,9 @@ export default function MapaLeaflet() {
   // Public vector layers (admin-published, no auth required)
   const { layers: publicLayers, loading: loadingPublicLayers } = usePublicLayers();
 
+  // Basin polygons from PostGIS (public, no auth required)
+  const { basins, loading: loadingBasins } = useBasins();
+
   const handleExportAsset = async (assetId: string, assetName: string) => {
     try {
       const token = await getAuthToken();
@@ -503,7 +507,7 @@ export default function MapaLeaflet() {
     }
   };
 
-  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers;
+  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers || loadingBasins;
   const [selectedFeature, setSelectedFeature] = useState<GeoJSON.Feature | null>(null);
 
   // Get selected satellite image from localStorage (set in ImageExplorer)
@@ -746,6 +750,38 @@ export default function MapaLeaflet() {
                 data={capas.norte}
                 style={GEE_LAYER_STYLES.norte}
                 onEachFeature={onEachFeature}
+              />
+            </LayersControl.Overlay>
+          )}
+
+          {/* Cuencas operativas (basins) from PostGIS */}
+          {basins && basins.features.length > 0 && (
+            <LayersControl.Overlay checked name="Zonas Operativas (Basins)">
+              <GeoJSON
+                key="basins"
+                data={basins}
+                style={() => ({
+                  color: '#00897B',
+                  weight: 1.5,
+                  fillOpacity: 0.08,
+                  fillColor: '#00897B',
+                })}
+                onEachFeature={(feature, layer) => {
+                  const props = feature.properties || {};
+                  layer.bindTooltip(
+                    `<b>${props.nombre || 'Zona'}</b><br/>Cuenca: ${props.cuenca || '-'}<br/>Sup: ${props.superficie_ha ? Number(props.superficie_ha).toFixed(1) + ' ha' : '-'}`,
+                    { sticky: true }
+                  );
+                  layer.on({
+                    click: () => setSelectedFeature(feature),
+                    mouseover: (e) => {
+                      e.target.setStyle({ weight: 3, fillOpacity: 0.2 });
+                    },
+                    mouseout: (e) => {
+                      e.target.setStyle({ weight: 1.5, fillOpacity: 0.08 });
+                    },
+                  });
+                }}
               />
             </LayersControl.Overlay>
           )}
