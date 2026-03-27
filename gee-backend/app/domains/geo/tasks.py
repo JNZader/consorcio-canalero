@@ -70,6 +70,7 @@ def _register_layer(
     archivo_path: str,
     area_id: str | None = None,
     formato: str = FormatoGeoLayer.GEOTIFF,
+    metadata_extra: dict | None = None,
 ) -> str:
     """Register a GeoLayer record and return its id as string."""
     db = _get_db()
@@ -82,11 +83,26 @@ def _register_layer(
             archivo_path=archivo_path,
             formato=formato,
             area_id=area_id,
+            metadata_extra=metadata_extra,
         )
         db.commit()
         return str(layer.id)
     finally:
         db.close()
+
+
+def _convert_to_cog_safe(input_path: str) -> str | None:
+    """Convert a GeoTIFF to COG. Returns COG path on success, None on failure.
+
+    Non-fatal: logs warning but never raises, so the pipeline continues.
+    """
+    try:
+        cog_path = _get_processing().convert_to_cog(input_path)
+        logger.info("cog_conversion.done", input=input_path, output=cog_path)
+        return cog_path
+    except Exception:
+        logger.warning("cog_conversion.failed", input=input_path, exc_info=True)
+        return None
 
 
 def _run_step(
@@ -197,11 +213,13 @@ def process_dem_pipeline(
         slope = str(output_dir / "slope.tif")
         _run_step(job_id, "compute_slope", _get_processing().compute_slope, (filled, slope))
         outputs["slope"] = slope
+        slope_cog = _convert_to_cog_safe(slope)
         _register_layer(
             nombre=f"slope_{area_id}",
             tipo=TipoGeoLayer.SLOPE,
             archivo_path=slope,
             area_id=area_id,
+            metadata_extra={"cog_path": slope_cog} if slope_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -209,11 +227,13 @@ def process_dem_pipeline(
         aspect = str(output_dir / "aspect.tif")
         _run_step(job_id, "compute_aspect", _get_processing().compute_aspect, (filled, aspect))
         outputs["aspect"] = aspect
+        aspect_cog = _convert_to_cog_safe(aspect)
         _register_layer(
             nombre=f"aspect_{area_id}",
             tipo=TipoGeoLayer.ASPECT,
             archivo_path=aspect,
             area_id=area_id,
+            metadata_extra={"cog_path": aspect_cog} if aspect_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -223,11 +243,13 @@ def process_dem_pipeline(
             job_id, "compute_flow_direction", _get_processing().compute_flow_direction, (filled, flow_dir)
         )
         outputs["flow_dir"] = flow_dir
+        flow_dir_cog = _convert_to_cog_safe(flow_dir)
         _register_layer(
             nombre=f"flow_dir_{area_id}",
             tipo=TipoGeoLayer.FLOW_DIR,
             archivo_path=flow_dir,
             area_id=area_id,
+            metadata_extra={"cog_path": flow_dir_cog} if flow_dir_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -240,11 +262,13 @@ def process_dem_pipeline(
             (flow_dir, flow_acc),
         )
         outputs["flow_acc"] = flow_acc
+        flow_acc_cog = _convert_to_cog_safe(flow_acc)
         _register_layer(
             nombre=f"flow_acc_{area_id}",
             tipo=TipoGeoLayer.FLOW_ACC,
             archivo_path=flow_acc,
             area_id=area_id,
+            metadata_extra={"cog_path": flow_acc_cog} if flow_acc_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -252,11 +276,13 @@ def process_dem_pipeline(
         twi = str(output_dir / "twi.tif")
         _run_step(job_id, "compute_twi", _get_processing().compute_twi, (slope, flow_acc, twi))
         outputs["twi"] = twi
+        twi_cog = _convert_to_cog_safe(twi)
         _register_layer(
             nombre=f"twi_{area_id}",
             tipo=TipoGeoLayer.TWI,
             archivo_path=twi,
             area_id=area_id,
+            metadata_extra={"cog_path": twi_cog} if twi_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -266,11 +292,13 @@ def process_dem_pipeline(
             job_id, "compute_hand", _get_processing().compute_hand, (filled, flow_dir, flow_acc, hand)
         )
         outputs["hand"] = hand
+        hand_cog = _convert_to_cog_safe(hand)
         _register_layer(
             nombre=f"hand_{area_id}",
             tipo=TipoGeoLayer.HAND,
             archivo_path=hand,
             area_id=area_id,
+            metadata_extra={"cog_path": hand_cog} if hand_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -301,11 +329,13 @@ def process_dem_pipeline(
             (slope, twi, flow_acc, terrain_class),
         )
         outputs["terrain_class"] = terrain_class
+        tc_cog = _convert_to_cog_safe(terrain_class)
         _register_layer(
             nombre=f"terrain_class_{area_id}",
             tipo=TipoGeoLayer.TERRAIN_CLASS,
             archivo_path=terrain_class,
             area_id=area_id,
+            metadata_extra={"cog_path": tc_cog} if tc_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -701,11 +731,13 @@ def run_full_dem_pipeline(
 
         _get_processing().download_dem_from_gee(zona_geojson, dem_path)
 
+        dem_cog = _convert_to_cog_safe(dem_path)
         _register_layer(
             nombre=f"dem_raw_{area_id}",
             tipo=TipoGeoLayer.DEM_RAW,
             archivo_path=dem_path,
             area_id=area_id,
+            metadata_extra={"cog_path": dem_cog} if dem_cog else {"cog_error": "conversion failed"},
         )
         _update_job(job_id, progreso=15)
 
