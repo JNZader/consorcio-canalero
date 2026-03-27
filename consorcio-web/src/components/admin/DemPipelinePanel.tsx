@@ -196,7 +196,6 @@ export default function DemPipelinePanel() {
               }
             >
               <TerrainViewer3D
-                basinsGeoJson={(basins as unknown as Record<string, unknown>) ?? undefined}
                 height={500}
               />
             </Suspense>
