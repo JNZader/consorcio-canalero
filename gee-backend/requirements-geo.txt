@@ -5,6 +5,10 @@
 rasterio>=1.4.0
 # richdem removed — incompatible with Python 3.12 (pybind11 too old)
 
+# COG conversion + tile serving
+rio-tiler>=7.0.0
+rio-cogeo>=5.0.0
+
 # WhiteboxTools (hydrology)
 whitebox>=2.3.0
 
