@@ -19,7 +19,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Install ALL dependencies (backend + geo)
 COPY requirements.txt requirements-geo.txt ./
-RUN pip install --no-cache-dir --break-system-packages -r requirements.txt -r requirements-geo.txt
+# Force pip to ignore system numpy (installed by debian, cannot be upgraded)
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy -r requirements.txt -r requirements-geo.txt
 
 # Copy application code
 COPY app/ ./app/
