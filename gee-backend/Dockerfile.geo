@@ -19,10 +19,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Install geo-specific Python dependencies
 COPY requirements-geo.txt .
-RUN pip install --no-cache-dir --break-system-packages -r requirements-geo.txt
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy -r requirements-geo.txt
 
 # Install uvicorn for the tile service
-RUN pip install --no-cache-dir --break-system-packages "uvicorn[standard]>=0.30.0" "fastapi>=0.115.0"
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy "uvicorn[standard]>=0.30.0" "fastapi>=0.115.0"
 
 # Copy application code
 COPY app/ ./app/
