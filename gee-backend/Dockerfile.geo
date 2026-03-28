@@ -17,12 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install geo-specific Python dependencies
-COPY requirements-geo.txt .
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy -r requirements-geo.txt
-
-# Install uvicorn for the tile service
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy "uvicorn[standard]>=0.30.0" "fastapi>=0.115.0"
+# Install ALL Python dependencies (full backend stack + geo extras)
+# The app code has deep import chains (tasks → auth → fastapi_users)
+# so the lean requirements-geo.txt approach causes missing module errors.
+COPY requirements.txt requirements-geo.txt ./
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+    -r requirements.txt -r requirements-geo.txt \
+    "uvicorn[standard]>=0.30.0"
 
 # Copy application code
 COPY app/ ./app/
