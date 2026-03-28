@@ -68,7 +68,7 @@ export default function DemPipelinePanel() {
     fetchBasins,
   } = useDemPipeline();
 
-  const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(10000);
+  const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(5000);
 
   // On mount, try to fetch existing layers and basins
   useEffect(() => {
@@ -126,7 +126,7 @@ export default function DemPipelinePanel() {
                 description="Cuencas menores a este valor se descartan"
                 value={minBasinAreaHa}
                 onChange={(val) =>
-                  setMinBasinAreaHa(typeof val === 'number' ? val : 10000)
+                  setMinBasinAreaHa(typeof val === 'number' ? val : 5000)
                 }
                 min={1000}
                 max={50000}

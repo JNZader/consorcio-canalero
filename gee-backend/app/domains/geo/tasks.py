@@ -585,7 +585,7 @@ def download_dem_from_gee_task(
 def delineate_basins_task(
     area_id: str,
     flow_dir_path: str,
-    min_area_ha: float = 10000.0,
+    min_area_ha: float = 5000.0,
     job_id: str | None = None,
     store_zonas: bool = True,
 ) -> dict:
@@ -680,7 +680,7 @@ def delineate_basins_task(
 @celery_app.task(queue="geo", name="geo.run_full_dem_pipeline")
 def run_full_dem_pipeline(
     area_id: str,
-    min_basin_area_ha: float = 10000.0,
+    min_basin_area_ha: float = 5000.0,
     job_id: str | None = None,
 ) -> dict:
     """Full DEM pipeline: download from GEE → terrain analysis → basin delineation.
