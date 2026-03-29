@@ -43,7 +43,7 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "terrain_class": "set1",
     "flow_dir": "spectral",
     "flood_risk": "rdylgn_r",
-    "drainage_need": "bupu",
+    "drainage_need": "ylorbr",
 }
 
 # Fixed rescale ranges per layer type for consistent visualization.
@@ -57,8 +57,8 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "hand": (0.0, 4.0),
     "terrain_class": (0.0, 3.0),
     "flow_dir": (0.0, 128.0),
-    "flood_risk": (0.0, 100.0),
-    "drainage_need": (0.0, 100.0),
+    "flood_risk": (10.0, 90.0),
+    "drainage_need": (20.0, 70.0),
 }
 
 # Types that need log scaling (extreme skew: P50=2 but max=500k)
