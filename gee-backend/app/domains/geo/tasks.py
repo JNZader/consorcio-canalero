@@ -259,7 +259,7 @@ def process_dem_pipeline(
             job_id,
             "compute_flow_accumulation",
             _get_processing().compute_flow_accumulation,
-            (flow_dir, flow_acc),
+            (filled, flow_acc),  # DEM input, not flow_dir — WBT handles flat terrain better
         )
         outputs["flow_acc"] = flow_acc
         flow_acc_cog = _convert_to_cog_safe(flow_acc)
@@ -349,7 +349,7 @@ def process_dem_pipeline(
         logger.info("dem_pipeline.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
 
-    except Exception as exc:
+    except Exception:
         _update_job(
             job_id,
             estado=EstadoGeoJob.FAILED,
@@ -763,16 +763,32 @@ def run_full_dem_pipeline(
         dem_path = str(output_dir / "dem_raw.tif")
 
         _get_processing().download_dem_from_gee(zona_geojson, dem_path)
+        _update_job(job_id, progreso=15)
 
-        dem_cog = _convert_to_cog_safe(dem_path)
+        # ── Stage 1b: Prepare DEM (nodata + UTM reproject + clip to consorcio) ──
+        logger.info("full_dem_pipeline.stage1b_prepare", area_id=area_id)
+
+        dem_nodata = str(output_dir / "dem_nodata.tif")
+        _get_processing().ensure_nodata(dem_path, dem_nodata)
+
+        dem_utm = str(output_dir / "dem_utm.tif")
+        _get_processing().reproject_to_utm(dem_nodata, dem_utm)
+
+        dem_clipped = str(output_dir / "dem_clipped.tif")
+        _get_processing().clip_to_geometry(dem_utm, zona_geojson, dem_clipped)
+        dem_utm = dem_clipped  # use clipped DEM for all subsequent processing
+
+        # Register the CLIPPED DEM (not the raw rectangle)
+        dem_cog = _convert_to_cog_safe(dem_clipped)
         _register_layer(
             nombre=f"dem_raw_{area_id}",
             tipo=TipoGeoLayer.DEM_RAW,
-            archivo_path=dem_path,
+            archivo_path=dem_clipped,
             area_id=area_id,
             metadata_extra={"cog_path": dem_cog} if dem_cog else {"cog_error": "conversion failed"},
         )
-        _update_job(job_id, progreso=15)
+
+        _update_job(job_id, progreso=20)
 
         # ── Stage 2: Run existing terrain pipeline ──
         logger.info("full_dem_pipeline.stage2_terrain", area_id=area_id)
@@ -780,70 +796,91 @@ def run_full_dem_pipeline(
         # Call the pipeline function directly (not via Celery .delay)
         pipeline_result = process_dem_pipeline(
             area_id=area_id,
-            dem_path=dem_path,
+            dem_path=dem_utm,
             bbox=None,
             job_id=None,  # Don't create a sub-job; we manage status ourselves
         )
 
         _update_job(job_id, progreso=85)
 
-        # ── Stage 3: Basin delineation ──
+        # ── Stage 3: Basin delineation (skip if manual basins exist) ──
         logger.info("full_dem_pipeline.stage3_basins", area_id=area_id)
 
-        flow_dir_path = pipeline_result["outputs"].get("flow_dir")
-        if not flow_dir_path:
-            raise RuntimeError("Terrain pipeline did not produce flow_dir output")
-
-        basins_raster = str(output_dir / "output" / area_id / "basins.tif")
-        basins_geojson = str(output_dir / "output" / area_id / "basins.geojson")
-
-        _get_processing().delineate_basins(
-            flow_dir_path,
-            basins_raster,
-            basins_geojson,
-            min_area_ha=min_basin_area_ha,
-        )
-
-        _register_layer(
-            nombre=f"basins_{area_id}",
-            tipo=TipoGeoLayer.BASINS,
-            archivo_path=basins_geojson,
-            area_id=area_id,
-            formato=FormatoGeoLayer.GEOJSON,
-        )
-
-        # Store basins as ZonaOperativa records
-        import json as _json
-
-        from app.domains.geo.intelligence.repository import IntelligenceRepository
-
-        intel_repo = IntelligenceRepository()
-        zonas_created = 0
-
-        with open(basins_geojson) as f:
-            basins_data = _json.load(f)
-
+        # Check if manual basins already exist (cuenca != 'auto_delineated')
         db = _get_db()
         try:
-            for feature in basins_data.get("features", []):
-                props = feature.get("properties", {})
-                basin_id = props.get("basin_id", 0)
-                area_ha = props.get("area_ha", 0.0)
-                from shapely.geometry import shape as _shape
+            from sqlalchemy import text
 
-                geom_wkt = _shape(feature["geometry"]).wkt
-
-                intel_repo.create_zona(
-                    db,
-                    nombre=f"basin_{area_id}_{basin_id}",
-                    geometria=f"SRID=4326;{geom_wkt}",
-                    cuenca="auto_delineated",
-                    superficie_ha=area_ha,
-                )
-                zonas_created += 1
-            db.commit()
+            manual_count = db.execute(
+                text("SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'")
+            ).scalar()
         finally:
             db.close()
+
+        if manual_count > 0:
+            logger.info(
+                "full_dem_pipeline.skip_auto_basins",
+                area_id=area_id,
+                manual_basins=manual_count,
+            )
+            zonas_created = 0
+            basins_raster = ""
+            basins_geojson = ""
+        else:
+            flow_dir_path = pipeline_result["outputs"].get("flow_dir")
+            if not flow_dir_path:
+                raise RuntimeError("Terrain pipeline did not produce flow_dir output")
+
+            basins_raster = str(output_dir / "output" / area_id / "basins.tif")
+            basins_geojson = str(output_dir / "output" / area_id / "basins.geojson")
+
+            _get_processing().delineate_basins(
+                flow_dir_path,
+                basins_raster,
+                basins_geojson,
+                min_area_ha=min_basin_area_ha,
+            )
+
+            _register_layer(
+                nombre=f"basins_{area_id}",
+                tipo=TipoGeoLayer.BASINS,
+                archivo_path=basins_geojson,
+                area_id=area_id,
+                formato=FormatoGeoLayer.GEOJSON,
+            )
+
+            # Store basins as ZonaOperativa records
+            import json as _json
+
+            from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+            intel_repo = IntelligenceRepository()
+            zonas_created = 0
+
+            with open(basins_geojson) as f:
+                basins_data = _json.load(f)
+
+            db = _get_db()
+            try:
+                for feature in basins_data.get("features", []):
+                    props = feature.get("properties", {})
+                    basin_id = props.get("basin_id", 0)
+                    area_ha = props.get("area_ha", 0.0)
+                    from shapely.geometry import shape as _shape
+
+                    geom_wkt = _shape(feature["geometry"]).wkt
+
+                    intel_repo.create_zona(
+                        db,
+                        nombre=f"basin_{area_id}_{basin_id}",
+                        geometria=f"SRID=4326;{geom_wkt}",
+                        cuenca="auto_delineated",
+                        superficie_ha=area_ha,
+                    )
+                    zonas_created += 1
+                db.commit()
+            finally:
+                db.close()
 
         # ── Done ──
         all_outputs = {

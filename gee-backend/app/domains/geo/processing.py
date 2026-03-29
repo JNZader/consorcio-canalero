@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import rasterio
+from rasterio.warp import Resampling, calculate_default_transform, reproject
 from rasterio.features import shapes
 from rasterio.mask import mask as rasterio_mask
-from rasterio.transform import from_bounds
 from shapely.geometry import box, mapping, shape
 from whitebox import WhiteboxTools
 
@@ -37,6 +38,149 @@ def _get_wbt() -> WhiteboxTools:
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
     return _wbt
+
+
+# ---------------------------------------------------------------------------
+# 0a) Ensure nodata is set
+# ---------------------------------------------------------------------------
+
+
+def ensure_nodata(dem_path: str, output_path: str, nodata_value: float = -32768.0) -> str:
+    """Ensure the DEM has an explicit nodata value set in metadata.
+
+    GEE exports DEMs without nodata metadata. WhiteboxTools assumes -32768
+    as nodata and corrupts the raster (99.9% of pixels become NaN) when
+    the metadata is missing.
+
+    Args:
+        dem_path: Input DEM path.
+        output_path: Output DEM path with nodata set.
+        nodata_value: Nodata value to assign.
+
+    Returns:
+        output_path on success.
+    """
+    with rasterio.open(dem_path) as src:
+        if src.nodata is not None:
+            shutil.copy2(dem_path, output_path)
+            return output_path
+        profile = src.profile.copy()
+        data = src.read(1)
+
+    profile.update(nodata=nodata_value)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(data, 1)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# 0b) Reproject to UTM
+# ---------------------------------------------------------------------------
+
+
+def reproject_to_utm(dem_path: str, output_path: str) -> str:
+    """Reproject DEM to UTM for correct metric calculations.
+
+    Auto-detects the appropriate UTM zone from the DEM center coordinates.
+    Critical for flat terrain where degree-based area/slope calculations
+    are wildly inaccurate (e.g. Argentine Pampas).
+
+    Args:
+        dem_path: Input DEM path (EPSG:4326).
+        output_path: Output DEM path in UTM.
+
+    Returns:
+        output_path on success.
+    """
+    with rasterio.open(dem_path) as src:
+        if src.crs and src.crs.is_projected:
+            shutil.copy2(dem_path, output_path)
+            return output_path
+
+        bounds = src.bounds
+        center_lon = (bounds.left + bounds.right) / 2
+        center_lat = (bounds.top + bounds.bottom) / 2
+
+        zone = int((center_lon + 180) / 6) + 1
+        epsg = 32600 + zone if center_lat >= 0 else 32700 + zone
+        dst_crs = f"EPSG:{epsg}"
+
+        transform, width, height = calculate_default_transform(
+            src.crs, dst_crs, src.width, src.height, *src.bounds
+        )
+        profile = src.profile.copy()
+        profile.update(crs=dst_crs, transform=transform, width=width, height=height)
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=rasterio.band(dst, 1),
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.bilinear,
+            )
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# 0c) Clip DEM to polygon geometry
+# ---------------------------------------------------------------------------
+
+
+def clip_to_geometry(
+    dem_path: str,
+    geometry: dict[str, Any],
+    output_path: str,
+    geometry_crs: str = "EPSG:4326",
+) -> str:
+    """Clip a DEM to an arbitrary polygon geometry.
+
+    Reprojects the geometry to the DEM's CRS if they differ, then masks
+    pixels outside the polygon to nodata.
+
+    Args:
+        dem_path: Input DEM path.
+        geometry: GeoJSON geometry dict (Polygon or MultiPolygon).
+        output_path: Output clipped DEM path.
+        geometry_crs: CRS of the input geometry (default EPSG:4326).
+
+    Returns:
+        output_path on success.
+    """
+    with rasterio.open(dem_path) as src:
+        dem_crs = str(src.crs)
+
+        clip_geom = shape(geometry)
+
+        # Reproject geometry to DEM CRS if needed
+        if dem_crs != geometry_crs:
+            from pyproj import Transformer
+            from shapely.ops import transform as shapely_transform
+
+            transformer = Transformer.from_crs(
+                geometry_crs, dem_crs, always_xy=True
+            )
+            clip_geom = shapely_transform(transformer.transform, clip_geom)
+
+        out_image, out_transform = rasterio_mask(
+            src, [mapping(clip_geom)], crop=True
+        )
+        profile = src.profile.copy()
+        profile.update(
+            height=out_image.shape[1],
+            width=out_image.shape[2],
+            transform=out_transform,
+        )
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(out_image)
+
+    return output_path
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +234,12 @@ def clip_dem(
 def fill_sinks(dem_path: str, output_path: str) -> str:
     """Fill depressions in a DEM using WhiteboxTools.
 
+    Replicates QGIS/SAGA "Fill sinks (Wang & Liu)" approach.
+    The input DEM MUST have nodata set and be in a projected CRS (UTM).
+    Without proper nodata metadata, WBT corrupts the raster.
+
     Args:
-        dem_path: Input DEM path.
+        dem_path: Input DEM path (with nodata set, ideally UTM).
         output_path: Output filled DEM path.
 
     Returns:
@@ -219,11 +367,16 @@ def compute_flow_direction(filled_dem_path: str, output_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def compute_flow_accumulation(flow_dir_path: str, output_path: str) -> str:
+def compute_flow_accumulation(dem_path: str, output_path: str) -> str:
     """D8 flow accumulation using WhiteboxTools.
 
+    Computes flow accumulation directly from the filled DEM rather than
+    from a pre-computed flow direction raster. WBT's d8_flow_accumulation
+    with a DEM input uses internal flow routing that handles flat terrain
+    much better than the d8_pointer → d8_flow_accumulation chain.
+
     Args:
-        flow_dir_path: Path to the D8 flow direction raster.
+        dem_path: Path to the filled DEM (not flow direction).
         output_path: Output flow accumulation raster path.
 
     Returns:
@@ -231,7 +384,7 @@ def compute_flow_accumulation(flow_dir_path: str, output_path: str) -> str:
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     wbt = _get_wbt()
-    wbt.d8_flow_accumulation(flow_dir_path, output_path)
+    wbt.d8_flow_accumulation(dem_path, output_path, out_type="cells")
     return output_path
 
 
@@ -629,35 +782,52 @@ def delineate_basins(
         transform = src.transform
         crs = src.crs
 
+    # Prepare reprojection to EPSG:4326 if needed (frontend/PostGIS expect 4326)
+    need_reproject = crs and crs.is_projected
+    if need_reproject:
+        from pyproj import Transformer
+
+        transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+
+    # Read nodata value to filter out the "nodata basin"
+    with rasterio.open(output_raster_path) as src:
+        basins_nodata = src.nodata
+
     features: list[dict[str, Any]] = []
     for geom, basin_id in shapes(basin_data, transform=transform):
-        if basin_id == 0:
+        if basin_id == 0 or basin_id == basins_nodata:
             continue  # skip nodata / background
 
         poly = shape(geom)
-        # 3. Compute area in hectares (approximate for EPSG:4326)
-        # Use a rough conversion: 1 degree lat ≈ 111_320 m
-        # For better accuracy, reproject — but this is good enough for filtering
-        centroid = poly.centroid
-        lat_rad = np.radians(centroid.y)
-        # meters per degree
-        m_per_deg_lat = 111_320.0
-        m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
-
-        bounds = poly.bounds  # (minx, miny, maxx, maxy)
-        width_m = (bounds[2] - bounds[0]) * m_per_deg_lon
-        height_m = (bounds[3] - bounds[1]) * m_per_deg_lat
-        # Use shapely area in deg^2, convert to m^2
-        area_m2 = poly.area * m_per_deg_lat * m_per_deg_lon
+        # 3. Compute area in hectares
+        if crs and crs.is_projected:
+            # UTM: poly.area is already in m²
+            area_m2 = poly.area
+        else:
+            # Geographic CRS: approximate conversion from deg² to m²
+            centroid = poly.centroid
+            lat_rad = np.radians(centroid.y)
+            m_per_deg_lat = 111_320.0
+            m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
+            area_m2 = poly.area * m_per_deg_lat * m_per_deg_lon
         area_ha = area_m2 / 10_000.0
 
         if area_ha < min_area_ha:
             continue
 
+        # Reproject geometry to EPSG:4326 for GeoJSON output
+        if need_reproject:
+            from shapely.ops import transform as shapely_transform
+
+            poly_4326 = shapely_transform(transformer.transform, poly)
+            out_geom = mapping(poly_4326)
+        else:
+            out_geom = geom
+
         features.append(
             {
                 "type": "Feature",
-                "geometry": geom,
+                "geometry": out_geom,
                 "properties": {
                     "basin_id": int(basin_id),
                     "area_ha": round(area_ha, 2),
@@ -669,7 +839,7 @@ def delineate_basins(
         "type": "FeatureCollection",
         "crs": {
             "type": "name",
-            "properties": {"name": str(crs) if crs else "EPSG:4326"},
+            "properties": {"name": "EPSG:4326"},
         },
         "features": features,
     }
