@@ -60,9 +60,11 @@ def _create_drainage_inputs(
 
     flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
     hand = rng.uniform(0.0, 20.0, size=SHAPE)
+    tpi = rng.uniform(-2.0, 2.0, size=SHAPE)
 
     _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
     _make_geotiff(area_dir / "hand.tif", hand)
+    _make_geotiff(area_dir / "tpi.tif", tpi)
 
     if include_drainage:
         # Binary drainage raster: 1 = drainage channel, 0 = no channel
@@ -167,15 +169,18 @@ class TestComputeDrainageNeedNodataPropagation:
 
         flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
         hand = rng.uniform(0.0, 20.0, size=SHAPE)
+        tpi = rng.uniform(-2.0, 2.0, size=SHAPE)
         drainage = np.zeros(SHAPE, dtype=np.float64)
         drainage[10, :] = 1.0
 
         # Inject nodata at different pixels
         flow_acc[1, 1] = NODATA
         hand[2, 2] = NODATA
+        tpi[3, 3] = NODATA
 
         _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
         _make_geotiff(area_dir / "hand.tif", hand)
+        _make_geotiff(area_dir / "tpi.tif", tpi)
         _make_geotiff(area_dir / "drainage.tif", drainage)
 
         output_path = str(tmp_path / "drainage_need.tif")
@@ -187,6 +192,7 @@ class TestComputeDrainageNeedNodataPropagation:
 
         assert data[1, 1] == nodata, "flow_acc nodata must propagate"
         assert data[2, 2] == nodata, "hand nodata must propagate"
+        assert data[3, 3] == nodata, "tpi nodata must propagate"
 
 
 class TestComputeDrainageNeedWeights:
@@ -207,9 +213,10 @@ class TestComputeDrainageNeedWeights:
         _create_drainage_inputs(area_dir, rng)
 
         custom_weights = {
-            "flow_acc": 0.10,
-            "hand": 0.10,
+            "flow_acc": 0.05,
+            "hand": 0.05,
             "dist_drainage": 0.80,
+            "tpi": 0.10,
         }
 
         output_default = str(tmp_path / "drain_default.tif")
@@ -245,18 +252,21 @@ class TestComputeDrainageNeedDistancePenalty:
 
         # Use UNIFORM data for other layers to isolate distance effect
         uniform = np.full(SHAPE, 10.0, dtype=np.float64)
+        uniform_tpi = np.full(SHAPE, 0.0, dtype=np.float64)
         drainage = np.zeros(SHAPE, dtype=np.float64)
         drainage[10, :] = 1.0
 
         _make_geotiff(area_dir / "flow_acc.tif", uniform)
         _make_geotiff(area_dir / "hand.tif", uniform)
+        _make_geotiff(area_dir / "tpi.tif", uniform_tpi)
         _make_geotiff(area_dir / "drainage.tif", drainage)
 
         # Heavily weight distance
         heavy_dist_weights = {
-            "flow_acc": 0.05,
-            "hand": 0.05,
+            "flow_acc": 0.025,
+            "hand": 0.025,
             "dist_drainage": 0.90,
+            "tpi": 0.05,
         }
 
         output_path = str(tmp_path / "drainage_need.tif")

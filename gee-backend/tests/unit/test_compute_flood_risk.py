@@ -50,16 +50,18 @@ def _make_geotiff(path: Path, data: np.ndarray, nodata: float = NODATA) -> None:
 
 
 def _create_flood_inputs(area_dir: Path, rng: np.random.Generator) -> None:
-    """Create the three prerequisite GeoTIFFs for flood risk."""
+    """Create the four prerequisite GeoTIFFs for flood risk."""
     area_dir.mkdir(parents=True, exist_ok=True)
 
     hand = rng.uniform(0.0, 20.0, size=SHAPE)
     twi = rng.uniform(2.0, 18.0, size=SHAPE)
-    slope = rng.uniform(0.0, 30.0, size=SHAPE)
+    profile_curvature = rng.uniform(-0.01, 0.01, size=SHAPE)
+    tpi = rng.uniform(-2.0, 2.0, size=SHAPE)
 
     _make_geotiff(area_dir / "hand.tif", hand)
     _make_geotiff(area_dir / "twi.tif", twi)
-    _make_geotiff(area_dir / "slope.tif", slope)
+    _make_geotiff(area_dir / "profile_curvature.tif", profile_curvature)
+    _make_geotiff(area_dir / "tpi.tif", tpi)
 
 
 # ---------------------------------------------------------------------------
@@ -129,16 +131,19 @@ class TestComputeFloodRiskNodataPropagation:
 
         hand = rng.uniform(0.0, 20.0, size=SHAPE)
         twi = rng.uniform(2.0, 18.0, size=SHAPE)
-        slope = rng.uniform(0.0, 30.0, size=SHAPE)
+        profile_curvature = rng.uniform(-0.01, 0.01, size=SHAPE)
+        tpi = rng.uniform(-2.0, 2.0, size=SHAPE)
 
         # Each layer gets nodata at a different pixel
         hand[1, 1] = NODATA
         twi[2, 2] = NODATA
-        slope[3, 3] = NODATA
+        profile_curvature[3, 3] = NODATA
+        tpi[4, 4] = NODATA
 
         _make_geotiff(area_dir / "hand.tif", hand)
         _make_geotiff(area_dir / "twi.tif", twi)
-        _make_geotiff(area_dir / "slope.tif", slope)
+        _make_geotiff(area_dir / "profile_curvature.tif", profile_curvature)
+        _make_geotiff(area_dir / "tpi.tif", tpi)
 
         output_path = str(tmp_path / "flood_risk.tif")
         compute_flood_risk(str(area_dir), output_path)
@@ -147,7 +152,7 @@ class TestComputeFloodRiskNodataPropagation:
             data = src.read(1)
             nodata = src.nodata
 
-        for r, c in [(1, 1), (2, 2), (3, 3)]:
+        for r, c in [(1, 1), (2, 2), (3, 3), (4, 4)]:
             assert data[r, c] == nodata, f"Pixel ({r},{c}) should be nodata"
 
 
@@ -164,7 +169,7 @@ class TestComputeFloodRiskWeights:
         _create_flood_inputs(area_dir, rng)
 
         # Skew heavily toward TWI
-        custom_weights = {"twi": 0.70, "hand": 0.20, "slope": 0.10}
+        custom_weights = {"twi": 0.70, "hand": 0.10, "profile_curvature": 0.10, "tpi": 0.10}
         output_default = str(tmp_path / "flood_default.tif")
         output_custom = str(tmp_path / "flood_custom.tif")
 

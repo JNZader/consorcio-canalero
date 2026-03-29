@@ -149,7 +149,7 @@ def _setup_area(tmp_path: Path) -> Path:
     """
     area_dir = tmp_path / "test_area"
     area_dir.mkdir(exist_ok=True)
-    for f in ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif", "drainage.geojson"]:
+    for f in ["hand.tif", "twi.tif", "flow_acc.tif", "profile_curvature.tif", "tpi.tif", "drainage.geojson"]:
         (area_dir / f).touch()
     return area_dir
 
@@ -161,10 +161,10 @@ def _setup_composites_mock(area_dir: Path) -> MagicMock:
     mock_composites.compute_drainage_need.return_value = str(area_dir / "drainage_need.tif")
     mock_composites.extract_composite_zonal_stats.return_value = []
     mock_composites.DEFAULT_FLOOD_WEIGHTS = {
-        "twi": 0.40, "hand": 0.35, "slope": 0.25,
+        "twi": 0.30, "hand": 0.30, "profile_curvature": 0.25, "tpi": 0.15,
     }
     mock_composites.DEFAULT_DRAINAGE_WEIGHTS = {
-        "dist_drainage": 0.35, "flow_acc": 0.30, "hand": 0.35,
+        "dist_drainage": 0.30, "flow_acc": 0.25, "hand": 0.20, "tpi": 0.25,
     }
     return mock_composites
 
