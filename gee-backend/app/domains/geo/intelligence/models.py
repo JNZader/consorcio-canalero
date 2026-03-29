@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -220,6 +221,9 @@ class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
     """Per-zone statistics from composite analysis rasters (flood risk, drainage need)."""
 
     __tablename__ = "composite_zonal_stats"
+    __table_args__ = (
+        UniqueConstraint("zona_id", "tipo", name="uq_composite_zonal_stats_zona_tipo"),
+    )
 
     zona_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

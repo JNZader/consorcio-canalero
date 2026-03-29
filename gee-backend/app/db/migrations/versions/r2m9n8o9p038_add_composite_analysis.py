@@ -110,9 +110,15 @@ def upgrade() -> None:
         "composite_zonal_stats",
         ["fecha_calculo"],
     )
+    op.create_unique_constraint(
+        "uq_composite_zonal_stats_zona_tipo",
+        "composite_zonal_stats",
+        ["zona_id", "tipo"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint("uq_composite_zonal_stats_zona_tipo", "composite_zonal_stats")
     op.drop_index("ix_composite_zonal_stats_fecha")
     op.drop_index("ix_composite_zonal_stats_tipo")
     op.drop_index("ix_composite_zonal_stats_zona_id")

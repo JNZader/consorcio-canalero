@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.intelligence.models import (
     AlertaGeo,
+    CompositeZonalStats,
     IndiceHidrico,
     PuntoConflicto,
     ZonaOperativa,
@@ -532,3 +533,79 @@ class IntelligenceRepository:
         if row is None:
             return {}
         return dict(row)
+
+    # ── COMPOSITE ZONAL STATS ────────────────────
+
+    def bulk_upsert_composite_stats(
+        self, db: Session, stats: list[dict[str, Any]]
+    ) -> int:
+        """Insert or update composite zonal stats on conflict (zona_id + tipo).
+
+        If a record with the same zona_id + tipo already exists, it is updated
+        with the new values. Otherwise a new record is inserted.
+
+        Args:
+            db: Database session.
+            stats: List of dicts with keys matching CompositeZonalStats columns.
+
+        Returns:
+            Number of rows upserted.
+        """
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        if not stats:
+            return 0
+
+        stmt = pg_insert(CompositeZonalStats).values(stats)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["zona_id", "tipo"],
+            set_={
+                "fecha_calculo": stmt.excluded.fecha_calculo,
+                "mean_score": stmt.excluded.mean_score,
+                "max_score": stmt.excluded.max_score,
+                "p90_score": stmt.excluded.p90_score,
+                "area_high_risk_ha": stmt.excluded.area_high_risk_ha,
+                "weights_used": stmt.excluded.weights_used,
+                "updated_at": func.now(),
+            },
+        )
+        result = db.execute(stmt)
+        db.flush()
+        return result.rowcount
+
+    def get_composite_stats_by_area(
+        self,
+        db: Session,
+        area_id: str,
+        tipo: Optional[str] = None,
+    ) -> list[CompositeZonalStats]:
+        """Query composite zonal stats for zones in an area.
+
+        Joins with ZonaOperativa to filter by cuenca (used as area identifier)
+        and optionally filters by composite tipo (flood_risk / drainage_need).
+        Results are ordered by mean_score DESC (highest risk first).
+
+        Args:
+            db: Database session.
+            area_id: Area identifier — matches ZonaOperativa.nombre pattern
+                ``basin_{area_id}_%`` or ZonaOperativa.cuenca.
+            tipo: Optional filter: "flood_risk" or "drainage_need".
+
+        Returns:
+            List of CompositeZonalStats with zona relationship loaded.
+        """
+        stmt = (
+            select(CompositeZonalStats)
+            .join(ZonaOperativa, CompositeZonalStats.zona_id == ZonaOperativa.id)
+            .where(
+                ZonaOperativa.nombre.like(f"basin_{area_id}_%")
+                | (ZonaOperativa.cuenca == area_id)
+            )
+        )
+
+        if tipo:
+            stmt = stmt.where(CompositeZonalStats.tipo == tipo)
+
+        stmt = stmt.order_by(CompositeZonalStats.mean_score.desc())
+
+        return list(db.execute(stmt).scalars().all())
