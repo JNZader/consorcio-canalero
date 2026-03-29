@@ -15,9 +15,11 @@ from typing import Any
 
 import numpy as np
 import rasterio
+from pyproj import CRS, Transformer
 from rasterio.features import rasterize as rasterio_rasterize
 from rasterio.mask import mask as rasterio_mask
 from shapely.geometry import mapping, shape
+from shapely.ops import transform as shapely_transform
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +384,7 @@ def extract_composite_zonal_stats(
     composite_path: str,
     zonas: list[dict[str, Any]],
     tipo: str,
+    zona_crs: str | CRS = "EPSG:4326",
 ) -> list[dict[str, Any]]:
     """Extract per-zone statistics from a composite raster.
 
@@ -389,11 +392,15 @@ def extract_composite_zonal_stats(
     statistics: mean, max, 90th percentile, and area (ha) where the
     composite score exceeds the high-risk threshold (70).
 
+    Zone geometries are automatically reprojected to match the raster CRS
+    when they differ (e.g. zones in EPSG:4326 vs raster in EPSG:32720).
+
     Args:
         composite_path: Path to a composite GeoTIFF (0-100 scale).
         zonas: List of zone dicts, each with ``id`` and ``geometry``
             (GeoJSON dict or shapely geometry).
         tipo: Composite type identifier (e.g. "flood_risk", "drainage_need").
+        zona_crs: CRS of the input zone geometries (default EPSG:4326).
 
     Returns:
         List of result dicts ready for DB insertion. Zones that fall
@@ -405,6 +412,23 @@ def extract_composite_zonal_stats(
         raster_crs = src.crs
         nodata = src.nodata
         pixel_area_m2 = abs(src.transform.a * src.transform.e)
+
+        # Build a reprojection function if zone CRS differs from raster CRS
+        _reproject_geom = None
+        src_crs = CRS.from_user_input(zona_crs)
+        dst_crs = CRS.from_user_input(raster_crs) if raster_crs else None
+        if dst_crs and src_crs != dst_crs:
+            transformer = Transformer.from_crs(
+                src_crs, dst_crs, always_xy=True
+            )
+            _reproject_geom = lambda geom: shapely_transform(  # noqa: E731
+                transformer.transform, geom
+            )
+            logger.info(
+                "extract_composite_zonal_stats: reprojecting zones from %s to %s",
+                src_crs,
+                dst_crs,
+            )
 
         # Convert pixel area to hectares
         if raster_crs and raster_crs.is_projected:
@@ -425,11 +449,11 @@ def extract_composite_zonal_stats(
             zona_id = zona["id"]
             geom = zona["geometry"]
 
-            # Accept both shapely and GeoJSON geometry
+            # Accept both shapely and GeoJSON geometry → shapely object
             if hasattr(geom, "__geo_interface__"):
-                geom_geojson = mapping(geom)
+                geom_shapely = geom
             elif isinstance(geom, dict):
-                geom_geojson = geom
+                geom_shapely = shape(geom)
             else:
                 logger.warning(
                     "extract_composite_zonal_stats: skipping zona %s — "
@@ -437,6 +461,12 @@ def extract_composite_zonal_stats(
                     zona_id,
                 )
                 continue
+
+            # Reproject zone geometry to raster CRS if needed
+            if _reproject_geom is not None:
+                geom_shapely = _reproject_geom(geom_shapely)
+
+            geom_geojson = mapping(geom_shapely)
 
             try:
                 out_image, _ = rasterio_mask(

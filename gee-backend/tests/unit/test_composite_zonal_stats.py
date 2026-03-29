@@ -72,7 +72,7 @@ class TestZonalStatsMeanMaxP90:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         assert len(results) == 1
         stat = results[0]
@@ -92,7 +92,7 @@ class TestZonalStatsMeanMaxP90:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         assert len(results) == 1
         stat = results[0]
@@ -116,7 +116,7 @@ class TestZonalStatsMeanMaxP90:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": geom}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         assert len(results) == 1
         assert results[0]["mean_score"] == pytest.approx(40.0, abs=0.1)
@@ -134,7 +134,7 @@ class TestZonalStatsAreaHighRisk:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         stat = results[0]
         # 10x10 pixels, each 100m x 100m = 1 ha => 100 ha total
@@ -149,7 +149,7 @@ class TestZonalStatsAreaHighRisk:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         stat = results[0]
         assert stat["area_high_risk_ha"] == pytest.approx(0.0, abs=0.01)
@@ -165,7 +165,7 @@ class TestZonalStatsAreaHighRisk:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         stat = results[0]
         # 50 pixels * 1 ha = 50 ha
@@ -180,7 +180,7 @@ class TestZonalStatsAreaHighRisk:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         stat = results[0]
         assert stat["area_high_risk_ha"] == pytest.approx(0.0, abs=0.01)
@@ -198,7 +198,7 @@ class TestZonalStatsNodataZone:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         assert len(results) == 0, "All-nodata zone must be skipped"
 
@@ -220,7 +220,7 @@ class TestZonalStatsNodataZone:
             {"id": "z2", "geometry": mapping(geom2)},
         ]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         result_ids = [r["zona_id"] for r in results]
         assert "z1" in result_ids
@@ -241,7 +241,7 @@ class TestZonalStatsOutputFormat:
         geom = box(*BOUNDS_PROJ)
         zonas = [{"id": "z1", "geometry": mapping(geom)}]
 
-        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk")
+        results = extract_composite_zonal_stats(str(composite_path), zonas, "flood_risk", zona_crs=CRS_PROJ)
 
         assert len(results) == 1
         stat = results[0]
@@ -255,3 +255,52 @@ class TestZonalStatsOutputFormat:
         assert stat["tipo"] == "flood_risk"
         assert stat["zona_id"] == "z1"
         assert stat["weights_used"] is None  # caller sets it
+
+
+class TestZonalStatsCRSReprojection:
+    """Zone geometries in a different CRS are reprojected to match the raster."""
+
+    def test_zones_in_4326_raster_in_utm(self, tmp_path: Path):
+        """Zones in EPSG:4326 with raster in EPSG:32720 still produce stats."""
+        data = np.full(SHAPE, 65.0, dtype=np.float32)
+        composite_path = tmp_path / "composite.tif"
+        # Raster in UTM zone 20S — small area near (-58.5, -34.5)
+        # UTM coords roughly: easting 500000..501000, northing 6180000..6181000
+        utm_bounds = (500_000.0, 6_180_000.0, 501_000.0, 6_181_000.0)
+        _make_composite_geotiff(composite_path, data, bounds=utm_bounds, crs="EPSG:32720")
+
+        # Zone geometry in EPSG:4326 (lon/lat) covering the same area
+        # Use pyproj to get the exact inverse of the UTM bounds
+        from pyproj import Transformer
+
+        t = Transformer.from_crs("EPSG:32720", "EPSG:4326", always_xy=True)
+        lon_min, lat_min = t.transform(utm_bounds[0], utm_bounds[1])
+        lon_max, lat_max = t.transform(utm_bounds[2], utm_bounds[3])
+        geom_4326 = box(lon_min, lat_min, lon_max, lat_max)
+
+        zonas = [{"id": "z1", "geometry": mapping(geom_4326)}]
+
+        results = extract_composite_zonal_stats(
+            str(composite_path), zonas, "flood_risk", zona_crs="EPSG:4326"
+        )
+
+        assert len(results) == 1, (
+            "Zone in EPSG:4326 must be reprojected and produce stats"
+        )
+        assert results[0]["mean_score"] == pytest.approx(65.0, abs=1.0)
+
+    def test_same_crs_no_reprojection_needed(self, tmp_path: Path):
+        """When zone CRS matches raster CRS, no reprojection occurs."""
+        data = np.full(SHAPE, 42.0, dtype=np.float32)
+        composite_path = tmp_path / "composite.tif"
+        _make_composite_geotiff(composite_path, data)
+
+        geom = box(*BOUNDS_PROJ)
+        zonas = [{"id": "z1", "geometry": mapping(geom)}]
+
+        results = extract_composite_zonal_stats(
+            str(composite_path), zonas, "flood_risk", zona_crs="EPSG:32720"
+        )
+
+        assert len(results) == 1
+        assert results[0]["mean_score"] == pytest.approx(42.0, abs=0.1)
