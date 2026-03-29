@@ -19,6 +19,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+# WhiteboxTools is only available in the geo-worker Docker container.
+# Skip the entire module when running tests locally.
+pytest.importorskip("whitebox", reason="WhiteboxTools only available in geo-worker container")
+
 
 # ---------------------------------------------------------------------------
 # Signature tests

@@ -13,6 +13,10 @@ import inspect
 import numpy as np
 import pytest
 
+# WhiteboxTools is only available in the geo-worker Docker container.
+# Skip the entire module when running tests locally.
+pytest.importorskip("whitebox", reason="WhiteboxTools only available in geo-worker container")
+
 
 # ---------------------------------------------------------------------------
 # 5.1: Test download_dem_from_gee() function signature and return type
