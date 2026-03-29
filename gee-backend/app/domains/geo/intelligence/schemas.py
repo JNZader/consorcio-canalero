@@ -243,3 +243,48 @@ class DashboardInteligente(BaseModel):
         default_factory=list,
         description="HCI evolution over time",
     )
+
+
+# ──────────────────────────────────────────────
+# COMPOSITE ANALYSIS
+# ──────────────────────────────────────────────
+
+
+class CompositeAnalysisRequest(BaseModel):
+    """Request to trigger composite analysis (flood risk + drainage need)."""
+
+    area_id: str = Field(..., description="Processing area identifier")
+    weights_flood: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Custom flood risk weights (keys: twi, hand, flow_acc, slope). Must sum to 1.0",
+    )
+    weights_drainage: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Custom drainage need weights (keys: flow_acc, twi, hand, dist_drainage). Must sum to 1.0",
+    )
+
+
+class CompositeZonalStatsResponse(BaseModel):
+    """Zonal statistics for a composite raster (flood risk or drainage need)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    zona_id: uuid.UUID
+    zona_nombre: Optional[str] = Field(
+        default=None, description="Zone name (joined from ZonaOperativa)"
+    )
+    tipo: str = Field(..., description="flood_risk | drainage_need")
+    mean_score: float
+    max_score: float
+    p90_score: float
+    area_high_risk_ha: float
+    weights_used: Optional[dict[str, float]] = None
+    fecha_calculo: date
+
+
+class BasinRiskRankingResponse(BaseModel):
+    """List of basins ranked by composite risk score."""
+
+    items: list[CompositeZonalStatsResponse]
+    total: int
