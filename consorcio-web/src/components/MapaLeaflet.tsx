@@ -449,7 +449,18 @@ export default function MapaLeaflet() {
   const { basins, loading: loadingBasins } = useBasins();
 
   // DEM pipeline raster layers for tile overlays (authenticated)
-  const { layers: demLayers, loading: loadingDemLayers } = useGeoLayers();
+  const { layers: allGeoLayers, loading: loadingDemLayers } = useGeoLayers();
+
+  // Separate composite analysis layers from standard DEM layers
+  const COMPOSITE_TYPES = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
+  const demLayers = useMemo(
+    () => allGeoLayers.filter((l) => !COMPOSITE_TYPES.has(l.tipo)),
+    [allGeoLayers, COMPOSITE_TYPES]
+  );
+  const compositeLayers = useMemo(
+    () => allGeoLayers.filter((l) => COMPOSITE_TYPES.has(l.tipo)),
+    [allGeoLayers, COMPOSITE_TYPES]
+  );
 
   const handleExportAsset = async (assetId: string, assetName: string) => {
     try {
@@ -795,6 +806,23 @@ export default function MapaLeaflet() {
             <LayersControl.Overlay
               key={`dem-${layer.id}`}
               name={`DEM: ${GEO_LAYER_LABELS[layer.tipo] || layer.nombre}`}
+            >
+              <TileLayer
+                url={buildTileUrl(layer.id)}
+                opacity={0.7}
+                maxZoom={18}
+                maxNativeZoom={12}
+                tms={false}
+                crossOrigin="anonymous"
+              />
+            </LayersControl.Overlay>
+          ))}
+
+          {/* Composite analysis layers (flood risk, drainage need) */}
+          {compositeLayers.map((layer) => (
+            <LayersControl.Overlay
+              key={`composite-${layer.id}`}
+              name={GEO_LAYER_LABELS[layer.tipo] || layer.nombre}
             >
               <TileLayer
                 url={buildTileUrl(layer.id)}
