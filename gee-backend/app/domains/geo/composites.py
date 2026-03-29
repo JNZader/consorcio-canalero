@@ -102,15 +102,17 @@ def rasterize_drainage(
 # ---------------------------------------------------------------------------
 
 DEFAULT_FLOOD_WEIGHTS: dict[str, float] = {
-    "twi": 0.40,       # Primary wetness indicator (already encodes flow_acc on flat terrain)
-    "hand": 0.35,      # Proximity to drainage level — key for flood susceptibility
-    "slope": 0.25,     # Terrain gradient (tiebreaker on flat pampas)
+    "twi": 0.30,                # Wetness index
+    "hand": 0.30,               # Height above drainage
+    "profile_curvature": 0.25,  # Concavities trap water (INVERTED: negative = high risk)
+    "tpi": 0.15,                # Depressions (INVERTED: negative = high risk)
 }
 
 DEFAULT_DRAINAGE_WEIGHTS: dict[str, float] = {
-    "dist_drainage": 0.35,  # THE key differentiator — far from existing drainage
-    "flow_acc": 0.30,       # Water volume accumulation (not TWI to avoid redundancy)
-    "hand": 0.35,           # Low-lying areas need drainage infrastructure
+    "dist_drainage": 0.30,  # Distance to existing drainage
+    "flow_acc": 0.25,       # Water accumulation volume
+    "hand": 0.20,           # Low-lying areas
+    "tpi": 0.25,            # Depressions need drainage (INVERTED)
 }
 
 
@@ -195,19 +197,22 @@ def compute_flood_risk(
 ) -> str:
     """Compute a flood risk composite raster from terrain analysis layers.
 
-    Combines TWI, HAND (inverted), and slope (inverted) into a single
-    weighted index scaled to [0, 100].  flow_acc is intentionally excluded
-    because TWI already encodes it on flat terrain (r=0.93 on Pampas data),
-    and including both inflated composite correlation with drainage_need.
+    Combines TWI, HAND (inverted), profile curvature (inverted — concavities
+    trap water), and TPI (inverted — depressions accumulate water) into a
+    single weighted index scaled to [0, 100].
+
+    Slope was removed because on flat terrain (e.g. Pampas) it provides
+    almost no discrimination.  Profile curvature and TPI capture micro-
+    topography that drives real water accumulation.
 
     Higher values indicate higher flood risk.
 
     Args:
         area_dir: Directory containing the input layers
-            (hand.tif, twi.tif, slope.tif).
+            (hand.tif, twi.tif, profile_curvature.tif, tpi.tif).
         output_path: Where to write the composite GeoTIFF.
-        weights: Optional weight overrides. Keys: twi, hand, slope.
-            Must sum to 1.0.
+        weights: Optional weight overrides.
+            Keys: twi, hand, profile_curvature, tpi.  Must sum to 1.0.
 
     Returns:
         output_path on success.
@@ -218,25 +223,32 @@ def compute_flood_risk(
     area = Path(area_dir)
     hand_data, hand_nd, meta = _load_layer(str(area / "hand.tif"))
     twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
-    slope_data, slope_nd, _ = _load_layer(str(area / "slope.tif"))
+    curv_data, curv_nd, _ = _load_layer(str(area / "profile_curvature.tif"))
+    tpi_data, tpi_nd, _ = _load_layer(str(area / "tpi.tif"))
 
     # Combined nodata mask (union of all layers)
-    nodata_mask = hand_nd | twi_nd | slope_nd
+    nodata_mask = hand_nd | twi_nd | curv_nd | tpi_nd
 
-    # Invert HAND and slope: lower raw value = higher risk
+    # Invert HAND: lower raw value = higher risk
     hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
-    slope_inv = np.where(nodata_mask, 0.0, np.max(slope_data[~nodata_mask]) - slope_data)
+
+    # Invert curvature and TPI: negative values = concavities/depressions = HIGH risk
+    # Multiply by -1 so that concavities become positive (high risk)
+    curv_inv = np.where(nodata_mask, 0.0, -curv_data)
+    tpi_inv = np.where(nodata_mask, 0.0, -tpi_data)
 
     # Normalize each component
     hand_norm = normalize_percentile(hand_inv, nodata_mask)
     twi_norm = normalize_percentile(twi_data, nodata_mask)
-    slope_norm = normalize_percentile(slope_inv, nodata_mask)
+    curv_norm = normalize_percentile(curv_inv, nodata_mask)
+    tpi_norm = normalize_percentile(tpi_inv, nodata_mask)
 
     # Weighted sum → scale to 0-100
     composite = (
         w["twi"] * twi_norm
         + w["hand"] * hand_norm
-        + w["slope"] * slope_norm
+        + w["profile_curvature"] * curv_norm
+        + w["tpi"] * tpi_norm
     ).astype(np.float32) * np.float32(100.0)
 
     # Apply combined nodata mask
@@ -267,8 +279,10 @@ def compute_drainage_need(
 ) -> str:
     """Compute a drainage infrastructure need composite raster.
 
-    Combines flow accumulation (log-scaled), HAND (inverted), and
-    distance-to-drainage into a single weighted index scaled to [0, 100].
+    Combines flow accumulation (log-scaled), HAND (inverted),
+    distance-to-drainage, and TPI (inverted — depressions need drainage)
+    into a single weighted index scaled to [0, 100].
+
     TWI is intentionally excluded because it is highly correlated with
     flow_acc on flat terrain (r=0.93), and flood_risk already uses TWI
     as its primary signal.
@@ -279,10 +293,10 @@ def compute_drainage_need(
 
     Args:
         area_dir: Directory containing the input layers
-            (flow_acc.tif, hand.tif, drainage.tif).
+            (flow_acc.tif, hand.tif, drainage.tif, tpi.tif).
         output_path: Where to write the composite GeoTIFF.
         weights: Optional weight overrides. Keys: flow_acc, hand,
-            dist_drainage. Must sum to 1.0.
+            dist_drainage, tpi. Must sum to 1.0.
 
     Returns:
         output_path on success.
@@ -318,6 +332,7 @@ def compute_drainage_need(
     # Load input layers
     facc_data, facc_nd, meta = _load_layer(str(area / "flow_acc.tif"))
     hand_data, hand_nd, _ = _load_layer(str(area / "hand.tif"))
+    tpi_data, tpi_nd, _ = _load_layer(str(area / "tpi.tif"))
 
     # Compute distance-to-drainage using WhiteboxTools
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -328,10 +343,13 @@ def compute_drainage_need(
         dist_data, dist_nd, _ = _load_layer(dist_output)
 
     # Combined nodata mask (union of all layers)
-    nodata_mask = facc_nd | hand_nd | dist_nd
+    nodata_mask = facc_nd | hand_nd | dist_nd | tpi_nd
 
     # Invert HAND: lower raw value = higher drainage need
     hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
+
+    # Invert TPI: negative values = depressions = HIGH drainage need
+    tpi_inv = np.where(nodata_mask, 0.0, -tpi_data)
 
     # Log-scale flow accumulation
     with np.errstate(invalid="ignore"):
@@ -341,12 +359,14 @@ def compute_drainage_need(
     facc_norm = normalize_percentile(facc_log, nodata_mask)
     hand_norm = normalize_percentile(hand_inv, nodata_mask)
     dist_norm = normalize_percentile(dist_data, nodata_mask)
+    tpi_norm = normalize_percentile(tpi_inv, nodata_mask)
 
     # Weighted sum → scale to 0-100
     composite = (
         w["flow_acc"] * facc_norm
         + w["hand"] * hand_norm
         + w["dist_drainage"] * dist_norm
+        + w["tpi"] * tpi_norm
     ).astype(np.float32) * np.float32(100.0)
 
     # Apply combined nodata mask

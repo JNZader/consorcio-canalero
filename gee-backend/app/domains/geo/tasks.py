@@ -1043,7 +1043,7 @@ def composite_analysis_task(
         # -- Validate prerequisite files exist on disk --------------------
         # drainage can be either .tif (binary raster) or .geojson (vector);
         # compute_drainage_need() auto-rasterizes from geojson if .tif is missing.
-        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif"]
+        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "profile_curvature.tif", "tpi.tif"]
         missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
         has_drainage = (
             (Path(area_dir) / "drainage.tif").exists()
