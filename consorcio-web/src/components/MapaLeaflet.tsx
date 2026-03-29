@@ -47,6 +47,7 @@ import { MapReadyHandler } from '../hooks/useMapReady';
 import { useSelectedImageListener, type SelectedImage } from '../hooks/useSelectedImage';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { ComparisonLayers, ComparisonSliderUI } from './MapImageComparison';
+import { RasterLegend } from './RasterLegend';
 import { IconGitCompare, IconLayers, IconPhoto, IconDownload, IconMap } from './ui/icons';
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
@@ -387,6 +388,53 @@ function MapViewUpdater({ center, zoom }: { center: [number, number]; zoom: numb
   return null;
 }
 
+/** Raster layer type prefixes used in LayersControl overlay names */
+const DEM_OVERLAY_PREFIX = 'DEM: ';
+
+/**
+ * Listens to LayersControl overlay add/remove events and reports
+ * which raster tile layers are currently visible.
+ */
+function OverlayTracker({
+  allGeoLayers,
+  onVisibleChange,
+}: {
+  allGeoLayers: Array<{ id: string; tipo: string; nombre: string }>;
+  onVisibleChange: (layers: Array<{ tipo: string }>) => void;
+}) {
+  const visibleRef = useRef(new Set<string>());
+
+  useMapEvents({
+    overlayadd(e) {
+      const name: string = e.name;
+      // Match DEM layers ("DEM: Elevacion (DEM)") and composite layers by label
+      const matched = allGeoLayers.find((l) => {
+        const demName = `${DEM_OVERLAY_PREFIX}${GEO_LAYER_LABELS[l.tipo] || l.nombre}`;
+        const compositeName = GEO_LAYER_LABELS[l.tipo] || l.nombre;
+        return name === demName || name === compositeName;
+      });
+      if (matched) {
+        visibleRef.current.add(matched.tipo);
+        onVisibleChange(Array.from(visibleRef.current).map((tipo) => ({ tipo })));
+      }
+    },
+    overlayremove(e) {
+      const name: string = e.name;
+      const matched = allGeoLayers.find((l) => {
+        const demName = `${DEM_OVERLAY_PREFIX}${GEO_LAYER_LABELS[l.tipo] || l.nombre}`;
+        const compositeName = GEO_LAYER_LABELS[l.tipo] || l.nombre;
+        return name === demName || name === compositeName;
+      });
+      if (matched) {
+        visibleRef.current.delete(matched.tipo);
+        onVisibleChange(Array.from(visibleRef.current).map((tipo) => ({ tipo })));
+      }
+    },
+  });
+
+  return null;
+}
+
 export default function MapaLeaflet() {
   // Get system configuration from store
   const config = useConfigStore((state) => state.config);
@@ -450,6 +498,9 @@ export default function MapaLeaflet() {
 
   // DEM pipeline raster layers for tile overlays (authenticated)
   const { layers: allGeoLayers, loading: loadingDemLayers } = useGeoLayers();
+
+  // Track which raster overlay layers are currently visible (for legend)
+  const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
 
   // Separate composite analysis layers from standard DEM layers
   const COMPOSITE_TYPES = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
@@ -687,6 +738,7 @@ export default function MapaLeaflet() {
         <AddPointEvents onMapClick={handleMapClick} enabled={isOperator && markingMode} />
         {/* Forzar recalculo del tamano del mapa en primera carga */}
         <MapReadyHandler />
+        <OverlayTracker allGeoLayers={allGeoLayers} onVisibleChange={setVisibleRasterLayers} />
         <LayersControl position="topright">
           {/* Capas base */}
           <LayersControl.BaseLayer name="OpenStreetMap">
@@ -1070,6 +1122,7 @@ export default function MapaLeaflet() {
       </Modal>
 
       <Leyenda consorcios={consorcios} cuencasConfig={config?.cuencas} />
+      <RasterLegend layers={visibleRasterLayers} />
       <InfoPanel feature={selectedFeature} onClose={handleCloseInfoPanel} />
     </Box>
   );
