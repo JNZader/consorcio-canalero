@@ -46,7 +46,8 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limiter = rate_limiter
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in ["/", "/health"]:
+        # Skip rate limiting for health checks and tile requests (tiles are high-volume)
+        if request.url.path in ["/", "/health"] or "/tiles/" in request.url.path:
             return await call_next(request)
 
         # Prefer per-user rate limiting when authenticated; fall back to IP.

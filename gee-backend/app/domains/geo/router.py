@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
@@ -31,6 +31,18 @@ from app.domains.geo.service import dispatch_job
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Geo Processing"])
+
+# Shared httpx client for tile proxying (avoids creating one per request)
+_tile_client = None
+
+
+def _get_tile_client():
+    import httpx
+
+    global _tile_client  # noqa: PLW0603
+    if _tile_client is None:
+        _tile_client = httpx.AsyncClient(timeout=10.0)
+    return _tile_client
 
 
 def _get_repo() -> GeoRepository:
@@ -271,9 +283,9 @@ async def proxy_tile(
     Public endpoint — Leaflet TileLayer cannot set custom auth headers
     on tile requests, and DEM tiles are not sensitive data.
     """
-    import httpx
-
     from app.config import settings
+
+    _cors = {"Access-Control-Allow-Origin": "*"}
 
     # Build the upstream URL
     params = {}
@@ -287,38 +299,23 @@ async def proxy_tile(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(upstream_url, params=params)
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503,
-            detail="Tile service no disponible (geo-worker sin respuesta)",
-        )
-    except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail="Tile service timeout",
-        )
+        client = _get_tile_client()
+        resp = await client.get(upstream_url, params=params)
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return Response(status_code=204, headers=_cors)
 
-    # 204 = empty tile (outside bounds)
     if resp.status_code == 204:
-        return StreamingResponse(
-            iter([]),
-            status_code=204,
-        )
+        return Response(status_code=204, headers=_cors)
 
-    # Forward error responses
     if resp.status_code >= 400:
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=resp.json().get("detail", "Error en tile service"),
-        )
+        return Response(status_code=204, headers=_cors)
 
-    return StreamingResponse(
-        iter([resp.content]),
+    return Response(
+        content=resp.content,
         media_type="image/png",
         headers={
             "Cache-Control": "public, max-age=3600",
+            **_cors,
         },
     )
 
