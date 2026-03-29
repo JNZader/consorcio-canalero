@@ -295,3 +295,126 @@ def compute_drainage_need(
 
     logger.info("compute_drainage_need: wrote %s (weights=%s)", output_path, w)
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# d) Zonal statistics extraction
+# ---------------------------------------------------------------------------
+
+# Threshold above which a pixel is considered "high risk" (score > 70 of 100)
+_HIGH_RISK_THRESHOLD = 70.0
+
+
+def extract_composite_zonal_stats(
+    composite_path: str,
+    zonas: list[dict[str, Any]],
+    tipo: str,
+) -> list[dict[str, Any]]:
+    """Extract per-zone statistics from a composite raster.
+
+    For each zona geometry, masks the composite and computes summary
+    statistics: mean, max, 90th percentile, and area (ha) where the
+    composite score exceeds the high-risk threshold (70).
+
+    Args:
+        composite_path: Path to a composite GeoTIFF (0-100 scale).
+        zonas: List of zone dicts, each with ``id`` and ``geometry``
+            (GeoJSON dict or shapely geometry).
+        tipo: Composite type identifier (e.g. "flood_risk", "drainage_need").
+
+    Returns:
+        List of result dicts ready for DB insertion. Zones that fall
+        entirely in nodata are skipped (not included in output).
+    """
+    results: list[dict[str, Any]] = []
+
+    with rasterio.open(composite_path) as src:
+        raster_crs = src.crs
+        nodata = src.nodata
+        pixel_area_m2 = abs(src.transform.a * src.transform.e)
+
+        # Convert pixel area to hectares
+        if raster_crs and raster_crs.is_projected:
+            pixel_area_ha = pixel_area_m2 / 10_000.0
+        else:
+            # Geographic CRS: approximate using center latitude
+            bounds = src.bounds
+            center_lat = (bounds.top + bounds.bottom) / 2
+            lat_rad = np.radians(center_lat)
+            m_per_deg_lat = 111_320.0
+            m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
+            pixel_area_ha = (
+                abs(src.transform.a) * m_per_deg_lon
+                * abs(src.transform.e) * m_per_deg_lat
+            ) / 10_000.0
+
+        for zona in zonas:
+            zona_id = zona["id"]
+            geom = zona["geometry"]
+
+            # Accept both shapely and GeoJSON geometry
+            if hasattr(geom, "__geo_interface__"):
+                geom_geojson = mapping(geom)
+            elif isinstance(geom, dict):
+                geom_geojson = geom
+            else:
+                logger.warning(
+                    "extract_composite_zonal_stats: skipping zona %s — "
+                    "unsupported geometry type",
+                    zona_id,
+                )
+                continue
+
+            try:
+                out_image, _ = rasterio_mask(
+                    src, [geom_geojson], crop=True, all_touched=True
+                )
+            except Exception:
+                logger.warning(
+                    "extract_composite_zonal_stats: failed to mask zona %s, skipping",
+                    zona_id,
+                    exc_info=True,
+                )
+                continue
+
+            data = out_image[0].astype(np.float64)
+
+            # Build valid mask (exclude nodata)
+            valid_mask = np.ones(data.shape, dtype=bool)
+            if nodata is not None:
+                valid_mask = data != nodata
+
+            valid = data[valid_mask]
+
+            if valid.size == 0:
+                logger.info(
+                    "extract_composite_zonal_stats: zona %s is all nodata, skipping",
+                    zona_id,
+                )
+                continue
+
+            mean_score = float(np.mean(valid))
+            max_score = float(np.max(valid))
+            p90_score = float(np.percentile(valid, 90))
+            high_risk_pixels = int(np.sum(valid > _HIGH_RISK_THRESHOLD))
+            area_high_risk_ha = float(high_risk_pixels * pixel_area_ha)
+
+            results.append(
+                {
+                    "zona_id": zona_id,
+                    "tipo": tipo,
+                    "mean_score": round(mean_score, 2),
+                    "max_score": round(max_score, 2),
+                    "p90_score": round(p90_score, 2),
+                    "area_high_risk_ha": round(area_high_risk_ha, 4),
+                    "weights_used": None,  # caller sets from composite weights
+                }
+            )
+
+    logger.info(
+        "extract_composite_zonal_stats: %d/%d zonas produced stats for %s",
+        len(results),
+        len(zonas),
+        tipo,
+    )
+    return results
