@@ -102,3 +102,100 @@ def normalize_percentile(
     result[nodata_mask] = 0.0
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# b) Flood risk composite
+# ---------------------------------------------------------------------------
+
+
+def _load_layer(path: str) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Load a single-band raster, returning (data, nodata_mask, meta).
+
+    Args:
+        path: Path to the GeoTIFF file.
+
+    Returns:
+        Tuple of (data as float64, boolean nodata mask, rasterio meta dict).
+    """
+    with rasterio.open(path) as src:
+        data = src.read(1).astype(np.float64)
+        nodata = src.nodata
+        meta = src.meta.copy()
+
+    nodata_mask = np.zeros(data.shape, dtype=bool)
+    if nodata is not None:
+        nodata_mask = data == nodata
+
+    return data, nodata_mask, meta
+
+
+def compute_flood_risk(
+    area_dir: str,
+    output_path: str,
+    weights: dict[str, float] | None = None,
+) -> str:
+    """Compute a flood risk composite raster from terrain analysis layers.
+
+    Combines HAND (inverted), TWI, flow accumulation (log-scaled), and
+    slope (inverted) into a single weighted index scaled to [0, 100].
+
+    Higher values indicate higher flood risk.
+
+    Args:
+        area_dir: Directory containing the input layers
+            (hand.tif, twi.tif, flow_acc.tif, slope.tif).
+        output_path: Where to write the composite GeoTIFF.
+        weights: Optional weight overrides. Keys: twi, hand, flow_acc, slope.
+            Must sum to 1.0.
+
+    Returns:
+        output_path on success.
+    """
+    w = weights or DEFAULT_FLOOD_WEIGHTS.copy()
+
+    # Load input layers
+    area = Path(area_dir)
+    hand_data, hand_nd, meta = _load_layer(str(area / "hand.tif"))
+    twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
+    facc_data, facc_nd, _ = _load_layer(str(area / "flow_acc.tif"))
+    slope_data, slope_nd, _ = _load_layer(str(area / "slope.tif"))
+
+    # Combined nodata mask (union of all layers)
+    nodata_mask = hand_nd | twi_nd | facc_nd | slope_nd
+
+    # Invert HAND and slope: lower raw value = higher risk
+    hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
+    slope_inv = np.where(nodata_mask, 0.0, np.max(slope_data[~nodata_mask]) - slope_data)
+
+    # Log-scale flow accumulation (extreme skew: P50=2 but max=500k)
+    facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
+
+    # Normalize each component
+    hand_norm = normalize_percentile(hand_inv, nodata_mask)
+    twi_norm = normalize_percentile(twi_data, nodata_mask)
+    facc_norm = normalize_percentile(facc_log, nodata_mask)
+    slope_norm = normalize_percentile(slope_inv, nodata_mask)
+
+    # Weighted sum → scale to 0-100
+    composite = (
+        w["twi"] * twi_norm
+        + w["hand"] * hand_norm
+        + w["flow_acc"] * facc_norm
+        + w["slope"] * slope_norm
+    ).astype(np.float32) * np.float32(100.0)
+
+    # Apply combined nodata mask
+    out_nodata = np.float32(-9999.0)
+    composite[nodata_mask] = out_nodata
+
+    # Write output GeoTIFF preserving CRS/transform from input
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **meta) as dst:
+        dst.write(composite, 1)
+
+    logger.info("compute_flood_risk: wrote %s (weights=%s)", output_path, w)
+    return output_path
