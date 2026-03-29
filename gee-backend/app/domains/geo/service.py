@@ -42,6 +42,7 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
     )
     from app.domains.geo.tasks import (
         classify_terrain,
+        composite_analysis_task,
         compute_aspect,
         compute_flow_accumulation,
         compute_flow_direction,
@@ -68,6 +69,7 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
         TipoGeoJob.GEE_CLASSIFICATION: lambda p: supervised_classification_task.delay(**p),
         TipoGeoJob.DEM_FULL_PIPELINE: lambda p: run_full_dem_pipeline.delay(**p),
         TipoGeoJob.BASIN_DELINEATION: lambda p: delineate_basins_task.delay(**p),
+        TipoGeoJob.COMPOSITE_ANALYSIS: lambda p: composite_analysis_task.delay(**p),
     }
 
 

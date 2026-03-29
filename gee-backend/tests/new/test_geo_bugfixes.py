@@ -50,6 +50,9 @@ class TestTipoGeoJobEnum:
             "terrain_class",
             "gee_flood",
             "gee_classification",
+            "dem_full_pipeline",
+            "basin_delineation",
+            "composite_analysis",
         }
         actual = {member.value for member in TipoGeoJob}
         assert expected == actual
