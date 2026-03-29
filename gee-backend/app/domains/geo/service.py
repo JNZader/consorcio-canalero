@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.domains.geo.models import (
-    EstadoGeoJob,
     GeoJob,
     GeoLayer,
     TipoGeoJob,

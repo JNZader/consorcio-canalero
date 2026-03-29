@@ -20,7 +20,6 @@ from app.domains.finanzas.schemas import (
     IngresoCreate,
     IngresoUpdate,
     PresupuestoCreate,
-    PresupuestoUpdate,
 )
 
 

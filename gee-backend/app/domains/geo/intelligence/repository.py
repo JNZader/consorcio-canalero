@@ -468,7 +468,7 @@ class IntelligenceRepository:
                     text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}")
                 )
                 results[view] = "ok"
-            except Exception as exc:
+            except Exception:
                 # If the view has no data yet, CONCURRENTLY fails — fallback
                 db.rollback()
                 try:

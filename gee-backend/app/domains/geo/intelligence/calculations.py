@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
-from shapely.geometry import LineString, Point, mapping
+from shapely.geometry import LineString, mapping
 
 _wbt = None
 

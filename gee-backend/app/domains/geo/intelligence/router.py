@@ -25,7 +25,6 @@ from app.domains.geo.intelligence.schemas import (
     PuntoConflictoResponse,
     ZonaOperativaResponse,
     ZonificacionRequest,
-    ZonificacionResponse,
 )
 logger = get_logger(__name__)
 

@@ -6,7 +6,6 @@ All tasks run on the "geo" queue.
 
 from __future__ import annotations
 
-import traceback
 import uuid
 
 import structlog
@@ -116,7 +115,6 @@ def _extract_zone_raster_stats(
     values in [0, 1] suitable for HCI calculation. Falls back to defaults
     if rasters are unavailable or extraction fails.
     """
-    import numpy as np
 
     defaults = {
         "pendiente_media": 0.5,
@@ -200,7 +198,6 @@ def task_detect_all_conflicts(buffer_m: float = 50.0) -> dict:
     the DRAINAGE GeoLayer on disk. Then calls detect_conflicts() to find
     intersection points filtered by flow accumulation and slope.
     """
-    import geopandas as gpd
 
     deps = _get_deps()
     db = _get_db()

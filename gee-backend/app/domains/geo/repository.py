@@ -230,7 +230,6 @@ class GeoRepository:
         usuario_id: Optional[uuid.UUID] = None,
     ) -> AnalisisGeo:
         """Create a new GEE analysis record in PENDING state."""
-        from datetime import date as _date  # avoid circular at module level
 
         analisis = AnalisisGeo(
             tipo=tipo,

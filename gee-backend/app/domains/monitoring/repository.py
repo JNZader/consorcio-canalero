@@ -10,7 +10,6 @@ from app.domains.monitoring.models import (
     AnalisisGee,
     EstadoSugerencia,
     Sugerencia,
-    TipoAnalisis,
 )
 from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaUpdate
 

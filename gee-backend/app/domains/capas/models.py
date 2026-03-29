@@ -1,7 +1,6 @@
 """SQLAlchemy models for the capas (map layers) domain."""
 
 import enum
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -12,9 +11,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    func,
 )
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDMixin

@@ -8,8 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.domains.denuncias.models import (
     Denuncia,
-    DenunciaHistorial,
-    EstadoDenuncia,
     VALID_TRANSITIONS,
 )
 from app.domains.denuncias.repository import DenunciaRepository

@@ -2,7 +2,7 @@
 
 import enum
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from geoalchemy2 import Geometry
@@ -14,7 +14,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship

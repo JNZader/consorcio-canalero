@@ -1,7 +1,7 @@
 """SQLAlchemy models for the padron domain."""
 
 import enum
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import (
@@ -11,7 +11,6 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
