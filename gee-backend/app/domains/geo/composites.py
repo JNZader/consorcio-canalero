@@ -199,3 +199,99 @@ def compute_flood_risk(
 
     logger.info("compute_flood_risk: wrote %s (weights=%s)", output_path, w)
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# c) Drainage need composite
+# ---------------------------------------------------------------------------
+
+
+def compute_drainage_need(
+    area_dir: str,
+    output_path: str,
+    weights: dict[str, float] | None = None,
+) -> str:
+    """Compute a drainage infrastructure need composite raster.
+
+    Combines flow accumulation (log-scaled), TWI, HAND (inverted), and
+    distance-to-drainage into a single weighted index scaled to [0, 100].
+
+    Distance-to-drainage is computed from the binary drainage raster using
+    WhiteboxTools euclidean_distance. Higher composite values indicate
+    areas with greater need for drainage infrastructure.
+
+    Args:
+        area_dir: Directory containing the input layers
+            (flow_acc.tif, twi.tif, hand.tif, drainage.tif).
+        output_path: Where to write the composite GeoTIFF.
+        weights: Optional weight overrides. Keys: flow_acc, twi, hand,
+            dist_drainage. Must sum to 1.0.
+
+    Returns:
+        output_path on success.
+
+    Raises:
+        FileNotFoundError: If drainage.tif is missing from area_dir.
+    """
+    w = weights or DEFAULT_DRAINAGE_WEIGHTS.copy()
+
+    area = Path(area_dir)
+
+    # Validate drainage raster exists
+    drainage_path = area / "drainage.tif"
+    if not drainage_path.exists():
+        raise FileNotFoundError(
+            f"drainage.tif not found in {area_dir}. "
+            "Run the DEM pipeline first to generate the drainage network."
+        )
+
+    # Load input layers
+    facc_data, facc_nd, meta = _load_layer(str(area / "flow_acc.tif"))
+    twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
+    hand_data, hand_nd, _ = _load_layer(str(area / "hand.tif"))
+
+    # Compute distance-to-drainage using WhiteboxTools
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dist_output = str(Path(tmpdir) / "dist_drainage.tif")
+        wbt = _get_wbt()
+        wbt.euclidean_distance(str(drainage_path), dist_output)
+
+        dist_data, dist_nd, _ = _load_layer(dist_output)
+
+    # Combined nodata mask (union of all layers)
+    nodata_mask = facc_nd | twi_nd | hand_nd | dist_nd
+
+    # Invert HAND: lower raw value = higher drainage need
+    hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
+
+    # Log-scale flow accumulation
+    facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
+
+    # Normalize each component
+    facc_norm = normalize_percentile(facc_log, nodata_mask)
+    twi_norm = normalize_percentile(twi_data, nodata_mask)
+    hand_norm = normalize_percentile(hand_inv, nodata_mask)
+    dist_norm = normalize_percentile(dist_data, nodata_mask)
+
+    # Weighted sum → scale to 0-100
+    composite = (
+        w["flow_acc"] * facc_norm
+        + w["twi"] * twi_norm
+        + w["hand"] * hand_norm
+        + w["dist_drainage"] * dist_norm
+    ).astype(np.float32) * np.float32(100.0)
+
+    # Apply combined nodata mask
+    out_nodata = np.float32(-9999.0)
+    composite[nodata_mask] = out_nodata
+
+    # Write output GeoTIFF preserving CRS/transform from input
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **meta) as dst:
+        dst.write(composite, 1)
+
+    logger.info("compute_drainage_need: wrote %s (weights=%s)", output_path, w)
+    return output_path
