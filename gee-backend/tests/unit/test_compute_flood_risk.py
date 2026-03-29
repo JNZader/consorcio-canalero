@@ -50,17 +50,15 @@ def _make_geotiff(path: Path, data: np.ndarray, nodata: float = NODATA) -> None:
 
 
 def _create_flood_inputs(area_dir: Path, rng: np.random.Generator) -> None:
-    """Create the four prerequisite GeoTIFFs for flood risk."""
+    """Create the three prerequisite GeoTIFFs for flood risk."""
     area_dir.mkdir(parents=True, exist_ok=True)
 
     hand = rng.uniform(0.0, 20.0, size=SHAPE)
     twi = rng.uniform(2.0, 18.0, size=SHAPE)
-    flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
     slope = rng.uniform(0.0, 30.0, size=SHAPE)
 
     _make_geotiff(area_dir / "hand.tif", hand)
     _make_geotiff(area_dir / "twi.tif", twi)
-    _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
     _make_geotiff(area_dir / "slope.tif", slope)
 
 
@@ -131,18 +129,15 @@ class TestComputeFloodRiskNodataPropagation:
 
         hand = rng.uniform(0.0, 20.0, size=SHAPE)
         twi = rng.uniform(2.0, 18.0, size=SHAPE)
-        flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
         slope = rng.uniform(0.0, 30.0, size=SHAPE)
 
         # Each layer gets nodata at a different pixel
         hand[1, 1] = NODATA
         twi[2, 2] = NODATA
-        flow_acc[3, 3] = NODATA
-        slope[4, 4] = NODATA
+        slope[3, 3] = NODATA
 
         _make_geotiff(area_dir / "hand.tif", hand)
         _make_geotiff(area_dir / "twi.tif", twi)
-        _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
         _make_geotiff(area_dir / "slope.tif", slope)
 
         output_path = str(tmp_path / "flood_risk.tif")
@@ -152,7 +147,7 @@ class TestComputeFloodRiskNodataPropagation:
             data = src.read(1)
             nodata = src.nodata
 
-        for r, c in [(1, 1), (2, 2), (3, 3), (4, 4)]:
+        for r, c in [(1, 1), (2, 2), (3, 3)]:
             assert data[r, c] == nodata, f"Pixel ({r},{c}) should be nodata"
 
 
@@ -169,7 +164,7 @@ class TestComputeFloodRiskWeights:
         _create_flood_inputs(area_dir, rng)
 
         # Skew heavily toward TWI
-        custom_weights = {"twi": 0.70, "hand": 0.10, "flow_acc": 0.10, "slope": 0.10}
+        custom_weights = {"twi": 0.70, "hand": 0.20, "slope": 0.10}
         output_default = str(tmp_path / "flood_default.tif")
         output_custom = str(tmp_path / "flood_custom.tif")
 

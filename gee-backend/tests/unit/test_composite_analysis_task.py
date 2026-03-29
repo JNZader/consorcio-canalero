@@ -161,10 +161,10 @@ def _setup_composites_mock(area_dir: Path) -> MagicMock:
     mock_composites.compute_drainage_need.return_value = str(area_dir / "drainage_need.tif")
     mock_composites.extract_composite_zonal_stats.return_value = []
     mock_composites.DEFAULT_FLOOD_WEIGHTS = {
-        "twi": 0.35, "hand": 0.25, "flow_acc": 0.25, "slope": 0.15,
+        "twi": 0.40, "hand": 0.35, "slope": 0.25,
     }
     mock_composites.DEFAULT_DRAINAGE_WEIGHTS = {
-        "flow_acc": 0.30, "twi": 0.25, "hand": 0.25, "dist_drainage": 0.20,
+        "dist_drainage": 0.35, "flow_acc": 0.30, "hand": 0.35,
     }
     return mock_composites
 

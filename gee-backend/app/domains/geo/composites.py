@@ -102,17 +102,15 @@ def rasterize_drainage(
 # ---------------------------------------------------------------------------
 
 DEFAULT_FLOOD_WEIGHTS: dict[str, float] = {
-    "twi": 0.35,
-    "hand": 0.25,
-    "flow_acc": 0.25,
-    "slope": 0.15,
+    "twi": 0.40,       # Primary wetness indicator (already encodes flow_acc on flat terrain)
+    "hand": 0.35,      # Proximity to drainage level — key for flood susceptibility
+    "slope": 0.25,     # Terrain gradient (tiebreaker on flat pampas)
 }
 
 DEFAULT_DRAINAGE_WEIGHTS: dict[str, float] = {
-    "flow_acc": 0.30,
-    "twi": 0.25,
-    "hand": 0.25,
-    "dist_drainage": 0.20,
+    "dist_drainage": 0.35,  # THE key differentiator — far from existing drainage
+    "flow_acc": 0.30,       # Water volume accumulation (not TWI to avoid redundancy)
+    "hand": 0.35,           # Low-lying areas need drainage infrastructure
 }
 
 
@@ -197,16 +195,18 @@ def compute_flood_risk(
 ) -> str:
     """Compute a flood risk composite raster from terrain analysis layers.
 
-    Combines HAND (inverted), TWI, flow accumulation (log-scaled), and
-    slope (inverted) into a single weighted index scaled to [0, 100].
+    Combines TWI, HAND (inverted), and slope (inverted) into a single
+    weighted index scaled to [0, 100].  flow_acc is intentionally excluded
+    because TWI already encodes it on flat terrain (r=0.93 on Pampas data),
+    and including both inflated composite correlation with drainage_need.
 
     Higher values indicate higher flood risk.
 
     Args:
         area_dir: Directory containing the input layers
-            (hand.tif, twi.tif, flow_acc.tif, slope.tif).
+            (hand.tif, twi.tif, slope.tif).
         output_path: Where to write the composite GeoTIFF.
-        weights: Optional weight overrides. Keys: twi, hand, flow_acc, slope.
+        weights: Optional weight overrides. Keys: twi, hand, slope.
             Must sum to 1.0.
 
     Returns:
@@ -218,31 +218,24 @@ def compute_flood_risk(
     area = Path(area_dir)
     hand_data, hand_nd, meta = _load_layer(str(area / "hand.tif"))
     twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
-    facc_data, facc_nd, _ = _load_layer(str(area / "flow_acc.tif"))
     slope_data, slope_nd, _ = _load_layer(str(area / "slope.tif"))
 
     # Combined nodata mask (union of all layers)
-    nodata_mask = hand_nd | twi_nd | facc_nd | slope_nd
+    nodata_mask = hand_nd | twi_nd | slope_nd
 
     # Invert HAND and slope: lower raw value = higher risk
     hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
     slope_inv = np.where(nodata_mask, 0.0, np.max(slope_data[~nodata_mask]) - slope_data)
 
-    # Log-scale flow accumulation (extreme skew: P50=2 but max=500k)
-    with np.errstate(invalid="ignore"):
-        facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
-
     # Normalize each component
     hand_norm = normalize_percentile(hand_inv, nodata_mask)
     twi_norm = normalize_percentile(twi_data, nodata_mask)
-    facc_norm = normalize_percentile(facc_log, nodata_mask)
     slope_norm = normalize_percentile(slope_inv, nodata_mask)
 
     # Weighted sum → scale to 0-100
     composite = (
         w["twi"] * twi_norm
         + w["hand"] * hand_norm
-        + w["flow_acc"] * facc_norm
         + w["slope"] * slope_norm
     ).astype(np.float32) * np.float32(100.0)
 
@@ -274,8 +267,11 @@ def compute_drainage_need(
 ) -> str:
     """Compute a drainage infrastructure need composite raster.
 
-    Combines flow accumulation (log-scaled), TWI, HAND (inverted), and
+    Combines flow accumulation (log-scaled), HAND (inverted), and
     distance-to-drainage into a single weighted index scaled to [0, 100].
+    TWI is intentionally excluded because it is highly correlated with
+    flow_acc on flat terrain (r=0.93), and flood_risk already uses TWI
+    as its primary signal.
 
     Distance-to-drainage is computed from the binary drainage raster using
     WhiteboxTools euclidean_distance. Higher composite values indicate
@@ -283,9 +279,9 @@ def compute_drainage_need(
 
     Args:
         area_dir: Directory containing the input layers
-            (flow_acc.tif, twi.tif, hand.tif, drainage.tif).
+            (flow_acc.tif, hand.tif, drainage.tif).
         output_path: Where to write the composite GeoTIFF.
-        weights: Optional weight overrides. Keys: flow_acc, twi, hand,
+        weights: Optional weight overrides. Keys: flow_acc, hand,
             dist_drainage. Must sum to 1.0.
 
     Returns:
@@ -321,7 +317,6 @@ def compute_drainage_need(
 
     # Load input layers
     facc_data, facc_nd, meta = _load_layer(str(area / "flow_acc.tif"))
-    twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
     hand_data, hand_nd, _ = _load_layer(str(area / "hand.tif"))
 
     # Compute distance-to-drainage using WhiteboxTools
@@ -333,7 +328,7 @@ def compute_drainage_need(
         dist_data, dist_nd, _ = _load_layer(dist_output)
 
     # Combined nodata mask (union of all layers)
-    nodata_mask = facc_nd | twi_nd | hand_nd | dist_nd
+    nodata_mask = facc_nd | hand_nd | dist_nd
 
     # Invert HAND: lower raw value = higher drainage need
     hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
@@ -344,14 +339,12 @@ def compute_drainage_need(
 
     # Normalize each component
     facc_norm = normalize_percentile(facc_log, nodata_mask)
-    twi_norm = normalize_percentile(twi_data, nodata_mask)
     hand_norm = normalize_percentile(hand_inv, nodata_mask)
     dist_norm = normalize_percentile(dist_data, nodata_mask)
 
     # Weighted sum → scale to 0-100
     composite = (
         w["flow_acc"] * facc_norm
-        + w["twi"] * twi_norm
         + w["hand"] * hand_norm
         + w["dist_drainage"] * dist_norm
     ).astype(np.float32) * np.float32(100.0)

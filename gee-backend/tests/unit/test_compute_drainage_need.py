@@ -59,11 +59,9 @@ def _create_drainage_inputs(
     area_dir.mkdir(parents=True, exist_ok=True)
 
     flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
-    twi = rng.uniform(2.0, 18.0, size=SHAPE)
     hand = rng.uniform(0.0, 20.0, size=SHAPE)
 
     _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
-    _make_geotiff(area_dir / "twi.tif", twi)
     _make_geotiff(area_dir / "hand.tif", hand)
 
     if include_drainage:
@@ -168,17 +166,15 @@ class TestComputeDrainageNeedNodataPropagation:
         area_dir.mkdir(parents=True, exist_ok=True)
 
         flow_acc = rng.uniform(1.0, 50000.0, size=SHAPE)
-        twi = rng.uniform(2.0, 18.0, size=SHAPE)
         hand = rng.uniform(0.0, 20.0, size=SHAPE)
         drainage = np.zeros(SHAPE, dtype=np.float64)
         drainage[10, :] = 1.0
 
         # Inject nodata at different pixels
         flow_acc[1, 1] = NODATA
-        twi[2, 2] = NODATA
+        hand[2, 2] = NODATA
 
         _make_geotiff(area_dir / "flow_acc.tif", flow_acc)
-        _make_geotiff(area_dir / "twi.tif", twi)
         _make_geotiff(area_dir / "hand.tif", hand)
         _make_geotiff(area_dir / "drainage.tif", drainage)
 
@@ -190,7 +186,7 @@ class TestComputeDrainageNeedNodataPropagation:
             nodata = src.nodata
 
         assert data[1, 1] == nodata, "flow_acc nodata must propagate"
-        assert data[2, 2] == nodata, "twi nodata must propagate"
+        assert data[2, 2] == nodata, "hand nodata must propagate"
 
 
 class TestComputeDrainageNeedWeights:
@@ -212,9 +208,8 @@ class TestComputeDrainageNeedWeights:
 
         custom_weights = {
             "flow_acc": 0.10,
-            "twi": 0.10,
             "hand": 0.10,
-            "dist_drainage": 0.70,
+            "dist_drainage": 0.80,
         }
 
         output_default = str(tmp_path / "drain_default.tif")
@@ -254,16 +249,14 @@ class TestComputeDrainageNeedDistancePenalty:
         drainage[10, :] = 1.0
 
         _make_geotiff(area_dir / "flow_acc.tif", uniform)
-        _make_geotiff(area_dir / "twi.tif", uniform)
         _make_geotiff(area_dir / "hand.tif", uniform)
         _make_geotiff(area_dir / "drainage.tif", drainage)
 
         # Heavily weight distance
         heavy_dist_weights = {
             "flow_acc": 0.05,
-            "twi": 0.05,
             "hand": 0.05,
-            "dist_drainage": 0.85,
+            "dist_drainage": 0.90,
         }
 
         output_path = str(tmp_path / "drainage_need.tif")
