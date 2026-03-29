@@ -33,6 +33,16 @@
   border-radius: var(--mantine-radius-xs);
 }
 
+.rasterLegendPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.92);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
 .skeletonOverlay {
   position: absolute;
   top: 0;
