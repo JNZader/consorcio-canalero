@@ -28,6 +28,8 @@ export const GEO_LAYER_LABELS: Record<string, string> = {
   flow_acc: 'Acumulacion de Flujo',
   flow_dir: 'Direccion de Flujo',
   terrain_class: 'Clasificacion Terreno',
+  flood_risk: 'Riesgo de Inundacion',
+  drainage_need: 'Necesidad de Drenaje',
 };
 
 /** Layer types that support raster tile visualization */
@@ -40,6 +42,8 @@ const TILE_CAPABLE_TYPES = new Set([
   'flow_acc',
   'flow_dir',
   'terrain_class',
+  'flood_risk',
+  'drainage_need',
 ]);
 
 interface UseGeoLayersResult {
