@@ -36,6 +36,8 @@ class TipoGeoLayer(str, enum.Enum):
     TERRAIN_CLASS = "terrain_class"
     DEM_RAW = "dem_raw"
     BASINS = "basins"
+    PROFILE_CURVATURE = "profile_curvature"
+    TPI = "tpi"
     FLOOD_RISK = "flood_risk"
     DRAINAGE_NEED = "drainage_need"
 

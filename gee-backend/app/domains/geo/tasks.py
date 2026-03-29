@@ -184,7 +184,7 @@ def process_dem_pipeline(
 
     outputs: dict[str, str] = {}
     step = 0
-    total_steps = 10
+    total_steps = 12
 
     def _progress():
         nonlocal step
@@ -336,6 +336,42 @@ def process_dem_pipeline(
             archivo_path=terrain_class,
             area_id=area_id,
             metadata_extra={"cog_path": tc_cog} if tc_cog else {"cog_error": "conversion failed"},
+        )
+        _progress()
+
+        # 11. Profile curvature --------------------------------------------
+        profile_curvature = _run_step(
+            job_id,
+            "compute_profile_curvature",
+            _get_processing().compute_profile_curvature,
+            (filled, str(output_dir)),
+        )
+        outputs["profile_curvature"] = profile_curvature
+        pc_cog = _convert_to_cog_safe(profile_curvature)
+        _register_layer(
+            nombre=f"profile_curvature_{area_id}",
+            tipo=TipoGeoLayer.PROFILE_CURVATURE,
+            archivo_path=profile_curvature,
+            area_id=area_id,
+            metadata_extra={"cog_path": pc_cog} if pc_cog else {"cog_error": "conversion failed"},
+        )
+        _progress()
+
+        # 12. TPI (Topographic Position Index) -----------------------------
+        tpi = _run_step(
+            job_id,
+            "compute_tpi",
+            _get_processing().compute_tpi,
+            (filled, str(output_dir)),
+        )
+        outputs["tpi"] = tpi
+        tpi_cog = _convert_to_cog_safe(tpi)
+        _register_layer(
+            nombre=f"tpi_{area_id}",
+            tipo=TipoGeoLayer.TPI,
+            archivo_path=tpi,
+            area_id=area_id,
+            metadata_extra={"cog_path": tpi_cog} if tpi_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
