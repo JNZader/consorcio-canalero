@@ -41,6 +41,22 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "flow_dir": "Spectral",
 }
 
+# Fixed rescale ranges per layer type for consistent visualization.
+# Without these, rio-tiler auto-scales each tile independently,
+# making flat terrain (e.g. Pampas with 30m range) look uniform.
+# Tuned to Bell Ville area: 30m of relief over 30km, slopes < 1°.
+DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
+    "dem_raw": (100.0, 145.0),
+    "slope": (0.0, 1.5),
+    "twi": (6.0, 19.0),
+    "hand": (0.0, 4.0),
+    "terrain_class": (0.0, 3.0),
+    "flow_dir": (0.0, 128.0),
+}
+
+# Types that need log scaling (extreme skew: P50=2 but max=500k)
+LOG_SCALE_TYPES = {"flow_acc"}
+
 # Types that contain elevation data (valid for terrain-RGB encoding)
 ELEVATION_TYPES = {"dem_raw"}
 
@@ -146,11 +162,28 @@ def get_tile(
 
     if encoding == "terrain-rgb":
         # Replace image data with terrain-RGB encoded elevation
+        from rio_tiler.models import ImageData
+
         terrain_data = _encode_terrain_rgb(img.data[0])  # First band = elevation
-        img.data = terrain_data
+        img = ImageData(terrain_data, img.mask)
         # Render without colormap for terrain-RGB
         content = img.render(img_format="PNG")
     else:
+        # Log-scale for extremely skewed data (flow accumulation)
+        if layer.tipo in LOG_SCALE_TYPES:
+            img.data[:] = np.where(
+                img.data > 0,
+                np.log1p(img.data.astype(np.float64)).astype(np.float32),
+                0,
+            )
+            # Rescale log values: log1p(1)=0.7 to log1p(500000)=13.1
+            img.rescale(((0.0, 13.0),))
+        else:
+            # Apply fixed rescale if defined (ensures consistent colors across tiles)
+            rescale = DEFAULT_RESCALE.get(layer.tipo)
+            if rescale:
+                img.rescale(((rescale[0], rescale[1]),))
+
         # Resolve colormap
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
 
