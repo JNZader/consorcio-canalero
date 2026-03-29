@@ -211,3 +211,59 @@ class AlertaGeo(UUIDMixin, Base):
 
     def __repr__(self) -> str:
         return f"<AlertaGeo {self.id} tipo={self.tipo!r} nivel={self.nivel!r}>"
+
+
+# ── Composite Zonal Stats ────────────────────
+
+
+class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
+    """Per-zone statistics from composite analysis rasters (flood risk, drainage need)."""
+
+    __tablename__ = "composite_zonal_stats"
+
+    zona_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("zonas_operativas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tipo: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        comment="flood_risk | drainage_need",
+    )
+    fecha_calculo: Mapped[date] = mapped_column(Date, nullable=False)
+    mean_score: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Mean composite score for the zone",
+    )
+    max_score: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Maximum composite score for the zone",
+    )
+    p90_score: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="90th percentile composite score",
+    )
+    area_high_risk_ha: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        comment="Area in hectares where score > 70",
+    )
+    weights_used: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Snapshot of weights at computation time",
+    )
+
+    # Relationships
+    zona: Mapped["ZonaOperativa"] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<CompositeZonalStats {self.id} zona={self.zona_id} "
+            f"tipo={self.tipo!r} mean={self.mean_score}>"
+        )
