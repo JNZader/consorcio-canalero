@@ -914,3 +914,238 @@ def run_full_dem_pipeline(
         )
         logger.error("full_dem_pipeline.failed", area_id=area_id, exc_info=True)
         raise
+
+
+# ── Composite Analysis Task ────────────────────
+
+
+def _get_composites():
+    """Lazy import of composites module — only available in geo-worker container."""
+    from app.domains.geo import composites
+
+    return composites
+
+
+@celery_app.task(queue="geo", name="geo.composite_analysis")
+def composite_analysis_task(
+    area_id: str,
+    weights_flood: dict[str, float] | None = None,
+    weights_drainage: dict[str, float] | None = None,
+    job_id: str | None = None,
+) -> dict:
+    """Run composite analysis: flood risk + drainage need rasters + zonal stats.
+
+    Requires a completed DEM pipeline for the given area_id. Prerequisite
+    layers: hand.tif, twi.tif, flow_acc.tif, slope.tif, drainage.tif.
+
+    Steps:
+      1. Create / reuse GeoJob (COMPOSITE_ANALYSIS)
+      2. Validate prerequisite layers exist on disk
+      3. Compute flood risk raster → COG → register GeoLayer
+      4. Compute drainage need raster → COG → register GeoLayer
+      5. Extract zonal stats per ZonaOperativa for both composites
+      6. Bulk insert CompositeZonalStats records
+
+    Args:
+        area_id: Processing area identifier.
+        weights_flood: Optional flood risk weight overrides.
+        weights_drainage: Optional drainage need weight overrides.
+        job_id: Pre-created GeoJob id.
+
+    Returns:
+        dict with job_id, status, and output paths.
+    """
+    from datetime import date as date_mod
+
+    from geoalchemy2.shape import to_shape
+    from shapely.geometry import mapping as shapely_mapping
+
+    from app.domains.geo.intelligence.models import CompositeZonalStats
+    from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+    composites = _get_composites()
+    intel_repo = IntelligenceRepository()
+
+    # -- Create / reuse job ------------------------------------------------
+    if job_id is None:
+        db = _get_db()
+        try:
+            job = repo.create_job(
+                db,
+                tipo=TipoGeoJob.COMPOSITE_ANALYSIS,
+                parametros={
+                    "area_id": area_id,
+                    "weights_flood": weights_flood,
+                    "weights_drainage": weights_drainage,
+                },
+            )
+            db.commit()
+            job_id = str(job.id)
+        finally:
+            db.close()
+
+    _update_job(job_id, estado=EstadoGeoJob.RUNNING, progreso=0)
+
+    try:
+        # -- Resolve output dir from existing layers ----------------------
+        db = _get_db()
+        try:
+            # Find any existing layer to determine the area's output dir
+            layers, _ = repo.get_layers(
+                db, area_id_filter=area_id, tipo_filter=TipoGeoLayer.HAND, limit=1
+            )
+            if not layers:
+                raise RuntimeError(
+                    f"No HAND layer found for area '{area_id}'. "
+                    "Run the DEM pipeline first."
+                )
+            area_dir = str(Path(layers[0].archivo_path).parent)
+        finally:
+            db.close()
+
+        # -- Validate prerequisite files exist on disk --------------------
+        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif", "drainage.tif"]
+        missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"Missing prerequisite layers in {area_dir}: {', '.join(missing)}. "
+                "Run the full DEM pipeline first."
+            )
+
+        _update_job(job_id, progreso=10)
+        outputs: dict[str, str] = {}
+
+        # -- 3. Compute flood risk ----------------------------------------
+        flood_output = str(Path(area_dir) / "flood_risk.tif")
+        _run_step(
+            job_id,
+            "compute_flood_risk",
+            composites.compute_flood_risk,
+            (area_dir, flood_output),
+            {"weights": weights_flood},
+        )
+        flood_cog = _convert_to_cog_safe(flood_output)
+        flood_weights = weights_flood or composites.DEFAULT_FLOOD_WEIGHTS
+        _register_layer(
+            nombre=f"flood_risk_{area_id}",
+            tipo=TipoGeoLayer.FLOOD_RISK,
+            archivo_path=flood_output,
+            area_id=area_id,
+            metadata_extra={
+                "weights": flood_weights,
+                "cog_path": flood_cog,
+            }
+            if flood_cog
+            else {"weights": flood_weights, "cog_error": "conversion failed"},
+        )
+        outputs["flood_risk"] = flood_output
+        _update_job(job_id, progreso=30)
+
+        # -- 4. Compute drainage need ------------------------------------
+        drainage_output = str(Path(area_dir) / "drainage_need.tif")
+        _run_step(
+            job_id,
+            "compute_drainage_need",
+            composites.compute_drainage_need,
+            (area_dir, drainage_output),
+            {"weights": weights_drainage},
+        )
+        drainage_cog = _convert_to_cog_safe(drainage_output)
+        drainage_weights = weights_drainage or composites.DEFAULT_DRAINAGE_WEIGHTS
+        _register_layer(
+            nombre=f"drainage_need_{area_id}",
+            tipo=TipoGeoLayer.DRAINAGE_NEED,
+            archivo_path=drainage_output,
+            area_id=area_id,
+            metadata_extra={
+                "weights": drainage_weights,
+                "cog_path": drainage_cog,
+            }
+            if drainage_cog
+            else {"weights": drainage_weights, "cog_error": "conversion failed"},
+        )
+        outputs["drainage_need"] = drainage_output
+        _update_job(job_id, progreso=60)
+
+        # -- 5-6. Zonal stats per ZonaOperativa --------------------------
+        db = _get_db()
+        try:
+            zonas, _ = intel_repo.get_zonas(db, page=1, limit=10000)
+            if not zonas:
+                logger.warning(
+                    "composite_analysis.no_zonas",
+                    area_id=area_id,
+                    msg="No ZonaOperativa records found — skipping zonal stats",
+                )
+            else:
+                # Build zona dicts with GeoJSON geometries
+                zona_dicts = []
+                for z in zonas:
+                    try:
+                        geom_shapely = to_shape(z.geometria)
+                        zona_dicts.append({
+                            "id": z.id,
+                            "nombre": z.nombre,
+                            "geometry": shapely_mapping(geom_shapely),
+                        })
+                    except Exception:
+                        logger.warning(
+                            "composite_analysis.zona_geom_error",
+                            zona_id=str(z.id),
+                            exc_info=True,
+                        )
+
+                today = date_mod.today()
+
+                # Flood risk zonal stats
+                flood_stats = composites.extract_composite_zonal_stats(
+                    flood_output, zona_dicts, "flood_risk"
+                )
+                for stat in flood_stats:
+                    stat["weights_used"] = flood_weights
+                    stat["fecha_calculo"] = today
+
+                # Drainage need zonal stats
+                drainage_stats = composites.extract_composite_zonal_stats(
+                    drainage_output, zona_dicts, "drainage_need"
+                )
+                for stat in drainage_stats:
+                    stat["weights_used"] = drainage_weights
+                    stat["fecha_calculo"] = today
+
+                # Bulk insert all stats
+                all_stats = flood_stats + drainage_stats
+                if all_stats:
+                    objects = [CompositeZonalStats(**s) for s in all_stats]
+                    db.add_all(objects)
+                    db.commit()
+                    logger.info(
+                        "composite_analysis.zonal_stats_inserted",
+                        count=len(all_stats),
+                        area_id=area_id,
+                    )
+
+                outputs["zonal_stats_count"] = str(len(all_stats))
+        finally:
+            db.close()
+
+        _update_job(job_id, progreso=90)
+
+        # -- Done ---------------------------------------------------------
+        _update_job(
+            job_id,
+            estado=EstadoGeoJob.COMPLETED,
+            progreso=100,
+            resultado=outputs,
+        )
+        logger.info("composite_analysis.done", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "completed", "outputs": outputs}
+
+    except Exception:
+        _update_job(
+            job_id,
+            estado=EstadoGeoJob.FAILED,
+            error=traceback.format_exc(),
+        )
+        logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
+        raise
