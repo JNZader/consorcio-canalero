@@ -631,7 +631,7 @@ def compute_tpi(
     wbt = _get_wbt()
     filterx = radius * 2 + 1
     filtery = radius * 2 + 1
-    wbt.deviation_from_mean_elevation(
+    wbt.dev_from_mean_elev(
         filled_dem_path,
         output_path,
         filterx=filterx,
