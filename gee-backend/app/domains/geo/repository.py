@@ -140,6 +140,16 @@ class GeoRepository:
 
     # ── LAYER WRITE ──────────────────────────────
 
+    def get_layer_by_tipo_and_area(
+        self, db: Session, tipo: str, area_id: str
+    ) -> Optional[GeoLayer]:
+        """Return a layer matching (tipo, area_id), or None."""
+        stmt = select(GeoLayer).where(
+            GeoLayer.tipo == tipo,
+            GeoLayer.area_id == area_id,
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
     def create_layer(
         self,
         db: Session,
@@ -169,6 +179,54 @@ class GeoRepository:
         db.add(layer)
         db.flush()
         return layer
+
+    def upsert_layer(
+        self,
+        db: Session,
+        *,
+        nombre: str,
+        tipo: str,
+        fuente: str,
+        archivo_path: str,
+        formato: str = "geotiff",
+        srid: int = 4326,
+        bbox: Optional[list[float]] = None,
+        metadata_extra: Optional[dict] = None,
+        area_id: Optional[str] = None,
+    ) -> GeoLayer:
+        """Create or update a geo layer by (tipo, area_id).
+
+        If a layer with the same tipo+area_id exists, update it in place.
+        Otherwise create a new record.
+        """
+        existing = (
+            self.get_layer_by_tipo_and_area(db, tipo, area_id)
+            if area_id
+            else None
+        )
+        if existing:
+            existing.nombre = nombre
+            existing.fuente = fuente
+            existing.archivo_path = archivo_path
+            existing.formato = formato
+            existing.srid = srid
+            existing.bbox = bbox
+            existing.metadata_extra = metadata_extra
+            db.flush()
+            return existing
+
+        return self.create_layer(
+            db,
+            nombre=nombre,
+            tipo=tipo,
+            fuente=fuente,
+            archivo_path=archivo_path,
+            formato=formato,
+            srid=srid,
+            bbox=bbox,
+            metadata_extra=metadata_extra,
+            area_id=area_id,
+        )
 
     def delete_layers_by_area_id(self, db: Session, area_id: str) -> int:
         """Delete all GeoLayer records for a given area_id. Returns count deleted."""

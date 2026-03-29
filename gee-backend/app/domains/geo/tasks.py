@@ -72,10 +72,14 @@ def _register_layer(
     formato: str = FormatoGeoLayer.GEOTIFF,
     metadata_extra: dict | None = None,
 ) -> str:
-    """Register a GeoLayer record and return its id as string."""
+    """Register (or update) a GeoLayer record and return its id as string.
+
+    Uses upsert on (tipo, area_id) so re-running a pipeline updates the
+    existing record instead of creating duplicates.
+    """
     db = _get_db()
     try:
-        layer = repo.create_layer(
+        layer = repo.upsert_layer(
             db,
             nombre=nombre,
             tipo=tipo,
