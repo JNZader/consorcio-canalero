@@ -90,7 +90,19 @@ export function useGeoLayers(): UseGeoLayersResult {
         (l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo)
       );
 
-      setLayers(items);
+      // Dedup safety net: keep only the latest record per tipo+area_id
+      // in case the backend returns duplicates from older runs.
+      const seen = new Map<string, GeoLayerInfo>();
+      for (const layer of items) {
+        const key = `${layer.tipo}::${layer.area_id ?? ''}`;
+        const existing = seen.get(key);
+        if (!existing || layer.created_at > existing.created_at) {
+          seen.set(key, layer);
+        }
+      }
+      const dedupedItems = Array.from(seen.values());
+
+      setLayers(dedupedItems);
     } catch (err) {
       logger.error('Error loading geo layers', err);
       setError('No se pudieron cargar las capas DEM');
