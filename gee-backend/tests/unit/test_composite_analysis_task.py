@@ -142,10 +142,14 @@ def mock_infrastructure(tmp_path):
 
 
 def _setup_area(tmp_path: Path) -> Path:
-    """Create area dir with all prerequisite files."""
+    """Create area dir with all prerequisite files.
+
+    Uses drainage.geojson (not drainage.tif) to match what the DEM pipeline
+    actually produces.  compute_drainage_need() auto-rasterizes from geojson.
+    """
     area_dir = tmp_path / "test_area"
     area_dir.mkdir(exist_ok=True)
-    for f in ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif", "drainage.tif"]:
+    for f in ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif", "drainage.geojson"]:
         (area_dir / f).touch()
     return area_dir
 

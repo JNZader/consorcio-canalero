@@ -7,6 +7,7 @@ Each function takes file paths and returns file paths — no Celery, no DB.
 
 from __future__ import annotations
 
+import json
 import logging
 import tempfile
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 
 import numpy as np
 import rasterio
+from rasterio.features import rasterize as rasterio_rasterize
 from rasterio.mask import mask as rasterio_mask
 from shapely.geometry import mapping, shape
 
@@ -35,6 +37,62 @@ def _get_wbt():
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
     return _wbt
+
+
+# ---------------------------------------------------------------------------
+# Drainage vector → raster conversion
+# ---------------------------------------------------------------------------
+
+
+def rasterize_drainage(
+    geojson_path: str,
+    reference_tif: str,
+    output_path: str,
+) -> str:
+    """Rasterize a drainage GeoJSON into a binary raster matching a reference grid.
+
+    Burns vector features from the GeoJSON as 1 onto a 0-background raster,
+    using the CRS, transform, and shape of *reference_tif*.
+
+    Args:
+        geojson_path: Path to drainage.geojson (FeatureCollection).
+        reference_tif: Any existing GeoTIFF to use as spatial reference.
+        output_path: Where to write the binary drainage raster.
+
+    Returns:
+        output_path on success.
+    """
+    with open(geojson_path) as f:
+        geojson_data = json.load(f)
+
+    geometries = [
+        (shape(feat["geometry"]), 1)
+        for feat in geojson_data.get("features", [])
+    ]
+
+    with rasterio.open(reference_tif) as src:
+        meta = src.meta.copy()
+        out_shape = (src.height, src.width)
+        transform = src.transform
+
+    if geometries:
+        burned = rasterio_rasterize(
+            geometries,
+            out_shape=out_shape,
+            transform=transform,
+            fill=0,
+            dtype="uint8",
+        )
+    else:
+        burned = np.zeros(out_shape, dtype=np.uint8)
+
+    meta.update({"dtype": "uint8", "count": 1, "nodata": None, "driver": "GTiff"})
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **meta) as dst:
+        dst.write(burned, 1)
+
+    logger.info("rasterize_drainage: wrote %s from %s", output_path, geojson_path)
+    return output_path
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +227,8 @@ def compute_flood_risk(
     slope_inv = np.where(nodata_mask, 0.0, np.max(slope_data[~nodata_mask]) - slope_data)
 
     # Log-scale flow accumulation (extreme skew: P50=2 but max=500k)
-    facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
+    with np.errstate(invalid="ignore"):
+        facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
 
     # Normalize each component
     hand_norm = normalize_percentile(hand_inv, nodata_mask)
@@ -237,13 +296,26 @@ def compute_drainage_need(
 
     area = Path(area_dir)
 
-    # Validate drainage raster exists
+    # Validate drainage raster exists — auto-rasterize from GeoJSON if needed
     drainage_path = area / "drainage.tif"
     if not drainage_path.exists():
-        raise FileNotFoundError(
-            f"drainage.tif not found in {area_dir}. "
-            "Run the DEM pipeline first to generate the drainage network."
-        )
+        geojson_path = area / "drainage.geojson"
+        if geojson_path.exists():
+            # Find a reference raster for CRS/transform/shape
+            reference = area / "flow_acc.tif"
+            if not reference.exists():
+                reference = area / "hand.tif"
+            rasterize_drainage(
+                str(geojson_path), str(reference), str(drainage_path)
+            )
+            logger.info(
+                "compute_drainage_need: auto-rasterized drainage.geojson → drainage.tif"
+            )
+        else:
+            raise FileNotFoundError(
+                f"drainage.tif not found in {area_dir}. "
+                "Run the DEM pipeline first to generate the drainage network."
+            )
 
     # Load input layers
     facc_data, facc_nd, meta = _load_layer(str(area / "flow_acc.tif"))
@@ -265,7 +337,8 @@ def compute_drainage_need(
     hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
 
     # Log-scale flow accumulation
-    facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
+    with np.errstate(invalid="ignore"):
+        facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
 
     # Normalize each component
     facc_norm = normalize_percentile(facc_log, nodata_mask)

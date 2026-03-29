@@ -936,7 +936,8 @@ def composite_analysis_task(
     """Run composite analysis: flood risk + drainage need rasters + zonal stats.
 
     Requires a completed DEM pipeline for the given area_id. Prerequisite
-    layers: hand.tif, twi.tif, flow_acc.tif, slope.tif, drainage.tif.
+    layers: hand.tif, twi.tif, flow_acc.tif, slope.tif, and either
+    drainage.tif (binary raster) or drainage.geojson (vector — auto-rasterized).
 
     Steps:
       1. Create / reuse GeoJob (COMPOSITE_ANALYSIS)
@@ -1004,8 +1005,16 @@ def composite_analysis_task(
             db.close()
 
         # -- Validate prerequisite files exist on disk --------------------
-        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif", "drainage.tif"]
+        # drainage can be either .tif (binary raster) or .geojson (vector);
+        # compute_drainage_need() auto-rasterizes from geojson if .tif is missing.
+        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "slope.tif"]
         missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
+        has_drainage = (
+            (Path(area_dir) / "drainage.tif").exists()
+            or (Path(area_dir) / "drainage.geojson").exists()
+        )
+        if not has_drainage:
+            missing.append("drainage.tif or drainage.geojson")
         if missing:
             raise FileNotFoundError(
                 f"Missing prerequisite layers in {area_dir}: {', '.join(missing)}. "
