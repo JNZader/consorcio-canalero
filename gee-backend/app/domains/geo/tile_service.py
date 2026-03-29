@@ -8,11 +8,14 @@ Endpoint: GET /tiles/{layer_id}/{z}/{x}/{y}.png
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
 
@@ -31,16 +34,16 @@ app = FastAPI(
 
 DEFAULT_COLORMAPS: dict[str, str] = {
     "dem_raw": "terrain",
-    "slope": "RdYlGn_r",
+    "slope": "rdylgn_r",
     "aspect": "hsv",
-    "twi": "Blues",
-    "curvature": "RdBu_r",
-    "flow_acc": "YlGnBu",
-    "hand": "YlOrRd",
-    "terrain_class": "Set1",
-    "flow_dir": "Spectral",
-    "flood_risk": "RdYlGn_r",
-    "drainage_need": "BuPu",
+    "twi": "blues",
+    "curvature": "rdbu_r",
+    "flow_acc": "ylgnbu",
+    "hand": "ylorrd",
+    "terrain_class": "set1",
+    "flow_dir": "spectral",
+    "flood_risk": "rdylgn_r",
+    "drainage_need": "bupu",
 }
 
 # Fixed rescale ranges per layer type for consistent visualization.
@@ -196,8 +199,13 @@ def get_tile(
 
             cmap_data = colormap_registry.get(cmap_name)
             content = img.render(img_format="PNG", colormap=cmap_data)
-        except Exception:
-            # Fallback: render without colormap if the name is invalid
+        except Exception as e:
+            logger.warning(
+                "Colormap '%s' not found in rio-tiler registry, "
+                "falling back to grayscale: %s",
+                cmap_name,
+                e,
+            )
             content = img.render(img_format="PNG")
 
     return Response(
