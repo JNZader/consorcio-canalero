@@ -572,6 +572,75 @@ def extract_drainage_network(
 
 
 # ---------------------------------------------------------------------------
+# j-1) Profile curvature
+# ---------------------------------------------------------------------------
+
+
+def compute_profile_curvature(filled_dem_path: str, output_dir: str) -> str:
+    """Compute profile curvature from a filled DEM using WhiteboxTools.
+
+    Profile curvature measures the rate of change of slope along the
+    direction of maximum slope.  Negative values indicate concave
+    surfaces (water accumulates), positive values indicate convex
+    surfaces (water sheds).
+
+    Args:
+        filled_dem_path: Path to the filled (sink-free) DEM.
+        output_dir: Directory where profile_curvature.tif will be written.
+
+    Returns:
+        Path to the output profile_curvature.tif.
+    """
+    output_path = str(Path(output_dir) / "profile_curvature.tif")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    wbt = _get_wbt()
+    wbt.profile_curvature(filled_dem_path, output_path)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# j-2) Topographic Position Index (TPI)
+# ---------------------------------------------------------------------------
+
+
+def compute_tpi(
+    filled_dem_path: str,
+    output_dir: str,
+    radius: int = 10,
+) -> str:
+    """Compute Topographic Position Index (TPI) from a filled DEM.
+
+    TPI = elevation - mean_neighborhood_elevation.
+    Negative values indicate depressions/valleys, positive values
+    indicate ridges/hilltops.
+
+    Uses WhiteboxTools ``deviation_from_mean_elevation`` which computes
+    exactly this: the difference between each cell's elevation and the
+    mean elevation of its neighbourhood.
+
+    Args:
+        filled_dem_path: Path to the filled (sink-free) DEM.
+        output_dir: Directory where tpi.tif will be written.
+        radius: Neighbourhood radius in cells (default 10).
+
+    Returns:
+        Path to the output tpi.tif.
+    """
+    output_path = str(Path(output_dir) / "tpi.tif")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    wbt = _get_wbt()
+    filterx = radius * 2 + 1
+    filtery = radius * 2 + 1
+    wbt.deviation_from_mean_elevation(
+        filled_dem_path,
+        output_path,
+        filterx=filterx,
+        filtery=filtery,
+    )
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # j) Terrain classification
 # ---------------------------------------------------------------------------
 
