@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any, Optional
 
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.domains.geo.intelligence.models import (
     AlertaGeo,
@@ -597,6 +597,7 @@ class IntelligenceRepository:
         stmt = (
             select(CompositeZonalStats)
             .join(ZonaOperativa, CompositeZonalStats.zona_id == ZonaOperativa.id)
+            .options(joinedload(CompositeZonalStats.zona))
             .where(
                 ZonaOperativa.nombre.like(f"basin_{area_id}_%")
                 | (ZonaOperativa.cuenca == area_id)
@@ -608,4 +609,4 @@ class IntelligenceRepository:
 
         stmt = stmt.order_by(CompositeZonalStats.mean_score.desc())
 
-        return list(db.execute(stmt).scalars().all())
+        return list(db.execute(stmt).scalars().unique().all())

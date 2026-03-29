@@ -16,6 +16,9 @@ from app.db.session import get_db
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
+    BasinRiskRankingResponse,
+    CompositeAnalysisRequest,
+    CompositeZonalStatsResponse,
     CriticidadRequest,
     CriticidadResponse,
     DashboardInteligente,
@@ -420,3 +423,64 @@ def deactivate_alerta(
         raise HTTPException(status_code=404, detail="Alerta no encontrada")
     db.commit()
     return alerta
+
+
+# ──────────────────────────────────────────────
+# COMPOSITE ANALYSIS
+# ──────────────────────────────────────────────
+
+
+@router.post("/composite/analyze", response_model=dict)
+def trigger_composite_analysis(
+    payload: CompositeAnalysisRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+):
+    """Dispatch composite analysis (flood risk + drainage need) as a Celery task.
+
+    Requires a completed DEM pipeline for the given area_id.
+    Returns the job_id to poll for progress.
+    """
+    from app.domains.geo.tasks import composite_analysis_task
+
+    task = composite_analysis_task.delay(
+        area_id=payload.area_id,
+        weights_flood=payload.weights_flood,
+        weights_drainage=payload.weights_drainage,
+    )
+    return {"task_id": task.id, "status": "submitted"}
+
+
+@router.get("/composite/stats/{area_id}", response_model=BasinRiskRankingResponse)
+def get_composite_stats(
+    area_id: str,
+    tipo: Optional[str] = Query(
+        default=None,
+        description="Filter by composite type: flood_risk or drainage_need",
+    ),
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get composite zonal stats for an area, ranked by mean risk score DESC.
+
+    Returns per-basin statistics from the latest composite analysis.
+    Optionally filter by tipo (flood_risk or drainage_need).
+    """
+    stats = repo.get_composite_stats_by_area(db, area_id=area_id, tipo=tipo)
+
+    if not stats:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Composite analysis not yet computed for area '{area_id}'",
+        )
+
+    items = []
+    for s in stats:
+        item = CompositeZonalStatsResponse.model_validate(s)
+        # Enrich with zona nombre from relationship
+        if s.zona:
+            item.zona_nombre = s.zona.nombre
+        items.append(item)
+
+    return BasinRiskRankingResponse(items=items, total=len(items))
