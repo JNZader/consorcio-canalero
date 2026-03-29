@@ -800,7 +800,9 @@ export default function MapaLeaflet() {
                 url={buildTileUrl(layer.id)}
                 opacity={0.7}
                 maxZoom={18}
+                maxNativeZoom={12}
                 tms={false}
+                crossOrigin="anonymous"
               />
             </LayersControl.Overlay>
           ))}
@@ -974,7 +976,7 @@ export default function MapaLeaflet() {
           shadow="md"
           p="xs"
           radius="md"
-          style={{ position: 'absolute', top: 10, right: 60, zIndex: 1000 }}
+          style={{ position: 'absolute', bottom: 10, right: 10, zIndex: 1000 }}
         >
           <Tooltip label={markingMode ? 'Cancelar marcacion' : 'Marcar punto de interes'}>
             <Button

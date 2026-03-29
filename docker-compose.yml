@@ -46,6 +46,7 @@ services:
       - DATABASE_URL=postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
       - REDIS_URL=redis://redis:6379/0
       - GEO_WORKER_TILE_URL=http://geo-worker:8001
+      - CORS_ORIGINS=https://consorcio-canalero.pages.dev,http://localhost:5173,http://localhost:3000
     env_file:
       - ./gee-backend/.env
     depends_on:

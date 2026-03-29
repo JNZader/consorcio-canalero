@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy 
     -r requirements.txt -r requirements-geo.txt \
     "uvicorn[standard]>=0.30.0"
 
+# Pre-download WhiteboxTools binary (avoids timeout on first use)
+RUN python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())"
+
 # Copy application code
 COPY app/ ./app/
 
