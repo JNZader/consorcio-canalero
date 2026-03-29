@@ -36,6 +36,8 @@ class TipoGeoLayer(str, enum.Enum):
     TERRAIN_CLASS = "terrain_class"
     DEM_RAW = "dem_raw"
     BASINS = "basins"
+    FLOOD_RISK = "flood_risk"
+    DRAINAGE_NEED = "drainage_need"
 
 
 class FuenteGeoLayer(str, enum.Enum):
@@ -78,6 +80,7 @@ class TipoGeoJob(str, enum.Enum):
     GEE_CLASSIFICATION = "gee_classification"
     DEM_FULL_PIPELINE = "dem_full_pipeline"
     BASIN_DELINEATION = "basin_delineation"
+    COMPOSITE_ANALYSIS = "composite_analysis"
 
 
 class TipoAnalisisGee(str, enum.Enum):
