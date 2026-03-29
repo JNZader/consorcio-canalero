@@ -150,14 +150,14 @@ class TestBasinFilteringLogic:
 
     def test_micro_basin_filtered_out(self):
         """A tiny basin < 10 ha should be filtered out."""
-        # ~0.00001 deg^2 at lat -32 is roughly 0.87 ha
-        area_ha = self._compute_area_ha(0.00001, -32.0)
+        # ~0.000001 deg^2 at lat -32 is roughly 1.05 ha
+        area_ha = self._compute_area_ha(0.000001, -32.0)
         assert area_ha < 10.0
 
     def test_custom_threshold(self):
         """With a custom threshold of 50 ha, medium basins are filtered."""
-        area_ha = self._compute_area_ha(0.0005, -32.0)
-        # Should be ~43 ha — passes 10ha but fails 50ha
+        area_ha = self._compute_area_ha(0.00004, -32.0)
+        # Should be ~42 ha — passes 10ha but fails 50ha
         assert area_ha >= 10.0
         assert area_ha < 50.0
 
@@ -172,9 +172,9 @@ class TestBasinFilteringLogic:
         """Simulate the filtering loop from delineate_basins."""
         # Simulate basin features with known areas
         basins = [
-            {"basin_id": 1, "area_deg2": 0.001, "lat": -32.0},   # ~87 ha
-            {"basin_id": 2, "area_deg2": 0.00001, "lat": -32.0},  # ~0.87 ha
-            {"basin_id": 3, "area_deg2": 0.0003, "lat": -32.0},   # ~26 ha
+            {"basin_id": 1, "area_deg2": 0.001, "lat": -32.0},    # ~1051 ha
+            {"basin_id": 2, "area_deg2": 0.000001, "lat": -32.0},  # ~1.05 ha
+            {"basin_id": 3, "area_deg2": 0.0003, "lat": -32.0},    # ~315 ha
         ]
 
         min_area_ha = 10.0
