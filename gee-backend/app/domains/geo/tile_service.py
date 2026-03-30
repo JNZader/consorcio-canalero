@@ -336,20 +336,20 @@ def _render_continuous_with_ranges(
     cmap_data = colormap_registry.get(cmap_name)
 
     # 4. Clamp rescaled data to 0-255 and build RGBA
+    #    Only color pixels that are VALID (mask > 0) to avoid coloring
+    #    out-of-bounds areas that should remain transparent.
     rescaled = np.clip(img.data[0], 0, 255).astype(np.uint8)
     h, w = rescaled.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    valid_px = nodata_mask > 0
 
     for val in range(256):
-        px = rescaled == val
+        px = (rescaled == val) & valid_px
         if px.any():
             color = cmap_data.get(val, (0, 0, 0, 255))
             rgba[px] = color
 
-    # 5. Apply nodata mask (where mask == 0, set alpha to 0)
-    rgba[nodata_mask == 0, 3] = 0
-
-    # 6. Apply hidden ranges — set alpha to 0 for pixels in hidden value ranges
+    # 5. Apply hidden ranges — set alpha to 0 for pixels in hidden value ranges
     range_cfg = RANGE_CONFIGS.get(layer_tipo, [])
     for idx in hidden_ranges:
         if idx < len(range_cfg):
