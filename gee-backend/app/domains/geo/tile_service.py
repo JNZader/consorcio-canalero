@@ -75,11 +75,11 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
 # Class 4: Terreno Funcional — green (#43A047)
 CUSTOM_TERRAIN_CMAP: dict[int, tuple[int, int, int, int]] = {}
 _terrain_colors = [
-    (21, 101, 192, 255),   # 0: Drenaje Natural — blue
-    (229, 57, 53, 255),    # 1: Zona Inundable — red
-    (251, 140, 0, 255),    # 2: Necesita Drenaje — orange
-    (109, 76, 65, 255),    # 3: Loma/Divisoria — brown
-    (67, 160, 71, 255),    # 4: Terreno Funcional — green
+    (0, 0, 255, 255),      # 0: Drenaje Natural — azul puro
+    (255, 0, 0, 255),      # 1: Zona Inundable — rojo puro
+    (255, 165, 0, 255),    # 2: Necesita Drenaje — naranja brillante
+    (139, 90, 43, 255),    # 3: Loma/Divisoria — marrón oscuro
+    (0, 200, 0, 255),      # 4: Terreno Funcional — verde brillante
 ]
 for i in range(256):
     # Rescale maps 0-4 → 0-255, so class boundaries at 0, 51, 102, 153, 204
