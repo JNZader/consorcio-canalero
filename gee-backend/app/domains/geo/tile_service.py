@@ -210,29 +210,24 @@ def get_tile(
         content = img.render(img_format="PNG")
     elif layer.tipo in CATEGORICAL_TYPES:
         # ── Categorical rendering ──────────────────────────────────────
-        # NO rescale. Map raw uint8 class values directly to RGBA colors.
-        # rio-tiler sets nodata pixels to mask=0, valid pixels to mask=255.
-        print(f"CATEGORICAL_BRANCH: tipo={layer.tipo}", flush=True)
+        # Map raw uint8 class values directly to RGBA colors.
+        # rio-tiler already read the tile; we use its data and mask.
+        # img.data[0] has class values (0-4), img.mask has nodata info.
         import io as _io
         from PIL import Image as PILImage
 
-        raw = img.data[0]               # uint8 class values (0-4)
-        mask = img.mask                  # 0=nodata, 255=valid (property → copy)
+        raw = img.data[0]
+        mask = img.mask
         h, w = raw.shape
+        nodata_val = 255  # terrain_class uses uint8 with nodata=255
         colors = CATEGORICAL_COLORS[layer.tipo]
-        print(f"CAT: raw unique={np.unique(raw)}, val4={int((raw==4).sum())}, mask0={int((mask==0).sum())}", flush=True)
 
         rgba = np.zeros((h, w, 4), dtype=np.uint8)
         for cls_val, color in colors.items():
-            px = raw == cls_val
+            px = (raw == cls_val) & (mask > 0)
             if px.any():
                 rgba[px] = color
-                print(f"CAT:   class {cls_val}: {int(px.sum())} → color {color}", flush=True)
 
-        print(f"CAT: before mask: alpha>0={int((rgba[:,:,3]>0).sum())}", flush=True)
-        # Nodata → transparent
-        rgba[mask == 0, 3] = 0
-        print(f"CAT: after mask: alpha>0={int((rgba[:,:,3]>0).sum())}", flush=True)
         # Hidden classes → transparent
         for cls_val in _hidden_classes:
             rgba[raw == cls_val, 3] = 0
