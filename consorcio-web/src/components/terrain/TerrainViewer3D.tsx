@@ -145,7 +145,16 @@ export default function TerrainViewer3D({
           ? buildTerrainTileUrl(textureLayerId)
           : buildTerrainTileUrl(demLayerId),
         elevationDecoder,
-        meshMaxError: 10,
+        // meshMaxError controls mesh detail AND skirt height (skirt = meshMaxError * 2).
+        // Low value = detailed mesh + minimal side walls.
+        meshMaxError: 0.5,
+        wireframe: false,
+        material: {
+          ambient: 0.35,
+          diffuse: 0.6,
+          shininess: 32,
+          specularColor: [30, 30, 30],
+        },
         color: [255, 255, 255],
         operation: 'terrain+draw',
       }),
@@ -233,7 +242,8 @@ export default function TerrainViewer3D({
               keyboard: true,
             }}
             layers={layers}
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
+            getTooltip={null}
           />
         )}
 
