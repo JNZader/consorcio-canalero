@@ -27,20 +27,18 @@ import { API_URL } from '../../lib/api';
 // Lazy-loaded deck.gl modules
 let DeckGL: any = null;
 let TerrainLayer: any = null;
+let webgl2Adapter: any = null;
 
 async function loadDeckGL() {
   if (DeckGL) return;
-  const [deckMod, geoLayersMod, lumaMod, webglMod] = await Promise.all([
+  const [deckMod, geoLayersMod, webglMod] = await Promise.all([
     import('@deck.gl/react'),
     import('@deck.gl/geo-layers'),
-    import('@luma.gl/core'),
     import('@luma.gl/webgl'),
   ]);
-  // Register WebGL2 adapter before DeckGL creates the device.
-  // Without this, luma.gl fails with "device.limits is undefined" on Firefox.
-  lumaMod.luma.registerAdapters([webglMod.webgl2Adapter]);
   DeckGL = deckMod.default || deckMod.DeckGL;
   TerrainLayer = geoLayersMod.TerrainLayer;
+  webgl2Adapter = webglMod.webgl2Adapter;
 }
 
 /**
@@ -245,6 +243,10 @@ export default function TerrainViewer3D({
               dragRotate: true,
               touchRotate: true,
               keyboard: true,
+            }}
+            deviceProps={{
+              type: 'webgl' as const,
+              adapters: webgl2Adapter ? [webgl2Adapter] : undefined,
             }}
             layers={layers}
             style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
