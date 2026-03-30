@@ -12,8 +12,15 @@ import logging
 import uuid
 from pathlib import Path
 from typing import Optional
+import io
 
 import numpy as np
+import rasterio
+from PIL import Image as PILImage
+from pyproj import CRS
+from rasterio.enums import Resampling
+from rasterio.transform import from_bounds
+from rasterio.warp import reproject, transform_bounds
 
 logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException, Query
@@ -87,6 +94,9 @@ LOG_SCALE_TYPES = {"flow_acc"}
 # Types that contain elevation data (valid for terrain-RGB encoding)
 ELEVATION_TYPES = {"dem_raw"}
 
+WEB_MERCATOR_CRS = CRS.from_epsg(3857)
+WEB_MERCATOR_HALF_WORLD = 20037508.342789244
+
 
 # ---------------------------------------------------------------------------
 # Database access (lightweight — reuse existing session machinery)
@@ -135,6 +145,98 @@ def _encode_terrain_rgb(data: np.ndarray) -> np.ndarray:
     b = (encoded % 256).astype(np.uint8)
 
     return np.stack([r, g, b], axis=0)
+
+
+def _tile_bounds_3857(x: int, y: int, z: int) -> tuple[float, float, float, float]:
+    """Return XYZ tile bounds in EPSG:3857."""
+    world_span = WEB_MERCATOR_HALF_WORLD * 2.0
+    tile_span = world_span / (2**z)
+    left = -WEB_MERCATOR_HALF_WORLD + (x * tile_span)
+    right = left + tile_span
+    top = WEB_MERCATOR_HALF_WORLD - (y * tile_span)
+    bottom = top - tile_span
+    return left, bottom, right, top
+
+
+def _bounds_intersect(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> bool:
+    """Return True when two bounding boxes intersect."""
+    a_left, a_bottom, a_right, a_top = a
+    b_left, b_bottom, b_right, b_top = b
+    return not (
+        a_right <= b_left
+        or a_left >= b_right
+        or a_top <= b_bottom
+        or a_bottom >= b_top
+    )
+
+
+def _read_categorical_tile(
+    file_path: str | Path,
+    x: int,
+    y: int,
+    z: int,
+    *,
+    tilesize: int = 256,
+    dst_nodata: int = 255,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Read a categorical tile with rasterio + nearest-neighbor reprojection.
+
+    This bypasses rio-tiler for categorical rasters so raw class ids survive
+    unchanged during reprojection from the source CRS into Web Mercator tiles.
+    """
+    tile_bounds = _tile_bounds_3857(x, y, z)
+    dst_transform = from_bounds(*tile_bounds, width=tilesize, height=tilesize)
+
+    with rasterio.open(file_path) as src:
+        src_bounds_3857 = transform_bounds(src.crs, WEB_MERCATOR_CRS, *src.bounds)
+        if not _bounds_intersect(tile_bounds, src_bounds_3857):
+            return None
+
+        src_nodata = src.nodata
+        if src_nodata is None:
+            src_nodata = dst_nodata
+
+        tile = np.full((tilesize, tilesize), dst_nodata, dtype=np.uint8)
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=tile,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            src_nodata=src_nodata,
+            dst_transform=dst_transform,
+            dst_crs=WEB_MERCATOR_CRS,
+            dst_nodata=dst_nodata,
+            resampling=Resampling.nearest,
+        )
+
+    mask = np.where(tile == dst_nodata, 0, 255).astype(np.uint8)
+    return tile, mask
+
+
+def _render_categorical_png(
+    raw: np.ndarray,
+    mask: np.ndarray,
+    colors: dict[int, tuple[int, int, int, int]],
+    hidden_classes: Optional[set[int]] = None,
+) -> bytes:
+    """Render a categorical tile as RGBA PNG from raw class ids."""
+    rgba = np.zeros((*raw.shape, 4), dtype=np.uint8)
+
+    for cls_val, color in colors.items():
+        px = (raw == cls_val) & (mask > 0)
+        if px.any():
+            rgba[px] = color
+
+    if hidden_classes:
+        for cls_val in hidden_classes:
+            rgba[raw == cls_val, 3] = 0
+
+    buf = io.BytesIO()
+    PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -186,12 +288,6 @@ def get_tile(
             detail=f"Terrain-RGB encoding solo disponible para capas de elevacion (tipo={layer.tipo})",
         )
 
-    try:
-        with Reader(file_path) as src:
-            img = src.tile(x, y, z, tilesize=256)
-    except TileOutsideBounds:
-        return Response(status_code=204)
-
     # Parse hidden classes (used later for categorical rendering)
     _hidden_classes: set[int] = set()
     if hide_classes:
@@ -199,6 +295,25 @@ def get_tile(
             _hidden_classes = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
         except ValueError:
             logger.warning("Invalid hide_classes value: %s", hide_classes)
+
+    if layer.tipo in CATEGORICAL_TYPES:
+        tile_data = _read_categorical_tile(file_path, x, y, z, tilesize=256)
+        if tile_data is None:
+            return Response(status_code=204)
+
+        raw, mask = tile_data
+        content = _render_categorical_png(
+            raw,
+            mask,
+            CATEGORICAL_COLORS[layer.tipo],
+            _hidden_classes,
+        )
+    else:
+        try:
+            with Reader(file_path) as src:
+                img = src.tile(x, y, z, tilesize=256)
+        except TileOutsideBounds:
+            return Response(status_code=204)
 
     if encoding == "terrain-rgb":
         # Replace image data with terrain-RGB encoded elevation
@@ -208,34 +323,7 @@ def get_tile(
         img = ImageData(terrain_data, img.mask)
         # Render without colormap for terrain-RGB
         content = img.render(img_format="PNG")
-    elif layer.tipo in CATEGORICAL_TYPES:
-        # ── Categorical rendering ──────────────────────────────────────
-        # Map raw uint8 class values directly to RGBA colors.
-        # rio-tiler already read the tile; we use its data and mask.
-        # img.data[0] has class values (0-4), img.mask has nodata info.
-        import io as _io
-        from PIL import Image as PILImage
-
-        raw = img.data[0]
-        mask = img.mask
-        h, w = raw.shape
-        nodata_val = 255  # terrain_class uses uint8 with nodata=255
-        colors = CATEGORICAL_COLORS[layer.tipo]
-
-        rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        for cls_val, color in colors.items():
-            px = (raw == cls_val) & (mask > 0)
-            if px.any():
-                rgba[px] = color
-
-        # Hidden classes → transparent
-        for cls_val in _hidden_classes:
-            rgba[raw == cls_val, 3] = 0
-
-        buf = _io.BytesIO()
-        PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
-        content = buf.getvalue()
-    else:
+    elif layer.tipo not in CATEGORICAL_TYPES:
         # ── Standard continuous rendering: rescale + rio-tiler colormap ──
         if layer.tipo in LOG_SCALE_TYPES:
             img.data[:] = np.where(
