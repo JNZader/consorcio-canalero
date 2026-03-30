@@ -35,6 +35,7 @@ def merge_drainage_networks(
     auto_drainage_path: str,
     waterways_dir: str = _DEFAULT_WATERWAYS_DIR,
     output_path: str | None = None,
+    reference_tif: str | None = None,
 ) -> str:
     """Merge DEM-generated drainage with real waterway GeoJSON files.
 
@@ -43,11 +44,18 @@ def merge_drainage_networks(
     with a ``source`` property ("auto" or "real") so downstream
     consumers can distinguish them.
 
+    Real waterway files are assumed to be in EPSG:4326.  When a
+    *reference_tif* is provided (or auto-detected next to the drainage
+    file), waterway geometries are reprojected to match the raster CRS
+    so that ``rasterize_drainage`` burns them onto the correct pixels.
+
     Args:
         auto_drainage_path: Path to the DEM-extracted drainage.geojson.
         waterways_dir: Directory containing real waterway GeoJSON files.
         output_path: Where to write the combined FeatureCollection.
             Defaults to ``drainage_combined.geojson`` next to *auto_drainage_path*.
+        reference_tif: Optional reference raster to detect target CRS.
+            Falls back to flow_acc.tif or hand.tif in the same directory.
 
     Returns:
         The output path on success.
@@ -57,7 +65,39 @@ def merge_drainage_networks(
 
     combined_features: list[dict] = []
 
-    # 1. Load auto-generated drainage
+    # Detect target CRS from a reference raster for reprojection
+    target_crs = None
+    _reproject_fn = None
+    area_dir = Path(auto_drainage_path).parent
+    if reference_tif is None:
+        for candidate in ["flow_acc.tif", "hand.tif"]:
+            ref = area_dir / candidate
+            if ref.exists():
+                reference_tif = str(ref)
+                break
+    if reference_tif and Path(reference_tif).exists():
+        try:
+            with rasterio.open(reference_tif) as src:
+                target_crs = src.crs
+            if target_crs and str(target_crs) != "EPSG:4326":
+                src_crs = CRS.from_epsg(4326)
+                dst_crs = CRS.from_user_input(target_crs)
+                transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+                _reproject_fn = lambda geom: shapely_transform(  # noqa: E731
+                    transformer.transform, geom
+                )
+                logger.info(
+                    "merge_drainage_networks: will reproject waterways from EPSG:4326 to %s",
+                    target_crs,
+                )
+        except Exception:
+            logger.warning(
+                "merge_drainage_networks: failed to read CRS from %s, skipping reprojection",
+                reference_tif,
+                exc_info=True,
+            )
+
+    # 1. Load auto-generated drainage (already in target CRS)
     auto_path = Path(auto_drainage_path)
     if auto_path.exists():
         with open(auto_path) as f:
@@ -76,7 +116,7 @@ def merge_drainage_networks(
             auto_drainage_path,
         )
 
-    # 2. Load real waterway files
+    # 2. Load real waterway files (assumed EPSG:4326, reproject if needed)
     waterways_path = Path(waterways_dir)
     if waterways_path.is_dir():
         for geojson_file in sorted(waterways_path.glob("*.geojson")):
@@ -85,6 +125,11 @@ def merge_drainage_networks(
                     ww_data = json.load(f)
                 count = 0
                 for feat in ww_data.get("features", []):
+                    # Reproject geometry to target CRS if needed
+                    if _reproject_fn is not None:
+                        geom = shape(feat["geometry"])
+                        geom_reprojected = _reproject_fn(geom)
+                        feat["geometry"] = mapping(geom_reprojected)
                     feat.setdefault("properties", {})["source"] = "real"
                     feat["properties"].setdefault("waterway_file", geojson_file.stem)
                     combined_features.append(feat)
