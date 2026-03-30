@@ -31,13 +31,14 @@ export interface RasterLegendInfo {
 
 export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
   terrain_class: {
-    colorStops: ['#1E88E5', '#D32F2F', '#FF8F00'],
+    colorStops: ['#4CAF50', '#1E88E5', '#D32F2F', '#FF8F00'],
     min: 0,
     max: 3,
     unit: '',
     label: 'Clasificación de Terreno',
     categorical: true,
     categories: [
+      { color: '#4CAF50', label: 'Sin Riesgo' },
       { color: '#1E88E5', label: 'Drenaje Natural' },
       { color: '#D32F2F', label: 'Riesgo Alto' },
       { color: '#FF8F00', label: 'Riesgo Medio' },

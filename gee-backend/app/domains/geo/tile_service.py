@@ -77,7 +77,7 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
 # Keys are the RAW uint8 values in the raster (no rescale needed).
 CATEGORICAL_COLORS: dict[str, dict[int, tuple[int, int, int, int]]] = {
     "terrain_class": {
-        0: (0, 0, 0, 0),            # Sin Riesgo — transparent
+        0: (76, 175, 80, 180),      # Sin Riesgo — verde semi-transparente
         1: (30, 136, 229, 255),     # Drenaje Natural — azul medio
         2: (211, 47, 47, 255),      # Riesgo Alto — rojo
         3: (255, 143, 0, 255),      # Riesgo Medio — ámbar
