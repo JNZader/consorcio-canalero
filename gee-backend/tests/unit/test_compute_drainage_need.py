@@ -23,6 +23,7 @@ from rasterio.transform import from_bounds
 from app.domains.geo.composites import (
     DEFAULT_DRAINAGE_WEIGHTS,
     compute_drainage_need,
+    merge_drainage_networks,
 )
 
 # ---------------------------------------------------------------------------
@@ -284,3 +285,117 @@ class TestComputeDrainageNeedDistancePenalty:
             f"Far pixels (row 0, mean={far_mean:.2f}) should score higher "
             f"than near pixels (row 9, mean={near_mean:.2f})"
         )
+
+
+# ---------------------------------------------------------------------------
+# merge_drainage_networks tests
+# ---------------------------------------------------------------------------
+
+
+def _write_geojson(path: Path, features: list[dict]) -> None:
+    """Write a GeoJSON FeatureCollection to a file."""
+    import json
+
+    collection = {"type": "FeatureCollection", "features": features}
+    with open(path, "w") as f:
+        json.dump(collection, f)
+
+
+def _make_feature(geom_type: str = "LineString", props: dict | None = None) -> dict:
+    """Create a minimal GeoJSON feature."""
+    coords = [[0, 0], [1, 1]] if geom_type == "LineString" else [[[0, 0], [1, 0], [1, 1], [0, 0]]]
+    return {
+        "type": "Feature",
+        "geometry": {"type": geom_type, "coordinates": coords},
+        "properties": props or {},
+    }
+
+
+class TestMergeDrainageNetworks:
+    """Tests for merge_drainage_networks function."""
+
+    def test_merges_auto_and_real_features(self, tmp_path: Path):
+        """Combined output must contain features from both sources."""
+        import json
+
+        auto_path = tmp_path / "drainage.geojson"
+        _write_geojson(auto_path, [_make_feature(props={"class": "drainage"})])
+
+        waterways_dir = tmp_path / "waterways"
+        waterways_dir.mkdir()
+        _write_geojson(waterways_dir / "rio.geojson", [_make_feature(), _make_feature()])
+
+        output = tmp_path / "combined.geojson"
+        result = merge_drainage_networks(str(auto_path), str(waterways_dir), str(output))
+
+        assert result == str(output)
+        with open(result) as f:
+            data = json.load(f)
+
+        assert len(data["features"]) == 3
+        sources = [f["properties"]["source"] for f in data["features"]]
+        assert sources.count("auto") == 1
+        assert sources.count("real") == 2
+
+    def test_tags_waterway_file_name(self, tmp_path: Path):
+        """Real features must carry waterway_file property."""
+        import json
+
+        auto_path = tmp_path / "drainage.geojson"
+        _write_geojson(auto_path, [])
+
+        waterways_dir = tmp_path / "waterways"
+        waterways_dir.mkdir()
+        _write_geojson(waterways_dir / "canal_norte.geojson", [_make_feature()])
+
+        output = tmp_path / "combined.geojson"
+        merge_drainage_networks(str(auto_path), str(waterways_dir), str(output))
+
+        with open(output) as f:
+            data = json.load(f)
+        assert data["features"][0]["properties"]["waterway_file"] == "canal_norte"
+
+    def test_handles_missing_auto_gracefully(self, tmp_path: Path):
+        """If auto drainage doesn't exist, only real waterways are used."""
+        import json
+
+        waterways_dir = tmp_path / "waterways"
+        waterways_dir.mkdir()
+        _write_geojson(waterways_dir / "rio.geojson", [_make_feature()])
+
+        output = tmp_path / "combined.geojson"
+        merge_drainage_networks(
+            str(tmp_path / "nonexistent.geojson"), str(waterways_dir), str(output)
+        )
+
+        with open(output) as f:
+            data = json.load(f)
+        assert len(data["features"]) == 1
+        assert data["features"][0]["properties"]["source"] == "real"
+
+    def test_handles_missing_waterways_dir(self, tmp_path: Path):
+        """If waterways dir doesn't exist, only auto features are used."""
+        import json
+
+        auto_path = tmp_path / "drainage.geojson"
+        _write_geojson(auto_path, [_make_feature()])
+
+        output = tmp_path / "combined.geojson"
+        merge_drainage_networks(
+            str(auto_path), str(tmp_path / "nonexistent_dir"), str(output)
+        )
+
+        with open(output) as f:
+            data = json.load(f)
+        assert len(data["features"]) == 1
+        assert data["features"][0]["properties"]["source"] == "auto"
+
+    def test_default_output_path(self, tmp_path: Path):
+        """When output_path is None, writes next to auto drainage."""
+        auto_path = tmp_path / "output" / "drainage.geojson"
+        auto_path.parent.mkdir(parents=True)
+        _write_geojson(auto_path, [_make_feature()])
+
+        result = merge_drainage_networks(str(auto_path), str(tmp_path / "empty"))
+
+        assert result == str(tmp_path / "output" / "drainage_combined.geojson")

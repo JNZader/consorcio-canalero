@@ -159,6 +159,7 @@ def _setup_composites_mock(area_dir: Path) -> MagicMock:
     mock_composites = MagicMock()
     mock_composites.compute_flood_risk.return_value = str(area_dir / "flood_risk.tif")
     mock_composites.compute_drainage_need.return_value = str(area_dir / "drainage_need.tif")
+    mock_composites.merge_drainage_networks.return_value = str(area_dir / "drainage_combined.geojson")
     mock_composites.extract_composite_zonal_stats.return_value = []
     mock_composites.DEFAULT_FLOOD_WEIGHTS = {
         "twi": 0.30, "hand": 0.30, "profile_curvature": 0.25, "tpi": 0.15,
@@ -265,6 +266,38 @@ class TestCompositeAnalysisTaskOrchestration:
         ]
         assert "flood_risk" in call_tipos
         assert "drainage_need" in call_tipos
+
+
+    @patch("app.domains.geo.tasks._get_composites")
+    def test_calls_merge_drainage_before_drainage_need(
+        self, mock_get_composites, mock_infrastructure, tmp_path
+    ):
+        """Task must call merge_drainage_networks before compute_drainage_need."""
+        from app.domains.geo.tasks import composite_analysis_task
+
+        area_dir = _setup_area(tmp_path)
+        mock_infrastructure["repo"].get_layers.return_value = (
+            [MagicMock(archivo_path=str(area_dir / "hand.tif"))], 1,
+        )
+        mock_composites = _setup_composites_mock(area_dir)
+        mock_get_composites.return_value = mock_composites
+
+        job_id = str(uuid.uuid4())
+        composite_analysis_task(area_id="test-area", job_id=job_id)
+
+        mock_composites.merge_drainage_networks.assert_called_once()
+
+        # Verify merge happens before drainage_need via _run_step sequence
+        merge_idx = drain_idx = None
+        for i, c in enumerate(mock_infrastructure["run_step"].call_args_list):
+            if c[0][1] == "merge_drainage_networks":
+                merge_idx = i
+            elif c[0][1] == "compute_drainage_need":
+                drain_idx = i
+
+        assert merge_idx is not None, "merge_drainage_networks not called"
+        assert drain_idx is not None, "compute_drainage_need not called"
+        assert merge_idx < drain_idx, "merge must happen before drainage_need"
 
 
 class TestCompositeAnalysisTaskJobLifecycle:
