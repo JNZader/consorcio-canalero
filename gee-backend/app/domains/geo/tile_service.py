@@ -42,9 +42,8 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "tpi": "rdbu_r",
     "flow_acc": "ylgnbu",
     "hand": "ylorrd",
-    # terrain_class: 5 classes — 0:Drenaje Natural, 1:Zona Inundable,
-    # 2:Necesita Drenaje, 3:Loma/Divisoria, 4:Terreno Funcional
-    "terrain_class": "set1",
+    # terrain_class uses CUSTOM_TERRAIN_CMAP (discrete, not a rio-tiler name)
+    "terrain_class": "_custom_terrain",
     "flow_dir": "spectral",
     "flood_risk": "rdylgn_r",
     "drainage_need": "ylorbr",
@@ -66,6 +65,26 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "flood_risk": (10.0, 90.0),
     "drainage_need": (20.0, 70.0),
 }
+
+# Custom discrete colormap for terrain classification (5 classes, 0-4).
+# Maps each class to a solid color across its range in the 256-entry palette.
+# Class 0: Drenaje Natural — blue (#1565C0)
+# Class 1: Zona Inundable — red (#E53935)
+# Class 2: Necesita Drenaje — orange (#FB8C00)
+# Class 3: Loma/Divisoria — brown (#6D4C41)
+# Class 4: Terreno Funcional — green (#43A047)
+CUSTOM_TERRAIN_CMAP: dict[int, tuple[int, int, int, int]] = {}
+_terrain_colors = [
+    (21, 101, 192, 255),   # 0: Drenaje Natural — blue
+    (229, 57, 53, 255),    # 1: Zona Inundable — red
+    (251, 140, 0, 255),    # 2: Necesita Drenaje — orange
+    (109, 76, 65, 255),    # 3: Loma/Divisoria — brown
+    (67, 160, 71, 255),    # 4: Terreno Funcional — green
+]
+for i in range(256):
+    # Rescale maps 0-4 → 0-255, so class boundaries at 0, 51, 102, 153, 204
+    cls = min(i // 52, 4)
+    CUSTOM_TERRAIN_CMAP[i] = _terrain_colors[cls]
 
 # Types that need log scaling (extreme skew: P50=2 but max=500k)
 LOG_SCALE_TYPES = {"flow_acc"}
@@ -200,19 +219,22 @@ def get_tile(
         # Resolve colormap
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
 
-        try:
-            from rio_tiler.colormap import cmap as colormap_registry
+        if cmap_name == "_custom_terrain":
+            content = img.render(img_format="PNG", colormap=CUSTOM_TERRAIN_CMAP)
+        else:
+            try:
+                from rio_tiler.colormap import cmap as colormap_registry
 
-            cmap_data = colormap_registry.get(cmap_name)
-            content = img.render(img_format="PNG", colormap=cmap_data)
-        except Exception as e:
-            logger.warning(
-                "Colormap '%s' not found in rio-tiler registry, "
-                "falling back to grayscale: %s",
-                cmap_name,
-                e,
-            )
-            content = img.render(img_format="PNG")
+                cmap_data = colormap_registry.get(cmap_name)
+                content = img.render(img_format="PNG", colormap=cmap_data)
+            except Exception as e:
+                logger.warning(
+                    "Colormap '%s' not found in rio-tiler registry, "
+                    "falling back to grayscale: %s",
+                    cmap_name,
+                    e,
+                )
+                content = img.render(img_format="PNG")
 
     return Response(
         content=content,
