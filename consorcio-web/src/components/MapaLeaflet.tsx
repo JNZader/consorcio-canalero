@@ -542,6 +542,22 @@ export default function MapaLeaflet() {
     [],
   );
 
+  // Track hidden range indices per continuous layer type (e.g. { flood_risk: [0, 2] })
+  const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
+
+  const handleRangeToggle = useCallback(
+    (layerType: string, rangeIndex: number, visible: boolean) => {
+      setHiddenRanges((prev) => {
+        const current = prev[layerType] ?? [];
+        const next = visible
+          ? current.filter((i) => i !== rangeIndex)
+          : [...current, rangeIndex];
+        return { ...prev, [layerType]: next };
+      });
+    },
+    [],
+  );
+
   // Separate composite analysis layers from standard DEM layers
   const COMPOSITE_TYPES = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
   const demLayers = useMemo(
@@ -896,8 +912,10 @@ export default function MapaLeaflet() {
           {/* DEM pipeline raster layers as XYZ tile overlays */}
           {demLayers.map((layer) => {
             const layerHidden = hiddenClasses[layer.tipo] ?? [];
+            const layerHiddenRanges = hiddenRanges[layer.tipo] ?? [];
             const tileUrl = buildTileUrl(layer.id, {
               hideClasses: layerHidden.length > 0 ? layerHidden : undefined,
+              hideRanges: layerHiddenRanges.length > 0 ? layerHiddenRanges : undefined,
             });
             return (
               <LayersControl.Overlay
@@ -919,8 +937,10 @@ export default function MapaLeaflet() {
           {/* Composite analysis layers (flood risk, drainage need) */}
           {compositeLayers.map((layer) => {
             const layerHidden = hiddenClasses[layer.tipo] ?? [];
+            const layerHiddenRanges = hiddenRanges[layer.tipo] ?? [];
             const tileUrl = buildTileUrl(layer.id, {
               hideClasses: layerHidden.length > 0 ? layerHidden : undefined,
+              hideRanges: layerHiddenRanges.length > 0 ? layerHiddenRanges : undefined,
             });
             return (
             <LayersControl.Overlay
@@ -1189,6 +1209,8 @@ export default function MapaLeaflet() {
         layers={visibleRasterLayers}
         hiddenClasses={hiddenClasses}
         onClassToggle={handleClassToggle}
+        hiddenRanges={hiddenRanges}
+        onRangeToggle={handleRangeToggle}
       />
       <InfoPanel feature={selectedFeature} onClose={handleCloseInfoPanel} />
     </Box>
