@@ -42,6 +42,8 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "tpi": "rdbu_r",
     "flow_acc": "ylgnbu",
     "hand": "ylorrd",
+    # terrain_class: 5 classes — 0:Drenaje Natural, 1:Zona Inundable,
+    # 2:Necesita Drenaje, 3:Loma/Divisoria, 4:Terreno Funcional
     "terrain_class": "set1",
     "flow_dir": "spectral",
     "flood_risk": "rdylgn_r",
@@ -59,7 +61,7 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "profile_curvature": (-0.001, 0.001),
     "tpi": (-1.5, 1.5),
     "hand": (0.0, 4.0),
-    "terrain_class": (0.0, 3.0),
+    "terrain_class": (0.0, 4.0),
     "flow_dir": (0.0, 128.0),
     "flood_risk": (10.0, 90.0),
     "drainage_need": (20.0, 70.0),
