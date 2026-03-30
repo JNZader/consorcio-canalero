@@ -506,6 +506,22 @@ export default function MapaLeaflet() {
   // Track which raster overlay layers are currently visible (for legend)
   const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
 
+  // Track hidden class indices per categorical layer type (e.g. { terrain_class: [1, 3] })
+  const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
+
+  const handleClassToggle = useCallback(
+    (layerType: string, classIndex: number, visible: boolean) => {
+      setHiddenClasses((prev) => {
+        const current = prev[layerType] ?? [];
+        const next = visible
+          ? current.filter((i) => i !== classIndex)
+          : [...current, classIndex];
+        return { ...prev, [layerType]: next };
+      });
+    },
+    [],
+  );
+
   // Separate composite analysis layers from standard DEM layers
   const COMPOSITE_TYPES = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
   const demLayers = useMemo(
@@ -858,30 +874,43 @@ export default function MapaLeaflet() {
           )}
 
           {/* DEM pipeline raster layers as XYZ tile overlays */}
-          {demLayers.map((layer) => (
-            <LayersControl.Overlay
-              key={`dem-${layer.id}`}
-              name={`DEM: ${GEO_LAYER_LABELS[layer.tipo] || layer.nombre}`}
-            >
-              <TileLayer
-                url={buildTileUrl(layer.id)}
-                opacity={0.7}
-                maxZoom={18}
-                maxNativeZoom={12}
-                tms={false}
-                crossOrigin="anonymous"
-              />
-            </LayersControl.Overlay>
-          ))}
+          {demLayers.map((layer) => {
+            const layerHidden = hiddenClasses[layer.tipo] ?? [];
+            const tileUrl = buildTileUrl(layer.id, {
+              hideClasses: layerHidden.length > 0 ? layerHidden : undefined,
+            });
+            return (
+              <LayersControl.Overlay
+                key={`dem-${layer.id}`}
+                name={`DEM: ${GEO_LAYER_LABELS[layer.tipo] || layer.nombre}`}
+              >
+                <TileLayer
+                  key={`dem-tile-${layer.id}-${layerHidden.join(',')}`}
+                  url={tileUrl}
+                  opacity={0.7}
+                  maxZoom={18}
+                  maxNativeZoom={12}
+                  tms={false}
+                  crossOrigin="anonymous"
+                />
+              </LayersControl.Overlay>
+            );
+          })}
 
           {/* Composite analysis layers (flood risk, drainage need) */}
-          {compositeLayers.map((layer) => (
+          {compositeLayers.map((layer) => {
+            const layerHidden = hiddenClasses[layer.tipo] ?? [];
+            const tileUrl = buildTileUrl(layer.id, {
+              hideClasses: layerHidden.length > 0 ? layerHidden : undefined,
+            });
+            return (
             <LayersControl.Overlay
               key={`composite-${layer.id}`}
               name={GEO_LAYER_LABELS[layer.tipo] || layer.nombre}
             >
               <TileLayer
-                url={buildTileUrl(layer.id)}
+                key={`composite-tile-${layer.id}-${layerHidden.join(',')}`}
+                url={tileUrl}
                 opacity={0.7}
                 maxZoom={18}
                 maxNativeZoom={12}
@@ -889,7 +918,8 @@ export default function MapaLeaflet() {
                 crossOrigin="anonymous"
               />
             </LayersControl.Overlay>
-          ))}
+            );
+          })}
 
           {/* Caminos coloreados por consorcio caminero */}
           {caminos && (
@@ -1137,7 +1167,11 @@ export default function MapaLeaflet() {
       </Modal>
 
       <Leyenda consorcios={consorcios} cuencasConfig={config?.cuencas} />
-      <RasterLegend layers={visibleRasterLayers} />
+      <RasterLegend
+        layers={visibleRasterLayers}
+        hiddenClasses={hiddenClasses}
+        onClassToggle={handleClassToggle}
+      />
       <InfoPanel feature={selectedFeature} onClose={handleCloseInfoPanel} />
     </Box>
   );

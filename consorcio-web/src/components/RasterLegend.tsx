@@ -1,4 +1,4 @@
-import { Box, Group, Paper, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, Group, Paper, Stack, Text } from '@mantine/core';
 import { memo } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../config/rasterLegend';
 import styles from '../styles/components/map.module.css';
@@ -6,14 +6,22 @@ import styles from '../styles/components/map.module.css';
 interface RasterLegendProps {
   /** Currently visible raster layer types */
   readonly layers: Array<{ tipo: string }>;
+  /** Hidden class indices per layer type (e.g. { terrain_class: [1, 3] }) */
+  readonly hiddenClasses?: Record<string, number[]>;
+  /** Callback when a categorical class is toggled */
+  readonly onClassToggle?: (layerType: string, classIndex: number, visible: boolean) => void;
 }
 
 /**
  * Compact legend for raster tile overlays.
- * Renders a horizontal gradient bar with min/max labels for each
- * visible raster layer that has a legend configuration.
+ * Renders a horizontal gradient bar with min/max labels for continuous layers,
+ * and interactive checkboxes for categorical layers.
  */
-export const RasterLegend = memo(function RasterLegend({ layers }: RasterLegendProps) {
+export const RasterLegend = memo(function RasterLegend({
+  layers,
+  hiddenClasses = {},
+  onClassToggle,
+}: RasterLegendProps) {
   const legendEntries = layers
     .map((l) => ({ tipo: l.tipo, config: LAYER_LEGEND_CONFIG[l.tipo] }))
     .filter((entry) => entry.config != null);
@@ -25,28 +33,58 @@ export const RasterLegend = memo(function RasterLegend({ layers }: RasterLegendP
       <Stack gap={6}>
         {legendEntries.map(({ tipo, config }) => {
           if (config.categorical && config.categories) {
+            const hidden = new Set(hiddenClasses[tipo] ?? []);
+
             return (
               <Box key={tipo}>
                 <Text size="xs" fw={600} mb={4}>
                   {config.label}
                 </Text>
                 <Stack gap={2}>
-                  {config.categories.map((cat) => (
-                    <Group key={cat.label} gap={6} wrap="nowrap">
-                      <Box
-                        style={{
-                          background: cat.color,
-                          width: 14,
-                          height: 14,
-                          borderRadius: 'var(--mantine-radius-xs)',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <Text size="xs" c="dimmed">
-                        {cat.label}
-                      </Text>
-                    </Group>
-                  ))}
+                  {config.categories.map((cat, idx) => {
+                    const isVisible = !hidden.has(idx);
+                    return (
+                      <Group
+                        key={cat.label}
+                        gap={6}
+                        wrap="nowrap"
+                        style={{ cursor: onClassToggle ? 'pointer' : 'default' }}
+                        onClick={() => onClassToggle?.(tipo, idx, !isVisible)}
+                      >
+                        <Checkbox
+                          size="xs"
+                          checked={isVisible}
+                          onChange={() => onClassToggle?.(tipo, idx, !isVisible)}
+                          styles={{
+                            input: { cursor: 'pointer' },
+                            root: { display: 'flex', alignItems: 'center' },
+                          }}
+                          aria-label={`Toggle ${cat.label}`}
+                        />
+                        <Box
+                          style={{
+                            background: isVisible ? cat.color : '#ccc',
+                            width: 14,
+                            height: 14,
+                            borderRadius: 'var(--mantine-radius-xs)',
+                            flexShrink: 0,
+                            opacity: isVisible ? 1 : 0.4,
+                            transition: 'background 150ms ease, opacity 150ms ease',
+                          }}
+                        />
+                        <Text
+                          size="xs"
+                          c={isVisible ? 'dimmed' : undefined}
+                          style={{
+                            opacity: isVisible ? 1 : 0.4,
+                            transition: 'opacity 150ms ease',
+                          }}
+                        >
+                          {cat.label}
+                        </Text>
+                      </Group>
+                    );
+                  })}
                 </Stack>
               </Box>
             );

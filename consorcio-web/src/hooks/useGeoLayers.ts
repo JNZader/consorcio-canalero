@@ -122,10 +122,18 @@ export function useGeoLayers(): UseGeoLayersResult {
  * Build the tile URL template for a given layer.
  * Uses the backend proxy endpoint so the frontend only needs one API URL.
  */
-export function buildTileUrl(layerId: string, colormap?: string): string {
+export function buildTileUrl(
+  layerId: string,
+  options?: { colormap?: string; hideClasses?: number[] },
+): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
-  if (colormap) {
-    return `${base}?colormap=${encodeURIComponent(colormap)}`;
+  const params = new URLSearchParams();
+  if (options?.colormap) {
+    params.set('colormap', options.colormap);
   }
-  return base;
+  if (options?.hideClasses && options.hideClasses.length > 0) {
+    params.set('hide_classes', options.hideClasses.join(','));
+  }
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
