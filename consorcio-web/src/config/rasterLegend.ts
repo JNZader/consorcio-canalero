@@ -124,9 +124,14 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
     unit: 'm',
     label: 'Elevación (DEM)',
     ranges: [
-      { label: 'Bajo (<110m)', min: 100, max: 110, color: '#333399' },
-      { label: 'Medio (110-125m)', min: 110, max: 125, color: '#abdda4' },
-      { label: 'Alto (125-145m)', min: 125, max: 145, color: '#d7191c' },
+      { label: '100-105m', min: 100, max: 105, color: '#08306b' },
+      { label: '105-110m', min: 105, max: 110, color: '#2171b5' },
+      { label: '110-115m', min: 110, max: 115, color: '#6baed6' },
+      { label: '115-120m', min: 115, max: 120, color: '#a1d99b' },
+      { label: '120-125m', min: 120, max: 125, color: '#ffffbf' },
+      { label: '125-130m', min: 125, max: 130, color: '#fdae61' },
+      { label: '130-135m', min: 130, max: 135, color: '#f46d43' },
+      { label: '135-145m', min: 135, max: 145, color: '#a50026' },
     ],
   },
   flow_acc: {
