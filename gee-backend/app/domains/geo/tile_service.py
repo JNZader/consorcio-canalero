@@ -220,15 +220,19 @@ def get_tile(
         mask = img.mask                  # 0=nodata, 255=valid (property → copy)
         h, w = raw.shape
         colors = CATEGORICAL_COLORS[layer.tipo]
+        print(f"CAT: raw unique={np.unique(raw)}, val4={int((raw==4).sum())}, mask0={int((mask==0).sum())}", flush=True)
 
         rgba = np.zeros((h, w, 4), dtype=np.uint8)
         for cls_val, color in colors.items():
             px = raw == cls_val
             if px.any():
                 rgba[px] = color
+                print(f"CAT:   class {cls_val}: {int(px.sum())} → color {color}", flush=True)
 
+        print(f"CAT: before mask: alpha>0={int((rgba[:,:,3]>0).sum())}", flush=True)
         # Nodata → transparent
         rgba[mask == 0, 3] = 0
+        print(f"CAT: after mask: alpha>0={int((rgba[:,:,3]>0).sum())}", flush=True)
         # Hidden classes → transparent
         for cls_val in _hidden_classes:
             rgba[raw == cls_val, 3] = 0
