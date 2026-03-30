@@ -670,15 +670,19 @@ def classify_terrain(
 ) -> str:
     """Classify terrain into 3 actionable risk classes + transparent for canal management.
 
-    Uses HAND, TPI, and TWI to produce a risk-focused classification for
-    ultra-flat terrain (Argentine Pampas). "Sin Riesgo" renders transparent
-    so only actionable zones appear on the map.
+    Uses HAND, flow accumulation, and TWI to produce a risk-focused
+    classification for ultra-flat terrain (Argentine Pampas). "Sin Riesgo"
+    renders transparent so only actionable zones appear on the map.
+
+    HAND is the primary discriminator — on flat terrain, height above nearest
+    drainage is the most reliable flood predictor. TPI is NOT used because
+    the center of wide flat depressions has TPI ≈ 0 (neighbors equally low).
 
     Classes (applied in PRIORITY ORDER — earlier classes override later):
         0 = SIN_RIESGO:       No flood risk — rendered transparent on map
         1 = DRENAJE_NATURAL:  Natural drainage lines (high flow_acc + low HAND)
-        2 = RIESGO_ALTO:      High flood risk (low HAND + high TWI + negative TPI)
-        3 = RIESGO_MEDIO:     Moderate flood risk (low HAND + moderate TWI)
+        2 = RIESGO_ALTO:      High flood risk (HAND < 0.8m + TWI > P55)
+        3 = RIESGO_MEDIO:     Moderate flood risk (HAND < 1.5m + TWI > P35)
 
     Args:
         filled_dem_path: Path to the filled DEM (used as reference for output metadata).
@@ -707,7 +711,6 @@ def classify_terrain(
         meta = src.meta.copy()
 
     hand, nodata_hand = _load(hand_path)
-    tpi, nodata_tpi = _load(tpi_path)
     flow_acc, nodata_fa = _load(flow_acc_path)
     twi, nodata_twi = _load(twi_path)
 
@@ -715,7 +718,6 @@ def classify_terrain(
     nodata_mask = np.zeros(ref_shape, dtype=bool)
     for data, nodata in [
         (hand, nodata_hand),
-        (tpi, nodata_tpi),
         (flow_acc, nodata_fa),
         (twi, nodata_twi),
     ]:
@@ -735,29 +737,30 @@ def classify_terrain(
         return float(np.percentile(vals, p)) if vals.size > 0 else 0.0
 
     fa_p99 = _percentile(flow_acc, 99)
-    twi_p60 = _percentile(twi, 60)
-    twi_p40 = _percentile(twi, 40)
+    twi_p55 = _percentile(twi, 55)
+    twi_p35 = _percentile(twi, 35)
 
     logger.info(
         "classify_terrain thresholds",
         fa_p99=fa_p99,
-        twi_p60=twi_p60,
-        twi_p40=twi_p40,
+        twi_p55=twi_p55,
+        twi_p35=twi_p35,
     )
 
     # --- Default: SIN_RIESGO (class 0) — transparent on map ------------------
     classified = np.full(ref_shape, TERRAIN_SIN_RIESGO, dtype=np.uint8)
 
     # --- Class 3: RIESGO_MEDIO — Moderate flood risk -------------------------
-    # HAND < 1.5m AND TWI > P40 — low-ish terrain with moderate wetness
+    # HAND < 1.5m AND TWI > P35 — low-ish terrain with moderate wetness
     if hand is not None and twi is not None:
-        medio_mask = valid & (hand < 1.5) & (twi > twi_p40)
+        medio_mask = valid & (hand < 1.5) & (twi > twi_p35)
         classified[medio_mask] = TERRAIN_RIESGO_MEDIO
 
     # --- Class 2: RIESGO_ALTO — High flood risk (overrides medio) ------------
-    # HAND < 1.0m AND TWI > P60 AND TPI < 0 — low, wet, in a depression
-    if hand is not None and twi is not None and tpi is not None:
-        alto_mask = valid & (hand < 1.0) & (twi > twi_p60) & (tpi < 0)
+    # HAND < 0.8m AND TWI > P55 — very low terrain, wet
+    # No TPI: center of wide flat depressions has TPI ≈ 0, would be missed
+    if hand is not None and twi is not None:
+        alto_mask = valid & (hand < 0.8) & (twi > twi_p55)
         classified[alto_mask] = TERRAIN_RIESGO_ALTO
 
     # --- Class 1: DRENAJE_NATURAL — Natural drainage lines (highest priority) -
