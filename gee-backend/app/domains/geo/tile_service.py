@@ -214,22 +214,7 @@ def get_tile(
         # Render without colormap for terrain-RGB
         content = img.render(img_format="PNG")
     else:
-        # Log-scale for extremely skewed data (flow accumulation)
-        if layer.tipo in LOG_SCALE_TYPES:
-            img.data[:] = np.where(
-                img.data > 0,
-                np.log1p(img.data.astype(np.float64)).astype(np.float32),
-                0,
-            )
-            # Rescale log values: log1p(1)=0.7 to log1p(500000)=13.1
-            img.rescale(((0.0, 13.0),))
-        else:
-            # Apply fixed rescale if defined (ensures consistent colors across tiles)
-            rescale = DEFAULT_RESCALE.get(layer.tipo)
-            if rescale:
-                img.rescale(((rescale[0], rescale[1]),))
-
-        # Resolve colormap
+        # Resolve colormap early to check if custom rendering is needed
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
 
         if cmap_name == "_custom_terrain":
@@ -239,22 +224,40 @@ def get_tile(
             import io as _io
             from PIL import Image as PILImage
 
+            # Capture raw class values BEFORE rescale for hide_classes
+            raw_classes = img.data[0].copy()
+            orig_mask = img.mask.copy()
+
+            rescale = DEFAULT_RESCALE.get(layer.tipo, (0.0, 4.0))
+            img.rescale(((rescale[0], rescale[1]),))
             rescaled = img.data[0].astype(np.uint8)
-            orig_mask = img.mask  # copy (property)
+
             rgba = np.zeros((img.data.shape[1], img.data.shape[2], 4), dtype=np.uint8)
-            for idx, color in CUSTOM_TERRAIN_CMAP.items():
+            for idx, color_val in CUSTOM_TERRAIN_CMAP.items():
                 px = rescaled == idx
                 if px.any():
-                    rgba[px] = color
+                    rgba[px] = color_val
             # Apply original nodata mask
             rgba[:, :, 3] = np.where(orig_mask == 0, 0, rgba[:, :, 3])
-            # Apply hidden classes
+            # Hide classes using RAW values (0-4), not rescaled
             for cls_val in _hidden_classes:
-                cls_idx = min(int(cls_val / 4.0 * 255), 255)
-                rgba[rescaled == cls_idx, 3] = 0
+                rgba[raw_classes == cls_val, 3] = 0
             buf = _io.BytesIO()
             PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
             content = buf.getvalue()
+        else:
+            # Log-scale for extremely skewed data (flow accumulation)
+            if layer.tipo in LOG_SCALE_TYPES:
+                img.data[:] = np.where(
+                    img.data > 0,
+                    np.log1p(img.data.astype(np.float64)).astype(np.float32),
+                    0,
+                )
+                img.rescale(((0.0, 13.0),))
+            else:
+                rescale = DEFAULT_RESCALE.get(layer.tipo)
+                if rescale:
+                    img.rescale(((rescale[0], rescale[1]),))
         else:
             try:
                 from rio_tiler.colormap import cmap as colormap_registry
