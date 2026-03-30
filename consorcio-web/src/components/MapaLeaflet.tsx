@@ -43,6 +43,7 @@ import { useGeoLayers, GEO_LAYER_LABELS, buildTileUrl } from '../hooks/useGeoLay
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePublicLayers } from '../hooks/usePublicLayers';
+import { useWaterways } from '../hooks/useWaterways';
 import { MapReadyHandler } from '../hooks/useMapReady';
 import { useSelectedImageListener, type SelectedImage } from '../hooks/useSelectedImage';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -496,6 +497,9 @@ export default function MapaLeaflet() {
   // Basin polygons from PostGIS (public, no auth required)
   const { basins, loading: loadingBasins } = useBasins();
 
+  // Waterway layers (static GeoJSON, no auth required)
+  const { waterways, loading: loadingWaterways } = useWaterways();
+
   // DEM pipeline raster layers for tile overlays (authenticated)
   const { layers: allGeoLayers, loading: loadingDemLayers } = useGeoLayers();
 
@@ -573,7 +577,7 @@ export default function MapaLeaflet() {
     }
   };
 
-  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers || loadingBasins || loadingDemLayers;
+  const loading = loadingCapas || loadingCaminos || loadingInfra || loadingPublicLayers || loadingBasins || loadingDemLayers || loadingWaterways;
   const [selectedFeature, setSelectedFeature] = useState<GeoJSON.Feature | null>(null);
 
   // Get selected satellite image from localStorage (set in ImageExplorer)
@@ -939,6 +943,17 @@ export default function MapaLeaflet() {
                   fillColor: (layer.estilo?.fillColor as string) || (layer.estilo?.color as string) || '#3388ff',
                 })}
                 onEachFeature={onEachFeature}
+              />
+            </LayersControl.Overlay>
+          ))}
+
+          {/* Hidrografia — waterway overlay layers (off by default) */}
+          {waterways.map((wl) => (
+            <LayersControl.Overlay key={`ww-${wl.id}`} name={`Hidro: ${wl.nombre}`}>
+              <GeoJSON
+                key={`ww-data-${wl.id}`}
+                data={wl.data}
+                style={() => wl.style}
               />
             </LayersControl.Overlay>
           ))}
