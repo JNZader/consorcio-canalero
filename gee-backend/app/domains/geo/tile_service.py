@@ -87,6 +87,62 @@ CATEGORICAL_COLORS: dict[str, dict[int, tuple[int, int, int, int]]] = {
 # Layer types that use categorical (discrete class) rendering
 CATEGORICAL_TYPES = set(CATEGORICAL_COLORS.keys())
 
+# ---------------------------------------------------------------------------
+# Range configurations for continuous layers (toggleable value ranges)
+# ---------------------------------------------------------------------------
+
+RANGE_CONFIGS: dict[str, list[dict]] = {
+    "flood_risk": [
+        {"label": "Bajo", "min": 0, "max": 30, "color": "#1a9850"},
+        {"label": "Medio", "min": 30, "max": 55, "color": "#fee08b"},
+        {"label": "Alto", "min": 55, "max": 75, "color": "#fc8d59"},
+        {"label": "Crítico", "min": 75, "max": 100, "color": "#d73027"},
+    ],
+    "drainage_need": [
+        {"label": "Bajo", "min": 0, "max": 30, "color": "#fff7ec"},
+        {"label": "Medio", "min": 30, "max": 50, "color": "#fdd49e"},
+        {"label": "Alto", "min": 50, "max": 70, "color": "#e34a33"},
+        {"label": "Crítico", "min": 70, "max": 100, "color": "#b30000"},
+    ],
+    "twi": [
+        {"label": "Seco", "min": 6, "max": 9, "color": "#f7fbff"},
+        {"label": "Normal", "min": 9, "max": 12, "color": "#6baed6"},
+        {"label": "Húmedo", "min": 12, "max": 16, "color": "#2171b5"},
+        {"label": "Muy Húmedo", "min": 16, "max": 19, "color": "#08306b"},
+    ],
+    "hand": [
+        {"label": "Muy Bajo (<0.5m)", "min": 0, "max": 0.5, "color": "#bd0026"},
+        {"label": "Bajo (0.5-1m)", "min": 0.5, "max": 1.0, "color": "#f03b20"},
+        {"label": "Medio (1-2m)", "min": 1.0, "max": 2.0, "color": "#fd8d3c"},
+        {"label": "Alto (>2m)", "min": 2.0, "max": 4.0, "color": "#ffffb2"},
+    ],
+    "slope": [
+        {"label": "Plano (<0.3°)", "min": 0, "max": 0.3, "color": "#1a9850"},
+        {"label": "Suave (0.3-0.7°)", "min": 0.3, "max": 0.7, "color": "#fee08b"},
+        {"label": "Moderado (>0.7°)", "min": 0.7, "max": 1.5, "color": "#d73027"},
+    ],
+    "dem_raw": [
+        {"label": "Bajo (<110m)", "min": 100, "max": 110, "color": "#333399"},
+        {"label": "Medio (110-125m)", "min": 110, "max": 125, "color": "#abdda4"},
+        {"label": "Alto (125-145m)", "min": 125, "max": 145, "color": "#d7191c"},
+    ],
+    "flow_acc": [
+        {"label": "Bajo", "min": 1, "max": 100, "color": "#ffffcc"},
+        {"label": "Medio", "min": 100, "max": 10000, "color": "#7fcdbb"},
+        {"label": "Alto", "min": 10000, "max": 487848, "color": "#0c2c84"},
+    ],
+    "profile_curvature": [
+        {"label": "Cóncavo", "min": -0.001, "max": -0.0002, "color": "#b2182b"},
+        {"label": "Plano", "min": -0.0002, "max": 0.0002, "color": "#f7f7f7"},
+        {"label": "Convexo", "min": 0.0002, "max": 0.001, "color": "#2166ac"},
+    ],
+    "tpi": [
+        {"label": "Valle", "min": -1.5, "max": -0.5, "color": "#b2182b"},
+        {"label": "Llano", "min": -0.5, "max": 0.5, "color": "#f7f7f7"},
+        {"label": "Cresta", "min": 0.5, "max": 1.5, "color": "#2166ac"},
+    ],
+}
+
 # Types that need log scaling (extreme skew: P50=2 but max=500k)
 LOG_SCALE_TYPES = {"flow_acc"}
 
@@ -238,6 +294,74 @@ def _render_categorical_png(
     return buf.getvalue()
 
 
+def _render_continuous_with_ranges(
+    img,
+    layer_tipo: str,
+    cmap_name: str,
+    hidden_ranges: set[int],
+) -> bytes:
+    """Render a continuous tile as RGBA PNG, hiding specified value ranges.
+
+    Uses manual PIL rendering (like categorical) because rio-tiler's render()
+    ignores mask changes for colormap-based rendering.
+
+    Steps:
+    1. Capture original (pre-rescale) data for range comparison
+    2. Rescale data to 0-255
+    3. Apply colormap from rio-tiler registry
+    4. Build RGBA manually
+    5. Apply nodata mask
+    6. Apply hidden ranges (set alpha to 0)
+    """
+    from rio_tiler.colormap import cmap as colormap_registry
+
+    # 1. Capture original values before rescale (first band)
+    original_data = img.data[0].astype(np.float64).copy()
+    nodata_mask = img.mask  # 0 = nodata, 255 = valid
+
+    # 2. Apply log scale or rescale
+    if layer_tipo in LOG_SCALE_TYPES:
+        img.data[:] = np.where(
+            img.data > 0,
+            np.log1p(img.data.astype(np.float64)).astype(np.float32),
+            0,
+        )
+        img.rescale(((0.0, 13.0),))
+    else:
+        rescale = DEFAULT_RESCALE.get(layer_tipo)
+        if rescale:
+            img.rescale(((rescale[0], rescale[1]),))
+
+    # 3. Get the 256-entry colormap dict from rio-tiler registry
+    cmap_data = colormap_registry.get(cmap_name)
+
+    # 4. Clamp rescaled data to 0-255 and build RGBA
+    rescaled = np.clip(img.data[0], 0, 255).astype(np.uint8)
+    h, w = rescaled.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+
+    for val in range(256):
+        px = rescaled == val
+        if px.any():
+            color = cmap_data.get(val, (0, 0, 0, 255))
+            rgba[px] = color
+
+    # 5. Apply nodata mask (where mask == 0, set alpha to 0)
+    rgba[nodata_mask == 0, 3] = 0
+
+    # 6. Apply hidden ranges — set alpha to 0 for pixels in hidden value ranges
+    range_cfg = RANGE_CONFIGS.get(layer_tipo, [])
+    for idx in hidden_ranges:
+        if idx < len(range_cfg):
+            r = range_cfg[idx]
+            in_range = (original_data >= r["min"]) & (original_data < r["max"])
+            rgba[in_range, 3] = 0
+
+    buf = io.BytesIO()
+    PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Tile endpoint
 # ---------------------------------------------------------------------------
@@ -261,6 +385,11 @@ def get_tile(
         default=None,
         description="Comma-separated class values to hide (e.g. '1,3'). "
         "Only applies to categorical layers like terrain_class.",
+    ),
+    hide_ranges: Optional[str] = Query(
+        default=None,
+        description="Comma-separated range indices to hide (e.g. '0,2'). "
+        "Only applies to continuous layers with RANGE_CONFIGS.",
     ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
@@ -295,6 +424,14 @@ def get_tile(
         except ValueError:
             logger.warning("Invalid hide_classes value: %s", hide_classes)
 
+    # Parse hidden ranges (used for continuous layers with RANGE_CONFIGS)
+    _hidden_ranges: set[int] = set()
+    if hide_ranges:
+        try:
+            _hidden_ranges = {int(r.strip()) for r in hide_ranges.split(",") if r.strip()}
+        except ValueError:
+            logger.warning("Invalid hide_ranges value: %s", hide_ranges)
+
     if layer.tipo in CATEGORICAL_TYPES:
         tile_data = _read_categorical_tile(file_path, x, y, z, tilesize=256)
         if tile_data is None:
@@ -323,33 +460,46 @@ def get_tile(
         # Render without colormap for terrain-RGB
         content = img.render(img_format="PNG")
     elif layer.tipo not in CATEGORICAL_TYPES:
-        # ── Standard continuous rendering: rescale + rio-tiler colormap ──
-        if layer.tipo in LOG_SCALE_TYPES:
-            img.data[:] = np.where(
-                img.data > 0,
-                np.log1p(img.data.astype(np.float64)).astype(np.float32),
-                0,
-            )
-            img.rescale(((0.0, 13.0),))
-        else:
-            rescale = DEFAULT_RESCALE.get(layer.tipo)
-            if rescale:
-                img.rescale(((rescale[0], rescale[1]),))
-
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
-        try:
-            from rio_tiler.colormap import cmap as colormap_registry
 
-            cmap_data = colormap_registry.get(cmap_name)
-            content = img.render(img_format="PNG", colormap=cmap_data)
-        except Exception as e:
-            logger.warning(
-                "Colormap '%s' not found in rio-tiler registry, "
-                "falling back to grayscale: %s",
-                cmap_name,
-                e,
-            )
-            content = img.render(img_format="PNG")
+        # If hiding ranges on a continuous layer, use manual PIL rendering
+        if _hidden_ranges and layer.tipo in RANGE_CONFIGS:
+            try:
+                content = _render_continuous_with_ranges(
+                    img, layer.tipo, cmap_name, _hidden_ranges,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Error rendering with hidden ranges, falling back to standard: %s", e,
+                )
+                content = img.render(img_format="PNG")
+        else:
+            # ── Standard continuous rendering: rescale + rio-tiler colormap ──
+            if layer.tipo in LOG_SCALE_TYPES:
+                img.data[:] = np.where(
+                    img.data > 0,
+                    np.log1p(img.data.astype(np.float64)).astype(np.float32),
+                    0,
+                )
+                img.rescale(((0.0, 13.0),))
+            else:
+                rescale = DEFAULT_RESCALE.get(layer.tipo)
+                if rescale:
+                    img.rescale(((rescale[0], rescale[1]),))
+
+            try:
+                from rio_tiler.colormap import cmap as colormap_registry
+
+                cmap_data = colormap_registry.get(cmap_name)
+                content = img.render(img_format="PNG", colormap=cmap_data)
+            except Exception as e:
+                logger.warning(
+                    "Colormap '%s' not found in rio-tiler registry, "
+                    "falling back to grayscale: %s",
+                    cmap_name,
+                    e,
+                )
+                content = img.render(img_format="PNG")
 
     return Response(
         content=content,

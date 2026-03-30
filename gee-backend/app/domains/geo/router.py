@@ -275,6 +275,7 @@ async def proxy_tile(
     colormap: Optional[str] = Query(default=None),
     encoding: Optional[str] = Query(default=None),
     hide_classes: Optional[str] = Query(default=None),
+    hide_ranges: Optional[str] = Query(default=None),
 ):
     """Proxy tile requests to the geo-worker tile service (public).
 
@@ -296,6 +297,8 @@ async def proxy_tile(
         params["encoding"] = encoding
     if hide_classes:
         params["hide_classes"] = hide_classes
+    if hide_ranges:
+        params["hide_ranges"] = hide_ranges
 
     upstream_url = (
         f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
