@@ -1051,6 +1051,7 @@ def composite_analysis_task(
         missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
         has_drainage = (
             (Path(area_dir) / "drainage.tif").exists()
+            or (Path(area_dir) / "drainage_combined.geojson").exists()
             or (Path(area_dir) / "drainage.geojson").exists()
         )
         if not has_drainage:
@@ -1089,6 +1090,32 @@ def composite_analysis_task(
         )
         outputs["flood_risk"] = flood_output
         _update_job(job_id, progreso=30)
+
+        # -- 3b. Merge real waterways into drainage network ---------------
+        auto_drainage = str(Path(area_dir) / "drainage.geojson")
+        combined_drainage = str(Path(area_dir) / "drainage_combined.geojson")
+        if Path(auto_drainage).exists():
+            try:
+                _run_step(
+                    job_id,
+                    "merge_drainage_networks",
+                    composites.merge_drainage_networks,
+                    (auto_drainage,),
+                    {"output_path": combined_drainage},
+                )
+                outputs["drainage_combined"] = combined_drainage
+                # Remove stale drainage.tif so compute_drainage_need
+                # re-rasterizes from the combined geojson
+                stale_tif = Path(area_dir) / "drainage.tif"
+                if stale_tif.exists():
+                    stale_tif.unlink()
+            except Exception:
+                logger.warning(
+                    "composite_analysis.merge_drainage_failed",
+                    area_id=area_id,
+                    exc_info=True,
+                )
+        _update_job(job_id, progreso=40)
 
         # -- 4. Compute drainage need ------------------------------------
         drainage_output = str(Path(area_dir) / "drainage_need.tif")

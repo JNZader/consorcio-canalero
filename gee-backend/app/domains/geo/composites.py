@@ -408,17 +408,23 @@ def compute_drainage_need(
     # Validate drainage raster exists — auto-rasterize from GeoJSON if needed
     drainage_path = area / "drainage.tif"
     if not drainage_path.exists():
+        # Prefer combined drainage (real + auto) over plain auto-generated
+        combined_path = area / "drainage_combined.geojson"
         geojson_path = area / "drainage.geojson"
-        if geojson_path.exists():
+        source_geojson = (
+            combined_path if combined_path.exists() else geojson_path
+        )
+        if source_geojson.exists():
             # Find a reference raster for CRS/transform/shape
             reference = area / "flow_acc.tif"
             if not reference.exists():
                 reference = area / "hand.tif"
             rasterize_drainage(
-                str(geojson_path), str(reference), str(drainage_path)
+                str(source_geojson), str(reference), str(drainage_path)
             )
             logger.info(
-                "compute_drainage_need: auto-rasterized drainage.geojson → drainage.tif"
+                "compute_drainage_need: auto-rasterized %s → drainage.tif",
+                source_geojson.name,
             )
         else:
             raise FileNotFoundError(
