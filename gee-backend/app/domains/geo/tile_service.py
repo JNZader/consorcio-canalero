@@ -212,6 +212,7 @@ def get_tile(
         # ── Categorical rendering ──────────────────────────────────────
         # NO rescale. Map raw uint8 class values directly to RGBA colors.
         # rio-tiler sets nodata pixels to mask=0, valid pixels to mask=255.
+        print(f"CATEGORICAL_BRANCH: tipo={layer.tipo}", flush=True)
         import io as _io
         from PIL import Image as PILImage
 
