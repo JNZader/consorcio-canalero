@@ -216,8 +216,6 @@ def get_tile(
     else:
         # Resolve colormap early to check if custom rendering is needed
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
-        print(f"TILE_DEBUG: tipo={layer.tipo}, cmap={cmap_name}, hide={hide_classes}", flush=True)
-
         if cmap_name == "_custom_terrain":
             # Manual rendering for categorical layers.
             # rio-tiler's render(colormap=...) ignores the mask, so we build
@@ -225,9 +223,21 @@ def get_tile(
             import io as _io
             from PIL import Image as PILImage
 
-            # Capture raw class values BEFORE rescale for hide_classes
-            raw_classes = img.data[0].copy()
-            print(f"RAW: dtype={raw_classes.dtype}, unique={np.unique(raw_classes)}, val4={int((raw_classes==4).sum())}", flush=True)
+            # img.data already has nodata pixels replaced by rio-tiler.
+            # Re-read raw class values directly from rasterio for hide_classes.
+            import rasterio as _rio
+            from rasterio.windows import from_bounds
+            from pyproj import Transformer
+            import mercantile
+
+            tile_bounds = mercantile.xy_bounds(mercantile.Tile(x, y, z))
+            with _rio.open(file_path) as raw_src:
+                transformer = Transformer.from_crs("EPSG:3857", raw_src.crs, always_xy=True)
+                left, bottom = transformer.transform(tile_bounds.left, tile_bounds.bottom)
+                right, top = transformer.transform(tile_bounds.right, tile_bounds.top)
+                window = from_bounds(left, bottom, right, top, raw_src.transform)
+                raw_tile = raw_src.read(1, window=window, out_shape=(256, 256), resampling=0)
+
             orig_mask = img.mask.copy()
 
             rescale = DEFAULT_RESCALE.get(layer.tipo, (0.0, 4.0))
@@ -241,11 +251,10 @@ def get_tile(
                     rgba[px] = color_val
             # Apply original nodata mask
             rgba[:, :, 3] = np.where(orig_mask == 0, 0, rgba[:, :, 3])
-            # Hide classes using RAW values (0-4), not rescaled
+            # Hide classes using raw rasterio values (0-4), not rio-tiler data
             for cls_val in _hidden_classes:
-                match_count = int((raw_classes == cls_val).sum())
-                rgba[raw_classes == cls_val, 3] = 0
-                print(f"HIDE: cls={cls_val}, matched={match_count}, alpha0_after={(rgba[:,:,3]==0).sum()}", flush=True)
+                match_count = int((raw_tile == cls_val).sum())
+                rgba[raw_tile == cls_val, 3] = 0
             buf = _io.BytesIO()
             PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
             content = buf.getvalue()
