@@ -645,11 +645,10 @@ def compute_tpi(
 # ---------------------------------------------------------------------------
 
 # Classification codes (0-4)
-TERRAIN_DRENAJE_NATURAL = 0   # Natural drainage lines
-TERRAIN_ZONA_INUNDABLE = 1    # Flood-prone depressions
-TERRAIN_NECESITA_DRENAJE = 2  # Needs drainage infrastructure
-TERRAIN_LOMA_DIVISORIA = 3    # Ridge / water divide
-TERRAIN_TERRENO_FUNCIONAL = 4  # Functional terrain (default)
+TERRAIN_SIN_RIESGO = 0        # No risk — transparent on map
+TERRAIN_DRENAJE_NATURAL = 1   # Natural drainage lines
+TERRAIN_RIESGO_ALTO = 2       # High flood risk
+TERRAIN_RIESGO_MEDIO = 3      # Moderate flood risk
 
 TERRAIN_CLASS_LABELS = {
     0: "Drenaje Natural",
@@ -669,28 +668,24 @@ def classify_terrain(
     flow_acc_path: str | None = None,
     twi_path: str | None = None,
 ) -> str:
-    """Classify terrain into 5 actionable classes for flat terrain canal management.
+    """Classify terrain into 3 actionable risk classes + transparent for canal management.
 
-    Uses HAND, TPI, profile curvature, flow accumulation, and TWI to produce
-    classes meaningful for canal infrastructure planning in ultra-flat terrain
-    (Argentine Pampas, slope 0-1.5 degrees).
+    Uses HAND, TPI, and TWI to produce a risk-focused classification for
+    ultra-flat terrain (Argentine Pampas). "Sin Riesgo" renders transparent
+    so only actionable zones appear on the map.
 
     Classes (applied in PRIORITY ORDER — earlier classes override later):
-        0 = DRENAJE_NATURAL:   Natural drainage lines (high flow_acc + low HAND)
-        1 = ZONA_INUNDABLE:    Flood-prone depressions (low HAND + high TWI + negative TPI)
-        2 = NECESITA_DRENAJE:  Needs drainage infrastructure (concave + wet + no drainage path)
-        3 = LOMA_DIVISORIA:    Ridge / water divide (positive TPI + low TWI)
-        4 = TERRENO_FUNCIONAL: Functional terrain — adequate natural drainage (default)
-
-    Thresholds are computed from input data percentiles, not hardcoded, so the
-    classification adapts to different terrain datasets.
+        0 = SIN_RIESGO:       No flood risk — rendered transparent on map
+        1 = DRENAJE_NATURAL:  Natural drainage lines (high flow_acc + low HAND)
+        2 = RIESGO_ALTO:      High flood risk (low HAND + high TWI + negative TPI)
+        3 = RIESGO_MEDIO:     Moderate flood risk (low HAND + moderate TWI)
 
     Args:
         filled_dem_path: Path to the filled DEM (used as reference for output metadata).
         output_dir: Directory where terrain_class.tif will be written.
         hand_path: Height Above Nearest Drainage raster.
         tpi_path: Topographic Position Index raster.
-        curvature_path: Profile curvature raster.
+        curvature_path: Profile curvature raster (unused in new model, kept for API compat).
         flow_acc_path: Flow accumulation raster.
         twi_path: Topographic Wetness Index raster.
 
@@ -713,7 +708,6 @@ def classify_terrain(
 
     hand, nodata_hand = _load(hand_path)
     tpi, nodata_tpi = _load(tpi_path)
-    curvature, nodata_curv = _load(curvature_path)
     flow_acc, nodata_fa = _load(flow_acc_path)
     twi, nodata_twi = _load(twi_path)
 
@@ -722,7 +716,6 @@ def classify_terrain(
     for data, nodata in [
         (hand, nodata_hand),
         (tpi, nodata_tpi),
-        (curvature, nodata_curv),
         (flow_acc, nodata_fa),
         (twi, nodata_twi),
     ]:
@@ -741,49 +734,34 @@ def classify_terrain(
         vals = data[valid]
         return float(np.percentile(vals, p)) if vals.size > 0 else 0.0
 
-    fa_p90 = _percentile(flow_acc, 90)
     fa_p99 = _percentile(flow_acc, 99)
-    twi_p25 = _percentile(twi, 25)
-    twi_p50 = _percentile(twi, 50)
-    twi_p75 = _percentile(twi, 75)
-    curv_p75_neg = _percentile(curvature, 25)  # P25 = negative P75 (concave)
+    twi_p60 = _percentile(twi, 60)
+    twi_p40 = _percentile(twi, 40)
 
     logger.info(
         "classify_terrain thresholds",
-        fa_p90=fa_p90,
         fa_p99=fa_p99,
-        twi_p25=twi_p25,
-        twi_p50=twi_p50,
-        twi_p75=twi_p75,
-        curv_p75_neg=curv_p75_neg,
+        twi_p60=twi_p60,
+        twi_p40=twi_p40,
     )
 
-    # --- Default: TERRENO_FUNCIONAL (class 4) ---------------------------------
-    classified = np.full(ref_shape, TERRAIN_TERRENO_FUNCIONAL, dtype=np.uint8)
+    # --- Default: SIN_RIESGO (class 0) — transparent on map ------------------
+    classified = np.full(ref_shape, TERRAIN_SIN_RIESGO, dtype=np.uint8)
 
-    # --- Class 3: LOMA_DIVISORIA — Ridge / water divide -----------------------
-    # TPI > 0.5 AND TWI < P25 — high ground that sheds water
-    if tpi is not None and twi is not None:
-        loma_mask = valid & (tpi > 0.5) & (twi < twi_p25)
-        classified[loma_mask] = TERRAIN_LOMA_DIVISORIA
+    # --- Class 3: RIESGO_MEDIO — Moderate flood risk -------------------------
+    # HAND < 1.5m AND TWI > P40 — low-ish terrain with moderate wetness
+    if hand is not None and twi is not None:
+        medio_mask = valid & (hand < 1.5) & (twi > twi_p40)
+        classified[medio_mask] = TERRAIN_RIESGO_MEDIO
 
-    # --- Class 2: NECESITA_DRENAJE — Needs drainage infrastructure ------------
-    # Concave (curvature < P25, i.e. negative) AND TWI > P50 AND NOT near
-    # existing drainage (flow_acc < P90) — water pools with no drainage path
-    if curvature is not None and twi is not None:
-        necesita_mask = valid & (curvature < curv_p75_neg) & (twi > twi_p50)
-        if flow_acc is not None:
-            necesita_mask &= flow_acc < fa_p90
-        classified[necesita_mask] = TERRAIN_NECESITA_DRENAJE
-
-    # --- Class 1: ZONA_INUNDABLE — Flood-prone depressions --------------------
-    # HAND < 1.0m AND TWI > P75 AND TPI < -0.3 — low-lying wet depressions
+    # --- Class 2: RIESGO_ALTO — High flood risk (overrides medio) ------------
+    # HAND < 1.0m AND TWI > P60 AND TPI < 0 — low, wet, in a depression
     if hand is not None and twi is not None and tpi is not None:
-        inundable_mask = valid & (hand < 1.0) & (twi > twi_p75) & (tpi < -0.3)
-        classified[inundable_mask] = TERRAIN_ZONA_INUNDABLE
+        alto_mask = valid & (hand < 1.0) & (twi > twi_p60) & (tpi < 0)
+        classified[alto_mask] = TERRAIN_RIESGO_ALTO
 
-    # --- Class 0: DRENAJE_NATURAL — Natural drainage lines (highest priority) -
-    # flow_acc > P99 AND HAND < 1.0m — where water concentrates into channels
+    # --- Class 1: DRENAJE_NATURAL — Natural drainage lines (highest priority) -
+    # flow_acc > P99 AND HAND < 1.0m — concentrated flow channels
     if flow_acc is not None and hand is not None:
         drenaje_mask = valid & (flow_acc > fa_p99) & (hand < 1.0)
         classified[drenaje_mask] = TERRAIN_DRENAJE_NATURAL

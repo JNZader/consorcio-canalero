@@ -31,18 +31,16 @@ export interface RasterLegendInfo {
 
 export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
   terrain_class: {
-    colorStops: ['#0000FF', '#FF0000', '#FFA500', '#8B5A2B', '#C8C8C8'],
+    colorStops: ['#1E88E5', '#D32F2F', '#FF8F00'],
     min: 0,
-    max: 4,
+    max: 3,
     unit: '',
     label: 'Clasificación de Terreno',
     categorical: true,
     categories: [
-      { color: '#0000FF', label: 'Drenaje Natural' },
-      { color: '#FF0000', label: 'Zona Inundable' },
-      { color: '#FFA500', label: 'Necesita Drenaje' },
-      { color: '#8B5A2B', label: 'Loma / Divisoria' },
-      { color: '#C8C8C8', label: 'Terreno Funcional' },
+      { color: '#1E88E5', label: 'Drenaje Natural' },
+      { color: '#D32F2F', label: 'Riesgo Alto' },
+      { color: '#FF8F00', label: 'Riesgo Medio' },
     ],
   },
   flood_risk: {
