@@ -30,10 +30,15 @@ let TerrainLayer: any = null;
 
 async function loadDeckGL() {
   if (DeckGL) return;
-  const [deckMod, geoLayersMod] = await Promise.all([
+  const [deckMod, geoLayersMod, lumaMod, webglMod] = await Promise.all([
     import('@deck.gl/react'),
     import('@deck.gl/geo-layers'),
+    import('@luma.gl/core'),
+    import('@luma.gl/webgl'),
   ]);
+  // Register WebGL2 adapter before DeckGL creates the device.
+  // Without this, luma.gl fails with "device.limits is undefined" on Firefox.
+  lumaMod.luma.registerAdapters([webglMod.webgl2Adapter]);
   DeckGL = deckMod.default || deckMod.DeckGL;
   TerrainLayer = geoLayersMod.TerrainLayer;
 }
