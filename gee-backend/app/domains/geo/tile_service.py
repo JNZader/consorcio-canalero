@@ -197,13 +197,11 @@ def get_tile(
     except TileOutsideBounds:
         return Response(status_code=204)
 
-    # Hide specific class values for categorical layers (make pixels transparent)
-    # Must happen BEFORE rescale since rescale changes the raw values.
-    if hide_classes and layer.tipo in DEFAULT_COLORMAPS and DEFAULT_COLORMAPS[layer.tipo] == "_custom_terrain":
+    # Parse hidden classes (used later for categorical rendering)
+    _hidden_classes: set[int] = set()
+    if hide_classes:
         try:
-            hidden = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
-            for cls_val in hidden:
-                img.mask[img.data[0] == cls_val] = 0
+            _hidden_classes = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
         except ValueError:
             logger.warning("Invalid hide_classes value: %s", hide_classes)
 
@@ -235,7 +233,28 @@ def get_tile(
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
 
         if cmap_name == "_custom_terrain":
-            content = img.render(img_format="PNG", colormap=CUSTOM_TERRAIN_CMAP)
+            # Manual rendering for categorical layers.
+            # rio-tiler's render(colormap=...) ignores the mask, so we build
+            # the RGBA PNG ourselves to support hide_classes transparency.
+            import io as _io
+            from PIL import Image as PILImage
+
+            rescaled = img.data[0].astype(np.uint8)
+            orig_mask = img.mask  # copy (property)
+            rgba = np.zeros((img.data.shape[1], img.data.shape[2], 4), dtype=np.uint8)
+            for idx, color in CUSTOM_TERRAIN_CMAP.items():
+                px = rescaled == idx
+                if px.any():
+                    rgba[px] = color
+            # Apply original nodata mask
+            rgba[:, :, 3] = np.where(orig_mask == 0, 0, rgba[:, :, 3])
+            # Apply hidden classes
+            for cls_val in _hidden_classes:
+                cls_idx = min(int(cls_val / 4.0 * 255), 255)
+                rgba[rescaled == cls_idx, 3] = 0
+            buf = _io.BytesIO()
+            PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
+            content = buf.getvalue()
         else:
             try:
                 from rio_tiler.colormap import cmap as colormap_registry
