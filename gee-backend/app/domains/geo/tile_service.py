@@ -246,7 +246,7 @@ def get_tile(
             PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
             content = buf.getvalue()
         else:
-            # Log-scale for extremely skewed data (flow accumulation)
+            # Standard rendering: rescale + rio-tiler colormap
             if layer.tipo in LOG_SCALE_TYPES:
                 img.data[:] = np.where(
                     img.data > 0,
@@ -258,7 +258,7 @@ def get_tile(
                 rescale = DEFAULT_RESCALE.get(layer.tipo)
                 if rescale:
                     img.rescale(((rescale[0], rescale[1]),))
-        else:
+
             try:
                 from rio_tiler.colormap import cmap as colormap_registry
 
