@@ -216,7 +216,7 @@ def get_tile(
     else:
         # Resolve colormap early to check if custom rendering is needed
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
-        print(f"TILE_DEBUG: tipo={layer.tipo}, cmap_name={cmap_name}, hide={hide_classes}, hidden={_hidden_classes}", flush=True)
+        print(f"TILE_DEBUG: tipo={layer.tipo}, cmap={cmap_name}, hide={hide_classes}", flush=True)
 
         if cmap_name == "_custom_terrain":
             # Manual rendering for categorical layers.
@@ -227,6 +227,7 @@ def get_tile(
 
             # Capture raw class values BEFORE rescale for hide_classes
             raw_classes = img.data[0].copy()
+            print(f"RAW: dtype={raw_classes.dtype}, unique={np.unique(raw_classes)}, val4={int((raw_classes==4).sum())}", flush=True)
             orig_mask = img.mask.copy()
 
             rescale = DEFAULT_RESCALE.get(layer.tipo, (0.0, 4.0))
