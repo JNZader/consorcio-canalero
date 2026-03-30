@@ -216,6 +216,8 @@ def get_tile(
     else:
         # Resolve colormap early to check if custom rendering is needed
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
+        logger.info("tile render: tipo=%s, cmap_name=%s, hide=%s, hidden=%s",
+                     layer.tipo, cmap_name, hide_classes, _hidden_classes)
 
         if cmap_name == "_custom_terrain":
             # Manual rendering for categorical layers.
