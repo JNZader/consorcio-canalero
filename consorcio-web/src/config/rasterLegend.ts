@@ -7,6 +7,11 @@
  * places when colormaps or ranges change.
  */
 
+export interface CategoricalEntry {
+  color: string;
+  label: string;
+}
+
 export interface RasterLegendInfo {
   /** CSS gradient color stops (5-7 stops matching the colormap) */
   colorStops: string[];
@@ -18,9 +23,28 @@ export interface RasterLegendInfo {
   unit: string;
   /** Human-readable label for the legend */
   label: string;
+  /** If true, render discrete color boxes with labels instead of a gradient */
+  categorical?: boolean;
+  /** Category entries (required when categorical is true) */
+  categories?: CategoricalEntry[];
 }
 
 export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
+  terrain_class: {
+    colorStops: ['#377eb8', '#e41a1c', '#ff7f00', '#4daf4a', '#984ea3'],
+    min: 0,
+    max: 4,
+    unit: '',
+    label: 'Clasificación de Terreno',
+    categorical: true,
+    categories: [
+      { color: '#377eb8', label: 'Drenaje Natural' },
+      { color: '#e41a1c', label: 'Zona Inundable' },
+      { color: '#ff7f00', label: 'Necesita Drenaje' },
+      { color: '#4daf4a', label: 'Loma / Divisoria' },
+      { color: '#984ea3', label: 'Terreno Funcional' },
+    ],
+  },
   flood_risk: {
     colorStops: ['#1a9850', '#91cf60', '#d9ef8b', '#fee08b', '#fc8d59', '#d73027'],
     min: 10,

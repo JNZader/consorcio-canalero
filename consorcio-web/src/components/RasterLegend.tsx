@@ -24,6 +24,34 @@ export const RasterLegend = memo(function RasterLegend({ layers }: RasterLegendP
     <Paper shadow="md" p="xs" radius="md" className={styles.rasterLegendPanel}>
       <Stack gap={6}>
         {legendEntries.map(({ tipo, config }) => {
+          if (config.categorical && config.categories) {
+            return (
+              <Box key={tipo}>
+                <Text size="xs" fw={600} mb={4}>
+                  {config.label}
+                </Text>
+                <Stack gap={2}>
+                  {config.categories.map((cat) => (
+                    <Group key={cat.label} gap={6} wrap="nowrap">
+                      <Box
+                        style={{
+                          background: cat.color,
+                          width: 14,
+                          height: 14,
+                          borderRadius: 'var(--mantine-radius-xs)',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Text size="xs" c="dimmed">
+                        {cat.label}
+                      </Text>
+                    </Group>
+                  ))}
+                </Stack>
+              </Box>
+            );
+          }
+
           const gradient = `linear-gradient(to right, ${config.colorStops.join(', ')})`;
           const minLabel = `${config.min}${config.unit ? ` ${config.unit}` : ''}`;
           const maxLabel = `${config.max}${config.unit ? ` ${config.unit}` : ''}`;
