@@ -24,6 +24,103 @@ from shapely.ops import transform as shapely_transform
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Drainage network merge (real waterways + DEM-generated)
+# ---------------------------------------------------------------------------
+
+# Default waterways directory inside the geo-worker container
+_DEFAULT_WATERWAYS_DIR = "/app/data/waterways"
+
+
+def merge_drainage_networks(
+    auto_drainage_path: str,
+    waterways_dir: str = _DEFAULT_WATERWAYS_DIR,
+    output_path: str | None = None,
+) -> str:
+    """Merge DEM-generated drainage with real waterway GeoJSON files.
+
+    Loads the auto-generated drainage network from the DEM pipeline and
+    all ``*.geojson`` files from *waterways_dir*, tagging each feature
+    with a ``source`` property ("auto" or "real") so downstream
+    consumers can distinguish them.
+
+    Args:
+        auto_drainage_path: Path to the DEM-extracted drainage.geojson.
+        waterways_dir: Directory containing real waterway GeoJSON files.
+        output_path: Where to write the combined FeatureCollection.
+            Defaults to ``drainage_combined.geojson`` next to *auto_drainage_path*.
+
+    Returns:
+        The output path on success.
+    """
+    if output_path is None:
+        output_path = str(Path(auto_drainage_path).parent / "drainage_combined.geojson")
+
+    combined_features: list[dict] = []
+
+    # 1. Load auto-generated drainage
+    auto_path = Path(auto_drainage_path)
+    if auto_path.exists():
+        with open(auto_path) as f:
+            auto_data = json.load(f)
+        for feat in auto_data.get("features", []):
+            feat.setdefault("properties", {})["source"] = "auto"
+            combined_features.append(feat)
+        logger.info(
+            "merge_drainage_networks: loaded %d auto features from %s",
+            len(auto_data.get("features", [])),
+            auto_drainage_path,
+        )
+    else:
+        logger.warning(
+            "merge_drainage_networks: auto drainage not found at %s, skipping",
+            auto_drainage_path,
+        )
+
+    # 2. Load real waterway files
+    waterways_path = Path(waterways_dir)
+    if waterways_path.is_dir():
+        for geojson_file in sorted(waterways_path.glob("*.geojson")):
+            try:
+                with open(geojson_file) as f:
+                    ww_data = json.load(f)
+                count = 0
+                for feat in ww_data.get("features", []):
+                    feat.setdefault("properties", {})["source"] = "real"
+                    feat["properties"].setdefault("waterway_file", geojson_file.stem)
+                    combined_features.append(feat)
+                    count += 1
+                logger.info(
+                    "merge_drainage_networks: loaded %d real features from %s",
+                    count,
+                    geojson_file.name,
+                )
+            except Exception:
+                logger.warning(
+                    "merge_drainage_networks: failed to load %s, skipping",
+                    geojson_file.name,
+                    exc_info=True,
+                )
+    else:
+        logger.warning(
+            "merge_drainage_networks: waterways dir not found at %s",
+            waterways_dir,
+        )
+
+    # 3. Write combined FeatureCollection
+    combined = {"type": "FeatureCollection", "features": combined_features}
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(combined, f)
+
+    logger.info(
+        "merge_drainage_networks: wrote %d features to %s",
+        len(combined_features),
+        output_path,
+    )
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # WhiteboxTools singleton (reuse pattern from processing.py)
 # ---------------------------------------------------------------------------
 
