@@ -79,7 +79,7 @@ _terrain_colors = [
     (255, 0, 0, 255),      # 1: Zona Inundable — rojo puro
     (255, 165, 0, 255),    # 2: Necesita Drenaje — naranja brillante
     (139, 90, 43, 255),    # 3: Loma/Divisoria — marrón oscuro
-    (0, 200, 0, 255),      # 4: Terreno Funcional — verde brillante
+    (200, 200, 200, 255),  # 4: Terreno Funcional — gris claro (no se confunde con OSM)
 ]
 for i in range(256):
     # Rescale maps 0-4 → 0-255, so class boundaries at 0, 51, 102, 153, 204

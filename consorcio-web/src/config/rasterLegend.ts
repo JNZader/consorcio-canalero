@@ -31,7 +31,7 @@ export interface RasterLegendInfo {
 
 export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
   terrain_class: {
-    colorStops: ['#0000FF', '#FF0000', '#FFA500', '#8B5A2B', '#00C800'],
+    colorStops: ['#0000FF', '#FF0000', '#FFA500', '#8B5A2B', '#C8C8C8'],
     min: 0,
     max: 4,
     unit: '',
@@ -42,7 +42,7 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
       { color: '#FF0000', label: 'Zona Inundable' },
       { color: '#FFA500', label: 'Necesita Drenaje' },
       { color: '#8B5A2B', label: 'Loma / Divisoria' },
-      { color: '#00C800', label: 'Terreno Funcional' },
+      { color: '#C8C8C8', label: 'Terreno Funcional' },
     ],
   },
   flood_risk: {
