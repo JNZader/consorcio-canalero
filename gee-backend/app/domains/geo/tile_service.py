@@ -240,8 +240,12 @@ def get_tile(
             # Apply original nodata mask
             rgba[:, :, 3] = np.where(orig_mask == 0, 0, rgba[:, :, 3])
             # Hide classes using RAW values (0-4), not rescaled
+            if _hidden_classes:
+                logger.info("Hiding classes %s, raw unique=%s", _hidden_classes, np.unique(raw_classes))
             for cls_val in _hidden_classes:
+                match_count = (raw_classes == cls_val).sum()
                 rgba[raw_classes == cls_val, 3] = 0
+                logger.info("  cls_val=%d matched %d pixels", cls_val, match_count)
             buf = _io.BytesIO()
             PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
             content = buf.getvalue()
