@@ -10,6 +10,10 @@ interface RasterLegendProps {
   readonly hiddenClasses?: Record<string, number[]>;
   /** Callback when a categorical class is toggled */
   readonly onClassToggle?: (layerType: string, classIndex: number, visible: boolean) => void;
+  /** Hidden range indices per layer type (e.g. { flood_risk: [0, 2] }) */
+  readonly hiddenRanges?: Record<string, number[]>;
+  /** Callback when a continuous range is toggled */
+  readonly onRangeToggle?: (layerType: string, rangeIndex: number, visible: boolean) => void;
 }
 
 /**
@@ -21,6 +25,8 @@ export const RasterLegend = memo(function RasterLegend({
   layers,
   hiddenClasses = {},
   onClassToggle,
+  hiddenRanges = {},
+  onRangeToggle,
 }: RasterLegendProps) {
   const legendEntries = layers
     .map((l) => ({ tipo: l.tipo, config: LAYER_LEGEND_CONFIG[l.tipo] }))
@@ -90,6 +96,66 @@ export const RasterLegend = memo(function RasterLegend({
             );
           }
 
+          // Continuous layer with toggleable ranges
+          if (config.ranges && config.ranges.length > 0) {
+            const hiddenSet = new Set(hiddenRanges[tipo] ?? []);
+
+            return (
+              <Box key={tipo}>
+                <Text size="xs" fw={600} mb={4}>
+                  {config.label}
+                </Text>
+                <Stack gap={2}>
+                  {config.ranges.map((range, idx) => {
+                    const isVisible = !hiddenSet.has(idx);
+                    return (
+                      <Group
+                        key={range.label}
+                        gap={6}
+                        wrap="nowrap"
+                        style={{ cursor: onRangeToggle ? 'pointer' : 'default' }}
+                        onClick={() => onRangeToggle?.(tipo, idx, !isVisible)}
+                      >
+                        <Checkbox
+                          size="xs"
+                          checked={isVisible}
+                          onChange={() => onRangeToggle?.(tipo, idx, !isVisible)}
+                          styles={{
+                            input: { cursor: 'pointer' },
+                            root: { display: 'flex', alignItems: 'center' },
+                          }}
+                          aria-label={`Toggle ${range.label}`}
+                        />
+                        <Box
+                          style={{
+                            background: isVisible ? range.color : '#ccc',
+                            width: 14,
+                            height: 14,
+                            borderRadius: 'var(--mantine-radius-xs)',
+                            flexShrink: 0,
+                            opacity: isVisible ? 1 : 0.4,
+                            transition: 'background 150ms ease, opacity 150ms ease',
+                          }}
+                        />
+                        <Text
+                          size="xs"
+                          c={isVisible ? 'dimmed' : undefined}
+                          style={{
+                            opacity: isVisible ? 1 : 0.4,
+                            transition: 'opacity 150ms ease',
+                          }}
+                        >
+                          {range.label}
+                        </Text>
+                      </Group>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            );
+          }
+
+          // Continuous layer without ranges — gradient bar
           const gradient = `linear-gradient(to right, ${config.colorStops.join(', ')})`;
           const minLabel = `${config.min}${config.unit ? ` ${config.unit}` : ''}`;
           const maxLabel = `${config.max}${config.unit ? ` ${config.unit}` : ''}`;
