@@ -324,26 +324,7 @@ def process_dem_pipeline(
         )
         _progress()
 
-        # 10. Terrain classification ---------------------------------------
-        terrain_class = str(output_dir / "terrain_class.tif")
-        _run_step(
-            job_id,
-            "classify_terrain",
-            _get_processing().classify_terrain,
-            (slope, twi, flow_acc, terrain_class),
-        )
-        outputs["terrain_class"] = terrain_class
-        tc_cog = _convert_to_cog_safe(terrain_class)
-        _register_layer(
-            nombre=f"terrain_class_{area_id}",
-            tipo=TipoGeoLayer.TERRAIN_CLASS,
-            archivo_path=terrain_class,
-            area_id=area_id,
-            metadata_extra={"cog_path": tc_cog} if tc_cog else {"cog_error": "conversion failed"},
-        )
-        _progress()
-
-        # 11. Profile curvature --------------------------------------------
+        # 10. Profile curvature --------------------------------------------
         profile_curvature = _run_step(
             job_id,
             "compute_profile_curvature",
@@ -361,7 +342,7 @@ def process_dem_pipeline(
         )
         _progress()
 
-        # 12. TPI (Topographic Position Index) -----------------------------
+        # 11. TPI (Topographic Position Index) -----------------------------
         tpi = _run_step(
             job_id,
             "compute_tpi",
@@ -376,6 +357,31 @@ def process_dem_pipeline(
             archivo_path=tpi,
             area_id=area_id,
             metadata_extra={"cog_path": tpi_cog} if tpi_cog else {"cog_error": "conversion failed"},
+        )
+        _progress()
+
+        # 12. Terrain classification (5-class, uses HAND+TPI+curv+FA+TWI) --
+        terrain_class = _run_step(
+            job_id,
+            "classify_terrain",
+            _get_processing().classify_terrain,
+            (filled, str(output_dir)),
+            {
+                "hand_path": hand,
+                "tpi_path": tpi,
+                "curvature_path": profile_curvature,
+                "flow_acc_path": flow_acc,
+                "twi_path": twi,
+            },
+        )
+        outputs["terrain_class"] = terrain_class
+        tc_cog = _convert_to_cog_safe(terrain_class)
+        _register_layer(
+            nombre=f"terrain_class_{area_id}",
+            tipo=TipoGeoLayer.TERRAIN_CLASS,
+            archivo_path=terrain_class,
+            area_id=area_id,
+            metadata_extra={"cog_path": tc_cog} if tc_cog else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -537,17 +543,28 @@ def extract_drainage_network(
 
 @celery_app.task(queue="geo", name="geo.classify_terrain")
 def classify_terrain(
-    slope_path: str,
-    twi_path: str,
-    flow_acc_path: str,
-    output_path: str,
+    filled_dem_path: str,
+    output_dir: str,
+    hand_path: str | None = None,
+    tpi_path: str | None = None,
+    curvature_path: str | None = None,
+    flow_acc_path: str | None = None,
+    twi_path: str | None = None,
     job_id: str | None = None,
 ) -> dict:
-    """Classify terrain into categories based on slope, TWI, and flow accumulation."""
+    """Classify terrain into 5 actionable classes for flat terrain management."""
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _get_processing().classify_terrain(slope_path, twi_path, flow_acc_path, output_path)
+        result = _get_processing().classify_terrain(
+            filled_dem_path,
+            output_dir,
+            hand_path=hand_path,
+            tpi_path=tpi_path,
+            curvature_path=curvature_path,
+            flow_acc_path=flow_acc_path,
+            twi_path=twi_path,
+        )
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}

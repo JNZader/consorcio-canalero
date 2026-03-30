@@ -641,91 +641,154 @@ def compute_tpi(
 
 
 # ---------------------------------------------------------------------------
-# j) Terrain classification
+# j) Terrain classification — 5 actionable classes for flat terrain management
 # ---------------------------------------------------------------------------
 
-# Classification codes
-TERRAIN_PLANO_SECO = 0
-TERRAIN_PLANO_HUMEDO = 1
-TERRAIN_DRENAJE_ACTIVO = 2
-TERRAIN_ACUMULACION = 3
+# Classification codes (0-4)
+TERRAIN_DRENAJE_NATURAL = 0   # Natural drainage lines
+TERRAIN_ZONA_INUNDABLE = 1    # Flood-prone depressions
+TERRAIN_NECESITA_DRENAJE = 2  # Needs drainage infrastructure
+TERRAIN_LOMA_DIVISORIA = 3    # Ridge / water divide
+TERRAIN_TERRENO_FUNCIONAL = 4  # Functional terrain (default)
 
-_SLOPE_THRESHOLD_DEG = 1.0
-_FLOW_ACC_HIGH_THRESHOLD = 5000
+TERRAIN_CLASS_LABELS = {
+    0: "Drenaje Natural",
+    1: "Zona Inundable",
+    2: "Necesita Drenaje",
+    3: "Loma / Divisoria",
+    4: "Terreno Funcional",
+}
 
 
 def classify_terrain(
-    slope_path: str,
-    twi_path: str,
-    flow_acc_path: str,
-    output_path: str,
-    slope_threshold: float = _SLOPE_THRESHOLD_DEG,
-    flow_acc_threshold: int = _DEFAULT_DRAINAGE_THRESHOLD,
-    flow_acc_high_threshold: int = _FLOW_ACC_HIGH_THRESHOLD,
+    filled_dem_path: str,
+    output_dir: str,
+    hand_path: str | None = None,
+    tpi_path: str | None = None,
+    curvature_path: str | None = None,
+    flow_acc_path: str | None = None,
+    twi_path: str | None = None,
 ) -> str:
-    """Classify terrain into categories based on slope, TWI, and flow accumulation.
+    """Classify terrain into 5 actionable classes for flat terrain canal management.
 
-    Categories:
-        0 = plano_seco:     slope < threshold AND twi < median
-        1 = plano_humedo:   slope < threshold AND twi >= median
-        2 = drenaje_activo: slope >= threshold AND flow_acc > flow_acc_threshold
-        3 = acumulacion:    flow_acc > flow_acc_high_threshold
+    Uses HAND, TPI, profile curvature, flow accumulation, and TWI to produce
+    classes meaningful for canal infrastructure planning in ultra-flat terrain
+    (Argentine Pampas, slope 0-1.5 degrees).
 
-    The acumulacion class takes priority (checked last, overwrites).
+    Classes (applied in PRIORITY ORDER — earlier classes override later):
+        0 = DRENAJE_NATURAL:   Natural drainage lines (high flow_acc + low HAND)
+        1 = ZONA_INUNDABLE:    Flood-prone depressions (low HAND + high TWI + negative TPI)
+        2 = NECESITA_DRENAJE:  Needs drainage infrastructure (concave + wet + no drainage path)
+        3 = LOMA_DIVISORIA:    Ridge / water divide (positive TPI + low TWI)
+        4 = TERRENO_FUNCIONAL: Functional terrain — adequate natural drainage (default)
+
+    Thresholds are computed from input data percentiles, not hardcoded, so the
+    classification adapts to different terrain datasets.
 
     Args:
-        slope_path: Slope raster in degrees.
-        twi_path: TWI raster.
+        filled_dem_path: Path to the filled DEM (used as reference for output metadata).
+        output_dir: Directory where terrain_class.tif will be written.
+        hand_path: Height Above Nearest Drainage raster.
+        tpi_path: Topographic Position Index raster.
+        curvature_path: Profile curvature raster.
         flow_acc_path: Flow accumulation raster.
-        output_path: Output classified raster path.
-        slope_threshold: Flat terrain threshold in degrees.
-        flow_acc_threshold: Flow accumulation threshold for active drainage.
-        flow_acc_high_threshold: High flow accumulation threshold for accumulation zones.
+        twi_path: Topographic Wetness Index raster.
 
     Returns:
-        output_path on success.
+        Path to the output terrain_class.tif.
     """
-    with rasterio.open(slope_path) as src:
-        slope = src.read(1).astype(np.float64)
-        nodata_slope = src.nodata
+    output_path = str(Path(output_dir) / "terrain_class.tif")
+
+    # --- Load all input layers ------------------------------------------------
+    def _load(path: str | None) -> tuple[np.ndarray | None, float | None]:
+        if path is None or not Path(path).exists():
+            return None, None
+        with rasterio.open(path) as src:
+            return src.read(1).astype(np.float64), src.nodata
+
+    # Reference metadata from filled DEM
+    with rasterio.open(filled_dem_path) as src:
+        ref_shape = (src.height, src.width)
         meta = src.meta.copy()
 
-    with rasterio.open(twi_path) as src:
-        twi = src.read(1).astype(np.float64)
-        nodata_twi = src.nodata
+    hand, nodata_hand = _load(hand_path)
+    tpi, nodata_tpi = _load(tpi_path)
+    curvature, nodata_curv = _load(curvature_path)
+    flow_acc, nodata_fa = _load(flow_acc_path)
+    twi, nodata_twi = _load(twi_path)
 
-    with rasterio.open(flow_acc_path) as src:
-        flow_acc = src.read(1).astype(np.float64)
-        nodata_fa = src.nodata
+    # --- Combined nodata mask -------------------------------------------------
+    nodata_mask = np.zeros(ref_shape, dtype=bool)
+    for data, nodata in [
+        (hand, nodata_hand),
+        (tpi, nodata_tpi),
+        (curvature, nodata_curv),
+        (flow_acc, nodata_fa),
+        (twi, nodata_twi),
+    ]:
+        if data is not None and nodata is not None:
+            nodata_mask |= data == nodata
+            nodata_mask |= ~np.isfinite(data)
+        elif data is not None:
+            nodata_mask |= ~np.isfinite(data)
 
-    # Combined nodata mask
-    nodata_mask = np.zeros(slope.shape, dtype=bool)
-    if nodata_slope is not None:
-        nodata_mask |= slope == nodata_slope
-    if nodata_twi is not None:
-        nodata_mask |= twi == nodata_twi
-    if nodata_fa is not None:
-        nodata_mask |= flow_acc == nodata_fa
+    valid = ~nodata_mask
 
-    # Compute TWI median only over valid pixels
-    valid_twi = twi[~nodata_mask]
-    twi_median = float(np.median(valid_twi)) if valid_twi.size > 0 else 0.0
+    # --- Compute percentile thresholds from actual data -----------------------
+    def _percentile(data: np.ndarray | None, p: float) -> float:
+        if data is None:
+            return 0.0
+        vals = data[valid]
+        return float(np.percentile(vals, p)) if vals.size > 0 else 0.0
 
-    # Default: plano_seco
-    classified = np.full(slope.shape, TERRAIN_PLANO_SECO, dtype=np.uint8)
+    fa_p90 = _percentile(flow_acc, 90)
+    fa_p99 = _percentile(flow_acc, 99)
+    twi_p25 = _percentile(twi, 25)
+    twi_p50 = _percentile(twi, 50)
+    twi_p75 = _percentile(twi, 75)
+    curv_p75_neg = _percentile(curvature, 25)  # P25 = negative P75 (concave)
 
-    flat = slope < slope_threshold
-    steep = ~flat
+    logger.info(
+        "classify_terrain thresholds",
+        fa_p90=fa_p90,
+        fa_p99=fa_p99,
+        twi_p25=twi_p25,
+        twi_p50=twi_p50,
+        twi_p75=twi_p75,
+        curv_p75_neg=curv_p75_neg,
+    )
 
-    # plano_humedo: flat + high TWI
-    classified[flat & (twi >= twi_median)] = TERRAIN_PLANO_HUMEDO
+    # --- Default: TERRENO_FUNCIONAL (class 4) ---------------------------------
+    classified = np.full(ref_shape, TERRAIN_TERRENO_FUNCIONAL, dtype=np.uint8)
 
-    # drenaje_activo: steep + high flow accumulation
-    classified[steep & (flow_acc > flow_acc_threshold)] = TERRAIN_DRENAJE_ACTIVO
+    # --- Class 3: LOMA_DIVISORIA — Ridge / water divide -----------------------
+    # TPI > 0.5 AND TWI < P25 — high ground that sheds water
+    if tpi is not None and twi is not None:
+        loma_mask = valid & (tpi > 0.5) & (twi < twi_p25)
+        classified[loma_mask] = TERRAIN_LOMA_DIVISORIA
 
-    # acumulacion: very high flow accumulation (overrides previous)
-    classified[flow_acc > flow_acc_high_threshold] = TERRAIN_ACUMULACION
+    # --- Class 2: NECESITA_DRENAJE — Needs drainage infrastructure ------------
+    # Concave (curvature < P25, i.e. negative) AND TWI > P50 AND NOT near
+    # existing drainage (flow_acc < P90) — water pools with no drainage path
+    if curvature is not None and twi is not None:
+        necesita_mask = valid & (curvature < curv_p75_neg) & (twi > twi_p50)
+        if flow_acc is not None:
+            necesita_mask &= flow_acc < fa_p90
+        classified[necesita_mask] = TERRAIN_NECESITA_DRENAJE
 
+    # --- Class 1: ZONA_INUNDABLE — Flood-prone depressions --------------------
+    # HAND < 1.0m AND TWI > P75 AND TPI < -0.3 — low-lying wet depressions
+    if hand is not None and twi is not None and tpi is not None:
+        inundable_mask = valid & (hand < 1.0) & (twi > twi_p75) & (tpi < -0.3)
+        classified[inundable_mask] = TERRAIN_ZONA_INUNDABLE
+
+    # --- Class 0: DRENAJE_NATURAL — Natural drainage lines (highest priority) -
+    # flow_acc > P99 AND HAND < 1.0m — where water concentrates into channels
+    if flow_acc is not None and hand is not None:
+        drenaje_mask = valid & (flow_acc > fa_p99) & (hand < 1.0)
+        classified[drenaje_mask] = TERRAIN_DRENAJE_NATURAL
+
+    # --- Nodata ---------------------------------------------------------------
     out_nodata = np.uint8(255)
     classified[nodata_mask] = out_nodata
 
