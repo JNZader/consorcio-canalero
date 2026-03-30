@@ -161,6 +161,11 @@ def get_tile(
         default=None,
         description="Tile encoding: 'terrain-rgb' for Mapbox elevation encoding",
     ),
+    hide_classes: Optional[str] = Query(
+        default=None,
+        description="Comma-separated class values to hide (e.g. '1,3'). "
+        "Only applies to categorical layers like terrain_class.",
+    ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
 
@@ -191,6 +196,16 @@ def get_tile(
             img = src.tile(x, y, z, tilesize=256)
     except TileOutsideBounds:
         return Response(status_code=204)
+
+    # Hide specific class values for categorical layers (make pixels transparent)
+    # Must happen BEFORE rescale since rescale changes the raw values.
+    if hide_classes and layer.tipo in DEFAULT_COLORMAPS and DEFAULT_COLORMAPS[layer.tipo] == "_custom_terrain":
+        try:
+            hidden = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
+            for cls_val in hidden:
+                img.mask[img.data[0] == cls_val] = 0
+        except ValueError:
+            logger.warning("Invalid hide_classes value: %s", hide_classes)
 
     if encoding == "terrain-rgb":
         # Replace image data with terrain-RGB encoded elevation
