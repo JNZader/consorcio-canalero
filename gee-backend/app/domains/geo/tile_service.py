@@ -42,8 +42,8 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "tpi": "rdbu_r",
     "flow_acc": "ylgnbu",
     "hand": "ylorrd",
-    # terrain_class uses CUSTOM_TERRAIN_CMAP (discrete, not a rio-tiler name)
-    "terrain_class": "_custom_terrain",
+    # terrain_class uses CATEGORICAL_COLORS (handled in separate branch)
+    "terrain_class": "_categorical",
     "flow_dir": "spectral",
     "flood_risk": "rdylgn_r",
     "drainage_need": "ylorbr",
@@ -66,25 +66,20 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "drainage_need": (20.0, 70.0),
 }
 
-# Custom discrete colormap for terrain classification (5 classes, 0-4).
-# Maps each class to a solid color across its range in the 256-entry palette.
-# Class 0: Drenaje Natural — blue (#1565C0)
-# Class 1: Zona Inundable — red (#E53935)
-# Class 2: Necesita Drenaje — orange (#FB8C00)
-# Class 3: Loma/Divisoria — brown (#6D4C41)
-# Class 4: Terreno Funcional — green (#43A047)
-CUSTOM_TERRAIN_CMAP: dict[int, tuple[int, int, int, int]] = {}
-_terrain_colors = [
-    (0, 0, 255, 255),      # 0: Drenaje Natural — azul puro
-    (255, 0, 0, 255),      # 1: Zona Inundable — rojo puro
-    (255, 165, 0, 255),    # 2: Necesita Drenaje — naranja brillante
-    (139, 90, 43, 255),    # 3: Loma/Divisoria — marrón oscuro
-    (200, 200, 200, 255),  # 4: Terreno Funcional — gris claro (no se confunde con OSM)
-]
-for i in range(256):
-    # Rescale maps 0-4 → 0-255, so class boundaries at 0, 51, 102, 153, 204
-    cls = min(i // 52, 4)
-    CUSTOM_TERRAIN_CMAP[i] = _terrain_colors[cls]
+# Direct class→RGBA mapping for categorical layers.
+# Keys are the RAW uint8 values in the raster (no rescale needed).
+CATEGORICAL_COLORS: dict[str, dict[int, tuple[int, int, int, int]]] = {
+    "terrain_class": {
+        0: (0, 0, 255, 255),       # Drenaje Natural — azul puro
+        1: (255, 0, 0, 255),       # Zona Inundable — rojo puro
+        2: (255, 165, 0, 255),     # Necesita Drenaje — naranja brillante
+        3: (139, 90, 43, 255),     # Loma/Divisoria — marrón oscuro
+        4: (200, 200, 200, 255),   # Terreno Funcional — gris claro
+    },
+}
+
+# Layer types that use categorical (discrete class) rendering
+CATEGORICAL_TYPES = set(CATEGORICAL_COLORS.keys())
 
 # Types that need log scaling (extreme skew: P50=2 but max=500k)
 LOG_SCALE_TYPES = {"flow_acc"}
@@ -213,73 +208,61 @@ def get_tile(
         img = ImageData(terrain_data, img.mask)
         # Render without colormap for terrain-RGB
         content = img.render(img_format="PNG")
+    elif layer.tipo in CATEGORICAL_TYPES:
+        # ── Categorical rendering ──────────────────────────────────────
+        # NO rescale. Map raw uint8 class values directly to RGBA colors.
+        # rio-tiler sets nodata pixels to mask=0, valid pixels to mask=255.
+        import io as _io
+        from PIL import Image as PILImage
+
+        raw = img.data[0]               # uint8 class values (0-4)
+        mask = img.mask                  # 0=nodata, 255=valid (property → copy)
+        h, w = raw.shape
+        colors = CATEGORICAL_COLORS[layer.tipo]
+
+        rgba = np.zeros((h, w, 4), dtype=np.uint8)
+        for cls_val, color in colors.items():
+            px = raw == cls_val
+            if px.any():
+                rgba[px] = color
+
+        # Nodata → transparent
+        rgba[mask == 0, 3] = 0
+        # Hidden classes → transparent
+        for cls_val in _hidden_classes:
+            rgba[raw == cls_val, 3] = 0
+
+        buf = _io.BytesIO()
+        PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
+        content = buf.getvalue()
     else:
-        # Resolve colormap early to check if custom rendering is needed
-        cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
-        if cmap_name == "_custom_terrain":
-            # Manual rendering for categorical layers.
-            # rio-tiler's render(colormap=...) ignores the mask, so we build
-            # the RGBA PNG ourselves to support hide_classes transparency.
-            import io as _io
-            from PIL import Image as PILImage
-
-            orig_mask = img.mask.copy()
-            rescale = DEFAULT_RESCALE.get(layer.tipo, (0.0, 4.0))
-
-            # Map class values (0-4) to their rescaled uint8 equivalents.
-            # rio-tiler rescale: out = (val - min) / (max - min) * 255
-            # We compute this with the same float arithmetic rio-tiler uses.
-            rmin, rmax = rescale
-            _class_to_rescaled: dict[int, int] = {}
-            for cv in range(5):
-                scaled = (float(cv) - rmin) / (rmax - rmin) * 255.0
-                _class_to_rescaled[cv] = int(np.clip(scaled, 0, 255))
-
-            img.rescale(((rmin, rmax),))
-            rescaled = img.data[0].astype(np.uint8)
-
-            rgba = np.zeros((img.data.shape[1], img.data.shape[2], 4), dtype=np.uint8)
-            for idx, color_val in CUSTOM_TERRAIN_CMAP.items():
-                px = rescaled == idx
-                if px.any():
-                    rgba[px] = color_val
-            # Apply original nodata mask
-            rgba[:, :, 3] = np.where(orig_mask == 0, 0, rgba[:, :, 3])
-            # Hide classes by matching their rescaled index value
-            for cls_val in _hidden_classes:
-                if cls_val in _class_to_rescaled:
-                    target_idx = _class_to_rescaled[cls_val]
-                    rgba[rescaled == target_idx, 3] = 0
-            buf = _io.BytesIO()
-            PILImage.fromarray(rgba, "RGBA").save(buf, format="PNG")
-            content = buf.getvalue()
+        # ── Standard continuous rendering: rescale + rio-tiler colormap ──
+        if layer.tipo in LOG_SCALE_TYPES:
+            img.data[:] = np.where(
+                img.data > 0,
+                np.log1p(img.data.astype(np.float64)).astype(np.float32),
+                0,
+            )
+            img.rescale(((0.0, 13.0),))
         else:
-            # Standard rendering: rescale + rio-tiler colormap
-            if layer.tipo in LOG_SCALE_TYPES:
-                img.data[:] = np.where(
-                    img.data > 0,
-                    np.log1p(img.data.astype(np.float64)).astype(np.float32),
-                    0,
-                )
-                img.rescale(((0.0, 13.0),))
-            else:
-                rescale = DEFAULT_RESCALE.get(layer.tipo)
-                if rescale:
-                    img.rescale(((rescale[0], rescale[1]),))
+            rescale = DEFAULT_RESCALE.get(layer.tipo)
+            if rescale:
+                img.rescale(((rescale[0], rescale[1]),))
 
-            try:
-                from rio_tiler.colormap import cmap as colormap_registry
+        cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
+        try:
+            from rio_tiler.colormap import cmap as colormap_registry
 
-                cmap_data = colormap_registry.get(cmap_name)
-                content = img.render(img_format="PNG", colormap=cmap_data)
-            except Exception as e:
-                logger.warning(
-                    "Colormap '%s' not found in rio-tiler registry, "
-                    "falling back to grayscale: %s",
-                    cmap_name,
-                    e,
-                )
-                content = img.render(img_format="PNG")
+            cmap_data = colormap_registry.get(cmap_name)
+            content = img.render(img_format="PNG", colormap=cmap_data)
+        except Exception as e:
+            logger.warning(
+                "Colormap '%s' not found in rio-tiler registry, "
+                "falling back to grayscale: %s",
+                cmap_name,
+                e,
+            )
+            content = img.render(img_format="PNG")
 
     return Response(
         content=content,
