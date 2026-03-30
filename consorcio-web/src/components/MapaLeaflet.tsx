@@ -52,6 +52,26 @@ import { RasterLegend } from './RasterLegend';
 import { IconGitCompare, IconLayers, IconPhoto, IconDownload, IconMap } from './ui/icons';
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
+
+/**
+ * TileLayer wrapper that updates the URL without unmounting.
+ * Changing the `key` on a TileLayer inside LayersControl causes Leaflet
+ * to lose track of the overlay (disabling all layers). Instead, we use
+ * a ref and call setUrl() imperatively when the URL changes.
+ */
+function DynamicTileLayer(props: React.ComponentProps<typeof TileLayer>) {
+  const ref = useRef<L.TileLayer>(null);
+  const prevUrl = useRef(props.url);
+
+  useEffect(() => {
+    if (ref.current && props.url !== prevUrl.current) {
+      ref.current.setUrl(props.url);
+      prevUrl.current = props.url;
+    }
+  }, [props.url]);
+
+  return <TileLayer ref={ref} {...props} />;
+}
 import { useConfigStore } from '../stores/configStore';
 import { useCanAccess } from '../stores/authStore';
 import { API_URL, getAuthToken } from '../lib/api';
@@ -884,8 +904,7 @@ export default function MapaLeaflet() {
                 key={`dem-${layer.id}`}
                 name={`DEM: ${GEO_LAYER_LABELS[layer.tipo] || layer.nombre}`}
               >
-                <TileLayer
-                  key={`dem-tile-${layer.id}-${layerHidden.join(',')}`}
+                <DynamicTileLayer
                   url={tileUrl}
                   opacity={0.7}
                   maxZoom={18}
@@ -908,8 +927,7 @@ export default function MapaLeaflet() {
               key={`composite-${layer.id}`}
               name={GEO_LAYER_LABELS[layer.tipo] || layer.nombre}
             >
-              <TileLayer
-                key={`composite-tile-${layer.id}-${layerHidden.join(',')}`}
+              <DynamicTileLayer
                 url={tileUrl}
                 opacity={0.7}
                 maxZoom={18}
