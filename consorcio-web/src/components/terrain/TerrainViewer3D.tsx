@@ -209,16 +209,21 @@ function TerrainMesh({ data, exaggeration }: TerrainMeshProps) {
 
   // Build geometry with relative exaggeration
   const geometry = useMemo(() => {
-    const geo = new PlaneGeometry(10, 10, segments, segmentsY);
+    const planeSize = 10;
+    const geo = new PlaneGeometry(planeSize, planeSize, segments, segmentsY);
     const posAttr = geo.attributes.position;
+
+    // Normalize elevation to [0, 1] then scale by exaggeration.
+    // With exaggeration=1, max height = planeSize * 0.05 (subtle).
+    // With exaggeration=50, max height = planeSize * 2.5 (dramatic).
+    const elevRange = data.maxElev - minElev || 1;
+    const scaleFactor = (planeSize * 0.05 * exaggeration) / elevRange;
 
     for (let iy = 0; iy < height; iy++) {
       for (let ix = 0; ix < width; ix++) {
-        // PlaneGeometry lays out vertices row by row, top to bottom
         const vertexIndex = iy * width + ix;
         const relativeElev = elevations[vertexIndex] - minElev;
-        // Z is the "up" axis for PlaneGeometry before rotation
-        posAttr.setZ(vertexIndex, relativeElev * exaggeration * 0.001);
+        posAttr.setZ(vertexIndex, relativeElev * scaleFactor);
       }
     }
 
