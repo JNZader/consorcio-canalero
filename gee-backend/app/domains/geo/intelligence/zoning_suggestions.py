@@ -205,6 +205,9 @@ def _iter_gap_polygons(geom):
 
 def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach uncovered consorcio-zone gaps to the neighboring basin record."""
+    if not records:
+        return records
+
     zona_geom = _consorcio_zone_geometry()
     if zona_geom is None:
         return records
@@ -251,6 +254,9 @@ def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def split_basins_for_display(basin_features: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return basin features with special visual splits applied."""
+    if not basin_features:
+        return []
+
     split_records = _attach_zone_gaps(
         _split_special_basin_records([_basin_record(feature) for feature in basin_features])
     )
@@ -391,6 +397,18 @@ def suggest_grouped_zones(basin_features: list[dict[str, Any]]) -> dict[str, Any
       Monte Leña and Candil so the southern/eastern leftovers join those
       operational areas instead of creating a separate manual zone.
     """
+    if not basin_features:
+        return {
+            "type": "FeatureCollection",
+            "features": [],
+            "metadata": {
+                "status": "draft",
+                "suggestion_method": "fixed-three-zones-nearest-unassigned-v2",
+                "zone_count": 0,
+                "basin_count": 0,
+                "zone_names": [],
+            },
+        }
 
     records = _attach_zone_gaps(
         _split_special_basin_records([_basin_record(feature) for feature in basin_features])
