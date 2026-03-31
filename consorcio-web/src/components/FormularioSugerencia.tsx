@@ -8,6 +8,7 @@ import {
   LoadingOverlay,
   Overlay,
   Paper,
+  SegmentedControl,
   Select,
   Skeleton,
   Stack,
@@ -18,14 +19,22 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
+import type { FeatureCollection } from 'geojson';
 import { useContactVerification } from '../hooks/useContactVerification';
+import { useWaterways } from '../hooks/useWaterways';
 import { sugerenciasApi } from '../lib/api';
 import { logger } from '../lib/logger';
 import { MAX_LENGTHS, validators } from '../lib/validators';
 import { LiveRegionProvider } from './ui/accessibility';
 import { IconCheck } from './ui/icons';
 import { ContactVerificationSection } from './verification';
+import { MAP_CENTER } from '../constants';
+import { TILE_LAYERS } from '../constants/mapStyles';
+import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
+import 'leaflet/dist/leaflet.css';
+import formStyles from '../styles/components/form.module.css';
 
 const CATEGORIAS = [
   { value: 'infraestructura', label: 'Infraestructura (canales, caminos, alcantarillas)' },
@@ -157,16 +166,111 @@ function buildSugerenciaPayload(
     categoria: string;
   },
   userEmail: string | null,
-  userName: string | null
+  userName: string | null,
+  geometry: DrawnLineFeatureCollection | null,
 ) {
   return {
     titulo: values.titulo,
     descripcion: values.descripcion,
     categoria: values.categoria || undefined,
+    geometry: geometry ?? undefined,
     contacto_nombre: userName || undefined,
     contacto_email: userEmail || undefined,
     contacto_verificado: true,
   };
+}
+
+function GeometrySummary({ geometry }: Readonly<{ geometry: DrawnLineFeatureCollection | null }>) {
+  const totalLines = geometry?.features.length ?? 0;
+  if (totalLines === 0) {
+    return (
+      <Text size="xs" c="dimmed">
+        Opcional: dibuja una línea si querés marcar un canal faltante, una prolongación o una corrección.
+      </Text>
+    );
+  }
+
+  const totalVertices = geometry?.features.reduce(
+    (acc, feature) => acc + feature.geometry.coordinates.length,
+    0,
+  ) ?? 0;
+
+  return (
+    <Badge color="blue" variant="light">
+      {totalLines} línea{totalLines > 1 ? 's' : ''} · {totalVertices} vértices
+    </Badge>
+  );
+}
+
+function SuggestionMapReady() {
+  const map = useMap();
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    return () => window.clearTimeout(timeoutId);
+  }, [map]);
+
+  return null;
+}
+
+function SuggestionGeometrySection({
+  geometry,
+  onChange,
+}: Readonly<{
+  geometry: DrawnLineFeatureCollection | null;
+  onChange: (geometry: DrawnLineFeatureCollection | null) => void;
+}>) {
+  const { waterways } = useWaterways();
+  const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>('satellite');
+  const existingChannels = useMemo(
+    () => waterways.filter((layer) => layer.id === 'canales_existentes'),
+    [waterways],
+  );
+
+  return (
+    <Stack gap="xs">
+      <Group justify="space-between" align="center">
+        <Text size="sm" fw={500}>
+          Canal en mapa
+        </Text>
+        <GeometrySummary geometry={geometry} />
+      </Group>
+
+      <SegmentedControl
+        value={baseLayer}
+        onChange={(value) => setBaseLayer(value as 'osm' | 'satellite')}
+        data={[
+          { label: 'Satelital', value: 'satellite' },
+          { label: 'Mapa', value: 'osm' },
+        ]}
+        size="xs"
+      />
+
+      <Text size="xs" c="dimmed">
+        Usa la herramienta de línea arriba a la izquierda del mapa. Podés dibujar, editar vértices o borrar.
+      </Text>
+
+      <Box className={formStyles.mapContainer} style={{ height: 360 }}>
+        <MapContainer center={MAP_CENTER} zoom={12} style={{ width: '100%', height: '100%' }}>
+          <TileLayer
+            attribution={TILE_LAYERS[baseLayer].attribution}
+            url={TILE_LAYERS[baseLayer].url}
+          />
+          <SuggestionMapReady />
+          {existingChannels.map((layer) => (
+            <GeoJSON key={layer.id} data={layer.data as FeatureCollection} style={layer.style} />
+          ))}
+          <LineDrawControl value={geometry} onChange={onChange} />
+        </MapContainer>
+      </Box>
+
+      <Text size="xs" c="dimmed">
+        Referencia visible: <b>Canales existentes</b> en azul oscuro. Lo que dibujes queda como sugerencia, no como canal oficial.
+      </Text>
+    </Stack>
+  );
 }
 
 // Extracted: Step 2 badge helper
@@ -193,6 +297,7 @@ function FormularioContenido() {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [remainingToday, setRemainingToday] = useState<number | null>(null);
+  const [geometry, setGeometry] = useState<DrawnLineFeatureCollection | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -281,12 +386,13 @@ function FormularioContenido() {
 
       try {
         const result = await sugerenciasApi.createPublic(
-          buildSugerenciaPayload(values, userEmail, userName)
+          buildSugerenciaPayload(values, userEmail, userName, geometry)
         );
         showNotification('Sugerencia enviada', result.message, 'green', <IconCheck size={16} />);
         setRemainingToday(result.remaining_today);
         setEnviado(true);
         form.reset();
+        setGeometry(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo enviar la sugerencia';
         if (message.includes('limite')) {
@@ -297,7 +403,7 @@ function FormularioContenido() {
         setEnviando(false);
       }
     },
-    [form, contactoVerificado, remainingToday, userEmail, userName]
+    [contactoVerificado, form, geometry, remainingToday, userEmail, userName]
   );
 
   // Pantalla de exito
@@ -435,6 +541,14 @@ function FormularioContenido() {
                 description={`Maximo ${MAX_LENGTHS.DESCRIPCION} caracteres`}
                 {...form.getInputProps('descripcion')}
               />
+            </FormFieldWithSkeleton>
+
+            <FormFieldWithSkeleton
+              label="Canal en mapa"
+              isVerified={contactoVerificado}
+              skeletonHeight={360}
+            >
+              <SuggestionGeometrySection geometry={geometry} onChange={setGeometry} />
             </FormFieldWithSkeleton>
 
             {/* Submit */}

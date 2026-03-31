@@ -45,6 +45,10 @@ export const queryKeys = {
   suggestedZones: (opts: { cuenca?: string | null }) => ['suggested-zones', opts] as const,
   approvedZones: () => ['approved-zones'] as const,
   approvedZonesHistory: () => ['approved-zones-history'] as const,
+  compositeStats: (areaId: string, tipo: 'flood_risk' | 'drainage_need') =>
+    ['composite-stats', areaId, tipo] as const,
+  compositeComparison: (areaId: string, tipo: 'flood_risk' | 'drainage_need') =>
+    ['composite-comparison', areaId, tipo] as const,
   caminosColoreados: () => ['caminos-coloreados'] as const,
   publicLayers: () => ['public-layers'] as const,
   infrastructure: () => ['infrastructure'] as const,

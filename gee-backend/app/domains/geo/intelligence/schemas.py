@@ -274,6 +274,8 @@ class CompositeZonalStatsResponse(BaseModel):
     zona_nombre: Optional[str] = Field(
         default=None, description="Zone name (joined from ZonaOperativa)"
     )
+    cuenca: Optional[str] = Field(default=None, description="Parent watershed / basin family")
+    superficie_ha: Optional[float] = Field(default=None, description="Zone area in hectares")
     tipo: str = Field(..., description="flood_risk | drainage_need")
     mean_score: float
     max_score: float
@@ -287,4 +289,29 @@ class BasinRiskRankingResponse(BaseModel):
     """List of basins ranked by composite risk score."""
 
     items: list[CompositeZonalStatsResponse]
+    total: int
+
+
+class CompositeComparisonItemResponse(BaseModel):
+    """Before/after comparison for a zone under a given composite analysis."""
+
+    zona_id: uuid.UUID
+    zona_nombre: Optional[str] = None
+    cuenca: Optional[str] = None
+    superficie_ha: Optional[float] = None
+    tipo: str
+    current_mean_score: float
+    baseline_mean_score: float
+    delta_mean_score: float
+    current_area_high_risk_ha: float
+    baseline_area_high_risk_ha: float
+    delta_area_high_risk_ha: float
+
+
+class CompositeComparisonResponse(BaseModel):
+    """Comparison response between current and baseline composite stats."""
+
+    area_id: str
+    tipo: str
+    items: list[CompositeComparisonItemResponse]
     total: int

@@ -37,6 +37,8 @@ services:
       - "8000:8000"
     volumes:
       - ./gee-backend/app:/app/app:ro
+      - ./gee-backend/data/waterways:/app/data/waterways
+      - ./consorcio-web/public/waterways:/app/public/waterways
       - ./gee-backend/credentials:/app/credentials:ro
       - backend-cache:/app/.cache
       - geo-data:/data/geo

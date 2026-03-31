@@ -1,0 +1,13 @@
+{
+  "name": "IGN Altimetr\u00eda hist\u00f3rica",
+  "source": "IGN.kmz descargado localmente",
+  "level": 5,
+  "bounds": {
+    "west": -62.750969,
+    "south": -32.665914,
+    "east": -62.345994,
+    "north": -32.44785
+  },
+  "coverage_note": "Mosaico completo de la cobertura IGN disponible sobre el entorno del consorcio, sin recorte al pol\u00edgono.",
+  "image": "/overlays/ign/altimetria_ign_consorcio.webp"
+}

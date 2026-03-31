@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Badge,
+  Box,
   Button,
   Card,
   Center,
@@ -28,7 +29,9 @@ import { DatePickerInput } from '@mantine/dates';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet';
 import { type Sugerencia, type SugerenciasStats, sugerenciasApi, apiFetch } from '../../../lib/api';
+import { useWaterways } from '../../../hooks/useWaterways';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
@@ -46,6 +49,8 @@ import {
   IconUsers,
   IconBuilding,
 } from '../../ui/icons';
+import { MAP_CENTER } from '../../../constants';
+import 'leaflet/dist/leaflet.css';
 
 interface SeguimientoEntry {
   id: string;
@@ -144,6 +149,11 @@ function SugerenciasTableContent({
                 <Text size="sm" lineClamp={1} style={{ maxWidth: 250 }}>
                   {sug.titulo}
                 </Text>
+                {sug.geometry?.features?.length ? (
+                  <Badge size="xs" color="blue" variant="light" mt={4}>
+                    Con línea
+                  </Badge>
+                ) : null}
               </Table.Td>
               <Table.Td>
                 <Badge variant="outline" size="sm">
@@ -256,6 +266,7 @@ export default function SugerenciasPanel() {
   const [publicComment, setPublicComment] = useState('');
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [incorporating, setIncorporating] = useState(false);
 
   // Agendar state
   const [agendarFecha, setAgendarFecha] = useState<Date | null>(null);
@@ -265,6 +276,7 @@ export default function SugerenciasPanel() {
   const [historial, setHistorial] = useState<SeguimientoEntry[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  const { waterways } = useWaterways();
 
   const { announce } = useLiveRegion();
   const announceRef = useRef(announce);
@@ -349,16 +361,27 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const handleViewDetail = (sug: Sugerencia) => {
-    setSelectedSugerencia(sug);
-    setNewEstado(sug.estado);
-    setAdminNotes('');
-    setPublicComment('');
-    setAgendarFecha(sug.fecha_reunion ? new Date(sug.fecha_reunion) : null);
-    setHistorial([]);
-    setShowHistorial(false);
-    loadHistory(sug.id);
-    openDetail();
+  const handleViewDetail = async (sug: Sugerencia) => {
+    try {
+      const full = await sugerenciasApi.get(sug.id).catch(() => sug);
+      const merged = { ...sug, ...full };
+      setSelectedSugerencia(merged);
+      setNewEstado(merged.estado);
+      setAdminNotes('');
+      setPublicComment('');
+      setAgendarFecha(merged.fecha_reunion ? new Date(merged.fecha_reunion) : null);
+      setHistorial([]);
+      setShowHistorial(false);
+      loadHistory(merged.id);
+      openDetail();
+    } catch (error) {
+      logger.error('Error loading sugerencia detail:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo cargar el detalle de la sugerencia',
+        color: 'red',
+      });
+    }
   };
 
   const handleUpdate = async () => {
@@ -447,6 +470,34 @@ export default function SugerenciasPanel() {
       });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleIncorporateChannel = async () => {
+    if (!selectedSugerencia) return;
+
+    setIncorporating(true);
+    try {
+      const updated = await sugerenciasApi.incorporateChannel(selectedSugerencia.id);
+      const merged = { ...selectedSugerencia, ...updated };
+      setSelectedSugerencia(merged);
+      setNewEstado('tratado');
+      notifications.show({
+        title: 'Canal incorporado',
+        message: 'La geometría ya se suma visualmente a la capa de Canales existentes',
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
+      refreshAll();
+    } catch (error) {
+      logger.error('Error incorporating suggestion channel:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo incorporar la sugerencia a Canales existentes',
+        color: 'red',
+      });
+    } finally {
+      setIncorporating(false);
     }
   };
 
@@ -790,6 +841,52 @@ export default function SugerenciasPanel() {
                   </Text>
                 </div>
               )}
+
+              {selectedSugerencia.geometry?.features?.length ? (
+                <div>
+                  <Group justify="space-between" align="center" mb="xs">
+                    <Text size="sm" fw={500}>
+                      Geometría sugerida
+                    </Text>
+                    <Badge color="blue" variant="light">
+                      Propuesta no oficial
+                    </Badge>
+                  </Group>
+                  <Box style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
+                    <MapContainer center={MAP_CENTER} zoom={12} style={{ width: '100%', height: '100%' }}>
+                      <TileLayer
+                        attribution="&copy; OpenStreetMap"
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      {waterways
+                        .filter((layer) => layer.id === 'canales_existentes')
+                        .map((layer) => (
+                          <GeoJSON key={layer.id} data={layer.data} style={layer.style} />
+                        ))}
+                      <GeoJSON
+                        data={selectedSugerencia.geometry as any}
+                        style={{ color: '#7B1FA2', weight: 4, opacity: 0.95, dashArray: '8 6' }}
+                      />
+                    </MapContainer>
+                  </Box>
+                  <Text size="xs" c="dimmed" mt={6}>
+                    Línea sugerida en violeta. `Canales existentes` se muestran como referencia en azul oscuro.
+                  </Text>
+                  <Group mt="sm">
+                    <Button
+                      size="xs"
+                      color="teal"
+                      onClick={handleIncorporateChannel}
+                      loading={incorporating}
+                      disabled={String(selectedSugerencia.estado) === 'implementada'}
+                    >
+                      {String(selectedSugerencia.estado) === 'implementada'
+                        ? 'Ya incorporada a Canales existentes'
+                        : 'Incorporar a Canales existentes'}
+                    </Button>
+                  </Group>
+                </div>
+              ) : null}
 
               {/* Historial section */}
               <Paper

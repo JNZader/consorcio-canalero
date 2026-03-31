@@ -115,6 +115,21 @@ def get_proxima_reunion(
     return service.get_proxima_reunion(db)
 
 
+@router.get(
+    "/sugerencias/{sugerencia_id}",
+    response_model=SugerenciaResponse,
+    tags=["sugerencias"],
+)
+def get_sugerencia(
+    sugerencia_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Obtener detalle completo de una sugerencia (requiere operador)."""
+    return service.get_sugerencia(db, sugerencia_id)
+
+
 @router.patch(
     "/sugerencias/{sugerencia_id}",
     response_model=SugerenciaResponse,
@@ -129,6 +144,21 @@ def update_sugerencia(
 ):
     """Actualizar estado/respuesta de una sugerencia (requiere operador)."""
     return service.update_sugerencia(db, sugerencia_id, payload)
+
+
+@router.post(
+    "/sugerencias/{sugerencia_id}/incorporar-canal",
+    response_model=SugerenciaResponse,
+    tags=["sugerencias"],
+)
+def incorporate_sugerencia_as_channel(
+    sugerencia_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Marcar sugerencia geométrica como incorporada a canales existentes."""
+    return service.incorporate_sugerencia_as_channel(db, sugerencia_id)
 
 
 # ──────────────────────────────────────────────

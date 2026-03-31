@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 # ──────────────────────────────────────────────
@@ -20,6 +20,26 @@ class SugerenciaCreate(BaseModel):
     categoria: Optional[str] = None
     contacto_email: Optional[EmailStr] = None
     contacto_nombre: Optional[str] = Field(default=None, max_length=200)
+    geometry: Optional[dict[str, Any]] = None
+
+    @field_validator("geometry")
+    @classmethod
+    def validate_geometry(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if value is None:
+            return value
+        if value.get("type") != "FeatureCollection":
+            raise ValueError("geometry debe ser un FeatureCollection")
+        features = value.get("features")
+        if not isinstance(features, list) or len(features) == 0:
+            raise ValueError("geometry debe incluir al menos una linea")
+        for feature in features:
+            geometry = feature.get("geometry", {}) if isinstance(feature, dict) else {}
+            if geometry.get("type") != "LineString":
+                raise ValueError("solo se admiten geometrias LineString")
+            coordinates = geometry.get("coordinates")
+            if not isinstance(coordinates, list) or len(coordinates) < 2:
+                raise ValueError("cada linea debe tener al menos dos vertices")
+        return value
 
 
 class SugerenciaUpdate(BaseModel):
@@ -28,6 +48,7 @@ class SugerenciaUpdate(BaseModel):
     estado: Optional[str] = None
     respuesta: Optional[str] = None
     categoria: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
 
 
 class SugerenciaResponse(BaseModel):
@@ -42,6 +63,7 @@ class SugerenciaResponse(BaseModel):
     estado: str
     contacto_email: Optional[str] = None
     contacto_nombre: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
     respuesta: Optional[str] = None
     usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
@@ -55,8 +77,12 @@ class SugerenciaListResponse(BaseModel):
 
     id: uuid.UUID
     titulo: str
+    descripcion: str
     categoria: Optional[str] = None
     estado: str
+    contacto_email: Optional[str] = None
+    contacto_nombre: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
     created_at: datetime
 
 

@@ -30,6 +30,7 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from '
 import {
   GeoJSON,
   FeatureGroup,
+  ImageOverlay,
   LayersControl,
   MapContainer,
   Pane,
@@ -103,6 +104,13 @@ import styles from '../styles/components/map.module.css';
 // Layer names for cuencas (constant to prevent infinite re-renders)
 // Caminos are loaded separately via useCaminosColoreados
 const CUENCAS_LAYER_NAMES = ['zona', 'candil', 'ml', 'noroeste', 'norte'] as const;
+const IGN_HISTORIC_OVERLAY = {
+  image: '/overlays/ign/altimetria_ign_consorcio.webp',
+  bounds: [
+    [-32.665914, -62.750969],
+    [-32.44785, -62.345994],
+  ] as [[number, number], [number, number]],
+};
 
 /**
  * Renders the appropriate legend item indicator based on type.
@@ -775,11 +783,13 @@ const DEM_OVERLAY_PREFIX = 'DEM: ';
  */
 function OverlayTracker({
   allGeoLayers,
+  waterwayIdsByName,
   onVisibleChange,
   onRasterFocusChange,
   onVectorVisibilityChange,
 }: {
   allGeoLayers: Array<{ id: string; tipo: string; nombre: string }>;
+  waterwayIdsByName: Record<string, string>;
   onVisibleChange: (layers: Array<{ tipo: string }>) => void;
   onRasterFocusChange?: (tipo: string | null) => void;
   onVectorVisibilityChange?: (layerId: string, visible: boolean) => void;
@@ -788,6 +798,7 @@ function OverlayTracker({
   const vectorOverlayMap: Record<string, string> = {
     'Zonificación Consorcio aprobada': 'approved_zones',
     'Zona Consorcio (manual histórica)': 'zona',
+    'IGN Altimetría histórica': 'ign_historico',
     'Subcuencas Operativas': 'basins',
     'Zonas sugeridas (draft desde subcuencas)': 'basins',
     'Red Vial (por Consorcio)': 'roads',
@@ -798,7 +809,11 @@ function OverlayTracker({
 
   const resolveVectorLayerId = (name: string): string | null => {
     if (vectorOverlayMap[name]) return vectorOverlayMap[name];
-    if (name.startsWith('Hidro: ')) return 'waterways';
+    if (name.startsWith('Hidro: ')) {
+      const waterwayName = name.replace('Hidro: ', '');
+      const waterwayId = waterwayIdsByName[waterwayName];
+      return waterwayId ? `waterways_${waterwayId}` : 'waterways';
+    }
     if (
       name === 'Cuenca Candil' ||
       name === 'Cuenca ML' ||
@@ -944,6 +959,13 @@ export default function MapaLeaflet() {
 
   // Waterway layers (static GeoJSON, no auth required)
   const { waterways, loading: loadingWaterways } = useWaterways();
+  const waterwayIdsByName = useMemo(
+    () =>
+      Object.fromEntries(
+        waterways.map((layer) => [layer.nombre, layer.id]),
+      ),
+    [waterways],
+  );
 
   // DEM pipeline raster layers for tile overlays (authenticated)
   const { layers: allGeoLayers, loading: loadingDemLayers } = useGeoLayers();
@@ -1855,6 +1877,7 @@ export default function MapaLeaflet() {
         <MapReadyHandler />
         <OverlayTracker
           allGeoLayers={allGeoLayers}
+          waterwayIdsByName={waterwayIdsByName}
           onVisibleChange={setVisibleRasterLayers}
           onRasterFocusChange={(tipo) => setSharedActiveRasterType('map2d', tipo)}
           onVectorVisibilityChange={(layerId, visible) =>
@@ -1886,6 +1909,19 @@ export default function MapaLeaflet() {
               <GeoJSON key="zona" data={capas.zona} style={GEE_LAYER_STYLES.zona} />
             </LayersControl.Overlay>
           )}
+
+          <LayersControl.Overlay
+            checked={sharedVisibleVectors.ign_historico ?? false}
+            name="IGN Altimetría histórica"
+          >
+            <ImageOverlay
+              url={IGN_HISTORIC_OVERLAY.image}
+              bounds={IGN_HISTORIC_OVERLAY.bounds}
+              opacity={0.78}
+              zIndex={350}
+              interactive={false}
+            />
+          </LayersControl.Overlay>
 
           {approvedZones && approvedZones.features.length > 0 && (
             <LayersControl.Overlay
@@ -2255,7 +2291,7 @@ export default function MapaLeaflet() {
           {waterways.map((wl) => (
             <LayersControl.Overlay
               key={`ww-${wl.id}`}
-              checked={sharedVisibleVectors.waterways ?? true}
+              checked={sharedVisibleVectors[`waterways_${wl.id}`] ?? sharedVisibleVectors.waterways ?? true}
               name={`Hidro: ${wl.nombre}`}
             >
               <GeoJSON
@@ -2266,75 +2302,77 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
           ))}
 
-          {/* Activos de Infraestructura Registrados - grouped in a single overlay */}
-          <LayersControl.Overlay checked={sharedVisibleVectors.infrastructure ?? false} name="Activos de Infraestructura">
-            <FeatureGroup>
-              {(assets || []).map((asset) => {
-                const assetColor =
-                  asset.tipo === 'puente'
-                    ? '#f03e3e'
-                    : asset.tipo === 'alcantarilla'
-                      ? '#1971c2'
-                      : asset.tipo === 'canal'
-                        ? '#2f9e44'
-                        : '#fd7e14';
+          {/* Activos de Infraestructura Registrados - show only when there is data */}
+          {assets.length > 0 && (
+            <LayersControl.Overlay checked={sharedVisibleVectors.infrastructure ?? false} name="Activos de Infraestructura">
+              <FeatureGroup>
+                {assets.map((asset) => {
+                  const assetColor =
+                    asset.tipo === 'puente'
+                      ? '#f03e3e'
+                      : asset.tipo === 'alcantarilla'
+                        ? '#1971c2'
+                        : asset.tipo === 'canal'
+                          ? '#2f9e44'
+                          : '#fd7e14';
 
-                return (
-                  <CircleMarker
-                    key={asset.id}
-                    center={[asset.latitud, asset.longitud]}
-                    radius={markingMode ? 4 : 10}
-                    pathOptions={{
-                      fillColor: assetColor,
-                      color: '#ffffff',
-                      weight: 2,
-                      fillOpacity: 0.9,
-                    }}
-                  >
-                    <LeafletTooltip direction="top" offset={[0, -10]}>
-                      <Text size="xs" fw={700}>
-                        {asset.nombre}
-                      </Text>
-                    </LeafletTooltip>
-                    <Popup>
-                      <Stack gap={4}>
-                        <Text fw={700} size="sm">
+                  return (
+                    <CircleMarker
+                      key={asset.id}
+                      center={[asset.latitud, asset.longitud]}
+                      radius={markingMode ? 4 : 10}
+                      pathOptions={{
+                        fillColor: assetColor,
+                        color: '#ffffff',
+                        weight: 2,
+                        fillOpacity: 0.9,
+                      }}
+                    >
+                      <LeafletTooltip direction="top" offset={[0, -10]}>
+                        <Text size="xs" fw={700}>
                           {asset.nombre}
                         </Text>
-                        <Badge size="xs" variant="outline" color={assetColor}>
-                          {asset.tipo.toUpperCase()}
-                        </Badge>
-                        <Divider my={4} />
-                        <Text size="xs">
-                          Estado: <b>{asset.estado_actual.toUpperCase()}</b>
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          Cuenca: {asset.cuenca}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          Ult. Insp:{' '}
-                          {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}
-                        </Text>
-                        <Group gap={4} mt="xs">
-                          <Button size="compact-xs" variant="light" color="violet">
-                            Bitacora
-                          </Button>
-                          <Button
-                            size="compact-xs"
-                            variant="outline"
-                            leftSection={<IconDownload size={12} />}
-                            onClick={() => handleExportAsset(asset.id, asset.nombre)}
-                          >
-                            Ficha PDF
-                          </Button>
-                        </Group>
-                      </Stack>
-                    </Popup>
-                  </CircleMarker>
-                );
-              })}
-            </FeatureGroup>
-          </LayersControl.Overlay>
+                      </LeafletTooltip>
+                      <Popup>
+                        <Stack gap={4}>
+                          <Text fw={700} size="sm">
+                            {asset.nombre}
+                          </Text>
+                          <Badge size="xs" variant="outline" color={assetColor}>
+                            {asset.tipo.toUpperCase()}
+                          </Badge>
+                          <Divider my={4} />
+                          <Text size="xs">
+                            Estado: <b>{asset.estado_actual.toUpperCase()}</b>
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Cuenca: {asset.cuenca}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Ult. Insp:{' '}
+                            {asset.ultima_inspeccion ? formatDate(asset.ultima_inspeccion) : 'Nunca'}
+                          </Text>
+                          <Group gap={4} mt="xs">
+                            <Button size="compact-xs" variant="light" color="violet">
+                              Bitacora
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              variant="outline"
+                              leftSection={<IconDownload size={12} />}
+                              onClick={() => handleExportAsset(asset.id, asset.nombre)}
+                            >
+                              Ficha PDF
+                            </Button>
+                          </Group>
+                        </Stack>
+                      </Popup>
+                    </CircleMarker>
+                  );
+                })}
+              </FeatureGroup>
+            </LayersControl.Overlay>
+          )}
         </LayersControl>
 
         {/* Selected satellite image should behave as a dynamic base layer under overlays */}

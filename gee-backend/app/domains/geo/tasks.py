@@ -1209,6 +1209,19 @@ def composite_analysis_task(
                 # Bulk insert all stats
                 all_stats = flood_stats + drainage_stats
                 if all_stats:
+                    from sqlalchemy import delete
+
+                    zona_ids = list({stat["zona_id"] for stat in all_stats if stat.get("zona_id")})
+                    tipos = list({stat["tipo"] for stat in all_stats if stat.get("tipo")})
+                    if zona_ids and tipos:
+                        db.execute(
+                            delete(CompositeZonalStats).where(
+                                CompositeZonalStats.zona_id.in_(zona_ids),
+                                CompositeZonalStats.tipo.in_(tipos),
+                            )
+                        )
+                        db.flush()
+
                     objects = [CompositeZonalStats(**s) for s in all_stats]
                     db.add_all(objects)
                     db.commit()

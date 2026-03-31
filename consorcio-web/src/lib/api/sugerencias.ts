@@ -14,6 +14,14 @@ export interface Sugerencia {
   titulo: string;
   descripcion: string;
   categoria?: string;
+  geometry?: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      geometry: { type: 'LineString'; coordinates: number[][] };
+      properties?: Record<string, unknown>;
+    }>;
+  } | null;
   contacto_nombre?: string;
   contacto_email?: string;
   contacto_telefono?: string;
@@ -32,6 +40,14 @@ export interface SugerenciaCreate {
   titulo: string;
   descripcion: string;
   categoria?: string;
+  geometry?: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      geometry: { type: 'LineString'; coordinates: number[][] };
+      properties?: Record<string, unknown>;
+    }>;
+  } | null;
   contacto_nombre?: string;
   contacto_email?: string;
   contacto_telefono?: string;
@@ -178,6 +194,11 @@ export const sugerenciasApi = {
     apiFetch(`/sugerencias/${id}/resolver`, {
       method: 'POST',
       body: JSON.stringify({ resolucion }),
+    }),
+
+  incorporateChannel: (id: string): Promise<Sugerencia> =>
+    apiFetch(`/sugerencias/${id}/incorporar-canal`, {
+      method: 'POST',
     }),
 
   /**

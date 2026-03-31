@@ -58,6 +58,9 @@ class Sugerencia(UUIDMixin, TimestampMixin, Base):
     contacto_nombre: Mapped[Optional[str]] = mapped_column(
         String(200), nullable=True
     )
+    geometry: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
     respuesta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

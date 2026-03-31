@@ -6,6 +6,7 @@
 import type { FeatureCollection } from 'geojson';
 import type { PathOptions } from 'leaflet';
 import { useQuery } from '@tanstack/react-query';
+import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 
@@ -48,12 +49,30 @@ const WATERWAY_DEFS = [
     nombre: 'A. Las Saladas / de las Mojarras',
     style: { color: '#64B5F6', weight: 2, opacity: 0.85 } satisfies PathOptions,
   },
+  {
+    id: 'canales_existentes',
+    file: 'canales_existentes.geojson',
+    nombre: 'Canales existentes',
+    style: { color: '#0B3D91', weight: 4, opacity: 0.95, dashArray: '6 4' } satisfies PathOptions,
+  },
 ] as const;
 
 export function useWaterways() {
   const query = useQuery({
     queryKey: queryKeys.waterways(),
     queryFn: async () => {
+      let incorporatedSuggestions: FeatureCollection | null = null;
+      try {
+        const response = await fetch(
+          `${API_URL}/api/v2/public/sugerencias/canales-existentes`,
+        );
+        if (response.ok) {
+          incorporatedSuggestions = (await response.json()) as FeatureCollection;
+        }
+      } catch (err) {
+        logger.warn('Error loading incorporated suggestion channels', err);
+      }
+
       const results = await Promise.all(
         WATERWAY_DEFS.map(async (def) => {
           try {
@@ -63,10 +82,20 @@ export function useWaterways() {
               return null;
             }
             const data = (await response.json()) as FeatureCollection;
+            const mergedData =
+              def.id === 'canales_existentes' && incorporatedSuggestions
+                ? ({
+                    type: 'FeatureCollection',
+                    features: [
+                      ...(data.features ?? []),
+                      ...(incorporatedSuggestions.features ?? []),
+                    ],
+                  } satisfies FeatureCollection)
+                : data;
             return {
               id: def.id,
               nombre: def.nombre,
-              data,
+              data: mergedData,
               style: def.style as PathOptions,
             } satisfies WaterwayLayer;
           } catch (err) {

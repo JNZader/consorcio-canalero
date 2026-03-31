@@ -17,6 +17,8 @@ from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
     BasinRiskRankingResponse,
+    CompositeComparisonItemResponse,
+    CompositeComparisonResponse,
     CompositeAnalysisRequest,
     CompositeZonalStatsResponse,
     CriticidadRequest,
@@ -481,6 +483,140 @@ def get_composite_stats(
         # Enrich with zona nombre from relationship
         if s.zona:
             item.zona_nombre = s.zona.nombre
+            item.cuenca = s.zona.cuenca
+            item.superficie_ha = s.zona.superficie_ha
         items.append(item)
 
     return BasinRiskRankingResponse(items=items, total=len(items))
+
+
+@router.get("/composite/compare/{area_id}", response_model=CompositeComparisonResponse)
+def compare_composite_stats(
+    area_id: str,
+    tipo: str = Query(
+        default="drainage_need",
+        description="Comparison type. Currently meaningful for drainage_need.",
+    ),
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Compare current composite stats against a baseline without real channels.
+
+    For `drainage_need`, the baseline is recomputed from the DEM-derived
+    `drainage.geojson` only, excluding `drainage_combined.geojson`.
+    Flood risk does not depend on the merged real waterways, so its baseline
+    is identical to the current result and the delta will be 0.
+    """
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    from geoalchemy2.shape import to_shape
+    from shapely.geometry import mapping as shapely_mapping
+
+    from app.domains.geo.repository import GeoRepository
+
+    geo_repo = GeoRepository()
+    current_stats = repo.get_composite_stats_by_area(db, area_id=area_id, tipo=tipo)
+    if not current_stats:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Composite analysis not yet computed for area '{area_id}'",
+        )
+
+    hand_layers, _ = geo_repo.get_layers(
+        db, area_id_filter=area_id, tipo_filter="hand", limit=1
+    )
+    if not hand_layers:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No HAND layer found for area '{area_id}'. Run the DEM pipeline first.",
+        )
+    area_dir = Path(hand_layers[0].archivo_path).parent
+
+    zonas, _ = repo.get_zonas(db, page=1, limit=10000)
+    zona_dicts: list[dict] = []
+    zona_meta: dict = {}
+    for z in zonas:
+        try:
+            geom_shapely = to_shape(z.geometria)
+            zona_dicts.append({
+                "id": z.id,
+                "nombre": z.nombre,
+                "geometry": shapely_mapping(geom_shapely),
+            })
+            zona_meta[z.id] = {
+                "nombre": z.nombre,
+                "cuenca": z.cuenca,
+                "superficie_ha": z.superficie_ha,
+            }
+        except Exception:
+            logger.warning(
+                "composite_compare.zona_geom_error",
+                zona_id=str(z.id),
+                exc_info=True,
+            )
+
+    baseline_by_zona: dict = {}
+    if tipo == "drainage_need":
+        try:
+            from app.domains.geo import composites
+
+            auto_drainage_path = area_dir / "drainage.geojson"
+            if not auto_drainage_path.exists():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No auto drainage network found for area '{area_id}'",
+                )
+            with TemporaryDirectory(prefix="composite-compare-") as tmpdir:
+                tmp = Path(tmpdir)
+                for filename in ["flow_acc.tif", "hand.tif", "tpi.tif", "drainage.geojson"]:
+                    (tmp / filename).symlink_to(area_dir / filename)
+
+                baseline_raster = str(tmp / "drainage_need_baseline.tif")
+                composites.compute_drainage_need(str(tmp), baseline_raster)
+                baseline_stats = composites.extract_composite_zonal_stats(
+                    baseline_raster,
+                    zona_dicts,
+                    tipo,
+                )
+                baseline_by_zona = {item["zona_id"]: item for item in baseline_stats}
+        except ModuleNotFoundError:
+            logger.warning(
+                "composite_compare.unavailable_missing_raster_stack",
+                area_id=area_id,
+                tipo=tipo,
+            )
+            return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=[], total=0)
+    else:
+        for item in current_stats:
+            baseline_by_zona[item.zona_id] = {
+                "zona_id": item.zona_id,
+                "mean_score": item.mean_score,
+                "area_high_risk_ha": item.area_high_risk_ha,
+            }
+
+    items: list[CompositeComparisonItemResponse] = []
+    for stat in current_stats:
+        baseline = baseline_by_zona.get(stat.zona_id)
+        if not baseline:
+            continue
+        meta = zona_meta.get(stat.zona_id, {})
+        items.append(
+            CompositeComparisonItemResponse(
+                zona_id=stat.zona_id,
+                zona_nombre=meta.get("nombre"),
+                cuenca=meta.get("cuenca"),
+                superficie_ha=meta.get("superficie_ha"),
+                tipo=tipo,
+                current_mean_score=stat.mean_score,
+                baseline_mean_score=float(baseline["mean_score"]),
+                delta_mean_score=stat.mean_score - float(baseline["mean_score"]),
+                current_area_high_risk_ha=stat.area_high_risk_ha,
+                baseline_area_high_risk_ha=float(baseline["area_high_risk_ha"]),
+                delta_area_high_risk_ha=stat.area_high_risk_ha - float(baseline["area_high_risk_ha"]),
+            )
+        )
+
+    items.sort(key=lambda item: abs(item.delta_mean_score), reverse=True)
+    return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=items, total=len(items))

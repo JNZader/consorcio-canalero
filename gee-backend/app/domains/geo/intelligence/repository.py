@@ -651,5 +651,24 @@ class IntelligenceRepository:
             stmt = stmt.where(CompositeZonalStats.tipo == tipo)
 
         stmt = stmt.order_by(CompositeZonalStats.mean_score.desc())
+        items = list(db.execute(stmt).scalars().unique().all())
+        if items:
+            return items
 
-        return list(db.execute(stmt).scalars().unique().all())
+        # Fallback for the current app setup: composite stats are computed for the
+        # single active analysis area (`zona_principal`) but the subcuencas keep
+        # their original `cuenca` values (sub_candil_*, sub_ml_*, etc.), so the
+        # area_id does not match ZonaOperativa.cuenca. In that case return the
+        # full ranked list instead of failing with 404.
+        if area_id == "zona_principal":
+            fallback_stmt = (
+                select(CompositeZonalStats)
+                .join(ZonaOperativa, CompositeZonalStats.zona_id == ZonaOperativa.id)
+                .options(joinedload(CompositeZonalStats.zona))
+            )
+            if tipo:
+                fallback_stmt = fallback_stmt.where(CompositeZonalStats.tipo == tipo)
+            fallback_stmt = fallback_stmt.order_by(CompositeZonalStats.mean_score.desc())
+            return list(db.execute(fallback_stmt).scalars().unique().all())
+
+        return items
