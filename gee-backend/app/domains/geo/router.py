@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -102,8 +103,6 @@ _tile_client = None
 
 
 def _get_tile_client():
-    import httpx
-
     global _tile_client  # noqa: PLW0603
     if _tile_client is None:
         _tile_client = httpx.AsyncClient(timeout=10.0)
