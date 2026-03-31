@@ -5,8 +5,9 @@
 
 import type { FeatureCollection } from 'geojson';
 import type { PathOptions } from 'leaflet';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { logger } from '../lib/logger';
+import { queryKeys } from '../lib/query';
 
 export interface WaterwayLayer {
   id: string;
@@ -49,22 +50,10 @@ const WATERWAY_DEFS = [
   },
 ] as const;
 
-interface UseWaterwaysResult {
-  waterways: WaterwayLayer[];
-  loading: boolean;
-  error: string | null;
-}
-
-export function useWaterways(): UseWaterwaysResult {
-  const [waterways, setWaterways] = useState<WaterwayLayer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+export function useWaterways() {
+  const query = useQuery({
+    queryKey: queryKeys.waterways(),
+    queryFn: async () => {
       const results = await Promise.all(
         WATERWAY_DEFS.map(async (def) => {
           try {
@@ -88,22 +77,18 @@ export function useWaterways(): UseWaterwaysResult {
       );
 
       const loaded = results.filter((r): r is NonNullable<typeof r> => r !== null) as WaterwayLayer[];
-      setWaterways(loaded);
-
       if (loaded.length === 0) {
-        setError('No se pudieron cargar las capas hidrográficas');
+        throw new Error('No se pudieron cargar las capas hidrográficas');
       }
-    } catch (err) {
-      logger.error('Error loading waterways', err);
-      setError('Error cargando hidrografía');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return loaded;
+    },
+    staleTime: Infinity,
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return { waterways, loading, error };
+  return {
+    waterways: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    reload: query.refetch,
+  };
 }

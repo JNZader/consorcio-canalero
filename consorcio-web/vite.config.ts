@@ -47,9 +47,16 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
+        globIgnores: ['data/suelos_cu.geojson'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         runtimeCaching: [
+          // Geo raster tiles — NetworkOnly to avoid mixing stale DEM/PNG tiles
+          // across backend rendering changes (critical for MapLibre raster-dem).
+          {
+            urlPattern: /\/api\/v2\/geo\/layers\/[^/]+\/tiles\/.*/i,
+            handler: 'NetworkOnly',
+          },
           // Static assets from CDNs — CacheFirst (long-lived, rarely change)
           {
             urlPattern: /^https:\/\/server\.arcgisonline\.com\/.*/i,

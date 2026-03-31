@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, unwrapItems } from '../lib/api';
 import type { FeatureCollection } from 'geojson';
+import { queryKeys } from '../lib/query';
 
 export interface InfrastructureAsset {
   id: string;
@@ -15,55 +16,50 @@ export interface InfrastructureAsset {
 }
 
 export function useInfrastructure() {
-  const [assets, setAssets] = useState<InfrastructureAsset[]>([]);
-  const [intersections, setIntersections] = useState<FeatureCollection | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
 
-  const fetchInfrastructure = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Fetch assets (public-ish, may work without auth)
+  const query = useQuery({
+    queryKey: queryKeys.infrastructure(),
+    queryFn: async () => {
       const assetsData = await apiFetch('/infraestructura/assets')
         .then((res) => unwrapItems<InfrastructureAsset>(res))
         .catch(() => [] as InfrastructureAsset[]);
-      setAssets(assetsData);
 
-      // Fetch intersections only if authenticated (requires operator role)
+      let intersectionsData: FeatureCollection | null = null;
       const token = localStorage.getItem('consorcio_auth_token');
       if (token) {
         try {
-          const intersectionsData = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');
-          if (intersectionsData && intersectionsData.type === 'FeatureCollection') {
-            setIntersections(intersectionsData);
+          const data = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');
+          if (data && data.type === 'FeatureCollection') {
+            intersectionsData = data;
           }
         } catch {
           // Silently skip — user may lack permissions
         }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando infraestructura');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    fetchInfrastructure();
-  }, [fetchInfrastructure]);
+      return { assets: assetsData, intersections: intersectionsData };
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-  const createAsset = async (asset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'>) => {
-    try {
-      const newAsset = await apiFetch<InfrastructureAsset>('/infraestructura/assets', {
+  const createMutation = useMutation({
+    mutationFn: (asset: Omit<InfrastructureAsset, 'id' | 'ultima_inspeccion'>) =>
+      apiFetch<InfrastructureAsset>('/infraestructura/assets', {
         method: 'POST',
         body: JSON.stringify(asset),
-      });
-      setAssets((prev) => [...prev, newAsset]);
-      return newAsset;
-    } catch (err) {
-      throw err instanceof Error ? err : new Error('Error al crear activo');
-    }
-  };
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.infrastructure() });
+    },
+  });
 
-  return { assets, intersections, loading, error, refresh: fetchInfrastructure, createAsset };
+  return {
+    assets: query.data?.assets ?? [],
+    intersections: query.data?.intersections ?? null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refresh: query.refetch,
+    createAsset: createMutation.mutateAsync,
+  };
 }

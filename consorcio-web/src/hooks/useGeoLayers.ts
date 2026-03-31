@@ -4,9 +4,10 @@
  * Returns layer metadata (id, name, type) for building tile overlay URLs.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { API_URL, getAuthToken } from '../lib/api';
-import { logger } from '../lib/logger';
+import { queryKeys } from '../lib/query';
+import { useAuthStore } from '../stores/authStore';
 
 export interface GeoLayerInfo {
   id: string;
@@ -30,6 +31,8 @@ export const GEO_LAYER_LABELS: Record<string, string> = {
   terrain_class: 'Clasificacion Terreno',
   flood_risk: 'Riesgo de Inundacion',
   drainage_need: 'Necesidad de Drenaje',
+  profile_curvature: 'Curvatura de Perfil',
+  tpi: 'Posicion Topografica (TPI)',
 };
 
 /** Layer types that support raster tile visualization */
@@ -46,40 +49,20 @@ const TILE_CAPABLE_TYPES = new Set([
   'drainage_need',
 ]);
 
-interface UseGeoLayersResult {
-  /** All raster layers available for tile overlay */
-  layers: GeoLayerInfo[];
-  /** Loading state */
-  loading: boolean;
-  /** Error message if fetch failed */
-  error: string | null;
-  /** Reload layers */
-  reload: () => Promise<void>;
-}
+export function useGeoLayers() {
+  const { loading: authLoading, initialized } = useAuthStore();
 
-export function useGeoLayers(): UseGeoLayersResult {
-  const [layers, setLayers] = useState<GeoLayerInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery({
+    queryKey: queryKeys.geoLayers(),
+    queryFn: async () => {
       const token = await getAuthToken();
-      if (!token) {
-        setLayers([]);
-        setLoading(false);
-        return;
-      }
+      const endpoint = token
+        ? `${API_URL}/api/v2/geo/layers?limit=100&fuente=dem_pipeline`
+        : `${API_URL}/api/v2/geo/layers/public?limit=100&fuente=dem_pipeline&tipo=dem_raw`;
 
-      const response = await fetch(
-        `${API_URL}/api/v2/geo/layers?limit=100&fuente=dem_pipeline`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await fetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
 
       if (!response.ok) {
         throw new Error(`Error fetching geo layers: ${response.status}`);
@@ -87,11 +70,9 @@ export function useGeoLayers(): UseGeoLayersResult {
 
       const data = await response.json();
       const items: GeoLayerInfo[] = (data.items || []).filter(
-        (l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo)
+        (l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo),
       );
 
-      // Dedup safety net: keep only the latest record per tipo+area_id
-      // in case the backend returns duplicates from older runs.
       const seen = new Map<string, GeoLayerInfo>();
       for (const layer of items) {
         const key = `${layer.tipo}::${layer.area_id ?? ''}`;
@@ -100,22 +81,18 @@ export function useGeoLayers(): UseGeoLayersResult {
           seen.set(key, layer);
         }
       }
-      const dedupedItems = Array.from(seen.values());
+      return Array.from(seen.values());
+    },
+    enabled: initialized && !authLoading,
+    staleTime: 1000 * 60 * 5,
+  });
 
-      setLayers(dedupedItems);
-    } catch (err) {
-      logger.error('Error loading geo layers', err);
-      setError('No se pudieron cargar las capas DEM');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { layers, loading, error, reload };
+  return {
+    layers: query.data ?? [],
+    loading: authLoading || query.isLoading,
+    error: query.error ? 'No se pudieron cargar las capas DEM' : null,
+    reload: query.refetch,
+  };
 }
 
 /**

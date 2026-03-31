@@ -5,7 +5,9 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     Enum,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -263,3 +266,65 @@ class AnalisisGeo(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<AnalisisGeo {self.id} tipo={self.tipo} estado={self.estado}>"
+
+
+class GeoApprovedZoning(UUIDMixin, TimestampMixin, Base):
+    """Persisted approved consorcio zoning used by 2D and 3D views."""
+
+    __tablename__ = "geo_approved_zonings"
+
+    nombre: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default="Zonificación Consorcio aprobada",
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    cuenca: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Optional parent watershed/grouping identifier",
+    )
+    feature_collection: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="Approved dissolved zoning as GeoJSON FeatureCollection",
+    )
+    assignments: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Optional draft basin->zone assignments used to build the zoning",
+    )
+    zone_names: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Optional human-friendly names per approved zone",
+    )
+    notes: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional approval notes or change summary",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+    )
+    approved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<GeoApprovedZoning {self.id} nombre={self.nombre!r} cuenca={self.cuenca!r}>"

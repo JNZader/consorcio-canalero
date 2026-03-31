@@ -5,9 +5,9 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../lib/api';
-import { logger } from '../lib/logger';
+import { queryKeys } from '../lib/query';
 
 interface UseBasinsOptions {
   /** Bounding box filter: [minx, miny, maxx, maxy] */
@@ -22,18 +22,7 @@ interface UseBasinsOptions {
   enabled?: boolean;
 }
 
-interface UseBasinsResult {
-  /** Basin polygons as GeoJSON FeatureCollection */
-  basins: FeatureCollection | null;
-  /** Loading state */
-  loading: boolean;
-  /** Error message if fetch failed */
-  error: string | null;
-  /** Reload basins */
-  reload: () => Promise<void>;
-}
-
-export function useBasins(options: UseBasinsOptions = {}): UseBasinsResult {
+export function useBasins(options: UseBasinsOptions = {}) {
   const {
     bbox = null,
     tolerance = 0.001,
@@ -42,15 +31,11 @@ export function useBasins(options: UseBasinsOptions = {}): UseBasinsResult {
     enabled = true,
   } = options;
 
-  const [basins, setBasins] = useState<FeatureCollection | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const bboxKey = bbox?.join(',') ?? null;
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery({
+    queryKey: queryKeys.basins({ tolerance, limit, cuenca, bbox: bboxKey }),
+    queryFn: async () => {
       const params = new URLSearchParams();
       params.set('tolerance', String(tolerance));
       params.set('limit', String(limit));
@@ -61,32 +46,26 @@ export function useBasins(options: UseBasinsOptions = {}): UseBasinsResult {
       if (cuenca) {
         params.set('cuenca', cuenca);
       }
+      params.set('adjusted', 'true');
 
       const response = await fetch(
-        `${API_URL}/api/v2/geo/basins?${params.toString()}`
+        `${API_URL}/api/v2/geo/basins?${params.toString()}`,
       );
 
       if (!response.ok) {
         throw new Error(`Error fetching basins: ${response.status}`);
       }
 
-      const data = await response.json();
-      setBasins(data as FeatureCollection);
-    } catch (err) {
-      logger.error('Error loading basins', err);
-      setError('No se pudieron cargar las cuencas operativas');
-    } finally {
-      setLoading(false);
-    }
-  }, [bbox?.join(','), tolerance, limit, cuenca]);
+      return (await response.json()) as FeatureCollection;
+    },
+    enabled,
+    staleTime: 1000 * 60 * 5,
+  });
 
-  useEffect(() => {
-    if (enabled) {
-      reload();
-    } else {
-      setLoading(false);
-    }
-  }, [enabled, reload]);
-
-  return { basins, loading, error, reload };
+  return {
+    basins: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error ? 'No se pudieron cargar las cuencas operativas' : null,
+    reload: query.refetch,
+  };
 }

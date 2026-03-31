@@ -161,6 +161,49 @@ class IntelligenceRepository:
             },
         }
 
+    def get_zonas_for_grouping(
+        self,
+        db: Session,
+        *,
+        cuenca_filter: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return operational basins with full geometry for grouping heuristics."""
+        geojson_col = func.ST_AsGeoJSON(ZonaOperativa.geometria).label("geojson")
+
+        stmt = select(
+            ZonaOperativa.id,
+            ZonaOperativa.nombre,
+            ZonaOperativa.cuenca,
+            ZonaOperativa.superficie_ha,
+            geojson_col,
+        ).order_by(ZonaOperativa.nombre)
+
+        if cuenca_filter:
+            stmt = stmt.where(ZonaOperativa.cuenca == cuenca_filter)
+
+        rows = db.execute(stmt).all()
+
+        import json as _json
+
+        features: list[dict[str, Any]] = []
+        for row in rows:
+            geometry = _json.loads(row.geojson) if row.geojson else None
+            if geometry is None:
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geometry,
+                    "properties": {
+                        "id": str(row.id),
+                        "nombre": row.nombre,
+                        "cuenca": row.cuenca,
+                        "superficie_ha": row.superficie_ha,
+                    },
+                }
+            )
+        return features
+
     def get_zonas_criticas(
         self, db: Session, nivel_riesgo_min: str = "alto"
     ) -> list[ZonaOperativa]:

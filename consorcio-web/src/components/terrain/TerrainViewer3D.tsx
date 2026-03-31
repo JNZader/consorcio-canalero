@@ -1,20 +1,18 @@
 /**
- * TerrainViewer3D - 3D terrain visualization using three.js + react-three-fiber.
+ * TerrainViewer3D - 3D terrain visualization using MapLibre GL JS.
  *
- * Renders terrain-RGB elevation tiles as a PlaneGeometry mesh with colorized
- * texture overlay. Uses relative vertical exaggeration: subtracts minimum
- * elevation first so the terrain range (not absolute altitude) is exaggerated.
- *
- * Terrain-RGB decoding:
- *   elevation = (R * 256 * 256 + G * 256 + B) * 0.1 - 10000
+ * Renders the DEM as a 3D terrain map using MapLibre's native setTerrain()
+ * with terrain-RGB tiles from the backend. The user tilts the map with
+ * Ctrl+drag (or two-finger drag on mobile) to see elevation.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   Alert,
   Box,
+  Button,
   Group,
   Loader,
   Paper,
@@ -23,295 +21,74 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import type { Mesh, Texture } from 'three';
-import {
-  CanvasTexture,
-  ClampToEdgeWrapping,
-  DoubleSide,
-  LinearFilter,
-  PlaneGeometry,
-  SRGBColorSpace,
-} from 'three';
 import { IconAlertTriangle } from '../ui/icons';
 import { API_URL } from '../../lib/api';
+import { MAP_CENTER } from '../../constants';
+import { buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
+import { GEE_LAYER_COLORS, useGEELayers } from '../../hooks/useGEELayers';
+import { useBasins } from '../../hooks/useBasins';
+import { useApprovedZones } from '../../hooks/useApprovedZones';
+import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
+import { useInfrastructure } from '../../hooks/useInfrastructure';
+import { useCatastroMap } from '../../hooks/useCatastroMap';
+import { getSoilColor, useSoilMap } from '../../hooks/useSoilMap';
+import { useSelectedImageListener } from '../../hooks/useSelectedImage';
+import { useWaterways } from '../../hooks/useWaterways';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { TerrainLayerPanel } from './TerrainLayerPanel';
+import { getSupported3DRasterLayers } from './terrainLayerConfig';
+import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'geojson';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const DEFAULT_CENTER: [number, number] = [-62.69, -32.63];
+const DEFAULT_CENTER: [number, number] = [MAP_CENTER[1], MAP_CENTER[0]];
 const DEFAULT_ZOOM = 12;
 
 const MIN_EXAGGERATION = 1;
-const MAX_EXAGGERATION = 50;
-const DEFAULT_EXAGGERATION = 15;
+const MAX_EXAGGERATION = 100;
+const DEFAULT_EXAGGERATION = 5;
+const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v2';
+const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
+const DEFAULT_VECTOR_LAYER_VISIBILITY: Record<string, boolean> = {
+  approved_zones: false,
+  zona: false,
+  cuencas: false,
+  basins: false,
+  roads: false,
+  waterways: false,
+  soil: false,
+  catastro: false,
+  public_layers: false,
+  infrastructure: false,
+};
 
-/** Tile pixel size (standard web map tile). */
-const TILE_SIZE = 256;
+const ZONA_SOURCE_ID = 'terrain-vector-zona';
+const APPROVED_ZONES_SOURCE_ID = 'terrain-vector-approved-zones';
+const CUENCAS_SOURCE_ID = 'terrain-vector-cuencas';
+const BASINS_SOURCE_ID = 'terrain-vector-basins';
+const ROADS_SOURCE_ID = 'terrain-vector-roads';
+const WATERWAYS_SOURCE_ID = 'terrain-vector-waterways';
+const SOIL_SOURCE_ID = 'terrain-vector-soil';
+const CATASTRO_SOURCE_ID = 'terrain-vector-catastro';
+const INFRASTRUCTURE_SOURCE_ID = 'terrain-vector-infrastructure';
 
-/* -------------------------------------------------------------------------- */
-/*  Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
-
-/** Convert lat/lon to tile coordinates at a given zoom level. */
-function latLonToTile(
-  lat: number,
-  lon: number,
-  zoom: number,
-): { x: number; y: number } {
-  const n = 2 ** zoom;
-  const x = Math.floor(((lon + 180) / 360) * n);
-  const latRad = (lat * Math.PI) / 180;
-  const y = Math.floor(
-    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
-      n,
-  );
-  return { x, y };
+function asFeatureCollection(features: Feature[]): FeatureCollection {
+  return { type: 'FeatureCollection', features };
 }
 
-/** Build a tile URL for the backend proxy. */
-function buildTileUrl(
-  layerId: string,
-  z: number,
-  x: number,
-  y: number,
-  encoding?: string,
-): string {
-  const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/${z}/${x}/${y}.png`;
-  return encoding ? `${base}?encoding=${encodeURIComponent(encoding)}` : base;
-}
-
-/**
- * Load an image via canvas and return its RGBA pixel data.
- * Returns null if the fetch returns 204 (no content / out of bounds).
- */
-async function loadImagePixels(
-  url: string,
-): Promise<{ data: Uint8ClampedArray; width: number; height: number } | null> {
-  const response = await fetch(url, { mode: 'cors' });
-  if (response.status === 204) return null;
-  if (!response.ok)
-    throw new Error(`Tile fetch failed: ${response.status} ${response.statusText}`);
-
-  const blob = await response.blob();
-  const bitmap = await createImageBitmap(blob);
-
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(bitmap, 0, 0);
-
-  const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
-  return { data: imageData.data, width: bitmap.width, height: bitmap.height };
-}
-
-/**
- * Decode terrain-RGB pixels into elevation values.
- * Formula: elevation = (R * 256² + G * 256 + B) * 0.1 - 10000
- */
-function decodeElevation(pixels: Uint8ClampedArray, count: number): Float32Array {
-  const elevations = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const idx = i * 4;
-    const r = pixels[idx];
-    const g = pixels[idx + 1];
-    const b = pixels[idx + 2];
-    elevations[i] = (r * 65536 + g * 256 + b) * 0.1 - 10000;
-  }
-  return elevations;
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Data hook                                                                  */
-/* -------------------------------------------------------------------------- */
-
-interface TerrainData {
-  elevations: Float32Array;
-  minElev: number;
-  maxElev: number;
-  width: number;
-  height: number;
-  textureUrl: string;
-}
-
-function useTerrainData(
-  demLayerId: string | undefined,
-  textureLayerId: string | undefined,
-  center: [number, number],
-  zoom: number,
-) {
-  const [data, setData] = useState<TerrainData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!demLayerId) return;
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    const tile = latLonToTile(center[1], center[0], zoom);
-    const elevUrl = buildTileUrl(demLayerId, zoom, tile.x, tile.y, 'terrain-rgb');
-    const texLayerId = textureLayerId ?? demLayerId;
-    const texUrl = buildTileUrl(texLayerId, zoom, tile.x, tile.y);
-
-    loadImagePixels(elevUrl)
-      .then((result) => {
-        if (cancelled) return;
-        if (!result) {
-          setError('El tile de elevación está fuera de rango (204).');
-          setLoading(false);
-          return;
-        }
-
-        const { data: pixels, width, height } = result;
-        const elevations = decodeElevation(pixels, width * height);
-
-        let minElev = Number.POSITIVE_INFINITY;
-        let maxElev = Number.NEGATIVE_INFINITY;
-        for (let i = 0; i < elevations.length; i++) {
-          if (elevations[i] < minElev) minElev = elevations[i];
-          if (elevations[i] > maxElev) maxElev = elevations[i];
-        }
-
-        setData({ elevations, minElev, maxElev, width, height, textureUrl: texUrl });
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Error cargando elevación');
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [demLayerId, textureLayerId, center, zoom]);
-
-  return { data, loading, error };
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Three.js terrain mesh                                                      */
-/* -------------------------------------------------------------------------- */
-
-interface TerrainMeshProps {
-  data: TerrainData;
-  exaggeration: number;
-}
-
-function TerrainMesh({ data, exaggeration }: TerrainMeshProps) {
-  const meshRef = useRef<Mesh>(null);
-  const { elevations, minElev, width, height, textureUrl } = data;
-
-  const segments = width - 1;
-  const segmentsY = height - 1;
-
-  // Build geometry with relative exaggeration
-  const geometry = useMemo(() => {
-    const planeSize = 10;
-    const geo = new PlaneGeometry(planeSize, planeSize, segments, segmentsY);
-    const posAttr = geo.attributes.position;
-
-    // Normalize elevation to [0, 1] then scale by exaggeration.
-    // With exaggeration=1, max height = planeSize * 0.05 (subtle).
-    // With exaggeration=50, max height = planeSize * 2.5 (dramatic).
-    const elevRange = data.maxElev - minElev || 1;
-    const scaleFactor = (planeSize * 0.05 * exaggeration) / elevRange;
-
-    for (let iy = 0; iy < height; iy++) {
-      for (let ix = 0; ix < width; ix++) {
-        const vertexIndex = iy * width + ix;
-        const relativeElev = elevations[vertexIndex] - minElev;
-        posAttr.setZ(vertexIndex, relativeElev * scaleFactor);
-      }
-    }
-
-    posAttr.needsUpdate = true;
-    geo.computeVertexNormals();
-    return geo;
-  }, [elevations, minElev, width, height, segments, segmentsY, exaggeration]);
-
-  // Load texture
-  const [texture, setTexture] = useState<Texture | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // Use fetch + createImageBitmap for CORS handling, then convert to CanvasTexture
-    fetch(textureUrl, { mode: 'cors' })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Texture fetch failed: ${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => createImageBitmap(blob))
-      .then((bitmap) => {
-        if (cancelled) return;
-        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(bitmap, 0, 0);
-
-        // CanvasTexture needs HTMLCanvasElement, so copy to a regular canvas
-        const htmlCanvas = document.createElement('canvas');
-        htmlCanvas.width = bitmap.width;
-        htmlCanvas.height = bitmap.height;
-        const htmlCtx = htmlCanvas.getContext('2d')!;
-        htmlCtx.drawImage(bitmap, 0, 0);
-
-        const tex = new CanvasTexture(htmlCanvas);
-        tex.colorSpace = SRGBColorSpace;
-        tex.minFilter = LinearFilter;
-        tex.magFilter = LinearFilter;
-        tex.wrapS = ClampToEdgeWrapping;
-        tex.wrapT = ClampToEdgeWrapping;
-        tex.needsUpdate = true;
-        setTexture(tex);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('Failed to load terrain texture:', err);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [textureUrl]);
-
-  return (
-    <mesh ref={meshRef} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]}>
-      {texture ? (
-        <meshStandardMaterial
-          map={texture}
-          side={DoubleSide}
-          roughness={0.8}
-          metalness={0.1}
-        />
-      ) : (
-        <meshStandardMaterial
-          color="#4a7c59"
-          side={DoubleSide}
-          roughness={0.8}
-          metalness={0.1}
-        />
-      )}
-    </mesh>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Camera auto-fit                                                            */
-/* -------------------------------------------------------------------------- */
-
-function AutoFitCamera() {
-  const { camera } = useThree();
-
-  useEffect(() => {
-    camera.position.set(8, 6, 8);
-    camera.lookAt(0, 0, 0);
-  }, [camera]);
-
-  return null;
+function decorateFeature(
+  feature: Feature<Geometry, GeoJsonProperties>,
+  properties: GeoJsonProperties,
+): Feature<Geometry, GeoJsonProperties> {
+  return {
+    ...feature,
+    properties: {
+      ...(feature.properties ?? {}),
+      ...properties,
+    },
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -338,26 +115,690 @@ export default function TerrainViewer3D({
   zoom = DEFAULT_ZOOM,
   height = 500,
 }: TerrainViewer3DProps) {
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  const [ready, setReady] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
+  const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(textureLayerId ?? demLayerId ?? null);
+  const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
+  const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
+  const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
+    DEFAULT_VECTOR_LAYER_VISIBILITY,
+  );
+  const { layers: allGeoLayers } = useGeoLayers();
+  const { layers: geeLayers } = useGEELayers({
+    layerNames: ['zona', 'candil', 'ml', 'noroeste', 'norte'],
+  });
+  const { basins } = useBasins();
+  const { approvedZones } = useApprovedZones();
+  const { caminos } = useCaminosColoreados();
+  const { waterways } = useWaterways();
+  const { assets } = useInfrastructure();
+  const { catastroMap } = useCatastroMap();
+  const { soilMap } = useSoilMap();
+  const selectedImage = useSelectedImageListener();
+  const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
+  const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
+  const is3DViewInitialized = useMapLayerSyncStore((state) => state.initializedViews.map3d);
+  const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
+  const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
+  const seedViewFromOther = useMapLayerSyncStore((state) => state.seedViewFromOther);
+  const rasterLayers = getSupported3DRasterLayers(allGeoLayers);
+  const selectedImageOption = selectedImage
+    ? {
+        value: SELECTED_IMAGE_LAYER_ID,
+        label: `${selectedImage.sensor} (${selectedImage.target_date})`,
+      }
+    : null;
+  const selectedImageIsActive = activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !!selectedImage;
+  const activeRasterLayer =
+    (!selectedImageIsActive ? rasterLayers.find((layer) => layer.id === activeRasterLayerId) : undefined) ??
+    rasterLayers.find((layer) => layer.id === textureLayerId) ??
+    rasterLayers.find((layer) => layer.id === demLayerId) ??
+    rasterLayers[0];
+  const activeRasterType = selectedImageIsActive ? undefined : activeRasterLayer?.tipo;
+  const activeRasterTileUrl = selectedImageIsActive
+    ? selectedImage.tile_url
+    : activeRasterLayer
+      ? buildTileUrl(activeRasterLayer.id, {
+          hideClasses: (hiddenClasses[activeRasterLayer.tipo] ?? []).length > 0
+            ? hiddenClasses[activeRasterLayer.tipo]
+            : undefined,
+          hideRanges: (hiddenRanges[activeRasterLayer.tipo] ?? []).length > 0
+            ? hiddenRanges[activeRasterLayer.tipo]
+            : undefined,
+        })
+      : `${API_URL}/api/v2/geo/layers/${textureLayerId ?? demLayerId}/tiles/{z}/{x}/{y}.png?v=${TERRAIN_TILE_CACHE_BUSTER}`;
 
-  const { data, loading, error } = useTerrainData(
-    demLayerId,
-    textureLayerId,
-    center,
-    zoom,
+  useEffect(() => {
+    if (!activeRasterLayerId && selectedImage) {
+      setActiveRasterLayerId(SELECTED_IMAGE_LAYER_ID);
+      return;
+    }
+
+    if (!activeRasterLayerId && activeRasterLayer) {
+      setActiveRasterLayerId(activeRasterLayer.id);
+    }
+  }, [activeRasterLayer, activeRasterLayerId, selectedImage]);
+
+  useEffect(() => {
+    if (activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !selectedImage) {
+      setActiveRasterLayerId(activeRasterLayer?.id ?? textureLayerId ?? demLayerId ?? null);
+    }
+  }, [activeRasterLayer?.id, activeRasterLayerId, demLayerId, selectedImage, textureLayerId]);
+
+  useEffect(() => {
+    if (is3DViewInitialized) return;
+    seedViewFromOther('map3d', 'map2d');
+  }, [is3DViewInitialized, seedViewFromOther]);
+
+  useEffect(() => {
+    if (selectedImage && sharedActiveRasterType === null) return;
+    if (sharedActiveRasterType === null) return;
+    const matched = rasterLayers.find((layer) => layer.tipo === sharedActiveRasterType);
+    if (matched && matched.id !== activeRasterLayerId) {
+      setActiveRasterLayerId(matched.id);
+    }
+  }, [activeRasterLayerId, rasterLayers, selectedImage, sharedActiveRasterType]);
+
+  const handleVectorLayerToggle = useCallback((layerId: string, visible: boolean) => {
+    setVectorLayerVisibility((prev) => ({ ...prev, [layerId]: visible }));
+    setSharedVectorVisibility('map3d', layerId, visible);
+  }, [setSharedVectorVisibility]);
+
+  useEffect(() => {
+    const { cuencas: _ignoredCuencas, ...supportedVectors } = sharedVisibleVectors;
+    setVectorLayerVisibility((prev) => ({
+      ...prev,
+      ...supportedVectors,
+      cuencas: false,
+    }));
+  }, [sharedVisibleVectors]);
+
+  useEffect(() => {
+    if (selectedImageIsActive) {
+      setSharedActiveRasterType('map3d', null);
+      return;
+    }
+    setSharedActiveRasterType('map3d', activeRasterType ?? null);
+  }, [activeRasterType, selectedImageIsActive, setSharedActiveRasterType]);
+
+  const zonaCollection = geeLayers.zona ?? null;
+  const approvedZonesCollection = approvedZones;
+  const cuencasCollection = (() => {
+    const defs = [
+      { key: 'candil', color: GEE_LAYER_COLORS.candil, label: 'Candil' },
+      { key: 'ml', color: GEE_LAYER_COLORS.ml, label: 'ML' },
+      { key: 'noroeste', color: GEE_LAYER_COLORS.noroeste, label: 'Noroeste' },
+      { key: 'norte', color: GEE_LAYER_COLORS.norte, label: 'Norte' },
+    ] as const;
+
+    const features = defs.flatMap(({ key, color, label }) =>
+      (geeLayers[key]?.features ?? []).map((feature) =>
+        decorateFeature(feature, {
+          __color: color,
+          __label: label,
+        }),
+      ),
+    );
+
+    return features.length > 0 ? asFeatureCollection(features) : null;
+  })();
+  const roadsCollection = caminos;
+  const soilCollection = (() => {
+    if (!soilMap) return null;
+    return asFeatureCollection(
+      soilMap.features.map((feature) =>
+        decorateFeature(feature, {
+          __color: getSoilColor((feature.properties as { cap?: string | null } | null)?.cap),
+        }),
+      ),
+    );
+  })();
+  const waterwaysCollection = (() => {
+    const features = waterways.flatMap((layer) =>
+      layer.data.features.map((feature) =>
+        decorateFeature(feature, {
+          __color: layer.style.color ?? '#1565C0',
+          __label: layer.nombre,
+        }),
+      ),
+    );
+
+    return features.length > 0 ? asFeatureCollection(features) : null;
+  })();
+  const catastroCollection = catastroMap;
+  const infrastructureCollection = (() => {
+    const features = assets.map((asset) => {
+      const color =
+        asset.tipo === 'puente'
+          ? '#f03e3e'
+          : asset.tipo === 'alcantarilla'
+            ? '#1971c2'
+            : asset.tipo === 'canal'
+              ? '#2f9e44'
+              : '#fd7e14';
+
+      return {
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [asset.longitud, asset.latitud],
+        },
+        properties: {
+          ...asset,
+          __color: color,
+        },
+      };
+    });
+
+    return features.length > 0 ? asFeatureCollection(features) : null;
+  })();
+
+  const handleClassToggle = useCallback(
+    (layerType: string, classIndex: number, visible: boolean) => {
+      setHiddenClasses((prev) => {
+        const current = prev[layerType] ?? [];
+        const next = visible
+          ? current.filter((index) => index !== classIndex)
+          : [...current, classIndex];
+        return { ...prev, [layerType]: next };
+      });
+    },
+    [],
   );
 
-  if (error) {
-    return (
-      <Alert
-        icon={<IconAlertTriangle size={16} />}
-        title="Error de visualización"
-        color="red"
-      >
-        {error}
-      </Alert>
+  const handleRangeToggle = useCallback(
+    (layerType: string, rangeIndex: number, visible: boolean) => {
+      setHiddenRanges((prev) => {
+        const current = prev[layerType] ?? [];
+        const next = visible
+          ? current.filter((index) => index !== rangeIndex)
+          : [...current, rangeIndex];
+        return { ...prev, [layerType]: next };
+      });
+    },
+    [],
+  );
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || !demLayerId) return;
+
+    const terrainRgbUrl =
+      `${API_URL}/api/v2/geo/layers/${demLayerId}/tiles/{z}/{x}/{y}.png` +
+      `?encoding=terrain-rgb&v=${TERRAIN_TILE_CACHE_BUSTER}`;
+
+    setReady(false);
+    setErrorMessage(null);
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: {
+        version: 8,
+        sources: {
+          'terrain-rgb': {
+            type: 'raster-dem',
+            tiles: [terrainRgbUrl],
+            tileSize: 256,
+            encoding: 'mapbox',
+          },
+          'terrain-texture': {
+            type: 'raster',
+            tiles: [activeRasterTileUrl],
+            tileSize: 256,
+          },
+          'satellite': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            attribution: '&copy; Esri',
+          },
+        },
+        layers: [
+          {
+            id: 'satellite-base',
+            type: 'raster',
+            source: 'satellite',
+            paint: { 'raster-opacity': 1 },
+          },
+          {
+            id: 'dem-overlay',
+            type: 'raster',
+            source: 'terrain-texture',
+            paint: { 'raster-opacity': overlayOpacity },
+          },
+        ],
+        terrain: {
+          source: 'terrain-rgb',
+          exaggeration: DEFAULT_EXAGGERATION,
+        },
+      },
+      center: center,
+      zoom: zoom,
+      pitch: 60,
+      bearing: -20,
+      maxPitch: 85,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-left');
+
+    map.on('load', () => {
+      setReady(true);
+    });
+
+    map.on('error', (event) => {
+      const candidate =
+        typeof event.error === 'string'
+          ? event.error
+          : event.error instanceof Error
+            ? event.error.message
+            : 'Error desconocido cargando el terreno 3D';
+
+      console.error('MapLibre terrain error', event.error);
+      setErrorMessage(candidate);
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      setReady(false);
+    };
+  }, [demLayerId, center, zoom]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !activeRasterTileUrl || !map.isStyleLoaded()) return;
+
+    if (map.getLayer('dem-overlay')) {
+      map.removeLayer('dem-overlay');
+    }
+
+    if (map.getSource('terrain-texture')) {
+      map.removeSource('terrain-texture');
+    }
+
+    map.addSource('terrain-texture', {
+      type: 'raster',
+      tiles: [activeRasterTileUrl],
+      tileSize: 256,
+    });
+
+    map.addLayer({
+      id: 'dem-overlay',
+      type: 'raster',
+      source: 'terrain-texture',
+      paint: { 'raster-opacity': overlayOpacity },
+    });
+  }, [activeRasterTileUrl, overlayOpacity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer('dem-overlay')) return;
+
+    map.setPaintProperty('dem-overlay', 'raster-opacity', overlayOpacity);
+  }, [overlayOpacity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.isStyleLoaded()) return;
+
+    const ensureZonaLayers = () => {
+      const source = map.getSource(ZONA_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(zonaCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(ZONA_SOURCE_ID, {
+          type: 'geojson',
+          data: zonaCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${ZONA_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${ZONA_SOURCE_ID}-line`,
+          type: 'line',
+          source: ZONA_SOURCE_ID,
+          paint: {
+            'line-color': '#FF0000',
+            'line-width': 3,
+            'line-opacity': 0.95,
+          },
+        });
+      }
+    };
+
+    const ensureApprovedZonesLayers = () => {
+      const source = map.getSource(APPROVED_ZONES_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(approvedZonesCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(APPROVED_ZONES_SOURCE_ID, {
+          type: 'geojson',
+          data: approvedZonesCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${APPROVED_ZONES_SOURCE_ID}-fill`)) {
+        map.addLayer({
+          id: `${APPROVED_ZONES_SOURCE_ID}-fill`,
+          type: 'fill',
+          source: APPROVED_ZONES_SOURCE_ID,
+          paint: {
+            'fill-color': ['coalesce', ['get', '__color'], '#1971c2'],
+            'fill-opacity': 0.18,
+          },
+        });
+      }
+
+      if (!map.getLayer(`${APPROVED_ZONES_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${APPROVED_ZONES_SOURCE_ID}-line`,
+          type: 'line',
+          source: APPROVED_ZONES_SOURCE_ID,
+          paint: {
+            'line-color': ['coalesce', ['get', '__color'], '#1971c2'],
+            'line-width': 3,
+            'line-opacity': 0.95,
+          },
+        });
+      }
+    };
+
+    const ensureCuencasLayers = () => {
+      const source = map.getSource(CUENCAS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(cuencasCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(CUENCAS_SOURCE_ID, {
+          type: 'geojson',
+          data: cuencasCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${CUENCAS_SOURCE_ID}-fill`)) {
+        map.addLayer({
+          id: `${CUENCAS_SOURCE_ID}-fill`,
+          type: 'fill',
+          source: CUENCAS_SOURCE_ID,
+          paint: {
+            'fill-color': ['coalesce', ['get', '__color'], '#3388ff'],
+            'fill-opacity': 0.12,
+          },
+        });
+      }
+
+      if (!map.getLayer(`${CUENCAS_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${CUENCAS_SOURCE_ID}-line`,
+          type: 'line',
+          source: CUENCAS_SOURCE_ID,
+          paint: {
+            'line-color': ['coalesce', ['get', '__color'], '#3388ff'],
+            'line-width': 2,
+            'line-opacity': 0.9,
+          },
+        });
+      }
+    };
+
+    const ensureBasinsLayers = () => {
+      const source = map.getSource(BASINS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(basins ?? asFeatureCollection([]));
+      } else {
+        map.addSource(BASINS_SOURCE_ID, {
+          type: 'geojson',
+          data: basins ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${BASINS_SOURCE_ID}-fill`)) {
+        map.addLayer({
+          id: `${BASINS_SOURCE_ID}-fill`,
+          type: 'fill',
+          source: BASINS_SOURCE_ID,
+          paint: {
+            'fill-color': '#00897B',
+            'fill-opacity': 0.08,
+          },
+        });
+      }
+
+      if (!map.getLayer(`${BASINS_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${BASINS_SOURCE_ID}-line`,
+          type: 'line',
+          source: BASINS_SOURCE_ID,
+          paint: {
+            'line-color': '#00897B',
+            'line-width': 1.5,
+            'line-opacity': 0.95,
+          },
+        });
+      }
+    };
+
+    const ensureRoadLayers = () => {
+      const source = map.getSource(ROADS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(roadsCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(ROADS_SOURCE_ID, {
+          type: 'geojson',
+          data: roadsCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${ROADS_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${ROADS_SOURCE_ID}-line`,
+          type: 'line',
+          source: ROADS_SOURCE_ID,
+          paint: {
+            'line-color': ['coalesce', ['get', 'color'], '#FFEB3B'],
+            'line-width': 2,
+            'line-opacity': 0.9,
+          },
+        });
+      }
+    };
+
+    const ensureWaterwayLayers = () => {
+      const source = map.getSource(WATERWAYS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(waterwaysCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(WATERWAYS_SOURCE_ID, {
+          type: 'geojson',
+          data: waterwaysCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${WATERWAYS_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${WATERWAYS_SOURCE_ID}-line`,
+          type: 'line',
+          source: WATERWAYS_SOURCE_ID,
+          paint: {
+            'line-color': ['coalesce', ['get', '__color'], '#1565C0'],
+            'line-width': 3,
+            'line-opacity': 0.9,
+          },
+        });
+      }
+    };
+
+    const ensureSoilLayers = () => {
+      const source = map.getSource(SOIL_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(soilCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(SOIL_SOURCE_ID, {
+          type: 'geojson',
+          data: soilCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${SOIL_SOURCE_ID}-fill`)) {
+        map.addLayer({
+          id: `${SOIL_SOURCE_ID}-fill`,
+          type: 'fill',
+          source: SOIL_SOURCE_ID,
+          paint: {
+            'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
+            'fill-opacity': 0.22,
+          },
+        });
+      }
+
+      if (!map.getLayer(`${SOIL_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${SOIL_SOURCE_ID}-line`,
+          type: 'line',
+          source: SOIL_SOURCE_ID,
+          paint: {
+            'line-color': '#6d4c41',
+            'line-width': 0.8,
+            'line-opacity': 0.55,
+          },
+        });
+      }
+    };
+
+    const ensureCatastroLayers = () => {
+      const source = map.getSource(CATASTRO_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(catastroCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(CATASTRO_SOURCE_ID, {
+          type: 'geojson',
+          data: catastroCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${CATASTRO_SOURCE_ID}-line`)) {
+        map.addLayer({
+          id: `${CATASTRO_SOURCE_ID}-line`,
+          type: 'line',
+          source: CATASTRO_SOURCE_ID,
+          paint: {
+            'line-color': '#f8f9fa',
+            'line-width': 0.7,
+            'line-opacity': 0.7,
+          },
+        });
+      }
+    };
+
+    const ensureInfrastructureLayers = () => {
+      const source = map.getSource(INFRASTRUCTURE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(infrastructureCollection ?? asFeatureCollection([]));
+      } else {
+        map.addSource(INFRASTRUCTURE_SOURCE_ID, {
+          type: 'geojson',
+          data: infrastructureCollection ?? asFeatureCollection([]),
+        });
+      }
+
+      if (!map.getLayer(`${INFRASTRUCTURE_SOURCE_ID}-circle`)) {
+        map.addLayer({
+          id: `${INFRASTRUCTURE_SOURCE_ID}-circle`,
+          type: 'circle',
+          source: INFRASTRUCTURE_SOURCE_ID,
+          paint: {
+            'circle-color': ['coalesce', ['get', '__color'], '#fd7e14'],
+            'circle-radius': 6,
+            'circle-opacity': 0.95,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 1.5,
+          },
+        });
+      }
+    };
+
+    ensureApprovedZonesLayers();
+    ensureZonaLayers();
+    ensureCuencasLayers();
+    ensureBasinsLayers();
+    ensureRoadLayers();
+    ensureWaterwayLayers();
+    ensureSoilLayers();
+    ensureCatastroLayers();
+    ensureInfrastructureLayers();
+
+    const setVisibility = (layerId: string, visible: boolean) => {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+      }
+    };
+
+    setVisibility(
+      `${APPROVED_ZONES_SOURCE_ID}-fill`,
+      vectorLayerVisibility.approved_zones && !!approvedZonesCollection,
     );
-  }
+    setVisibility(
+      `${APPROVED_ZONES_SOURCE_ID}-line`,
+      vectorLayerVisibility.approved_zones && !!approvedZonesCollection,
+    );
+    setVisibility(`${ZONA_SOURCE_ID}-line`, vectorLayerVisibility.zona && !!zonaCollection);
+    setVisibility(`${CUENCAS_SOURCE_ID}-fill`, false);
+    setVisibility(`${CUENCAS_SOURCE_ID}-line`, false);
+    setVisibility(`${BASINS_SOURCE_ID}-fill`, vectorLayerVisibility.basins && !!basins);
+    setVisibility(`${BASINS_SOURCE_ID}-line`, vectorLayerVisibility.basins && !!basins);
+    setVisibility(`${ROADS_SOURCE_ID}-line`, vectorLayerVisibility.roads && !!roadsCollection);
+    setVisibility(`${WATERWAYS_SOURCE_ID}-line`, vectorLayerVisibility.waterways && !!waterwaysCollection);
+    setVisibility(`${SOIL_SOURCE_ID}-fill`, vectorLayerVisibility.soil && !!soilCollection);
+    setVisibility(`${SOIL_SOURCE_ID}-line`, vectorLayerVisibility.soil && !!soilCollection);
+    setVisibility(`${CATASTRO_SOURCE_ID}-line`, vectorLayerVisibility.catastro && !!catastroCollection);
+    setVisibility(
+      `${INFRASTRUCTURE_SOURCE_ID}-circle`,
+      vectorLayerVisibility.infrastructure && !!infrastructureCollection,
+    );
+  }, [
+    approvedZonesCollection,
+    basins,
+    catastroCollection,
+    cuencasCollection,
+    infrastructureCollection,
+    roadsCollection,
+    ready,
+    vectorLayerVisibility.approved_zones,
+    vectorLayerVisibility.basins,
+    vectorLayerVisibility.cuencas,
+    vectorLayerVisibility.catastro,
+    vectorLayerVisibility.infrastructure,
+    vectorLayerVisibility.roads,
+    vectorLayerVisibility.soil,
+    vectorLayerVisibility.waterways,
+    soilCollection,
+    vectorLayerVisibility.zona,
+    waterwaysCollection,
+    zonaCollection,
+  ]);
+
+  // Update exaggeration
+  const handleExaggerationChange = useCallback(
+    (value: number) => {
+      setExaggeration(value);
+      const map = mapRef.current;
+      if (!map) return;
+
+      map.setTerrain({
+        source: 'terrain-rgb',
+        exaggeration: value,
+      });
+    },
+    [],
+  );
 
   if (!demLayerId) {
     return (
@@ -372,21 +813,18 @@ export default function TerrainViewer3D({
     );
   }
 
-  if (loading || !data) {
-    return (
-      <Paper p="xl" radius="md" withBorder>
-        <Stack align="center" gap="md">
-          <Loader size="lg" />
-          <Text c="dimmed">Cargando terreno 3D...</Text>
-        </Stack>
-      </Paper>
-    );
-  }
-
-  const elevRange = data.maxElev - data.minElev;
-
   return (
     <Stack gap="sm">
+      {errorMessage && (
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Error cargando terreno 3D"
+          color="red"
+        >
+          {errorMessage}
+        </Alert>
+      )}
+
       <Group justify="space-between" align="flex-end">
         <Title order={5}>Vista 3D del Terreno</Title>
         <Group gap="xs" align="center">
@@ -396,7 +834,7 @@ export default function TerrainViewer3D({
           <Box w={160}>
             <Slider
               value={exaggeration}
-              onChange={setExaggeration}
+              onChange={handleExaggerationChange}
               min={MIN_EXAGGERATION}
               max={MAX_EXAGGERATION}
               step={1}
@@ -404,8 +842,8 @@ export default function TerrainViewer3D({
               label={(val) => `${val}x`}
               marks={[
                 { value: 1, label: '1x' },
-                { value: 25, label: '25x' },
                 { value: 50, label: '50x' },
+                { value: 100, label: '100x' },
               ]}
             />
           </Box>
@@ -421,25 +859,64 @@ export default function TerrainViewer3D({
           overflow: 'hidden',
         }}
       >
-        <Canvas
-          style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
-          camera={{ position: [8, 6, 8], fov: 50, near: 0.1, far: 1000 }}
+        <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+
+        <Paper
+          shadow="md"
+          p="xs"
+          radius="md"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 16,
+            background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
+            backdropFilter: 'blur(6px)',
+          }}
         >
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[10, 10, 5]} intensity={1} />
-          <directionalLight position={[-5, 5, -5]} intensity={0.3} />
+          <Button size="xs" variant="light" onClick={() => setShowLayerPanel((prev) => !prev)}>
+            {showLayerPanel ? 'Ocultar capas y overlays 3D' : 'Ver capas y overlays 3D'}
+          </Button>
+        </Paper>
 
-          <TerrainMesh data={data} exaggeration={exaggeration} />
-
-          <OrbitControls
-            enableDamping
-            dampingFactor={0.12}
-            minDistance={2}
-            maxDistance={30}
-            maxPolarAngle={Math.PI * 0.85}
+        {showLayerPanel && (
+          <TerrainLayerPanel
+            rasterLayers={rasterLayers}
+            selectedImageOption={selectedImageOption}
+            activeRasterType={activeRasterType}
+            activeRasterLayerId={activeRasterLayerId ?? undefined}
+            onActiveRasterLayerChange={setActiveRasterLayerId}
+            overlayOpacity={overlayOpacity}
+            onOverlayOpacityChange={setOverlayOpacity}
+            hiddenClasses={hiddenClasses}
+            onClassToggle={handleClassToggle}
+            hiddenRanges={hiddenRanges}
+            onRangeToggle={handleRangeToggle}
+            vectorLayerVisibility={vectorLayerVisibility}
+            onVectorLayerToggle={handleVectorLayerToggle}
+            onClose={() => setShowLayerPanel(false)}
+            hasApprovedZones={!!approvedZonesCollection}
           />
-          <AutoFitCamera />
-        </Canvas>
+        )}
+
+        {!ready && (
+          <Box
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0,0,0,0.5)',
+              zIndex: 20,
+            }}
+          >
+            <Stack align="center" gap="md">
+              <Loader size="lg" color="white" />
+              <Text c="white">Cargando terreno 3D...</Text>
+            </Stack>
+          </Box>
+        )}
 
         {/* Info overlay */}
         <Box
@@ -459,12 +936,13 @@ export default function TerrainViewer3D({
           <Text size="xs" c="gray.4">
             Exageracion: {exaggeration}x
           </Text>
+          {selectedImage && (
+            <Text size="xs" c="gray.4">
+              Imagen seleccionada: {selectedImage.sensor} {selectedImage.target_date}
+            </Text>
+          )}
           <Text size="xs" c="gray.4">
-            Rango: {elevRange.toFixed(1)}m ({data.minElev.toFixed(0)}–
-            {data.maxElev.toFixed(0)}m)
-          </Text>
-          <Text size="xs" c="gray.4">
-            Arrastre para rotar, scroll para zoom
+            Ctrl+arrastre para rotar
           </Text>
         </Box>
       </Paper>

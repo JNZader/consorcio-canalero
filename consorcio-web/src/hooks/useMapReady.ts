@@ -22,39 +22,50 @@ export function useMapReady() {
   const hasInitialized = useRef(false);
 
   useEffect(() => {
+    const safeInvalidateSize = () => {
+      try {
+        const container = map.getContainer?.();
+        if (!container || !container.isConnected) return;
+        map.invalidateSize();
+      } catch {
+        // Ignore transient Leaflet errors during unmounts, tab visibility changes,
+        // or route transitions where the map container no longer exists.
+      }
+    };
+
     // Force immediate invalidation
-    map.invalidateSize();
+    safeInvalidateSize();
 
     // Invalidation schedule for SPA navigation - less aggressive now that we use keys
     const timeouts = [
-      setTimeout(() => map.invalidateSize(), 0),
-      setTimeout(() => map.invalidateSize(), 100),
-      setTimeout(() => map.invalidateSize(), 300),
+      setTimeout(() => safeInvalidateSize(), 0),
+      setTimeout(() => safeInvalidateSize(), 100),
+      setTimeout(() => safeInvalidateSize(), 300),
     ];
 
     // Use requestAnimationFrame for smoother updates
     let rafId: number;
     const invalidateOnFrame = () => {
-      map.invalidateSize();
+      safeInvalidateSize();
       if (!hasInitialized.current) {
         hasInitialized.current = true;
         // One more after initialization
-        rafId = requestAnimationFrame(() => map.invalidateSize());
+        rafId = requestAnimationFrame(() => safeInvalidateSize());
       }
     };
     rafId = requestAnimationFrame(invalidateOnFrame);
 
     // Handle window resize
     const handleResize = () => {
-      map.invalidateSize();
+      safeInvalidateSize();
     };
     window.addEventListener('resize', handleResize);
 
     // Handle visibility change (tab switching)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        map.invalidateSize();
-        setTimeout(() => map.invalidateSize(), 100);
+        safeInvalidateSize();
+        setTimeout(() => safeInvalidateSize(), 100);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -64,7 +75,7 @@ export function useMapReady() {
     let resizeObserver: ResizeObserver | null = null;
     if (container && typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
-        map.invalidateSize();
+        safeInvalidateSize();
       });
       resizeObserver.observe(container);
     }

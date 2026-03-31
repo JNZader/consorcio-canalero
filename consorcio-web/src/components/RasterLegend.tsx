@@ -14,6 +14,8 @@ interface RasterLegendProps {
   readonly hiddenRanges?: Record<string, number[]>;
   /** Callback when a continuous range is toggled */
   readonly onRangeToggle?: (layerType: string, rangeIndex: number, visible: boolean) => void;
+  /** Render as floating map panel (default) or inline content */
+  readonly floating?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export const RasterLegend = memo(function RasterLegend({
   onClassToggle,
   hiddenRanges = {},
   onRangeToggle,
+  floating = true,
 }: RasterLegendProps) {
   const legendEntries = layers
     .map((l) => ({ tipo: l.tipo, config: LAYER_LEGEND_CONFIG[l.tipo] }))
@@ -35,7 +38,19 @@ export const RasterLegend = memo(function RasterLegend({
   if (legendEntries.length === 0) return null;
 
   return (
-    <Paper shadow="md" p="xs" radius="md" className={styles.rasterLegendPanel}>
+    <Paper
+      shadow="md"
+      p="xs"
+      radius="md"
+      className={floating ? styles.rasterLegendPanel : undefined}
+      style={
+        floating
+          ? undefined
+          : {
+              background: 'light-dark(rgba(255,255,255,0.92), rgba(36,36,36,0.92))',
+            }
+      }
+    >
       <Stack gap={6}>
         {legendEntries.map(({ tipo, config }) => {
           if (config.categorical && config.categories) {

@@ -4,9 +4,10 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
+import { queryKeys } from '../lib/query';
 import { parseFeatureCollection } from '../lib/typeGuards';
 import {
   processLoadResults,
@@ -52,19 +53,6 @@ export interface GEELayerData {
 // Layers map type
 export type GEELayersMap = Partial<Record<GEELayerName, FeatureCollection>>;
 
-interface UseGEELayersResult {
-  /** Layers data as a map (name -> FeatureCollection) */
-  layers: GEELayersMap;
-  /** Layers data as array with name and color info */
-  layersArray: GEELayerData[];
-  /** Loading state */
-  loading: boolean;
-  /** Error message if any layer failed to load */
-  error: string | null;
-  /** Reload layers */
-  reload: () => Promise<void>;
-}
-
 interface UseGEELayersOptions {
   /** Layer names to load. Defaults to all layers. */
   layerNames?: readonly GEELayerName[];
@@ -72,90 +60,53 @@ interface UseGEELayersOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook for loading GeoJSON layers from the GEE backend.
- *
- * @example
- * ```tsx
- * const { layers, loading, error } = useGEELayers();
- *
- * // Or load specific layers only
- * const { layers } = useGEELayers({ layerNames: ['zona', 'candil'] });
- * ```
- */
-export function useGEELayers(options: UseGEELayersOptions = {}): UseGEELayersResult {
-  const { layerNames = GEE_LAYER_NAMES, enabled = true } = options;
-
-  const [layers, setLayers] = useState<GEELayersMap>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadLayer = useCallback(
-    async (name: GEELayerName): Promise<[GEELayerName, FeatureCollection | null]> => {
-      try {
-        const response = await fetch(`${API_URL}/api/v2/geo/gee/layers/${name}`);
-        if (response.ok) {
-          const rawData = await response.json();
-
-          // Validate the GeoJSON structure at runtime
-          const validatedData = parseFeatureCollection(rawData);
-          if (!validatedData) {
-            logger.warn(`GEE layer '${name}' returned invalid GeoJSON structure`);
-            return [name, null];
-          }
-
-          return [name, validatedData];
-        }
-        // Log warning but don't throw - layer might not be available
-        logger.warn(`GEE layer '${name}' not available: ${response.status}`);
-        return [name, null];
-      } catch (err) {
-        logger.warn(`Error loading GEE layer '${name}'`, err);
+async function loadLayer(name: GEELayerName): Promise<[GEELayerName, FeatureCollection | null]> {
+  try {
+    const response = await fetch(`${API_URL}/api/v2/geo/gee/layers/${name}`);
+    if (response.ok) {
+      const rawData = await response.json();
+      const validatedData = parseFeatureCollection(rawData);
+      if (!validatedData) {
+        logger.warn(`GEE layer '${name}' returned invalid GeoJSON structure`);
         return [name, null];
       }
-    },
-    []
-  );
+      return [name, validatedData];
+    }
+    logger.warn(`GEE layer '${name}' not available: ${response.status}`);
+    return [name, null];
+  } catch (err) {
+    logger.warn(`Error loading GEE layer '${name}'`, err);
+    return [name, null];
+  }
+}
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+export function useGEELayers(options: UseGEELayersOptions = {}) {
+  const { layerNames = GEE_LAYER_NAMES, enabled = true } = options;
 
-    try {
+  const query = useQuery({
+    queryKey: queryKeys.geeLayers(layerNames),
+    queryFn: async () => {
       const results = await Promise.all(layerNames.map(loadLayer));
       const { layers: newLayers, loadedCount } = processLoadResults(results);
 
-      setLayers(newLayers);
-
-      // Set error if no layers loaded
       if (shouldSetError(loadedCount, layerNames.length)) {
-        setError(NO_LAYERS_ERROR_MESSAGE);
+        throw new Error(NO_LAYERS_ERROR_MESSAGE);
       }
-    } catch (err) {
-      setError(GENERIC_ERROR_MESSAGE);
-      logger.error('Error loading GEE layers', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [layerNames, loadLayer]);
+      return newLayers;
+    },
+    enabled,
+    staleTime: 1000 * 60 * 10,
+  });
 
-  useEffect(() => {
-    if (enabled) {
-      reload();
-    } else {
-      setLoading(false);
-    }
-  }, [enabled, reload]);
-
-  // Convert layers map to array format
+  const layers = query.data ?? {};
   const layersArray: GEELayerData[] = layersMapToArray(layers);
 
   return {
     layers,
     layersArray,
-    loading,
-    error,
-    reload,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    reload: query.refetch,
   };
 }
 

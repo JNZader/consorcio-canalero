@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 import io
+from functools import lru_cache
 
 import numpy as np
 import rasterio
@@ -62,7 +63,7 @@ DEFAULT_COLORMAPS: dict[str, str] = {
 # Tuned to Bell Ville area: 30m of relief over 30km, slopes < 1°.
 DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "dem_raw": (100.0, 145.0),
-    "slope": (0.0, 1.5),
+    "slope": (0.0, 1.0),
     "twi": (6.0, 19.0),
     "profile_curvature": (-0.001, 0.001),
     "tpi": (-1.5, 1.5),
@@ -117,9 +118,12 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Alto (>2m)", "min": 2.0, "max": 4.0, "color": "#ffffb2"},
     ],
     "slope": [
-        {"label": "Plano (<0.3°)", "min": 0, "max": 0.3, "color": "#1a9850"},
-        {"label": "Suave (0.3-0.7°)", "min": 0.3, "max": 0.7, "color": "#fee08b"},
-        {"label": "Moderado (>0.7°)", "min": 0.7, "max": 1.5, "color": "#d73027"},
+        {"label": "Muy baja zona I (<0.5 m/1000m)", "min": 0, "max": 0.0265, "color": "#0b7d3b"},
+        {"label": "Muy baja zona II (0.5-2.1 m/1000m)", "min": 0.0265, "max": 0.1227, "color": "#1a9850"},
+        {"label": "Baja zona (2.1-4.2 m/1000m)", "min": 0.1227, "max": 0.2420, "color": "#91cf60"},
+        {"label": "Suave zona (4.2-6.9 m/1000m)", "min": 0.2420, "max": 0.3964, "color": "#d9ef8b"},
+        {"label": "Moderada zona (6.9-15.3 m/1000m)", "min": 0.3964, "max": 0.8754, "color": "#fc8d59"},
+        {"label": "Alta puntual (>15.3 m/1000m)", "min": 0.8754, "max": 90.0, "color": "#d73027"},
     ],
     "dem_raw": [
         {"label": "100-105m", "min": 100, "max": 105, "color": "#08306b"},
@@ -132,9 +136,12 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "135-145m", "min": 135, "max": 145, "color": "#a50026"},
     ],
     "flow_acc": [
-        {"label": "Bajo", "min": 1, "max": 100, "color": "#ffffcc"},
-        {"label": "Medio", "min": 100, "max": 10000, "color": "#7fcdbb"},
-        {"label": "Alto", "min": 10000, "max": 487848, "color": "#0c2c84"},
+        {"label": "Mínimo (1 celda)", "min": 1, "max": 1.5, "color": "#ffffcc"},
+        {"label": "Muy bajo (2-6)", "min": 1.5, "max": 6, "color": "#d9f0a3"},
+        {"label": "Bajo (6-53)", "min": 6, "max": 53, "color": "#addd8e"},
+        {"label": "Moderado (53-210)", "min": 53, "max": 210, "color": "#78c679"},
+        {"label": "Alto (210-6.525)", "min": 210, "max": 6525.22, "color": "#41b6c4"},
+        {"label": "Muy alto (>6.525)", "min": 6525.22, "max": 487848, "color": "#0c2c84"},
     ],
     "profile_curvature": [
         {"label": "Cóncavo", "min": -0.001, "max": -0.0002, "color": "#b2182b"},
@@ -205,6 +212,20 @@ def _encode_terrain_rgb(data: np.ndarray) -> np.ndarray:
     b = (encoded % 256).astype(np.uint8)
 
     return np.stack([r, g, b], axis=0)
+
+
+@lru_cache(maxsize=32)
+def _get_elevation_baseline(file_path: str) -> float:
+    """Return the global minimum valid elevation for a DEM file.
+
+    We use this as the terrain baseline so the lowest DEM point stays at 0 m
+    in the 3D viewer, even when MapLibre exaggeration is applied.
+    """
+    with rasterio.open(file_path) as src:
+        band = src.read(1, masked=True)
+        if band.count() == 0:
+            return 0.0
+        return float(band.min())
 
 
 def _tile_bounds_3857(x: int, y: int, z: int) -> tuple[float, float, float, float]:
@@ -299,6 +320,72 @@ def _render_categorical_png(
     return buf.getvalue()
 
 
+def _read_elevation_tile(
+    file_path: str | Path,
+    x: int,
+    y: int,
+    z: int,
+    *,
+    tilesize: int = 256,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Read an elevation tile with rasterio reprojection into Web Mercator.
+
+    This bypasses rio-tiler for terrain-rgb output so the final DEM PNGs have a
+    deterministic size and resampling path across all neighboring tiles.
+    """
+    tile_bounds = _tile_bounds_3857(x, y, z)
+    dst_transform = from_bounds(*tile_bounds, width=tilesize, height=tilesize)
+
+    with rasterio.open(file_path) as src:
+        src_bounds_3857 = transform_bounds(src.crs, WEB_MERCATOR_CRS, *src.bounds)
+        if not _bounds_intersect(tile_bounds, src_bounds_3857):
+            return None
+
+        tile = np.full((tilesize, tilesize), np.nan, dtype=np.float32)
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=tile,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            src_nodata=src.nodata,
+            dst_transform=dst_transform,
+            dst_crs=WEB_MERCATOR_CRS,
+            dst_nodata=np.nan,
+            resampling=Resampling.bilinear,
+        )
+
+    mask = np.isfinite(tile)
+    return tile, mask
+
+
+def _render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:
+    """Render a terrain-rgb PNG directly from elevation values."""
+    if not np.any(valid_mask):
+        raise ValueError("No valid elevation pixels to render")
+
+    terrain_rgb = _encode_terrain_rgb(np.where(valid_mask, data, 0.0))
+
+    rgb = np.zeros((data.shape[0], data.shape[1], 3), dtype=np.uint8)
+    rgb[..., 0] = terrain_rgb[0]
+    rgb[..., 1] = terrain_rgb[1]
+    rgb[..., 2] = terrain_rgb[2]
+
+    buf = io.BytesIO()
+    PILImage.fromarray(rgb, "RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _render_flat_terrain_rgb_png(*, tilesize: int = 256, elevation: float = 0.0) -> bytes:
+    """Render a constant-elevation terrain-rgb PNG.
+
+    Returning a real DEM tile instead of HTTP 204 keeps the raster-dem source
+    structurally consistent at the edges of the clipped DEM.
+    """
+    data = np.full((tilesize, tilesize), elevation, dtype=np.float32)
+    valid_mask = np.ones((tilesize, tilesize), dtype=bool)
+    return _render_terrain_rgb_png(data, valid_mask)
+
+
 def _render_continuous_with_ranges(
     img,
     layer_tipo: str,
@@ -359,7 +446,11 @@ def _render_continuous_with_ranges(
     for idx in hidden_ranges:
         if idx < len(range_cfg):
             r = range_cfg[idx]
-            in_range = (original_data >= r["min"]) & (original_data < r["max"])
+            is_last_range = idx == len(range_cfg) - 1
+            if is_last_range:
+                in_range = original_data >= r["min"]
+            else:
+                in_range = (original_data >= r["min"]) & (original_data < r["max"])
             rgba[in_range, 3] = 0
 
     buf = io.BytesIO()
@@ -437,7 +528,20 @@ def get_tile(
         except ValueError:
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
 
-    if layer.tipo in CATEGORICAL_TYPES:
+    if encoding == "terrain-rgb":
+        tile_data = _read_elevation_tile(file_path, x, y, z, tilesize=256)
+        if tile_data is None:
+            content = _render_flat_terrain_rgb_png(tilesize=256, elevation=0.0)
+            return Response(content=content, media_type="image/png")
+
+        elevation, valid_mask = tile_data
+        baseline = _get_elevation_baseline(str(file_path))
+        normalized_elevation = np.where(valid_mask, elevation - baseline, 0.0)
+        try:
+            content = _render_terrain_rgb_png(normalized_elevation, valid_mask)
+        except ValueError:
+            content = _render_flat_terrain_rgb_png(tilesize=256, elevation=0.0)
+    elif layer.tipo in CATEGORICAL_TYPES:
         tile_data = _read_categorical_tile(file_path, x, y, z, tilesize=256)
         if tile_data is None:
             return Response(status_code=204)
@@ -456,15 +560,7 @@ def get_tile(
         except TileOutsideBounds:
             return Response(status_code=204)
 
-    if encoding == "terrain-rgb":
-        # Replace image data with terrain-RGB encoded elevation
-        from rio_tiler.models import ImageData
-
-        terrain_data = _encode_terrain_rgb(img.data[0])  # First band = elevation
-        img = ImageData(terrain_data, img.mask)
-        # Render without colormap for terrain-RGB
-        content = img.render(img_format="PNG")
-    elif layer.tipo not in CATEGORICAL_TYPES:
+    if encoding != "terrain-rgb" and layer.tipo not in CATEGORICAL_TYPES:
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")
 
         # If hiding ranges on a continuous layer, use manual PIL rendering

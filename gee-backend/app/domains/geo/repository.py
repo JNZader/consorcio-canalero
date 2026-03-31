@@ -6,7 +6,13 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.domains.geo.models import AnalisisGeo, EstadoGeoJob, GeoJob, GeoLayer
+from app.domains.geo.models import (
+    AnalisisGeo,
+    EstadoGeoJob,
+    GeoApprovedZoning,
+    GeoJob,
+    GeoLayer,
+)
 
 
 class GeoRepository:
@@ -236,6 +242,116 @@ class GeoRepository:
         result = db.execute(stmt)
         db.flush()
         return result.rowcount
+
+    # ── APPROVED ZONING ─────────────────────────
+
+    def get_active_approved_zoning(
+        self,
+        db: Session,
+        *,
+        cuenca: Optional[str] = None,
+    ) -> Optional[GeoApprovedZoning]:
+        """Return the current active approved zoning for an optional cuenca."""
+        stmt = select(GeoApprovedZoning).where(GeoApprovedZoning.is_active == True)  # noqa: E712
+        if cuenca is None:
+            stmt = stmt.where(GeoApprovedZoning.cuenca.is_(None))
+        else:
+            stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
+        stmt = stmt.order_by(GeoApprovedZoning.approved_at.desc())
+        return db.execute(stmt).scalar_one_or_none()
+
+    def list_approved_zonings(
+        self,
+        db: Session,
+        *,
+        cuenca: Optional[str] = None,
+        limit: int = 20,
+    ) -> list[GeoApprovedZoning]:
+        """Return approved zoning history ordered by newest first."""
+        stmt = select(GeoApprovedZoning)
+        if cuenca is None:
+            stmt = stmt.where(GeoApprovedZoning.cuenca.is_(None))
+        else:
+            stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
+        stmt = stmt.order_by(GeoApprovedZoning.version.desc(), GeoApprovedZoning.approved_at.desc()).limit(limit)
+        return list(db.execute(stmt).scalars().all())
+
+    def get_approved_zoning_by_id(
+        self,
+        db: Session,
+        zoning_id: uuid.UUID,
+    ) -> Optional[GeoApprovedZoning]:
+        """Return one approved zoning by id."""
+        stmt = select(GeoApprovedZoning).where(GeoApprovedZoning.id == zoning_id)
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_next_approved_zoning_version(
+        self,
+        db: Session,
+        *,
+        cuenca: Optional[str] = None,
+    ) -> int:
+        """Return the next version number for an approved zoning series."""
+        stmt = select(func.max(GeoApprovedZoning.version))
+        if cuenca is None:
+            stmt = stmt.where(GeoApprovedZoning.cuenca.is_(None))
+        else:
+            stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
+        current_max = db.execute(stmt).scalar_one()
+        return int(current_max or 0) + 1
+
+    def create_approved_zoning_version(
+        self,
+        db: Session,
+        *,
+        feature_collection: dict,
+        nombre: str = "Zonificación Consorcio aprobada",
+        cuenca: Optional[str] = None,
+        assignments: Optional[dict] = None,
+        zone_names: Optional[dict] = None,
+        approved_by_id: Optional[uuid.UUID] = None,
+        notes: Optional[str] = None,
+    ) -> GeoApprovedZoning:
+        """Create a new approved zoning version and deactivate the previous active one."""
+        existing = self.get_active_approved_zoning(db, cuenca=cuenca)
+        if existing:
+            existing.is_active = False
+
+        next_version = self.get_next_approved_zoning_version(db, cuenca=cuenca)
+
+        zoning = GeoApprovedZoning(
+            nombre=nombre,
+            version=next_version,
+            cuenca=cuenca,
+            feature_collection=feature_collection,
+            assignments=assignments,
+            zone_names=zone_names,
+            approved_by_id=approved_by_id,
+            notes=notes,
+            is_active=True,
+        )
+        db.add(zoning)
+        db.flush()
+        return zoning
+
+    def clear_active_approved_zoning(
+        self,
+        db: Session,
+        *,
+        cuenca: Optional[str] = None,
+    ) -> int:
+        """Deactivate the active approved zoning for the optional cuenca, preserving history."""
+        stmt = select(GeoApprovedZoning).where(GeoApprovedZoning.is_active == True)  # noqa: E712
+        if cuenca is None:
+            stmt = stmt.where(GeoApprovedZoning.cuenca.is_(None))
+        else:
+            stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
+        current = db.execute(stmt).scalar_one_or_none()
+        if current is None:
+            return 0
+        current.is_active = False
+        db.flush()
+        return 1
 
     # ── ANALISIS GEO READ ─────────────────────────
 

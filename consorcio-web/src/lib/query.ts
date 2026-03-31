@@ -38,6 +38,16 @@ export const queryKeys = {
   report: (id: string) => ['report', id] as const,
   layers: (visibleOnly: boolean) => ['layers', visibleOnly] as const,
   layer: (id: string) => ['layer', id] as const,
+  geoLayers: () => ['geo-layers'] as const,
+  geeLayers: (names: readonly string[]) => ['gee-layers', ...names] as const,
+  waterways: () => ['waterways'] as const,
+  basins: (opts: { tolerance: number; limit: number; cuenca?: string | null; bbox?: string | null }) => ['basins', opts] as const,
+  suggestedZones: (opts: { cuenca?: string | null }) => ['suggested-zones', opts] as const,
+  approvedZones: () => ['approved-zones'] as const,
+  approvedZonesHistory: () => ['approved-zones-history'] as const,
+  caminosColoreados: () => ['caminos-coloreados'] as const,
+  publicLayers: () => ['public-layers'] as const,
+  infrastructure: () => ['infrastructure'] as const,
 } as const;
 
 // ===========================================

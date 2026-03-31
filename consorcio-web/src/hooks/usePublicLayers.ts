@@ -5,9 +5,10 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
+import { queryKeys } from '../lib/query';
 
 export interface PublicLayer {
   id: string;
@@ -19,28 +20,10 @@ export interface PublicLayer {
   orden: number;
 }
 
-interface UsePublicLayersResult {
-  layers: PublicLayer[];
-  loading: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
-}
-
-/**
- * Fetches public layers from /api/v2/public/layers and loads their
- * GeoJSON detail from /api/v2/public/layers/{id}.
- */
-export function usePublicLayers(): UsePublicLayersResult {
-  const [layers, setLayers] = useState<PublicLayer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Step 1: Get the list of public layers (lightweight, no geojson_data)
+export function usePublicLayers() {
+  const query = useQuery({
+    queryKey: queryKeys.publicLayers(),
+    queryFn: async () => {
       const listResponse = await fetch(`${API_URL}/api/v2/public/layers`);
       if (!listResponse.ok) {
         throw new Error(`Error fetching public layers: ${listResponse.status}`);
@@ -49,17 +32,12 @@ export function usePublicLayers(): UsePublicLayersResult {
       const layerList: { id: string; nombre: string; tipo: string }[] =
         await listResponse.json();
 
-      if (layerList.length === 0) {
-        setLayers([]);
-        setLoading(false);
-        return;
-      }
+      if (layerList.length === 0) return [];
 
-      // Step 2: Fetch detail (with geojson_data) for each layer in parallel
       const detailPromises = layerList.map(async (layer) => {
         try {
           const detailResponse = await fetch(
-            `${API_URL}/api/v2/public/layers/${layer.id}`
+            `${API_URL}/api/v2/public/layers/${layer.id}`,
           );
           if (detailResponse.ok) {
             return (await detailResponse.json()) as PublicLayer;
@@ -73,22 +51,17 @@ export function usePublicLayers(): UsePublicLayersResult {
       });
 
       const details = await Promise.all(detailPromises);
-      const validLayers = details.filter(
-        (l): l is PublicLayer => l !== null && l.geojson_data !== null
+      return details.filter(
+        (l): l is PublicLayer => l !== null && l.geojson_data !== null,
       );
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-      setLayers(validLayers);
-    } catch (err) {
-      logger.error('Error loading public layers', err);
-      setError('No se pudieron cargar las capas publicas');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  return { layers, loading, error, reload };
+  return {
+    layers: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error ? 'No se pudieron cargar las capas publicas' : null,
+    reload: query.refetch,
+  };
 }

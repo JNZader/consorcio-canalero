@@ -108,13 +108,16 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
   slope: {
     colorStops: ['#1a9850', '#91cf60', '#d9ef8b', '#fee08b', '#fc8d59', '#d73027'],
     min: 0,
-    max: 1.5,
-    unit: '°',
+    max: 17.5,
+    unit: 'm/1000m',
     label: 'Pendiente',
     ranges: [
-      { label: 'Plano (<0.3°)', min: 0, max: 0.3, color: '#1a9850' },
-      { label: 'Suave (0.3-0.7°)', min: 0.3, max: 0.7, color: '#fee08b' },
-      { label: 'Moderado (>0.7°)', min: 0.7, max: 1.5, color: '#d73027' },
+      { label: 'Muy baja zona I (<0.5 m/1000m)', min: 0, max: 0.5, color: '#0b7d3b' },
+      { label: 'Muy baja zona II (0.5-2.1 m/1000m)', min: 0.5, max: 2.1, color: '#1a9850' },
+      { label: 'Baja zona (2.1-4.2 m/1000m)', min: 2.1, max: 4.2, color: '#91cf60' },
+      { label: 'Suave zona (4.2-6.9 m/1000m)', min: 4.2, max: 6.9, color: '#d9ef8b' },
+      { label: 'Moderada zona (6.9-15.3 m/1000m)', min: 6.9, max: 15.3, color: '#fc8d59' },
+      { label: 'Alta puntual (>15.3 m/1000m)', min: 15.3, max: 1000, color: '#d73027' },
     ],
   },
   dem_raw: {
@@ -141,9 +144,12 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
     unit: 'celdas',
     label: 'Acumulación de Flujo',
     ranges: [
-      { label: 'Bajo', min: 1, max: 100, color: '#ffffcc' },
-      { label: 'Medio', min: 100, max: 10000, color: '#7fcdbb' },
-      { label: 'Alto', min: 10000, max: 487848, color: '#0c2c84' },
+      { label: 'Mínimo (1 celda)', min: 1, max: 1.5, color: '#ffffcc' },
+      { label: 'Muy bajo (2-6)', min: 1.5, max: 6, color: '#d9f0a3' },
+      { label: 'Bajo (6-53)', min: 6, max: 53, color: '#addd8e' },
+      { label: 'Moderado (53-210)', min: 53, max: 210, color: '#78c679' },
+      { label: 'Alto (210-6.525)', min: 210, max: 6525.22, color: '#41b6c4' },
+      { label: 'Muy alto (>6.525)', min: 6525.22, max: 487848, color: '#0c2c84' },
     ],
   },
   profile_curvature: {

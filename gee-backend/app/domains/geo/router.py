@@ -8,8 +8,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth.models import User
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 from app.core.logging import get_logger
 from app.db.session import get_db
@@ -32,6 +34,69 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["Geo Processing"])
 
+class ApprovedZonesBuildRequest(BaseModel):
+    assignments: dict[str, str] = Field(default_factory=dict)
+    zone_names: dict[str, str] = Field(default_factory=dict)
+    cuenca: Optional[str] = None
+
+
+class ApprovedZonesSaveRequest(BaseModel):
+    feature_collection: dict = Field(..., alias="featureCollection")
+    assignments: dict[str, str] = Field(default_factory=dict)
+    zone_names: dict[str, str] = Field(default_factory=dict)
+    cuenca: Optional[str] = None
+    nombre: str = "Zonificación Consorcio aprobada"
+    notes: Optional[str] = None
+
+
+class ApprovedZonesResponse(BaseModel):
+    id: str
+    nombre: str
+    version: int
+    cuenca: Optional[str] = None
+    feature_collection: dict = Field(..., alias="featureCollection")
+    assignments: dict[str, str] = Field(default_factory=dict)
+    zone_names: dict[str, str] = Field(default_factory=dict)
+    notes: Optional[str] = None
+    approved_at: str = Field(..., alias="approvedAt")
+    approved_by_id: Optional[str] = Field(default=None, alias="approvedById")
+    approved_by_name: Optional[str] = Field(default=None, alias="approvedByName")
+
+
+class MapLegendItemRequest(BaseModel):
+    label: str
+    color: str
+    detail: Optional[str] = None
+
+
+class RasterLegendGroupRequest(BaseModel):
+    label: str
+    items: list[MapLegendItemRequest] = Field(default_factory=list)
+
+
+class MapInfoRowRequest(BaseModel):
+    label: str
+    value: str
+
+
+class ZoneSummaryRowRequest(BaseModel):
+    name: str
+    subcuencas: int | str
+    area_ha: float | str = Field(..., alias="areaHa")
+    color: Optional[str] = None
+
+
+class ApprovedZonesMapPdfRequest(BaseModel):
+    title: str
+    subtitle: Optional[str] = None
+    map_image_data_url: str = Field(..., alias="mapImageDataUrl")
+    zone_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="zoneLegend")
+    road_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="roadLegend")
+    raster_legends: list[RasterLegendGroupRequest] = Field(default_factory=list, alias="rasterLegends")
+    info_rows: list[MapInfoRowRequest] = Field(default_factory=list, alias="infoRows")
+    zone_summary: list[ZoneSummaryRowRequest] = Field(default_factory=list, alias="zoneSummary")
+
+
 # Shared httpx client for tile proxying (avoids creating one per request)
 _tile_client = None
 
@@ -48,6 +113,32 @@ def _get_tile_client():
 def _get_repo() -> GeoRepository:
     """Dependency that provides the repository instance."""
     return GeoRepository()
+
+
+def _get_user_display_name(db: Session, user_id: uuid.UUID | None) -> str | None:
+    if user_id is None:
+        return None
+    user = db.get(User, user_id)
+    if user is None:
+        return None
+    full_name = " ".join(part for part in [user.nombre, user.apellido] if part).strip()
+    return full_name or user.email
+
+
+def _serialize_approved_zoning(db: Session, zoning) -> ApprovedZonesResponse:
+    return ApprovedZonesResponse(
+        id=str(zoning.id),
+        nombre=zoning.nombre,
+        version=zoning.version,
+        cuenca=zoning.cuenca,
+        featureCollection=zoning.feature_collection,
+        assignments=zoning.assignments or {},
+        zone_names=zoning.zone_names or {},
+        notes=zoning.notes,
+        approvedAt=zoning.approved_at.isoformat(),
+        approvedById=str(zoning.approved_by_id) if zoning.approved_by_id else None,
+        approvedByName=_get_user_display_name(db, zoning.approved_by_id),
+    )
 
 
 # Lazy import to avoid circular deps at module level.
@@ -159,6 +250,41 @@ def list_geo_layers(
     return {
         "items": [GeoLayerListResponse.model_validate(layer) for layer in items],
         "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.get("/layers/public", response_model=dict)
+def list_public_geo_layers(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    tipo: Optional[str] = None,
+    fuente: Optional[str] = None,
+    area_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    """List a safe public subset of geo layers.
+
+    Currently intended for non-authenticated base visualization only.
+    """
+    allowed_types = {"dem_raw"}
+    if tipo and tipo not in allowed_types:
+        return {"items": [], "total": 0, "page": page, "limit": limit}
+
+    items, total = repo.get_layers(
+        db,
+        page=page,
+        limit=limit,
+        tipo_filter=tipo or "dem_raw",
+        fuente_filter=fuente,
+        area_id_filter=area_id,
+    )
+    filtered_items = [layer for layer in items if layer.tipo in allowed_types]
+    return {
+        "items": [GeoLayerListResponse.model_validate(layer) for layer in filtered_items],
+        "total": len(filtered_items),
         "page": page,
         "limit": limit,
     }
@@ -345,6 +471,10 @@ def get_basins(
     ),
     limit: int = Query(default=500, ge=1, le=1000),
     cuenca: Optional[str] = Query(default=None, description="Filter by cuenca name"),
+    adjusted: bool = Query(
+        default=True,
+        description="Apply special visual basin adjustments like splitting sub-cuenca 9",
+    ),
     db: Session = Depends(get_db),
 ):
     """Get basin polygons as GeoJSON FeatureCollection from PostGIS (public).
@@ -369,13 +499,207 @@ def get_basins(
             )
 
     intel_repo = IntelligenceRepository()
-    return intel_repo.get_zonas_as_geojson(
+    feature_collection = intel_repo.get_zonas_as_geojson(
         db,
         bbox=parsed_bbox,
         tolerance=tolerance,
         limit=limit,
         cuenca_filter=cuenca,
     )
+    if not adjusted:
+        return feature_collection
+
+    from app.domains.geo.intelligence.zoning_suggestions import split_basins_for_display
+
+    adjusted_features = split_basins_for_display(feature_collection["features"])
+    feature_collection["features"] = adjusted_features
+    feature_collection["metadata"] = {
+        **feature_collection.get("metadata", {}),
+        "adjusted": True,
+    }
+    return feature_collection
+
+
+@router.get("/basins/suggested-zones", response_model=dict)
+def get_suggested_basin_zones(
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    db: Session = Depends(get_db),
+):
+    """Generate a draft territorial proposal from existing operational basins.
+
+    This does not modify any persisted zoning. It returns a draft suggestion
+    FeatureCollection so the frontend can review it separately from the
+    current/manual zoning.
+
+    Current strategy:
+    - Norte = norte + noroeste
+    - Monte Leña = ml
+    - Candil = candil
+    - southern/eastern `sin_asignar` basins are absorbed by Monte Leña or Candil
+    """
+    from app.domains.geo.intelligence.repository import IntelligenceRepository
+    from app.domains.geo.intelligence.zoning_suggestions import (
+        suggest_grouped_zones,
+    )
+
+    intel_repo = IntelligenceRepository()
+    basin_features = intel_repo.get_zonas_for_grouping(db, cuenca_filter=cuenca)
+    return suggest_grouped_zones(basin_features)
+
+
+@router.post("/basins/approved-zones/build", response_model=dict)
+def build_approved_basin_zones(
+    payload: ApprovedZonesBuildRequest,
+    db: Session = Depends(get_db),
+):
+    """Build an approved zoning preview from the current draft assignments."""
+    from app.domains.geo.intelligence.repository import IntelligenceRepository
+    from app.domains.geo.intelligence.zoning_suggestions import (
+        build_zones_from_assignments,
+    )
+
+    intel_repo = IntelligenceRepository()
+    basin_features = intel_repo.get_zonas_for_grouping(db, cuenca_filter=payload.cuenca)
+    return build_zones_from_assignments(
+        basin_features,
+        basin_zone_assignments=payload.assignments,
+        zone_names=payload.zone_names,
+    )
+
+
+@router.get("/basins/approved-zones/current", response_model=ApprovedZonesResponse | None)
+def get_current_approved_basin_zones(
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    """Return the persisted approved zoning currently in use."""
+    zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
+    if zoning is None:
+        return None
+    return _serialize_approved_zoning(db, zoning)
+
+
+@router.put("/basins/approved-zones/current", response_model=ApprovedZonesResponse)
+def save_current_approved_basin_zones(
+    payload: ApprovedZonesSaveRequest,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    user=Depends(_require_operator()),
+):
+    """Persist the approved zoning so all clients share the same version."""
+    zoning = repo.create_approved_zoning_version(
+        db,
+        nombre=payload.nombre,
+        cuenca=payload.cuenca,
+        feature_collection=payload.feature_collection,
+        assignments=payload.assignments,
+        zone_names=payload.zone_names,
+        approved_by_id=getattr(user, "id", None),
+        notes=payload.notes,
+    )
+    db.commit()
+    db.refresh(zoning)
+    return _serialize_approved_zoning(db, zoning)
+
+
+@router.delete("/basins/approved-zones/current", response_model=dict)
+def clear_current_approved_basin_zones(
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Delete the currently persisted approved zoning."""
+    deleted = repo.clear_active_approved_zoning(db, cuenca=cuenca)
+    db.commit()
+    return {"deleted": deleted}
+
+
+@router.get("/basins/approved-zones/history", response_model=list[ApprovedZonesResponse])
+def list_approved_basin_zone_history(
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    """Return approved zoning history including the current baseline/current active versions."""
+    items = repo.list_approved_zonings(db, cuenca=cuenca, limit=limit)
+    return [_serialize_approved_zoning(db, item) for item in items]
+
+
+@router.get("/basins/approved-zones/current/export-pdf")
+def export_current_approved_basin_zones_pdf(
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    """Export the current approved zoning as a PDF report."""
+    from app.shared.pdf import build_approved_zoning_pdf, get_branding
+
+    zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
+    if zoning is None:
+        raise HTTPException(status_code=404, detail="No hay una zonificación aprobada activa")
+
+    branding = get_branding(db)
+    approved_by_name = _get_user_display_name(db, zoning.approved_by_id)
+    pdf_buffer = build_approved_zoning_pdf(
+        zoning,
+        branding,
+        approved_by_name=approved_by_name,
+    )
+
+    filename = f"zonificacion-aprobada-v{zoning.version}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
+@router.post("/basins/approved-zones/current/export-map-pdf")
+def export_current_map_approved_basin_zones_pdf(
+    payload: ApprovedZonesMapPdfRequest,
+    db: Session = Depends(get_db),
+):
+    """Export a cartographic PDF using a clean map capture plus external legends."""
+    from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
+
+    branding = get_branding(db)
+    pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
+    filename = "zonificacion-aprobada-mapa.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
+@router.post("/basins/approved-zones/{zoning_id}/restore", response_model=ApprovedZonesResponse)
+def restore_approved_basin_zone_version(
+    zoning_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    user=Depends(_require_operator()),
+):
+    """Create a new active version by restoring a historical approved zoning."""
+    source = repo.get_approved_zoning_by_id(db, zoning_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Versión de zonificación no encontrada")
+
+    restored = repo.create_approved_zoning_version(
+        db,
+        nombre=source.nombre,
+        cuenca=source.cuenca,
+        feature_collection=source.feature_collection,
+        assignments=source.assignments or {},
+        zone_names=source.zone_names or {},
+        approved_by_id=getattr(user, "id", None),
+        notes=f"Restaurada desde versión {source.version}",
+    )
+    db.commit()
+    db.refresh(restored)
+    return _serialize_approved_zoning(db, restored)
 
 
 # ──────────────────────────────────────────────

@@ -6,19 +6,31 @@
   position: relative;
 }
 
+.captureMode :global(.leaflet-control-container) {
+  display: none;
+}
+
 .legendPanel {
   position: absolute;
   bottom: var(--mantine-spacing-md);
   left: var(--mantine-spacing-md);
   z-index: 1000;
+  max-width: 300px;
+  background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
+  backdrop-filter: blur(6px);
 }
 
 .infoPanel {
   position: absolute;
-  top: var(--mantine-spacing-md);
+  top: calc(var(--mantine-spacing-md) + 108px);
   right: var(--mantine-spacing-md);
   z-index: 1000;
-  max-width: 280px;
+  width: min(360px, calc(100% - 32px));
+  max-width: 360px;
+  max-height: calc(100% - 124px);
+  overflow-y: auto;
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
 }
 
 .legendItemBorder {
@@ -38,9 +50,134 @@
   bottom: var(--mantine-spacing-md);
   right: var(--mantine-spacing-md);
   z-index: 1000;
-  background: rgba(255, 255, 255, 0.92);
+  background: light-dark(rgba(255, 255, 255, 0.92), rgba(36, 36, 36, 0.92));
+  backdrop-filter: blur(6px);
   max-height: 50vh;
   overflow-y: auto;
+}
+
+.topLeftPanel {
+  position: absolute;
+  top: var(--mantine-spacing-md);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.topLeftPanelOffset {
+  position: absolute;
+  top: calc(var(--mantine-spacing-md) + 60px);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.topRightPanel {
+  position: absolute;
+  top: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.topRightPanelOffset {
+  position: absolute;
+  top: calc(var(--mantine-spacing-md) + 72px);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.topRightPanelSecondOffset {
+  position: absolute;
+  top: calc(var(--mantine-spacing-md) + 136px);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.topRightPanelThirdOffset {
+  position: absolute;
+  top: calc(var(--mantine-spacing-md) + 220px);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.bottomLeftPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.bottomLeftPanelOffset {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 72px);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.bottomRightPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.bottomRightPanelOffset {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 72px);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+}
+
+.bottomCenterPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+
+.bottomCenterPanelOffset {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 72px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+
+.bottomCenterPanelSecondOffset {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 144px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+
+.bottomCenterPanelThirdOffset {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 216px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+
+.bottomToolbar {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  width: min(100% - 32px, 960px);
+}
+
+.bottomToolbarRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mantine-spacing-xs);
+  width: 100%;
 }
 
 .skeletonOverlay {
