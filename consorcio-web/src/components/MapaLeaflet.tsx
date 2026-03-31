@@ -101,9 +101,9 @@ import { API_URL, getAuthToken } from '../lib/api';
 import { formatDate } from '../lib/formatters';
 import styles from '../styles/components/map.module.css';
 
-// Layer names for cuencas (constant to prevent infinite re-renders)
-// Caminos are loaded separately via useCaminosColoreados
-const CUENCAS_LAYER_NAMES = ['zona', 'candil', 'ml', 'noroeste', 'norte'] as const;
+// Solo mantenemos la zona histórica manual desde GEE.
+// Las subcuencas operativas deben venir del backend/PostGIS.
+const GEE_LAYER_NAMES = ['zona'] as const;
 const IGN_HISTORIC_OVERLAY = {
   image: '/overlays/ign/altimetria_ign_consorcio.webp',
   bounds: [
@@ -914,7 +914,7 @@ export default function MapaLeaflet() {
 
   // Use centralized hook for loading GEE layers (sin caminos - se cargan aparte)
   const { layers: capas, loading: loadingCapas } = useGEELayers({
-    layerNames: CUENCAS_LAYER_NAMES,
+    layerNames: GEE_LAYER_NAMES,
   });
 
   // Caminos coloreados por consorcio caminero
@@ -1953,50 +1953,6 @@ export default function MapaLeaflet() {
                     },
                   });
                 }}
-              />
-            </LayersControl.Overlay>
-          )}
-
-          {!hasApprovedZones && capas.candil && (
-            <LayersControl.Overlay checked={sharedVisibleVectors.cuencas ?? false} name="Cuenca Candil">
-              <GeoJSON
-                key="candil"
-                data={capas.candil}
-                style={GEE_LAYER_STYLES.candil}
-                onEachFeature={onEachFeature}
-              />
-            </LayersControl.Overlay>
-          )}
-
-          {!hasApprovedZones && capas.ml && (
-            <LayersControl.Overlay checked={sharedVisibleVectors.cuencas ?? false} name="Cuenca ML">
-              <GeoJSON
-                key="ml"
-                data={capas.ml}
-                style={GEE_LAYER_STYLES.ml}
-                onEachFeature={onEachFeature}
-              />
-            </LayersControl.Overlay>
-          )}
-
-          {!hasApprovedZones && capas.noroeste && (
-            <LayersControl.Overlay checked={sharedVisibleVectors.cuencas ?? false} name="Cuenca Noroeste">
-              <GeoJSON
-                key="noroeste"
-                data={capas.noroeste}
-                style={GEE_LAYER_STYLES.noroeste}
-                onEachFeature={onEachFeature}
-              />
-            </LayersControl.Overlay>
-          )}
-
-          {!hasApprovedZones && capas.norte && (
-            <LayersControl.Overlay checked={sharedVisibleVectors.cuencas ?? false} name="Cuenca Norte">
-              <GeoJSON
-                key="norte"
-                data={capas.norte}
-                style={GEE_LAYER_STYLES.norte}
-                onEachFeature={onEachFeature}
               />
             </LayersControl.Overlay>
           )}
