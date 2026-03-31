@@ -579,6 +579,7 @@ async def import_basins_geojson(
         raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
 
     from shapely.geometry import shape as shapely_shape
+    from shapely.ops import unary_union
 
     replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
 
@@ -600,7 +601,15 @@ async def import_basins_geojson(
         cuenca = str(props.get("cuenca") or "sin_asignar")
         nombre = str(props.get("nombre") or f"Subcuenca {index}")
         superficie_ha = float(props.get("superficie_ha") or 0.0)
-        geom_wkt = shapely_shape(geometry).wkt
+        geom_shape = shapely_shape(geometry)
+        if geom_shape.geom_type == "MultiPolygon":
+            merged = unary_union(geom_shape)
+            if merged.geom_type == "Polygon":
+                geom_shape = merged
+            elif merged.geom_type == "MultiPolygon":
+                geom_shape = max(merged.geoms, key=lambda part: part.area)
+
+        geom_wkt = geom_shape.wkt
 
         db.add(
             ZonaOperativa(
@@ -730,6 +739,7 @@ async def import_current_approved_basin_zones(
     assignments: dict[str, str] = {}
     approved_name = "Zonificación Consorcio aprobada"
     approved_cuenca: str | None = None
+    previous_active: object | None = None
 
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
@@ -759,6 +769,8 @@ async def import_current_approved_basin_zones(
         zone_id = str(source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}")
         zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
         zone_names[zone_id] = zone_name
+
+    previous_active = repo.get_active_approved_zoning(db, cuenca=approved_cuenca)
 
     zoning = repo.create_approved_zoning_version(
         db,
