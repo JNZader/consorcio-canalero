@@ -1,8 +1,11 @@
 """FastAPI router for the geo domain."""
 
 import asyncio
+import io
 import json
+import shutil
 import uuid
+import zipfile
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -21,6 +24,7 @@ from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.intelligence.repository import IntelligenceRepository
+from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import (
     AnalisisGeoCreate,
@@ -73,6 +77,13 @@ class GeoJsonImportResponse(BaseModel):
     imported_count: int = Field(..., alias="importedCount")
     replaced_count: int = Field(..., alias="replacedCount")
     feature_type: str = Field(..., alias="featureType")
+    metadata: dict = Field(default_factory=dict)
+
+
+class GeoBundleImportResponse(BaseModel):
+    vectors_imported: dict = Field(default_factory=dict, alias="vectorsImported")
+    layers_imported: int = Field(..., alias="layersImported")
+    bundle_name: str = Field(..., alias="bundleName")
     metadata: dict = Field(default_factory=dict)
 
 
@@ -183,6 +194,218 @@ def _extract_source_properties(properties: dict | None) -> dict:
         return {}
     source_properties = properties.get("source_properties")
     return source_properties if isinstance(source_properties, dict) else properties
+
+
+def _get_geo_bundle_storage_dir() -> Path:
+    candidates = [
+        Path("/app/data/geo_bundles"),
+        Path(__file__).resolve().parents[3] / "data" / "geo_bundles",
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+    raise HTTPException(status_code=500, detail="No se pudo preparar el directorio de bundles geo")
+
+
+def _build_zonas_operativas_export(db: Session) -> dict:
+    intel_repo = IntelligenceRepository()
+    return intel_repo.get_zonas_as_geojson(db, tolerance=0.0, limit=10000)
+
+
+def _build_approved_zoning_export(db: Session, repo: GeoRepository) -> dict | None:
+    zoning = repo.get_active_approved_zoning(db)
+    if zoning is None:
+        return None
+    serialized = _serialize_approved_zoning(db, zoning)
+    return serialized.model_dump(by_alias=True)
+
+
+def _normalize_polygon_wkt(geometry: dict) -> str:
+    from shapely.geometry import shape as shapely_shape
+    from shapely.ops import unary_union
+
+    geom_shape = shapely_shape(geometry)
+    if geom_shape.geom_type == "MultiPolygon":
+        merged = unary_union(geom_shape)
+        if merged.geom_type == "Polygon":
+            geom_shape = merged
+        elif merged.geom_type == "MultiPolygon":
+            geom_shape = max(merged.geoms, key=lambda part: part.area)
+    return geom_shape.wkt
+
+
+def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
+    features = payload.get("features", [])
+    if not features:
+        raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
+
+    replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
+
+    imported_count = 0
+    cuencas = Counter()
+    for index, feature in enumerate(features, start=1):
+        geometry = feature.get("geometry")
+        if not geometry:
+            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+
+        geometry_type = geometry.get("type")
+        if geometry_type not in {"Polygon", "MultiPolygon"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
+            )
+
+        props = feature.get("properties") or {}
+        cuenca = str(props.get("cuenca") or "sin_asignar")
+        nombre = str(props.get("nombre") or f"Subcuenca {index}")
+        superficie_ha = float(props.get("superficie_ha") or 0.0)
+        geom_wkt = _normalize_polygon_wkt(geometry)
+
+        db.add(
+            ZonaOperativa(
+                id=uuid.UUID(str(props["id"])) if props.get("id") else uuid.uuid4(),
+                nombre=nombre,
+                geometria=f"SRID=4326;{geom_wkt}",
+                cuenca=cuenca,
+                superficie_ha=superficie_ha,
+            )
+        )
+        imported_count += 1
+        cuencas[cuenca] += 1
+
+    return {
+        "imported_count": imported_count,
+        "replaced_count": replaced_count,
+        "cuencas": dict(cuencas),
+    }
+
+
+def _import_approved_zoning_payload(
+    db: Session,
+    repo: GeoRepository,
+    payload: dict,
+    *,
+    approved_by_id: uuid.UUID | None,
+    notes: str | None = None,
+) -> dict:
+    feature_collection = payload.get("featureCollection")
+    if isinstance(feature_collection, dict):
+        normalized_features = feature_collection.get("features", [])
+        zone_names = payload.get("zone_names") or payload.get("zoneNames") or {}
+        assignments = payload.get("assignments") or {}
+        approved_name = str(payload.get("nombre") or "Zonificación Consorcio aprobada")
+        approved_cuenca = payload.get("cuenca")
+    else:
+        features = payload.get("features", [])
+        if not features:
+            raise HTTPException(status_code=400, detail="El archivo no contiene zonas aprobadas")
+
+        normalized_features = []
+        zone_names = {}
+        assignments = {}
+        approved_name = "Zonificación Consorcio aprobada"
+        approved_cuenca = None
+
+        for index, feature in enumerate(features, start=1):
+            geometry = feature.get("geometry")
+            if not geometry:
+                raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+
+            geometry_type = geometry.get("type")
+            if geometry_type not in {"Polygon", "MultiPolygon"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
+                )
+
+            props = feature.get("properties") or {}
+            source_properties = _extract_source_properties(props)
+            normalized_features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geometry,
+                    "properties": source_properties,
+                }
+            )
+
+            approved_name = str(props.get("approved_nombre") or approved_name)
+            approved_cuenca = props.get("approved_cuenca") or approved_cuenca
+            zone_id = str(source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}")
+            zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
+            zone_names[zone_id] = zone_name
+
+    previous_active = repo.get_active_approved_zoning(db, cuenca=approved_cuenca)
+    zoning = repo.create_approved_zoning_version(
+        db,
+        nombre=approved_name,
+        cuenca=approved_cuenca,
+        feature_collection={
+            "type": "FeatureCollection",
+            "features": normalized_features,
+        },
+        assignments=assignments,
+        zone_names=zone_names,
+        approved_by_id=approved_by_id,
+        notes=notes,
+    )
+    return {
+        "imported_count": len(normalized_features),
+        "replaced_count": 1 if previous_active else 0,
+        "version": zoning.version,
+        "nombre": zoning.nombre,
+        "cuenca": zoning.cuenca,
+    }
+
+
+def _upsert_bundle_layer(
+    db: Session,
+    *,
+    nombre: str,
+    tipo: str,
+    fuente: str,
+    archivo_path: str,
+    formato: str,
+    srid: int,
+    bbox: dict | list | None,
+    metadata_extra: dict | None,
+    area_id: str | None,
+) -> GeoLayer:
+    existing = None
+    if area_id:
+        existing = db.query(GeoLayer).filter(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id).one_or_none()
+    else:
+        existing = (
+            db.query(GeoLayer)
+            .filter(GeoLayer.tipo == tipo, GeoLayer.nombre == nombre, GeoLayer.area_id.is_(None))
+            .one_or_none()
+        )
+
+    if existing:
+        existing.nombre = nombre
+        existing.fuente = fuente
+        existing.archivo_path = archivo_path
+        existing.formato = formato
+        existing.srid = srid
+        existing.bbox = bbox
+        existing.metadata_extra = metadata_extra
+        return existing
+
+    layer = GeoLayer(
+        nombre=nombre,
+        tipo=tipo,
+        fuente=fuente,
+        archivo_path=archivo_path,
+        formato=formato,
+        srid=srid,
+        bbox=bbox,
+        metadata_extra=metadata_extra,
+        area_id=area_id,
+    )
+    db.add(layer)
+    return layer
 
 
 # Lazy import to avoid circular deps at module level.
@@ -573,66 +796,171 @@ async def import_basins_geojson(
     """Replace operational basins from a GeoJSON FeatureCollection."""
     _validate_geojson_filename(file.filename)
     payload = _read_geojson_upload(await file.read())
-
-    features = payload.get("features", [])
-    if not features:
-        raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
-
-    from shapely.geometry import shape as shapely_shape
-    from shapely.ops import unary_union
-
-    replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
-
-    imported_count = 0
-    cuencas = Counter()
-    for index, feature in enumerate(features, start=1):
-        geometry = feature.get("geometry")
-        if not geometry:
-            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
-
-        geometry_type = geometry.get("type")
-        if geometry_type not in {"Polygon", "MultiPolygon"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
-            )
-
-        props = feature.get("properties") or {}
-        cuenca = str(props.get("cuenca") or "sin_asignar")
-        nombre = str(props.get("nombre") or f"Subcuenca {index}")
-        superficie_ha = float(props.get("superficie_ha") or 0.0)
-        geom_shape = shapely_shape(geometry)
-        if geom_shape.geom_type == "MultiPolygon":
-            merged = unary_union(geom_shape)
-            if merged.geom_type == "Polygon":
-                geom_shape = merged
-            elif merged.geom_type == "MultiPolygon":
-                geom_shape = max(merged.geoms, key=lambda part: part.area)
-
-        geom_wkt = geom_shape.wkt
-
-        db.add(
-            ZonaOperativa(
-                id=uuid.UUID(str(props["id"])) if props.get("id") else uuid.uuid4(),
-                nombre=nombre,
-                geometria=f"SRID=4326;{geom_wkt}",
-                cuenca=cuenca,
-                superficie_ha=superficie_ha,
-            )
-        )
-        imported_count += 1
-        cuencas[cuenca] += 1
-
+    result = _import_zonas_operativas_payload(db, payload)
     db.commit()
 
     return GeoJsonImportResponse(
-        importedCount=imported_count,
-        replacedCount=replaced_count,
+        importedCount=result["imported_count"],
+        replacedCount=result["replaced_count"],
         featureType="zonas_operativas",
         metadata={
             "filename": file.filename,
-            "cuencas": dict(cuencas),
+            "cuencas": result["cuencas"],
         },
+    )
+
+
+@router.get("/bundle/export")
+def export_geo_bundle(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_admin()),
+):
+    """Export a geo bundle zip with vectors, active approved zoning and file-backed layers."""
+    zonas_payload = _build_zonas_operativas_export(db)
+    approved_payload = _build_approved_zoning_export(db, repo)
+    layers = db.query(GeoLayer).order_by(GeoLayer.created_at.asc()).all()
+
+    buffer = io.BytesIO()
+    manifest_layers = []
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr(
+            "vectors/zonas_operativas.geojson",
+            json.dumps(zonas_payload, ensure_ascii=False, indent=2),
+        )
+        if approved_payload is not None:
+            bundle.writestr(
+                "vectors/approved_zoning.json",
+                json.dumps(approved_payload, ensure_ascii=False, indent=2),
+            )
+
+        for layer in layers:
+            file_path = Path(layer.archivo_path)
+            if not file_path.exists() or not file_path.is_file():
+                continue
+
+            archive_path = f"layers/{layer.id}_{file_path.name}"
+            bundle.write(file_path, archive_path)
+            manifest_layers.append(
+                {
+                    "nombre": layer.nombre,
+                    "tipo": layer.tipo,
+                    "fuente": layer.fuente,
+                    "formato": layer.formato,
+                    "srid": layer.srid,
+                    "bbox": layer.bbox,
+                    "metadata_extra": layer.metadata_extra,
+                    "area_id": layer.area_id,
+                    "archive_path": archive_path,
+                    "original_path": layer.archivo_path,
+                }
+            )
+        manifest_payload = {
+            "format": "geo-bundle-v1",
+            "vectors": {
+                "zonas_operativas": "vectors/zonas_operativas.geojson",
+                "approved_zoning": "vectors/approved_zoning.json" if approved_payload else None,
+            },
+            "layers": manifest_layers,
+        }
+        bundle.writestr("manifest.json", json.dumps(manifest_payload, ensure_ascii=False, indent=2))
+
+    buffer.seek(0)
+    filename = f"geo_bundle_{date.today().isoformat()}.zip"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/bundle/import", response_model=GeoBundleImportResponse)
+async def import_geo_bundle(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    user=Depends(_require_admin()),
+):
+    """Import a geo bundle zip with vectors and file-backed layers."""
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Debe subir un archivo .zip")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacio")
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="Bundle ZIP invalido") from exc
+
+    try:
+        with archive:
+            try:
+                manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            except KeyError as exc:
+                raise HTTPException(status_code=400, detail="El bundle no contiene manifest.json") from exc
+
+            bundle_dir = _get_geo_bundle_storage_dir() / f"import_{date.today().isoformat()}_{uuid.uuid4().hex[:8]}"
+            bundle_dir.mkdir(parents=True, exist_ok=True)
+
+            vectors_imported: dict[str, int] = {}
+
+            zonas_path = manifest.get("vectors", {}).get("zonas_operativas")
+            if zonas_path:
+                zonas_payload = json.loads(archive.read(zonas_path).decode("utf-8"))
+                zonas_result = _import_zonas_operativas_payload(db, zonas_payload)
+                vectors_imported["zonas_operativas"] = zonas_result["imported_count"]
+
+            approved_path = manifest.get("vectors", {}).get("approved_zoning")
+            if approved_path:
+                approved_payload = json.loads(archive.read(approved_path).decode("utf-8"))
+                approved_result = _import_approved_zoning_payload(
+                    db,
+                    repo,
+                    approved_payload,
+                    approved_by_id=getattr(user, "id", None),
+                    notes=f"Importado desde bundle: {file.filename}",
+                )
+                vectors_imported["zonificacion_aprobada"] = approved_result["imported_count"]
+
+            layers_imported = 0
+            for layer_entry in manifest.get("layers", []):
+                archive_path = layer_entry.get("archive_path")
+                if not archive_path:
+                    continue
+                target_path = bundle_dir / Path(archive_path).name
+                with archive.open(archive_path) as source, target_path.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+
+                _upsert_bundle_layer(
+                    db,
+                    nombre=str(layer_entry.get("nombre") or target_path.stem),
+                    tipo=str(layer_entry.get("tipo") or "dem_raw"),
+                    fuente=str(layer_entry.get("fuente") or "manual"),
+                    archivo_path=str(target_path),
+                    formato=str(layer_entry.get("formato") or target_path.suffix.lstrip(".") or "geotiff"),
+                    srid=int(layer_entry.get("srid") or 4326),
+                    bbox=layer_entry.get("bbox"),
+                    metadata_extra=layer_entry.get("metadata_extra"),
+                    area_id=layer_entry.get("area_id"),
+                )
+                layers_imported += 1
+
+            db.commit()
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return GeoBundleImportResponse(
+        vectorsImported=vectors_imported,
+        layersImported=layers_imported,
+        bundleName=file.filename,
+        metadata={"bundle_dir": str(bundle_dir), "format": manifest.get("format")},
     )
 
 
@@ -729,73 +1057,24 @@ async def import_current_approved_basin_zones(
     """Import an approved zoning FeatureCollection from GeoJSON."""
     _validate_geojson_filename(file.filename)
     payload = _read_geojson_upload(await file.read())
-
-    features = payload.get("features", [])
-    if not features:
-        raise HTTPException(status_code=400, detail="El archivo no contiene zonas aprobadas")
-
-    normalized_features = []
-    zone_names: dict[str, str] = {}
-    assignments: dict[str, str] = {}
-    approved_name = "Zonificación Consorcio aprobada"
-    approved_cuenca: str | None = None
-    previous_active: object | None = None
-
-    for index, feature in enumerate(features, start=1):
-        geometry = feature.get("geometry")
-        if not geometry:
-            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
-
-        geometry_type = geometry.get("type")
-        if geometry_type not in {"Polygon", "MultiPolygon"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
-            )
-
-        props = feature.get("properties") or {}
-        source_properties = _extract_source_properties(props)
-        normalized_features.append(
-            {
-                "type": "Feature",
-                "geometry": geometry,
-                "properties": source_properties,
-            }
-        )
-
-        approved_name = str(props.get("approved_nombre") or approved_name)
-        approved_cuenca = props.get("approved_cuenca") or approved_cuenca
-
-        zone_id = str(source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}")
-        zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
-        zone_names[zone_id] = zone_name
-
-    previous_active = repo.get_active_approved_zoning(db, cuenca=approved_cuenca)
-
-    zoning = repo.create_approved_zoning_version(
+    result = _import_approved_zoning_payload(
         db,
-        nombre=approved_name,
-        cuenca=approved_cuenca,
-        feature_collection={
-            "type": "FeatureCollection",
-            "features": normalized_features,
-        },
-        assignments=assignments,
-        zone_names=zone_names,
+        repo,
+        payload,
         approved_by_id=getattr(user, "id", None),
         notes=f"Importado desde GeoJSON: {file.filename}",
     )
     db.commit()
 
     return GeoJsonImportResponse(
-        importedCount=len(normalized_features),
-        replacedCount=1 if previous_active else 0,
+        importedCount=result["imported_count"],
+        replacedCount=result["replaced_count"],
         featureType="zonificacion_aprobada",
         metadata={
             "filename": file.filename,
-            "version": zoning.version,
-            "nombre": zoning.nombre,
-            "cuenca": zoning.cuenca,
+            "version": result["version"],
+            "nombre": result["nombre"],
+            "cuenca": result["cuenca"],
         },
     )
 

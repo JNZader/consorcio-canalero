@@ -40,8 +40,11 @@ export default function AdminDashboard() {
   const [exporting, setExporting] = useState(false);
   const [basinsFile, setBasinsFile] = useState<File | null>(null);
   const [approvedZonesFile, setApprovedZonesFile] = useState<File | null>(null);
+  const [bundleFile, setBundleFile] = useState<File | null>(null);
   const [importingBasins, setImportingBasins] = useState(false);
   const [importingApprovedZones, setImportingApprovedZones] = useState(false);
+  const [exportingBundle, setExportingBundle] = useState(false);
+  const [importingBundle, setImportingBundle] = useState(false);
 
   const {
     reports: recentReports,
@@ -177,6 +180,93 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleExportBundle = async () => {
+    setExportingBundle(true);
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/api/v2/geo/bundle/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error al exportar bundle (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `geo_bundle_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+
+      notifications.show({
+        title: 'Bundle exportado',
+        message: 'Se descargó el bundle geoespacial correctamente.',
+        color: 'green',
+      });
+    } catch (error) {
+      logger.error('Bundle export error:', error);
+      notifications.show({
+        title: 'Error al exportar bundle',
+        message: error instanceof Error ? error.message : 'No se pudo exportar el bundle.',
+        color: 'red',
+      });
+    } finally {
+      setExportingBundle(false);
+    }
+  };
+
+  const handleImportBundle = async () => {
+    if (!bundleFile) {
+      notifications.show({
+        title: 'Archivo requerido',
+        message: 'Selecciona un archivo ZIP antes de importar.',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    setImportingBundle(true);
+    try {
+      const token = await getAuthToken();
+      const formData = new FormData();
+      formData.append('file', bundleFile);
+
+      const response = await fetch(`${API_URL}/api/v2/geo/bundle/import`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { layersImported?: number; vectorsImported?: Record<string, number>; detail?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || `Error al importar bundle (${response.status})`);
+      }
+
+      notifications.show({
+        title: 'Bundle importado',
+        message: `Vectores restaurados y ${payload?.layersImported ?? 0} capas importadas.`,
+        color: 'green',
+      });
+      setBundleFile(null);
+    } catch (error) {
+      logger.error('Bundle import error:', error);
+      notifications.show({
+        title: 'Error al importar bundle',
+        message: error instanceof Error ? error.message : 'No se pudo importar el bundle.',
+        color: 'red',
+      });
+    } finally {
+      setImportingBundle(false);
+    }
+  };
+
   if (reportsLoading) {
     return <LoadingState message="Cargando dashboard..." />;
   }
@@ -278,6 +368,43 @@ export default function AdminDashboard() {
             </Stack>
           </Paper>
         </SimpleGrid>
+      </Paper>
+
+      <Paper shadow="sm" p="md" radius="md" withBorder mb="xl">
+        <Stack gap="md">
+          <div>
+            <Title order={4}>Bundle geo</Title>
+            <Text c="gray.6" size="sm">
+              Exporta o importa un paquete completo con subcuencas, zonificación aprobada y capas
+              geo respaldadas por archivos.
+            </Text>
+          </div>
+
+          <Group align="flex-end">
+            <Button
+              variant="filled"
+              color="indigo"
+              leftSection={<IconDownload size={18} />}
+              onClick={handleExportBundle}
+              loading={exportingBundle}
+            >
+              Exportar bundle geo
+            </Button>
+
+            <FileInput
+              value={bundleFile}
+              onChange={setBundleFile}
+              accept=".zip,application/zip"
+              placeholder="Seleccionar bundle ZIP"
+              clearable
+              style={{ flex: 1, minWidth: 260 }}
+            />
+
+            <Button onClick={handleImportBundle} loading={importingBundle} disabled={!bundleFile}>
+              Importar bundle geo
+            </Button>
+          </Group>
+        </Stack>
       </Paper>
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} mb="xl">
