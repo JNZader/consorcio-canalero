@@ -1,21 +1,26 @@
 """FastAPI router for the geo domain."""
 
 import asyncio
+import json
 import uuid
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 from app.core.logging import get_logger
 from app.db.session import get_db
+from app.domains.geo.intelligence.models import ZonaOperativa
+from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import (
     AnalisisGeoCreate,
@@ -62,6 +67,13 @@ class ApprovedZonesResponse(BaseModel):
     approved_at: str = Field(..., alias="approvedAt")
     approved_by_id: Optional[str] = Field(default=None, alias="approvedById")
     approved_by_name: Optional[str] = Field(default=None, alias="approvedByName")
+
+
+class GeoJsonImportResponse(BaseModel):
+    imported_count: int = Field(..., alias="importedCount")
+    replaced_count: int = Field(..., alias="replacedCount")
+    feature_type: str = Field(..., alias="featureType")
+    metadata: dict = Field(default_factory=dict)
 
 
 class MapLegendItemRequest(BaseModel):
@@ -138,6 +150,39 @@ def _serialize_approved_zoning(db: Session, zoning) -> ApprovedZonesResponse:
         approvedById=str(zoning.approved_by_id) if zoning.approved_by_id else None,
         approvedByName=_get_user_display_name(db, zoning.approved_by_id),
     )
+
+
+def _validate_geojson_filename(filename: str | None) -> None:
+    if not filename:
+        raise HTTPException(status_code=400, detail="Nombre de archivo requerido")
+    if not filename.lower().endswith((".geojson", ".json")):
+        raise HTTPException(status_code=400, detail="Formato no soportado. Use archivos .geojson o .json")
+
+
+def _read_geojson_upload(content: bytes) -> dict:
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacio")
+
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="GeoJSON invalido") from exc
+
+    if payload.get("type") != "FeatureCollection":
+        raise HTTPException(status_code=400, detail="El archivo debe ser un FeatureCollection GeoJSON")
+
+    features = payload.get("features")
+    if not isinstance(features, list):
+        raise HTTPException(status_code=400, detail="El archivo GeoJSON no contiene una lista de features")
+
+    return payload
+
+
+def _extract_source_properties(properties: dict | None) -> dict:
+    if not isinstance(properties, dict):
+        return {}
+    source_properties = properties.get("source_properties")
+    return source_properties if isinstance(source_properties, dict) else properties
 
 
 # Lazy import to avoid circular deps at module level.
@@ -519,6 +564,69 @@ def get_basins(
     return feature_collection
 
 
+@router.post("/basins/import", response_model=GeoJsonImportResponse)
+async def import_basins_geojson(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+):
+    """Replace operational basins from a GeoJSON FeatureCollection."""
+    _validate_geojson_filename(file.filename)
+    payload = _read_geojson_upload(await file.read())
+
+    features = payload.get("features", [])
+    if not features:
+        raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
+
+    from shapely.geometry import shape as shapely_shape
+
+    replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
+
+    imported_count = 0
+    cuencas = Counter()
+    for index, feature in enumerate(features, start=1):
+        geometry = feature.get("geometry")
+        if not geometry:
+            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+
+        geometry_type = geometry.get("type")
+        if geometry_type not in {"Polygon", "MultiPolygon"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
+            )
+
+        props = feature.get("properties") or {}
+        cuenca = str(props.get("cuenca") or "sin_asignar")
+        nombre = str(props.get("nombre") or f"Subcuenca {index}")
+        superficie_ha = float(props.get("superficie_ha") or 0.0)
+        geom_wkt = shapely_shape(geometry).wkt
+
+        db.add(
+            ZonaOperativa(
+                id=uuid.UUID(str(props["id"])) if props.get("id") else uuid.uuid4(),
+                nombre=nombre,
+                geometria=f"SRID=4326;{geom_wkt}",
+                cuenca=cuenca,
+                superficie_ha=superficie_ha,
+            )
+        )
+        imported_count += 1
+        cuencas[cuenca] += 1
+
+    db.commit()
+
+    return GeoJsonImportResponse(
+        importedCount=imported_count,
+        replacedCount=replaced_count,
+        featureType="zonas_operativas",
+        metadata={
+            "filename": file.filename,
+            "cuencas": dict(cuencas),
+        },
+    )
+
+
 @router.get("/basins/suggested-zones", response_model=dict)
 def get_suggested_basin_zones(
     cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
@@ -600,6 +708,84 @@ def save_current_approved_basin_zones(
     db.commit()
     db.refresh(zoning)
     return _serialize_approved_zoning(db, zoning)
+
+
+@router.post("/basins/approved-zones/import", response_model=GeoJsonImportResponse)
+async def import_current_approved_basin_zones(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    user=Depends(_require_admin()),
+):
+    """Import an approved zoning FeatureCollection from GeoJSON."""
+    _validate_geojson_filename(file.filename)
+    payload = _read_geojson_upload(await file.read())
+
+    features = payload.get("features", [])
+    if not features:
+        raise HTTPException(status_code=400, detail="El archivo no contiene zonas aprobadas")
+
+    normalized_features = []
+    zone_names: dict[str, str] = {}
+    assignments: dict[str, str] = {}
+    approved_name = "Zonificación Consorcio aprobada"
+    approved_cuenca: str | None = None
+
+    for index, feature in enumerate(features, start=1):
+        geometry = feature.get("geometry")
+        if not geometry:
+            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+
+        geometry_type = geometry.get("type")
+        if geometry_type not in {"Polygon", "MultiPolygon"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
+            )
+
+        props = feature.get("properties") or {}
+        source_properties = _extract_source_properties(props)
+        normalized_features.append(
+            {
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": source_properties,
+            }
+        )
+
+        approved_name = str(props.get("approved_nombre") or approved_name)
+        approved_cuenca = props.get("approved_cuenca") or approved_cuenca
+
+        zone_id = str(source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}")
+        zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
+        zone_names[zone_id] = zone_name
+
+    zoning = repo.create_approved_zoning_version(
+        db,
+        nombre=approved_name,
+        cuenca=approved_cuenca,
+        feature_collection={
+            "type": "FeatureCollection",
+            "features": normalized_features,
+        },
+        assignments=assignments,
+        zone_names=zone_names,
+        approved_by_id=getattr(user, "id", None),
+        notes=f"Importado desde GeoJSON: {file.filename}",
+    )
+    db.commit()
+
+    return GeoJsonImportResponse(
+        importedCount=len(normalized_features),
+        replacedCount=1 if previous_active else 0,
+        featureType="zonificacion_aprobada",
+        metadata={
+            "filename": file.filename,
+            "version": zoning.version,
+            "nombre": zoning.nombre,
+            "cuenca": zoning.cuenca,
+        },
+    )
 
 
 @router.delete("/basins/approved-zones/current", response_model=dict)

@@ -3,6 +3,7 @@ import {
   Button,
   Container,
   Divider,
+  FileInput,
   Group,
   Paper,
   Progress,
@@ -37,6 +38,10 @@ const DEFAULT_CUENCA_NAMES: Record<string, string> = {
 export default function AdminDashboard() {
   const config = useConfigStore((state) => state.config);
   const [exporting, setExporting] = useState(false);
+  const [basinsFile, setBasinsFile] = useState<File | null>(null);
+  const [approvedZonesFile, setApprovedZonesFile] = useState<File | null>(null);
+  const [importingBasins, setImportingBasins] = useState(false);
+  const [importingApprovedZones, setImportingApprovedZones] = useState(false);
 
   const {
     reports: recentReports,
@@ -89,6 +94,89 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleImportGeoJson = async (
+    file: File | null,
+    endpoint: string,
+    successTitle: string,
+    onSuccess?: () => void
+  ) => {
+    if (!file) {
+      notifications.show({
+        title: 'Archivo requerido',
+        message: 'Selecciona un archivo GeoJSON antes de importar.',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    const token = await getAuthToken();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { importedCount?: number; metadata?: Record<string, unknown>; detail?: string }
+      | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.detail || `Error al importar (${response.status})`);
+    }
+
+    notifications.show({
+      title: successTitle,
+      message: `Se importaron ${payload?.importedCount ?? 0} features correctamente.`,
+      color: 'green',
+    });
+    onSuccess?.();
+  };
+
+  const handleImportBasins = async () => {
+    setImportingBasins(true);
+    try {
+      await handleImportGeoJson(
+        basinsFile,
+        '/api/v2/geo/basins/import',
+        'Subcuencas importadas',
+        () => setBasinsFile(null)
+      );
+    } catch (error) {
+      logger.error('Basins import error:', error);
+      notifications.show({
+        title: 'Error al importar subcuencas',
+        message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
+        color: 'red',
+      });
+    } finally {
+      setImportingBasins(false);
+    }
+  };
+
+  const handleImportApprovedZones = async () => {
+    setImportingApprovedZones(true);
+    try {
+      await handleImportGeoJson(
+        approvedZonesFile,
+        '/api/v2/geo/basins/approved-zones/import',
+        'Zonificación aprobada importada',
+        () => setApprovedZonesFile(null)
+      );
+    } catch (error) {
+      logger.error('Approved zones import error:', error);
+      notifications.show({
+        title: 'Error al importar zonificación',
+        message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
+        color: 'red',
+      });
+    } finally {
+      setImportingApprovedZones(false);
+    }
+  };
+
   if (reportsLoading) {
     return <LoadingState message="Cargando dashboard..." />;
   }
@@ -130,6 +218,67 @@ export default function AdminDashboard() {
       <DashboardEstadisticas />
 
       <Divider my="xl" label="Detalle de Operaciones" labelPosition="center" />
+
+      <Paper shadow="sm" p="md" radius="md" withBorder mb="xl">
+        <Group justify="space-between" align="flex-start" mb="md">
+          <div>
+            <Title order={4}>Importación geoespacial</Title>
+            <Text c="gray.6" size="sm">
+              Reemplaza subcuencas operativas y carga una nueva zonificación aprobada desde archivos
+              GeoJSON exportados.
+            </Text>
+          </div>
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          <Paper withBorder p="md" radius="md">
+            <Stack gap="sm">
+              <div>
+                <Text fw={600}>Subcuencas operativas</Text>
+                <Text size="sm" c="gray.6">
+                  Importa <code>zonas_operativas.geojson</code> y reemplaza las subcuencas actuales.
+                </Text>
+              </div>
+              <FileInput
+                value={basinsFile}
+                onChange={setBasinsFile}
+                accept=".geojson,.json,application/geo+json,application/json"
+                placeholder="Seleccionar GeoJSON"
+                clearable
+              />
+              <Button onClick={handleImportBasins} loading={importingBasins} disabled={!basinsFile}>
+                Importar subcuencas
+              </Button>
+            </Stack>
+          </Paper>
+
+          <Paper withBorder p="md" radius="md">
+            <Stack gap="sm">
+              <div>
+                <Text fw={600}>Zonificación aprobada</Text>
+                <Text size="sm" c="gray.6">
+                  Importa <code>zonificacion_aprobada.geojson</code> como nueva versión aprobada.
+                </Text>
+              </div>
+              <FileInput
+                value={approvedZonesFile}
+                onChange={setApprovedZonesFile}
+                accept=".geojson,.json,application/geo+json,application/json"
+                placeholder="Seleccionar GeoJSON"
+                clearable
+              />
+              <Button
+                onClick={handleImportApprovedZones}
+                loading={importingApprovedZones}
+                disabled={!approvedZonesFile}
+                color="teal"
+              >
+                Importar zonificación
+              </Button>
+            </Stack>
+          </Paper>
+        </SimpleGrid>
+      </Paper>
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} mb="xl">
         {/* Inundacion por Cuenca - Datos reales del API */}
