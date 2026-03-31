@@ -198,7 +198,7 @@ def _extract_source_properties(properties: dict | None) -> dict:
 
 def _get_geo_bundle_storage_dir() -> Path:
     candidates = [
-        Path("/app/data/geo_bundles"),
+        Path("/data/geo/bundles"),
         Path(__file__).resolve().parents[3] / "data" / "geo_bundles",
     ]
     for candidate in candidates:
