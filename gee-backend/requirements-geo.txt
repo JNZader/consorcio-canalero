@@ -12,6 +12,9 @@ rio-cogeo>=5.0.0
 # WhiteboxTools (hydrology)
 whitebox>=2.3.0
 
+# Zonal statistics
+rasterstats>=0.20.0
+
 # Vector/geometry
 geopandas>=1.0.0
 shapely>=2.0.0
