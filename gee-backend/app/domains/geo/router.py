@@ -1749,6 +1749,118 @@ async def get_historic_flood_tiles(
         )
 
 
+# ── Zonal Statistics ──────────────────────────────────────────────
+
+
+class ZonalStatsRequest(BaseModel):
+    """Request body for zonal statistics computation."""
+
+    layer_tipo: str = Field(
+        ...,
+        description="GeoLayer type to use as raster (e.g. slope, twi, hand, flow_acc)",
+    )
+    zona_source: str = Field(
+        default="zonas_operativas",
+        description="Source table for zones: zonas_operativas, assets, or denuncias",
+    )
+    area_id: str | None = Field(
+        default=None,
+        description="Filter GeoLayer by area_id",
+    )
+    stats: list[str] | None = Field(
+        default=None,
+        description="Statistics to compute (default: min, max, mean, std, median, count, sum)",
+    )
+
+
+@router.post("/zonal-stats")
+def compute_zonal_statistics(
+    body: ZonalStatsRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Compute raster statistics per zone geometry.
+
+    Crosses a raster layer (from the DEM pipeline) with vector zones
+    (zonas_operativas, assets, or denuncias) and returns per-zone stats.
+    """
+    from geoalchemy2.functions import ST_AsText
+
+    # 1. Find the raster layer
+    repo = _get_repo()
+    layer = (
+        db.query(GeoLayer)
+        .filter(GeoLayer.tipo == body.layer_tipo)
+        .order_by(GeoLayer.created_at.desc())
+    )
+    if body.area_id:
+        layer = layer.filter(GeoLayer.area_id == body.area_id)
+    layer = layer.first()
+
+    if not layer:
+        raise NotFoundError(f"No GeoLayer found for tipo={body.layer_tipo}")
+
+    # Prefer COG path if available
+    raster_path = layer.archivo_path
+    if layer.metadata_extra and layer.metadata_extra.get("cog_path"):
+        cog = layer.metadata_extra["cog_path"]
+        if Path(cog).exists():
+            raster_path = cog
+
+    if not Path(raster_path).exists():
+        raise AppException(
+            message=f"Raster file not found: {raster_path}",
+            code="RASTER_NOT_FOUND",
+            status_code=404,
+        )
+
+    # 2. Fetch zone geometries from PostGIS
+    if body.zona_source == "zonas_operativas":
+        rows = db.query(
+            ZonaOperativa.id,
+            ST_AsText(ZonaOperativa.geometria),
+            ZonaOperativa.nombre,
+        ).all()
+    elif body.zona_source == "assets":
+        from app.domains.infraestructura.models import Asset
+
+        rows = db.query(
+            Asset.id,
+            ST_AsText(Asset.geom),
+            Asset.nombre,
+        ).filter(Asset.geom.isnot(None)).all()
+    elif body.zona_source == "denuncias":
+        from app.domains.denuncias.models import Denuncia
+
+        rows = db.query(
+            Denuncia.id,
+            ST_AsText(Denuncia.geom),
+            Denuncia.tipo,
+        ).filter(Denuncia.geom.isnot(None)).all()
+    else:
+        raise AppException(
+            message=f"Invalid zona_source: {body.zona_source}",
+            code="INVALID_ZONA_SOURCE",
+            status_code=400,
+        )
+
+    if not rows:
+        return {"results": [], "count": 0, "raster": body.layer_tipo}
+
+    # 3. Compute zonal stats
+    from app.domains.geo.zonal_stats import compute_stats_for_zones
+
+    zone_data = [(str(r[0]), r[1], r[2]) for r in rows]
+    results = compute_stats_for_zones(zone_data, raster_path, body.stats)
+
+    return {
+        "results": results,
+        "count": len(results),
+        "raster": body.layer_tipo,
+        "zona_source": body.zona_source,
+    }
+
+
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
 
