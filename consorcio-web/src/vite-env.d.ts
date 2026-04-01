@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_GEE_TILES_URL?: string;
   readonly VITE_ENABLE_ANALYTICS?: string;
   readonly VITE_SUPPORT_PHONE?: string;
+  readonly VITE_MARTIN_URL?: string;
   // Legacy PUBLIC_ prefix (for backwards compatibility)
   readonly PUBLIC_API_URL?: string;
   readonly PUBLIC_GEE_TILES_URL?: string;
