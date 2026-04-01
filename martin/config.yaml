@@ -1,0 +1,14 @@
+# Martin Vector Tile Server - Consorcio Canalero
+# Docs: https://maplibre.org/martin/
+
+listen_addresses: '0.0.0.0:3000'
+
+postgres:
+  connection_string: postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
+
+  # Auto-discover all tables and views with geometry columns
+  auto_publish:
+    tables:
+      from: public
+      # Martin will discover both raw tables and vt_ views
+    functions: false
