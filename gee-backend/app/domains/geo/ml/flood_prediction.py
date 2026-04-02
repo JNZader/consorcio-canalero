@@ -88,6 +88,9 @@ class FloodModel:
             "flow_acc_log_mean": max(0, min(1, np.log1p(features.flow_acc_mean) / 10.0)),
             "water_pct_current": max(0, min(1, features.water_pct_current / 20.0)),
             "water_pct_historical": max(0, min(1, features.water_pct_historical / 15.0)),
+            "rainfall_48h": max(0, min(1, features.rainfall_48h / 100.0)),
+            "rainfall_7d": max(0, min(1, features.rainfall_7d / 200.0)),
+            "rainfall_30d": max(0, min(1, features.rainfall_30d / 400.0)),
         }
 
         # Weighted sum
@@ -188,6 +191,9 @@ class FloodModel:
                 "flow_acc_log_mean": max(0, min(1, np.log1p(feat.get("flow_acc_mean", 0)) / 10.0)),
                 "water_pct_current": max(0, min(1, feat.get("water_pct_current", 0) / 20.0)),
                 "water_pct_historical": max(0, min(1, feat.get("water_pct_historical", 0) / 15.0)),
+                "rainfall_48h": max(0, min(1, feat.get("rainfall_48h", 0) / 100.0)),
+                "rainfall_7d": max(0, min(1, feat.get("rainfall_7d", 0) / 200.0)),
+                "rainfall_30d": max(0, min(1, feat.get("rainfall_30d", 0) / 400.0)),
             }
             X.append([normalized.get(f, 0) for f in feature_names])
             y.append(1.0 if event["flooded"] else 0.0)
