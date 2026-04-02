@@ -158,6 +158,73 @@ class AnalisisGeoListResponse(BaseModel):
 # ──────────────────────────────────────────────
 
 
+# ──────────────────────────────────────────────
+# FLOOD EVENT SCHEMAS
+# ──────────────────────────────────────────────
+
+
+class FloodLabelCreate(BaseModel):
+    """A single zone label within a flood event."""
+
+    zona_id: uuid.UUID = Field(..., description="FK to zonas_operativas.id")
+    is_flooded: bool = Field(..., description="Whether this zone was flooded")
+
+
+class FloodEventCreate(BaseModel):
+    """Payload to create a flood event with labeled zones."""
+
+    event_date: date = Field(..., description="Date of satellite observation")
+    description: Optional[str] = Field(None, description="Optional notes")
+    labels: list[FloodLabelCreate] = Field(
+        ...,
+        min_length=1,
+        description="At least one zone label required",
+    )
+
+
+class FloodLabelResponse(BaseModel):
+    """A zone label within a flood event response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    zona_id: uuid.UUID
+    is_flooded: bool
+    ndwi_value: Optional[float] = None
+    extracted_features: Optional[dict[str, Any]] = None
+
+
+class FloodEventResponse(BaseModel):
+    """Full flood event detail with labels."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    event_date: date
+    description: Optional[str] = None
+    satellite_source: str
+    labels: list[FloodLabelResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloodEventListResponse(BaseModel):
+    """Lightweight flood event for list endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    event_date: date
+    description: Optional[str] = None
+    label_count: int = 0
+    created_at: datetime
+
+
+# ──────────────────────────────────────────────
+# DEM PIPELINE SCHEMAS
+# ──────────────────────────────────────────────
+
+
 class DemPipelineRequest(BaseModel):
     """Payload to trigger the full DEM pipeline (download + process + basins)."""
 
