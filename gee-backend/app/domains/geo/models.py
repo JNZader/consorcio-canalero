@@ -393,3 +393,34 @@ class FloodLabel(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<FloodLabel {self.id} event={self.event_id} zona={self.zona_id} flooded={self.is_flooded}>"
+
+
+class RainfallRecord(UUIDMixin, TimestampMixin, Base):
+    """Daily precipitation record per zona operativa from CHIRPS satellite data."""
+
+    __tablename__ = "rainfall_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "zona_operativa_id",
+            "date",
+            "source",
+            name="uq_rainfall_zona_date_source",
+        ),
+    )
+
+    zona_operativa_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("zonas_operativas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    precipitation_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="CHIRPS",
+        server_default="CHIRPS",
+    )
+
+    def __repr__(self) -> str:
+        return f"<RainfallRecord {self.id} zona={self.zona_operativa_id} date={self.date} mm={self.precipitation_mm}>"
