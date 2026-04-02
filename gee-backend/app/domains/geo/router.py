@@ -30,6 +30,7 @@ from app.domains.geo.schemas import (
     AnalisisGeoCreate,
     AnalisisGeoListResponse,
     AnalisisGeoResponse,
+    BackfillRequest,
     DemPipelineRequest,
     DemPipelineResponse,
     FloodEventCreate,
@@ -2987,6 +2988,109 @@ def train_flood_model(
         bias=result["bias"],
         backup_path=str(backup_path),
     )
+
+
+# ──────────────────────────────────────────────
+# RAINFALL ENDPOINTS
+# ──────────────────────────────────────────────
+
+
+@router.post("/rainfall/backfill", status_code=202)
+def trigger_rainfall_backfill(
+    payload: BackfillRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+):
+    """Trigger a CHIRPS rainfall backfill (admin only).
+
+    Enqueues a Celery task that processes data in monthly batches.
+    Returns 202 with the Celery task ID for status polling.
+    """
+    from app.domains.geo.tasks import rainfall_backfill
+
+    zona_ids_str = (
+        [str(z) for z in payload.zona_ids] if payload.zona_ids else None
+    )
+    task = rainfall_backfill.delay(
+        start_date=payload.start_date.isoformat(),
+        end_date=payload.end_date.isoformat(),
+        zona_ids=zona_ids_str,
+    )
+    return {
+        "job_id": task.id,
+        "status": "accepted",
+        "message": f"Backfill enqueued from {payload.start_date} to {payload.end_date}",
+    }
+
+
+@router.get("/rainfall/zones/{zone_id}")
+def get_rainfall_for_zone(
+    zone_id: uuid.UUID,
+    start: Optional[date] = Query(None, description="Start date (inclusive)"),
+    end: Optional[date] = Query(None, description="End date (inclusive)"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get daily rainfall records for a specific zone.
+
+    Returns a list of {date, precipitation_mm} sorted by date ascending.
+    """
+    records = repo.get_rainfall_by_zone(
+        db, zone_id, start_date=start, end_date=end
+    )
+    return {
+        "zona_operativa_id": str(zone_id),
+        "count": len(records),
+        "records": [
+            {
+                "date": r.date.isoformat(),
+                "precipitation_mm": r.precipitation_mm,
+                "source": r.source,
+            }
+            for r in records
+        ],
+    }
+
+
+@router.get("/rainfall/summary")
+def get_rainfall_summary(
+    start: date = Query(..., description="Start date (inclusive)"),
+    end: date = Query(..., description="End date (inclusive)"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get rainfall summary across all zones for a date range.
+
+    Returns per-zone aggregates: total_mm, avg_mm, max_mm, rainy_days.
+    """
+    # Enrich summary with zone names
+    from app.domains.geo.intelligence.models import ZonaOperativa
+
+    summaries = repo.get_rainfall_summary(db, start_date=start, end_date=end)
+
+    # Build zone name lookup
+    zona_ids = [s["zona_operativa_id"] for s in summaries]
+    if zona_ids:
+        zones = (
+            db.query(ZonaOperativa.id, ZonaOperativa.nombre)
+            .filter(ZonaOperativa.id.in_(zona_ids))
+            .all()
+        )
+        name_map = {z.id: z.nombre for z in zones}
+    else:
+        name_map = {}
+
+    for s in summaries:
+        s["zona_name"] = name_map.get(s["zona_operativa_id"])
+        s["zona_operativa_id"] = str(s["zona_operativa_id"])
+
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "zones": summaries,
+    }
 
 
 # ── Include GEE sub-router into main geo router ──
