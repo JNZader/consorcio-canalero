@@ -3148,6 +3148,98 @@ def get_rainfall_events(
     }
 
 
+@router.get("/rainfall/suggestions")
+def get_rainfall_suggestions(
+    start: Optional[date] = Query(None, description="Start date (inclusive)"),
+    end: Optional[date] = Query(None, description="End date (inclusive)"),
+    threshold_mm: float = Query(50.0, ge=1.0, description="Precipitation threshold in mm"),
+    window_days: int = Query(3, ge=1, le=30, description="Rolling window in days"),
+    days_after: int = Query(5, ge=1, le=15, description="Max days after event to search for S2 images"),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+):
+    """Detect rainfall events and suggest Sentinel-2 images for each.
+
+    Combines event detection (cached PostgreSQL data) with GEE Sentinel-2
+    catalog queries to recommend post-event imagery sorted by cloud cover.
+    """
+    from app.domains.geo.rainfall_service import (
+        detect_rainfall_events,
+        suggest_images_for_event,
+    )
+
+    events = detect_rainfall_events(
+        db,
+        start_date=start,
+        end_date=end,
+        threshold_mm=threshold_mm,
+        window_days=window_days,
+    )
+
+    # Enrich with zone names
+    from app.domains.geo.intelligence.models import ZonaOperativa
+
+    zona_ids = list({e["zona_operativa_id"] for e in events})
+    name_map: dict = {}
+    if zona_ids:
+        zones = (
+            db.query(ZonaOperativa.id, ZonaOperativa.nombre)
+            .filter(ZonaOperativa.id.in_(zona_ids))
+            .all()
+        )
+        name_map = {z.id: z.nombre for z in zones}
+
+    # For each event, find S2 image suggestions
+    results = []
+    for e in events:
+        try:
+            suggestions = suggest_images_for_event(
+                e["event_end"],
+                days_after_min=2,
+                days_after_max=days_after,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to get S2 suggestions for event %s-%s",
+                e["event_start"],
+                e["event_end"],
+                exc_info=True,
+            )
+            suggestions = []
+
+        best = suggestions[0] if suggestions else None
+
+        results.append(
+            {
+                "zona_operativa_id": str(e["zona_operativa_id"]),
+                "zona_name": name_map.get(e["zona_operativa_id"]),
+                "event_start": e["event_start"].isoformat(),
+                "event_end": e["event_end"].isoformat(),
+                "accumulated_mm": e["accumulated_mm"],
+                "duration_days": e["duration_days"],
+                "suggested_image_date": (
+                    best["date"].isoformat() if best else None
+                ),
+                "cloud_cover_pct": best["cloud_cover_pct"] if best else None,
+                "all_suggestions": [
+                    {
+                        "date": s["date"].isoformat(),
+                        "cloud_cover_pct": s["cloud_cover_pct"],
+                    }
+                    for s in suggestions
+                ],
+            }
+        )
+
+    return {
+        "threshold_mm": threshold_mm,
+        "window_days": window_days,
+        "days_after": days_after,
+        "total": len(results),
+        "suggestions": results,
+    }
+
+
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
 
