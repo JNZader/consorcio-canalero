@@ -2703,6 +2703,8 @@ def _run_feature_extraction(
 
     repo = GeoRepository()
     db = SessionLocal()
+    extracted_count = 0
+    failed_count = 0
     try:
         for label_id_str, zona_id_str in label_ids_and_zonas:
             try:
@@ -2716,13 +2718,31 @@ def _run_feature_extraction(
                         db, uuid.UUID(label_id_str), features
                     )
                     db.commit()
+                    extracted_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(
+                        "feature_extraction.empty_result",
+                        label_id=label_id_str,
+                        zona_id=zona_id_str,
+                    )
             except Exception:
+                failed_count += 1
                 logger.warning(
-                    "Feature extraction failed for label %s",
+                    "feature_extraction.failed — GEE may be unavailable. "
+                    "label=%s zona=%s event=%s",
                     label_id_str,
+                    zona_id_str,
+                    str(event_id),
                     exc_info=True,
                 )
                 db.rollback()
+        logger.info(
+            "feature_extraction.complete event=%s extracted=%d failed=%d",
+            str(event_id),
+            extracted_count,
+            failed_count,
+        )
     finally:
         db.close()
 
@@ -2738,11 +2758,45 @@ async def create_flood_event(
 
     After persisting the event, triggers background feature extraction
     for each labeled zone via asyncio.to_thread.
+
+    Error handling:
+    - 422 if duplicate zona_id in labels
+    - 422 if any zona_id does not exist in zonas_operativas
+    - 409 if an event with the same date already exists
+    - Feature extraction failures are logged but do not block the response
     """
     # Validate no duplicate zona_ids
     zona_ids = [label.zona_id for label in payload.labels]
     if len(zona_ids) != len(set(zona_ids)):
-        raise HTTPException(status_code=422, detail="duplicate zona_id in labels")
+        raise HTTPException(status_code=422, detail="Zona duplicada en las etiquetas")
+
+    # Validate all zona_ids exist in zonas_operativas
+    existing_zonas = {
+        row.id
+        for row in db.query(ZonaOperativa.id)
+        .filter(ZonaOperativa.id.in_(zona_ids))
+        .all()
+    }
+    missing = set(zona_ids) - existing_zonas
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Zonas no encontradas: {', '.join(str(z) for z in missing)}",
+        )
+
+    # Check for duplicate event date
+    from app.domains.geo.models import FloodEvent as FloodEventModel
+
+    existing_event = (
+        db.query(FloodEventModel)
+        .filter(FloodEventModel.event_date == payload.event_date)
+        .first()
+    )
+    if existing_event:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe un evento para la fecha {payload.event_date}",
+        )
 
     labels_data = [
         {"zona_id": label.zona_id, "is_flooded": label.is_flooded}
@@ -2761,6 +2815,7 @@ async def create_flood_event(
     created = repo.get_flood_event_by_id(db, event.id)
 
     # Kick off background feature extraction (non-blocking)
+    # GEE unavailability is handled gracefully inside _run_feature_extraction
     label_ids_and_zonas = [
         (str(lbl.id), str(lbl.zona_id)) for lbl in created.labels
     ]
@@ -2888,7 +2943,7 @@ def train_flood_model(
     if len(labels) < 5:
         raise HTTPException(
             status_code=400,
-            detail=f"Need at least 5 labeled events with features, got {len(labels)}",
+            detail=f"Se necesitan al menos 5 etiquetas con features extraidas para entrenar. Actualmente hay {len(labels)}. Asegurate de que los eventos tengan features extraidas (puede tardar unos segundos despues de guardar).",
         )
 
     # Format training data

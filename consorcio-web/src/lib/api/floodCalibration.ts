@@ -66,12 +66,26 @@ export interface TrainingResultResponse {
 export const floodCalibrationApi = {
   /**
    * Crear un evento de inundacion con labels por zona.
+   *
+   * Transforms frontend `labeled_zones` (Record<string, bool>) into
+   * backend `labels` (list of {zona_id, is_flooded}) format.
    */
-  createEvent: (payload: FloodEventCreatePayload): Promise<FloodEventResponse> =>
-    apiFetch('/geo/flood-events', {
+  createEvent: (payload: FloodEventCreatePayload): Promise<FloodEventResponse> => {
+    // Transform flat dict → list format expected by backend FloodEventCreate schema
+    const labels = Object.entries(payload.labeled_zones).map(([zona_id, is_flooded]) => ({
+      zona_id,
+      is_flooded,
+    }));
+
+    return apiFetch('/geo/flood-events', {
       method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+      body: JSON.stringify({
+        event_date: payload.event_date,
+        description: payload.description,
+        labels,
+      }),
+    });
+  },
 
   /**
    * Listar todos los eventos de inundacion.
