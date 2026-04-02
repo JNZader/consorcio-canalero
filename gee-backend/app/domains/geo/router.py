@@ -38,6 +38,7 @@ from app.domains.geo.schemas import (
     GeoJobResponse,
     GeoLayerListResponse,
     GeoLayerResponse,
+    TrainingResultResponse,
 )
 from app.domains.geo.service import dispatch_job
 
@@ -2857,6 +2858,80 @@ def delete_flood_event(
         raise HTTPException(status_code=404, detail="Flood event not found")
     db.commit()
     return Response(status_code=204)
+
+
+# ──────────────────────────────────────────────
+# FLOOD MODEL TRAINING
+# ──────────────────────────────────────────────
+
+
+@router.post(
+    "/ml/flood-prediction/train",
+    response_model=TrainingResultResponse,
+)
+def train_flood_model(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Train the flood prediction model from labeled events.
+
+    1. Collects all FloodLabel rows with non-null extracted_features.
+    2. Validates at least 5 labels exist.
+    3. Backs up current model weights to flood_model_backup.json.
+    4. Trains via FloodModel.train_from_events().
+    5. Saves updated model and returns training metrics.
+    """
+    from app.domains.geo.ml.flood_prediction import FloodModel, MODEL_PATH
+
+    labels = repo.get_labels_with_features(db)
+    if len(labels) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least 5 labeled events with features, got {len(labels)}",
+        )
+
+    # Format training data
+    training_data = [
+        {
+            "features": label.extracted_features,
+            "flooded": label.is_flooded,
+        }
+        for label in labels
+    ]
+
+    # Load current model
+    model = FloodModel.load()
+    weights_before = dict(model.weights)
+
+    # Backup current model weights before training
+    backup_path = MODEL_PATH.parent / "flood_model_backup.json"
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if MODEL_PATH.exists():
+        shutil.copy2(str(MODEL_PATH), str(backup_path))
+    else:
+        # No existing model file — save current defaults as backup
+        model.save(str(backup_path))
+
+    # Train
+    result = model.train_from_events(training_data)
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    # Save trained model
+    model.save()
+
+    return TrainingResultResponse(
+        events_used=result["events"],
+        epochs=result["epochs"],
+        initial_loss=result["initial_loss"],
+        final_loss=result["final_loss"],
+        weights_before=weights_before,
+        weights_after=result["weights"],
+        bias=result["bias"],
+        backup_path=str(backup_path),
+    )
 
 
 # ── Include GEE sub-router into main geo router ──

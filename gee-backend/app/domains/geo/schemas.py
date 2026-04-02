@@ -221,6 +221,30 @@ class FloodEventListResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────
+# TRAINING SCHEMAS
+# ──────────────────────────────────────────────
+
+
+class TrainingResultResponse(BaseModel):
+    """Response from the flood model training endpoint."""
+
+    events_used: int = Field(..., description="Number of labeled events used for training")
+    epochs: int = Field(..., description="Number of training epochs run")
+    initial_loss: float = Field(..., description="Loss at epoch 0")
+    final_loss: float = Field(..., description="Loss at final epoch")
+    weights_before: dict[str, float] = Field(
+        ..., description="Model weights before training"
+    )
+    weights_after: dict[str, float] = Field(
+        ..., description="Model weights after training"
+    )
+    bias: float = Field(..., description="Model bias after training")
+    backup_path: str = Field(
+        ..., description="Path where pre-training model was backed up"
+    )
+
+
+# ──────────────────────────────────────────────
 # DEM PIPELINE SCHEMAS
 # ──────────────────────────────────────────────
 
