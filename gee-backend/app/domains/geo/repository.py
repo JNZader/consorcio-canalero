@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.domains.geo.models import (
@@ -17,6 +18,7 @@ from app.domains.geo.models import (
     GeoApprovedZoning,
     GeoJob,
     GeoLayer,
+    RainfallRecord,
 )
 
 logger = logging.getLogger(__name__)
@@ -706,3 +708,138 @@ class GeoRepository:
                 )
 
         return features
+
+    # ── RAINFALL RECORD READ ───────────────────────
+
+    def get_rainfall_by_zone(
+        self,
+        db: Session,
+        zona_operativa_id: uuid.UUID,
+        *,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> list[RainfallRecord]:
+        """Return rainfall records for a zone, optionally filtered by date range."""
+        stmt = select(RainfallRecord).where(
+            RainfallRecord.zona_operativa_id == zona_operativa_id
+        )
+        if start_date is not None:
+            stmt = stmt.where(RainfallRecord.date >= start_date)
+        if end_date is not None:
+            stmt = stmt.where(RainfallRecord.date <= end_date)
+        stmt = stmt.order_by(RainfallRecord.date.asc())
+        return list(db.execute(stmt).scalars().all())
+
+    def get_rainfall_summary(
+        self,
+        db: Session,
+        *,
+        start_date: date,
+        end_date: date,
+        zona_operativa_id: Optional[uuid.UUID] = None,
+    ) -> list[dict[str, Any]]:
+        """Return aggregated rainfall stats per zone for a date range.
+
+        Returns list of dicts with: zona_operativa_id, total_mm, avg_mm, max_mm, rainy_days.
+        """
+        stmt = (
+            select(
+                RainfallRecord.zona_operativa_id,
+                func.sum(RainfallRecord.precipitation_mm).label("total_mm"),
+                func.avg(RainfallRecord.precipitation_mm).label("avg_mm"),
+                func.max(RainfallRecord.precipitation_mm).label("max_mm"),
+                func.count(
+                    func.nullif(RainfallRecord.precipitation_mm > 0, False)
+                ).label("rainy_days"),
+            )
+            .where(
+                RainfallRecord.date >= start_date,
+                RainfallRecord.date <= end_date,
+            )
+            .group_by(RainfallRecord.zona_operativa_id)
+        )
+
+        if zona_operativa_id is not None:
+            stmt = stmt.where(
+                RainfallRecord.zona_operativa_id == zona_operativa_id
+            )
+
+        rows = db.execute(stmt).all()
+        return [
+            {
+                "zona_operativa_id": row.zona_operativa_id,
+                "total_mm": round(float(row.total_mm or 0), 2),
+                "avg_mm": round(float(row.avg_mm or 0), 2),
+                "max_mm": round(float(row.max_mm or 0), 2),
+                "rainy_days": int(row.rainy_days or 0),
+            }
+            for row in rows
+        ]
+
+    def get_accumulated_rainfall(
+        self,
+        db: Session,
+        zona_operativa_id: uuid.UUID,
+        reference_date: date,
+        window_days: int,
+    ) -> float:
+        """Return total accumulated precipitation (mm) for a zone over a lookback window.
+
+        Used by the flood model for feature extraction (48h, 7d, 30d windows).
+        """
+        start = reference_date - timedelta(days=window_days)
+        stmt = select(
+            func.coalesce(func.sum(RainfallRecord.precipitation_mm), 0.0)
+        ).where(
+            RainfallRecord.zona_operativa_id == zona_operativa_id,
+            RainfallRecord.date > start,
+            RainfallRecord.date <= reference_date,
+        )
+        result = db.execute(stmt).scalar_one()
+        return float(result)
+
+    # ── RAINFALL RECORD WRITE ──────────────────────
+
+    def insert_rainfall_record(
+        self,
+        db: Session,
+        *,
+        zona_operativa_id: uuid.UUID,
+        record_date: date,
+        precipitation_mm: float,
+        source: str = "CHIRPS",
+    ) -> RainfallRecord:
+        """Insert a single rainfall record."""
+        record = RainfallRecord(
+            zona_operativa_id=zona_operativa_id,
+            date=record_date,
+            precipitation_mm=precipitation_mm,
+            source=source,
+        )
+        db.add(record)
+        db.flush()
+        return record
+
+    def bulk_upsert_rainfall(
+        self,
+        db: Session,
+        records: list[dict[str, Any]],
+    ) -> int:
+        """Bulk upsert rainfall records using PostgreSQL ON CONFLICT.
+
+        Each dict in records must have: zona_operativa_id, date, precipitation_mm, source.
+        On conflict (zona_operativa_id, date, source), updates precipitation_mm.
+
+        Returns the number of rows affected.
+        """
+        if not records:
+            return 0
+
+        stmt = pg_insert(RainfallRecord).values(records)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_rainfall_zona_date_source",
+            set_={"precipitation_mm": stmt.excluded.precipitation_mm},
+        )
+        result = db.execute(stmt)
+        db.flush()
+        return result.rowcount
