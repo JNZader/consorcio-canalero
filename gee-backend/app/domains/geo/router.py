@@ -3093,6 +3093,61 @@ def get_rainfall_summary(
     }
 
 
+@router.get("/rainfall/events")
+def get_rainfall_events(
+    start: Optional[date] = Query(None, description="Start date (inclusive)"),
+    end: Optional[date] = Query(None, description="End date (inclusive)"),
+    threshold_mm: float = Query(50.0, ge=1.0, description="Precipitation threshold in mm"),
+    window_days: int = Query(3, ge=1, le=30, description="Rolling window in days"),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+):
+    """Detect rainfall events where accumulated precipitation exceeds a threshold.
+
+    Uses a rolling window over cached rainfall data — zero GEE dependency at query time.
+    Returns detected events with affected zones and accumulated mm.
+    """
+    from app.domains.geo.rainfall_service import detect_rainfall_events
+
+    events = detect_rainfall_events(
+        db,
+        start_date=start,
+        end_date=end,
+        threshold_mm=threshold_mm,
+        window_days=window_days,
+    )
+
+    # Enrich with zone names
+    from app.domains.geo.intelligence.models import ZonaOperativa
+
+    zona_ids = list({e["zona_operativa_id"] for e in events})
+    name_map: dict = {}
+    if zona_ids:
+        zones = (
+            db.query(ZonaOperativa.id, ZonaOperativa.nombre)
+            .filter(ZonaOperativa.id.in_(zona_ids))
+            .all()
+        )
+        name_map = {z.id: z.nombre for z in zones}
+
+    return {
+        "threshold_mm": threshold_mm,
+        "window_days": window_days,
+        "total": len(events),
+        "events": [
+            {
+                "zona_operativa_id": str(e["zona_operativa_id"]),
+                "zona_name": name_map.get(e["zona_operativa_id"]),
+                "event_start": e["event_start"].isoformat(),
+                "event_end": e["event_end"].isoformat(),
+                "accumulated_mm": e["accumulated_mm"],
+                "duration_days": e["duration_days"],
+            }
+            for e in events
+        ],
+    }
+
+
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
 
