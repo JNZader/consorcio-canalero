@@ -1861,6 +1861,146 @@ def compute_zonal_statistics(
     }
 
 
+# ── Flood Risk Assessment ─────────────────────────────────────────
+
+
+@router.get("/flood-risk/zona/{zona_id}")
+def get_zona_flood_risk(
+    zona_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Compute comprehensive flood risk score for a zona operativa.
+
+    Combines HAND, TWI, flow accumulation, and slope from the DEM
+    pipeline into a single risk assessment. Returns individual metrics
+    and a composite risk level.
+    """
+    from geoalchemy2.functions import ST_AsText
+
+    # Get zona geometry
+    zona = db.query(ZonaOperativa).filter(ZonaOperativa.id == zona_id).first()
+    if not zona:
+        raise NotFoundError(f"Zona operativa not found: {zona_id}")
+
+    # Get raster layers
+    layers_needed = ["hand", "twi", "flow_acc", "slope"]
+    raster_paths = {}
+    for tipo in layers_needed:
+        layer = (
+            db.query(GeoLayer)
+            .filter(GeoLayer.tipo == tipo)
+            .order_by(GeoLayer.created_at.desc())
+            .first()
+        )
+        if layer:
+            path = layer.archivo_path
+            if layer.metadata_extra and layer.metadata_extra.get("cog_path"):
+                cog = layer.metadata_extra["cog_path"]
+                if Path(cog).exists():
+                    path = cog
+            if Path(path).exists():
+                raster_paths[tipo] = path
+
+    if not raster_paths:
+        raise AppException(
+            message="No raster layers available for risk calculation",
+            code="NO_RASTERS",
+            status_code=404,
+        )
+
+    # Get zone geometry as WKT
+    from sqlalchemy import select
+    zona_wkt = db.execute(
+        select(ST_AsText(ZonaOperativa.geometria)).where(ZonaOperativa.id == zona_id)
+    ).scalar()
+
+    # Compute zonal stats for each available layer
+    from app.domains.geo.zonal_stats import compute_stats_for_zones
+
+    zone_data = [(str(zona.id), zona_wkt, zona.nombre)]
+    metrics = {}
+
+    for tipo, path in raster_paths.items():
+        try:
+            stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "median", "count"])
+            if stats and stats[0].get("count", 0) > 0:
+                metrics[tipo] = {
+                    "mean": stats[0].get("mean"),
+                    "max": stats[0].get("max"),
+                    "min": stats[0].get("min"),
+                    "median": stats[0].get("median"),
+                }
+        except Exception as exc:
+            logger.warning("flood_risk.zonal_stats_failed", tipo=tipo, error=str(exc))
+
+    # Compute composite risk score (0-100)
+    risk_score = 0
+    risk_factors = []
+
+    if "hand" in metrics and metrics["hand"]["mean"] is not None:
+        hand_mean = metrics["hand"]["mean"]
+        if hand_mean < 0.5:
+            risk_score += 40
+            risk_factors.append("HAND muy bajo (<0.5m): zona extremadamente baja")
+        elif hand_mean < 1.0:
+            risk_score += 30
+            risk_factors.append("HAND bajo (<1m): zona baja, susceptible a inundación")
+        elif hand_mean < 2.0:
+            risk_score += 15
+            risk_factors.append("HAND moderado (<2m)")
+
+    if "twi" in metrics and metrics["twi"]["mean"] is not None:
+        twi_mean = metrics["twi"]["mean"]
+        if twi_mean > 14:
+            risk_score += 30
+            risk_factors.append("TWI alto (>14): alta acumulación de agua")
+        elif twi_mean > 11:
+            risk_score += 20
+            risk_factors.append("TWI moderado (>11): acumulación moderada")
+        elif twi_mean > 8:
+            risk_score += 5
+
+    if "flow_acc" in metrics and metrics["flow_acc"]["max"] is not None:
+        fa_max = metrics["flow_acc"]["max"]
+        if fa_max > 100000:
+            risk_score += 20
+            risk_factors.append("Flow accumulation extremo: recibe mucha agua upstream")
+        elif fa_max > 10000:
+            risk_score += 10
+            risk_factors.append("Flow accumulation alto")
+
+    if "slope" in metrics and metrics["slope"]["mean"] is not None:
+        slope_mean = metrics["slope"]["mean"]
+        if slope_mean < 0.3:
+            risk_score += 10
+            risk_factors.append("Pendiente muy baja (<0.3°): agua no drena")
+        elif slope_mean < 0.5:
+            risk_score += 5
+
+    risk_score = min(risk_score, 100)
+    risk_level = (
+        "critico" if risk_score >= 70 else
+        "alto" if risk_score >= 50 else
+        "moderado" if risk_score >= 30 else
+        "bajo"
+    )
+
+    return {
+        "zona": {
+            "id": str(zona.id),
+            "nombre": zona.nombre,
+            "cuenca": zona.cuenca,
+            "superficie_ha": zona.superficie_ha,
+        },
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "metrics": metrics,
+        "risk_factors": risk_factors,
+        "layers_used": list(raster_paths.keys()),
+    }
+
+
 # ── Hydrology Analysis ────────────────────────────────────────────
 
 
