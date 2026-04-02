@@ -500,31 +500,26 @@ export default function FloodCalibrationPanel() {
   );
 
   const handlePrevMonth = useCallback(() => {
-    setCalendarMonth((prev) => {
-      if (prev === 0) {
-        setCalendarYear((y) => y - 1);
-        return 11;
-      }
-      return prev - 1;
-    });
-  }, []);
+    if (calendarMonth === 0) {
+      setCalendarYear((y) => y - 1);
+      setCalendarMonth(11);
+    } else {
+      setCalendarMonth((m) => m - 1);
+    }
+  }, [calendarMonth]);
 
   const handleNextMonth = useCallback(() => {
     const today = new Date();
-    setCalendarMonth((prev) => {
-      const nextMonth = prev === 11 ? 0 : prev + 1;
-      const nextYear = prev === 11 ? calendarYear + 1 : calendarYear;
+    const nextMonth = calendarMonth === 11 ? 0 : calendarMonth + 1;
+    const nextYear = calendarMonth === 11 ? calendarYear + 1 : calendarYear;
 
-      if (nextYear > today.getFullYear() || (nextYear === today.getFullYear() && nextMonth > today.getMonth())) {
-        return prev;
-      }
+    if (nextYear > today.getFullYear() || (nextYear === today.getFullYear() && nextMonth > today.getMonth())) {
+      return;
+    }
 
-      if (prev === 11) {
-        setCalendarYear((y) => y + 1);
-      }
-      return nextMonth;
-    });
-  }, [calendarYear]);
+    setCalendarYear(nextYear);
+    setCalendarMonth(nextMonth);
+  }, [calendarMonth, calendarYear]);
 
   // ─── Events CRUD ───────────────────────────────────────────
 
