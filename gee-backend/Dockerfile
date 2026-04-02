@@ -7,9 +7,11 @@ FROM python:3.11-slim AS build
 
 WORKDIR /app
 
-# Install compiler dependencies needed for building Python packages
+# Install compiler and geospatial runtime dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    libgdal-dev \
+    libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Environment variables
@@ -59,9 +61,11 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install only runtime dependencies (curl for healthcheck)
+# Install runtime dependencies (curl for healthcheck, gdal for rasterio/rasterstats)
 RUN apt-get update && apt-get install -y \
     curl \
+    libgdal-dev \
+    libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from build stage

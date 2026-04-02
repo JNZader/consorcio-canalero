@@ -22,6 +22,9 @@ geoalchemy2>=0.17.0
 # GeoJSON/Geospatial
 geojson>=3.2.0
 shapely>=2.0.0
+rasterstats>=0.20.0
+rasterio>=1.4.0
+pyproj>=3.6.0
 
 # Auth
 fastapi-users[sqlalchemy]>=13.0.0

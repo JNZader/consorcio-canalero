@@ -14,12 +14,23 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import rasterio
+from pyproj import Transformer
 from rasterstats import zonal_stats as _zonal_stats
 from shapely import wkt
+from shapely.ops import transform as shapely_transform
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_STATS = ["min", "max", "mean", "std", "median", "count", "sum"]
+
+
+def _reproject_geom(geom_shape, src_crs: str, dst_crs: str):
+    """Reproject a shapely geometry from src_crs to dst_crs."""
+    if src_crs == dst_crs:
+        return geom_shape
+    transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    return shapely_transform(transformer.transform, geom_shape)
 
 
 def compute_zonal_stats(
@@ -28,8 +39,11 @@ def compute_zonal_stats(
     stats: list[str] | None = None,
     *,
     all_touched: bool = True,
+    geometry_crs: str = "EPSG:4326",
 ) -> list[dict[str, Any]]:
     """Compute zonal statistics for a list of geometries against a raster.
+
+    Automatically reprojects geometries to the raster's CRS if they differ.
 
     Args:
         geometries: List of dicts with 'id', 'name' (optional), and
@@ -37,6 +51,7 @@ def compute_zonal_stats(
         raster_path: Path to the raster file (GeoTIFF or COG).
         stats: List of statistics to compute. Defaults to all supported.
         all_touched: If True, include all pixels touched by the geometry.
+        geometry_crs: CRS of the input geometries (default EPSG:4326).
 
     Returns:
         List of dicts with original id/name plus computed statistics.
@@ -49,13 +64,21 @@ def compute_zonal_stats(
 
     stats = stats or SUPPORTED_STATS
 
-    # Normalize geometries to GeoJSON dicts
+    # Read raster CRS for reprojection
+    with rasterio.open(raster_path) as src:
+        raster_crs = str(src.crs)
+
+    # Normalize geometries to shapely, reproject if needed, then to GeoJSON
     geojson_geoms = []
     for g in geometries:
         geom = g["geometry"]
         if isinstance(geom, str):
-            geom = wkt.loads(geom).__geo_interface__
-        geojson_geoms.append(geom)
+            geom_shape = wkt.loads(geom)
+        else:
+            from shapely.geometry import shape
+            geom_shape = shape(geom)
+        geom_shape = _reproject_geom(geom_shape, geometry_crs, raster_crs)
+        geojson_geoms.append(geom_shape.__geo_interface__)
 
     results = _zonal_stats(
         geojson_geoms,
