@@ -185,6 +185,32 @@ services:
       start_period: 15s
 
   # ============================================
+  # TRAINER - U-Net Water Segmentation (GPU)
+  # ============================================
+  trainer:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile.trainer
+    container_name: consorcio-trainer
+    profiles: [training]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./gee-backend/app:/app/app:ro
+      - ./gee-backend/scripts:/app/scripts:ro
+      - ./gee-backend/credentials:/app/credentials:ro
+      - geo-data:/data/geo
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gee-sa-key.json
+    depends_on:
+      - postgres
+
+  # ============================================
   # FRONTEND - React with Vite
   # ============================================
   frontend:
