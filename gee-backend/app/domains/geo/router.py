@@ -1861,6 +1861,128 @@ def compute_zonal_statistics(
     }
 
 
+# ── Canal Network Routing (pgRouting) ─────────────────────────────
+
+
+class ImportCanalsRequest(BaseModel):
+    """Request to import canals from GeoJSON into the routing network."""
+
+    geojson_paths: list[str] = Field(
+        ...,
+        description="List of GeoJSON file paths to import",
+    )
+    rebuild_topology: bool = Field(
+        default=True,
+        description="Rebuild pgRouting topology after import",
+    )
+    tolerance: float = Field(
+        default=0.0001,
+        description="Snapping tolerance for topology",
+    )
+
+
+class ShortestPathRequest(BaseModel):
+    """Request for shortest path between two points."""
+
+    from_lon: float
+    from_lat: float
+    to_lon: float
+    to_lat: float
+
+
+@router.post("/routing/import")
+def import_canal_network(
+    body: ImportCanalsRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Import canal GeoJSON files into the routing network and build topology."""
+    from app.domains.geo.routing import (
+        import_canals_from_geojson,
+        build_topology,
+        get_network_stats,
+    )
+
+    total_imported = 0
+    for path in body.geojson_paths:
+        tipo = Path(path).stem
+        count = import_canals_from_geojson(db, path, tipo=tipo)
+        total_imported += count
+
+    topology = None
+    if body.rebuild_topology and total_imported > 0:
+        topology = build_topology(db, tolerance=body.tolerance)
+
+    stats = get_network_stats(db)
+
+    return {
+        "imported": total_imported,
+        "topology": topology,
+        "network": stats,
+    }
+
+
+@router.post("/routing/shortest-path")
+def find_shortest_path(
+    body: ShortestPathRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Find shortest path between two points on the canal network.
+
+    Snaps input coordinates to the nearest network vertices, then
+    runs Dijkstra's algorithm via pgRouting.
+    """
+    from app.domains.geo.routing import find_nearest_vertex, shortest_path
+
+    source = find_nearest_vertex(db, body.from_lon, body.from_lat)
+    target = find_nearest_vertex(db, body.to_lon, body.to_lat)
+
+    if not source or not target:
+        raise NotFoundError("No vertices found near the given coordinates")
+
+    path = shortest_path(db, source["id"], target["id"])
+
+    # Build GeoJSON FeatureCollection for the path
+    features = []
+    for edge in path:
+        if edge["geometry"]:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "nombre": edge["nombre"],
+                    "cost": edge["cost"],
+                    "agg_cost": edge["agg_cost"],
+                    "path_seq": edge["path_seq"],
+                },
+                "geometry": edge["geometry"],
+            })
+
+    total_cost = path[-1]["agg_cost"] if path else 0
+
+    return {
+        "source": source,
+        "target": target,
+        "total_distance_m": round(total_cost, 2),
+        "edges": len(path),
+        "geojson": {
+            "type": "FeatureCollection",
+            "features": features,
+        },
+    }
+
+
+@router.get("/routing/stats")
+def get_routing_network_stats(
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Get canal network statistics."""
+    from app.domains.geo.routing import get_network_stats
+
+    return get_network_stats(db)
+
+
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
 

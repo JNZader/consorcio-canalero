@@ -3,7 +3,7 @@ services:
   # DATABASE - PostgreSQL + PostGIS
   # ============================================
   postgres:
-    image: postgis/postgis:16-3.4-alpine
+    image: pgrouting/pgrouting:16-3.4-3.6.1
     container_name: consorcio-postgres
     restart: unless-stopped
     ports:
