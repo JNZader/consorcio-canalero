@@ -61,3 +61,15 @@ export type {
   ImagenComparacionParams,
   ImagenMapaResponse,
 } from './mapImage';
+
+// ===========================================
+// FLOOD CALIBRATION EXPORTS
+// ===========================================
+export { floodCalibrationApi } from './floodCalibration';
+export type {
+  FloodEventCreatePayload,
+  FloodEventResponse,
+  FloodEventListItem,
+  FloodEventDetailResponse,
+  TrainingResultResponse,
+} from './floodCalibration';
