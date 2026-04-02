@@ -11,14 +11,16 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
@@ -328,3 +330,66 @@ class GeoApprovedZoning(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<GeoApprovedZoning {self.id} nombre={self.nombre!r} cuenca={self.cuenca!r}>"
+
+
+class FloodEvent(UUIDMixin, TimestampMixin, Base):
+    """A labeled flood event used for model calibration."""
+
+    __tablename__ = "flood_events"
+
+    event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional notes about this event",
+    )
+    satellite_source: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="COPERNICUS/S2_SR_HARMONIZED",
+        server_default="COPERNICUS/S2_SR_HARMONIZED",
+    )
+
+    labels: Mapped[list["FloodLabel"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<FloodEvent {self.id} date={self.event_date}>"
+
+
+class FloodLabel(UUIDMixin, TimestampMixin, Base):
+    """A per-zone flood label within an event."""
+
+    __tablename__ = "flood_labels"
+    __table_args__ = (
+        UniqueConstraint("event_id", "zona_id", name="uq_flood_label_event_zona"),
+    )
+
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("flood_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    zona_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("zonas_operativas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    is_flooded: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    ndwi_value: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="NDWI value at event date for this zone",
+    )
+    extracted_features: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="DEM-based features: {hand_mean, twi_mean, slope_mean, flow_acc_mean}",
+    )
+
+    event: Mapped["FloodEvent"] = relationship(back_populates="labels")
+
+    def __repr__(self) -> str:
+        return f"<FloodLabel {self.id} event={self.event_id} zona={self.zona_id} flooded={self.is_flooded}>"
