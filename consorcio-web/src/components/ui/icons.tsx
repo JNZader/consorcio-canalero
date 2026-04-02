@@ -86,3 +86,9 @@ export { default as Icon3dCubeSphere } from '@tabler/icons-react/dist/esm/icons/
 
 // Alias for IconLightbulb
 export { default as IconLightbulb } from '@tabler/icons-react/dist/esm/icons/IconBulb.mjs';
+
+// Rainfall / cloud icons
+export { default as IconCloudRain } from '@tabler/icons-react/dist/esm/icons/IconCloudRain.mjs';
+export { default as IconEye } from '@tabler/icons-react/dist/esm/icons/IconEye.mjs';
+export { default as IconChevronDown } from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
+export { default as IconChevronUp } from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';

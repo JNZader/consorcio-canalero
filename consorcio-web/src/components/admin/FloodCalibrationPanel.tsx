@@ -44,8 +44,10 @@ import {
   useFloodCalibrationStore,
   selectLabeledCount,
   selectCanSave,
+  selectSuggestionsCount,
 } from '../../stores/floodCalibrationStore';
 import { floodCalibrationApi } from '../../lib/api/floodCalibration';
+import type { RainfallSuggestion } from '../../lib/api/floodCalibration';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import {
@@ -54,7 +56,11 @@ import {
   IconArrowRight,
   IconCalendar,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconCloudRain,
   IconDroplet,
+  IconEye,
   IconPlayerPlay,
   IconRefresh,
   IconSatellite,
@@ -96,6 +102,31 @@ function getLabelBadge(zonaId: string, labeledZones: Record<string, boolean>) {
   return <Badge color="gray" size="xs">Sin etiquetar</Badge>;
 }
 
+// ─── Rainfall color helpers ──────────────────────────────────────────
+
+/**
+ * Returns a background color based on rainfall intensity (mm).
+ * - No data: transparent
+ * - 0-10mm: light blue
+ * - 10-30mm: medium blue
+ * - 30-50mm: dark blue
+ * - >50mm: red/dark red
+ */
+function getRainfallColor(mm: number | undefined): string | undefined {
+  if (mm == null || mm <= 0) return undefined;
+  if (mm <= 10) return 'rgba(147, 197, 253, 0.5)'; // light blue
+  if (mm <= 30) return 'rgba(59, 130, 246, 0.5)'; // medium blue
+  if (mm <= 50) return 'rgba(29, 78, 216, 0.5)'; // dark blue
+  return 'rgba(220, 38, 38, 0.55)'; // red for >50mm
+}
+
+function getRainfallLabel(mm: number): string {
+  if (mm <= 10) return 'Lluvia leve';
+  if (mm <= 30) return 'Lluvia moderada';
+  if (mm <= 50) return 'Lluvia intensa';
+  return 'Lluvia muy intensa';
+}
+
 // ─── Calendar Grid (reused from ImageExplorerPanel pattern) ────────
 
 interface CalendarGridProps {
@@ -107,6 +138,8 @@ interface CalendarGridProps {
   onSelectDay: (dateStr: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  /** Map of date (YYYY-MM-DD) to rainfall mm for overlay coloring */
+  rainfallByDate?: Record<string, number>;
 }
 
 function CalendarGrid({
@@ -118,6 +151,7 @@ function CalendarGrid({
   onSelectDay,
   onPrevMonth,
   onNextMonth,
+  rainfallByDate = {},
 }: CalendarGridProps) {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -193,8 +227,10 @@ function CalendarGrid({
           const isAvailable = availableDates.has(cell.dateStr);
           const isSelected = selectedDay === cell.dateStr;
           const isFuture = cell.dateStr > todayStr;
+          const rainfallMm = rainfallByDate[cell.dateStr];
+          const rainfallBg = getRainfallColor(rainfallMm);
 
-          return (
+          const cellButton = (
             <button
               type="button"
               key={cell.dateStr}
@@ -212,9 +248,11 @@ function CalendarGrid({
                   : '1px solid transparent',
                 background: isSelected
                   ? 'var(--mantine-color-blue-0)'
-                  : isAvailable && !isFuture
-                    ? 'var(--mantine-color-green-0)'
-                    : 'transparent',
+                  : rainfallBg
+                    ? rainfallBg
+                    : isAvailable && !isFuture
+                      ? 'var(--mantine-color-green-0)'
+                      : 'transparent',
                 opacity: isFuture ? 0.3 : isAvailable ? 1 : 0.5,
                 cursor: isAvailable && !isFuture ? 'pointer' : 'default',
                 transition: 'all 150ms ease',
@@ -224,7 +262,7 @@ function CalendarGrid({
               <Text
                 size="sm"
                 fw={isSelected ? 700 : isAvailable ? 500 : 400}
-                c={isSelected ? 'blue.7' : isAvailable ? 'dark' : 'dimmed'}
+                c={isSelected ? 'blue.7' : rainfallMm != null && rainfallMm > 30 ? 'white' : isAvailable ? 'dark' : 'dimmed'}
               >
                 {cell.day}
               </Text>
@@ -244,13 +282,45 @@ function CalendarGrid({
               )}
             </button>
           );
+
+          // Wrap with Tooltip if there is rainfall data
+          if (rainfallMm != null && rainfallMm > 0) {
+            return (
+              <Tooltip
+                key={cell.dateStr}
+                label={`${rainfallMm.toFixed(1)} mm — ${getRainfallLabel(rainfallMm)}`}
+                position="top"
+                withArrow
+              >
+                {cellButton}
+              </Tooltip>
+            );
+          }
+
+          return cellButton;
         })}
       </div>
 
-      <Group gap="lg" mt="sm">
+      <Group gap="lg" mt="sm" wrap="wrap">
         <Group gap={4}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--mantine-color-green-6)' }} />
           <Text size="xs" c="dimmed">Con imagenes ({availableDates.size})</Text>
+        </Group>
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(147, 197, 253, 0.7)' }} />
+          <Text size="xs" c="dimmed">0-10mm</Text>
+        </Group>
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(59, 130, 246, 0.7)' }} />
+          <Text size="xs" c="dimmed">10-30mm</Text>
+        </Group>
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(29, 78, 216, 0.7)' }} />
+          <Text size="xs" c="dimmed">30-50mm</Text>
+        </Group>
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(220, 38, 38, 0.7)' }} />
+          <Text size="xs" c="dimmed">&gt;50mm</Text>
         </Group>
       </Group>
     </Paper>
@@ -274,6 +344,13 @@ export default function FloodCalibrationPanel() {
   const eventDescription = useFloodCalibrationStore((s) => s.eventDescription);
   const labeledCount = useFloodCalibrationStore(selectLabeledCount);
   const canSave = useFloodCalibrationStore(selectCanSave);
+  const suggestionsCount = useFloodCalibrationStore(selectSuggestionsCount);
+
+  // Rainfall state
+  const rainfallByDate = useFloodCalibrationStore((s) => s.rainfallByDate);
+  const rainfallLoading = useFloodCalibrationStore((s) => s.rainfallLoading);
+  const suggestions = useFloodCalibrationStore((s) => s.suggestions);
+  const suggestionsLoading = useFloodCalibrationStore((s) => s.suggestionsLoading);
 
   const {
     setSelectedDate,
@@ -286,6 +363,10 @@ export default function FloodCalibrationPanel() {
     setTrainingLoading,
     setSavingEvent,
     setEventDescription,
+    setRainfallByDate,
+    setRainfallLoading,
+    setSuggestions,
+    setSuggestionsLoading,
   } = useFloodCalibrationStore.getState();
 
   // Map refs
@@ -310,6 +391,60 @@ export default function FloodCalibrationPanel() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const availableDatesSet = useMemo(() => new Set(availableDates), [availableDates]);
+
+  // Suggestions panel collapse state
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(true);
+
+  // ─── Fetch rainfall data for visible month ────────────────────
+
+  useEffect(() => {
+    setRainfallLoading(true);
+    const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-01`;
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+    floodCalibrationApi
+      .getRainfallSummary(startDate, endDate)
+      .then(() => {
+        // Summary is zone-level; we also need daily data.
+        // Use first zone or aggregate — for calendar overlay, fetch all zones' daily data
+        // and show max per day (worst-case rainfall for any zone).
+        return floodCalibrationApi.getRainfallForZone('all', startDate, endDate);
+      })
+      .then((records) => {
+        const byDate: Record<string, number> = {};
+        for (const r of records) {
+          // Keep max across zones if backend returns multiple per date
+          byDate[r.date] = Math.max(byDate[r.date] ?? 0, r.precipitation_mm);
+        }
+        setRainfallByDate(byDate);
+      })
+      .catch((err) => {
+        // Rainfall data is optional — degrade gracefully
+        logger.warn('Error cargando datos de lluvia:', err);
+        setRainfallByDate({});
+      })
+      .finally(() => setRainfallLoading(false));
+  }, [calendarYear, calendarMonth, setRainfallByDate, setRainfallLoading]);
+
+  // ─── Fetch rainfall suggestions ─────────────────────────────
+
+  const fetchSuggestions = useCallback(async () => {
+    setSuggestionsLoading(true);
+    try {
+      const data = await floodCalibrationApi.getRainfallSuggestions();
+      setSuggestions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      logger.warn('Error cargando sugerencias de lluvia:', err);
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [setSuggestions, setSuggestionsLoading]);
+
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   // ─── Initialize map ─────────────────────────────────────────
 
@@ -521,6 +656,27 @@ export default function FloodCalibrationPanel() {
     setCalendarMonth(nextMonth);
   }, [calendarMonth, calendarYear]);
 
+  // ─── Handle suggestion click: navigate calendar to suggested date ──
+
+  const handleSuggestionClick = useCallback(
+    (suggestion: RainfallSuggestion) => {
+      const suggestedDate = suggestion.suggested_image_date;
+      const [yearStr, monthStr] = suggestedDate.split('-');
+      const targetYear = parseInt(yearStr, 10);
+      const targetMonth = parseInt(monthStr, 10) - 1; // 0-indexed
+
+      // Navigate calendar to the target month
+      setCalendarYear(targetYear);
+      setCalendarMonth(targetMonth);
+
+      // Select the suggested date and fetch its satellite image
+      setSelectedDate(suggestedDate);
+      clearLabels();
+      fetchImageForDate(suggestedDate);
+    },
+    [setSelectedDate, clearLabels, fetchImageForDate],
+  );
+
   // ─── Events CRUD ───────────────────────────────────────────
 
   const fetchEvents = useCallback(async () => {
@@ -663,10 +819,11 @@ export default function FloodCalibrationPanel() {
             month={calendarMonth}
             availableDates={availableDatesSet}
             selectedDay={selectedDate}
-            loadingDates={loadingDates}
+            loadingDates={loadingDates || rainfallLoading}
             onSelectDay={handleSelectDay}
             onPrevMonth={handlePrevMonth}
             onNextMonth={handleNextMonth}
+            rainfallByDate={rainfallByDate}
           />
 
           {/* Labeling controls */}
@@ -796,6 +953,93 @@ export default function FloodCalibrationPanel() {
           )}
         </Card>
       </div>
+
+      {/* Eventos Sugeridos panel */}
+      <Paper p="md" withBorder radius="md">
+        <Group justify="space-between" mb={suggestionsExpanded ? 'md' : 0}>
+          <Group gap="xs">
+            <IconCloudRain size={18} />
+            <Title order={5}>Eventos Sugeridos</Title>
+            {suggestionsCount > 0 && (
+              <Badge color="blue" variant="filled" size="sm">
+                {suggestionsCount}
+              </Badge>
+            )}
+          </Group>
+          <Group gap="xs">
+            <ActionIcon variant="subtle" onClick={fetchSuggestions} loading={suggestionsLoading}>
+              <IconRefresh size={18} />
+            </ActionIcon>
+            <ActionIcon
+              variant="subtle"
+              onClick={() => setSuggestionsExpanded((prev) => !prev)}
+              aria-label={suggestionsExpanded ? 'Colapsar' : 'Expandir'}
+            >
+              {suggestionsExpanded ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+            </ActionIcon>
+          </Group>
+        </Group>
+
+        {suggestionsExpanded && (
+          <>
+            {suggestionsLoading && (
+              <Stack gap="xs">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} height={56} radius="sm" />
+                ))}
+              </Stack>
+            )}
+
+            {!suggestionsLoading && suggestions.length === 0 && (
+              <Text c="dimmed" size="sm" ta="center" py="lg">
+                No hay eventos de lluvia detectados para sugerir imagenes.
+              </Text>
+            )}
+
+            {!suggestionsLoading && suggestions.length > 0 && (
+              <Stack gap="xs">
+                {suggestions.map((suggestion, idx) => (
+                  <Paper key={`${suggestion.event_date}-${idx}`} p="sm" withBorder radius="sm">
+                    <Group justify="space-between" wrap="nowrap">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Group gap="xs" wrap="wrap">
+                          <IconCloudRain size={14} />
+                          <Text size="sm" fw={500}>
+                            Evento: {suggestion.event_date}
+                          </Text>
+                          <Badge size="xs" color="blue" variant="light">
+                            {suggestion.accumulated_mm.toFixed(1)} mm
+                          </Badge>
+                          <Badge size="xs" color="gray" variant="light">
+                            {suggestion.cloud_cover.toFixed(0)}% nubes
+                          </Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed" mt={2}>
+                          Zonas: {suggestion.zone_names.join(', ')}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          Imagen sugerida: {suggestion.suggested_image_date}
+                        </Text>
+                      </div>
+                      <Tooltip label="Ver imagen en el calendario">
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="blue"
+                          leftSection={<IconEye size={14} />}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                        >
+                          Ver imagen
+                        </Button>
+                      </Tooltip>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </>
+        )}
+      </Paper>
 
       {/* Bottom section: Events list + Training controls */}
       <div
