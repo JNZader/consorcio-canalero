@@ -271,3 +271,50 @@ class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
             f"<CompositeZonalStats {self.id} zona={self.zona_id} "
             f"tipo={self.tipo!r} mean={self.mean_score}>"
         )
+
+
+# ── Canal Suggestion ────────────────────────
+
+
+class CanalSuggestion(UUIDMixin, Base):
+    """AI-generated canal infrastructure suggestion from network analysis."""
+
+    __tablename__ = "canal_suggestions"
+
+    tipo: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        comment="hotspot | gap | route | maintenance | bottleneck",
+    )
+    geometry: Mapped[Optional[str]] = mapped_column(
+        Geometry("GEOMETRY", srid=4326),
+        nullable=True,
+        comment="Suggestion geometry (point, line, or polygon)",
+    )
+    score: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Relevance / priority score 0-100",
+    )
+    metadata_: Mapped[Optional[dict]] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True,
+        comment="Analysis-specific payload (parameters, sources, etc.)",
+    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        comment="Groups suggestions from the same analysis run",
+    )
+    created_at: Mapped[dt_datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CanalSuggestion {self.id} tipo={self.tipo!r} "
+            f"score={self.score} batch={self.batch_id}>"
+        )
