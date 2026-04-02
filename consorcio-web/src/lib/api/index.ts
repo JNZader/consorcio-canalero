@@ -72,4 +72,9 @@ export type {
   FloodEventListItem,
   FloodEventDetailResponse,
   TrainingResultResponse,
+  RainfallRecord,
+  RainfallSummaryItem,
+  RainfallEvent,
+  RainfallSuggestion,
+  BackfillResponse,
 } from './floodCalibration';

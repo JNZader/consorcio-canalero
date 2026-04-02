@@ -1,11 +1,11 @@
 /**
- * Flood Calibration API module - CRUD for flood events + model training.
+ * Flood Calibration API module - CRUD for flood events + model training + rainfall.
  */
 
 import { apiFetch, LONG_TIMEOUT } from './core';
 
 // ===========================================
-// TYPES
+// TYPES — Flood Events
 // ===========================================
 
 export interface FloodEventCreatePayload {
@@ -57,6 +57,44 @@ export interface TrainingResultResponse {
   weights: Record<string, number>;
   bias: number;
   backup_path: string;
+}
+
+// ===========================================
+// TYPES — Rainfall
+// ===========================================
+
+export interface RainfallRecord {
+  date: string;
+  precipitation_mm: number;
+}
+
+export interface RainfallSummaryItem {
+  zone_id: string;
+  zone_name: string;
+  total_mm: number;
+  avg_mm: number;
+  max_mm: number;
+  rainy_days: number;
+}
+
+export interface RainfallEvent {
+  event_date: string;
+  zones: string[];
+  accumulated_mm: number;
+  duration_hours: number;
+}
+
+export interface RainfallSuggestion {
+  event_date: string;
+  suggested_image_date: string;
+  cloud_cover: number;
+  zone_names: string[];
+  accumulated_mm: number;
+}
+
+export interface BackfillResponse {
+  job_id: string;
+  status: string;
 }
 
 // ===========================================
@@ -115,6 +153,67 @@ export const floodCalibrationApi = {
   trainModel: (): Promise<TrainingResultResponse> =>
     apiFetch('/geo/ml/flood-prediction/train', {
       method: 'POST',
+      timeout: LONG_TIMEOUT,
+    }),
+
+  // =========================================
+  // RAINFALL
+  // =========================================
+
+  /**
+   * Obtener datos de lluvia diarios para una zona operativa.
+   */
+  getRainfallForZone: (
+    zonaId: string,
+    start: string,
+    end: string,
+  ): Promise<RainfallRecord[]> =>
+    apiFetch(`/geo/rainfall/zones/${zonaId}?start=${start}&end=${end}`),
+
+  /**
+   * Obtener resumen de lluvia agregado por zona.
+   */
+  getRainfallSummary: (
+    start: string,
+    end: string,
+  ): Promise<RainfallSummaryItem[]> =>
+    apiFetch(`/geo/rainfall/summary?start=${start}&end=${end}`),
+
+  /**
+   * Obtener eventos de lluvia detectados por umbral.
+   */
+  getRainfallEvents: (params?: {
+    threshold_mm?: number;
+    window_days?: number;
+    start?: string;
+    end?: string;
+  }): Promise<RainfallEvent[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.threshold_mm != null) searchParams.set('threshold_mm', String(params.threshold_mm));
+    if (params?.window_days != null) searchParams.set('window_days', String(params.window_days));
+    if (params?.start) searchParams.set('start', params.start);
+    if (params?.end) searchParams.set('end', params.end);
+    const qs = searchParams.toString();
+    return apiFetch(`/geo/rainfall/events${qs ? `?${qs}` : ''}`);
+  },
+
+  /**
+   * Obtener sugerencias de imagenes S2 post-evento de lluvia.
+   */
+  getRainfallSuggestions: (): Promise<RainfallSuggestion[]> =>
+    apiFetch('/geo/rainfall/suggestions'),
+
+  /**
+   * Disparar backfill de datos CHIRPS (admin-only).
+   * Retorna 202 con job_id de Celery.
+   */
+  triggerBackfill: (
+    startDate: string,
+    endDate: string,
+  ): Promise<BackfillResponse> =>
+    apiFetch('/geo/rainfall/backfill', {
+      method: 'POST',
+      body: JSON.stringify({ start_date: startDate, end_date: endDate }),
       timeout: LONG_TIMEOUT,
     }),
 };
