@@ -1861,6 +1861,84 @@ def compute_zonal_statistics(
     }
 
 
+# ── Hydrology Analysis ────────────────────────────────────────────
+
+
+@router.get("/hydrology/twi-summary")
+def get_twi_summary(
+    area_id: str = Query(default="zona_principal"),
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Get TWI classification summary with area statistics per zone."""
+    layer = (
+        db.query(GeoLayer)
+        .filter(GeoLayer.tipo == "twi", GeoLayer.area_id == area_id)
+        .order_by(GeoLayer.created_at.desc())
+        .first()
+    )
+    if not layer:
+        raise NotFoundError(f"No TWI layer found for area_id={area_id}")
+
+    raster_path = layer.archivo_path
+    if layer.metadata_extra and layer.metadata_extra.get("cog_path"):
+        cog = layer.metadata_extra["cog_path"]
+        if Path(cog).exists():
+            raster_path = cog
+
+    if not Path(raster_path).exists():
+        raise AppException(message="TWI raster not found", code="RASTER_NOT_FOUND", status_code=404)
+
+    from app.domains.geo.hydrology import compute_twi_zone_summary
+
+    return compute_twi_zone_summary(raster_path)
+
+
+@router.get("/hydrology/canal-capacity")
+def get_canal_capacity(
+    area_id: str = Query(default="zona_principal"),
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Analyze flow accumulation along canal segments to identify capacity risks.
+
+    Returns canals sorted by maximum upstream flow, indicating which
+    segments receive the most water and are at risk of overflowing.
+    """
+    layer = (
+        db.query(GeoLayer)
+        .filter(GeoLayer.tipo == "flow_acc", GeoLayer.area_id == area_id)
+        .order_by(GeoLayer.created_at.desc())
+        .first()
+    )
+    if not layer:
+        raise NotFoundError(f"No flow_acc layer found for area_id={area_id}")
+
+    raster_path = layer.archivo_path
+    if layer.metadata_extra and layer.metadata_extra.get("cog_path"):
+        cog = layer.metadata_extra["cog_path"]
+        if Path(cog).exists():
+            raster_path = cog
+
+    if not Path(raster_path).exists():
+        raise AppException(message="Flow accumulation raster not found", code="RASTER_NOT_FOUND", status_code=404)
+
+    # Use canales_existentes as the primary canal source
+    canal_path = "/app/data/waterways/canales_existentes.geojson"
+    if not Path(canal_path).exists():
+        raise AppException(message="Canal GeoJSON not found", code="GEOJSON_NOT_FOUND", status_code=404)
+
+    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+
+    results = compute_flow_acc_at_canals(raster_path, canal_path)
+
+    return {
+        "area_id": area_id,
+        "canals_analyzed": len(results),
+        "results": results,
+    }
+
+
 # ── Canal Network Routing (pgRouting) ─────────────────────────────
 
 
