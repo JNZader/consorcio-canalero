@@ -25,6 +25,14 @@ NDWI_WATER_THRESHOLD = 0.1       # Definite water
 NDWI_WET_THRESHOLD = -0.05       # Wet/saturated soil
 MIN_WATER_AREA_PIXELS = 10       # Minimum contiguous pixels to count as water body
 
+# SCL (Scene Classification Layer) values to KEEP for valid pixels.
+# 2=dark area, 4=vegetation, 5=not-vegetated, 6=water, 7=unclassified
+# Excluded: 3=cloud shadow, 8=cloud medium prob, 9=cloud high prob, 10=thin cirrus
+SCL_VALID_VALUES = [2, 4, 5, 6, 7]
+
+# If fewer than this fraction of pixels survive cloud masking, warn the user.
+MIN_VALID_PIXEL_FRACTION = 0.10  # 10%
+
 
 def detect_water_from_gee(
     geometry_geojson: dict,
@@ -79,10 +87,54 @@ def detect_water_from_gee(
             "date_range": {"start": start, "end": end},
         }
 
-    # Compute NDWI = (Green - NIR) / (Green + NIR)
+    # ── SCL cloud masking ──────────────────────────────────────────
+    # Build a mask from the Scene Classification Layer (20 m, resampled
+    # to 10 m by GEE automatically when used with 10 m bands).
+    # Keep only pixels whose SCL value is in SCL_VALID_VALUES.
+    scl = s2.select("SCL")
+    scl_mask = ee.Image(0)
+    for scl_val in SCL_VALID_VALUES:
+        scl_mask = scl_mask.Or(scl.eq(scl_val))
+
+    # Count valid-pixel fraction to warn when most of the AOI is cloudy
+    total_pixels_img = ee.Image.constant(1).rename("count")
+    total_px = total_pixels_img.reduceRegion(
+        reducer=ee.Reducer.count(),
+        geometry=ee_geom,
+        scale=10,
+        maxPixels=1e8,
+    )
+    valid_px = total_pixels_img.updateMask(scl_mask).reduceRegion(
+        reducer=ee.Reducer.count(),
+        geometry=ee_geom,
+        scale=10,
+        maxPixels=1e8,
+    )
+    total_px_val = total_px.getInfo().get("count", 0) or 0
+    valid_px_val = valid_px.getInfo().get("count", 0) or 0
+
+    valid_fraction = (valid_px_val / total_px_val) if total_px_val > 0 else 0
+
+    if valid_fraction < MIN_VALID_PIXEL_FRACTION:
+        image_date = ee.Date(s2.get("system:time_start")).format("YYYY-MM-dd").getInfo()
+        cloud_pct = s2.get("CLOUDY_PIXEL_PERCENTAGE").getInfo()
+        return {
+            "status": "insufficient_clear_pixels",
+            "message": (
+                f"Only {valid_fraction:.0%} of pixels are cloud-free after SCL masking "
+                f"(minimum required: {MIN_VALID_PIXEL_FRACTION:.0%}). "
+                "Try a wider date window or higher cloud_cover_max."
+            ),
+            "image_date": image_date,
+            "cloud_cover_pct": round(cloud_pct, 1) if cloud_pct else None,
+            "valid_pixel_pct": round(valid_fraction * 100, 1),
+            "search_window": {"start": start, "end": end},
+        }
+
+    # ── Compute NDWI on cloud-free pixels only ────────────────────
     # Sentinel-2 SR: B3=Green, B8=NIR, values 0-10000
-    green = s2.select("B3").divide(10000)
-    nir = s2.select("B8").divide(10000)
+    green = s2.select("B3").divide(10000).updateMask(scl_mask)
+    nir = s2.select("B8").divide(10000).updateMask(scl_mask)
     ndwi = green.subtract(nir).divide(green.add(nir)).rename("NDWI")
 
     # Classify
@@ -94,7 +146,7 @@ def detect_water_from_gee(
     water_clean = water_mask.focalMode(radius=2, kernelType="circle", units="pixels")
     water_clean = water_clean.updateMask(water_clean)
 
-    # Compute area statistics
+    # Compute area statistics — only over cloud-free (masked) pixels
     pixel_area = ee.Image.pixelArea()
 
     water_area = water_mask.multiply(pixel_area).reduceRegion(
@@ -111,14 +163,17 @@ def detect_water_from_gee(
         maxPixels=1e8,
     ).getInfo()
 
-    total_area = pixel_area.reduceRegion(
+    # Total area uses a cloud-free-masked pixel area so percentages are
+    # relative to the analysable surface, not the full geometry.
+    clear_pixel_area = pixel_area.updateMask(scl_mask)
+    total_area = clear_pixel_area.reduceRegion(
         reducer=ee.Reducer.sum(),
         geometry=ee_geom,
         scale=10,
         maxPixels=1e8,
     ).getInfo()
 
-    # NDWI statistics
+    # NDWI statistics (already masked, only cloud-free pixels)
     ndwi_stats = ndwi.reduceRegion(
         reducer=ee.Reducer.mean().combine(
             ee.Reducer.stdDev(), sharedInputs=True
@@ -138,10 +193,22 @@ def detect_water_from_gee(
     water_ha = (water_area.get("NDWI", 0) or 0) / 10_000
     wet_ha = (wet_area.get("NDWI", 0) or 0) / 10_000
 
+    cloud_warning = None
+    if valid_fraction < 0.50:
+        cloud_warning = (
+            f"Only {valid_fraction:.0%} of the area is cloud-free. "
+            "Results may not be representative."
+        )
+
     return {
         "status": "success",
         "image_date": image_date,
         "cloud_cover_pct": round(cloud_pct, 1) if cloud_pct else None,
+        "cloud_masking": {
+            "applied": True,
+            "valid_pixel_pct": round(valid_fraction * 100, 1),
+            "warning": cloud_warning,
+        },
         "search_window": {"start": start, "end": end},
         "area": {
             "total_ha": round(total_ha, 2),
