@@ -707,6 +707,24 @@ class GeoRepository:
                     exc_info=True,
                 )
 
+        # ── Rainfall features (48h, 7d, 30d) ──
+        try:
+            features["rainfall_48h"] = self.get_accumulated_rainfall(
+                db, zona_id, event_date, window_days=2
+            )
+            features["rainfall_7d"] = self.get_accumulated_rainfall(
+                db, zona_id, event_date, window_days=7
+            )
+            features["rainfall_30d"] = self.get_accumulated_rainfall(
+                db, zona_id, event_date, window_days=30
+            )
+        except Exception:
+            logger.warning(
+                "extract_zone_features: rainfall query failed for %s",
+                zona_id,
+                exc_info=True,
+            )
+
         return features
 
     # ── RAINFALL RECORD READ ───────────────────────
