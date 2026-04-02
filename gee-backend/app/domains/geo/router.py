@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete
@@ -1859,6 +1859,77 @@ def compute_zonal_statistics(
         "raster": body.layer_tipo,
         "zona_source": body.zona_source,
     }
+
+
+# ── STAC Catalog ──────────────────────────────────────────────────
+
+
+@router.get("/stac")
+def stac_root(request: Request):
+    """STAC API root — catalog landing page."""
+    base_url = f"{request.base_url}api/v2/geo"
+    return {
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "consorcio-canalero",
+        "title": "Consorcio Canalero — Geospatial Catalog",
+        "description": "Catalog of DEM pipeline outputs, satellite imagery, and analysis results",
+        "links": [
+            {"rel": "self", "href": f"{base_url}/stac"},
+            {"rel": "collections", "href": f"{base_url}/stac/collections"},
+            {"rel": "search", "href": f"{base_url}/stac/search"},
+        ],
+    }
+
+
+@router.get("/stac/collections")
+def stac_collections(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """List STAC collections (grouped by GeoLayer type)."""
+    from app.domains.geo.stac import get_collections
+    base_url = f"{request.base_url}api/v2/geo"
+    return get_collections(db, base_url)
+
+
+@router.get("/stac/search")
+def stac_search(
+    request: Request,
+    db: Session = Depends(get_db),
+    tipo: str | None = Query(default=None),
+    area_id: str | None = Query(default=None),
+    fuente: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Search the STAC catalog with filters."""
+    from app.domains.geo.stac import search_catalog
+    base_url = f"{request.base_url}api/v2/geo"
+    return search_catalog(
+        db,
+        tipo=tipo,
+        area_id=area_id,
+        fuente=fuente,
+        limit=limit,
+        offset=offset,
+        base_url=base_url,
+    )
+
+
+@router.get("/stac/items/{item_id}")
+def stac_item(
+    item_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Get a single STAC item by ID."""
+    from app.domains.geo.stac import layer_to_stac_item
+    layer = db.query(GeoLayer).filter(GeoLayer.id == item_id).first()
+    if not layer:
+        raise NotFoundError(f"Item not found: {item_id}")
+    base_url = f"{request.base_url}api/v2/geo"
+    return layer_to_stac_item(layer, base_url)
 
 
 # ── Temporal Analysis ─────────────────────────────────────────────
