@@ -15,15 +15,20 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import tempfile
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 import ee
 import numpy as np
 import torch
 import torch.nn as nn
+from shapely.geometry import Point, Polygon, shape
 from torch.utils.data import Dataset, DataLoader, random_split
 
 import segmentation_models_pytorch as smp
@@ -37,17 +42,9 @@ logger = logging.getLogger("train_water_unet")
 
 # ── Constants ──────────────────────────────────────────────────────────
 
-# Santa Fe, Argentina — bounding box for the project area
-AOI_BOUNDS = {
-    "west": -61.0,
-    "south": -31.8,
-    "east": -59.5,
-    "north": -30.5,
-}
-
 PATCH_SIZE = 256  # pixels
 SCALE = 10  # meters per pixel (Sentinel-2 10m bands)
-NDWI_THRESHOLD = 0.3
+NDWI_THRESHOLD = 0.1  # Low for thin canal detection in agricultural zones
 
 # Sentinel-2 bands of interest
 S2_BANDS = ["B2", "B3", "B4", "B8"]  # blue, green, red, nir
@@ -61,21 +58,131 @@ SCL_EXCLUDE = {3, 8, 9, 10}
 BAND_SCALE = 10000.0
 
 
+# ── AOI Loading ───────────────────────────────────────────────────────
+
+
+def _parse_kml_polygon(kml_root: ElementTree.Element) -> list[list[list[float]]]:
+    """Extract polygon coordinates from a KML ElementTree root."""
+    ns = {"kml": "http://www.opengis.net/kml/2.2"}
+    # Try with namespace first, then without
+    coord_elem = kml_root.find(".//kml:coordinates", ns)
+    if coord_elem is None:
+        coord_elem = kml_root.find(".//{http://www.opengis.net/kml/2.2}coordinates")
+    if coord_elem is None:
+        # Fallback: no namespace
+        coord_elem = kml_root.find(".//coordinates")
+    if coord_elem is None:
+        raise ValueError("No <coordinates> element found in KML")
+
+    raw = coord_elem.text.strip()
+    ring: list[list[float]] = []
+    for triplet in raw.split():
+        parts = triplet.split(",")
+        lon, lat = float(parts[0]), float(parts[1])
+        ring.append([lon, lat])
+
+    return [ring]
+
+
+def load_aoi(filepath: str) -> tuple[Polygon, dict[str, float]]:
+    """Load an Area of Interest from a GeoJSON, KML, or KMZ file.
+
+    Args:
+        filepath: Path to the AOI file (.geojson, .json, .kml, .kmz).
+
+    Returns:
+        Tuple of (shapely Polygon, bounding box dict with west/south/east/north).
+    """
+    path = Path(filepath)
+    suffix = path.suffix.lower()
+
+    if suffix in (".geojson", ".json"):
+        with open(path) as f:
+            data = json.load(f)
+        # Support both FeatureCollection and single Feature/Geometry
+        if data.get("type") == "FeatureCollection":
+            geom_data = data["features"][0]["geometry"]
+        elif data.get("type") == "Feature":
+            geom_data = data["geometry"]
+        else:
+            geom_data = data
+        polygon = shape(geom_data)
+
+    elif suffix == ".kml":
+        tree = ElementTree.parse(path)
+        coords = _parse_kml_polygon(tree.getroot())
+        polygon = Polygon(coords[0])
+
+    elif suffix == ".kmz":
+        with zipfile.ZipFile(path, "r") as zf:
+            kml_names = [n for n in zf.namelist() if n.lower().endswith(".kml")]
+            if not kml_names:
+                raise ValueError(f"No KML file found inside KMZ: {filepath}")
+            with zf.open(kml_names[0]) as kml_file:
+                tree = ElementTree.parse(kml_file)
+        coords = _parse_kml_polygon(tree.getroot())
+        polygon = Polygon(coords[0])
+
+    else:
+        raise ValueError(
+            f"Unsupported AOI file format '{suffix}'. "
+            "Use .geojson, .json, .kml, or .kmz."
+        )
+
+    if not polygon.is_valid:
+        logger.warning("AOI polygon is invalid, attempting to fix with buffer(0)")
+        polygon = polygon.buffer(0)
+
+    bounds = polygon.bounds  # (minx, miny, maxx, maxy)
+    bbox = {
+        "west": bounds[0],
+        "south": bounds[1],
+        "east": bounds[2],
+        "north": bounds[3],
+    }
+
+    logger.info(
+        "Loaded AOI from %s — bbox: W=%.4f S=%.4f E=%.4f N=%.4f",
+        path.name, bbox["west"], bbox["south"], bbox["east"], bbox["north"],
+    )
+    return polygon, bbox
+
+
 # ── GEE Initialization ────────────────────────────────────────────────
 
 
 def initialize_gee(credentials_dir: str = "/app/credentials") -> None:
-    """Initialize Google Earth Engine with service account credentials."""
+    """Initialize Google Earth Engine with service account credentials.
+
+    Resolution order:
+    1. JSON file in ``credentials_dir`` (original behaviour).
+    2. ``GEE_SERVICE_ACCOUNT_KEY`` env var containing the JSON string.
+       When found, the content is written to a temp file so the rest of
+       the pipeline stays unchanged.
+    """
     cred_path = Path(credentials_dir)
     sa_key_files = list(cred_path.glob("*.json"))
 
     if not sa_key_files:
-        raise FileNotFoundError(
-            f"No service account JSON found in {credentials_dir}. "
-            "Place a GEE service account key file there."
-        )
+        # Fallback: check environment variable
+        env_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
+        if env_json:
+            logger.info("No JSON file in %s — using GEE_SERVICE_ACCOUNT_KEY env var", credentials_dir)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", prefix="gee-sa-", delete=False,
+            )
+            tmp.write(env_json)
+            tmp.close()
+            sa_key_path = Path(tmp.name)
+        else:
+            raise FileNotFoundError(
+                f"No service account JSON found in {credentials_dir} and "
+                "GEE_SERVICE_ACCOUNT_KEY env var is not set. "
+                "Provide credentials via either method."
+            )
+    else:
+        sa_key_path = sa_key_files[0]
 
-    sa_key_path = sa_key_files[0]
     logger.info("Using GEE credentials: %s", sa_key_path.name)
 
     with open(sa_key_path) as f:
@@ -95,18 +202,24 @@ def initialize_gee(credentials_dir: str = "/app/credentials") -> None:
 def get_sentinel2_collection(
     aoi: ee.Geometry,
     max_cloud_cover: float = 20.0,
-    days_back: int = 730,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> ee.ImageCollection:
     """Get filtered Sentinel-2 L2A collection for the AOI."""
     import datetime
 
-    end_date = datetime.datetime.now()
-    start_date = end_date - datetime.timedelta(days=days_back)
+    if end_date is None:
+        end_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    if start_date is None:
+        end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+        start_date = (end_dt - datetime.timedelta(days=730)).strftime("%Y-%m-%d")
+
+    logger.info("Date range: %s to %s", start_date, end_date)
 
     collection = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
         .filterBounds(aoi)
-        .filterDate(start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+        .filterDate(start_date, end_date)
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", max_cloud_cover))
         .select(S2_BANDS + [SCL_BAND])
     )
@@ -115,17 +228,35 @@ def get_sentinel2_collection(
 
 
 def sample_patch_points(
-    aoi: ee.Geometry, num_points: int, seed: int = 42
+    aoi_polygon: Polygon,
+    aoi_bounds: dict[str, float],
+    num_points: int,
+    seed: int = 42,
 ) -> list[dict[str, float]]:
-    """Generate random sample points within the AOI."""
+    """Generate random sample points within the AOI polygon.
+
+    Points are sampled inside the bounding box and filtered to keep only
+    those that fall within the actual polygon boundary.
+    """
     rng = np.random.default_rng(seed)
-    points = []
-    for _ in range(num_points * 3):  # oversample to account for failures
-        lon = rng.uniform(AOI_BOUNDS["west"], AOI_BOUNDS["east"])
-        lat = rng.uniform(AOI_BOUNDS["south"], AOI_BOUNDS["north"])
-        points.append({"lon": lon, "lat": lat})
-        if len(points) >= num_points * 3:
-            break
+    target = num_points * 3  # oversample to account for download failures
+    points: list[dict[str, float]] = []
+    max_attempts = target * 20  # safety cap to avoid infinite loop
+    attempts = 0
+
+    while len(points) < target and attempts < max_attempts:
+        lon = rng.uniform(aoi_bounds["west"], aoi_bounds["east"])
+        lat = rng.uniform(aoi_bounds["south"], aoi_bounds["north"])
+        attempts += 1
+        if aoi_polygon.contains(Point(lon, lat)):
+            points.append({"lon": lon, "lat": lat})
+
+    if len(points) < target:
+        logger.warning(
+            "Only generated %d sample points (target was %d) after %d attempts",
+            len(points), target, max_attempts,
+        )
+
     return points
 
 
@@ -201,19 +332,31 @@ def download_patch(
 
 def download_patches(
     num_patches: int,
+    aoi_polygon: Polygon,
+    aoi_bounds: dict[str, float],
     max_cloud_cover: float = 20.0,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[np.ndarray]:
     """Download Sentinel-2 patches from GEE.
+
+    Args:
+        num_patches: Number of patches to download.
+        aoi_polygon: Shapely polygon defining the area of interest.
+        aoi_bounds: Bounding box dict (west, south, east, north).
+        max_cloud_cover: Maximum cloud cover percentage filter.
+        start_date: Start date (YYYY-MM-DD) or None for 2 years back.
+        end_date: End date (YYYY-MM-DD) or None for today.
 
     Returns:
         List of arrays, each shape (5, H, W) — 4 spectral bands + SCL.
     """
-    aoi = ee.Geometry.Rectangle(
-        [AOI_BOUNDS["west"], AOI_BOUNDS["south"], AOI_BOUNDS["east"], AOI_BOUNDS["north"]]
-    )
+    # Convert shapely polygon coords to ee.Geometry.Polygon
+    exterior_coords = list(aoi_polygon.exterior.coords)
+    aoi = ee.Geometry.Polygon([[[lon, lat] for lon, lat in exterior_coords]])
 
     logger.info("Fetching Sentinel-2 collection for AOI...")
-    collection = get_sentinel2_collection(aoi, max_cloud_cover)
+    collection = get_sentinel2_collection(aoi, max_cloud_cover, start_date, end_date)
 
     # Get list of image IDs
     image_list = collection.toList(500)
@@ -225,8 +368,8 @@ def download_patches(
             "No Sentinel-2 images found. Check AOI, date range, and cloud cover filter."
         )
 
-    # Generate sample points
-    sample_points = sample_patch_points(aoi, num_patches)
+    # Generate sample points within the polygon
+    sample_points = sample_patch_points(aoi_polygon, aoi_bounds, num_patches)
 
     patches: list[np.ndarray] = []
     failed = 0
@@ -298,6 +441,10 @@ def create_labels(
 
     water_label = (ndwi > NDWI_THRESHOLD).astype(np.float32)
 
+    water_pct = water_label[valid_mask > 0].mean() * 100 if valid_mask.sum() > 0 else 0
+    if water_pct > 0:
+        logger.debug("Patch water coverage: %.2f%%", water_pct)
+
     return valid_mask, water_label
 
 
@@ -340,8 +487,62 @@ class WaterSegmentationDataset(Dataset):
                 )
             )
 
+        # Log water stats across dataset
+        water_ratios = []
+        for _, lbl, msk in self.samples:
+            valid_px = msk.sum()
+            if valid_px > 0:
+                water_ratios.append(lbl[msk > 0].mean() * 100)
+        avg_water = np.mean(water_ratios) if water_ratios else 0
+        max_water = np.max(water_ratios) if water_ratios else 0
         logger.info(
-            "Dataset: %d usable samples from %d patches", len(self.samples), len(patches)
+            "Dataset: %d usable samples from %d patches | water coverage: avg=%.2f%%, max=%.2f%%",
+            len(self.samples), len(patches), avg_water, max_water,
+        )
+
+        # ── Oversample patches that contain water ──
+        WATER_THRESHOLD_PCT = 0.5  # minimum water coverage to count as "wet"
+        wet_samples = []
+        dry_samples = []
+        for i, ratio in enumerate(water_ratios):
+            if ratio > WATER_THRESHOLD_PCT:
+                wet_samples.append(i)
+            else:
+                dry_samples.append(i)
+
+        if wet_samples and dry_samples:
+            # Duplicate wet samples so they represent ~50% of the dataset
+            oversample_factor = max(1, len(dry_samples) // len(wet_samples))
+            extra_samples = [self.samples[i] for i in wet_samples] * (oversample_factor - 1)
+            self.samples.extend(extra_samples)
+            logger.info(
+                "Oversampling: %d wet patches (>%.1f%% water), %d dry patches | "
+                "oversample factor: %dx | total samples after: %d",
+                len(wet_samples), WATER_THRESHOLD_PCT, len(dry_samples),
+                oversample_factor, len(self.samples),
+            )
+        else:
+            logger.warning(
+                "Oversampling skipped: %d wet, %d dry patches — need both for oversampling",
+                len(wet_samples), len(dry_samples),
+            )
+
+        # ── Compute pos_weight for Focal Loss ──
+        total_water_px = 0.0
+        total_valid_px = 0.0
+        for _, lbl, msk in self.samples:
+            valid = msk > 0
+            total_valid_px += valid.sum()
+            total_water_px += lbl[valid].sum()
+
+        total_dry_px = total_valid_px - total_water_px
+        if total_water_px > 0:
+            self.pos_weight = min(total_dry_px / total_water_px, 100.0)
+        else:
+            self.pos_weight = 100.0  # cap when no water pixels at all
+        logger.info(
+            "Pixel balance: %.0f water / %.0f dry → pos_weight=%.1f (capped at 100)",
+            total_water_px, total_dry_px, self.pos_weight,
         )
 
     def _resize(
@@ -393,14 +594,29 @@ class WaterSegmentationDataset(Dataset):
 # ── Loss ───────────────────────────────────────────────────────────────
 
 
-class BCEDiceLoss(nn.Module):
-    """Combined Binary Cross-Entropy + Dice loss with cloud masking."""
+class FocalDiceLoss(nn.Module):
+    """Combined Focal Loss + Dice loss with cloud masking.
 
-    def __init__(self, bce_weight: float = 0.5, smooth: float = 1.0):
+    Focal Loss down-weights easy (majority-class) examples so the model
+    focuses on the rare positive class (water).  Formula per-pixel:
+        -alpha * (1 - p_t)^gamma * log(p_t)
+    where p_t = p for positives, 1-p for negatives.
+    """
+
+    def __init__(
+        self,
+        focal_weight: float = 0.5,
+        smooth: float = 1.0,
+        alpha: float = 0.75,
+        gamma: float = 2.0,
+        pos_weight: float = 1.0,
+    ):
         super().__init__()
-        self.bce_weight = bce_weight
+        self.focal_weight = focal_weight
         self.smooth = smooth
-        self.bce = nn.BCELoss(reduction="none")
+        self.alpha = alpha
+        self.gamma = gamma
+        self.pos_weight = pos_weight
 
     def forward(
         self,
@@ -408,11 +624,26 @@ class BCEDiceLoss(nn.Module):
         target: torch.Tensor,
         valid_mask: torch.Tensor,
     ) -> torch.Tensor:
-        # BCE component (masked)
-        bce_loss = self.bce(pred, target)
-        bce_loss = (bce_loss * valid_mask).sum() / (valid_mask.sum() + 1e-8)
+        # ── Focal Loss component (masked) ──
+        pred_clamped = torch.clamp(pred, 1e-7, 1.0 - 1e-7)
 
-        # Dice component (masked)
+        # Per-pixel alpha: higher weight for positives (water)
+        alpha_t = target * self.alpha + (1 - target) * (1 - self.alpha)
+
+        # Apply pos_weight: scale the positive-class log term
+        bce_term = (
+            -target * self.pos_weight * torch.log(pred_clamped)
+            - (1 - target) * torch.log(1 - pred_clamped)
+        )
+
+        # Focal modulation: (1 - p_t)^gamma
+        p_t = target * pred_clamped + (1 - target) * (1 - pred_clamped)
+        focal_mod = (1 - p_t) ** self.gamma
+
+        focal_loss = alpha_t * focal_mod * bce_term
+        focal_loss = (focal_loss * valid_mask).sum() / (valid_mask.sum() + 1e-8)
+
+        # ── Dice component (masked) ──
         pred_masked = pred * valid_mask
         target_masked = target * valid_mask
 
@@ -420,7 +651,7 @@ class BCEDiceLoss(nn.Module):
         union = pred_masked.sum() + target_masked.sum()
         dice_loss = 1.0 - (2.0 * intersection + self.smooth) / (union + self.smooth)
 
-        return self.bce_weight * bce_loss + (1.0 - self.bce_weight) * dice_loss
+        return self.focal_weight * focal_loss + (1.0 - self.focal_weight) * dice_loss
 
 
 # ── Metrics ────────────────────────────────────────────────────────────
@@ -467,13 +698,15 @@ def train(
     lr: float,
     output_path: str,
     device: torch.device,
+    pos_weight: float = 1.0,
 ) -> dict[str, Any]:
     """Train the U-Net model with early stopping."""
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", patience=5, factor=0.5
     )
-    criterion = BCEDiceLoss()
+    criterion = FocalDiceLoss(pos_weight=pos_weight)
+    logger.info("Loss: FocalDiceLoss (alpha=0.75, gamma=2.0, pos_weight=%.1f)", pos_weight)
 
     best_val_loss = float("inf")
     patience_counter = 0
@@ -617,13 +850,41 @@ def main() -> None:
         default=20.0,
         help="Max cloud cover percentage (default: 20)",
     )
+    parser.add_argument(
+        "--aoi-file",
+        type=str,
+        default="/app/capas/zona.geojson",
+        help="Path to GeoJSON/KML/KMZ file defining the AOI (default: /app/capas/zona.geojson)",
+    )
+    parser.add_argument(
+        "--ndwi-threshold",
+        type=float,
+        default=0.1,
+        help="NDWI threshold for pseudo-labels (default: 0.1, lower=more water detected)",
+    )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Start date for Sentinel-2 filter (YYYY-MM-DD). Default: 2 years back from end-date",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="End date for Sentinel-2 filter (YYYY-MM-DD). Default: today",
+    )
     args = parser.parse_args()
+
+    # Override global NDWI threshold from CLI
+    global NDWI_THRESHOLD
+    NDWI_THRESHOLD = args.ndwi_threshold
 
     logger.info("=" * 60)
     logger.info("U-Net Water Segmentation Training")
     logger.info("=" * 60)
-    logger.info("Config: epochs=%d, batch_size=%d, lr=%.6f, patches=%d",
-                args.epochs, args.batch_size, args.lr, args.patches)
+    logger.info("Config: epochs=%d, batch_size=%d, lr=%.6f, patches=%d, ndwi_thresh=%.2f",
+                args.epochs, args.batch_size, args.lr, args.patches, NDWI_THRESHOLD)
     logger.info("Output: %s", args.output_path)
 
     # ── Device ──
@@ -631,7 +892,11 @@ def main() -> None:
     logger.info("Device: %s", device)
     if device.type == "cuda":
         logger.info("GPU: %s", torch.cuda.get_device_name(0))
-        logger.info("VRAM: %.1f GB", torch.cuda.get_device_properties(0).total_mem / 1e9)
+        logger.info("VRAM: %.1f GB", torch.cuda.get_device_properties(0).total_memory / 1e9)
+
+    # ── Load AOI ──
+    logger.info("Loading AOI from %s", args.aoi_file)
+    aoi_polygon, aoi_bounds = load_aoi(args.aoi_file)
 
     # ── Initialize GEE ──
     logger.info("Initializing Google Earth Engine...")
@@ -639,7 +904,10 @@ def main() -> None:
 
     # ── Download patches ──
     logger.info("Downloading %d Sentinel-2 patches...", args.patches)
-    raw_patches = download_patches(args.patches, args.max_cloud_cover)
+    raw_patches = download_patches(
+        args.patches, aoi_polygon, aoi_bounds,
+        args.max_cloud_cover, args.start_date, args.end_date,
+    )
 
     if len(raw_patches) < 10:
         logger.error(
@@ -709,6 +977,7 @@ def main() -> None:
         lr=args.lr,
         output_path=args.output_path,
         device=device,
+        pos_weight=dataset.pos_weight,
     )
 
     # ── Final summary ──

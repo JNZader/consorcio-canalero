@@ -204,9 +204,12 @@ services:
       - ./gee-backend/app:/app/app:ro
       - ./gee-backend/scripts:/app/scripts:ro
       - ./gee-backend/credentials:/app/credentials:ro
+      - ./consorcio-web/public/capas:/app/capas:ro
       - geo-data:/data/geo
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gee-sa-key.json
+    env_file:
+      - ./gee-backend/.env
     depends_on:
       - postgres
 
