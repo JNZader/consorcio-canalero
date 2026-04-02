@@ -1,7 +1,10 @@
 """Repository layer — all database access for the geo domain."""
 
+import logging
 import uuid
-from typing import Optional
+from datetime import date, timedelta
+from pathlib import Path
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,6 +18,8 @@ from app.domains.geo.models import (
     GeoJob,
     GeoLayer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GeoRepository:
@@ -530,3 +535,174 @@ class GeoRepository:
         db.delete(event)
         db.flush()
         return True
+
+    def update_label_features(
+        self,
+        db: Session,
+        label_id: uuid.UUID,
+        features: dict[str, Any],
+    ) -> None:
+        """Update the extracted_features JSONB on a FloodLabel."""
+        stmt = select(FloodLabel).where(FloodLabel.id == label_id)
+        label = db.execute(stmt).scalar_one_or_none()
+        if label is not None:
+            label.extracted_features = features
+            db.flush()
+
+    def get_labels_with_features(self, db: Session) -> list[FloodLabel]:
+        """Return all FloodLabel rows that have non-null extracted_features."""
+        from sqlalchemy.orm import joinedload
+
+        stmt = (
+            select(FloodLabel)
+            .options(joinedload(FloodLabel.event))
+            .where(FloodLabel.extracted_features.isnot(None))
+        )
+        return list(db.execute(stmt).scalars().all())
+
+    # ── FEATURE EXTRACTION ──────────────────────
+
+    def extract_zone_features(
+        self,
+        db: Session,
+        zona_id: uuid.UUID,
+        event_date: date,
+    ) -> dict[str, Any]:
+        """Extract DEM-based and water detection features for a zone+date.
+
+        Uses existing zonal_stats (raster layers) and detect_water_from_gee
+        to build the feature vector stored in FloodLabel.extracted_features.
+        """
+        from geoalchemy2.functions import ST_AsGeoJSON, ST_AsText
+        from sqlalchemy import select as sa_select
+
+        from app.domains.geo.intelligence.models import ZonaOperativa
+
+        zona = db.query(ZonaOperativa).filter(ZonaOperativa.id == zona_id).first()
+        if zona is None:
+            logger.warning("extract_zone_features: zona %s not found", zona_id)
+            return {}
+
+        zona_wkt = db.execute(
+            sa_select(ST_AsText(ZonaOperativa.geometria)).where(
+                ZonaOperativa.id == zona_id
+            )
+        ).scalar()
+
+        zona_geojson_str = db.execute(
+            sa_select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
+                ZonaOperativa.id == zona_id
+            )
+        ).scalar()
+
+        features: dict[str, Any] = {}
+
+        # ── DEM raster stats (HAND, TWI, slope, flow_acc) ──
+        from app.domains.geo.zonal_stats import compute_stats_for_zones
+
+        zone_data = [(str(zona.id), zona_wkt, zona.nombre)]
+
+        for tipo in ["hand", "twi", "slope", "flow_acc"]:
+            layer = (
+                db.query(GeoLayer)
+                .filter(GeoLayer.tipo == tipo)
+                .order_by(GeoLayer.created_at.desc())
+                .first()
+            )
+            if not layer:
+                continue
+
+            path = layer.archivo_path
+            if layer.metadata_extra and layer.metadata_extra.get("cog_path"):
+                cog = layer.metadata_extra["cog_path"]
+                if Path(cog).exists():
+                    path = cog
+
+            if not Path(path).exists():
+                continue
+
+            try:
+                stats = compute_stats_for_zones(
+                    zone_data, path, ["mean", "max", "min", "count"]
+                )
+                if stats and stats[0].get("count", 0) > 0:
+                    s = stats[0]
+                    if tipo == "hand":
+                        features["hand_mean"] = s.get("mean", 0) or 0
+                        features["hand_max"] = s.get("max", 0) or 0
+                    elif tipo == "twi":
+                        features["twi_mean"] = s.get("mean", 0) or 0
+                    elif tipo == "slope":
+                        features["slope_mean"] = s.get("mean", 0) or 0
+                    elif tipo == "flow_acc":
+                        import numpy as np
+
+                        raw_max = s.get("max", 0) or 0
+                        features["flow_acc_log_max"] = float(
+                            np.log1p(raw_max)
+                        )
+            except Exception:
+                logger.warning(
+                    "extract_zone_features: failed raster stats for %s/%s",
+                    tipo,
+                    zona_id,
+                    exc_info=True,
+                )
+
+        # ── Water detection (current date) ──
+        if zona_geojson_str:
+            import json as _json
+
+            geojson_geom = _json.loads(zona_geojson_str)
+
+            try:
+                from app.domains.geo.water_detection import detect_water_from_gee
+
+                result = detect_water_from_gee(
+                    geojson_geom,
+                    event_date.isoformat(),
+                    days_window=15,
+                )
+                if result.get("status") == "success":
+                    features["water_pct_current"] = result["area"].get(
+                        "water_pct", 0
+                    )
+            except Exception:
+                logger.warning(
+                    "extract_zone_features: water detection failed for %s",
+                    zona_id,
+                    exc_info=True,
+                )
+
+            # ── Water detection (historical avg last 2 years) ──
+            try:
+                from app.domains.geo.water_detection import detect_water_from_gee
+
+                historical_pcts: list[float] = []
+                for months_back in [6, 12, 18, 24]:
+                    hist_date = event_date - timedelta(days=months_back * 30)
+                    try:
+                        hist_result = detect_water_from_gee(
+                            geojson_geom,
+                            hist_date.isoformat(),
+                            days_window=30,
+                        )
+                        if hist_result.get("status") == "success":
+                            historical_pcts.append(
+                                hist_result["area"].get("water_pct", 0)
+                            )
+                    except Exception:
+                        pass
+
+                if historical_pcts:
+                    features["water_pct_historical"] = round(
+                        sum(historical_pcts) / len(historical_pcts), 2
+                    )
+            except Exception:
+                logger.warning(
+                    "extract_zone_features: historical water detection failed for %s",
+                    zona_id,
+                    exc_info=True,
+                )
+
+        return features
