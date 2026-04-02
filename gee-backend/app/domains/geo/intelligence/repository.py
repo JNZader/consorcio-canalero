@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.domains.geo.intelligence.models import (
     AlertaGeo,
+    CanalSuggestion,
     CompositeZonalStats,
     IndiceHidrico,
     PuntoConflicto,
@@ -672,3 +673,128 @@ class IntelligenceRepository:
             return list(db.execute(fallback_stmt).scalars().unique().all())
 
         return items
+
+    # ── CANAL SUGGESTIONS ────────────────────────
+
+    def insert_suggestions_batch(
+        self,
+        db: Session,
+        suggestions: list[dict[str, Any]],
+    ) -> int:
+        """Bulk insert canal suggestions from an analysis run.
+
+        Args:
+            db: Database session.
+            suggestions: List of dicts with keys matching CanalSuggestion columns.
+
+        Returns:
+            Number of rows inserted.
+        """
+        if not suggestions:
+            return 0
+        objects = [CanalSuggestion(**s) for s in suggestions]
+        db.add_all(objects)
+        db.flush()
+        return len(objects)
+
+    def get_suggestions_by_tipo(
+        self,
+        db: Session,
+        tipo: str,
+        *,
+        page: int = 1,
+        limit: int = 50,
+        batch_id: Optional[uuid.UUID] = None,
+    ) -> tuple[list[CanalSuggestion], int]:
+        """Get canal suggestions filtered by tipo, ordered by score DESC.
+
+        Args:
+            db: Database session.
+            tipo: Suggestion type (hotspot/gap/route/maintenance/bottleneck).
+            page: Page number (1-based).
+            limit: Page size.
+            batch_id: Optional filter by analysis batch.
+
+        Returns:
+            Tuple of (items, total_count).
+        """
+        base = select(CanalSuggestion).where(CanalSuggestion.tipo == tipo)
+        if batch_id:
+            base = base.where(CanalSuggestion.batch_id == batch_id)
+
+        total: int = db.execute(
+            select(func.count()).select_from(base.subquery())
+        ).scalar_one()
+
+        offset = (page - 1) * limit
+        items = list(
+            db.execute(
+                base.order_by(CanalSuggestion.score.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+        return items, total
+
+    def get_latest_batch(self, db: Session) -> Optional[uuid.UUID]:
+        """Return the batch_id of the most recent analysis run.
+
+        Returns:
+            The latest batch_id or None if no suggestions exist.
+        """
+        stmt = (
+            select(CanalSuggestion.batch_id)
+            .order_by(CanalSuggestion.created_at.desc())
+            .limit(1)
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_summary(
+        self,
+        db: Session,
+        batch_id: Optional[uuid.UUID] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Get aggregated summary for a batch (or the latest batch).
+
+        Args:
+            db: Database session.
+            batch_id: Specific batch to summarize. If None, uses latest.
+
+        Returns:
+            Dict with batch_id, total_suggestions, by_tipo, avg_score,
+            created_at — or None if no data.
+        """
+        if batch_id is None:
+            batch_id = self.get_latest_batch(db)
+        if batch_id is None:
+            return None
+
+        # Total and average score
+        agg_stmt = select(
+            func.count().label("total"),
+            func.avg(CanalSuggestion.score).label("avg_score"),
+            func.min(CanalSuggestion.created_at).label("created_at"),
+        ).where(CanalSuggestion.batch_id == batch_id)
+
+        agg = db.execute(agg_stmt).one()
+        if agg.total == 0:
+            return None
+
+        # Count by tipo
+        tipo_counts = db.execute(
+            select(CanalSuggestion.tipo, func.count().label("cnt"))
+            .where(CanalSuggestion.batch_id == batch_id)
+            .group_by(CanalSuggestion.tipo)
+        ).all()
+
+        by_tipo = {row.tipo: row.cnt for row in tipo_counts}
+
+        return {
+            "batch_id": batch_id,
+            "total_suggestions": agg.total,
+            "by_tipo": by_tipo,
+            "avg_score": round(float(agg.avg_score), 2),
+            "created_at": agg.created_at,
+        }
