@@ -15,6 +15,11 @@ whitebox>=2.3.0
 # Zonal statistics
 rasterstats>=0.20.0
 
+# Temporal analysis
+xarray>=2024.1.0
+rioxarray>=0.15.0
+xee>=0.0.16
+
 # Vector/geometry
 geopandas>=1.0.0
 shapely>=2.0.0

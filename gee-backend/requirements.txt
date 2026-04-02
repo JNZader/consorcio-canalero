@@ -25,6 +25,9 @@ shapely>=2.0.0
 rasterstats>=0.20.0
 rasterio>=1.4.0
 pyproj>=3.6.0
+xarray>=2024.1.0
+rioxarray>=0.15.0
+xee>=0.0.16
 
 # Auth
 fastapi-users[sqlalchemy]>=13.0.0
