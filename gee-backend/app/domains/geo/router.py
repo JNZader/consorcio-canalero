@@ -32,6 +32,7 @@ from app.domains.geo.schemas import (
     AnalisisGeoResponse,
     DemPipelineRequest,
     DemPipelineResponse,
+    FloodEventCreate,
     GeoJobCreate,
     GeoJobListResponse,
     GeoJobResponse,
@@ -2042,7 +2043,7 @@ def predict_flood_all_zones(
 def get_ml_model_info():
     """Get information about available ML models."""
     from app.domains.geo.ml.flood_prediction import FloodModel
-    from app.domains.geo.ml.water_segmentation import get_strategy, UNetStrategy
+    from app.domains.geo.ml.water_segmentation import UNetStrategy
 
     flood_model = FloodModel.load()
     unet = UNetStrategy()
@@ -2680,6 +2681,126 @@ def get_routing_network_stats(
     from app.domains.geo.routing import get_network_stats
 
     return get_network_stats(db)
+
+
+# ──────────────────────────────────────────────
+# FLOOD EVENTS (calibration labels)
+# ──────────────────────────────────────────────
+
+
+@router.post("/flood-events", status_code=201)
+def create_flood_event(
+    payload: FloodEventCreate,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Create a labeled flood event with per-zone labels."""
+    # Validate no duplicate zona_ids
+    zona_ids = [label.zona_id for label in payload.labels]
+    if len(zona_ids) != len(set(zona_ids)):
+        raise HTTPException(status_code=422, detail="duplicate zona_id in labels")
+
+    labels_data = [
+        {"zona_id": label.zona_id, "is_flooded": label.is_flooded}
+        for label in payload.labels
+    ]
+
+    event = repo.create_flood_event(
+        db,
+        event_date=payload.event_date,
+        description=payload.description,
+        labels=labels_data,
+    )
+    db.commit()
+
+    # Re-fetch with labels loaded
+    created = repo.get_flood_event_by_id(db, event.id)
+    return {
+        "id": str(created.id),
+        "event_date": str(created.event_date),
+        "description": created.description,
+        "satellite_source": created.satellite_source,
+        "labels": [
+            {
+                "id": str(lbl.id),
+                "zona_id": str(lbl.zona_id),
+                "is_flooded": lbl.is_flooded,
+                "ndwi_value": lbl.ndwi_value,
+                "extracted_features": lbl.extracted_features,
+            }
+            for lbl in created.labels
+        ],
+        "created_at": created.created_at.isoformat(),
+        "updated_at": created.updated_at.isoformat(),
+    }
+
+
+@router.get("/flood-events")
+def list_flood_events(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
+    """List all flood events ordered by event_date desc."""
+    events = repo.list_flood_events(db)
+    return [
+        {
+            "id": str(e["id"]),
+            "event_date": str(e["event_date"]),
+            "description": e["description"],
+            "label_count": e["label_count"],
+            "created_at": e["created_at"].isoformat(),
+        }
+        for e in events
+    ]
+
+
+@router.get("/flood-events/{event_id}")
+def get_flood_event(
+    event_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
+    """Get a single flood event with all labels."""
+    event = repo.get_flood_event_by_id(db, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Flood event not found")
+
+    return {
+        "id": str(event.id),
+        "event_date": str(event.event_date),
+        "description": event.description,
+        "satellite_source": event.satellite_source,
+        "labels": [
+            {
+                "id": str(lbl.id),
+                "zona_id": str(lbl.zona_id),
+                "is_flooded": lbl.is_flooded,
+                "ndwi_value": lbl.ndwi_value,
+                "extracted_features": lbl.extracted_features,
+            }
+            for lbl in event.labels
+        ],
+        "created_at": event.created_at.isoformat(),
+        "updated_at": event.updated_at.isoformat(),
+    }
+
+
+@router.delete("/flood-events/{event_id}", status_code=204)
+def delete_flood_event(
+    event_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Delete a flood event and all its labels (cascade)."""
+    deleted = repo.delete_flood_event(db, event_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Flood event not found")
+    db.commit()
+    return Response(status_code=204)
 
 
 # ── Include GEE sub-router into main geo router ──
