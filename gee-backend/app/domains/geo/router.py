@@ -2688,14 +2688,56 @@ def get_routing_network_stats(
 # ──────────────────────────────────────────────
 
 
+def _run_feature_extraction(
+    event_id: uuid.UUID,
+    event_date: date,
+    label_ids_and_zonas: list[tuple[str, str]],
+) -> None:
+    """Background task: extract features for each label in a flood event.
+
+    Runs in a separate thread via asyncio.to_thread so the response
+    is returned immediately.  Opens its own DB session.
+    """
+    from app.db.session import SessionLocal
+
+    repo = GeoRepository()
+    db = SessionLocal()
+    try:
+        for label_id_str, zona_id_str in label_ids_and_zonas:
+            try:
+                features = repo.extract_zone_features(
+                    db,
+                    zona_id=uuid.UUID(zona_id_str),
+                    event_date=event_date,
+                )
+                if features:
+                    repo.update_label_features(
+                        db, uuid.UUID(label_id_str), features
+                    )
+                    db.commit()
+            except Exception:
+                logger.warning(
+                    "Feature extraction failed for label %s",
+                    label_id_str,
+                    exc_info=True,
+                )
+                db.rollback()
+    finally:
+        db.close()
+
+
 @router.post("/flood-events", status_code=201)
-def create_flood_event(
+async def create_flood_event(
     payload: FloodEventCreate,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
 ):
-    """Create a labeled flood event with per-zone labels."""
+    """Create a labeled flood event with per-zone labels.
+
+    After persisting the event, triggers background feature extraction
+    for each labeled zone via asyncio.to_thread.
+    """
     # Validate no duplicate zona_ids
     zona_ids = [label.zona_id for label in payload.labels]
     if len(zona_ids) != len(set(zona_ids)):
@@ -2716,6 +2758,20 @@ def create_flood_event(
 
     # Re-fetch with labels loaded
     created = repo.get_flood_event_by_id(db, event.id)
+
+    # Kick off background feature extraction (non-blocking)
+    label_ids_and_zonas = [
+        (str(lbl.id), str(lbl.zona_id)) for lbl in created.labels
+    ]
+    asyncio.ensure_future(
+        asyncio.to_thread(
+            _run_feature_extraction,
+            created.id,
+            payload.event_date,
+            label_ids_and_zonas,
+        )
+    )
+
     return {
         "id": str(created.id),
         "event_date": str(created.event_date),
