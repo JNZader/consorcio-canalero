@@ -2,10 +2,12 @@
  * Zustand store for flood calibration state management.
  *
  * Manages: selected date, labeled zones, flood events list,
- * training results, and loading flags for the calibration page.
+ * training results, rainfall data, and loading flags for the calibration page.
  */
 
 import { create } from 'zustand';
+
+import type { RainfallEvent, RainfallSuggestion } from '../lib/api/floodCalibration';
 
 // ============================================
 // TYPES
@@ -64,6 +66,15 @@ interface FloodCalibrationState {
   trainingLoading: boolean;
   savingEvent: boolean;
   eventDescription: string;
+
+  // Rainfall state
+  /** Map of date string (YYYY-MM-DD) to precipitation in mm */
+  rainfallByDate: Record<string, number>;
+  rainfallLoading: boolean;
+  rainfallEvents: RainfallEvent[];
+  rainfallEventsLoading: boolean;
+  suggestions: RainfallSuggestion[];
+  suggestionsLoading: boolean;
 }
 
 interface FloodCalibrationActions {
@@ -77,6 +88,15 @@ interface FloodCalibrationActions {
   setTrainingLoading: (loading: boolean) => void;
   setSavingEvent: (saving: boolean) => void;
   setEventDescription: (description: string) => void;
+
+  // Rainfall actions
+  setRainfallByDate: (data: Record<string, number>) => void;
+  setRainfallLoading: (loading: boolean) => void;
+  setRainfallEvents: (events: RainfallEvent[]) => void;
+  setRainfallEventsLoading: (loading: boolean) => void;
+  setSuggestions: (suggestions: RainfallSuggestion[]) => void;
+  setSuggestionsLoading: (loading: boolean) => void;
+
   reset: () => void;
 }
 
@@ -89,6 +109,14 @@ const initialState: FloodCalibrationState = {
   trainingLoading: false,
   savingEvent: false,
   eventDescription: '',
+
+  // Rainfall initial state
+  rainfallByDate: {},
+  rainfallLoading: false,
+  rainfallEvents: [],
+  rainfallEventsLoading: false,
+  suggestions: [],
+  suggestionsLoading: false,
 };
 
 // ============================================
@@ -139,6 +167,14 @@ export const useFloodCalibrationStore = create<FloodCalibrationState & FloodCali
     setSavingEvent: (saving) => set({ savingEvent: saving }),
     setEventDescription: (description) => set({ eventDescription: description }),
 
+    // Rainfall actions
+    setRainfallByDate: (data) => set({ rainfallByDate: data }),
+    setRainfallLoading: (loading) => set({ rainfallLoading: loading }),
+    setRainfallEvents: (events) => set({ rainfallEvents: events }),
+    setRainfallEventsLoading: (loading) => set({ rainfallEventsLoading: loading }),
+    setSuggestions: (suggestions) => set({ suggestions }),
+    setSuggestionsLoading: (loading) => set({ suggestionsLoading: loading }),
+
     reset: () => set(initialState),
   }),
 );
@@ -158,3 +194,11 @@ export const selectHasLabels = (state: FloodCalibrationState) =>
 /** Whether a date is selected and zones are labeled (enables save) */
 export const selectCanSave = (state: FloodCalibrationState) =>
   state.selectedDate !== null && Object.keys(state.labeledZones).length > 0;
+
+/** Count of rainfall suggestions available */
+export const selectSuggestionsCount = (state: FloodCalibrationState) =>
+  state.suggestions.length;
+
+/** Get rainfall mm for a specific date */
+export const selectRainfallForDate = (date: string) => (state: FloodCalibrationState) =>
+  state.rainfallByDate[date] ?? null;
