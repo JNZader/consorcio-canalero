@@ -42,6 +42,9 @@ class ZoneFeatures:
     water_pct_current: float = 0.0   # From latest water detection
     water_pct_historical: float = 0.0  # Average from historical detections
     elevation_range: float = 0.0
+    rainfall_48h: float = 0.0   # Accumulated rainfall last 48 hours (mm)
+    rainfall_7d: float = 0.0    # Accumulated rainfall last 7 days (mm)
+    rainfall_30d: float = 0.0   # Accumulated rainfall last 30 days (mm)
 
 
 @dataclass
