@@ -59,6 +59,11 @@ celery_app.conf.update(
             "schedule": crontab(minute="30", hour=f"*/{GEO_MATVIEW_REFRESH_HOURS}"),
             "options": {"queue": "geo"},
         },
+        "rainfall-daily-sync": {
+            "task": "geo.rainfall_daily_sync",
+            "schedule": crontab(minute="0", hour="8"),
+            "options": {"queue": "geo"},
+        },
     },
 )
 

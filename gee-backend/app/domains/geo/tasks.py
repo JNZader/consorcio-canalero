@@ -1255,3 +1255,80 @@ def composite_analysis_task(
         )
         logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
         raise
+
+
+# ---------------------------------------------------------------------------
+# RAINFALL — CHIRPS backfill & daily sync
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(
+    queue="geo",
+    name="geo.rainfall_backfill",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def rainfall_backfill(
+    self,
+    start_date: str,
+    end_date: str,
+    zona_ids: list[str] | None = None,
+) -> dict:
+    """Backfill CHIRPS rainfall data in monthly batches.
+
+    Args:
+        start_date: ISO date string (inclusive).
+        end_date: ISO date string (inclusive).
+        zona_ids: Optional list of zona UUID strings. None = all zones.
+    """
+    from datetime import date as date_type
+
+    from app.domains.geo.rainfall_service import backfill_rainfall
+
+    db = _get_db()
+    try:
+        parsed_start = date_type.fromisoformat(start_date)
+        parsed_end = date_type.fromisoformat(end_date)
+        parsed_zona_ids = (
+            [uuid.UUID(z) for z in zona_ids] if zona_ids else None
+        )
+
+        result = backfill_rainfall(
+            db,
+            start_date=parsed_start,
+            end_date=parsed_end,
+            zona_ids=parsed_zona_ids,
+        )
+        logger.info(
+            "rainfall_backfill.done",
+            total_records=result["total_records"],
+            batches=result["batches_processed"],
+        )
+        return result
+    except Exception as exc:
+        logger.error("rainfall_backfill.failed", exc_info=True)
+        raise self.retry(exc=exc) from exc
+    finally:
+        db.close()
+
+
+@celery_app.task(queue="geo", name="geo.rainfall_daily_sync")
+def rainfall_daily_sync() -> dict:
+    """Daily cron task: sync yesterday's CHIRPS data for all active zones."""
+    from datetime import date as date_type, timedelta as td
+
+    from app.domains.geo.rainfall_service import backfill_rainfall
+
+    db = _get_db()
+    try:
+        yesterday = date_type.today() - td(days=1)
+        result = backfill_rainfall(db, start_date=yesterday, end_date=yesterday)
+        logger.info(
+            "rainfall_daily_sync.done",
+            date=yesterday.isoformat(),
+            records=result["total_records"],
+        )
+        return result
+    finally:
+        db.close()
