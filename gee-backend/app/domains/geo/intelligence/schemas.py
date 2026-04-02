@@ -315,3 +315,61 @@ class CompositeComparisonResponse(BaseModel):
     tipo: str
     items: list[CompositeComparisonItemResponse]
     total: int
+
+
+# ──────────────────────────────────────────────
+# CANAL SUGGESTIONS
+# ──────────────────────────────────────────────
+
+
+class CanalSuggestionResponse(BaseModel):
+    """Single canal suggestion from network analysis."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tipo: str = Field(
+        ..., description="hotspot | gap | route | maintenance | bottleneck"
+    )
+    score: float = Field(..., description="Relevance / priority score 0-100")
+    metadata_: Optional[dict[str, Any]] = Field(
+        default=None,
+        alias="metadata",
+        description="Analysis-specific payload",
+    )
+    batch_id: uuid.UUID
+    created_at: datetime
+
+
+class AnalysisRequest(BaseModel):
+    """Request to trigger canal network analysis."""
+
+    area_id: str = Field(
+        ..., description="Processing area identifier (cuenca name or zone)"
+    )
+    tipos: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Analysis types to run. Options: hotspot, gap, route, "
+            "maintenance, bottleneck. Defaults to all."
+        ),
+    )
+    parameters: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Override default analysis parameters",
+    )
+
+
+class AnalysisSummaryResponse(BaseModel):
+    """Summary of a completed analysis batch."""
+
+    batch_id: uuid.UUID
+    total_suggestions: int
+    by_tipo: dict[str, int] = Field(
+        default_factory=dict,
+        description="Count of suggestions per tipo",
+    )
+    avg_score: float = Field(
+        ..., description="Average score across all suggestions"
+    )
+    created_at: datetime
