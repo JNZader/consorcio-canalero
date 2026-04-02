@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.domains.geo.models import (
     AnalisisGeo,
     EstadoGeoJob,
+    FloodEvent,
+    FloodLabel,
     GeoApprovedZoning,
     GeoJob,
     GeoLayer,
@@ -442,3 +444,89 @@ class GeoRepository:
 
         db.flush()
         return analisis
+
+    # ── FLOOD EVENT READ ─────────────────────────
+
+    def get_flood_event_by_id(
+        self, db: Session, event_id: uuid.UUID
+    ) -> Optional[FloodEvent]:
+        """Return a single flood event with labels eagerly loaded, or None."""
+        from sqlalchemy.orm import joinedload
+
+        stmt = (
+            select(FloodEvent)
+            .options(joinedload(FloodEvent.labels))
+            .where(FloodEvent.id == event_id)
+        )
+        return db.execute(stmt).unique().scalar_one_or_none()
+
+    def list_flood_events(self, db: Session) -> list[dict]:
+        """Return all flood events ordered by event_date desc, with label count."""
+        stmt = (
+            select(
+                FloodEvent.id,
+                FloodEvent.event_date,
+                FloodEvent.description,
+                FloodEvent.created_at,
+                func.count(FloodLabel.id).label("label_count"),
+            )
+            .outerjoin(FloodLabel, FloodLabel.event_id == FloodEvent.id)
+            .group_by(FloodEvent.id)
+            .order_by(FloodEvent.event_date.desc())
+        )
+        rows = db.execute(stmt).all()
+        return [
+            {
+                "id": row.id,
+                "event_date": row.event_date,
+                "description": row.description,
+                "label_count": row.label_count,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+
+    # ── FLOOD EVENT WRITE ────────────────────────
+
+    def create_flood_event(
+        self,
+        db: Session,
+        *,
+        event_date: "date",
+        description: Optional[str] = None,
+        labels: list[dict],
+    ) -> FloodEvent:
+        """Create a flood event with its labels.
+
+        Args:
+            labels: list of dicts with keys: zona_id (UUID), is_flooded (bool)
+        """
+        event = FloodEvent(
+            event_date=event_date,
+            description=description,
+        )
+        db.add(event)
+        db.flush()
+
+        for label_data in labels:
+            label = FloodLabel(
+                event_id=event.id,
+                zona_id=label_data["zona_id"],
+                is_flooded=label_data["is_flooded"],
+            )
+            db.add(label)
+
+        db.flush()
+        return event
+
+    def delete_flood_event(
+        self, db: Session, event_id: uuid.UUID
+    ) -> bool:
+        """Delete a flood event and its labels (cascade). Returns True if found."""
+        event = self.get_flood_event_by_id(db, event_id)
+        if event is None:
+            return False
+
+        db.delete(event)
+        db.flush()
+        return True
