@@ -1861,6 +1861,103 @@ def compute_zonal_statistics(
     }
 
 
+# ── Water Detection ───────────────────────────────────────────────
+
+
+class WaterDetectionRequest(BaseModel):
+    """Request for water detection on a zona operativa."""
+
+    zona_id: uuid.UUID
+    target_date: str = Field(..., description="Target date YYYY-MM-DD")
+    days_window: int = Field(default=15, ge=1, le=60)
+    cloud_cover_max: int = Field(default=20, ge=0, le=100)
+
+
+class WaterMultiDateRequest(BaseModel):
+    """Request for multi-date water detection."""
+
+    zona_id: uuid.UUID
+    dates: list[str] = Field(..., description="List of target dates YYYY-MM-DD")
+    cloud_cover_max: int = Field(default=20, ge=0, le=100)
+
+
+@router.post("/water-detection/detect")
+def detect_water(
+    body: WaterDetectionRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Detect water bodies in a zona operativa using Sentinel-2 NDWI.
+
+    Finds the best available Sentinel-2 image near the target date and
+    classifies pixels into water/wet/dry based on NDWI thresholds.
+    Returns area statistics in hectares and percentages.
+
+    NOTE: This calls GEE and can take 15-30s.
+    """
+    from geoalchemy2.functions import ST_AsGeoJSON
+    from sqlalchemy import select
+
+    zona = db.query(ZonaOperativa).filter(ZonaOperativa.id == body.zona_id).first()
+    if not zona:
+        raise NotFoundError(f"Zona not found: {body.zona_id}")
+
+    geojson_str = db.execute(
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+    ).scalar()
+
+    import json
+    geometry = json.loads(geojson_str)
+
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    result = detect_water_from_gee(
+        geometry_geojson=geometry,
+        target_date=body.target_date,
+        days_window=body.days_window,
+        cloud_cover_max=body.cloud_cover_max,
+    )
+
+    return {"zona": {"id": str(zona.id), "nombre": zona.nombre}, **result}
+
+
+@router.post("/water-detection/multi-date")
+def detect_water_multi(
+    body: WaterMultiDateRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Run water detection for multiple dates to track water level changes.
+
+    Returns per-date results and a change summary between first and last date.
+
+    NOTE: Each date calls GEE — total time ≈ 15-30s × number of dates.
+    """
+    from geoalchemy2.functions import ST_AsGeoJSON
+    from sqlalchemy import select
+
+    zona = db.query(ZonaOperativa).filter(ZonaOperativa.id == body.zona_id).first()
+    if not zona:
+        raise NotFoundError(f"Zona not found: {body.zona_id}")
+
+    geojson_str = db.execute(
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+    ).scalar()
+
+    import json
+    geometry = json.loads(geojson_str)
+
+    from app.domains.geo.water_detection import detect_water_multi_date
+
+    result = detect_water_multi_date(
+        geometry_geojson=geometry,
+        dates=body.dates,
+        cloud_cover_max=body.cloud_cover_max,
+    )
+
+    return {"zona": {"id": str(zona.id), "nombre": zona.nombre}, **result}
+
+
 # ── STAC Catalog ──────────────────────────────────────────────────
 
 
