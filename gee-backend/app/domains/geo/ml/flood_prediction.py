@@ -65,9 +65,12 @@ class FloodModel:
         "flow_acc_log_mean": 0.05, # Average upstream contribution
         "water_pct_current": 0.25, # Current water presence is strong signal
         "water_pct_historical": 0.15, # Historical pattern
+        "rainfall_48h": 0.0,   # Short-term rainfall (enabled after training)
+        "rainfall_7d": 0.0,    # Medium-term accumulation (enabled after training)
+        "rainfall_30d": 0.0,   # Long-term saturation (enabled after training)
     })
     bias: float = 0.3  # Base flood probability for Pampas terrain
-    version: str = "1.0.0"
+    version: str = "2.0.0-rainfall"
 
     def predict(self, features: ZoneFeatures) -> dict[str, Any]:
         """Predict flood probability for a zone.
@@ -138,12 +141,20 @@ class FloodModel:
 
     @classmethod
     def load(cls, path: str | None = None) -> "FloodModel":
-        """Load model weights from disk, or return default."""
+        """Load model weights from disk, or return default.
+
+        Handles missing rainfall keys gracefully — defaults to 0.0 so
+        older saved models work without retraining.
+        """
         load_path = Path(path or MODEL_PATH)
         if load_path.exists():
             data = json.loads(load_path.read_text())
+            loaded_weights = data["weights"]
+            # Ensure rainfall keys exist (backward compat with pre-2.0 models)
+            for key in ("rainfall_48h", "rainfall_7d", "rainfall_30d"):
+                loaded_weights.setdefault(key, 0.0)
             return cls(
-                weights=data["weights"],
+                weights=loaded_weights,
                 bias=data["bias"],
                 version=data.get("version", "1.0.0"),
             )
