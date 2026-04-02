@@ -20,9 +20,10 @@ import {
   Card,
   Divider,
   Group,
-  List,
   Loader,
+  Modal,
   Paper,
+  Skeleton,
   Stack,
   Table,
   Text,
@@ -35,7 +36,7 @@ import 'leaflet/dist/leaflet.css';
 import type { Feature, FeatureCollection } from 'geojson';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useMediaQuery } from '@mantine/hooks';
+import { useMediaQuery, useDisclosure } from '@mantine/hooks';
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../constants';
 import { useConfigStore } from '../../stores/configStore';
@@ -302,6 +303,11 @@ export default function FloodCalibrationPanel() {
   const [loadingDates, setLoadingDates] = useState(false);
   const [loadingImage, setLoadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Confirmation dialogs
+  const [deleteConfirmOpened, { open: openDeleteConfirm, close: closeDeleteConfirm }] = useDisclosure(false);
+  const [trainConfirmOpened, { open: openTrainConfirm, close: closeTrainConfirm }] = useDisclosure(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const availableDatesSet = useMemo(() => new Set(availableDates), [availableDates]);
 
@@ -572,10 +578,17 @@ export default function FloodCalibrationPanel() {
     }
   }, [selectedDate, labeledZones, eventDescription, clearLabels, fetchEvents, setSavingEvent]);
 
-  const handleDeleteEvent = useCallback(async (id: string) => {
+  const handleRequestDelete = useCallback((id: string) => {
+    setPendingDeleteId(id);
+    openDeleteConfirm();
+  }, [openDeleteConfirm]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    closeDeleteConfirm();
     try {
-      await floodCalibrationApi.deleteEvent(id);
-      removeEvent(id);
+      await floodCalibrationApi.deleteEvent(pendingDeleteId);
+      removeEvent(pendingDeleteId);
       notifications.show({
         title: 'Evento eliminado',
         message: 'El evento fue eliminado correctamente',
@@ -587,10 +600,17 @@ export default function FloodCalibrationPanel() {
         message: err instanceof Error ? err.message : 'Error desconocido',
         color: 'red',
       });
+    } finally {
+      setPendingDeleteId(null);
     }
-  }, [removeEvent]);
+  }, [pendingDeleteId, removeEvent, closeDeleteConfirm]);
 
-  const handleTrain = useCallback(async () => {
+  const handleRequestTrain = useCallback(() => {
+    openTrainConfirm();
+  }, [openTrainConfirm]);
+
+  const handleConfirmTrain = useCallback(async () => {
+    closeTrainConfirm();
     setTrainingLoading(true);
     setTrainingResult(null);
     try {
@@ -610,7 +630,7 @@ export default function FloodCalibrationPanel() {
     } finally {
       setTrainingLoading(false);
     }
-  }, [setTrainingLoading, setTrainingResult]);
+  }, [setTrainingLoading, setTrainingResult, closeTrainConfirm]);
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -805,9 +825,10 @@ export default function FloodCalibrationPanel() {
           </Group>
 
           {eventsLoading && (
-            <Stack align="center" py="xl">
-              <Loader size="sm" />
-              <Text size="sm" c="dimmed">Cargando eventos...</Text>
+            <Stack gap="xs">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} height={56} radius="sm" />
+              ))}
             </Stack>
           )}
 
@@ -839,7 +860,7 @@ export default function FloodCalibrationPanel() {
                         variant="subtle"
                         color="red"
                         size="sm"
-                        onClick={() => handleDeleteEvent(event.id)}
+                        onClick={() => handleRequestDelete(event.id)}
                       >
                         <IconTrash size={14} />
                       </ActionIcon>
@@ -873,7 +894,7 @@ export default function FloodCalibrationPanel() {
             >
               <Button
                 fullWidth
-                onClick={handleTrain}
+                onClick={handleRequestTrain}
                 disabled={events.length < 5}
                 loading={trainingLoading}
                 leftSection={<IconPlayerPlay size={16} />}
@@ -939,6 +960,60 @@ export default function FloodCalibrationPanel() {
           </Stack>
         </Paper>
       </div>
+
+      {/* Confirmation: Delete event */}
+      <Modal
+        opened={deleteConfirmOpened}
+        onClose={closeDeleteConfirm}
+        title="Confirmar eliminacion"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            ¿Estas seguro de que queres eliminar este evento? Esta accion no se puede deshacer.
+            Las etiquetas y features asociadas tambien seran eliminadas.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={closeDeleteConfirm}>
+              Cancelar
+            </Button>
+            <Button color="red" onClick={handleConfirmDelete}>
+              Eliminar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Confirmation: Train model */}
+      <Modal
+        opened={trainConfirmOpened}
+        onClose={closeTrainConfirm}
+        title="Confirmar entrenamiento"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Se creara un backup del modelo actual antes de entrenar.
+            El proceso puede tardar unos segundos.
+          </Text>
+          <Group gap="lg">
+            <div>
+              <Text size="xs" c="dimmed">Eventos disponibles</Text>
+              <Text fw={600}>{events.length}</Text>
+            </div>
+          </Group>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={closeTrainConfirm}>
+              Cancelar
+            </Button>
+            <Button color="blue" onClick={handleConfirmTrain} leftSection={<IconPlayerPlay size={16} />}>
+              Entrenar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
