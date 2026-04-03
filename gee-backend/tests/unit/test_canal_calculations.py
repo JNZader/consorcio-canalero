@@ -1112,3 +1112,217 @@ class TestComputeMaintenancePriorityMutationKill:
 
         by_node = {r["node_id"]: r for r in results}
         assert by_node[2]["composite_score"] == pytest.approx(0.20, abs=0.001)
+
+
+# ---------------------------------------------------------------------------
+# Mutation-killing round 2: target remaining survivors
+# ---------------------------------------------------------------------------
+
+
+class TestRankCanalHotspotsPercentileBoundaries:
+    """Kill mutations at p50 and p25 >= vs > boundaries."""
+
+    def _make_fake_rasterio_dataset(
+        self,
+        data: np.ndarray,
+        nodata: float = -9999.0,
+    ) -> MagicMock:
+        from rasterio.transform import from_bounds
+
+        ds = MagicMock()
+        ds.read.return_value = data
+        ds.nodata = nodata
+        ds.transform = from_bounds(0, 0, 1, 1, data.shape[1], data.shape[0])
+        ds.__enter__ = lambda self: self
+        ds.__exit__ = MagicMock(return_value=False)
+        return ds
+
+    def _patch_rasterio_and_call(
+        self,
+        data: np.ndarray,
+        canal_geometries: list[dict],
+        num_points: int = 5,
+    ) -> list[dict]:
+        from app.domains.geo.intelligence.calculations import rank_canal_hotspots
+
+        fake_ds = self._make_fake_rasterio_dataset(data)
+        with (
+            patch("rasterio.open", return_value=fake_ds),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            return rank_canal_hotspots(
+                canal_geometries,
+                "/fake/flow_acc.tif",
+                num_points=num_points,
+            )
+
+    def test_value_exactly_at_p50_is_alto(self):
+        """With values [100, 200, 300], p50=200, p25=150, p75=250.
+
+        Canal with max=200: 200 >= p75(250)? No. 200 >= p50(200)? Yes => alto.
+        If mutation changes >= to >, then 200 > 200 is False => would fall to medio.
+        """
+        data = np.zeros((15, 10), dtype=np.float32)
+        data[0:5, :] = 100.0
+        data[5:10, :] = 200.0
+        data[10:15, :] = 300.0
+
+        canals = [
+            {"id": 1, "geometry": mapping(LineString([(0.1, 0.833), (0.9, 0.833)]))},  # row 0-4: 100
+            {"id": 2, "geometry": mapping(LineString([(0.1, 0.5), (0.9, 0.5)]))},      # row 5-9: 200
+            {"id": 3, "geometry": mapping(LineString([(0.1, 0.167), (0.9, 0.167)]))},  # row 10-14: 300
+        ]
+        results = self._patch_rasterio_and_call(data, canals)
+        by_id = {r["id"]: r for r in results}
+
+        # max=200 is exactly p50 => alto (>= p50)
+        assert by_id[2]["risk_level"] == "alto"
+        # max=300 >= p75(250) => critico
+        assert by_id[3]["risk_level"] == "critico"
+
+    def test_value_exactly_at_p25_is_medio(self):
+        """5 canals: [50, 100, 200, 300, 400]. p25=100, p50=200, p75=300.
+
+        Canal with max=100: 100 >= p75(300)? No. 100 >= p50(200)? No. 100 >= p25(100)? Yes => medio.
+        If mutation changes >= to >, 100 > 100 is False => would fall to bajo.
+        """
+        data = np.zeros((25, 10), dtype=np.float32)
+        data[0:5, :] = 50.0
+        data[5:10, :] = 100.0
+        data[10:15, :] = 200.0
+        data[15:20, :] = 300.0
+        data[20:25, :] = 400.0
+
+        canals = [
+            {"id": 1, "geometry": mapping(LineString([(0.1, 0.9), (0.9, 0.9)]))},    # 50
+            {"id": 2, "geometry": mapping(LineString([(0.1, 0.7), (0.9, 0.7)]))},    # 100
+            {"id": 3, "geometry": mapping(LineString([(0.1, 0.5), (0.9, 0.5)]))},    # 200
+            {"id": 4, "geometry": mapping(LineString([(0.1, 0.3), (0.9, 0.3)]))},    # 300
+            {"id": 5, "geometry": mapping(LineString([(0.1, 0.1), (0.9, 0.1)]))},    # 400
+        ]
+        results = self._patch_rasterio_and_call(data, canals)
+        by_id = {r["id"]: r for r in results}
+
+        assert by_id[2]["risk_level"] == "medio"  # 100 >= p25(100)
+        assert by_id[1]["risk_level"] == "bajo"   # 50 < p25(100)
+
+
+class TestDetectCoverageGapsRound2:
+    """Kill remaining boundary and constant survivors."""
+
+    def _make_zone(self, zone_id: str, centroid: tuple[float, float]) -> dict:
+        cx, cy = centroid
+        poly = Polygon([
+            (cx - 0.0001, cy - 0.0001),
+            (cx + 0.0001, cy - 0.0001),
+            (cx + 0.0001, cy + 0.0001),
+            (cx - 0.0001, cy + 0.0001),
+        ])
+        return {"id": zone_id, "geometry": mapping(poly)}
+
+    def _make_canal(self, coords: list[tuple[float, float]]) -> dict:
+        return {"geometry": mapping(LineString(coords))}
+
+    def test_default_threshold_km_is_2(self):
+        """Calling without threshold_km uses 2.0. Mutation changes to 3.0.
+
+        Zone at ~2.5 km should be a gap with default 2.0 but not with 3.0.
+        """
+        from app.domains.geo.intelligence.calculations import detect_coverage_gaps
+
+        # 2.5 km = 2.5/111 = 0.02252 degrees
+        dist_deg = 2.5 / 111.0
+        zones = [self._make_zone("z1", (dist_deg, 0.0))]
+        hci_scores = {"z1": 90.0}
+        canals = [self._make_canal([(0.0, 0.0), (0.00001, 0.0)])]
+
+        # Use default threshold_km (should be 2.0)
+        gaps = detect_coverage_gaps(zones, hci_scores, canals, hci_threshold=50.0)
+        assert len(gaps) == 1  # Would fail if default changed to 3.0
+
+    def test_default_hci_threshold_is_50(self):
+        """Calling without hci_threshold uses 50.0. Mutation changes to 51.0.
+
+        Zone with hci=50.5 should be a gap with default 50.0 but not with 51.0.
+        """
+        from app.domains.geo.intelligence.calculations import detect_coverage_gaps
+
+        zones = [self._make_zone("z1", (1.0, 0.0))]  # far away
+        hci_scores = {"z1": 50.5}
+        canals = [self._make_canal([(0.0, 0.0), (0.00001, 0.0)])]
+
+        # Use default hci_threshold (should be 50.0)
+        gaps = detect_coverage_gaps(zones, hci_scores, canals, threshold_km=2.0)
+        assert len(gaps) == 1  # Would fail if default changed to 51.0
+
+    def test_111_km_per_degree_not_112(self):
+        """Verify 111.0 constant, not 112. At 0.1 degrees:
+
+        111.0 * 0.1 = 11.1 km (with threshold 11.05 => gap)
+        112.0 * 0.1 = 11.2 km (with threshold 11.15 => also gap with 112)
+
+        Use a threshold between 111*dist and 112*dist to distinguish.
+        dist_deg = 0.1, 111*0.1=11.1, 112*0.1=11.2
+        threshold = 11.15: with 111 => 11.1 < 11.15 => filtered (no gap)
+                           with 112 => 11.2 >= 11.15 => gap
+        """
+        from app.domains.geo.intelligence.calculations import detect_coverage_gaps
+
+        zones = [self._make_zone("z1", (0.1, 0.0))]
+        hci_scores = {"z1": 90.0}
+        canals = [self._make_canal([(0.0, 0.0), (0.00001, 0.0)])]
+
+        gaps = detect_coverage_gaps(
+            zones, hci_scores, canals, threshold_km=11.15, hci_threshold=50.0
+        )
+        # With 111.0: dist = 11.1 < 11.15 => filtered => no gap
+        # With 112.0: dist = 11.2 >= 11.15 => gap
+        assert len(gaps) == 0
+
+    def test_dist_km_barely_above_threshold_is_gap(self):
+        """When dist_km is just barely above threshold, it passes the `<` filter.
+
+        Mutation `<` to `<=` would only matter at exact boundary. But since geometry
+        makes exact boundary impossible, we test the behavior indirectly: a value
+        that is clearly above threshold IS a gap, one clearly below is NOT.
+        Combined with test_distance_just_below_threshold_is_not_gap, this pins `<`.
+        """
+        from app.domains.geo.intelligence.calculations import detect_coverage_gaps
+
+        # 2.05 km => just above default 2.0 threshold
+        dist_deg = 2.05 / 111.0
+        zones = [self._make_zone("z1", (dist_deg, 0.0))]
+        hci_scores = {"z1": 90.0}
+        canals = [self._make_canal([(0.0, 0.0), (0.00001, 0.0)])]
+
+        gaps = detect_coverage_gaps(
+            zones, hci_scores, canals, threshold_km=2.0, hci_threshold=50.0
+        )
+        assert len(gaps) == 1
+        assert gaps[0]["gap_km"] > 2.0
+
+    def test_severity_hci_exactly_80_is_not_critico(self):
+        """hci=80.0 and dist>5: code checks hci > 80.0, so 80 is NOT > 80 => not critico.
+
+        Mutation `>` to `>=` would make 80 >= 80 => critico.
+        Should be alto (hci>60 and dist>3).
+        """
+        from app.domains.geo.intelligence.calculations import detect_coverage_gaps
+
+        # dist = 0.1 * 111 = 11.1 > 5 => satisfies distance for both critico and alto
+        zones = [self._make_zone("z1", (0.1, 0.0))]
+        hci_scores = {"z1": 80.0}
+        canals = [self._make_canal([(0.0, 0.0), (0.00001, 0.0)])]
+
+        gaps = detect_coverage_gaps(
+            zones, hci_scores, canals, threshold_km=2.0, hci_threshold=50.0
+        )
+        assert len(gaps) == 1
+        # 80 NOT > 80, falls to alto check: 80 > 60 and 11.1 > 3 => alto
+        assert gaps[0]["severity"] == "alto"
+
+
+    # NOTE: _min_max mutations (L861 return 0.0,1.0->0.0,2 and L864 mn+1.0->mn+2)
+    # are equivalent mutations. When all values are equal, norm = (val-val)/(denom) = 0
+    # regardless of denom being 1 or 2. When the list is empty, the range is never
+    # used because nodes missing from a factor skip it entirely. These cannot be killed.
