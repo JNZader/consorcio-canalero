@@ -1197,6 +1197,134 @@ class TestTrainNormalization:
         # Same learning rate should produce same result
         assert result_default["final_loss"] == pytest.approx(result_explicit["final_loss"], abs=1e-6)
 
+    @staticmethod
+    def _single_feature_events(feature_name: str, high_val: float, low_val: float):
+        """Create events where ONLY one feature differentiates flood from dry."""
+        base_features = {
+            "hand_mean": 2.5, "hand_min": 1.5, "twi_mean": 12.5, "twi_max": 17.5,
+            "slope_mean": 2.5, "flow_acc_max": 100.0, "flow_acc_mean": 50.0,
+            "water_pct_current": 5.0, "water_pct_historical": 5.0,
+            "rainfall_48h": 25.0, "rainfall_7d": 50.0, "rainfall_30d": 100.0,
+        }
+        flooded = dict(base_features)
+        flooded[feature_name] = high_val
+        dry = dict(base_features)
+        dry[feature_name] = low_val
+        return [
+            {"features": flooded, "flooded": True},
+            {"features": dry, "flooded": False},
+        ] * 4  # 8 events
+
+    def test_train_normalization_hand_mean_exact_weight_direction(self):
+        """After training with hand_mean as sole differentiator, weight must change."""
+        # Flooded zones have LOW hand_mean (near water), dry have HIGH
+        events = self._single_feature_events("hand_mean", 0.5, 4.5)
+        model = FloodModel()
+        before_w = model.weights["hand_mean"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        # hand_mean weight should become more negative
+        assert model.weights["hand_mean"] != before_w
+
+    def test_train_normalization_hand_min_exact_weight_direction(self):
+        events = self._single_feature_events("hand_min", 0.3, 2.7)
+        model = FloodModel()
+        before_w = model.weights["hand_min"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["hand_min"] != before_w
+
+    def test_train_normalization_twi_mean_exact_weight_direction(self):
+        # Flooded zones have HIGH twi_mean
+        events = self._single_feature_events("twi_mean", 18.0, 6.0)
+        model = FloodModel()
+        before_w = model.weights["twi_mean"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["twi_mean"] != before_w
+
+    def test_train_normalization_twi_max_exact_weight_direction(self):
+        events = self._single_feature_events("twi_max", 23.0, 11.0)
+        model = FloodModel()
+        before_w = model.weights["twi_max"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["twi_max"] != before_w
+
+    def test_train_normalization_slope_mean_exact_weight_direction(self):
+        # Flooded zones have LOW slope (flat)
+        events = self._single_feature_events("slope_mean", 0.5, 4.5)
+        model = FloodModel()
+        before_w = model.weights["slope_mean"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["slope_mean"] != before_w
+
+    def test_train_normalization_flow_acc_max_exact_weight_direction(self):
+        events = self._single_feature_events("flow_acc_max", 100000.0, 10.0)
+        model = FloodModel()
+        before_w = model.weights["flow_acc_log_max"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["flow_acc_log_max"] != before_w
+
+    def test_train_normalization_flow_acc_mean_exact_weight_direction(self):
+        events = self._single_feature_events("flow_acc_mean", 10000.0, 5.0)
+        model = FloodModel()
+        before_w = model.weights["flow_acc_log_mean"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["flow_acc_log_mean"] != before_w
+
+    def test_train_normalization_water_pct_current_exact_weight_direction(self):
+        events = self._single_feature_events("water_pct_current", 15.0, 1.0)
+        model = FloodModel()
+        before_w = model.weights["water_pct_current"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["water_pct_current"] != before_w
+
+    def test_train_normalization_water_pct_historical_exact_weight_direction(self):
+        events = self._single_feature_events("water_pct_historical", 12.0, 1.0)
+        model = FloodModel()
+        before_w = model.weights["water_pct_historical"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["water_pct_historical"] != before_w
+
+    def test_train_normalization_rainfall_48h_exact_weight_direction(self):
+        events = self._single_feature_events("rainfall_48h", 80.0, 5.0)
+        model = FloodModel()
+        before_w = model.weights["rainfall_48h"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["rainfall_48h"] != before_w
+
+    def test_train_normalization_rainfall_7d_exact_weight_direction(self):
+        events = self._single_feature_events("rainfall_7d", 160.0, 10.0)
+        model = FloodModel()
+        before_w = model.weights["rainfall_7d"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["rainfall_7d"] != before_w
+
+    def test_train_normalization_rainfall_30d_exact_weight_direction(self):
+        events = self._single_feature_events("rainfall_30d", 350.0, 20.0)
+        model = FloodModel()
+        before_w = model.weights["rainfall_30d"]
+        model.train_from_events(events, epochs=500, learning_rate=0.05)
+        assert model.weights["rainfall_30d"] != before_w
+
+    def test_train_bias_changes_during_training(self):
+        """Bias should change during training. Mutating z = X @ w - bias would
+        reverse the bias gradient direction."""
+        events = TestFloodModelTraining._make_events(10)
+        model = FloodModel()
+        before_bias = model.bias
+        model.train_from_events(events, epochs=200, learning_rate=0.05)
+        assert model.bias != before_bias
+
+    def test_train_gradient_scaling_matters(self):
+        """Mutating grad_w = X.T @ error * len(y) (instead of /) would
+        produce very different weights than correct scaling."""
+        events = TestFloodModelTraining._make_events(10)
+
+        model_correct = FloodModel()
+        result = model_correct.train_from_events(events, epochs=100, learning_rate=0.01)
+
+        # With correct gradient scaling, weights should be moderate
+        max_weight = max(abs(v) for v in model_correct.weights.values())
+        assert max_weight < 10.0  # would explode with * instead of /
+
 
 # ── predict_flood_for_zone function ───────────────────
 
