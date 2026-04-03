@@ -819,6 +819,135 @@ def detect_coverage_gaps(
 
 
 # ---------------------------------------------------------------------------
+# j) Maintenance priority composite score
+# ---------------------------------------------------------------------------
+
+
+def compute_maintenance_priority(
+    centrality_scores: dict[int, float],
+    flow_acc_scores: dict[int, float],
+    hci_scores: dict[str, float],
+    conflict_counts: dict[int, int],
+) -> list[dict]:
+    """Compute composite maintenance priority for canal segments.
+
+    Weights: 0.30 centrality + 0.25 flow_acc + 0.25 upstream_hci + 0.20 conflicts.
+    Missing factors are handled via weight redistribution among available factors.
+
+    Args:
+        centrality_scores: Mapping node_id -> betweenness centrality value.
+        flow_acc_scores: Mapping node_id -> flow accumulation value.
+        hci_scores: Mapping zone/node_id (str) -> HCI score (0-100).
+        conflict_counts: Mapping node_id -> number of conflict points.
+
+    Returns:
+        List of dicts sorted descending by composite_score, each containing:
+        node_id, composite_score (0-1), components dict with raw and normalized
+        values for each factor.
+    """
+    # Collect all node IDs across all factor dicts
+    all_ids: set[int] = set()
+    all_ids.update(centrality_scores.keys())
+    all_ids.update(flow_acc_scores.keys())
+    all_ids.update(int(k) for k in hci_scores.keys() if k.isdigit())
+    all_ids.update(conflict_counts.keys())
+
+    if not all_ids:
+        return []
+
+    # Compute normalization ranges (min-max)
+    def _min_max(values: list[float]) -> tuple[float, float]:
+        if not values:
+            return 0.0, 1.0
+        mn, mx = min(values), max(values)
+        if mn == mx:
+            return mn, mn + 1.0  # avoid division by zero
+        return mn, mx
+
+    cent_vals = list(centrality_scores.values())
+    fa_vals = list(flow_acc_scores.values())
+    hci_vals = list(hci_scores.values())
+    conf_vals = list(conflict_counts.values())
+
+    cent_min, cent_max = _min_max(cent_vals)
+    fa_min, fa_max = _min_max(fa_vals)
+    hci_min, hci_max = _min_max(hci_vals)
+    conf_min, conf_max = _min_max([float(v) for v in conf_vals])
+
+    base_weights = {
+        "centrality": 0.30,
+        "flow_acc": 0.25,
+        "upstream_hci": 0.25,
+        "conflict_count": 0.20,
+    }
+
+    results: list[dict] = []
+
+    for node_id in all_ids:
+        components: dict[str, dict] = {}
+        available_weight = 0.0
+        missing_factors: list[str] = []
+
+        # Centrality
+        if node_id in centrality_scores:
+            raw = centrality_scores[node_id]
+            norm = (raw - cent_min) / (cent_max - cent_min)
+            components["centrality"] = {"raw": round(raw, 6), "normalized": round(norm, 4)}
+            available_weight += base_weights["centrality"]
+        else:
+            missing_factors.append("centrality")
+
+        # Flow accumulation
+        if node_id in flow_acc_scores:
+            raw = flow_acc_scores[node_id]
+            norm = (raw - fa_min) / (fa_max - fa_min)
+            components["flow_acc"] = {"raw": round(raw, 2), "normalized": round(norm, 4)}
+            available_weight += base_weights["flow_acc"]
+        else:
+            missing_factors.append("flow_acc")
+
+        # Upstream HCI
+        hci_key = str(node_id)
+        if hci_key in hci_scores:
+            raw = hci_scores[hci_key]
+            norm = (raw - hci_min) / (hci_max - hci_min)
+            components["upstream_hci"] = {"raw": round(raw, 2), "normalized": round(norm, 4)}
+            available_weight += base_weights["upstream_hci"]
+        else:
+            missing_factors.append("upstream_hci")
+
+        # Conflict count
+        if node_id in conflict_counts:
+            raw = float(conflict_counts[node_id])
+            norm = (raw - conf_min) / (conf_max - conf_min)
+            components["conflict_count"] = {"raw": int(raw), "normalized": round(norm, 4)}
+            available_weight += base_weights["conflict_count"]
+        else:
+            missing_factors.append("conflict_count")
+
+        # Compute weighted sum with redistribution for missing factors
+        if available_weight == 0.0:
+            continue
+
+        redistribution_factor = 1.0 / available_weight
+        composite = 0.0
+        for factor, weight in base_weights.items():
+            if factor in components:
+                adjusted_weight = weight * redistribution_factor
+                composite += adjusted_weight * components[factor]["normalized"]
+
+        results.append({
+            "node_id": node_id,
+            "composite_score": round(composite, 4),
+            "components": components,
+            "missing_factors": missing_factors if missing_factors else None,
+        })
+
+    results.sort(key=lambda r: r["composite_score"], reverse=True)
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
