@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import { apiFetch, sugerenciasApi } from '../../src/lib/api';
 vi.mock('../../src/lib/api', () => ({
   sugerenciasApi: {
     getAll: vi.fn(),
+    get: vi.fn(),
     getStats: vi.fn(),
     getProximaReunion: vi.fn(),
     createInternal: vi.fn(),
@@ -17,6 +19,12 @@ vi.mock('../../src/lib/api', () => ({
     delete: vi.fn(),
   },
   apiFetch: vi.fn(),
+  API_URL: 'http://localhost:8000',
+}));
+
+// Mock useWaterways to avoid real query
+vi.mock('../../src/hooks/useWaterways', () => ({
+  useWaterways: vi.fn(() => ({ waterways: [], isLoading: false, error: null })),
 }));
 
 vi.mock('../../src/components/ui/accessibility', () => ({
@@ -51,17 +59,30 @@ const suggestion = {
   updated_at: '2026-03-01T09:00:00Z',
 };
 
-const renderPanel = () =>
-  render(
-    <MantineProvider>
-      <SugerenciasPanel />
-    </MantineProvider>
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+
+const renderPanel = () => {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>
+        <SugerenciasPanel />
+      </MantineProvider>
+    </QueryClientProvider>
   );
+};
 
 describe('SugerenciasPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    vi.mocked(sugerenciasApi.get).mockResolvedValue(suggestion);
     vi.mocked(sugerenciasApi.getAll).mockResolvedValue({
       items: [suggestion],
       total: 1,
@@ -85,7 +106,7 @@ describe('SugerenciasPanel', () => {
     });
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/seguimiento/sugerencia/sug-1') {
+      if (path === '/sugerencias/sug-1/historial') {
         return [
           {
             id: 'hist-1',
@@ -98,8 +119,8 @@ describe('SugerenciasPanel', () => {
         ];
       }
 
-      if (path === '/management/seguimiento' && options?.method === 'POST') {
-        return { id: 'hist-2' };
+      if (path.startsWith('/sugerencias/') && options?.method === 'PATCH') {
+        return { id: 'sug-1' };
       }
 
       return [];
@@ -160,8 +181,8 @@ describe('SugerenciasPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/management/seguimiento',
-        expect.objectContaining({ method: 'POST' })
+        '/sugerencias/sug-1',
+        expect.objectContaining({ method: 'PATCH' })
       );
     });
     expect(notifications.show).toHaveBeenCalledWith(

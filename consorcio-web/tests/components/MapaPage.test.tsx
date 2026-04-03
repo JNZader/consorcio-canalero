@@ -27,8 +27,33 @@ vi.mock('../../src/lib/query', () => ({
 }));
 
 // Mock auth store
+const mockAuthState = {
+  user: { id: 'test-user', email: 'test@test.com' },
+  profile: { rol: 'admin' },
+  loading: false,
+  initialized: true,
+  session: { access_token: 'mock-token' },
+  error: null,
+  _hasHydrated: true,
+};
+
 vi.mock('../../src/stores/authStore', () => ({
-  useCanAccess: vi.fn((roles: string[]) => true),
+  useCanAccess: vi.fn((_roles: string[]) => true),
+  useAuthStore: Object.assign(
+    (selector?: (state: Record<string, unknown>) => unknown) =>
+      selector ? selector(mockAuthState) : mockAuthState,
+    {
+      getState: () => mockAuthState,
+    }
+  ),
+  useIsAuthenticated: vi.fn(() => true),
+  useUserRole: vi.fn(() => 'admin'),
+  useAuthLoading: vi.fn(() => false),
+}));
+
+// Mock useGeoLayers hook
+vi.mock('../../src/hooks/useGeoLayers', () => ({
+  useGeoLayers: vi.fn(() => ({ layers: [], isLoading: false, error: null })),
 }));
 
 // Mock useSelectedImageListener hook

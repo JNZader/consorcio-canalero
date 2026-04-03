@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,12 @@ vi.mock('../../src/lib/api', () => ({
     checkLimit: vi.fn(),
     createPublic: vi.fn(),
   },
+  API_URL: 'http://localhost:8000',
+}));
+
+// Mock useWaterways to avoid QueryClient requirement from useQuery
+vi.mock('../../src/hooks/useWaterways', () => ({
+  useWaterways: vi.fn(() => ({ waterways: [], isLoading: false, error: null })),
 }));
 
 vi.mock('@mantine/notifications', () => ({
@@ -36,12 +43,24 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-const renderForm = () =>
-  render(
-    <MantineProvider>
-      <FormularioSugerenciaContent />
-    </MantineProvider>
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+
+const renderForm = () => {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>
+        <FormularioSugerenciaContent />
+      </MantineProvider>
+    </QueryClientProvider>
   );
+};
 
 describe('FormularioSugerencia', () => {
   beforeEach(() => {
