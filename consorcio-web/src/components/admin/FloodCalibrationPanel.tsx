@@ -369,6 +369,33 @@ export default function FloodCalibrationPanel() {
     setSuggestionsLoading,
   } = useFloodCalibrationStore.getState();
 
+  // Backfill state
+  const [backfillLoading, setBackfillLoading] = useState(false);
+
+  const handleBackfill = useCallback(async () => {
+    setBackfillLoading(true);
+    try {
+      // Backfill last 2 years of CHIRPS data
+      const endDate = new Date().toISOString().split('T')[0];
+      const startDate = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
+      await floodCalibrationApi.triggerBackfill(startDate, endDate);
+      notifications.show({
+        title: 'Backfill iniciado',
+        message: `Cargando datos de lluvia desde ${startDate}. Esto puede tardar unos minutos.`,
+        color: 'blue',
+        icon: <IconCloudRain size={16} />,
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'No se pudo iniciar la carga de datos',
+        color: 'red',
+      });
+    } finally {
+      setBackfillLoading(false);
+    }
+  }, []);
+
   // Map refs
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -809,6 +836,25 @@ export default function FloodCalibrationPanel() {
       {error && (
         <Alert color="red" icon={<IconAlertTriangle />} title="Error">
           {error}
+        </Alert>
+      )}
+
+      {/* Rainfall backfill controls */}
+      {!rainfallLoading && Object.keys(rainfallByDate).length === 0 && (
+        <Alert color="blue" icon={<IconCloudRain size={18} />} title="Sin datos de lluvia">
+          <Group justify="space-between" align="center">
+            <Text size="sm">
+              No hay datos de precipitacion cargados. Cargalos para ver la lluvia en el calendario y recibir sugerencias de eventos.
+            </Text>
+            <Button
+              size="xs"
+              variant="filled"
+              loading={backfillLoading}
+              onClick={handleBackfill}
+            >
+              Cargar datos de lluvia
+            </Button>
+          </Group>
         </Alert>
       )}
 
