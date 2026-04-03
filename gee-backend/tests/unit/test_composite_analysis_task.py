@@ -113,6 +113,12 @@ def mock_infrastructure(tmp_path):
     p_to_shape = patch("geoalchemy2.shape.to_shape", return_value=MagicMock())
     patches["to_shape"] = p_to_shape
 
+    # Mock sqlalchemy.delete so the local import inside the task body
+    # does not choke on the MagicMock CompositeZonalStats model.
+    mock_delete = MagicMock()
+    p_delete = patch("sqlalchemy.delete", mock_delete)
+    patches["sa_delete"] = p_delete
+
     started = {k: v.start() for k, v in patches.items()}
 
     yield {
