@@ -33,20 +33,30 @@ import {
   IconUser,
 } from '../ui/icons';
 
-// Simplified navigation - core features only
-const NAV_ITEMS = [
-  { label: 'Dashboard', to: '/admin', icon: IconChartBar },
-  { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
-  { label: 'Monitoreo SAR', to: '/admin/sar-temporal', icon: IconSatellite },
-  { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
-  { label: 'Calibracion Inundacion', to: '/admin/flood-calibration', icon: IconDroplet },
-  { label: 'Reportes', to: '/admin/reports', icon: IconClipboardList },
-  { label: 'Sugerencias', to: '/admin/sugerencias', icon: IconLightbulb },
-  { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
-  { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
-  { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
-  { label: 'Padron', to: '/admin/padron', icon: IconUser },
-  { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
+// Navigation sections
+const NAV_SECTIONS = [
+  {
+    label: 'Analisis Tecnico',
+    items: [
+      { label: 'Dashboard', to: '/admin', icon: IconChartBar },
+      { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
+      { label: 'Monitoreo SAR', to: '/admin/sar-temporal', icon: IconSatellite },
+      { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
+      { label: 'Calibracion Inundacion', to: '/admin/flood-calibration', icon: IconDroplet },
+      { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
+    ],
+  },
+  {
+    label: 'Gestion',
+    items: [
+      { label: 'Reportes', to: '/admin/reports', icon: IconClipboardList },
+      { label: 'Sugerencias', to: '/admin/sugerencias', icon: IconLightbulb },
+      { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
+      { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
+      { label: 'Padron', to: '/admin/padron', icon: IconUser },
+      { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
+    ],
+  },
 ];
 
 interface AdminLayoutProps {
@@ -163,25 +173,33 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
       {/* Sidebar */}
       <AppShell.Navbar p="md">
         <AppShell.Section grow mt="xs">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              component={Link}
-              to={item.to}
-              label={
-                <Text size="sm" fw={currentPath === item.to ? 600 : 400}>
-                  {item.label}
-                </Text>
-              }
-              leftSection={<item.icon size={20} />}
-              active={currentPath === item.to}
-              mb="xs"
-              style={{
-                borderRadius: 'var(--mantine-radius-md)',
-                transition: 'all 0.15s ease',
-              }}
-              variant={currentPath === item.to ? 'light' : 'subtle'}
-            />
+          {NAV_SECTIONS.map((section, sectionIdx) => (
+            <Box key={section.label}>
+              {sectionIdx > 0 && <Divider my="sm" />}
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="sm" mb={4}>
+                {section.label}
+              </Text>
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  component={Link}
+                  to={item.to}
+                  label={
+                    <Text size="sm" fw={currentPath === item.to ? 600 : 400}>
+                      {item.label}
+                    </Text>
+                  }
+                  leftSection={<item.icon size={20} />}
+                  active={currentPath === item.to}
+                  mb="xs"
+                  style={{
+                    borderRadius: 'var(--mantine-radius-md)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  variant={currentPath === item.to ? 'light' : 'subtle'}
+                />
+              ))}
+            </Box>
           ))}
         </AppShell.Section>
 
