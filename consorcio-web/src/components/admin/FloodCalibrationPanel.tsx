@@ -476,11 +476,19 @@ export default function FloodCalibrationPanel() {
     };
   }, [config?.map.center, config?.map.zoom]);
 
-  // ─── Load zonas_operativas ──────────────────────────────────
+  // ─── Load zonas_operativas (after map init) ────────────────
+
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    if (mapInstanceRef.current && !mapReady) {
+      setMapReady(true);
+    }
+  });
 
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     fetch(BASINS_URL)
       .then((res) => {
@@ -500,7 +508,7 @@ export default function FloodCalibrationPanel() {
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapReady]);
 
   // ─── Render / update zone styles ───────────────────────────
 
