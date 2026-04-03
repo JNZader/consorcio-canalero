@@ -182,6 +182,122 @@ def get_network_stats(db: Session) -> dict[str, Any]:
     return stats
 
 
+def betweenness_centrality(
+    db: Session,
+    limit: int = 100,
+    timeout_seconds: int = 120,
+) -> list[dict[str, Any]]:
+    """Compute betweenness centrality for the canal network graph.
+
+    Tries pgr_betweennessCentrality first (requires pgRouting 3.4+).
+    Falls back to NetworkX if pgRouting function is not available.
+
+    Args:
+        db: Database session.
+        limit: Maximum number of top-ranked nodes to return.
+        timeout_seconds: Statement timeout for the pgRouting query.
+
+    Returns:
+        List of dicts with node_id, centrality, and geometry,
+        sorted descending by centrality.
+    """
+    try:
+        return _betweenness_via_pgrouting(db, limit, timeout_seconds)
+    except Exception as exc:
+        logger.warning(
+            "pgr_betweennessCentrality not available (%s), falling back to NetworkX",
+            exc,
+        )
+        return _betweenness_via_networkx(db, limit)
+
+
+def _betweenness_via_pgrouting(
+    db: Session,
+    limit: int,
+    timeout_seconds: int,
+) -> list[dict[str, Any]]:
+    """Betweenness centrality using pgRouting SQL extension."""
+    db.execute(text(f"SET LOCAL statement_timeout = '{timeout_seconds}s';"))
+
+    rows = db.execute(
+        text("""
+            SELECT
+                bc.vid AS node_id,
+                bc.centrality,
+                ST_AsGeoJSON(v.the_geom)::json AS geometry
+            FROM pgr_betweennessCentrality(
+                'SELECT id, source, target, cost FROM canal_network',
+                directed := false
+            ) AS bc
+            JOIN canal_network_vertices_pgr v ON v.id = bc.vid
+            ORDER BY bc.centrality DESC
+            LIMIT :lim;
+        """),
+        {"lim": limit},
+    ).fetchall()
+
+    return [
+        {
+            "node_id": r.node_id,
+            "centrality": round(float(r.centrality), 6),
+            "geometry": r.geometry,
+        }
+        for r in rows
+    ]
+
+
+def _betweenness_via_networkx(
+    db: Session,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Betweenness centrality fallback using NetworkX in-memory graph."""
+    import networkx as nx
+
+    edges = db.execute(
+        text("""
+            SELECT id, source, target, cost
+            FROM canal_network
+            WHERE source IS NOT NULL AND target IS NOT NULL;
+        """)
+    ).fetchall()
+
+    if not edges:
+        return []
+
+    G = nx.Graph()
+    for e in edges:
+        G.add_edge(e.source, e.target, weight=e.cost, edge_id=e.id)
+
+    centrality = nx.betweenness_centrality(G, weight="weight")
+
+    # Fetch vertex geometries for the top-N nodes
+    sorted_nodes = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:limit]
+    node_ids = [n[0] for n in sorted_nodes]
+
+    if not node_ids:
+        return []
+
+    vertices = db.execute(
+        text("""
+            SELECT id, ST_AsGeoJSON(the_geom)::json AS geometry
+            FROM canal_network_vertices_pgr
+            WHERE id = ANY(:ids);
+        """),
+        {"ids": node_ids},
+    ).fetchall()
+
+    geom_map = {v.id: v.geometry for v in vertices}
+
+    return [
+        {
+            "node_id": node_id,
+            "centrality": round(float(score), 6),
+            "geometry": geom_map.get(node_id),
+        }
+        for node_id, score in sorted_nodes
+    ]
+
+
 def find_nearest_vertex(db: Session, lon: float, lat: float) -> dict[str, Any] | None:
     """Find the nearest vertex in the canal network to a given coordinate.
 
