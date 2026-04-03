@@ -133,7 +133,15 @@ class TestCanalSuggestionSchemas:
         db.flush()
         db.refresh(s)
 
-        resp = CanalSuggestionResponse.model_validate(s, from_attributes=True)
+        data = {
+            "id": s.id,
+            "tipo": s.tipo,
+            "score": s.score,
+            "metadata": s.metadata_,
+            "batch_id": s.batch_id,
+            "created_at": s.created_at,
+        }
+        resp = CanalSuggestionResponse.model_validate(data)
         assert resp.tipo == "route"
         assert resp.score == 60.0
         assert resp.batch_id == batch_id
