@@ -721,6 +721,104 @@ def rank_canal_hotspots(
 
 
 # ---------------------------------------------------------------------------
+# i) Coverage gap detection
+# ---------------------------------------------------------------------------
+
+
+def detect_coverage_gaps(
+    zones: list[dict],
+    hci_scores: dict[str, float],
+    canal_geometries: list[dict],
+    threshold_km: float = 2.0,
+    hci_threshold: float = 50.0,
+) -> list[dict]:
+    """Detect areas with high HCI but no nearby canal infrastructure.
+
+    For each zone, computes the distance to the nearest canal segment.
+    Gaps are zones where distance > threshold_km AND HCI > hci_threshold.
+
+    Args:
+        zones: List of dicts with 'id' and 'geometry' (Shapely Polygon or
+            GeoJSON-like dict). Zone id must match keys in hci_scores.
+        hci_scores: Mapping of zone_id (str) to HCI score (0-100).
+        canal_geometries: List of dicts with 'geometry' (Shapely LineString
+            or GeoJSON-like dict).
+        threshold_km: Minimum distance in km to qualify as a gap.
+        hci_threshold: Minimum HCI score to qualify as a gap.
+
+    Returns:
+        List of gap dicts sorted descending by severity, each containing:
+        geometry (centroid), gap_km, hci_score, zone_id, severity.
+    """
+    from shapely.geometry import shape as shapely_shape
+    from shapely.ops import nearest_points, unary_union
+
+    # Build a unified canal geometry for distance computation
+    canal_shapes = []
+    for c in canal_geometries:
+        g = c.get("geometry")
+        if g is None:
+            continue
+        if isinstance(g, dict):
+            g = shapely_shape(g)
+        canal_shapes.append(g)
+
+    if not canal_shapes:
+        return []
+
+    canal_union = unary_union(canal_shapes)
+
+    gaps: list[dict] = []
+
+    for zone in zones:
+        zone_id = str(zone.get("id", ""))
+        hci = hci_scores.get(zone_id, 0.0)
+        if hci < hci_threshold:
+            continue
+
+        geom = zone.get("geometry")
+        if geom is None:
+            continue
+        if isinstance(geom, dict):
+            geom = shapely_shape(geom)
+
+        centroid = geom.centroid
+
+        # Approximate distance in km using degree-based heuristic
+        # For more accuracy, the caller should provide projected geometries
+        _, nearest_pt = nearest_points(centroid, canal_union)
+        # Rough conversion: 1 degree ~ 111 km at equator; good enough for
+        # mid-latitudes when combined with a threshold
+        dist_deg = centroid.distance(nearest_pt)
+        dist_km = dist_deg * 111.0  # approximate
+
+        if dist_km < threshold_km:
+            continue
+
+        # Classify severity per spec
+        if hci > 80.0 and dist_km > 5.0:
+            severity = "critico"
+        elif hci > 60.0 and dist_km > 3.0:
+            severity = "alto"
+        else:
+            severity = "moderado"
+
+        gaps.append({
+            "geometry": mapping(centroid),
+            "gap_km": round(dist_km, 2),
+            "hci_score": round(hci, 2),
+            "zone_id": zone_id,
+            "severity": severity,
+        })
+
+    # Sort: critico > alto > moderado, then by hci descending
+    severity_order = {"critico": 0, "alto": 1, "moderado": 2}
+    gaps.sort(key=lambda g: (severity_order.get(g["severity"], 3), -g["hci_score"]))
+
+    return gaps
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
