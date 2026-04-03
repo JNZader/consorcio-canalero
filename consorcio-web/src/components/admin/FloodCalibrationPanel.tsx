@@ -1173,7 +1173,7 @@ export default function FloodCalibrationPanel() {
 
                   <Divider />
                   <Text size="xs" fw={500}>Pesos del modelo:</Text>
-                  <Table size="xs" striped>
+                  <Table striped>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>Feature</Table.Th>

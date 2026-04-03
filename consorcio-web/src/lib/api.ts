@@ -83,3 +83,28 @@ export type {
   CuencaConfig,
   AnalysisConfig,
 } from './api/config';
+
+// Flood Calibration exports
+export { floodCalibrationApi } from './api/floodCalibration';
+export type {
+  FloodEventCreatePayload,
+  FloodEventResponse,
+  FloodEventListItem,
+  FloodEventDetailResponse,
+  TrainingResultResponse,
+  RainfallRecord,
+  RainfallSummaryItem,
+  RainfallEvent,
+  RainfallSuggestion,
+  BackfillResponse,
+} from './api/floodCalibration';
+
+// Canal Suggestions exports
+export { canalSuggestionsApi } from './api/canalSuggestions';
+export type {
+  CanalSuggestion,
+  CanalSuggestionsResult,
+  AnalyzeResponse,
+  SuggestionSummary,
+  SuggestionTipo,
+} from './api/canalSuggestions';
