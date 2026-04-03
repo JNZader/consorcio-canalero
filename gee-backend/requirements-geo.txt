@@ -30,6 +30,9 @@ geopandas>=1.0.0
 shapely>=2.0.0
 # numpy provided by GDAL base image (system package, cannot be pip-upgraded)
 
+# Graph analysis (canal network topology)
+networkx>=3.0
+
 # Task queue
 celery>=5.4.0
 redis>=5.0.0
