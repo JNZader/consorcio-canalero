@@ -11,6 +11,19 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
+# Import all models with FK dependencies so Base.metadata.create_all works
+import app.auth.models  # noqa: F401 — users table (geo_jobs.usuario_id FK)
+import app.domains.geo.intelligence.models  # noqa: F401 — zonas_operativas (flood_labels.zona_id FK)
+import app.domains.capas.models  # noqa: F401
+import app.domains.denuncias.models  # noqa: F401
+import app.domains.infraestructura.models  # noqa: F401
+import app.domains.monitoring.models  # noqa: F401
+import app.domains.padron.models  # noqa: F401
+import app.domains.settings.models  # noqa: F401
+import app.domains.finanzas.models  # noqa: F401
+import app.domains.reuniones.models  # noqa: F401
+import app.domains.tramites.models  # noqa: F401
+
 from app.domains.geo.models import (
     AnalisisGeo,
     EstadoGeoJob,
@@ -21,7 +34,23 @@ from app.domains.geo.models import (
     GeoLayer,
     RainfallRecord,
 )
+from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.repository import GeoRepository
+
+
+def _create_zona(db, nombre: str = "Zona Test") -> uuid.UUID:
+    """Insert a minimal ZonaOperativa record and return its id."""
+    from geoalchemy2.elements import WKTElement
+
+    zona = ZonaOperativa(
+        nombre=nombre,
+        geometria=WKTElement("POLYGON((-62 -32, -62 -33, -61 -33, -61 -32, -62 -32))", srid=4326),
+        cuenca="test_cuenca",
+        superficie_ha=500.0,
+    )
+    db.add(zona)
+    db.flush()
+    return zona.id
 
 
 @pytest.fixture
@@ -53,25 +82,26 @@ class TestJobCrud:
         assert result is None
 
     def test_get_jobs_paginated(self, db: Session, repo: GeoRepository):
-        for i in range(5):
-            repo.create_job(db, tipo=f"tipo_{i}")
+        tipos = ["dem_pipeline", "slope", "aspect", "flow_dir", "twi"]
+        for tipo in tipos:
+            repo.create_job(db, tipo=tipo)
 
         items, total = repo.get_jobs(db, page=1, limit=3)
         assert total == 5
         assert len(items) == 3
 
     def test_get_jobs_with_estado_filter(self, db: Session, repo: GeoRepository):
-        repo.create_job(db, tipo="a")
+        repo.create_job(db, tipo="dem_pipeline")
         items, total = repo.get_jobs(db, estado_filter=EstadoGeoJob.PENDING)
         assert total >= 1
 
     def test_get_jobs_with_tipo_filter(self, db: Session, repo: GeoRepository):
-        repo.create_job(db, tipo="unique_tipo_xyz")
-        items, total = repo.get_jobs(db, tipo_filter="unique_tipo_xyz")
+        repo.create_job(db, tipo="slope")
+        items, total = repo.get_jobs(db, tipo_filter="slope")
         assert total >= 1
 
     def test_update_job_status(self, db: Session, repo: GeoRepository):
-        job = repo.create_job(db, tipo="test")
+        job = repo.create_job(db, tipo="dem_pipeline")
         updated = repo.update_job_status(
             db, job.id,
             estado="completed",
@@ -87,14 +117,14 @@ class TestJobCrud:
         assert result is None
 
     def test_update_job_celery_task_id(self, db: Session, repo: GeoRepository):
-        job = repo.create_job(db, tipo="test")
+        job = repo.create_job(db, tipo="slope")
         updated = repo.update_job_status(
             db, job.id, celery_task_id="celery-123"
         )
         assert updated.celery_task_id == "celery-123"
 
     def test_update_job_error(self, db: Session, repo: GeoRepository):
-        job = repo.create_job(db, tipo="test")
+        job = repo.create_job(db, tipo="aspect")
         updated = repo.update_job_status(
             db, job.id, estado="failed", error="something went wrong"
         )
@@ -121,7 +151,7 @@ class TestLayerCrud:
 
     def test_get_layer_by_id(self, db: Session, repo: GeoRepository):
         layer = repo.create_layer(
-            db, nombre="Test", tipo="slope", fuente="computed", archivo_path="/x"
+            db, nombre="Test", tipo="slope", fuente="dem_pipeline", archivo_path="/x"
         )
         fetched = repo.get_layer_by_id(db, layer.id)
         assert fetched is not None
@@ -142,16 +172,16 @@ class TestLayerCrud:
 
     def test_get_layers_with_tipo_filter(self, db: Session, repo: GeoRepository):
         repo.create_layer(
-            db, nombre="Slope", tipo="slope_unique_xyz", fuente="gee", archivo_path="/s"
+            db, nombre="Slope", tipo="slope", fuente="gee", archivo_path="/s"
         )
-        items, total = repo.get_layers(db, tipo_filter="slope_unique_xyz")
+        items, total = repo.get_layers(db, tipo_filter="slope")
         assert total >= 1
 
     def test_get_layers_with_fuente_filter(self, db: Session, repo: GeoRepository):
         repo.create_layer(
-            db, nombre="Test", tipo="dem", fuente="unique_fuente_abc", archivo_path="/f"
+            db, nombre="Test", tipo="dem_raw", fuente="manual", archivo_path="/f"
         )
-        items, total = repo.get_layers(db, fuente_filter="unique_fuente_abc")
+        items, total = repo.get_layers(db, fuente_filter="manual")
         assert total >= 1
 
     def test_get_layer_by_tipo_and_area(self, db: Session, repo: GeoRepository):
@@ -176,7 +206,7 @@ class TestLayerCrud:
             archivo_path="/old", area_id="area_y",
         )
         updated = repo.upsert_layer(
-            db, nombre="Updated", tipo="hand", fuente="new_source",
+            db, nombre="Updated", tipo="hand", fuente="dem_pipeline",
             archivo_path="/updated", area_id="area_y",
         )
         assert updated.id == first.id
@@ -185,16 +215,16 @@ class TestLayerCrud:
 
     def test_upsert_layer_no_area_id_creates_new(self, db: Session, repo: GeoRepository):
         layer = repo.upsert_layer(
-            db, nombre="NoArea", tipo="dem", fuente="gee", archivo_path="/noarea",
+            db, nombre="NoArea", tipo="dem_raw", fuente="gee", archivo_path="/noarea",
         )
         assert layer.id is not None
 
     def test_delete_layers_by_area_id(self, db: Session, repo: GeoRepository):
         repo.create_layer(
-            db, nombre="A", tipo="t1", fuente="gee", archivo_path="/a", area_id="del_area"
+            db, nombre="A", tipo="slope", fuente="gee", archivo_path="/a", area_id="del_area"
         )
         repo.create_layer(
-            db, nombre="B", tipo="t2", fuente="gee", archivo_path="/b", area_id="del_area"
+            db, nombre="B", tipo="aspect", fuente="gee", archivo_path="/b", area_id="del_area"
         )
         count = repo.delete_layers_by_area_id(db, "del_area")
         assert count == 2
@@ -316,8 +346,8 @@ class TestAnalisisGeo:
         assert len(items) == 2
 
     def test_get_analisis_list_with_filters(self, db: Session, repo: GeoRepository):
-        repo.create_analisis(db, tipo="unique_tipo_zzz", fecha_analisis=date.today())
-        items, total = repo.get_analisis_list(db, tipo_filter="unique_tipo_zzz")
+        repo.create_analisis(db, tipo="ndvi", fecha_analisis=date.today())
+        items, total = repo.get_analisis_list(db, tipo_filter="ndvi")
         assert total >= 1
 
     def test_update_analisis_status(self, db: Session, repo: GeoRepository):
@@ -336,7 +366,7 @@ class TestAnalisisGeo:
         assert result is None
 
     def test_update_analisis_error(self, db: Session, repo: GeoRepository):
-        analisis = repo.create_analisis(db, tipo="test", fecha_analisis=date.today())
+        analisis = repo.create_analisis(db, tipo="custom", fecha_analisis=date.today())
         updated = repo.update_analisis_status(
             db, analisis.id, estado="failed", error="GEE timeout"
         )
@@ -349,12 +379,8 @@ class TestAnalisisGeo:
 
 
 class TestRainfallRecords:
-    def _make_zona_id(self) -> uuid.UUID:
-        """Generate a consistent zona ID for rainfall tests."""
-        return uuid.uuid4()
-
     def test_insert_rainfall_record(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 1")
         record = repo.insert_rainfall_record(
             db,
             zona_operativa_id=zona_id,
@@ -365,7 +391,7 @@ class TestRainfallRecords:
         assert record.precipitation_mm == 12.5
 
     def test_get_rainfall_by_zone(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 2")
         repo.insert_rainfall_record(
             db, zona_operativa_id=zona_id,
             record_date=date(2025, 6, 1), precipitation_mm=5.0,
@@ -378,7 +404,7 @@ class TestRainfallRecords:
         assert len(records) == 2
 
     def test_get_rainfall_by_zone_with_date_range(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 3")
         for day in range(1, 11):
             repo.insert_rainfall_record(
                 db, zona_operativa_id=zona_id,
@@ -390,7 +416,7 @@ class TestRainfallRecords:
         assert len(records) == 5
 
     def test_get_accumulated_rainfall(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 4")
         for day in range(1, 8):
             repo.insert_rainfall_record(
                 db, zona_operativa_id=zona_id,
@@ -402,14 +428,14 @@ class TestRainfallRecords:
         assert total == 70.0
 
     def test_get_accumulated_rainfall_empty(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 5")
         total = repo.get_accumulated_rainfall(
             db, zona_id, reference_date=date(2025, 6, 1), window_days=7,
         )
         assert total == 0.0
 
     def test_get_rainfall_summary(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 6")
         for day in range(1, 6):
             repo.insert_rainfall_record(
                 db, zona_operativa_id=zona_id,
@@ -422,8 +448,8 @@ class TestRainfallRecords:
         assert summary[0]["total_mm"] > 0
 
     def test_get_rainfall_summary_with_zone_filter(self, db: Session, repo: GeoRepository):
-        zona_id = self._make_zona_id()
-        other_zona = self._make_zona_id()
+        zona_id = _create_zona(db, "Rainfall Zone 7a")
+        other_zona = _create_zona(db, "Rainfall Zone 7b")
         repo.insert_rainfall_record(
             db, zona_operativa_id=zona_id,
             record_date=date(2025, 6, 1), precipitation_mm=10.0,
@@ -440,8 +466,8 @@ class TestRainfallRecords:
         assert summary[0]["total_mm"] == 10.0
 
     def test_get_rainfall_daily_max(self, db: Session, repo: GeoRepository):
-        zona_a = self._make_zona_id()
-        zona_b = self._make_zona_id()
+        zona_a = _create_zona(db, "Rainfall Zone 8a")
+        zona_b = _create_zona(db, "Rainfall Zone 8b")
         repo.insert_rainfall_record(
             db, zona_operativa_id=zona_a,
             record_date=date(2025, 6, 1), precipitation_mm=5.0,
