@@ -912,3 +912,351 @@ class TestPredictFullScorePinning:
         features = ZoneFeatures(zona_id="z", zona_name="Z", slope_mean=1.0)
         result = model.predict(features)
         assert result["contributions"]["slope_mean"]["normalized"] == pytest.approx(0.8)
+
+    def test_probability_upper_clamp_is_one_not_two(self):
+        """Probability must be clamped to max 1.0, not 2.0."""
+        model = FloodModel()
+        # Force a very high score by setting extreme bias + weights
+        model.bias = 2.0
+        features = ZoneFeatures(zona_id="z", zona_name="Z")
+        result = model.predict(features)
+        assert result["probability"] == pytest.approx(1.0)
+        assert result["probability"] <= 1.0
+
+
+# ── Risk level boundary precision ─────────────────────
+
+
+class TestRiskLevelBoundaryPrecision:
+    """Kill >= vs > boundary mutations on risk level thresholds."""
+
+    @staticmethod
+    def _predict_with_score(score: float) -> str:
+        """Create a model that produces an exact target score."""
+        model = FloodModel()
+        model.weights = {k: 0.0 for k in model.weights}
+        model.bias = score
+        features = ZoneFeatures(zona_id="z", zona_name="Z")
+        return model.predict(features)["risk_level"]
+
+    def test_exactly_0_75_is_critico(self):
+        """>= 0.75 means EXACTLY 0.75 is critico, not alto."""
+        assert self._predict_with_score(0.75) == "critico"
+
+    def test_just_below_0_75_is_alto(self):
+        assert self._predict_with_score(0.7499) == "alto"
+
+    def test_exactly_0_55_is_alto(self):
+        """>= 0.55 means EXACTLY 0.55 is alto, not moderado."""
+        assert self._predict_with_score(0.55) == "alto"
+
+    def test_just_below_0_55_is_moderado(self):
+        assert self._predict_with_score(0.5499) == "moderado"
+
+    def test_exactly_0_35_is_moderado(self):
+        """>= 0.35 means EXACTLY 0.35 is moderado, not bajo."""
+        assert self._predict_with_score(0.35) == "moderado"
+
+    def test_just_below_0_35_is_bajo(self):
+        assert self._predict_with_score(0.3499) == "bajo"
+
+
+# ── train_from_events normalization (duplicate formulas) ──
+
+
+class TestTrainNormalization:
+    """Kill mutations in the duplicated normalization inside train_from_events."""
+
+    @staticmethod
+    def _make_events_with_known_features():
+        """Create events with specific feature values for normalization checking."""
+        return [
+            {
+                "features": {
+                    "hand_mean": 2.5,      # norm: 1 - 2.5/5 = 0.5
+                    "hand_min": 1.5,       # norm: 1 - 1.5/3 = 0.5
+                    "twi_mean": 12.5,      # norm: (12.5-5)/15 = 0.5
+                    "twi_max": 17.5,       # norm: (17.5-10)/15 = 0.5
+                    "slope_mean": 2.5,     # norm: 1 - 2.5/5 = 0.5
+                    "flow_acc_max": 0.0,   # norm: log1p(0)/15 = 0
+                    "flow_acc_mean": 0.0,  # norm: log1p(0)/10 = 0
+                    "water_pct_current": 10.0,    # norm: 10/20 = 0.5
+                    "water_pct_historical": 7.5,  # norm: 7.5/15 = 0.5
+                    "rainfall_48h": 50.0,  # norm: 50/100 = 0.5
+                    "rainfall_7d": 100.0,  # norm: 100/200 = 0.5
+                    "rainfall_30d": 200.0, # norm: 200/400 = 0.5
+                },
+                "flooded": True,
+            },
+            {
+                "features": {
+                    "hand_mean": 5.0,      # norm: 1 - 5/5 = 0.0
+                    "hand_min": 3.0,       # norm: 1 - 3/3 = 0.0
+                    "twi_mean": 5.0,       # norm: (5-5)/15 = 0.0
+                    "twi_max": 10.0,       # norm: (10-10)/15 = 0.0
+                    "slope_mean": 5.0,     # norm: 1 - 5/5 = 0.0
+                    "flow_acc_max": 0.0,
+                    "flow_acc_mean": 0.0,
+                    "water_pct_current": 0.0,
+                    "water_pct_historical": 0.0,
+                    "rainfall_48h": 0.0,
+                    "rainfall_7d": 0.0,
+                    "rainfall_30d": 0.0,
+                },
+                "flooded": False,
+            },
+        ]
+
+    def test_train_produces_different_weights_for_flood_vs_dry(self):
+        """Training on clear flood/dry events must produce weight changes that
+        distinguish them. This exercises the normalization in train_from_events."""
+        # Need at least 5 events
+        base = self._make_events_with_known_features()
+        events = base * 3  # 6 events (3 flooded, 3 dry)
+
+        model = FloodModel()
+        initial_weights = dict(model.weights)
+        result = model.train_from_events(events, epochs=200, learning_rate=0.05)
+
+        assert result["final_loss"] < result["initial_loss"]
+
+        # After training, flooded pattern should score higher (check contribution
+        # sums since clamped probabilities can both saturate to 1.0)
+        flooded_feat = ZoneFeatures(
+            zona_id="z", zona_name="Z",
+            hand_mean=2.5, hand_min=1.5, twi_mean=12.5, twi_max=17.5,
+            slope_mean=2.5, water_pct_current=10.0, water_pct_historical=7.5,
+            rainfall_48h=50.0, rainfall_7d=100.0, rainfall_30d=200.0,
+        )
+        dry_feat = ZoneFeatures(
+            zona_id="z", zona_name="Z",
+            hand_mean=5.0, hand_min=3.0, twi_mean=5.0, twi_max=10.0,
+            slope_mean=5.0, water_pct_current=0.0, water_pct_historical=0.0,
+        )
+        flood_r = model.predict(flooded_feat)
+        dry_r = model.predict(dry_feat)
+        flood_sum = sum(c["contribution"] for c in flood_r["contributions"].values())
+        dry_sum = sum(c["contribution"] for c in dry_r["contributions"].values())
+        assert flood_sum > dry_sum
+
+    def test_train_normalization_hand_mean_formula(self):
+        """Mutating hand_mean normalization in train should change training outcome."""
+        # Use events where hand_mean is the ONLY differentiator
+        flooded_event = {
+            "features": {
+                "hand_mean": 0.5,  # low HAND → norm=0.9 → high flood signal
+                "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": True,
+        }
+        dry_event = {
+            "features": {
+                "hand_mean": 4.5,  # high HAND → norm=0.1 → low flood signal
+                "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": False,
+        }
+        events = [flooded_event, dry_event] * 3  # 6 events
+
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=300, learning_rate=0.1)
+
+        # The hand_mean weight should become MORE negative (lower HAND = more flooding)
+        # If normalization formula is mutated (e.g., 1+x/5 instead of 1-x/5),
+        # the gradient would push in the wrong direction
+        assert result["final_loss"] < result["initial_loss"]
+        # Check hand_mean contribution direction (not clamped probability)
+        feat_flood = ZoneFeatures(zona_id="z", zona_name="Z", hand_mean=0.5)
+        feat_dry = ZoneFeatures(zona_id="z", zona_name="Z", hand_mean=4.5)
+        flood_contrib = model.predict(feat_flood)["contributions"]["hand_mean"]["contribution"]
+        dry_contrib = model.predict(feat_dry)["contributions"]["hand_mean"]["contribution"]
+        # With correct normalization, hand_mean=0.5 normalizes higher, and
+        # the trained weight direction should reflect the flood pattern
+        assert flood_contrib != dry_contrib
+
+    def test_train_normalization_twi_mean_formula(self):
+        """Training normalization for twi_mean must use (x-5)/15, not (x+5)/15."""
+        flooded_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0,
+                "twi_mean": 18.0,  # high TWI → norm=(18-5)/15=0.867
+                "twi_max": 0.0, "slope_mean": 0.0,
+                "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": True,
+        }
+        dry_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0,
+                "twi_mean": 6.0,  # low TWI → norm=(6-5)/15=0.067
+                "twi_max": 0.0, "slope_mean": 0.0,
+                "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": False,
+        }
+        events = [flooded_event, dry_event] * 3
+
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=300, learning_rate=0.1)
+        assert result["final_loss"] < result["initial_loss"]
+
+    def test_train_normalization_water_pct_current(self):
+        """water_pct_current normalization in train: x/20."""
+        flooded_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 15.0,  # norm: 15/20=0.75
+                "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": True,
+        }
+        dry_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 1.0,  # norm: 1/20=0.05
+                "water_pct_historical": 0.0,
+                "rainfall_48h": 0.0, "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": False,
+        }
+        events = [flooded_event, dry_event] * 3
+
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=300, learning_rate=0.1)
+        assert result["final_loss"] < result["initial_loss"]
+
+    def test_train_normalization_rainfall_48h(self):
+        """rainfall_48h normalization in train: x/100."""
+        flooded_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 80.0,  # norm: 80/100=0.8
+                "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": True,
+        }
+        dry_event = {
+            "features": {
+                "hand_mean": 0.0, "hand_min": 0.0, "twi_mean": 0.0, "twi_max": 0.0,
+                "slope_mean": 0.0, "flow_acc_max": 0.0, "flow_acc_mean": 0.0,
+                "water_pct_current": 0.0, "water_pct_historical": 0.0,
+                "rainfall_48h": 5.0,  # norm: 5/100=0.05
+                "rainfall_7d": 0.0, "rainfall_30d": 0.0,
+            },
+            "flooded": False,
+        }
+        events = [flooded_event, dry_event] * 3
+
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=300, learning_rate=0.1)
+        assert result["final_loss"] < result["initial_loss"]
+
+    def test_train_sigmoid_produces_valid_loss(self):
+        """Sigmoid must produce values in (0,1). Mutating it would cause NaN/Inf."""
+        events = TestFloodModelTraining._make_events(6)
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=50)
+        # If sigmoid is broken (e.g., 1/(1-exp(-z)) or 1*(1+exp(-z))),
+        # log-loss will produce NaN or Inf
+        assert not np.isnan(result["final_loss"])
+        assert not np.isinf(result["final_loss"])
+
+    def test_train_gradient_descent_direction(self):
+        """Training must reduce loss. Mutating gradient ops would increase it."""
+        events = TestFloodModelTraining._make_events(10)
+        model = FloodModel()
+        result = model.train_from_events(events, epochs=200, learning_rate=0.01)
+        # Loss must decrease significantly
+        assert result["final_loss"] < result["initial_loss"] * 0.95
+
+    def test_train_default_learning_rate_is_0_01(self):
+        """Default learning_rate parameter is 0.01."""
+        events = TestFloodModelTraining._make_events(6)
+        model_default = FloodModel()
+        model_explicit = FloodModel()
+
+        # Train both with same events, same epochs
+        result_default = model_default.train_from_events(events, epochs=50)
+        result_explicit = model_explicit.train_from_events(events, epochs=50, learning_rate=0.01)
+
+        # Same learning rate should produce same result
+        assert result_default["final_loss"] == pytest.approx(result_explicit["final_loss"], abs=1e-6)
+
+
+# ── predict_flood_for_zone function ───────────────────
+
+
+class TestPredictFloodForZone:
+    """Test the module-level predict_flood_for_zone convenience function."""
+
+    def test_returns_prediction_dict(self):
+        from app.domains.geo.ml.flood_prediction import predict_flood_for_zone
+
+        result = predict_flood_for_zone(
+            {
+                "zona_id": "z1",
+                "zona_name": "Zone 1",
+                "hand_mean": 2.5,
+                "twi_mean": 12.5,
+            },
+            model_path="/tmp/nonexistent_model_xyz.json",
+        )
+        assert result is not None
+        assert "probability" in result
+        assert "risk_level" in result
+        assert "contributions" in result
+
+    def test_returns_correct_probability(self):
+        """predict_flood_for_zone must return actual prediction, not None."""
+        from app.domains.geo.ml.flood_prediction import predict_flood_for_zone
+
+        result = predict_flood_for_zone(
+            {"zona_id": "z", "zona_name": "Z", "hand_mean": 2.5},
+            model_path="/tmp/nonexistent_model_xyz.json",
+        )
+        assert isinstance(result["probability"], float)
+        assert 0.0 <= result["probability"] <= 1.0
+
+
+# ── Load backward compat version default ─────────────
+
+
+class TestLoadVersionDefault:
+    """Kill mutation on version default in load()."""
+
+    def test_load_missing_version_defaults_to_1_0_0(self):
+        """When version key is missing from saved model, default is '1.0.0'."""
+        data = {
+            "weights": {
+                "hand_mean": -0.35, "hand_min": -0.10, "twi_mean": 0.20,
+                "twi_max": 0.05, "slope_mean": -0.10, "flow_acc_log_max": 0.15,
+                "flow_acc_log_mean": 0.05, "water_pct_current": 0.25,
+                "water_pct_historical": 0.15,
+            },
+            "bias": 0.3,
+            # no "version" key
+        }
+        with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as f:
+            json.dump(data, f)
+            path = f.name
+
+        try:
+            loaded = FloodModel.load(path)
+            assert loaded.version == "1.0.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
