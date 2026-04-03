@@ -351,3 +351,328 @@ def test_multi_date_no_successful(mock_detect):
 
     assert result["dates_successful"] == 0
     assert result["change"] is None
+
+
+# ---------------------------------------------------------------------------
+# Mutation-killing tests — verify EXACT numeric values and boundaries
+# ---------------------------------------------------------------------------
+
+
+def test_min_valid_pixel_fraction_exact_value():
+    """Kill mutation: MIN_VALID_PIXEL_FRACTION = 0.10 mutated to 0.15."""
+    from app.domains.geo.water_detection import MIN_VALID_PIXEL_FRACTION
+    assert MIN_VALID_PIXEL_FRACTION == pytest.approx(0.10)
+
+
+def test_valid_fraction_boundary_at_exactly_threshold(mock_ee):
+    """Kill mutation: valid_fraction < MIN_VALID_PIXEL_FRACTION (< vs <=).
+
+    At exactly 0.10 (10%), the check should PASS (not insufficient).
+    If mutated to <=, this would wrongly return insufficient.
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    # 100 / 1000 = 0.10 exactly = MIN_VALID_PIXEL_FRACTION
+    _setup_pixel_counts(mock_ee, total=1000, valid=100)
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+    # At exactly the threshold, it should NOT be insufficient
+    assert result["status"] == "success"
+
+
+def test_valid_fraction_just_below_threshold(mock_ee):
+    """Just below 0.10 — should return insufficient_clear_pixels."""
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, _, _ = _setup_s2_image(mock_ee, cloud_pct=90.0)
+    _make_collection(mock_ee, s2)
+    # 99/1000 = 0.099 < 0.10
+    _setup_pixel_counts(mock_ee, total=1000, valid=99)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+    assert result["status"] == "insufficient_clear_pixels"
+
+
+def test_valid_fraction_zero_total_pixels(mock_ee):
+    """Kill mutation: total_px_val > 0 vs >= 0 — zero total should not divide."""
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, _, _ = _setup_s2_image(mock_ee, cloud_pct=90.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=0, valid=0)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+    # valid_fraction = 0, which is < 0.10, so insufficient
+    assert result["status"] == "insufficient_clear_pixels"
+
+
+def test_area_division_not_multiplication(mock_ee):
+    """Kill mutation: / 10_000 → * 10_000.
+
+    With known area values, verify total_ha = area / 10000.
+    water=50000 m² → 5.0 ha, wet=30000 m² → 3.0 ha, total=500000 m² → 50.0 ha.
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(
+        mock_ee, water=50_000, wet=30_000, total=500_000,
+    )
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["status"] == "success"
+    # total_ha = 500000 / 10000 = 50.0  (NOT 500000 * 10000)
+    assert result["area"]["total_ha"] == pytest.approx(50.0)
+    # water_ha = 50000 / 10000 = 5.0
+    assert result["area"]["water_ha"] == pytest.approx(5.0)
+    # wet_ha = 30000 / 10000 = 3.0
+    assert result["area"]["wet_ha"] == pytest.approx(3.0)
+
+
+def test_dry_ha_is_total_minus_water_minus_wet(mock_ee):
+    """Kill mutation: total - water - wet vs total + water - wet.
+
+    dry_ha = 50 - 5 - 3 = 42.0 (NOT 50 + 5 - 3 = 52.0)
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(
+        mock_ee, water=50_000, wet=30_000, total=500_000,
+    )
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    # dry_ha = 50.0 - 5.0 - 3.0 = 42.0
+    assert result["area"]["dry_ha"] == pytest.approx(42.0)
+
+
+def test_water_pct_formula(mock_ee):
+    """Kill mutation: water_pct = (water_ha / total_ha) * 100.
+
+    water_pct = (5.0 / 50.0) * 100 = 10.0
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(
+        mock_ee, water=50_000, wet=30_000, total=500_000,
+    )
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["area"]["water_pct"] == pytest.approx(10.0)
+    assert result["area"]["wet_pct"] == pytest.approx(6.0)
+
+
+def test_water_pct_zero_total_guard(mock_ee):
+    """Kill mutation: total_ha > 0 vs >= 0.
+
+    When total_ha is 0, water_pct should be 0 (no division by zero).
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(
+        mock_ee, water=0, wet=0, total=0,
+    )
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["area"]["water_pct"] == 0
+    assert result["area"]["wet_pct"] == 0
+
+
+def test_cloud_masking_applied_is_true(mock_ee):
+    """Kill mutation: cloud_masking 'applied': True → False."""
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["cloud_masking"]["applied"] is True
+
+
+def test_valid_pixel_pct_is_fraction_times_100(mock_ee):
+    """Kill mutation: valid_fraction * 100 vs / 100.
+
+    800/1000 = 0.80 → valid_pixel_pct = 80.0 (NOT 0.008)
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["cloud_masking"]["valid_pixel_pct"] == pytest.approx(80.0)
+
+
+def test_cloud_warning_at_exactly_050(mock_ee):
+    """Kill mutation: valid_fraction < 0.50 boundary.
+
+    At exactly 0.50 (500/1000), NO warning should be set.
+    If mutated to <=, this would wrongly produce a warning.
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=15.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=500)  # exactly 0.50
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["status"] == "success"
+    assert result["cloud_masking"]["warning"] is None
+
+
+def test_cloud_warning_just_below_050(mock_ee):
+    """Just below 0.50 — warning SHOULD be present."""
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=15.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=499)  # 0.499 < 0.50
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["status"] == "success"
+    assert result["cloud_masking"]["warning"] is not None
+
+
+def test_shared_inputs_true_in_reducer(mock_ee):
+    """Kill mutation: sharedInputs=True → False.
+
+    Verify that combine() is called with sharedInputs=True.
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, band, water_mask = _setup_s2_image(mock_ee, cloud_pct=5.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=800)
+
+    reduce_mock, mul_result = _setup_area_mocks(mock_ee)
+    water_mask.multiply.return_value = mul_result
+    water_mask.And.return_value.multiply = MagicMock(return_value=mul_result)
+    band.reduceRegion = MagicMock(return_value=reduce_mock)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    # Verify combine was called with sharedInputs=True (both calls)
+    mean_reducer = mock_ee.Reducer.mean.return_value
+    combine_calls = mean_reducer.combine.call_args_list
+    assert len(combine_calls) >= 1
+    for call in combine_calls:
+        assert call.kwargs.get("sharedInputs") is True
+
+
+@patch("app.domains.geo.water_detection.detect_water_from_gee")
+def test_multi_date_increasing_boundary(mock_detect):
+    """Kill mutation: > vs >= on increasing trend boundary.
+
+    When water_pct difference is exactly +1, it should be 'stable' (not increasing).
+    increasing requires > +1, so exactly +1 gives stable.
+    """
+    from app.domains.geo.water_detection import detect_water_multi_date
+
+    mock_detect.side_effect = [
+        {"status": "success", "image_date": "2024-01-01", "area": {"water_ha": 10, "water_pct": 5.0}},
+        {"status": "success", "image_date": "2024-02-01", "area": {"water_ha": 12, "water_pct": 6.0}},
+    ]
+
+    result = detect_water_multi_date(GEOM, ["2024-01-01", "2024-02-01"])
+    # difference is exactly 1.0, which is NOT > 1 but IS >= 1
+    # so trend should be "stable" (or "decreasing" check also fails, so "stable")
+    assert result["change"]["trend"] == "stable"
+
+
+@patch("app.domains.geo.water_detection.detect_water_from_gee")
+def test_multi_date_decreasing_boundary(mock_detect):
+    """Kill mutation: < vs <= on decreasing trend boundary.
+
+    When water_pct difference is exactly -1, it should be 'stable' (not decreasing).
+    decreasing requires < -1, so exactly -1 gives stable.
+    """
+    from app.domains.geo.water_detection import detect_water_multi_date
+
+    mock_detect.side_effect = [
+        {"status": "success", "image_date": "2024-01-01", "area": {"water_ha": 12, "water_pct": 6.0}},
+        {"status": "success", "image_date": "2024-02-01", "area": {"water_ha": 10, "water_pct": 5.0}},
+    ]
+
+    result = detect_water_multi_date(GEOM, ["2024-01-01", "2024-02-01"])
+    # difference is exactly -1.0, which is NOT < -1 but IS <= -1
+    assert result["change"]["trend"] == "stable"
+
+
+def test_insufficient_pixels_valid_pixel_pct_formula(mock_ee):
+    """Kill mutation: valid_fraction * 100 in insufficient path (L127).
+
+    At 5% valid: valid_pixel_pct = 0.05 * 100 = 5.0
+    """
+    from app.domains.geo.water_detection import detect_water_from_gee
+
+    s2, _, _ = _setup_s2_image(mock_ee, cloud_pct=95.0)
+    _make_collection(mock_ee, s2)
+    _setup_pixel_counts(mock_ee, total=1000, valid=50)
+
+    result = detect_water_from_gee(GEOM, "2024-01-15")
+
+    assert result["status"] == "insufficient_clear_pixels"
+    assert result["valid_pixel_pct"] == pytest.approx(5.0)
