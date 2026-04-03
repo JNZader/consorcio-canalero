@@ -1217,6 +1217,169 @@ def least_cost_path(
 
 
 # ---------------------------------------------------------------------------
+# n) Route suggestion orchestration
+# ---------------------------------------------------------------------------
+
+
+def suggest_canal_routes(
+    gap_centroids: list[dict],
+    canal_geometries: list[dict],
+    slope_raster_path: str,
+    output_dir: str | None = None,
+) -> list[dict]:
+    """Suggest optimal canal routes from coverage gap centroids to nearest canal.
+
+    For each gap centroid, generates a least-cost path across the slope-derived
+    cost surface to the nearest existing canal segment. Unreachable gaps are
+    skipped with a warning in the result.
+
+    Args:
+        gap_centroids: List of dicts from detect_coverage_gaps(), each with
+            'geometry' (GeoJSON Point) and 'zone_id'.
+        canal_geometries: List of dicts with 'geometry' (Shapely LineString
+            or GeoJSON-like dict) for existing canal segments.
+        slope_raster_path: Path to the slope raster (degrees).
+        output_dir: Directory for intermediate rasters. Uses a temp dir if None.
+
+    Returns:
+        List of route suggestion dicts, each containing:
+        geometry (GeoJSON LineString), source_gap_id, target_point,
+        estimated_cost, status.
+    """
+    import logging
+
+    import rasterio
+    from rasterio.transform import rowcol
+    from shapely.geometry import Point, shape as shapely_shape
+    from shapely.ops import nearest_points, unary_union
+
+    logger = logging.getLogger(__name__)
+
+    if not gap_centroids:
+        return []
+
+    if not Path(slope_raster_path).exists():
+        raise FileNotFoundError(
+            f"Slope raster not found: {slope_raster_path}"
+        )
+
+    # Resolve canal geometries to Shapely objects
+    canal_shapes = []
+    for c in canal_geometries:
+        g = c.get("geometry")
+        if g is None:
+            continue
+        if isinstance(g, dict):
+            g = shapely_shape(g)
+        canal_shapes.append(g)
+
+    if not canal_shapes:
+        return []
+
+    canal_union = unary_union(canal_shapes)
+
+    use_tmpdir = output_dir is None
+    tmpdir_obj = tempfile.TemporaryDirectory() if use_tmpdir else None
+    work_dir = tmpdir_obj.name if use_tmpdir else output_dir
+    Path(work_dir).mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Step 1: Generate cost surface
+        cost_surface_path = str(Path(work_dir) / "cost_surface.tif")
+        generate_cost_surface(slope_raster_path, cost_surface_path)
+
+        # Collect all gap centroid coordinates as source points
+        gap_points: list[tuple[float, float, str]] = []
+        for gap in gap_centroids:
+            geom = gap.get("geometry")
+            if geom is None:
+                continue
+            if isinstance(geom, dict):
+                pt = shapely_shape(geom)
+            else:
+                pt = geom
+            zone_id = str(gap.get("zone_id", ""))
+            gap_points.append((pt.x, pt.y, zone_id))
+
+        if not gap_points:
+            return []
+
+        # Step 2: Cost distance from all gap centroids
+        source_coords = [(lon, lat) for lon, lat, _ in gap_points]
+        accum_path = str(Path(work_dir) / "cost_accum.tif")
+        backlink_path = str(Path(work_dir) / "cost_backlink.tif")
+
+        try:
+            cost_distance(
+                cost_surface_path, source_coords, accum_path, backlink_path
+            )
+        except ValueError as exc:
+            logger.warning("Cost distance failed: %s", exc)
+            return []
+
+        # Step 3: For each gap, find nearest canal point and trace path
+        routes: list[dict] = []
+
+        for lon, lat, zone_id in gap_points:
+            gap_pt = Point(lon, lat)
+
+            # Find nearest point on canal network
+            _, nearest_canal_pt = nearest_points(gap_pt, canal_union)
+            target = (nearest_canal_pt.x, nearest_canal_pt.y)
+
+            try:
+                path_geom = least_cost_path(accum_path, backlink_path, target)
+            except Exception as exc:
+                logger.warning(
+                    "Least-cost path failed for gap %s: %s", zone_id, exc
+                )
+                routes.append({
+                    "geometry": None,
+                    "source_gap_id": zone_id,
+                    "target_point": mapping(nearest_canal_pt),
+                    "estimated_cost": None,
+                    "status": f"unreachable: {exc}",
+                })
+                continue
+
+            if path_geom is None:
+                routes.append({
+                    "geometry": None,
+                    "source_gap_id": zone_id,
+                    "target_point": mapping(nearest_canal_pt),
+                    "estimated_cost": None,
+                    "status": "unreachable: path could not be traced",
+                })
+                continue
+
+            # Sample the accumulated cost at the target to get estimated cost
+            estimated_cost = None
+            try:
+                with rasterio.open(accum_path) as src:
+                    r, c = rowcol(src.transform, target[0], target[1])
+                    if 0 <= r < src.height and 0 <= c < src.width:
+                        val = float(src.read(1)[r, c])
+                        if src.nodata is None or val != src.nodata:
+                            estimated_cost = round(val, 2)
+            except Exception:
+                pass
+
+            routes.append({
+                "geometry": mapping(path_geom),
+                "source_gap_id": zone_id,
+                "target_point": mapping(nearest_canal_pt),
+                "estimated_cost": estimated_cost,
+                "status": "ok",
+            })
+
+        return routes
+
+    finally:
+        if tmpdir_obj is not None:
+            tmpdir_obj.cleanup()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
