@@ -180,6 +180,15 @@ export const floodCalibrationApi = {
     apiFetch(`/geo/rainfall/summary?start=${start}&end=${end}`),
 
   /**
+   * Obtener max diario de lluvia entre todas las zonas (para calendario).
+   */
+  getRainfallDaily: (
+    start: string,
+    end: string,
+  ): Promise<RainfallRecord[]> =>
+    apiFetch(`/geo/rainfall/daily?start=${start}&end=${end}`),
+
+  /**
    * Obtener eventos de lluvia detectados por umbral.
    */
   getRainfallEvents: (params?: {

@@ -3093,6 +3093,18 @@ def get_rainfall_summary(
     }
 
 
+@router.get("/rainfall/daily")
+def get_rainfall_daily(
+    start: date = Query(..., description="Start date (inclusive)"),
+    end: date = Query(..., description="End date (inclusive)"),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get max daily rainfall across all zones (for calendar overlay)."""
+    return repo.get_rainfall_daily_max(db, start_date=start, end_date=end)
+
+
 @router.get("/rainfall/events")
 def get_rainfall_events(
     start: Optional[date] = Query(None, description="Start date (inclusive)"),

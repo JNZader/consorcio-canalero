@@ -794,6 +794,32 @@ class GeoRepository:
             for row in rows
         ]
 
+    def get_rainfall_daily_max(
+        self,
+        db: Session,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[dict[str, Any]]:
+        """Return max rainfall across all zones per day (for calendar overlay)."""
+        stmt = (
+            select(
+                RainfallRecord.date,
+                func.max(RainfallRecord.precipitation_mm).label("max_mm"),
+            )
+            .where(
+                RainfallRecord.date >= start_date,
+                RainfallRecord.date <= end_date,
+            )
+            .group_by(RainfallRecord.date)
+            .order_by(RainfallRecord.date)
+        )
+        rows = db.execute(stmt).all()
+        return [
+            {"date": row.date.isoformat(), "precipitation_mm": round(float(row.max_mm or 0), 2)}
+            for row in rows
+        ]
+
     def get_accumulated_rainfall(
         self,
         db: Session,

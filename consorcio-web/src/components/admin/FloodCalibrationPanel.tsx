@@ -431,18 +431,11 @@ export default function FloodCalibrationPanel() {
     const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
     floodCalibrationApi
-      .getRainfallSummary(startDate, endDate)
-      .then(() => {
-        // Summary is zone-level; we also need daily data.
-        // Use first zone or aggregate — for calendar overlay, fetch all zones' daily data
-        // and show max per day (worst-case rainfall for any zone).
-        return floodCalibrationApi.getRainfallForZone('all', startDate, endDate);
-      })
+      .getRainfallDaily(startDate, endDate)
       .then((records) => {
         const byDate: Record<string, number> = {};
         for (const r of records) {
-          // Keep max across zones if backend returns multiple per date
-          byDate[r.date] = Math.max(byDate[r.date] ?? 0, r.precipitation_mm);
+          byDate[r.date] = r.precipitation_mm;
         }
         setRainfallByDate(byDate);
       })
