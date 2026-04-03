@@ -1111,6 +1111,112 @@ def cost_distance(
 
 
 # ---------------------------------------------------------------------------
+# m) Least-cost path from source to target
+# ---------------------------------------------------------------------------
+
+
+def least_cost_path(
+    cost_distance_path: str,
+    backlink_path: str,
+    target_point: tuple[float, float],
+) -> Optional[LineString]:
+    """Trace the least-cost path from a target point back to the nearest source.
+
+    Uses WhiteboxTools cost_pathway(). The target point is burned into
+    a temporary raster, and the resulting path raster is vectorized
+    into a LineString geometry.
+
+    Args:
+        cost_distance_path: Path to the accumulated cost distance raster.
+        backlink_path: Path to the backlink raster from cost_distance().
+        target_point: (lon, lat) of the destination point.
+
+    Returns:
+        LineString geometry of the least-cost path, or None if the path
+        could not be traced (e.g., target is in nodata zone).
+    """
+    import rasterio
+    from rasterio.transform import rowcol, xy
+
+    if not Path(cost_distance_path).exists() or not Path(backlink_path).exists():
+        return None
+
+    wbt = _get_wbt()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target_raster_path = str(Path(tmpdir) / "target.tif")
+        output_path = str(Path(tmpdir) / "pathway.tif")
+
+        # Create target raster: 1 at target cell, 0 elsewhere
+        with rasterio.open(cost_distance_path) as src:
+            meta = src.meta.copy()
+            height, width = src.height, src.width
+            transform = src.transform
+
+        lon, lat = target_point
+        try:
+            r, c = rowcol(transform, lon, lat)
+        except Exception:
+            return None
+
+        if r < 0 or r >= height or c < 0 or c >= width:
+            return None
+
+        target_data = np.zeros((height, width), dtype=np.uint8)
+        target_data[r, c] = 1
+
+        target_meta = meta.copy()
+        target_meta.update({
+            "dtype": "uint8",
+            "count": 1,
+            "nodata": 0,
+        })
+        with rasterio.open(target_raster_path, "w", **target_meta) as dst:
+            dst.write(target_data, 1)
+
+        # Run WhiteboxTools cost_pathway
+        wbt.cost_pathway(target_raster_path, backlink_path, output_path)
+
+        # Vectorize the pathway raster into a LineString
+        if not Path(output_path).exists():
+            return None
+
+        with rasterio.open(output_path) as src:
+            pathway = src.read(1)
+            pw_transform = src.transform
+            pw_nodata = src.nodata
+
+        # Collect all non-zero, non-nodata cells as path coordinates
+        mask = pathway > 0
+        if pw_nodata is not None:
+            mask &= pathway != pw_nodata
+
+        rows, cols = np.where(mask)
+        if len(rows) < 2:
+            return None
+
+        # Sort cells by their cost-distance value to get path ordering
+        with rasterio.open(cost_distance_path) as src:
+            cd_data = src.read(1)
+
+        cost_values = cd_data[rows, cols]
+        sort_idx = np.argsort(cost_values)[::-1]  # highest cost first (farthest from source)
+        rows = rows[sort_idx]
+        cols = cols[sort_idx]
+
+        # Convert pixel coordinates to geographic coordinates
+        coords = []
+        for row, col in zip(rows, cols):
+            x, y = xy(pw_transform, int(row), int(col))
+            coords.append((x, y))
+
+        if len(coords) < 2:
+            return None
+
+        return LineString(coords)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
