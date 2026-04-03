@@ -87,6 +87,13 @@ export { default as Icon3dCubeSphere } from '@tabler/icons-react/dist/esm/icons/
 // Alias for IconLightbulb
 export { default as IconLightbulb } from '@tabler/icons-react/dist/esm/icons/IconBulb.mjs';
 
+// Canal Suggestions / Network icons
+export { default as IconNetwork } from '@tabler/icons-react/dist/esm/icons/IconTopologyRing3.mjs';
+export { default as IconRoute } from '@tabler/icons-react/dist/esm/icons/IconRoute.mjs';
+export { default as IconTool } from '@tabler/icons-react/dist/esm/icons/IconTool.mjs';
+export { default as IconRadar } from '@tabler/icons-react/dist/esm/icons/IconRadar.mjs';
+export { default as IconSortDescending } from '@tabler/icons-react/dist/esm/icons/IconSortDescending.mjs';
+
 // Rainfall / cloud icons
 export { default as IconCloudRain } from '@tabler/icons-react/dist/esm/icons/IconCloudRain.mjs';
 export { default as IconEye } from '@tabler/icons-react/dist/esm/icons/IconEye.mjs';
