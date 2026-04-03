@@ -12,11 +12,8 @@ water coverage statistics per zona operativa.
 from __future__ import annotations
 
 import logging
-from datetime import date
-from pathlib import Path
 from typing import Any
 
-import numpy as np
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.domains.geo.models import GeoLayer

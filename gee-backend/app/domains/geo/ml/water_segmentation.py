@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 import rasterio
 from rasterio.features import shapes as rasterio_shapes
-from shapely.geometry import shape, mapping
+from shapely.geometry import shape
 
 logger = logging.getLogger(__name__)
 
