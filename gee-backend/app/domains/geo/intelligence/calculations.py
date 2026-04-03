@@ -634,6 +634,93 @@ def clasificar_terreno_dinamico(
 
 
 # ---------------------------------------------------------------------------
+# h) Canal hotspot ranking
+# ---------------------------------------------------------------------------
+
+
+def rank_canal_hotspots(
+    canal_geometries: list[dict],
+    flow_acc_raster_path: str,
+    num_points: int = 20,
+) -> list[dict]:
+    """Rank canal segments by flow accumulation concentration.
+
+    Samples the flow_acc raster along each canal segment geometry and
+    ranks by maximum flow accumulation. Classifies risk using percentile
+    thresholds within the dataset.
+
+    Args:
+        canal_geometries: List of dicts with at minimum 'geometry' (Shapely
+            LineString or GeoJSON-like) and optionally 'id', 'nombre'.
+        flow_acc_raster_path: Path to the flow accumulation raster.
+        num_points: Number of sample points per segment.
+
+    Returns:
+        List of dicts sorted descending by flow_acc_max, each containing:
+        geometry, score (flow_acc_max), flow_acc_mean, risk_level, segment_index.
+
+    Raises:
+        FileNotFoundError: If the flow_acc raster does not exist.
+    """
+    from shapely.geometry import shape as shapely_shape
+
+    if not Path(flow_acc_raster_path).exists():
+        raise FileNotFoundError(
+            f"Flow accumulation raster not found: {flow_acc_raster_path}"
+        )
+
+    raw_results: list[dict] = []
+
+    for idx, canal in enumerate(canal_geometries):
+        geom = canal.get("geometry")
+        if geom is None:
+            continue
+
+        # Accept both Shapely objects and GeoJSON-like dicts
+        if isinstance(geom, dict):
+            geom = shapely_shape(geom)
+
+        values = _sample_raster_along_line(geom, flow_acc_raster_path, num_points)
+        if not values:
+            continue
+
+        fa_max = max(values)
+        fa_mean = sum(values) / len(values)
+
+        raw_results.append({
+            "geometry": mapping(geom),
+            "segment_index": idx,
+            "id": canal.get("id"),
+            "nombre": canal.get("nombre"),
+            "flow_acc_max": round(fa_max, 2),
+            "flow_acc_mean": round(fa_mean, 2),
+            "score": round(fa_max, 2),
+        })
+
+    if not raw_results:
+        return []
+
+    # Classify risk using percentile thresholds within this dataset
+    all_maxes = [r["flow_acc_max"] for r in raw_results]
+    p75 = float(np.percentile(all_maxes, 75))
+    p25 = float(np.percentile(all_maxes, 25))
+
+    for r in raw_results:
+        if r["flow_acc_max"] >= p75:
+            r["risk_level"] = "critico"
+        elif r["flow_acc_max"] >= np.percentile(all_maxes, 50):
+            r["risk_level"] = "alto"
+        elif r["flow_acc_max"] >= p25:
+            r["risk_level"] = "medio"
+        else:
+            r["risk_level"] = "bajo"
+
+    # Sort descending by flow_acc_max
+    raw_results.sort(key=lambda r: r["flow_acc_max"], reverse=True)
+    return raw_results
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
