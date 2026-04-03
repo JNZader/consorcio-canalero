@@ -63,6 +63,18 @@ export type {
 } from './mapImage';
 
 // ===========================================
+// CANAL SUGGESTIONS EXPORTS
+// ===========================================
+export { canalSuggestionsApi } from './canalSuggestions';
+export type {
+  CanalSuggestion,
+  CanalSuggestionsResult,
+  AnalyzeResponse,
+  SuggestionSummary,
+  SuggestionTipo,
+} from './canalSuggestions';
+
+// ===========================================
 // FLOOD CALIBRATION EXPORTS
 // ===========================================
 export { floodCalibrationApi } from './floodCalibration';
