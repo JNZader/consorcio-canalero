@@ -16,7 +16,9 @@ from app.db.session import get_db
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
+    AnalysisSummaryResponse,
     BasinRiskRankingResponse,
+    CanalSuggestionResponse,
     CompositeComparisonItemResponse,
     CompositeComparisonResponse,
     CompositeAnalysisRequest,
@@ -620,3 +622,199 @@ def compare_composite_stats(
 
     items.sort(key=lambda item: abs(item.delta_mean_score), reverse=True)
     return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=items, total=len(items))
+
+
+# ──────────────────────────────────────────────
+# CANAL SUGGESTIONS
+# ──────────────────────────────────────────────
+
+suggestions_router = APIRouter(prefix="/suggestions", tags=["Canal Suggestions"])
+
+
+@suggestions_router.post("/analyze", status_code=202, response_model=dict)
+def trigger_canal_analysis(
+    _user=Depends(_require_operator()),
+):
+    """Trigger full canal network analysis as a background Celery task.
+
+    Returns 202 with the task_id to poll for completion.
+    """
+    from app.domains.geo.intelligence.tasks import run_canal_analysis
+
+    task = run_canal_analysis.delay()
+    return {"task_id": task.id, "status": "submitted"}
+
+
+@suggestions_router.get("/results", response_model=dict)
+def get_suggestion_results(
+    tipo: Optional[str] = Query(
+        default=None,
+        description="Filter by tipo: hotspot, gap, route, maintenance, bottleneck",
+    ),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get latest analysis results, optionally filtered by suggestion tipo.
+
+    Returns the most recent batch results. Use ?tipo= to filter
+    by specific analysis type.
+    """
+    latest_batch = repo.get_latest_batch(db)
+    if latest_batch is None:
+        return {"items": [], "total": 0, "page": page, "limit": limit, "batch_id": None}
+
+    if tipo:
+        items, total = repo.get_suggestions_by_tipo(
+            db, tipo, page=page, limit=limit, batch_id=latest_batch
+        )
+    else:
+        # Return all types for the latest batch
+        items, total = repo.get_suggestions_by_tipo(
+            db, tipo="", page=page, limit=limit, batch_id=latest_batch
+        )
+        # Fallback: query without tipo filter
+        if total == 0:
+            from sqlalchemy import select
+            from sqlalchemy import func as sa_func
+
+            from app.domains.geo.intelligence.models import CanalSuggestion
+
+            base = select(CanalSuggestion).where(
+                CanalSuggestion.batch_id == latest_batch
+            )
+            total = db.execute(
+                select(sa_func.count()).select_from(base.subquery())
+            ).scalar_one()
+            offset = (page - 1) * limit
+            items = list(
+                db.execute(
+                    base.order_by(CanalSuggestion.score.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+
+    return {
+        "items": [CanalSuggestionResponse.model_validate(i) for i in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "batch_id": str(latest_batch),
+    }
+
+
+@suggestions_router.get("/results/{batch_id}", response_model=dict)
+def get_suggestion_results_by_batch(
+    batch_id: uuid.UUID,
+    tipo: Optional[str] = Query(
+        default=None,
+        description="Filter by tipo: hotspot, gap, route, maintenance, bottleneck",
+    ),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Get analysis results for a specific batch_id.
+
+    Optionally filter by suggestion tipo.
+    """
+    if tipo:
+        items, total = repo.get_suggestions_by_tipo(
+            db, tipo, page=page, limit=limit, batch_id=batch_id
+        )
+    else:
+        from sqlalchemy import select
+        from sqlalchemy import func as sa_func
+
+        from app.domains.geo.intelligence.models import CanalSuggestion
+
+        base = select(CanalSuggestion).where(
+            CanalSuggestion.batch_id == batch_id
+        )
+        total = db.execute(
+            select(sa_func.count()).select_from(base.subquery())
+        ).scalar_one()
+        offset = (page - 1) * limit
+        items = list(
+            db.execute(
+                base.order_by(CanalSuggestion.score.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+
+    if total == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No results found for batch {batch_id}",
+        )
+
+    return {
+        "items": [CanalSuggestionResponse.model_validate(i) for i in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "batch_id": str(batch_id),
+    }
+
+
+@suggestions_router.get("/summary", response_model=dict)
+def get_suggestion_summary(
+    batch_id: Optional[uuid.UUID] = Query(
+        default=None,
+        description="Specific batch to summarize. Defaults to latest.",
+    ),
+    db: Session = Depends(get_db),
+    repo: IntelligenceRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Dashboard summary: counts per tipo + top 5 suggestions per type.
+
+    Returns aggregated metrics for the specified batch (or latest).
+    """
+    summary = repo.get_summary(db, batch_id=batch_id)
+    if summary is None:
+        return {
+            "batch_id": None,
+            "total_suggestions": 0,
+            "by_tipo": {},
+            "top_per_tipo": {},
+        }
+
+    resolved_batch = summary["batch_id"]
+
+    # Get top 5 per tipo
+    tipos = ["hotspot", "gap", "route", "maintenance", "bottleneck"]
+    top_per_tipo: dict[str, list] = {}
+
+    for tipo in tipos:
+        items, _ = repo.get_suggestions_by_tipo(
+            db, tipo, page=1, limit=5, batch_id=resolved_batch
+        )
+        if items:
+            top_per_tipo[tipo] = [
+                CanalSuggestionResponse.model_validate(i).model_dump()
+                for i in items
+            ]
+
+    return {
+        "batch_id": str(resolved_batch),
+        "total_suggestions": summary["total_suggestions"],
+        "by_tipo": summary["by_tipo"],
+        "avg_score": summary["avg_score"],
+        "created_at": summary["created_at"].isoformat() if summary.get("created_at") else None,
+        "top_per_tipo": top_per_tipo,
+    }
+
+
+# Mount the suggestions sub-router onto the main intelligence router
+router.include_router(suggestions_router)
