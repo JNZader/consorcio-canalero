@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getSessionMock = vi.fn();
+const mockGetAccessToken = vi.fn();
 
-vi.mock('../../src/lib/supabase', () => ({
-  getSupabaseClient: () => ({
-    auth: {
-      getSession: getSessionMock,
-    },
-  }),
+vi.mock('../../src/lib/auth/index', () => ({
+  authAdapter: {
+    getAccessToken: mockGetAccessToken,
+  },
 }));
 
 describe('api core', () => {
@@ -18,27 +16,24 @@ describe('api core', () => {
   });
 
   it('caches auth token and sends Authorization header', async () => {
-    getSessionMock.mockResolvedValue({
-      data: {
-        session: {
-          access_token: 'jwt-123',
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-        },
-      },
-    });
+    mockGetAccessToken.mockResolvedValue('jwt-123');
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true }),
     });
 
-    const { apiFetch } = await import('../../src/lib/api/core');
+    const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+
+    // Clear any cached token from previous imports
+    clearAuthTokenCache();
 
     await apiFetch('/reports');
     await apiFetch('/reports');
 
-    expect(getSessionMock).toHaveBeenCalledTimes(1);
+    // Token is cached after first call, so getAccessToken is called once
+    expect(mockGetAccessToken).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/v1/reports'),
+      expect.stringContaining('/api/v2/reports'),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer jwt-123' }),
       })
@@ -46,7 +41,7 @@ describe('api core', () => {
   });
 
   it('supports FormData bodies without forcing JSON content-type', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } });
+    mockGetAccessToken.mockResolvedValue(null);
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => ({ uploaded: true }),
@@ -62,7 +57,7 @@ describe('api core', () => {
   });
 
   it('maps timeout and api error payloads', async () => {
-    getSessionMock.mockResolvedValue({ data: { session: null } });
+    mockGetAccessToken.mockResolvedValue(null);
     const { apiFetch } = await import('../../src/lib/api/core');
 
     const abortError = new Error('aborted');

@@ -38,7 +38,7 @@ describe('Config API', () => {
 
       const result = await configApi.getSystemConfig();
 
-      expect(mockApiFetch).toHaveBeenCalledWith('/config/system', { skipAuth: true });
+      expect(mockApiFetch).toHaveBeenCalledWith('/public/settings/branding', { skipAuth: true });
       expect(result).toEqual(mockConfig);
     });
 

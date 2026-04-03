@@ -22,7 +22,7 @@ describe('sugerenciasApi', () => {
     });
 
     expect(apiFetch).toHaveBeenCalledWith(
-      '/sugerencias/public',
+      '/public/sugerencias',
       expect.objectContaining({
         method: 'POST',
         skipAuth: true,
@@ -34,7 +34,7 @@ describe('sugerenciasApi', () => {
     await sugerenciasApi.checkLimit('vecino@example.com', '3534000000');
 
     expect(apiFetch).toHaveBeenCalledWith(
-      '/sugerencias/public/limit?email=vecino%40example.com&telefono=3534000000',
+      '/public/sugerencias/limit?email=vecino%40example.com&telefono=3534000000',
       { skipAuth: true }
     );
   });
@@ -42,7 +42,7 @@ describe('sugerenciasApi', () => {
   it('builds checkLimit request without params when contact is missing', async () => {
     await sugerenciasApi.checkLimit();
 
-    expect(apiFetch).toHaveBeenCalledWith('/sugerencias/public/limit?', { skipAuth: true });
+    expect(apiFetch).toHaveBeenCalledWith('/public/sugerencias/limit?', { skipAuth: true });
   });
 
   it('builds admin list query with provided filters only', async () => {
@@ -64,7 +64,7 @@ describe('sugerenciasApi', () => {
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
       '/sugerencias/sug-1',
-      expect.objectContaining({ method: 'PUT' })
+      expect.objectContaining({ method: 'PATCH' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
       4,

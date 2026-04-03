@@ -109,7 +109,7 @@ describe('API Client', () => {
 
         expect(result).toEqual(mockLayers);
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/layers?visible_only=false',
+          'http://localhost:8000/api/v2/capas?visible_only=false',
           expect.any(Object)
         );
       });
@@ -123,7 +123,7 @@ describe('API Client', () => {
         await layersApi.getAll(true);
 
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/layers?visible_only=true',
+          'http://localhost:8000/api/v2/capas?visible_only=true',
           expect.any(Object)
         );
       });
@@ -148,7 +148,7 @@ describe('API Client', () => {
 
         expect(result).toEqual(mockResponse);
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/layers',
+          'http://localhost:8000/api/v2/capas',
           expect.objectContaining({
             method: 'POST',
             body: JSON.stringify(newLayer),
@@ -167,7 +167,7 @@ describe('API Client', () => {
         await layersApi.delete('layer-123');
 
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/layers/layer-123',
+          'http://localhost:8000/api/v2/capas/layer-123',
           expect.objectContaining({
             method: 'DELETE',
           })
@@ -254,9 +254,9 @@ describe('API Client', () => {
 
         expect(result).toEqual(mockReport);
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/reports/report-123',
+          'http://localhost:8000/api/v2/denuncias/report-123',
           expect.objectContaining({
-            method: 'PUT',
+            method: 'PATCH',
             body: JSON.stringify({
               estado: 'en_revision',
               notas_admin: 'Revisando el problema',
@@ -288,16 +288,12 @@ describe('API Client', () => {
 
         expect(result).toEqual(mockResponse);
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/reports/report-123/resolve',
+          'http://localhost:8000/api/v2/denuncias/report-123',
           expect.objectContaining({
-            method: 'POST',
+            method: 'PATCH',
             body: JSON.stringify({
-              report_id: 'report-123',
-              resolution: {
-                status: 'resolved',
-                comment: 'Incidente mitigado',
-                resolved_by: 'operator-123',
-              },
+              estado: 'resuelto',
+              notas_admin: 'Incidente mitigado',
             }),
           })
         );
@@ -334,7 +330,7 @@ describe('API Client', () => {
 
         expect(result).toEqual(mockResponse);
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/public/reports',
+          'http://localhost:8000/api/v2/public/denuncias',
           expect.objectContaining({
             method: 'POST',
             body: JSON.stringify(reportData),

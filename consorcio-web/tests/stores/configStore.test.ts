@@ -28,9 +28,8 @@ const mockLoggerError = loggerModule.logger.error as ReturnType<typeof vi.fn>;
 describe('configStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset store state
+    // Reset store state — keep config as default (store uses DEFAULT_CONFIG on init)
     useConfigStore.setState({
-      config: null,
       loading: false,
       error: null,
       initialized: false,
@@ -40,7 +39,9 @@ describe('configStore', () => {
   describe('useConfigStore', () => {
     it('should initialize with correct default state', () => {
       const state = useConfigStore.getState();
-      expect(state.config).toBeNull();
+      // Store now initializes with DEFAULT_CONFIG (not null) for immediate usability
+      expect(state.config).not.toBeNull();
+      expect(state.config).toHaveProperty('consorcio_area_ha');
       expect(state.loading).toBe(false);
       expect(state.error).toBeNull();
       expect(state.initialized).toBe(false);
@@ -150,9 +151,11 @@ describe('configStore', () => {
       expect(state.loading).toBe(false);
       expect(state.initialized).toBe(true);
       expect(state.error).toBe('Network error');
-      expect(state.config).toBeNull();
+      // On error, store falls back to DEFAULT_CONFIG (not null)
+      expect(state.config).not.toBeNull();
+      expect(state.config).toHaveProperty('consorcio_area_ha');
       expect(mockLoggerError).toHaveBeenCalledWith(
-        'Failed to fetch system configuration:',
+        'Failed to fetch system configuration, using defaults:',
         error
       );
     });

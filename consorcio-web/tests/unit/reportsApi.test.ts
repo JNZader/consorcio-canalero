@@ -7,7 +7,7 @@ vi.mock('../../src/lib/api/core', () => ({
   apiFetch: vi.fn(),
   getAuthToken: vi.fn(),
   API_URL: 'https://api.example.com',
-  API_PREFIX: '/api/v1',
+  API_PREFIX: '/api/v2',
   LONG_TIMEOUT: 1000,
 }));
 
@@ -23,8 +23,8 @@ describe('reportsApi', () => {
     await reportsApi.getAll(2, 15, 'pendiente');
     await reportsApi.getAll({ page: 3, cuenca: 'norte', assigned_to: 'op-1' });
 
-    expect(apiFetch).toHaveBeenNthCalledWith(1, '/reports?page=2&limit=15&status=pendiente');
-    expect(apiFetch).toHaveBeenNthCalledWith(2, '/reports?page=3&cuenca=norte&assigned_to=op-1');
+    expect(apiFetch).toHaveBeenNthCalledWith(1, '/denuncias?page=2&limit=15&status=pendiente');
+    expect(apiFetch).toHaveBeenNthCalledWith(2, '/denuncias?page=3&cuenca=norte&assigned_to=op-1');
   });
 
   it('calls update, assign and resolve endpoints with expected payloads', async () => {
@@ -35,23 +35,23 @@ describe('reportsApi', () => {
 
     expect(apiFetch).toHaveBeenNthCalledWith(
       1,
-      '/reports/rep-1',
-      expect.objectContaining({ method: 'PUT' })
+      '/denuncias/rep-1',
+      expect.objectContaining({ method: 'PATCH' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
       2,
-      '/reports/rep-1',
-      expect.objectContaining({ method: 'PUT' })
+      '/denuncias/rep-1',
+      expect.objectContaining({ method: 'PATCH' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
-      '/reports/rep-1/assign',
-      expect.objectContaining({ method: 'POST' })
+      '/denuncias/rep-1',
+      expect.objectContaining({ method: 'PATCH' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
       4,
-      '/reports/rep-1/resolve',
-      expect.objectContaining({ method: 'POST' })
+      '/denuncias/rep-1',
+      expect.objectContaining({ method: 'PATCH' })
     );
   });
 
@@ -67,11 +67,11 @@ describe('reportsApi', () => {
       contacto_verificado: true,
     });
 
-    expect(apiFetch).toHaveBeenNthCalledWith(1, '/reports/rep-1');
-    expect(apiFetch).toHaveBeenNthCalledWith(2, '/reports/stats');
+    expect(apiFetch).toHaveBeenNthCalledWith(1, '/denuncias/rep-1');
+    expect(apiFetch).toHaveBeenNthCalledWith(2, '/denuncias/stats');
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
-      '/public/reports',
+      '/public/denuncias',
       expect.objectContaining({ method: 'POST', skipAuth: true })
     );
   });
@@ -119,9 +119,9 @@ describe('reportsApi', () => {
 
     expect(result).toBe(blob);
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/api/v1/stats/export',
+      'https://api.example.com/api/v2/monitoring/dashboard',
       expect.objectContaining({
-        method: 'POST',
+        method: 'GET',
         headers: expect.objectContaining({ Authorization: 'Bearer jwt-token', Accept: 'text/csv' }),
       })
     );
@@ -133,10 +133,10 @@ describe('reportsApi', () => {
     await statsApi.getHistorical({ cuenca: 'norte', limit: 5 });
     await statsApi.getSummary();
 
-    expect(apiFetch).toHaveBeenNthCalledWith(1, '/stats/dashboard?period=7d');
-    expect(apiFetch).toHaveBeenNthCalledWith(2, '/stats/by-cuenca?analysis_id=analysis-1');
-    expect(apiFetch).toHaveBeenNthCalledWith(3, '/stats/historical?cuenca=norte&limit=5');
-    expect(apiFetch).toHaveBeenNthCalledWith(4, '/stats/summary');
+    expect(apiFetch).toHaveBeenNthCalledWith(1, '/monitoring/dashboard?period=7d');
+    expect(apiFetch).toHaveBeenNthCalledWith(2, '/monitoring/dashboard?analysis_id=analysis-1');
+    expect(apiFetch).toHaveBeenNthCalledWith(3, '/monitoring/analyses?cuenca=norte&limit=5');
+    expect(apiFetch).toHaveBeenNthCalledWith(4, '/monitoring/dashboard');
   });
 
   it('exports with pdf accept header by default', async () => {
@@ -148,7 +148,7 @@ describe('reportsApi', () => {
     await statsApi.export({ format: 'pdf' });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/api/v1/stats/export',
+      'https://api.example.com/api/v2/monitoring/dashboard',
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: 'application/pdf' }),
       })

@@ -1,39 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockAuth,
-  mockClient,
+  mockAdapter,
   resetStoreMock,
+  mockProfile,
 } = vi.hoisted(() => {
-  const auth = {
-    signInWithPassword: vi.fn(),
-    signUp: vi.fn(),
-    signInWithOAuth: vi.fn(),
-    signOut: vi.fn(),
-    resetPasswordForEmail: vi.fn(),
-    updateUser: vi.fn(),
-  };
-
-  const client = {
-    auth,
-    from: vi.fn(),
-  };
-
   return {
-    mockAuth: auth,
-    mockClient: client,
+    mockAdapter: {
+      login: vi.fn(),
+      register: vi.fn(),
+      loginWithGoogle: vi.fn(),
+      logout: vi.fn(),
+      getAccessToken: vi.fn(),
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(),
+    },
     resetStoreMock: vi.fn(),
+    mockProfile: { rol: 'admin' as string | null },
   };
 });
 
-vi.mock('../../src/lib/supabase', () => ({
-  getSupabaseClient: () => mockClient,
+vi.mock('../../src/lib/auth/index', () => ({
+  authAdapter: mockAdapter,
 }));
 
 vi.mock('../../src/stores/authStore', () => ({
   useAuthStore: Object.assign(
     () => ({ user: null, session: null, profile: null, loading: false, error: null }),
-    { getState: () => ({ reset: resetStoreMock }) }
+    { getState: () => ({ reset: resetStoreMock, profile: mockProfile }) }
   ),
 }));
 
@@ -59,56 +53,40 @@ import {
   updatePassword,
 } from '../../src/lib/auth';
 
-const authError = (message: string) =>
-  ({ message, status: 400, name: 'AuthError' }) as unknown as Error;
-
 describe('auth library', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('location', { origin: 'http://localhost:5173' });
-    mockAuth.signInWithPassword.mockResolvedValue({
-      data: { user: { id: 'u1' }, session: { access_token: 't' } },
-      error: null,
+    mockProfile.rol = 'admin';
+    mockAdapter.login.mockResolvedValue({
+      access_token: 't',
+      user: { id: 'u1', email: 'mail@test.com' },
     });
-    mockAuth.signUp.mockResolvedValue({
-      data: { user: { id: 'u1' }, session: { access_token: 't' } },
-      error: null,
+    mockAdapter.register.mockResolvedValue({
+      access_token: 't',
+      user: { id: 'u1', email: 'mail@test.com' },
     });
-    mockAuth.signInWithOAuth.mockResolvedValue({ data: {}, error: null });
-    mockAuth.signOut.mockResolvedValue({ error: null });
-    mockAuth.resetPasswordForEmail.mockResolvedValue({ error: null });
-    mockAuth.updateUser.mockResolvedValue({ error: null });
+    mockAdapter.loginWithGoogle.mockResolvedValue(undefined);
+    mockAdapter.logout.mockResolvedValue(undefined);
+    global.fetch = vi.fn();
   });
 
   it('translates sign-in auth errors', async () => {
-    mockAuth.signInWithPassword.mockResolvedValueOnce({
-      data: { user: null, session: null },
-      error: authError('Invalid login credentials'),
-    });
+    mockAdapter.login.mockRejectedValueOnce(new Error('Invalid login credentials'));
     await expect(signInWithEmail('mail@test.com', 'bad')).resolves.toEqual({
       success: false,
       error: 'Email o contrasena incorrectos',
     });
   });
 
-  it('marks sign-up confirmation when session is missing', async () => {
-    mockAuth.signUp.mockResolvedValueOnce({
-      data: { user: { id: 'u1' }, session: null },
-      error: null,
-    });
+  it('marks sign-up as success (JWT adapter auto-logs in)', async () => {
     const result = await signUpWithEmail('mail@test.com', 'ok-password', 'Nombre');
     expect(result.success).toBe(true);
-    expect(result.needsEmailConfirmation).toBe(true);
   });
 
-  it('calls google oauth with callback redirect', async () => {
+  it('calls google oauth via adapter', async () => {
     await signInWithGoogle();
-    expect(mockAuth.signInWithOAuth).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'google',
-        options: expect.objectContaining({ redirectTo: 'http://localhost:5173/auth/callback' }),
-      })
-    );
+    expect(mockAdapter.loginWithGoogle).toHaveBeenCalled();
   });
 
   it('signOut clears local state and returns success', async () => {
@@ -120,12 +98,7 @@ describe('auth library', () => {
   });
 
   it('role helpers evaluate admin permissions', async () => {
-    const queryBuilder = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: { rol: 'admin' }, error: null }),
-    };
-    mockClient.from.mockReturnValue(queryBuilder);
+    mockProfile.rol = 'admin';
 
     await expect(getUserRole('u1')).resolves.toBe('admin');
     await expect(hasRole('u1', ['admin'])).resolves.toBe(true);
@@ -134,20 +107,21 @@ describe('auth library', () => {
   });
 
   it('translates reset and update password errors', async () => {
-    mockAuth.resetPasswordForEmail.mockResolvedValueOnce({
-      error: authError('Email rate limit exceeded'),
-    });
-    mockAuth.updateUser.mockResolvedValueOnce({
-      error: authError('New password should be different from the old password'),
-    });
-
+    // resetPassword now calls fetch to /api/v2/auth/forgot-password
+    // It always returns success (fastapi-users returns 202)
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('Network error')
+    );
     await expect(resetPassword('mail@test.com')).resolves.toEqual({
       success: false,
-      error: 'Demasiados intentos. Intenta de nuevo mas tarde',
+      error: 'Error al enviar el email de recuperacion.',
     });
-    await expect(updatePassword('new-secret')).resolves.toEqual({
-      success: false,
-      error: 'La nueva contrasena debe ser diferente a la anterior',
-    });
+
+    // updatePassword imports apiFetch dynamically, mock it
+    vi.doMock('../../src/lib/api/core', () => ({
+      apiFetch: vi.fn().mockRejectedValueOnce(new Error('Error al cambiar la contrasena.')),
+    }));
+    const result = await updatePassword('new-secret');
+    expect(result.success).toBe(false);
   });
 });
