@@ -948,6 +948,81 @@ def compute_maintenance_priority(
 
 
 # ---------------------------------------------------------------------------
+# k) Cost surface generation from slope raster
+# ---------------------------------------------------------------------------
+
+
+def generate_cost_surface(
+    slope_raster_path: str,
+    output_path: str,
+) -> str:
+    """Generate a cost surface from a slope raster.
+
+    Cost formula: cost = 1 + (slope / max_slope) * 10
+    Flat terrain has cost ~1 (cheapest), steepest terrain has cost ~11.
+
+    Args:
+        slope_raster_path: Path to the slope raster (degrees).
+        output_path: Where to write the cost surface GeoTIFF.
+
+    Returns:
+        output_path on success.
+
+    Raises:
+        FileNotFoundError: If the slope raster does not exist.
+        ValueError: If the slope raster contains only nodata.
+    """
+    import rasterio
+
+    if not Path(slope_raster_path).exists():
+        raise FileNotFoundError(
+            f"Slope raster not found: {slope_raster_path}"
+        )
+
+    with rasterio.open(slope_raster_path) as src:
+        slope = src.read(1).astype(np.float64)
+        nodata = src.nodata
+        meta = src.meta.copy()
+
+    # Build valid-data mask
+    valid_mask = np.ones(slope.shape, dtype=bool)
+    if nodata is not None:
+        valid_mask &= slope != nodata
+    valid_mask &= np.isfinite(slope)
+
+    if not np.any(valid_mask):
+        raise ValueError(
+            "Slope raster contains only nodata — cannot generate cost surface"
+        )
+
+    # Normalize slope to [0, 1] using max of valid pixels
+    max_slope = float(np.max(slope[valid_mask]))
+    if max_slope <= 0:
+        max_slope = 1.0  # avoid division by zero on perfectly flat terrain
+
+    cost = np.ones(slope.shape, dtype=np.float32)
+    cost[valid_mask] = (
+        1.0 + (slope[valid_mask] / max_slope) * 10.0
+    ).astype(np.float32)
+
+    # Mark nodata pixels with a high sentinel so WBT treats them as barriers
+    out_nodata = np.float32(-9999.0)
+    cost[~valid_mask] = out_nodata
+
+    meta.update({
+        "dtype": "float32",
+        "count": 1,
+        "driver": "GTiff",
+        "nodata": float(out_nodata),
+    })
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **meta) as dst:
+        dst.write(cost, 1)
+
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
