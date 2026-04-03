@@ -1023,6 +1023,94 @@ def generate_cost_surface(
 
 
 # ---------------------------------------------------------------------------
+# l) Cost distance from source points
+# ---------------------------------------------------------------------------
+
+
+def cost_distance(
+    cost_surface_path: str,
+    source_points: list[tuple[float, float]],
+    output_accum_path: str,
+    output_backlink_path: str,
+) -> tuple[str, str]:
+    """Compute accumulated cost distance from source points across a cost surface.
+
+    Uses WhiteboxTools cost_distance(). Source points are burned into a
+    temporary raster matching the cost surface grid.
+
+    Args:
+        cost_surface_path: Path to the cost surface raster.
+        source_points: List of (lon, lat) source point coordinates.
+        output_accum_path: Where to write the accumulated cost raster.
+        output_backlink_path: Where to write the backlink raster.
+
+    Returns:
+        Tuple of (output_accum_path, output_backlink_path).
+
+    Raises:
+        FileNotFoundError: If the cost surface raster does not exist.
+        ValueError: If no source points fall within the raster extent.
+    """
+    import rasterio
+    from rasterio.transform import rowcol
+
+    if not Path(cost_surface_path).exists():
+        raise FileNotFoundError(
+            f"Cost surface raster not found: {cost_surface_path}"
+        )
+
+    wbt = _get_wbt()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_raster_path = str(Path(tmpdir) / "sources.tif")
+
+        # Create source raster: 1 at source cells, 0 elsewhere
+        with rasterio.open(cost_surface_path) as src:
+            meta = src.meta.copy()
+            height, width = src.height, src.width
+            transform = src.transform
+
+        source_data = np.zeros((height, width), dtype=np.uint8)
+        points_burned = 0
+
+        for lon, lat in source_points:
+            try:
+                r, c = rowcol(transform, lon, lat)
+                if 0 <= r < height and 0 <= c < width:
+                    source_data[r, c] = 1
+                    points_burned += 1
+            except Exception:
+                continue
+
+        if points_burned == 0:
+            raise ValueError(
+                "No source points fall within the cost surface extent"
+            )
+
+        source_meta = meta.copy()
+        source_meta.update({
+            "dtype": "uint8",
+            "count": 1,
+            "nodata": 0,
+        })
+        with rasterio.open(source_raster_path, "w", **source_meta) as dst:
+            dst.write(source_data, 1)
+
+        # Run WhiteboxTools cost_distance
+        Path(output_accum_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_backlink_path).parent.mkdir(parents=True, exist_ok=True)
+
+        wbt.cost_distance(
+            source_raster_path,
+            cost_surface_path,
+            output_accum_path,
+            output_backlink_path,
+        )
+
+    return output_accum_path, output_backlink_path
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
