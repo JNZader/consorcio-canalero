@@ -20,7 +20,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "ci(deps)"
     labels:
@@ -45,7 +45,7 @@ updates:
       day: "tuesday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps(backend)"
     labels:
@@ -140,7 +140,7 @@ updates:
       day: "wednesday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps(frontend)"
     labels:

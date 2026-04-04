@@ -2,7 +2,7 @@ name: Backend
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
     paths:
       - 'gee-backend/**'
       - '.github/workflows/backend.yml'
@@ -82,6 +82,7 @@ jobs:
 
   mutation:
     name: Mutation tests (cosmic-ray)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: [contract]
