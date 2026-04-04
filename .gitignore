@@ -119,3 +119,5 @@ reports/
 consorcio-web/reports/
 .coverage/
 coverage/
+gee-backend/mutants/
+gee-backend/.mutmut-cache
