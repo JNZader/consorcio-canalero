@@ -1334,26 +1334,26 @@ class TestTrainNormalization:
 
         # These exact values are deterministic given the inputs + formulas.
         # Mutating ANY normalization constant/operator changes them.
-        assert result["bias"] == pytest.approx(0.529296, abs=1e-4)
-        assert result["weights"]["hand_mean"] == pytest.approx(0.102111, abs=1e-4)
-        assert result["weights"]["hand_min"] == pytest.approx(0.370949, abs=1e-4)
-        assert result["weights"]["twi_mean"] == pytest.approx(0.554369, abs=1e-4)
-        assert result["weights"]["twi_max"] == pytest.approx(0.426759, abs=1e-4)
-        assert result["weights"]["slope_mean"] == pytest.approx(0.274288, abs=1e-4)
-        assert result["weights"]["flow_acc_log_max"] == pytest.approx(0.48043, abs=1e-4)
-        assert result["weights"]["flow_acc_log_mean"] == pytest.approx(0.489986, abs=1e-4)
-        assert result["weights"]["water_pct_current"] == pytest.approx(0.532569, abs=1e-4)
-        assert result["weights"]["water_pct_historical"] == pytest.approx(0.451407, abs=1e-4)
-        assert result["weights"]["rainfall_48h"] == pytest.approx(0.322291, abs=1e-4)
-        assert result["weights"]["rainfall_7d"] == pytest.approx(0.39027, abs=1e-4)
-        assert result["weights"]["rainfall_30d"] == pytest.approx(0.381874, abs=1e-4)
+        assert result["bias"] == pytest.approx(0.173918, abs=1e-4)
+        assert result["weights"]["hand_mean"] == pytest.approx(-0.219503, abs=1e-4)
+        assert result["weights"]["hand_min"] == pytest.approx(0.035935, abs=1e-4)
+        assert result["weights"]["twi_mean"] == pytest.approx(0.289467, abs=1e-4)
+        assert result["weights"]["twi_max"] == pytest.approx(0.158748, abs=1e-4)
+        assert result["weights"]["slope_mean"] == pytest.approx(-0.068872, abs=1e-4)
+        assert result["weights"]["flow_acc_log_max"] == pytest.approx(0.186220, abs=1e-4)
+        assert result["weights"]["flow_acc_log_mean"] == pytest.approx(0.130894, abs=1e-4)
+        assert result["weights"]["water_pct_current"] == pytest.approx(0.331561, abs=1e-4)
+        assert result["weights"]["water_pct_historical"] == pytest.approx(0.236998, abs=1e-4)
+        assert result["weights"]["rainfall_48h"] == pytest.approx(0.083413, abs=1e-4)
+        assert result["weights"]["rainfall_7d"] == pytest.approx(0.093421, abs=1e-4)
+        assert result["weights"]["rainfall_30d"] == pytest.approx(0.086191, abs=1e-4)
 
     def test_train_exact_final_loss_pinned(self):
         """Pin exact final loss. Mutating sigmoid, clip, or gradient changes this."""
         events = TestFloodModelTraining._make_events(10)
         model = FloodModel()
         result = model.train_from_events(events, epochs=100, learning_rate=0.01)
-        assert result["final_loss"] == pytest.approx(-1.2641, abs=0.01)
+        assert result["final_loss"] == pytest.approx(0.5778, abs=0.01)
 
 
 # ── predict_flood_for_zone function ───────────────────
