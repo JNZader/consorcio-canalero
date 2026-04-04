@@ -6,6 +6,19 @@
  */
 
 // ===========================================
+// TYPE RE-EXPORTS (backwards compatibility)
+// ===========================================
+export type {
+  Layer,
+  LayerStyle,
+  Report,
+  ReportHistory,
+  DashboardStats,
+  PublicReportCreate,
+  PublicReportResponse,
+} from '../../types';
+
+// ===========================================
 // CORE EXPORTS
 // ===========================================
 export {
@@ -61,6 +74,17 @@ export type {
   ImagenComparacionParams,
   ImagenMapaResponse,
 } from './mapImage';
+
+// ===========================================
+// CONFIG EXPORTS
+// ===========================================
+export { configApi } from './config';
+export type {
+  SystemConfig,
+  MapConfig as MapConfigType,
+  CuencaConfig,
+  AnalysisConfig,
+} from './config';
 
 // ===========================================
 // CANAL SUGGESTIONS EXPORTS
