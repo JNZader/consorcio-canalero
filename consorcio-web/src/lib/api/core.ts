@@ -3,6 +3,7 @@
  */
 
 import { authAdapter } from '../auth/index';
+import { logger } from '../logger';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility
@@ -98,6 +99,19 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+
+      // Handle expired/invalid token — auto-logout + redirect
+      if (response.status === 401 && !skipAuth) {
+        logger.warn('Sesion expirada — redirigiendo a login');
+        clearAuthTokenCache();
+        authAdapter.clearTokens();
+
+        // Notify user via custom event (picked up by AuthExpiredHandler)
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+
+        throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
+      }
+
       throw new Error(error.detail || `API Error: ${response.status}`);
     }
 

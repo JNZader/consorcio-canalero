@@ -136,6 +136,11 @@ export class JWTAuthAdapter implements AuthAdapter {
     this.notifyListeners('SIGNED_OUT', null);
   }
 
+  clearTokens(): void {
+    this.clearStorage();
+    this.notifyListeners('SIGNED_OUT', null);
+  }
+
   onAuthStateChange(callback: AuthStateChangeCallback): () => void {
     this.listeners.add(callback);
     return () => {

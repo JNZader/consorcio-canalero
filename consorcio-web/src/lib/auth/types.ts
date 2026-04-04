@@ -54,6 +54,9 @@ export interface AuthAdapter {
   /** Logout */
   logout(): Promise<void>;
 
+  /** Clear stored tokens (for expired session handling) */
+  clearTokens(): void;
+
   /** Subscribe to auth state changes */
   onAuthStateChange(callback: AuthStateChangeCallback): () => void;
 }

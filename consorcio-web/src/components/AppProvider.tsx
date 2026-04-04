@@ -9,9 +9,9 @@
  */
 
 import { MantineProvider as Provider } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
+import { notifications, Notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { sharedColorSchemeManager } from '../lib/mantine';
 import { queryClient } from '../lib/query';
 import { mantineTheme } from '../lib/theme';
@@ -40,6 +40,31 @@ function ConfigInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
+
+  return <>{children}</>;
+}
+
+function AuthExpiredHandler({ children }: { children: React.ReactNode }) {
+  const reset = useAuthStore((state) => state.reset);
+
+  const handleExpired = useCallback(() => {
+    reset();
+    notifications.show({
+      title: 'Sesion expirada',
+      message: 'Tu sesion ha expirado. Por favor inicia sesion nuevamente.',
+      color: 'red',
+      autoClose: 5000,
+    });
+    // Redirect to login after a brief delay for the toast to show
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 1500);
+  }, [reset]);
+
+  useEffect(() => {
+    window.addEventListener('auth:expired', handleExpired);
+    return () => window.removeEventListener('auth:expired', handleExpired);
+  }, [handleExpired]);
 
   return <>{children}</>;
 }
@@ -83,7 +108,9 @@ export default function AppProvider({ children, withQuery = true }: AppProviderP
     >
       <Notifications position="top-right" zIndex={10002} />
       <ConfigInitializer>
-        <AuthInitializer>{children}</AuthInitializer>
+        <AuthInitializer>
+          <AuthExpiredHandler>{children}</AuthExpiredHandler>
+        </AuthInitializer>
       </ConfigInitializer>
     </Provider>
   );
