@@ -259,6 +259,77 @@ describe('useAuth', () => {
 
       expect(result.current.canAccess(['admin'])).toBe(false);
     });
+
+    // ── Mutation killers for isLoading / isAuthenticated / canAccess ──
+
+    it('kills mutation: isLoading is true when loading=false but initialized=false (|| not &&)', () => {
+      // isLoading = loading || !initialized
+      // If mutated to &&: loading(false) && !initialized(true) = false (WRONG, should be true)
+      mocks.storeState.loading = false;
+      mocks.storeState.initialized = false;
+
+      const { result } = renderHook(() => useAuth({ autoInitialize: false }));
+
+      expect(result.current.isLoading).toBe(true);
+    });
+
+    it('kills mutation: isLoading is false when loading=false and initialized=true', () => {
+      mocks.storeState.loading = false;
+      mocks.storeState.initialized = true;
+
+      const { result } = renderHook(() => useAuth({ autoInitialize: false }));
+
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it('kills mutation: isAuthenticated requires ALL three conditions (!!user && !loading && initialized)', () => {
+      // Test each condition independently to kill && → || mutations
+
+      // user present, not loading, initialized → true
+      mocks.storeState.user = { id: 'u-1' };
+      mocks.storeState.loading = false;
+      mocks.storeState.initialized = true;
+      const { result: r1 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r1.current.isAuthenticated).toBe(true);
+
+      // user null → false (even if not loading and initialized)
+      mocks.storeState.user = null;
+      mocks.storeState.loading = false;
+      mocks.storeState.initialized = true;
+      const { result: r2 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r2.current.isAuthenticated).toBe(false);
+
+      // loading true → false (even with user and initialized)
+      mocks.storeState.user = { id: 'u-1' };
+      mocks.storeState.loading = true;
+      mocks.storeState.initialized = true;
+      const { result: r3 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r3.current.isAuthenticated).toBe(false);
+
+      // not initialized → false (even with user and not loading)
+      mocks.storeState.user = { id: 'u-1' };
+      mocks.storeState.loading = false;
+      mocks.storeState.initialized = false;
+      const { result: r4 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r4.current.isAuthenticated).toBe(false);
+    });
+
+    it('kills mutation: canAccess with empty roles returns true ONLY when authenticated', () => {
+      // canAccess([]): allowedRoles.length === 0 → return true
+      // Must be authenticated first, then empty roles = unrestricted
+      mocks.storeState.user = { id: 'u-1' };
+      mocks.storeState.profile = { rol: 'ciudadano' };
+      mocks.storeState.initialized = true;
+      mocks.storeState.loading = false;
+
+      const { result: r1 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r1.current.canAccess([])).toBe(true);
+
+      // Not authenticated + empty roles → still false
+      mocks.storeState.user = null;
+      const { result: r2 } = renderHook(() => useAuth({ autoInitialize: false }));
+      expect(r2.current.canAccess([])).toBe(false);
+    });
   });
 
   // ============================================
