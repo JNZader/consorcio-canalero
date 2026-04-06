@@ -153,7 +153,7 @@ export default defineConfig({
           ],
           'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
           'vendor-charts': ['recharts'],
-          'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw'],
+          'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw', 'leaflet', 'react-leaflet'],
 'vendor-router': ['@tanstack/react-router'],
         },
       },
@@ -173,6 +173,8 @@ export default defineConfig({
       '@mantine/hooks',
       'maplibre-gl',
       '@mapbox/mapbox-gl-draw',
+      'leaflet',
+      'react-leaflet',
     ],
   },
 
