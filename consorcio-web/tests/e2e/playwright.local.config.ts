@@ -17,7 +17,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium — authenticated',
-      testMatch: /flood-calibration|canal-suggestions|flood-flow/,
+      testMatch: /flood-calibration|canal-suggestions|flood-flow|manning|return-periods|afectados|informe-territorial|mapa-maplibre/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'tests/e2e/.auth/admin.json',
@@ -30,7 +30,7 @@ export default defineConfig({
     },
     {
       name: 'chromium — other',
-      testIgnore: /flood-calibration|canal-suggestions|flood-flow|rainfall-api/,
+      testIgnore: /flood-calibration|canal-suggestions|flood-flow|rainfall-api|manning|return-periods|afectados|informe-territorial|mapa-maplibre/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],
