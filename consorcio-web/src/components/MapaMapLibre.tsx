@@ -95,14 +95,12 @@ const IGN_IMAGE_URL = '/overlays/ign/altimetria_ign_consorcio.webp';
 
 // GEE layer names for the 2D map
 const GEE_LAYER_NAMES = ['zona'] as const;
-const GEE_CUENCA_NAMES = ['candil', 'ml', 'noroeste', 'norte'] as const;
 
 // Source/layer IDs
 const WATERWAYS_SOURCE_ID = 'map2d-waterways';
 const SOIL_SOURCE_ID = 'map2d-soil';
 const CATASTRO_SOURCE_ID = 'map2d-catastro';
 const ROADS_SOURCE_ID = 'map2d-roads';
-const CUENCAS_SOURCE_ID = 'map2d-cuencas';
 const BASINS_SOURCE_ID = 'map2d-basins';
 const APPROVED_ZONES_SOURCE_ID = 'map2d-approved-zones';
 const SUGGESTED_ZONES_SOURCE_ID = 'map2d-suggested-zones';
@@ -216,14 +214,12 @@ function LegendItemIndicator({ item }: { item: { color: string; type: string } }
 
 interface LeyendaProps {
   consorcios?: ConsorcioInfo[];
-  cuencasConfig?: { id: string; nombre: string; color: string }[];
   customItems?: { color: string; label: string; type: string }[];
   floating?: boolean;
 }
 
 const Leyenda = memo(function Leyenda({
   consorcios = [],
-  cuencasConfig = [],
   customItems = [],
   floating = true,
 }: LeyendaProps) {
@@ -232,21 +228,8 @@ const Leyenda = memo(function Leyenda({
   const legendItems =
     customItems.length > 0
       ? customItems
-      : cuencasConfig.length > 0
-        ? [
+      : [
             { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
-            ...cuencasConfig.map((c) => ({
-              color: c.color,
-              label: `Cuenca ${c.nombre}`,
-              type: 'fill',
-            })),
-          ]
-        : [
-            { color: '#FF0000', label: 'Zona Consorcio', type: 'border' },
-            { color: '#2196F3', label: 'Cuenca Candil', type: 'fill' },
-            { color: '#4CAF50', label: 'Cuenca ML', type: 'fill' },
-            { color: '#FF9800', label: 'Cuenca Noroeste', type: 'fill' },
-            { color: '#9C27B0', label: 'Cuenca Norte', type: 'fill' },
           ];
 
   return (
@@ -808,7 +791,7 @@ export default function MapaMapLibre() {
   );
 
   // ── Data hooks ────────────────────────────────────────────────────────────
-  const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES, ...GEE_CUENCA_NAMES] });
+  const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
   const { caminos, consorcios } = useCaminosColoreados();
   const { assets, intersections, createAsset } = useInfrastructure();
   const { layers: publicLayers } = usePublicLayers();
@@ -837,18 +820,6 @@ export default function MapaMapLibre() {
 
   const zonaCollection = capas.zona ?? null;
 
-  const cuencasCollection = useMemo((): FeatureCollection | null => {
-    const defs = [
-      { key: 'candil' as const, color: GEE_LAYER_COLORS.candil, label: 'Candil' },
-      { key: 'ml' as const, color: GEE_LAYER_COLORS.ml, label: 'ML' },
-      { key: 'noroeste' as const, color: GEE_LAYER_COLORS.noroeste, label: 'Noroeste' },
-      { key: 'norte' as const, color: GEE_LAYER_COLORS.norte, label: 'Norte' },
-    ];
-    const features = defs.flatMap(({ key, color, label }) =>
-      (capas[key]?.features ?? []).map((f) => decorateFeature(f, { __color: color, __label: label })),
-    );
-    return features.length > 0 ? asFeatureCollection(features) : null;
-  }, [capas]);
 
   const roadsCollection = caminos;
 
@@ -1222,39 +1193,6 @@ export default function MapaMapLibre() {
     }
     setLayerVisibility(map, `${ROADS_SOURCE_ID}-line`, !!vectorVisibility.roads && !!roadsCollection);
   }, [mapReady, roadsCollection, vectorVisibility.roads]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    // ── Cuencas (GEE historical boundaries) ───────────────────────────────
-    ensureGeoJsonSource(map, CUENCAS_SOURCE_ID, cuencasCollection ?? asFeatureCollection([]));
-    if (!map.getLayer(`${CUENCAS_SOURCE_ID}-fill`)) {
-      map.addLayer({
-        id: `${CUENCAS_SOURCE_ID}-fill`,
-        type: 'fill',
-        source: CUENCAS_SOURCE_ID,
-        paint: {
-          'fill-color': ['coalesce', ['get', '__color'], '#3388ff'],
-          'fill-opacity': 0.12,
-        },
-      });
-    }
-    if (!map.getLayer(`${CUENCAS_SOURCE_ID}-line`)) {
-      map.addLayer({
-        id: `${CUENCAS_SOURCE_ID}-line`,
-        type: 'line',
-        source: CUENCAS_SOURCE_ID,
-        paint: {
-          'line-color': ['coalesce', ['get', '__color'], '#3388ff'],
-          'line-width': 2,
-          'line-opacity': 0.9,
-        },
-      });
-    }
-    setLayerVisibility(map, `${CUENCAS_SOURCE_ID}-fill`, !!vectorVisibility.cuencas && !!cuencasCollection);
-    setLayerVisibility(map, `${CUENCAS_SOURCE_ID}-line`, !!vectorVisibility.cuencas && !!cuencasCollection);
-  }, [mapReady, cuencasCollection, vectorVisibility.cuencas]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1697,7 +1635,6 @@ export default function MapaMapLibre() {
       `${SOIL_SOURCE_ID}-fill`,
       `${CATASTRO_SOURCE_ID}-line`,
       `${ROADS_SOURCE_ID}-line`,
-      `${CUENCAS_SOURCE_ID}-fill`,
       `${BASINS_SOURCE_ID}-fill`,
       `${APPROVED_ZONES_SOURCE_ID}-fill`,
       `${SUGGESTED_ZONES_SOURCE_ID}-fill`,
@@ -2070,7 +2007,6 @@ export default function MapaMapLibre() {
           <Stack gap={4}>
             {[
               { id: 'zona', label: 'Zona Consorcio' },
-              { id: 'cuencas', label: 'Cuencas históricas' },
               { id: 'basins', label: 'Subcuencas operativas' },
               { id: 'approved_zones', label: 'Zonificación aprobada' },
               { id: 'waterways', label: 'Hidrografía' },
