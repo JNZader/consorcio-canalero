@@ -39,7 +39,7 @@ import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'ge
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 // Register PMTiles protocol once at module level
 const _pmtilesProtocol = new Protocol();
@@ -329,57 +329,64 @@ const ViewModePanel = memo(function ViewModePanel({
   singleImageInfo,
   comparisonInfo,
 }: ViewModePanelProps) {
+  // useMemo is critical here: SegmentedControl uses a useEffect with `data` as
+  // dependency. If `data` is a new array/JSX reference on every render, Mantine
+  // internally calls setState in a loop → "Maximum update depth exceeded".
+  const options = useMemo(() => {
+    const items: Array<{ value: string; label: ReactNode }> = [
+      {
+        value: 'base',
+        label: (
+          <Tooltip label="Solo mapa base" position="bottom" withArrow>
+            <Center style={{ gap: 6 }}>
+              <IconLayers size={14} />
+              <Text size="xs">Base</Text>
+            </Center>
+          </Tooltip>
+        ),
+      },
+    ];
+
+    if (hasSingleImage) {
+      items.push({
+        value: 'single',
+        label: (
+          <Tooltip
+            label={singleImageInfo ? `${singleImageInfo.sensor} - ${singleImageInfo.date}` : 'Imagen satelital'}
+            position="bottom"
+            withArrow
+          >
+            <Center style={{ gap: 6 }}>
+              <IconPhoto size={14} />
+              <Text size="xs">Imagen</Text>
+            </Center>
+          </Tooltip>
+        ),
+      });
+    }
+
+    if (hasComparison) {
+      items.push({
+        value: 'comparison',
+        label: (
+          <Tooltip
+            label={comparisonInfo ? `Comparar: ${comparisonInfo.leftDate} vs ${comparisonInfo.rightDate}` : 'Comparacion'}
+            position="bottom"
+            withArrow
+          >
+            <Center style={{ gap: 6 }}>
+              <IconGitCompare size={14} />
+              <Text size="xs">Comparar</Text>
+            </Center>
+          </Tooltip>
+        ),
+      });
+    }
+
+    return items;
+  }, [hasSingleImage, hasComparison, singleImageInfo, comparisonInfo]);
+
   if (!hasSingleImage && !hasComparison) return null;
-
-  const options = [
-    {
-      value: 'base',
-      label: (
-        <Tooltip label="Solo mapa base" position="bottom" withArrow>
-          <Center style={{ gap: 6 }}>
-            <IconLayers size={14} />
-            <Text size="xs">Base</Text>
-          </Center>
-        </Tooltip>
-      ),
-    },
-  ];
-
-  if (hasSingleImage) {
-    options.push({
-      value: 'single',
-      label: (
-        <Tooltip
-          label={singleImageInfo ? `${singleImageInfo.sensor} - ${singleImageInfo.date}` : 'Imagen satelital'}
-          position="bottom"
-          withArrow
-        >
-          <Center style={{ gap: 6 }}>
-            <IconPhoto size={14} />
-            <Text size="xs">Imagen</Text>
-          </Center>
-        </Tooltip>
-      ),
-    });
-  }
-
-  if (hasComparison) {
-    options.push({
-      value: 'comparison',
-      label: (
-        <Tooltip
-          label={comparisonInfo ? `Comparar: ${comparisonInfo.leftDate} vs ${comparisonInfo.rightDate}` : 'Comparacion'}
-          position="bottom"
-          withArrow
-        >
-          <Center style={{ gap: 6 }}>
-            <IconGitCompare size={14} />
-            <Text size="xs">Comparar</Text>
-          </Center>
-        </Tooltip>
-      ),
-    });
-  }
 
   return (
     <Paper
@@ -1501,17 +1508,19 @@ export default function MapaMapLibre() {
   }, [mapReady, demTileUrl, showDemOverlay]);
 
   // Update visible raster layers for RasterLegend
+  // Use functional update to return the SAME reference when value hasn't changed,
+  // preventing unnecessary re-renders (Object.is([],[]) === false otherwise).
   useEffect(() => {
-    if (!showDemOverlay || !activeDemLayerId) {
-      setVisibleRasterLayers([]);
-      return;
-    }
-    const layer = allGeoLayers.find((l) => l.id === activeDemLayerId);
-    if (layer) {
-      setVisibleRasterLayers([{ tipo: layer.tipo }]);
-    } else {
-      setVisibleRasterLayers([]);
-    }
+    const layer =
+      showDemOverlay && activeDemLayerId
+        ? allGeoLayers.find((l) => l.id === activeDemLayerId)
+        : undefined;
+
+    setVisibleRasterLayers((prev) => {
+      if (!layer) return prev.length === 0 ? prev : [];
+      if (prev.length === 1 && prev[0].tipo === layer.tipo) return prev;
+      return [{ tipo: layer.tipo }];
+    });
   }, [showDemOverlay, activeDemLayerId, allGeoLayers]);
 
   /* ---------------------------------------------------------------------- */
@@ -1922,6 +1931,20 @@ export default function MapaMapLibre() {
   const hasSingleImage = !!selectedImage;
   const hasComparison = !!(comparison?.left && comparison.right);
 
+  // Stable object references for ViewModePanel props — avoids breaking memo and
+  // prevents the SegmentedControl "Maximum update depth exceeded" infinite loop.
+  const singleImageInfo = useMemo(
+    () => (selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null),
+    [selectedImage],
+  );
+  const comparisonInfo = useMemo(
+    () =>
+      comparison?.left && comparison.right
+        ? { leftDate: comparison.left.target_date, rightDate: comparison.right.target_date }
+        : null,
+    [comparison],
+  );
+
   return (
     <Box className={styles.mapWrapper} style={{ position: 'relative', height: '100%' }}>
       {/* Map container */}
@@ -2044,12 +2067,8 @@ export default function MapaMapLibre() {
           onViewModeChange={setViewMode}
           hasSingleImage={hasSingleImage}
           hasComparison={hasComparison}
-          singleImageInfo={selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null}
-          comparisonInfo={
-            comparison?.left && comparison.right
-              ? { leftDate: comparison.left.target_date, rightDate: comparison.right.target_date }
-              : null
-          }
+          singleImageInfo={singleImageInfo}
+          comparisonInfo={comparisonInfo}
         />
 
         {/* Layer toggles */}
