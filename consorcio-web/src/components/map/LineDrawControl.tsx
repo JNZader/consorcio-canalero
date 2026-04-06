@@ -1,15 +1,12 @@
 /**
- * LineDrawControl — polyline draw control.
+ * LineDrawControl — polyline draw control (MapLibre only).
  *
- * Supports two rendering modes:
- *  - MapLibre mode: pass `map` prop (maplibregl.Map instance) — uses @mapbox/mapbox-gl-draw
- *  - Leaflet mode:  omit `map` prop — uses the original leaflet-draw implementation
- *    (still needed by FormularioSugerencia.tsx until Phase 5 cleanup)
+ * Uses @mapbox/mapbox-gl-draw. Requires a `map` prop (maplibregl.Map instance).
  *
  * External interface (DrawnLineFeatureCollection, LineDrawControlProps) is UNCHANGED.
  */
 
-// ─── Public types (same as before) ───────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
 export interface DrawnLineFeatureCollection {
   type: 'FeatureCollection';
@@ -24,9 +21,8 @@ export interface DrawnLineFeatureCollection {
 }
 
 interface LineDrawControlProps {
-  /** MapLibre map instance.  When provided, uses @mapbox/mapbox-gl-draw.
-   *  When omitted, falls back to the leaflet-draw implementation (Leaflet context required). */
-  readonly map?: import('maplibre-gl').Map;
+  /** MapLibre map instance (required). */
+  readonly map: import('maplibre-gl').Map;
   readonly value: DrawnLineFeatureCollection | null;
   readonly onChange: (geometry: DrawnLineFeatureCollection | null) => void;
 }
@@ -36,11 +32,7 @@ interface LineDrawControlProps {
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useEffect, useRef } from 'react';
 
-function MapLibreLineDrawControl({
-  map,
-  value,
-  onChange,
-}: Required<Pick<LineDrawControlProps, 'map'>> & Omit<LineDrawControlProps, 'map'>) {
+export default function LineDrawControl({ map, value, onChange }: LineDrawControlProps) {
   const drawRef = useRef<MapboxDraw | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -122,102 +114,4 @@ function MapLibreLineDrawControl({
   }, [value]);
 
   return null;
-}
-
-// ─── Leaflet fallback implementation ─────────────────────────────────────────
-
-import L from 'leaflet';
-import { useMap } from 'react-leaflet';
-import 'leaflet-draw';
-import 'leaflet-draw/dist/leaflet.draw.css';
-
-function layerToFeature(layer: L.Layer) {
-  const geoJson = (layer as L.Polyline).toGeoJSON() as GeoJSON.Feature<GeoJSON.LineString>;
-  return {
-    type: 'Feature' as const,
-    geometry: {
-      type: 'LineString' as const,
-      coordinates: geoJson.geometry.coordinates as number[][],
-    },
-    properties: {} as Record<string, never>,
-  };
-}
-
-function LeafletLineDrawControl({ value, onChange }: Omit<LineDrawControlProps, 'map'>) {
-  const map = useMap();
-  const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
-  const drawControlRef = useRef<L.Control.Draw | null>(null);
-
-  useEffect(() => {
-    const drawnItems = new L.FeatureGroup();
-    drawnItemsRef.current = drawnItems;
-    map.addLayer(drawnItems);
-
-    const drawControl = new L.Control.Draw({
-      position: 'topleft',
-      draw: {
-        polygon: false,
-        rectangle: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-        polyline: {
-          shapeOptions: { color: '#0B3D91', weight: 4, opacity: 0.95 },
-        },
-      },
-      edit: { featureGroup: drawnItems, remove: true },
-    });
-
-    drawControlRef.current = drawControl;
-    map.addControl(drawControl);
-
-    const emitCurrent = () => {
-      const layers = drawnItems.getLayers();
-      if (layers.length === 0) {
-        onChange(null);
-        return;
-      }
-      onChange({ type: 'FeatureCollection', features: layers.map(layerToFeature) });
-    };
-
-    const handleCreated = (e: L.LeafletEvent) => {
-      const event = e as L.DrawEvents.Created;
-      drawnItems.addLayer(event.layer);
-      emitCurrent();
-    };
-
-    map.on(L.Draw.Event.CREATED, handleCreated);
-    map.on(L.Draw.Event.EDITED, emitCurrent);
-    map.on(L.Draw.Event.DELETED, emitCurrent);
-
-    return () => {
-      map.off(L.Draw.Event.CREATED, handleCreated);
-      map.off(L.Draw.Event.EDITED, emitCurrent);
-      map.off(L.Draw.Event.DELETED, emitCurrent);
-      if (drawControlRef.current) map.removeControl(drawControlRef.current);
-      if (drawnItemsRef.current) map.removeLayer(drawnItemsRef.current);
-    };
-  }, [map, onChange]);
-
-  useEffect(() => {
-    const drawnItems = drawnItemsRef.current;
-    if (!drawnItems) return;
-    drawnItems.clearLayers();
-    for (const feature of value?.features ?? []) {
-      if (feature.geometry.type !== 'LineString') continue;
-      const latLngs = feature.geometry.coordinates.map(([lng, lat]) => L.latLng(lat, lng));
-      drawnItems.addLayer(L.polyline(latLngs, { color: '#0B3D91', weight: 4, opacity: 0.95 }));
-    }
-  }, [value]);
-
-  return null;
-}
-
-// ─── Unified export ───────────────────────────────────────────────────────────
-
-export default function LineDrawControl({ map, value, onChange }: LineDrawControlProps) {
-  if (map) {
-    return <MapLibreLineDrawControl map={map} value={value} onChange={onChange} />;
-  }
-  return <LeafletLineDrawControl value={value} onChange={onChange} />;
 }

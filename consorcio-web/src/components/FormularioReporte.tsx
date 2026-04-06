@@ -20,10 +20,10 @@ import {
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import L from 'leaflet';
-import { useCallback, useState } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
 import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useConfigStore } from '../stores/configStore';
 import { useContactVerification } from '../hooks/useContactVerification';
@@ -43,19 +43,7 @@ import {
   IconShieldCheck,
 } from './ui/icons';
 import { ContactVerificationSection } from './verification';
-import 'leaflet/dist/leaflet.css';
 import formStyles from '../styles/components/form.module.css';
-
-// Fix para el icono de Leaflet
-const markerIcon = new L.Icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
 
 // Icon mapping for report types (extends base TIPOS_DENUNCIA from constants)
 const TIPO_ICONS: Record<string, ReactNode> = {
@@ -81,26 +69,7 @@ function showNotification(title: string, message: string, color: string) {
   notifications.show({ title, message, color });
 }
 
-// Componente para seleccionar ubicacion en el mapa
-function LocationPicker({
-  onLocationSelect,
-  currentLocation,
-}: Readonly<{
-  onLocationSelect: (lat: number, lng: number) => void;
-  currentLocation: Ubicacion | null;
-}>) {
-  useMapEvents({
-    click(e) {
-      const { lat, lng } = e.latlng;
-      onLocationSelect(lat, lng);
-    },
-  });
-
-  if (!currentLocation) return null;
-  return <Marker position={[currentLocation.lat, currentLocation.lng]} icon={markerIcon} />;
-}
-
-// Extracted: Location section
+// Extracted: Location section (MapLibre imperative map)
 function LocationSection({
   ubicacion,
   mostrarInputManual,
@@ -124,6 +93,73 @@ function LocationSection({
   defaultCenter?: [number, number];
   defaultZoom?: number;
 }>) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const onLocationSelectRef = useRef(onLocationSelect);
+  onLocationSelectRef.current = onLocationSelect;
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; OpenStreetMap',
+          },
+        },
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+      },
+      center: [defaultCenter[1], defaultCenter[0]], // MapLibre: [lng, lat]
+      zoom: defaultZoom,
+    });
+
+    map.on('click', (e) => {
+      const { lng, lat } = e.lngLat;
+      onLocationSelectRef.current(lat, lng);
+    });
+
+    mapInstanceRef.current = map;
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync marker with ubicacion
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (!ubicacion) {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      return;
+    }
+
+    if (markerRef.current) {
+      markerRef.current.setLngLat([ubicacion.lng, ubicacion.lat]);
+    } else {
+      markerRef.current = new maplibregl.Marker({ color: '#e03131' })
+        .setLngLat([ubicacion.lng, ubicacion.lat])
+        .addTo(map);
+    }
+
+    map.flyTo({ center: [ubicacion.lng, ubicacion.lat], zoom: Math.max(map.getZoom(), 14) });
+  }, [ubicacion]);
+
   return (
     <>
       <Group gap="sm" mb="sm">
@@ -172,18 +208,7 @@ function LocationSection({
         role="application"
         aria-label="Mapa interactivo para seleccionar ubicacion. Haz clic en el mapa para marcar la ubicacion del incidente. Alternativa: usa el boton 'Ingresar coordenadas manualmente' arriba."
       >
-        <MapContainer
-          center={ubicacion ? [ubicacion.lat, ubicacion.lng] : defaultCenter}
-          zoom={defaultZoom}
-          style={{ width: '100%', height: '100%' }}
-          scrollWheelZoom={true}
-        >
-          <TileLayer
-            attribution="&copy; OpenStreetMap"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <LocationPicker onLocationSelect={onLocationSelect} currentLocation={ubicacion} />
-        </MapContainer>
+        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       </Box>
       <Text size="xs" c="gray.6" mt="xs">
         Haz clic en el mapa para marcar la ubicacion exacta del incidente, o usa la opcion de

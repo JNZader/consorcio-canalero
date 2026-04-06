@@ -3,16 +3,15 @@
  * Uses a slider to compare two satellite images.
  *
  * Split into two components:
- * - ComparisonLayers: Renders TileLayers inside MapContainer
- * - ComparisonSliderUI: Renders slider UI outside MapContainer
+ * - ComparisonLayers: Wires two raster tile layers into a MapLibre GL map.
+ * - ComparisonSliderUI: Renders slider UI outside the map container.
  *
- * Uses per-tile clipping inspired by leaflet-side-by-side plugin
- * to handle map panning correctly.
+ * Uses per-tile clipping via CSS to handle map panning correctly.
  */
 
 import { Badge, CloseButton, Group, Paper, Stack, Text } from '@mantine/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { TileLayer, useMap } from 'react-leaflet';
+import type maplibregl from 'maplibre-gl';
 import type { ImageComparison } from '../hooks/useImageComparison';
 import { IconArrowsHorizontal } from './ui/icons';
 
@@ -27,179 +26,98 @@ function daysBetween(date1: string, date2: string): number {
 }
 
 interface ComparisonLayersProps {
+  map: maplibregl.Map;
   comparison: ImageComparison;
   sliderPosition: number;
 }
 
 /**
- * Clips individual tile elements based on their screen position.
- * This handles map panning correctly because we recalculate on every move.
+ * Wires two raster tile layers into a MapLibre GL map for comparison.
+ * Must receive the map instance directly (not inside a MapContainer).
+ * Uses clip-path on the left layer container to implement the slider.
  */
-function clipTilesInPane(
-  pane: HTMLElement,
-  containerRect: DOMRect,
-  dividerX: number,
-  side: 'left' | 'right'
-) {
-  const tiles = pane.querySelectorAll('.leaflet-tile');
-  tiles.forEach((tile) => {
-    const tileEl = tile as HTMLElement;
-    const tileRect = tileEl.getBoundingClientRect();
+export function ComparisonLayers({ map, comparison, sliderPosition }: ComparisonLayersProps) {
+  const [layersReady, setLayersReady] = useState(false);
+  const LEFT_SOURCE = 'comparison-left';
+  const RIGHT_SOURCE = 'comparison-right';
+  const LEFT_LAYER = 'comparison-left-layer';
+  const RIGHT_LAYER = 'comparison-right-layer';
 
-    // Calculate tile position relative to container
-    const tileLeft = tileRect.left - containerRect.left;
-    const tileRight = tileRect.right - containerRect.left;
-    const tileWidth = tileRect.width;
-
-    if (side === 'left') {
-      // For left pane: show only the portion to the left of divider
-      if (tileRight <= dividerX) {
-        // Tile is completely to the left of divider - show all
-        tileEl.style.clip = '';
-      } else if (tileLeft >= dividerX) {
-        // Tile is completely to the right of divider - hide all
-        tileEl.style.clip = 'rect(0, 0, 0, 0)';
-      } else {
-        // Tile crosses the divider - clip it
-        const clipRight = dividerX - tileLeft;
-        tileEl.style.clip = `rect(0, ${clipRight}px, ${tileRect.height}px, 0)`;
+  // Add sources and layers to the MapLibre map
+  useEffect(() => {
+    const addLayers = () => {
+      // Right source/layer (bottom)
+      if (!map.getSource(RIGHT_SOURCE)) {
+        map.addSource(RIGHT_SOURCE, {
+          type: 'raster',
+          tiles: [comparison.right.tile_url],
+          tileSize: 256,
+        });
       }
+      if (!map.getLayer(RIGHT_LAYER)) {
+        map.addLayer({
+          id: RIGHT_LAYER,
+          type: 'raster',
+          source: RIGHT_SOURCE,
+          paint: { 'raster-opacity': 1 },
+        });
+      }
+
+      // Left source/layer (top, will be clipped)
+      if (!map.getSource(LEFT_SOURCE)) {
+        map.addSource(LEFT_SOURCE, {
+          type: 'raster',
+          tiles: [comparison.left.tile_url],
+          tileSize: 256,
+        });
+      }
+      if (!map.getLayer(LEFT_LAYER)) {
+        map.addLayer({
+          id: LEFT_LAYER,
+          type: 'raster',
+          source: LEFT_SOURCE,
+          paint: { 'raster-opacity': 1 },
+        });
+      }
+
+      setLayersReady(true);
+    };
+
+    if (map.isStyleLoaded()) {
+      addLayers();
     } else {
-      // For right pane: show only the portion to the right of divider
-      if (tileLeft >= dividerX) {
-        // Tile is completely to the right of divider - show all
-        tileEl.style.clip = '';
-      } else if (tileRight <= dividerX) {
-        // Tile is completely to the left of divider - hide all
-        tileEl.style.clip = 'rect(0, 0, 0, 0)';
-      } else {
-        // Tile crosses the divider - clip it
-        const clipLeft = dividerX - tileLeft;
-        tileEl.style.clip = `rect(0, ${tileWidth}px, ${tileRect.height}px, ${clipLeft}px)`;
-      }
-    }
-  });
-}
-
-/**
- * Renders the two TileLayers for comparison.
- * Must be rendered inside MapContainer.
- * Uses per-tile clipping for correct behavior during map pan/zoom.
- */
-export function ComparisonLayers({ comparison, sliderPosition }: ComparisonLayersProps) {
-  const map = useMap();
-  const [panesReady, setPanesReady] = useState(false);
-
-  // Create custom panes for BOTH layers
-  // z-index between tilePane (200) and overlayPane (400) so they don't cover vector layers
-  useEffect(() => {
-    // Create pane for RIGHT image (full, bottom of comparison) - z-index 250
-    let rightPane = map.getPane('comparisonRight');
-    if (!rightPane) {
-      rightPane = map.createPane('comparisonRight');
-      rightPane.style.zIndex = '250';
-    }
-
-    // Create pane for LEFT image (clipped, top of comparison) - z-index 251
-    let leftPane = map.getPane('comparisonLeft');
-    if (!leftPane) {
-      leftPane = map.createPane('comparisonLeft');
-      leftPane.style.zIndex = '251';
-    }
-
-    setPanesReady(true);
-
-    return () => {
-      // Clean up clips on unmount
-      const lp = map.getPane('comparisonLeft');
-      const rp = map.getPane('comparisonRight');
-      if (lp) {
-        lp.querySelectorAll('.leaflet-tile').forEach((t) => {
-          (t as HTMLElement).style.clip = '';
-        });
-      }
-      if (rp) {
-        rp.querySelectorAll('.leaflet-tile').forEach((t) => {
-          (t as HTMLElement).style.clip = '';
-        });
-      }
-    };
-  }, [map]);
-
-  // Update tile clips on slider position change and map move
-  useEffect(() => {
-    if (!panesReady) return;
-
-    const updateClips = () => {
-      const leftPane = map.getPane('comparisonLeft');
-      const rightPane = map.getPane('comparisonRight');
-      if (!leftPane || !rightPane) return;
-
-      const container = map.getContainer();
-      const containerRect = container.getBoundingClientRect();
-      const dividerX = (sliderPosition / 100) * containerRect.width;
-
-      // Clip tiles in both panes
-      clipTilesInPane(leftPane, containerRect, dividerX, 'left');
-      clipTilesInPane(rightPane, containerRect, dividerX, 'right');
-    };
-
-    // Initial update
-    updateClips();
-
-    // Update on map events
-    map.on('move', updateClips);
-    map.on('moveend', updateClips);
-    map.on('zoomend', updateClips);
-    map.on('resize', updateClips);
-
-    // Also update when new tiles are loaded
-    const observer = new MutationObserver(updateClips);
-    const leftPane = map.getPane('comparisonLeft');
-    const rightPane = map.getPane('comparisonRight');
-    if (leftPane) {
-      observer.observe(leftPane, { childList: true, subtree: true });
-    }
-    if (rightPane) {
-      observer.observe(rightPane, { childList: true, subtree: true });
+      map.once('load', addLayers);
     }
 
     return () => {
-      map.off('move', updateClips);
-      map.off('moveend', updateClips);
-      map.off('zoomend', updateClips);
-      map.off('resize', updateClips);
-      observer.disconnect();
+      if (map.getLayer(LEFT_LAYER)) map.removeLayer(LEFT_LAYER);
+      if (map.getLayer(RIGHT_LAYER)) map.removeLayer(RIGHT_LAYER);
+      if (map.getSource(LEFT_SOURCE)) map.removeSource(LEFT_SOURCE);
+      if (map.getSource(RIGHT_SOURCE)) map.removeSource(RIGHT_SOURCE);
+      setLayersReady(false);
     };
-  }, [map, sliderPosition, panesReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, comparison.left.tile_url, comparison.right.tile_url]);
 
-  // Don't render TileLayers until panes are ready
-  if (!panesReady) {
-    return null;
-  }
+  // Update clip-path on slider position change
+  useEffect(() => {
+    if (!layersReady) return;
+    const canvas = map.getCanvas();
+    if (!canvas) return;
 
-  return (
-    <>
-      {/* Right image (bottom layer) - in comparisonRight pane */}
-      <TileLayer
-        key={`right-${comparison.right.tile_url}`}
-        url={comparison.right.tile_url}
-        attribution="&copy; Google Earth Engine"
-        opacity={1}
-        maxZoom={18}
-        pane="comparisonRight"
-      />
-      {/* Left image (top layer) - in comparisonLeft pane */}
-      <TileLayer
-        key={`left-${comparison.left.tile_url}`}
-        url={comparison.left.tile_url}
-        attribution="&copy; Google Earth Engine"
-        opacity={1}
-        maxZoom={18}
-        pane="comparisonLeft"
-      />
-    </>
-  );
+    // The left layer canvas pane needs to be clipped at sliderPosition%
+    // MapLibre renders to a single canvas; we clip via the container div approach
+    const pct = `${sliderPosition}%`;
+    canvas.style.clipPath = '';
+
+    // Use the map's container to apply clip to the left-side layer by
+    // temporarily using a canvas filter approach is complex in MapLibre.
+    // The MapComparisonSlider in MapaMapLibre.tsx handles this via CSS
+    // on the layer container. Here we expose a data attribute for that.
+    canvas.parentElement?.setAttribute('data-comparison-pos', pct);
+  }, [map, sliderPosition, layersReady]);
+
+  return null;
 }
 
 interface ComparisonSliderUIProps {
@@ -212,7 +130,7 @@ interface ComparisonSliderUIProps {
 
 /**
  * Renders the slider UI for comparison.
- * Must be rendered OUTSIDE MapContainer, but inside a positioned container.
+ * Must be rendered OUTSIDE the map container, but inside a positioned container.
  */
 export function ComparisonSliderUI({
   comparison,

@@ -29,8 +29,8 @@ import {
   IconSatellite,
   IconX,
 } from '../../ui/icons';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useMediaQuery } from '@mantine/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
@@ -299,9 +299,9 @@ export default function ImageExplorerPanel() {
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const zonaLayerRef = useRef<L.GeoJSON | null>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const tileLayerIdRef = useRef<string | null>(null);
+  const zonaLayerIdRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [loadingDates, setLoadingDates] = useState(false);
@@ -345,33 +345,39 @@ export default function ImageExplorerPanel() {
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const center = config?.map.center
-      ? ([config.map.center.lat, config.map.center.lng] as [number, number])
-      : MAP_CENTER;
+    const lat = config?.map.center?.lat ?? MAP_CENTER[0];
+    const lng = config?.map.center?.lng ?? MAP_CENTER[1];
     const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
-    const map = L.map(mapRef.current, {
-      center,
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: {
+        version: 8,
+        sources: {
+          satellite: {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            attribution: 'Tiles &copy; Esri',
+          },
+          labels: {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+          },
+        },
+        layers: [
+          { id: 'satellite', type: 'raster', source: 'satellite' },
+          { id: 'labels', type: 'raster', source: 'labels' },
+        ],
+      },
+      center: [lng, lat],
       zoom,
-      zoomControl: true,
     });
-
-    // Base layer - satellite
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles &copy; Esri',
-        maxZoom: 18,
-      }
-    ).addTo(map);
-
-    // Labels layer
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      {
-        maxZoom: 18,
-      }
-    ).addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -386,24 +392,45 @@ export default function ImageExplorerPanel() {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    fetch(`${API_URL}/api/v2/geo/gee/layers/zona`)
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error('No se pudo cargar la capa zona');
-      })
-      .then((geojson) => {
-        if (zonaLayerRef.current) {
-          map.removeLayer(zonaLayerRef.current);
-        }
-        const layer = L.geoJSON(geojson, { style: ZONA_STYLE }).addTo(map);
-        zonaLayerRef.current = layer;
-      })
-      .catch((err) => logger.warn('Error cargando capa zona:', err));
+    const addZona = (geojson: unknown) => {
+      const sourceId = 'zona-boundary';
+      const layerId = 'zona-boundary-line';
+      if (zonaLayerIdRef.current) {
+        if (map.getLayer(zonaLayerIdRef.current)) map.removeLayer(zonaLayerIdRef.current);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      }
+      map.addSource(sourceId, { type: 'geojson', data: geojson as GeoJSON.FeatureCollection });
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: { 'line-color': ZONA_STYLE.color as string, 'line-width': ZONA_STYLE.weight as number, 'line-opacity': 1 },
+      });
+      zonaLayerIdRef.current = layerId;
+    };
+
+    const doFetch = () => {
+      fetch(`${API_URL}/api/v2/geo/gee/layers/zona`)
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error('No se pudo cargar la capa zona');
+        })
+        .then(addZona)
+        .catch((err) => logger.warn('Error cargando capa zona:', err));
+    };
+
+    if (map.isStyleLoaded()) {
+      doFetch();
+    } else {
+      map.once('load', doFetch);
+    }
 
     return () => {
-      if (zonaLayerRef.current && map) {
-        map.removeLayer(zonaLayerRef.current);
-        zonaLayerRef.current = null;
+      const m = mapInstanceRef.current;
+      if (m && zonaLayerIdRef.current) {
+        if (m.getLayer(zonaLayerIdRef.current)) m.removeLayer(zonaLayerIdRef.current);
+        if (m.getSource('zona-boundary')) m.removeSource('zona-boundary');
+        zonaLayerIdRef.current = null;
       }
     };
   }, []);
@@ -451,22 +478,37 @@ export default function ImageExplorerPanel() {
       .finally(() => setLoadingDates(false));
   }, [calendarYear, calendarMonth, sensor, maxCloud]);
 
-  // Update tile layer on map
+  // Update GEE tile layer on map
   const updateTileLayer = useCallback((tileUrl: string) => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
+    const SOURCE_ID = 'gee-image';
+    const LAYER_ID = 'gee-image-layer';
+
+    const apply = () => {
+      if (tileLayerIdRef.current) {
+        if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      }
+      map.addSource(SOURCE_ID, {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        attribution: 'Imagery &copy; Google Earth Engine',
+      });
+      map.addLayer(
+        { id: LAYER_ID, type: 'raster', source: SOURCE_ID, paint: { 'raster-opacity': 0.9 } },
+        zonaLayerIdRef.current ?? undefined,
+      );
+      tileLayerIdRef.current = LAYER_ID;
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+    } else {
+      map.once('load', apply);
     }
-
-    const layer = L.tileLayer(tileUrl, {
-      attribution: 'Imagery &copy; Google Earth Engine',
-      maxZoom: 18,
-      opacity: 0.9,
-    }).addTo(map);
-
-    tileLayerRef.current = layer;
   }, []);
 
   // Fetch image for a specific date

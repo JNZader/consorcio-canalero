@@ -12,7 +12,7 @@
  * - maintenance: prioridad de mantenimiento (segmentos coloreados)
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
   Alert,
@@ -33,7 +33,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { CircleMarker, MapContainer, Polyline, TileLayer, Popup, useMap } from 'react-leaflet';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../constants';
 import {
   canalSuggestionsApi,
@@ -54,7 +55,6 @@ import {
   IconTool,
 } from '../ui/icons';
 
-import 'leaflet/dist/leaflet.css';
 
 // ===========================================
 // CONSTANTS
@@ -185,130 +185,215 @@ function extractGeometry(
 }
 
 // ===========================================
-// MAP OVERLAY COMPONENT
+// MAPLIBRE MAP COMPONENT
 // ===========================================
 
-interface SuggestionsMapLayerProps {
+interface SuggestionsMapProps {
   readonly suggestions: CanalSuggestion[];
   readonly visibleTypes: Set<SuggestionTipo>;
 }
 
-function SuggestionsMapLayer({ suggestions, visibleTypes }: SuggestionsMapLayerProps) {
-  const filtered = useMemo(
-    () => suggestions.filter((s) => visibleTypes.has(s.tipo as SuggestionTipo)),
-    [suggestions, visibleTypes]
-  );
+function SuggestionsMap({ suggestions, visibleTypes }: SuggestionsMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
-  return (
-    <>
-      {filtered.map((s) => {
-        const geo = extractGeometry(s);
-        if (!geo) return null;
-
-        const tipo = s.tipo as SuggestionTipo;
-        const color = TIPO_COLORS[tipo];
-
-        if (geo.type === 'point') {
-          const radius = tipo === 'hotspot'
-            ? Math.max(6, Math.min(18, s.score / 5))
-            : tipo === 'gap'
-              ? 10
-              : 8;
-
-          return (
-            <CircleMarker
-              key={s.id}
-              center={[geo.lat, geo.lng]}
-              radius={radius}
-              pathOptions={{
-                color,
-                fillColor: color,
-                fillOpacity: 0.5,
-                weight: 2,
-              }}
-            >
-              <Popup>
-                <div>
-                  <strong>{TIPO_LABELS[tipo]}</strong>
-                  <br />
-                  Score: {s.score.toFixed(1)}
-                  <br />
-                  {getDescription(s) !== '-' ? getDescription(s) : null}
-                </div>
-              </Popup>
-            </CircleMarker>
-          );
-        }
-
-        if (geo.type === 'line') {
-          const weight = tipo === 'bottleneck'
-            ? Math.max(4, Math.min(10, s.score / 10))
-            : tipo === 'maintenance'
-              ? 5
-              : 3;
-
-          const dashArray = tipo === 'route' ? '10 6' : undefined;
-          const lineColor = tipo === 'maintenance' ? getMaintenanceColor(s.score / 100) : color;
-
-          return (
-            <Polyline
-              key={s.id}
-              positions={geo.positions}
-              pathOptions={{
-                color: lineColor,
-                weight,
-                opacity: 0.8,
-                dashArray,
-              }}
-            >
-              <Popup>
-                <div>
-                  <strong>{TIPO_LABELS[tipo]}</strong>
-                  <br />
-                  Score: {s.score.toFixed(1)}
-                  <br />
-                  {getDescription(s) !== '-' ? getDescription(s) : null}
-                </div>
-              </Popup>
-            </Polyline>
-          );
-        }
-
-        return null;
-      })}
-    </>
-  );
-}
-
-/** Auto-fit map bounds to visible suggestions */
-function FitBounds({ suggestions }: { readonly suggestions: CanalSuggestion[] }) {
-  const map = useMap();
-
+  // Initialize map
   useEffect(() => {
-    if (suggestions.length === 0) return;
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    const points: [number, number][] = [];
-    for (const s of suggestions) {
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; OpenStreetMap',
+          },
+        },
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+      },
+      center: [MAP_CENTER[1], MAP_CENTER[0]],
+      zoom: MAP_DEFAULT_ZOOM ?? 11,
+    });
+
+    map.on('load', () => {
+      mapInstanceRef.current = map;
+      setMapReady(true);
+    });
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      setMapReady(false);
+    };
+  }, []);
+
+  // Render suggestions as GeoJSON layers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    const SOURCE_ID = 'suggestions-data';
+    const POINTS_LAYER = 'suggestions-circles';
+    const LINES_LAYER = 'suggestions-lines';
+
+    // Build GeoJSON features
+    const filtered = suggestions.filter((s) => visibleTypes.has(s.tipo as SuggestionTipo));
+
+    const pointFeatures: GeoJSON.Feature[] = [];
+    const lineFeatures: GeoJSON.Feature[] = [];
+
+    for (const s of filtered) {
       const geo = extractGeometry(s);
       if (!geo) continue;
+      const tipo = s.tipo as SuggestionTipo;
+      const color = TIPO_COLORS[tipo];
+
       if (geo.type === 'point') {
-        points.push([geo.lat, geo.lng]);
+        const radius = tipo === 'hotspot'
+          ? Math.max(6, Math.min(18, s.score / 5))
+          : tipo === 'gap' ? 10 : 8;
+        pointFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [geo.lng, geo.lat] },
+          properties: {
+            id: s.id,
+            tipo,
+            color,
+            radius,
+            score: s.score,
+            label: TIPO_LABELS[tipo],
+            description: getDescription(s),
+          },
+        });
       } else if (geo.type === 'line') {
-        points.push(...geo.positions);
+        const weight = tipo === 'bottleneck'
+          ? Math.max(4, Math.min(10, s.score / 10))
+          : tipo === 'maintenance' ? 5 : 3;
+        const lineColor = tipo === 'maintenance' ? getMaintenanceColor(s.score / 100) : color;
+        const dasharray = tipo === 'route' ? [10, 6] : [1];
+        lineFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: geo.positions.map(([lat, lng]) => [lng, lat]) },
+          properties: {
+            id: s.id,
+            tipo,
+            color: lineColor,
+            weight,
+            dasharray: JSON.stringify(dasharray),
+            score: s.score,
+            label: TIPO_LABELS[tipo],
+            description: getDescription(s),
+          },
+        });
       }
     }
 
-    if (points.length > 0) {
-      const L = (window as unknown as { L: typeof import('leaflet') }).L ?? map.options;
-      try {
-        map.fitBounds(points, { padding: [30, 30], maxZoom: 14 });
-      } catch {
-        // fallback: don't crash if bounds are invalid
+    const pointsGeoJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: pointFeatures };
+    const linesGeoJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
+
+    // Update or create sources/layers
+    const ptSource = map.getSource(`${SOURCE_ID}-points`) as maplibregl.GeoJSONSource | undefined;
+    const lnSource = map.getSource(`${SOURCE_ID}-lines`) as maplibregl.GeoJSONSource | undefined;
+
+    if (ptSource) {
+      ptSource.setData(pointsGeoJSON);
+    } else {
+      map.addSource(`${SOURCE_ID}-points`, { type: 'geojson', data: pointsGeoJSON });
+      map.addLayer({
+        id: POINTS_LAYER,
+        type: 'circle',
+        source: `${SOURCE_ID}-points`,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': 0.5,
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 1,
+        },
+      });
+
+      map.on('click', POINTS_LAYER, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const { label, score, description } = f.properties as Record<string, string | number>;
+        const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+        if (popupRef.current) popupRef.current.remove();
+        popupRef.current = new maplibregl.Popup()
+          .setLngLat(coords)
+          .setHTML(`<strong>${label}</strong><br/>Score: ${Number(score).toFixed(1)}${description !== '-' ? `<br/>${description}` : ''}`)
+          .addTo(map);
+      });
+
+      map.on('mouseenter', POINTS_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', POINTS_LAYER, () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    if (lnSource) {
+      lnSource.setData(linesGeoJSON);
+    } else {
+      map.addSource(`${SOURCE_ID}-lines`, { type: 'geojson', data: linesGeoJSON });
+      map.addLayer({
+        id: LINES_LAYER,
+        type: 'line',
+        source: `${SOURCE_ID}-lines`,
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['get', 'weight'],
+          'line-opacity': 0.8,
+        },
+      });
+
+      map.on('click', LINES_LAYER, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const { label, score, description } = f.properties as Record<string, string | number>;
+        const coords = e.lngLat;
+        if (popupRef.current) popupRef.current.remove();
+        popupRef.current = new maplibregl.Popup()
+          .setLngLat(coords)
+          .setHTML(`<strong>${label}</strong><br/>Score: ${Number(score).toFixed(1)}${description !== '-' ? `<br/>${description}` : ''}`)
+          .addTo(map);
+      });
+
+      map.on('mouseenter', LINES_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', LINES_LAYER, () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    // Auto-fit bounds when we have data
+    if (filtered.length > 0) {
+      const allCoords: [number, number][] = [];
+      for (const f of pointFeatures) {
+        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+        allCoords.push([lng, lat]);
+      }
+      for (const f of lineFeatures) {
+        for (const coord of (f.geometry as GeoJSON.LineString).coordinates) {
+          allCoords.push([coord[0], coord[1]]);
+        }
+      }
+      if (allCoords.length > 0) {
+        const lngs = allCoords.map(([lng]) => lng);
+        const lats = allCoords.map(([, lat]) => lat);
+        try {
+          map.fitBounds(
+            [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+            { padding: 30, maxZoom: 14 }
+          );
+        } catch {
+          // ignore invalid bounds
+        }
       }
     }
-  }, [suggestions, map]);
+  }, [suggestions, visibleTypes, mapReady]);
 
-  return null;
+  return <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />;
 }
 
 // ===========================================
@@ -542,21 +627,10 @@ export default function CanalSuggestionsPanel() {
         {/* Map with overlays */}
         <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
           <div style={{ height: 450 }}>
-            <MapContainer
-              center={MAP_CENTER}
-              zoom={MAP_DEFAULT_ZOOM ?? 11}
-              style={{ width: '100%', height: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <SuggestionsMapLayer
-                suggestions={suggestions}
-                visibleTypes={visibleTypes}
-              />
-              {suggestions.length > 0 && <FitBounds suggestions={suggestions} />}
-            </MapContainer>
+            <SuggestionsMap
+              suggestions={suggestions}
+              visibleTypes={visibleTypes}
+            />
           </div>
 
           {/* Layer toggles */}

@@ -33,8 +33,8 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Feature, FeatureCollection } from 'geojson';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
@@ -87,19 +87,25 @@ const MONTH_NAMES = [
 
 const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
 
-/** Zone style by label state */
-function getZoneStyle(zonaId: string, labeledZones: Record<string, boolean>): L.PathOptions {
+/** Zone paint properties by label state */
+interface ZonePaint {
+  color: string;
+  fillColor: string;
+  fillOpacity: number;
+}
+
+function getZonePaint(zonaId: string, labeledZones: Record<string, boolean>): ZonePaint {
   const label = labeledZones[zonaId];
   if (label === true) {
     // Flooded - red
-    return { color: '#ef4444', weight: 2, fillOpacity: 0.4, fillColor: '#ef4444' };
+    return { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.4 };
   }
   if (label === false) {
     // Not flooded - green
-    return { color: '#22c55e', weight: 2, fillOpacity: 0.4, fillColor: '#22c55e' };
+    return { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.4 };
   }
   // Unlabeled - default
-  return { color: '#6b7280', weight: 2, fillOpacity: 0.1, fillColor: '#9ca3af' };
+  return { color: '#6b7280', fillColor: '#9ca3af', fillOpacity: 0.1 };
 }
 
 function getLabelBadge(zonaId: string, labeledZones: Record<string, boolean>) {
@@ -463,9 +469,8 @@ export default function FloodCalibrationPanel() {
 
   // Map refs
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const zonasLayerRef = useRef<L.GeoJSON | null>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const tileLayerIdRef = useRef<string | null>(null);
   const zonasDataRef = useRef<FeatureCollection | null>(null);
 
   // Calendar state
@@ -593,22 +598,39 @@ export default function FloodCalibrationPanel() {
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const center = config?.map.center
-      ? ([config.map.center.lat, config.map.center.lng] as [number, number])
-      : MAP_CENTER;
+    const lat = config?.map.center?.lat ?? MAP_CENTER[0];
+    const lng = config?.map.center?.lng ?? MAP_CENTER[1];
     const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
-    const map = L.map(mapRef.current, { center, zoom, zoomControl: true });
-
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { attribution: 'Tiles &copy; Esri', maxZoom: 18 },
-    ).addTo(map);
-
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 18 },
-    ).addTo(map);
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: {
+        version: 8,
+        sources: {
+          satellite: {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            attribution: 'Tiles &copy; Esri',
+          },
+          labels: {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+          },
+        },
+        layers: [
+          { id: 'satellite', type: 'raster', source: 'satellite' },
+          { id: 'labels', type: 'raster', source: 'labels' },
+        ],
+      },
+      center: [lng, lat],
+      zoom,
+    });
 
     mapInstanceRef.current = map;
 
@@ -623,8 +645,12 @@ export default function FloodCalibrationPanel() {
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
-    if (mapInstanceRef.current && !mapReady) {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (map.isStyleLoaded()) {
       setMapReady(true);
+    } else {
+      map.once('load', () => setMapReady(true));
     }
   });
 
@@ -644,9 +670,12 @@ export default function FloodCalibrationPanel() {
       .catch((err) => logger.warn('Error cargando zonas operativas:', err));
 
     return () => {
-      if (zonasLayerRef.current && map) {
-        map.removeLayer(zonasLayerRef.current);
-        zonasLayerRef.current = null;
+      const m = mapInstanceRef.current;
+      if (m) {
+        ['zonas-fill', 'zonas-line'].forEach((id) => {
+          if (m.getLayer(id)) m.removeLayer(id);
+        });
+        if (m.getSource('zonas')) m.removeSource('zonas');
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -654,46 +683,72 @@ export default function FloodCalibrationPanel() {
 
   // ─── Render / update zone styles ───────────────────────────
 
-  const renderZonas = useCallback((map: L.Map, geojson: FeatureCollection) => {
-    if (zonasLayerRef.current) {
-      map.removeLayer(zonasLayerRef.current);
-    }
-
+  const renderZonas = useCallback((map: maplibregl.Map, geojson: FeatureCollection) => {
     const currentLabels = useFloodCalibrationStore.getState().labeledZones;
 
-    const layer = L.geoJSON(geojson, {
-      style: (feature) => {
-        const zonaId = feature?.properties?.id || feature?.id;
-        return getZoneStyle(String(zonaId), currentLabels);
-      },
-      onEachFeature: (feature: Feature, featureLayer: L.Layer) => {
+    // Build a colored FeatureCollection where each feature gets a color property
+    const colored: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: geojson.features.map((f) => {
+        const zonaId = String(f.properties?.id || f.id);
+        const paint = getZonePaint(zonaId, currentLabels);
+        return {
+          ...f,
+          properties: { ...f.properties, _fillColor: paint.fillColor, _color: paint.color, _fillOpacity: paint.fillOpacity },
+        };
+      }),
+    };
+
+    const SOURCE_ID = 'zonas';
+    const FILL_LAYER = 'zonas-fill';
+    const LINE_LAYER = 'zonas-line';
+
+    if (map.getSource(SOURCE_ID)) {
+      (map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource).setData(colored);
+    } else {
+      map.addSource(SOURCE_ID, { type: 'geojson', data: colored });
+
+      map.addLayer({
+        id: FILL_LAYER,
+        type: 'fill',
+        source: SOURCE_ID,
+        paint: {
+          'fill-color': ['get', '_fillColor'],
+          'fill-opacity': ['get', '_fillOpacity'],
+        },
+      });
+
+      map.addLayer({
+        id: LINE_LAYER,
+        type: 'line',
+        source: SOURCE_ID,
+        paint: {
+          'line-color': ['get', '_color'],
+          'line-width': 2,
+        },
+      });
+
+      // Click handler
+      map.on('click', FILL_LAYER, (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
         const zonaId = String(feature.properties?.id || feature.id);
-        const zonaName = feature.properties?.nombre || feature.properties?.name || zonaId;
+        toggleZoneLabel(zonaId);
+      });
 
-        // Tooltip with zone name
-        (featureLayer as L.Path).bindTooltip(zonaName, {
-          sticky: true,
-          className: 'zona-tooltip',
-        });
-
-        // Click to toggle label
-        featureLayer.on('click', () => {
-          toggleZoneLabel(zonaId);
-        });
-      },
-    }).addTo(map);
-
-    zonasLayerRef.current = layer;
+      map.on('mouseenter', FILL_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', FILL_LAYER, () => { map.getCanvas().style.cursor = ''; });
+    }
   }, [toggleZoneLabel]);
 
   // Re-render zone styles when labels change
   useEffect(() => {
     const map = mapInstanceRef.current;
     const geojson = zonasDataRef.current;
-    if (!map || !geojson) return;
+    if (!map || !geojson || !mapReady) return;
 
     renderZonas(map, geojson);
-  }, [labeledZones, renderZonas]);
+  }, [labeledZones, renderZonas, mapReady]);
 
   // ─── Fetch available dates ──────────────────────────────────
 
@@ -760,17 +815,34 @@ export default function FloodCalibrationPanel() {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
+    const SOURCE_ID = 'gee-cal';
+    const LAYER_ID = 'gee-cal-layer';
+
+    const apply = () => {
+      if (tileLayerIdRef.current) {
+        if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      }
+      map.addSource(SOURCE_ID, {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        attribution: 'Imagery &copy; Google Earth Engine',
+      });
+      // Insert below zonas layer so zones remain clickable on top
+      const beforeLayer = map.getLayer('zonas-fill') ? 'zonas-fill' : undefined;
+      map.addLayer(
+        { id: LAYER_ID, type: 'raster', source: SOURCE_ID, paint: { 'raster-opacity': 0.85 } },
+        beforeLayer,
+      );
+      tileLayerIdRef.current = LAYER_ID;
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+    } else {
+      map.once('load', apply);
     }
-
-    const layer = L.tileLayer(tileUrl, {
-      attribution: 'Imagery &copy; Google Earth Engine',
-      maxZoom: 18,
-      opacity: 0.85,
-    }).addTo(map);
-
-    tileLayerRef.current = layer;
   }, []);
 
   // ─── Calendar navigation ───────────────────────────────────

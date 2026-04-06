@@ -29,7 +29,8 @@ import { DatePickerInput } from '@mantine/dates';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { type Sugerencia, type SugerenciasStats, sugerenciasApi, apiFetch } from '../../../lib/api';
 import { useWaterways } from '../../../hooks/useWaterways';
 import { formatDate } from '../../../lib/formatters';
@@ -50,7 +51,6 @@ import {
   IconBuilding,
 } from '../../ui/icons';
 import { MAP_CENTER } from '../../../constants';
-import 'leaflet/dist/leaflet.css';
 
 interface SeguimientoEntry {
   id: string;
@@ -222,6 +222,104 @@ function StatsCard({
       </Group>
     </Card>
   );
+}
+
+// ─── Mini-map for suggestion geometry preview ─────────────────────────────────
+
+interface SugerenciaGeometryMapProps {
+  readonly geometry: Sugerencia['geometry'];
+  readonly canales: Array<{ id: string; data: import('geojson').FeatureCollection; style: { color?: string; weight?: number; opacity?: number } }>;
+}
+
+function SugerenciaGeometryMap({ geometry, canales }: SugerenciaGeometryMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; OpenStreetMap',
+          },
+        },
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+      },
+      center: [MAP_CENTER[1], MAP_CENTER[0]],
+      zoom: 12,
+    });
+
+    map.on('load', () => {
+      // Canales existentes as reference
+      for (const canal of canales) {
+        const sourceId = `canal-${canal.id}`;
+        const layerId = `canal-${canal.id}-line`;
+        if (!map.getSource(sourceId)) {
+          map.addSource(sourceId, { type: 'geojson', data: canal.data });
+          map.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': canal.style.color ?? '#0B3D91',
+              'line-width': canal.style.weight ?? 2,
+              'line-opacity': canal.style.opacity ?? 0.8,
+            },
+          });
+        }
+      }
+
+      // Suggested geometry in violet
+      if (geometry) {
+        map.addSource('sugerencia-geom', { type: 'geojson', data: geometry as import('geojson').FeatureCollection });
+        map.addLayer({
+          id: 'sugerencia-geom-line',
+          type: 'line',
+          source: 'sugerencia-geom',
+          paint: { 'line-color': '#7B1FA2', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [8, 6] },
+        });
+
+        // Auto-fit to suggestion
+        const coords: [number, number][] = [];
+        for (const f of (geometry as import('geojson').FeatureCollection).features) {
+          if (f.geometry.type === 'LineString') {
+            for (const c of f.geometry.coordinates) {
+              coords.push([c[0] as number, c[1] as number]);
+            }
+          }
+        }
+        if (coords.length > 0) {
+          const lngs = coords.map(([lng]) => lng);
+          const lats = coords.map(([, lat]) => lat);
+          try {
+            map.fitBounds(
+              [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+              { padding: 40, maxZoom: 14 }
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+    });
+
+    mapInstanceRef.current = map;
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />;
 }
 
 export default function SugerenciasPanel() {
@@ -853,21 +951,10 @@ export default function SugerenciasPanel() {
                     </Badge>
                   </Group>
                   <Box style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
-                    <MapContainer center={MAP_CENTER} zoom={12} style={{ width: '100%', height: '100%' }}>
-                      <TileLayer
-                        attribution="&copy; OpenStreetMap"
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
-                      {waterways
-                        .filter((layer) => layer.id === 'canales_existentes')
-                        .map((layer) => (
-                          <GeoJSON key={layer.id} data={layer.data} style={layer.style} />
-                        ))}
-                      <GeoJSON
-                        data={selectedSugerencia.geometry as any}
-                        style={{ color: '#7B1FA2', weight: 4, opacity: 0.95, dashArray: '8 6' }}
-                      />
-                    </MapContainer>
+                    <SugerenciaGeometryMap
+                      geometry={selectedSugerencia.geometry}
+                      canales={waterways.filter((l) => l.id === 'canales_existentes')}
+                    />
                   </Box>
                   <Text size="xs" c="dimmed" mt={6}>
                     Línea sugerida en violeta. `Canales existentes` se muestran como referencia en azul oscuro.

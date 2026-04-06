@@ -19,8 +19,9 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeatureCollection } from 'geojson';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { useWaterways } from '../hooks/useWaterways';
@@ -31,9 +32,7 @@ import { LiveRegionProvider } from './ui/accessibility';
 import { IconCheck } from './ui/icons';
 import { ContactVerificationSection } from './verification';
 import { MAP_CENTER } from '../constants';
-import { TILE_LAYERS } from '../constants/mapStyles';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
-import 'leaflet/dist/leaflet.css';
 import formStyles from '../styles/components/form.module.css';
 
 const CATEGORIAS = [
@@ -202,19 +201,6 @@ function GeometrySummary({ geometry }: Readonly<{ geometry: DrawnLineFeatureColl
   );
 }
 
-function SuggestionMapReady() {
-  const map = useMap();
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-    return () => window.clearTimeout(timeoutId);
-  }, [map]);
-
-  return null;
-}
-
 function SuggestionGeometrySection({
   geometry,
   onChange,
@@ -224,10 +210,100 @@ function SuggestionGeometrySection({
 }>) {
   const { waterways } = useWaterways();
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>('satellite');
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+
   const existingChannels = useMemo(
     () => waterways.filter((layer) => layer.id === 'canales_existentes'),
     [waterways],
   );
+
+  const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const SATELLITE_TILES =
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          basemap: {
+            type: 'raster',
+            tiles: [SATELLITE_TILES],
+            tileSize: 256,
+            attribution: 'Tiles &copy; Esri',
+          },
+        },
+        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+      },
+      center: [MAP_CENTER[1], MAP_CENTER[0]], // MapLibre: [lng, lat]
+      zoom: 12,
+    });
+
+    map.on('load', () => {
+      mapInstanceRef.current = map;
+      setMapReady(true);
+    });
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      setMapReady(false);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switch base layer
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    const tileUrl = baseLayer === 'satellite' ? SATELLITE_TILES : OSM_TILES;
+    const source = map.getSource('basemap') as maplibregl.RasterTileSource | undefined;
+    if (source) {
+      source.setTiles([tileUrl]);
+    }
+  }, [baseLayer, mapReady]);
+
+  // Render existing canales layer
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady || existingChannels.length === 0) return;
+
+    for (const layer of existingChannels) {
+      const sourceId = `ww-${layer.id}`;
+      const layerId = `ww-${layer.id}-line`;
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, { type: 'geojson', data: layer.data as FeatureCollection });
+      }
+      if (!map.getLayer(layerId)) {
+        map.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': (layer.style as { color?: string })?.color ?? '#0B3D91',
+            'line-width': (layer.style as { weight?: number })?.weight ?? 2,
+            'line-opacity': (layer.style as { opacity?: number })?.opacity ?? 0.8,
+          },
+        });
+      }
+    }
+
+    return () => {
+      for (const layer of existingChannels) {
+        const sourceId = `ww-${layer.id}`;
+        const layerId = `ww-${layer.id}-line`;
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      }
+    };
+  }, [existingChannels, mapReady]);
 
   return (
     <Stack gap="xs">
@@ -253,17 +329,14 @@ function SuggestionGeometrySection({
       </Text>
 
       <Box className={formStyles.mapContainer} style={{ height: 360 }}>
-        <MapContainer center={MAP_CENTER} zoom={12} style={{ width: '100%', height: '100%' }}>
-          <TileLayer
-            attribution={TILE_LAYERS[baseLayer].attribution}
-            url={TILE_LAYERS[baseLayer].url}
+        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        {mapReady && mapInstanceRef.current && (
+          <LineDrawControl
+            map={mapInstanceRef.current}
+            value={geometry}
+            onChange={onChange}
           />
-          <SuggestionMapReady />
-          {existingChannels.map((layer) => (
-            <GeoJSON key={layer.id} data={layer.data as FeatureCollection} style={layer.style} />
-          ))}
-          <LineDrawControl value={geometry} onChange={onChange} />
-        </MapContainer>
+        )}
       </Box>
 
       <Text size="xs" c="dimmed">

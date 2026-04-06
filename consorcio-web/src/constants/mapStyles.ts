@@ -3,7 +3,15 @@
  * Used across MapaLeaflet, MapaAnalisis, TrainingMap, etc.
  */
 
-import type { PathOptions } from 'leaflet';
+/** Minimal path style options (replaces Leaflet PathOptions). */
+export interface PathOptions {
+  color?: string;
+  weight?: number;
+  fillOpacity?: number;
+  fillColor?: string;
+  opacity?: number;
+  dashArray?: string;
+}
 
 // ===========================================
 // LAYER COLORS (hex codes)
