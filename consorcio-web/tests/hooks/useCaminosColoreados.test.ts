@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
+import { createQueryWrapper } from '../test-utils';
 
 // Mock API module
 vi.mock('../../src/lib/api', () => ({
@@ -37,10 +38,13 @@ const mockResponse = {
 let mockFetch: ReturnType<typeof vi.fn>;
 
 describe('useCaminosColoreados', () => {
+  let wrapper: ReturnType<typeof createQueryWrapper>;
+
   beforeEach(() => {
     mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
-    
+    wrapper = createQueryWrapper();
+
     // Set default mock response
     mockFetch.mockResolvedValue({
       ok: true,
@@ -59,7 +63,7 @@ describe('useCaminosColoreados', () => {
 
   describe('Initial state', () => {
     it('should initialize with loading=true (not false)', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       // Catch mutation: useState(true) -> useState(false)
       expect(result.current.loading).toBe(true);
@@ -67,32 +71,32 @@ describe('useCaminosColoreados', () => {
     });
 
     it('should initialize with null caminos', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.caminos).toBeNull();
     });
 
     it('should initialize with empty consorcios array', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.consorcios).toEqual([]);
       expect(result.current.consorcios.length).toBe(0);
     });
 
     it('should initialize with null metadata', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.metadata).toBeNull();
     });
 
     it('should initialize with null error', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.error).toBeNull();
     });
 
     it('should return proper hook interface', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current).toHaveProperty('caminos');
       expect(result.current).toHaveProperty('consorcios');
@@ -109,7 +113,7 @@ describe('useCaminosColoreados', () => {
 
   describe('Data loading', () => {
     it('should set loading to false after fetch completes', async () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.loading).toBe(true);
 
@@ -117,7 +121,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches mutation: should set loading to false (not true)', async () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(result.current.loading).toBe(true);
 
@@ -136,18 +140,18 @@ describe('useCaminosColoreados', () => {
   describe('API URL and fetch', () => {
     it('catches StringLiteral mutation: should use exact API endpoint URL', async () => {
       // Default mock already set in beforeEach
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
       // Verify the exact URL was called (check the first call)
       const calls = mockFetch.mock.calls;
       expect(calls.length).toBeGreaterThan(0);
-      expect(calls[0][0]).toBe('http://localhost:8000/api/v1/gee/layers/caminos/coloreados');
+      expect(calls[0][0]).toBe('http://localhost:8000/api/v2/geo/gee/layers/caminos/coloreados');
     });
 
     it('catches StringLiteral mutation: should not call with empty URL', async () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -168,7 +172,7 @@ describe('useCaminosColoreados', () => {
         json: async () => mockResponse,
       }));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -184,7 +188,7 @@ describe('useCaminosColoreados', () => {
         json: async () => mockResponse,
       }));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -199,7 +203,7 @@ describe('useCaminosColoreados', () => {
         json: async () => mockResponse,
       }));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -213,7 +217,7 @@ describe('useCaminosColoreados', () => {
         json: async () => mockResponse,
       }));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
 
@@ -228,7 +232,7 @@ describe('useCaminosColoreados', () => {
 
   describe('FeatureCollection structure', () => {
     it('catches StringLiteral mutation: type must be FeatureCollection not empty string', async () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -247,7 +251,7 @@ describe('useCaminosColoreados', () => {
     it('should handle fetch errors gracefully', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -260,7 +264,7 @@ describe('useCaminosColoreados', () => {
         status: 500,
       }));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -270,7 +274,7 @@ describe('useCaminosColoreados', () => {
     it('catches mutation: should set loading false on error', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -280,7 +284,7 @@ describe('useCaminosColoreados', () => {
     it('catches StringLiteral mutation: should use exact error message prefix', async () => {
       mockFetch.mockRejectedValueOnce(new Error('API Error'));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
 
@@ -291,7 +295,7 @@ describe('useCaminosColoreados', () => {
     it('catches StringLiteral mutation: should not use empty error prefix', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Test error'));
 
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.error).not.toBeNull(), { timeout: 3000 });
 
@@ -305,13 +309,13 @@ describe('useCaminosColoreados', () => {
 
   describe('Reload function', () => {
     it('should expose callable reload function', () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(typeof result.current.reload).toBe('function');
     });
 
     it('should be callable and return a promise', async () => {
-      const { result } = renderHook(() => useCaminosColoreados());
+      const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 3000 });
 
@@ -333,7 +337,7 @@ describe('useCaminosColoreados', () => {
 
   describe('Cleanup', () => {
     it('should clean up on unmount', () => {
-      const { unmount } = renderHook(() => useCaminosColoreados());
+      const { unmount } = renderHook(() => useCaminosColoreados(), { wrapper });
 
       expect(() => unmount()).not.toThrow();
     });

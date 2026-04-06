@@ -290,14 +290,14 @@ describe('ProfilePanel', () => {
       expect(screen.getByRole('heading', { name: /Cuenta/i, level: 3 })).toBeInTheDocument();
     });
 
-    it('should display member since date', () => {
+    it('should display user email in account section', () => {
       renderWithMantine(<ProfilePanel />);
-      expect(screen.getByText(/Miembro desde:/i)).toBeInTheDocument();
+      expect(screen.getByText('test@example.com')).toBeInTheDocument();
     });
 
-    it('should format date correctly', () => {
+    it('should display user name in account section', () => {
       renderWithMantine(<ProfilePanel />);
-      expect(screen.getByText(/01\/01\/2025/i)).toBeInTheDocument();
+      expect(screen.getByText('Juan Perez')).toBeInTheDocument();
     });
   });
 

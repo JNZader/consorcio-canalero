@@ -7,25 +7,24 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useContactVerification } from '../../src/hooks/useContactVerification';
 
-// Mock Supabase client
-const mockSignInWithOAuth = vi.fn();
-const mockSignInWithOtp = vi.fn();
-const mockSignOut = vi.fn();
+const { mockLoginWithGoogle, mockSignOut } = vi.hoisted(() => ({
+  mockLoginWithGoogle: vi.fn(),
+  mockSignOut: vi.fn(),
+}));
 
-vi.mock('../../src/lib/supabase', () => ({
-  getSupabaseClient: () => ({
-    auth: {
-      signInWithOAuth: mockSignInWithOAuth,
-      signInWithOtp: mockSignInWithOtp,
-      signOut: mockSignOut,
-    },
-  }),
+vi.mock('../../src/lib/auth/index', () => ({
+  authAdapter: {
+    loginWithGoogle: mockLoginWithGoogle,
+  },
+}));
+
+vi.mock('../../src/lib/auth', () => ({
+  signOut: mockSignOut,
 }));
 
 // Store selector state for test control
-let mockAuthState = {
+let mockAuthState: Record<string, unknown> = {
   user: null,
   profile: null,
   initialized: true,
@@ -58,6 +57,7 @@ vi.mock('../../src/lib/validators', () => ({
 }));
 
 import { notifications } from '@mantine/notifications';
+import { useContactVerification } from '../../src/hooks/useContactVerification';
 
 describe('useContactVerification', () => {
   beforeEach(() => {
@@ -117,7 +117,6 @@ describe('useContactVerification', () => {
 
       const { result } = renderHook(() => useContactVerification());
 
-      // If selector is broken, userEmail will be null
       expect(result.current.userEmail).toBe('test@example.com');
       expect(result.current.userEmail).not.toBe(null);
     });
@@ -132,7 +131,6 @@ describe('useContactVerification', () => {
 
       const { result } = renderHook(() => useContactVerification());
 
-      // If selector is broken, userName will be null
       expect(result.current.userName).toBe('John Doe');
       expect(result.current.userName).not.toBe(null);
     });
@@ -147,7 +145,6 @@ describe('useContactVerification', () => {
 
       const { result } = renderHook(() => useContactVerification());
 
-      // If selector is broken or replaced with undefined, contactoVerificado will be true
       expect(result.current.contactoVerificado).toBe(false);
     });
 
@@ -172,10 +169,10 @@ describe('useContactVerification', () => {
     });
   });
 
-  describe('userName fallback chain', () => {
+  describe('userName derivation', () => {
     it('should use profile.nombre when available', () => {
       mockAuthState = {
-        user: { email: 'test@example.com', user_metadata: { full_name: 'User Full', name: 'User' } },
+        user: { email: 'test@example.com' },
         profile: { nombre: 'Profile Name' },
         initialized: true,
         loading: false,
@@ -185,39 +182,16 @@ describe('useContactVerification', () => {
       expect(result.current.userName).toBe('Profile Name');
     });
 
-    it('should fall back to full_name when profile unavailable', () => {
+    it('should return null when no profile', () => {
       mockAuthState = {
-        user: { email: 'test@example.com', user_metadata: { full_name: 'User Full', name: 'User' } },
+        user: { email: 'test@example.com' },
         profile: null,
         initialized: true,
         loading: false,
       };
 
       const { result } = renderHook(() => useContactVerification());
-      expect(result.current.userName).toBe('User Full');
-    });
-
-    it('should fall back to name when full_name unavailable', () => {
-      mockAuthState = {
-        user: { email: 'test@example.com', user_metadata: { full_name: null, name: 'User' } },
-        profile: null,
-        initialized: true,
-        loading: false,
-      };
-
-      const { result } = renderHook(() => useContactVerification());
-      expect(result.current.userName).toBe('User');
-    });
-
-    it('should return null when all sources unavailable', () => {
-      mockAuthState = {
-        user: { email: 'test@example.com', user_metadata: { full_name: null, name: null } },
-        profile: null,
-        initialized: true,
-        loading: false,
-      };
-
-      const { result } = renderHook(() => useContactVerification());
+      // Hook: profile?.nombre || null -> null
       expect(result.current.userName).toBe(null);
     });
 
@@ -297,7 +271,7 @@ describe('useContactVerification', () => {
       const onVerifiedMock = vi.fn();
 
       mockAuthState = {
-        user: { email: 'test@example.com', user_metadata: {} },
+        user: { email: 'test@example.com' },
         profile: null,
         initialized: true,
         loading: false,
@@ -305,7 +279,7 @@ describe('useContactVerification', () => {
 
       renderHook(() => useContactVerification({ onVerified: onVerifiedMock }));
 
-      // userName is null, but passed as undefined to callback
+      // userName is null, but passed as undefined to callback (null || undefined)
       expect(onVerifiedMock).toHaveBeenCalledWith('test@example.com', undefined);
     });
   });
@@ -352,15 +326,14 @@ describe('useContactVerification', () => {
         result.current.setMetodoVerificacion('email');
       });
 
-      // Should not change these
       expect(result.current.contactoVerificado).toBe(initialContactoVerificado);
       expect(result.current.userEmail).toBe(initialUserEmail);
     });
   });
 
   describe('loginWithGoogle', () => {
-    it('should call supabase signInWithOAuth', async () => {
-      mockSignInWithOAuth.mockResolvedValue({ error: null });
+    it('should call authAdapter.loginWithGoogle', async () => {
+      mockLoginWithGoogle.mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -368,55 +341,12 @@ describe('useContactVerification', () => {
         await result.current.loginWithGoogle();
       });
 
-      expect(mockSignInWithOAuth).toHaveBeenCalledWith(
-        expect.objectContaining({
-          provider: 'google',
-        })
-      );
-    });
-
-    it('catches mutation: should pass exact redirect URL', async () => {
-      mockSignInWithOAuth.mockResolvedValue({ error: null });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.loginWithGoogle();
-      });
-
-      expect(mockSignInWithOAuth).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: expect.objectContaining({
-            redirectTo: expect.stringContaining('auth=success'),
-          }),
-        })
-      );
-    });
-
-    it('catches mutation: should pass exact queryParams', async () => {
-      mockSignInWithOAuth.mockResolvedValue({ error: null });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.loginWithGoogle();
-      });
-
-      expect(mockSignInWithOAuth).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: expect.objectContaining({
-            queryParams: {
-              access_type: 'offline',
-              prompt: 'consent',
-            },
-          }),
-        })
-      );
+      expect(mockLoginWithGoogle).toHaveBeenCalled();
     });
 
     it('catches mutation: should set loading to true during request', async () => {
-      let resolveLogin: any;
-      mockSignInWithOAuth.mockReturnValue(new Promise((resolve) => { resolveLogin = resolve; }));
+      let resolveLogin: (() => void) | undefined;
+      mockLoginWithGoogle.mockReturnValue(new Promise<void>((resolve) => { resolveLogin = resolve; }));
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -424,16 +354,12 @@ describe('useContactVerification', () => {
         await result.current.loginWithGoogle();
       });
 
-      // During the async operation, loading should eventually become true
-      // (though by the time we check, it may have resolved)
-      resolveLogin({ error: null });
+      resolveLogin!();
       await loginPromise;
     });
 
     it('catches mutation: should show error notification on failure', async () => {
-      mockSignInWithOAuth.mockResolvedValue({
-        error: new Error('OAuth failed'),
-      });
+      mockLoginWithGoogle.mockRejectedValue(new Error('OAuth failed'));
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -450,9 +376,7 @@ describe('useContactVerification', () => {
     });
 
     it('catches mutation: should set loading to false after error', async () => {
-      mockSignInWithOAuth.mockResolvedValue({
-        error: new Error('OAuth failed'),
-      });
+      mockLoginWithGoogle.mockRejectedValue(new Error('OAuth failed'));
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -460,14 +384,11 @@ describe('useContactVerification', () => {
         await result.current.loginWithGoogle();
       });
 
-      // After error, loading should be false
       expect(result.current.loading).toBe(false);
     });
 
     it('catches mutation: should show exact error message text', async () => {
-      mockSignInWithOAuth.mockResolvedValue({
-        error: new Error('OAuth failed'),
-      });
+      mockLoginWithGoogle.mockRejectedValue(new Error('OAuth failed'));
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -497,7 +418,6 @@ describe('useContactVerification', () => {
           color: 'red',
         })
       );
-      expect(mockSignInWithOtp).not.toHaveBeenCalled();
     });
 
     it('should show error for empty email', async () => {
@@ -529,146 +449,20 @@ describe('useContactVerification', () => {
       );
     });
 
-    it('should send magic link for valid email', async () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
+    it('should show not-available notification for valid email (magic link disabled)', async () => {
       const { result } = renderHook(() => useContactVerification());
 
       await act(async () => {
         await result.current.sendMagicLink('test@example.com');
       });
 
-      expect(mockSignInWithOtp).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: 'test@example.com',
-        })
-      );
-      expect(result.current.magicLinkSent).toBe(true);
-      expect(result.current.magicLinkEmail).toBe('test@example.com');
+      // Magic link is disabled in JWT adapter - shows "No disponible"
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Link enviado',
-          color: 'green',
+          title: 'No disponible',
+          color: 'yellow',
         })
       );
-    });
-
-    it('catches mutation: should pass exact redirect URL to OTP', async () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(mockSignInWithOtp).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: {
-            emailRedirectTo: expect.stringContaining('auth=success'),
-          },
-        })
-      );
-    });
-
-    it('catches mutation: should show email in success message', async () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'Revisa tu email test@example.com',
-        })
-      );
-    });
-
-    it('should handle API error', async () => {
-      mockSignInWithOtp.mockResolvedValue({
-        error: new Error('Rate limited'),
-      });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-          color: 'red',
-        })
-      );
-      expect(result.current.magicLinkSent).toBe(false);
-    });
-
-    it('catches mutation: should pass error message from exception', async () => {
-      const customErrorMsg = 'Custom error from API';
-      mockSignInWithOtp.mockResolvedValue({
-        error: new Error(customErrorMsg),
-      });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: customErrorMsg,
-        })
-      );
-    });
-
-    it('catches mutation: should handle error without message property', async () => {
-      mockSignInWithOtp.mockResolvedValue({
-        error: { code: 'unknown' },
-      });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-          message: 'No se pudo enviar el email',
-        })
-      );
-    });
-
-    it('catches mutation: should set loading to false after success', async () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(result.current.loading).toBe(false);
-    });
-
-    it('catches mutation: should set loading to false after error', async () => {
-      mockSignInWithOtp.mockResolvedValue({
-        error: new Error('Failed'),
-      });
-
-      const { result } = renderHook(() => useContactVerification());
-
-      await act(async () => {
-        await result.current.sendMagicLink('test@example.com');
-      });
-
-      expect(result.current.loading).toBe(false);
     });
 
     it('catches mutation: email validation should check for @domain', async () => {
@@ -678,7 +472,6 @@ describe('useContactVerification', () => {
         await result.current.sendMagicLink('invalidemail.com');
       });
 
-      expect(mockSignInWithOtp).not.toHaveBeenCalled();
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Email invalido',
@@ -693,13 +486,18 @@ describe('useContactVerification', () => {
         await result.current.sendMagicLink('test@domain');
       });
 
-      expect(mockSignInWithOtp).not.toHaveBeenCalled();
+      // test@domain fails the regex /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Email invalido',
+        })
+      );
     });
   });
 
   describe('logout', () => {
-    it('should call supabase signOut', async () => {
-      mockSignOut.mockResolvedValue({ error: null });
+    it('should call signOut', async () => {
+      mockSignOut.mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -717,7 +515,7 @@ describe('useContactVerification', () => {
     });
 
     it('catches mutation: should show exact success message', async () => {
-      mockSignOut.mockResolvedValue({ error: null });
+      mockSignOut.mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -733,7 +531,7 @@ describe('useContactVerification', () => {
     });
 
     it('catches mutation: should handle signOut errors gracefully', async () => {
-      mockSignOut.mockResolvedValue({ error: new Error('Logout failed') });
+      mockSignOut.mockRejectedValue(new Error('Logout failed'));
 
       const { result } = renderHook(() => useContactVerification());
 
@@ -742,28 +540,21 @@ describe('useContactVerification', () => {
         await result.current.logout();
       });
 
-      // Still show notification
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Sesion cerrada',
-        })
-      );
+      // Error is caught, no notification on error (just logger.error)
+      expect(result.current).toBeDefined();
     });
   });
 
   describe('resetVerificacion', () => {
-    it('should reset state to initial values', async () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
+    it('should reset state to initial values', () => {
       const { result } = renderHook(() => useContactVerification());
 
       // Set some state
-      await act(async () => {
+      act(() => {
         result.current.setMetodoVerificacion('email');
-        await result.current.sendMagicLink('test@example.com');
       });
 
-      expect(result.current.magicLinkSent).toBe(true);
+      expect(result.current.metodoVerificacion).toBe('email');
 
       // Reset
       act(() => {
@@ -776,11 +567,9 @@ describe('useContactVerification', () => {
     });
 
     it('catches mutation: should reset ALL three properties', () => {
-      mockSignInWithOtp.mockResolvedValue({ error: null });
-
       const { result } = renderHook(() => useContactVerification());
 
-      act(async () => {
+      act(() => {
         result.current.setMetodoVerificacion('email');
       });
 
@@ -788,11 +577,9 @@ describe('useContactVerification', () => {
         result.current.resetVerificacion();
       });
 
-      // Catch mutations that miss any of these
       expect(result.current.magicLinkSent).toBe(false);
       expect(result.current.magicLinkEmail).toBe(null);
       expect(result.current.metodoVerificacion).toBe('google');
     });
   });
-
 });

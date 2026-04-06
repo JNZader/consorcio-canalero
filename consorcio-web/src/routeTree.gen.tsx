@@ -50,6 +50,7 @@ const SarTemporalPanel = lazy(() => import('./components/admin/SarTemporalPanel'
 const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'));
 const FloodCalibrationPanel = lazy(() => import('./components/admin/FloodCalibrationPanel'));
 const CanalSuggestionsPanel = lazy(() => import('./components/admin/CanalSuggestionsPanel'));
+const FloodFlowPanel = lazy(() => import('./components/admin/FloodFlowPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -523,6 +524,12 @@ const adminCanalSuggestionsRoute = createRoute({
   component: () => <CanalSuggestionsPanel />,
 });
 
+const adminFloodFlowRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/flood-flow',
+  component: () => <FloodFlowPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -535,6 +542,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminDemPipelineRoute,
   adminFloodCalibrationRoute,
   adminCanalSuggestionsRoute,
+  adminFloodFlowRoute,
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,

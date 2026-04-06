@@ -19,6 +19,15 @@ vi.mock('../../src/lib/api', async (importOriginal) => {
   };
 });
 
+vi.mock('../../src/lib/logger', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 describe('TramitesPanel canonical states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,7 +44,7 @@ describe('TramitesPanel canonical states', () => {
     ])(
       'filters state=%s correctly (expected=%s, shown=%s)',
       async (estado, esperado, debeMostrarse) => {
-        mockApiFetch.mockResolvedValueOnce([
+        mockApiFetch.mockResolvedValueOnce({ items: [
           {
             id: 'tramite-1',
             titulo: `Tramite-${estado}`,
@@ -43,7 +52,7 @@ describe('TramitesPanel canonical states', () => {
             estado,
             ultima_actualizacion: '2026-03-01T10:00:00Z',
           },
-        ]);
+        ], total: 1 });
 
         render(
           <MantineProvider>
@@ -64,7 +73,7 @@ describe('TramitesPanel canonical states', () => {
     );
 
     it('renders only tramites with canonical states', async () => {
-      mockApiFetch.mockResolvedValueOnce([
+      mockApiFetch.mockResolvedValueOnce({ items: [
         {
           id: 'tramite-1',
           titulo: 'Tramite valido',
@@ -79,7 +88,7 @@ describe('TramitesPanel canonical states', () => {
           estado: 'iniciado',
           ultima_actualizacion: '2026-03-01T10:00:00Z',
         },
-      ]);
+      ], total: 1 });
 
       render(
         <MantineProvider>
@@ -111,7 +120,7 @@ describe('TramitesPanel canonical states', () => {
     });
 
     it('handles null or undefined states gracefully', async () => {
-      mockApiFetch.mockResolvedValueOnce([
+      mockApiFetch.mockResolvedValueOnce({ items: [
         {
           id: 'tramite-1',
           titulo: 'Tramite valido',
@@ -133,7 +142,7 @@ describe('TramitesPanel canonical states', () => {
           // estado is undefined
           ultima_actualizacion: '2026-03-01T10:00:00Z',
         },
-      ]);
+      ], total: 1 });
 
       render(
         <MantineProvider>
@@ -151,10 +160,10 @@ describe('TramitesPanel canonical states', () => {
     it('creates a new expediente from modal form', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [];
+        if (path === '/tramites' && !options) {
+          return { items: [], total: 0 };
         }
-        if (path === '/management/tramites' && options?.method === 'POST') {
+        if (path === '/tramites' && options?.method === 'POST') {
           return { id: 'tramite-2' };
         }
         return [];
@@ -176,7 +185,7 @@ describe('TramitesPanel canonical states', () => {
 
       await waitFor(() => {
         expect(mockApiFetch).toHaveBeenCalledWith(
-          '/management/tramites',
+          '/tramites',
           expect.objectContaining({ method: 'POST' })
         );
       });
@@ -185,8 +194,8 @@ describe('TramitesPanel canonical states', () => {
     it('validates form fields before submission', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [];
+        if (path === '/tramites' && !options) {
+          return { items: [], total: 0 };
         }
         return [];
       });
@@ -217,10 +226,10 @@ describe('TramitesPanel canonical states', () => {
     it('closes modal after successful creation', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [];
+        if (path === '/tramites' && !options) {
+          return { items: [], total: 0 };
         }
-        if (path === '/management/tramites' && options?.method === 'POST') {
+        if (path === '/tramites' && options?.method === 'POST') {
           return { id: 'tramite-2' };
         }
         return [];
@@ -250,8 +259,8 @@ describe('TramitesPanel canonical states', () => {
     it('opens history modal with timeline entries', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -259,10 +268,10 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
 
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',
@@ -300,8 +309,8 @@ describe('TramitesPanel canonical states', () => {
     it('displays multiple timeline entries in correct order', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -309,10 +318,10 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
 
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',
@@ -369,8 +378,8 @@ describe('TramitesPanel canonical states', () => {
     it('handles empty avances array', async () => {
       const user = userEvent.setup();
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -378,10 +387,10 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
 
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',
@@ -418,8 +427,8 @@ describe('TramitesPanel canonical states', () => {
         .mockReturnValue('blob:tramite-pdf');
 
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -427,9 +436,9 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',
@@ -460,7 +469,7 @@ describe('TramitesPanel canonical states', () => {
 
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v1/management/tramites/tramite-1/export-pdf',
+          'http://localhost:8000/api/v2/tramites/tramite-1/export-pdf',
           expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
         );
       });
@@ -475,8 +484,8 @@ describe('TramitesPanel canonical states', () => {
       const user = userEvent.setup();
 
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -484,9 +493,9 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',
@@ -524,8 +533,8 @@ describe('TramitesPanel canonical states', () => {
       vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:tramite-pdf');
 
       mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-        if (path === '/management/tramites' && !options) {
-          return [
+        if (path === '/tramites' && !options) {
+          return { items: [
             {
               id: 'tramite-1',
               titulo: 'Canal Norte',
@@ -533,9 +542,9 @@ describe('TramitesPanel canonical states', () => {
               estado: 'pendiente',
               ultima_actualizacion: '2026-03-01T10:00:00Z',
             },
-          ];
+          ], total: 1 };
         }
-        if (path === '/management/tramites/tramite-1') {
+        if (path === '/tramites/tramite-1') {
           return {
             id: 'tramite-1',
             titulo: 'Canal Norte',

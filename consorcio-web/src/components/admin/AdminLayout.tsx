@@ -27,6 +27,7 @@ import {
   IconMap,
   IconMountain,
   IconNetwork,
+  IconWaveSine,
   IconPhoto,
   IconSatellite,
   IconSettings,
@@ -44,6 +45,7 @@ const NAV_SECTIONS = [
       { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
       { label: 'Calibracion Inundacion', to: '/admin/flood-calibration', icon: IconDroplet },
       { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
+      { label: 'Caudal Estimado', to: '/admin/flood-flow', icon: IconWaveSine },
     ],
   },
   {

@@ -30,7 +30,7 @@ describe('PadronPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path.startsWith('/padron/consorcistas?search=')) {
+      if (path.startsWith('/padron?search=')) {
         return [
           {
             id: 'c1',
@@ -41,7 +41,7 @@ describe('PadronPanel', () => {
           },
         ];
       }
-      if (path === '/padron/consorcistas/c1/pagos') {
+      if (path === '/padron/c1/pagos') {
         return [{ id: 'p1', anio: 2025, monto: 5000, estado: 'pagado', fecha_pago: '2025-05-12' }];
       }
       return {};
@@ -94,7 +94,7 @@ describe('PadronPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/padron/consorcistas',
+        '/padron',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -108,7 +108,7 @@ describe('PadronPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path.startsWith('/padron/consorcistas?search=')) {
+      if (path.startsWith('/padron?search=')) {
         return [
           {
             id: 'c1',
@@ -119,7 +119,7 @@ describe('PadronPanel', () => {
           },
         ];
       }
-      if (path === '/padron/consorcistas/c1/pagos') {
+      if (path === '/padron/c1/pagos') {
         return [];
       }
       if (path === '/padron/pagos' && options?.method === 'POST') {
@@ -155,7 +155,7 @@ describe('PadronPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path.startsWith('/padron/consorcistas?search=')) {
+      if (path.startsWith('/padron?search=')) {
         return [
           {
             id: 'c1',
@@ -166,7 +166,7 @@ describe('PadronPanel', () => {
           },
         ];
       }
-      if (path === '/padron/consorcistas/import' && options?.method === 'POST') {
+      if (path === '/padron/import' && options?.method === 'POST') {
         return {
           filename: 'padron.csv',
           processed: 3,
@@ -191,7 +191,7 @@ describe('PadronPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/padron/consorcistas/import',
+        '/padron/import',
         expect.objectContaining({ method: 'POST' })
       );
     });

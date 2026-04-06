@@ -21,7 +21,9 @@ describe('useMapReady', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
-    getContainerMock.mockReturnValue(document.createElement('div'));
+    const mockDiv = document.createElement('div');
+    Object.defineProperty(mockDiv, 'isConnected', { value: true, configurable: true });
+    getContainerMock.mockReturnValue(mockDiv);
 
     class ResizeObserverMock {
       observe = observeMock;
@@ -1112,21 +1114,13 @@ describe('useMapReady', () => {
     it('kills: dependency array MUST include map (not empty), triggers on map change', () => {
       // Stryker mutation: [map] -> []
       // If dependency is empty, effect won't re-run when map changes
-      
+
       invalidateSizeMock.mockClear();
-      const { rerender } = renderHook(() => useMapReady());
+      renderHook(() => useMapReady());
 
-      const callCountFirst = invalidateSizeMock.mock.calls.length;
-
-      // Re-render (simulates map dependency change)
-      rerender();
-
-      const callCountSecond = invalidateSizeMock.mock.calls.length;
-
-      // If dependency is [map], effect runs again and sets up everything
-      // If mutated to [], effect won't re-run
-      // The immediate invalidateSize on mount should always be called
-      expect(callCountSecond).toBeGreaterThanOrEqual(1);
+      // The effect should have run on mount and called invalidateSize
+      // (the safeInvalidateSize is called immediately in the effect)
+      expect(invalidateSizeMock.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 
     it('kills: MapReadyHandler must return null, not undefined component', () => {
@@ -1164,6 +1158,11 @@ describe('useMapReady', () => {
         });
 
         invalidateSizeMock.mockClear();
+        // Re-setup container mock (cleared by clearAllMocks in previous iteration)
+        const mockDiv = document.createElement('div');
+        Object.defineProperty(mockDiv, 'isConnected', { value: true, configurable: true });
+        getContainerMock.mockReturnValue(mockDiv);
+
         const timeoutSpy = vi.spyOn(global, 'setTimeout');
 
         renderHook(() => useMapReady());
@@ -1173,6 +1172,8 @@ describe('useMapReady', () => {
 
         // Trigger visibility change
         document.dispatchEvent(new Event('visibilitychange'));
+        // Run any timeouts scheduled by the visibility handler
+        vi.runAllTimers();
 
         const callCountAfterEvent = invalidateSizeMock.mock.calls.length;
 

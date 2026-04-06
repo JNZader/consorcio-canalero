@@ -31,7 +31,7 @@ describe('FinanzasPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path === '/finance/gastos') {
+      if (path === '/finanzas/gastos') {
         return [
           {
             id: 'g1',
@@ -44,7 +44,7 @@ describe('FinanzasPanel', () => {
         ];
       }
 
-      if (path === '/finance/ingresos') {
+      if (path === '/finanzas/ingresos') {
         return [
           {
             id: 'i1',
@@ -57,15 +57,15 @@ describe('FinanzasPanel', () => {
         ];
       }
 
-      if (path.startsWith('/finance/balance-summary/')) {
+      if (path.startsWith('/finanzas/resumen/')) {
         return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
       }
 
-      if (path === '/finance/categorias') {
+      if (path === '/finanzas/categorias') {
         return ['combustible', 'obras'];
       }
 
-      if (path === '/finance/fuentes') {
+      if (path === '/finanzas/fuentes') {
         return ['cuotas_extra', 'subsidio'];
       }
 
@@ -92,22 +92,22 @@ describe('FinanzasPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/finance/gastos' && !options) {
+      if (path === '/finanzas/gastos' && !options) {
         return [];
       }
-      if (path === '/finance/ingresos' && !options) {
+      if (path === '/finanzas/ingresos' && !options) {
         return [];
       }
-      if (path.startsWith('/finance/balance-summary/')) {
+      if (path.startsWith('/finanzas/resumen/')) {
         return { total_ingresos: 0, total_gastos: 0, balance: 0 };
       }
-      if (path === '/finance/categorias') {
+      if (path === '/finanzas/categorias') {
         return ['obras'];
       }
-      if (path === '/finance/fuentes') {
+      if (path === '/finanzas/fuentes') {
         return ['subsidio'];
       }
-      if (path === '/finance/gastos' && options?.method === 'POST') {
+      if (path === '/finanzas/gastos' && options?.method === 'POST') {
         return { id: 'new' };
       }
       return {};
@@ -130,7 +130,7 @@ describe('FinanzasPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/finance/gastos',
+        '/finanzas/gastos',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -163,22 +163,22 @@ describe('FinanzasPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/finance/gastos' && !options) {
+      if (path === '/finanzas/gastos' && !options) {
         return [];
       }
-      if (path === '/finance/ingresos' && !options) {
+      if (path === '/finanzas/ingresos' && !options) {
         return [];
       }
-      if (path.startsWith('/finance/balance-summary/')) {
+      if (path.startsWith('/finanzas/resumen/')) {
         return { total_ingresos: 0, total_gastos: 0, balance: 0 };
       }
-      if (path === '/finance/categorias') {
+      if (path === '/finanzas/categorias') {
         return ['obras'];
       }
-      if (path === '/finance/fuentes') {
+      if (path === '/finanzas/fuentes') {
         return [];
       }
-      if (path === '/finance/ingresos' && options?.method === 'POST') {
+      if (path === '/finanzas/ingresos' && options?.method === 'POST') {
         return { id: 'ing-2' };
       }
       return {};
@@ -204,7 +204,7 @@ describe('FinanzasPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/finance/ingresos',
+        '/finanzas/ingresos',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -221,7 +221,7 @@ describe('FinanzasPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/finance/gastos' && !options) {
+      if (path === '/finanzas/gastos' && !options) {
         return [
           {
             id: 'g1',
@@ -233,19 +233,19 @@ describe('FinanzasPanel', () => {
           },
         ];
       }
-      if (path === '/finance/ingresos' && !options) {
+      if (path === '/finanzas/ingresos' && !options) {
         return [];
       }
-      if (path.startsWith('/finance/balance-summary/')) {
+      if (path.startsWith('/finanzas/resumen/')) {
         return { total_ingresos: 0, total_gastos: 12000, balance: -12000 };
       }
-      if (path === '/finance/categorias') {
+      if (path === '/finanzas/categorias') {
         return ['combustible', 'obras'];
       }
-      if (path === '/finance/fuentes') {
+      if (path === '/finanzas/fuentes') {
         return ['subsidio'];
       }
-      if (path === '/finance/gastos/g1' && options?.method === 'PATCH') {
+      if (path === '/finanzas/gastos/g1' && options?.method === 'PATCH') {
         return { id: 'g1' };
       }
       return {};
@@ -264,7 +264,7 @@ describe('FinanzasPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/finance/gastos/g1',
+        '/finanzas/gastos/g1',
         expect.objectContaining({ method: 'PATCH' })
       );
     });

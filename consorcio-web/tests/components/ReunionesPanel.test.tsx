@@ -33,7 +33,7 @@ describe('ReunionesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/reuniones' && !options) {
+      if (path === '/reuniones' && !options) {
         return [
           {
             id: 'r1',
@@ -47,19 +47,19 @@ describe('ReunionesPanel', () => {
         ];
       }
 
-      if (path === '/reports?limit=50') {
+      if (path === '/denuncias?limit=50') {
         return { items: [] };
       }
 
-      if (path === '/management/tramites') {
+      if (path === '/tramites') {
         return { data: [] };
       }
 
-      if (path === '/infrastructure/assets') {
+      if (path === '/infraestructura/assets') {
         return { results: [] };
       }
 
-      if (path === '/management/reuniones/r1/agenda') {
+      if (path === '/reuniones/r1/agenda') {
         return [
           {
             id: 'a1',
@@ -111,7 +111,7 @@ describe('ReunionesPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/management/reuniones',
+        '/reuniones',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -134,7 +134,7 @@ describe('ReunionesPanel', () => {
     }> = [];
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/reuniones' && !options) {
+      if (path === '/reuniones' && !options) {
         return [
           {
             id: 'r1',
@@ -147,19 +147,19 @@ describe('ReunionesPanel', () => {
           },
         ];
       }
-      if (path === '/reports?limit=50') {
+      if (path === '/denuncias?limit=50') {
         return { items: [] };
       }
-      if (path === '/management/tramites') {
+      if (path === '/tramites') {
         return { data: [] };
       }
-      if (path === '/infrastructure/assets') {
+      if (path === '/infraestructura/assets') {
         return { results: [] };
       }
-      if (path === '/management/reuniones/r1/agenda' && !options) {
+      if (path === '/reuniones/r1/agenda' && !options) {
         return agendaItems;
       }
-      if (path === '/management/reuniones/r1/agenda' && options?.method === 'POST') {
+      if (path === '/reuniones/r1/agenda' && options?.method === 'POST') {
         agendaItems = [
           {
             id: 'a2',
@@ -185,7 +185,7 @@ describe('ReunionesPanel', () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/management/reuniones/r1/agenda',
+        '/reuniones/r1/agenda',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -197,19 +197,19 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/reuniones' && !options) {
+      if (path === '/reuniones' && !options) {
         return [];
       }
-      if (path === '/reports?limit=50') {
+      if (path === '/denuncias?limit=50') {
         return { items: [] };
       }
-      if (path === '/management/tramites') {
+      if (path === '/tramites') {
         return { data: [] };
       }
-      if (path === '/infrastructure/assets') {
+      if (path === '/infraestructura/assets') {
         return { results: [] };
       }
-      if (path === '/management/reuniones' && options?.method === 'POST') {
+      if (path === '/reuniones' && options?.method === 'POST') {
         throw new Error('backend unavailable');
       }
       return {};
