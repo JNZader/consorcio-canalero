@@ -1000,6 +1000,13 @@ export default function MapaMapLibre() {
             layout: { visibility: 'none' },
             paint: { 'raster-opacity': 1 },
           },
+          // Sentinel: raster overlays (GEE image, DEM, IGN) are inserted BEFORE
+          // this layer so they always render beneath all vector layers.
+          {
+            id: 'vector-layers-start',
+            type: 'background',
+            paint: { 'background-color': 'rgba(0,0,0,0)', 'background-opacity': 0 },
+          },
         ],
       },
       center: center,
@@ -1420,7 +1427,7 @@ export default function MapaMapLibre() {
         type: 'raster',
         source: DEM_RASTER_SOURCE_ID,
         paint: { 'raster-opacity': 0.75 },
-      });
+      }, 'vector-layers-start');
     } else {
       setLayerVisibility(map, `${DEM_RASTER_SOURCE_ID}-layer`, true);
     }
@@ -1447,7 +1454,7 @@ export default function MapaMapLibre() {
         type: 'raster',
         source: IGN_SOURCE_ID,
         paint: { 'raster-opacity': 0.65 },
-      });
+      }, 'vector-layers-start');
     }
 
     setLayerVisibility(map, `${IGN_SOURCE_ID}-layer`, showIGNOverlay);
@@ -1482,7 +1489,7 @@ export default function MapaMapLibre() {
           type: 'raster',
           source: SATELLITE_IMAGE_SOURCE_ID,
           paint: { 'raster-opacity': 0.85 },
-        });
+        }, 'vector-layers-start');
       }
     } else {
       if (map.getLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`)) {
@@ -1507,7 +1514,7 @@ export default function MapaMapLibre() {
         type: 'raster',
         source: COMPARISON_LEFT_SOURCE_ID,
         paint: { 'raster-opacity': 0.85 },
-      });
+      }, 'vector-layers-start');
 
       if (map.getLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`);
       if (map.getSource(COMPARISON_RIGHT_SOURCE_ID)) map.removeSource(COMPARISON_RIGHT_SOURCE_ID);
@@ -1521,7 +1528,7 @@ export default function MapaMapLibre() {
         type: 'raster',
         source: COMPARISON_RIGHT_SOURCE_ID,
         paint: { 'raster-opacity': 0.85 },
-      });
+      }, 'vector-layers-start');
     } else {
       if (map.getLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`);
       if (map.getSource(COMPARISON_LEFT_SOURCE_ID)) map.removeSource(COMPARISON_LEFT_SOURCE_ID);
