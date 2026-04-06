@@ -32,6 +32,7 @@ import {
   IconSatellite,
   IconSettings,
   IconUser,
+  IconUsers,
 } from '../ui/icons';
 
 // Navigation sections
@@ -46,6 +47,7 @@ const NAV_SECTIONS = [
       { label: 'Calibracion Inundacion', to: '/admin/flood-calibration', icon: IconDroplet },
       { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
       { label: 'Caudal Estimado', to: '/admin/flood-flow', icon: IconWaveSine },
+      { label: 'Afectados por Zona', to: '/admin/afectados', icon: IconUsers },
     ],
   },
   {

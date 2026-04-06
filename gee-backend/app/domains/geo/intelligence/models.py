@@ -323,3 +323,47 @@ class CanalSuggestion(UUIDMixin, Base):
             f"<CanalSuggestion {self.id} tipo={self.tipo!r} "
             f"score={self.score} batch={self.batch_id}>"
         )
+
+
+# ── Parcela Catastro ─────────────────────────
+
+
+class ParcelaCatastro(Base):
+    """IDECOR cadastral parcel with PostGIS geometry for spatial queries."""
+
+    __tablename__ = "parcelas_catastro"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    nomenclatura: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        unique=True,
+        comment="IDECOR parcel identifier — links to consorcistas.parcela",
+    )
+    geometria: Mapped[str] = mapped_column(
+        Geometry("POLYGON", srid=4326),
+        nullable=False,
+    )
+    tipo_parcela: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    desig_oficial: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    departamento: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pedania: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    superficie_ha: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Area in hectares",
+    )
+    nro_cuenta: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    par_idparcela: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[dt_datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<ParcelaCatastro {self.id} nomenclatura={self.nomenclatura!r}>"

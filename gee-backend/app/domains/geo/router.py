@@ -3393,3 +3393,58 @@ router.include_router(intel_router, prefix="/intelligence")
 from app.domains.geo.hydrology.router import router as hydrology_router
 
 router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
+
+
+# ── Catastro / Afectados endpoints ───────────────────────────────────────────
+
+from app.domains.geo.intelligence.service import (
+    import_catastro_geojson,
+    get_afectados_zona,
+    get_afectados_evento,
+)
+from app.domains.geo.schemas import (
+    AfectadosResponse,
+    EventoAfectadosResponse,
+    ParcelaImportResult,
+)
+
+
+@router.post("/catastro/import", response_model=ParcelaImportResult, tags=["Catastro"])
+async def import_catastro(
+    geojson_data: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_admin()),
+):
+    """Import IDECOR parcelas from a GeoJSON FeatureCollection (admin only).
+
+    Idempotent — re-importing updates existing records by nomenclatura.
+    """
+    return import_catastro_geojson(db, geojson_data)
+
+
+@router.get(
+    "/zonas/{zona_id}/afectados",
+    response_model=AfectadosResponse,
+    tags=["Catastro"],
+)
+async def afectados_por_zona(
+    zona_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_operator()),
+):
+    """Consorcistas whose cadastral parcela intersects the given zona operativa."""
+    return get_afectados_zona(db, zona_id)
+
+
+@router.get(
+    "/flood-events/{event_id}/afectados",
+    response_model=EventoAfectadosResponse,
+    tags=["Catastro"],
+)
+async def afectados_por_evento(
+    event_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_operator()),
+):
+    """Consorcistas affected by a flood event (only zones labeled as flooded)."""
+    return get_afectados_evento(db, event_id)

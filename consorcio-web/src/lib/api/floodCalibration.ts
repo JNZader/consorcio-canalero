@@ -125,6 +125,41 @@ export interface BackfillStatusResponse {
 }
 
 // ===========================================
+// TYPES — Afectados por zona de riesgo
+// ===========================================
+
+export interface AfectadoItem {
+  consorcista_id: string;
+  nombre: string;
+  parcela: string | null;
+  hectareas: number | null;
+  nomenclatura: string;
+  zona_nombre: string;
+}
+
+export interface AfectadosResponse {
+  zona_id: string;
+  zona_nombre: string;
+  total_consorcistas: number;
+  total_ha: number;
+  afectados: AfectadoItem[];
+}
+
+export interface EventoAfectadosResponse {
+  event_id: string;
+  event_date: string;
+  total_consorcistas: number;
+  total_ha: number;
+  zonas_afectadas: AfectadosResponse[];
+}
+
+export interface ParcelaImportResult {
+  imported: number;
+  skipped: number;
+  total: number;
+}
+
+// ===========================================
 // API
 // ===========================================
 
@@ -302,5 +337,22 @@ export const floodCalibrationApi = {
       method: 'POST',
       body: JSON.stringify(params ?? {}),
       timeout: GEE_TIMEOUT,
+    }),
+
+  // =========================================
+  // AFECTADOS POR ZONA DE RIESGO
+  // =========================================
+
+  getAfectadosByZona: (zonaId: string): Promise<AfectadosResponse> =>
+    apiFetch(`/geo/zonas/${zonaId}/afectados`),
+
+  getAfectadosByEvento: (eventId: string): Promise<EventoAfectadosResponse> =>
+    apiFetch(`/geo/flood-events/${eventId}/afectados`),
+
+  importCatastro: (geojsonData: object): Promise<ParcelaImportResult> =>
+    apiFetch('/geo/catastro/import', {
+      method: 'POST',
+      body: JSON.stringify(geojsonData),
+      timeout: LONG_TIMEOUT,
     }),
 };

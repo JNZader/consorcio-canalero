@@ -373,6 +373,42 @@ class NdwiBaselineResponse(BaseModel):
     updated_at: datetime
 
 
+# ── Afectados por Zona de Riesgo ─────────────────────────────────────────────
+
+
+class ParcelaImportResult(BaseModel):
+    imported: int
+    skipped: int
+    total: int
+
+
+class AfectadoItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    consorcista_id: uuid.UUID
+    nombre: str
+    parcela: Optional[str]
+    hectareas: Optional[float]
+    nomenclatura: str
+    zona_nombre: str
+
+
+class AfectadosResponse(BaseModel):
+    zona_id: str
+    zona_nombre: str
+    total_consorcistas: int
+    total_ha: float
+    afectados: list[AfectadoItem]
+
+
+class EventoAfectadosResponse(BaseModel):
+    event_id: str
+    event_date: str
+    total_consorcistas: int
+    total_ha: float
+    zonas_afectadas: list[AfectadosResponse]
+
+
 class RainfallSummaryResponse(BaseModel):
     """Aggregated rainfall statistics for a zona over a period."""
 
