@@ -1988,17 +1988,18 @@ export default function MapaMapLibre() {
           <Text size="xs" fw={600} c="dimmed" mb={6}>Capas</Text>
           <Stack gap={4}>
             {[
-              { id: 'basins', label: 'Subcuencas' },
-              { id: 'approved_zones', label: 'Cuencas' },
-              { id: 'waterways', label: 'Hidrografía' },
-              { id: 'roads', label: 'Red vial' },
-              { id: 'soil', label: 'Suelos IDECOR' },
-              { id: 'catastro', label: 'Catastro rural' },
-              { id: 'infrastructure', label: 'Infraestructura' },
-              { id: 'public_layers', label: 'Capas públicas' },
-              { id: 'puntos_conflicto', label: 'Puntos conflicto' },
-              { id: 'canal_suggestions', label: 'Sugerencias canal' },
-            ].map(({ id, label }) => (
+              { id: 'basins', label: 'Subcuencas', show: !!basins && basins.features.length > 0 },
+              { id: 'approved_zones', label: 'Cuencas', show: !!approvedZonesCollection },
+              { id: 'waterways', label: 'Hidrografía', show: true },
+              { id: 'roads', label: 'Red vial', show: !!roadsCollection && roadsCollection.features.length > 0 },
+              { id: 'soil', label: 'Suelos IDECOR', show: true },
+              { id: 'catastro', label: 'Catastro rural', show: true },
+              { id: 'infrastructure', label: 'Infraestructura', show: !!infrastructureCollection },
+              { id: 'public_layers', label: 'Capas públicas', show: publicLayers.length > 0 },
+              { id: 'puntos_conflicto', label: 'Puntos conflicto', show: !!(intersections?.features?.length) },
+              { id: 'canal_suggestions', label: 'Sugerencias canal', show: true },
+            ].filter(({ show }) => show)
+             .map(({ id, label }) => (
               <Checkbox
                 key={id}
                 size="xs"
