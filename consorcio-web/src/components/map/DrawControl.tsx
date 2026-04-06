@@ -1,8 +1,21 @@
-import L from 'leaflet';
+/**
+ * DrawControl — polygon draw control for MapLibre GL maps.
+ *
+ * Replaces the leaflet-draw implementation with @mapbox/mapbox-gl-draw.
+ * External interface (DrawControlHandle, DrawnPolygon, DrawControlProps) is
+ * UNCHANGED so callers don't need any updates.
+ *
+ * NOTE: This component does NOT mount into the React tree — it wires into a
+ * MapLibre map instance imperatively via the `map` prop.  It renders null.
+ * It will be used inside MapaMapLibre.tsx (Phase 2).  MapaLeaflet.tsx still
+ * uses the old Leaflet-based DrawControl until Phase 5 cleanup.
+ */
+
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import type maplibregl from 'maplibre-gl';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { useMap } from 'react-leaflet';
-import 'leaflet-draw';
-import 'leaflet-draw/dist/leaflet.draw.css';
+
+// ─── Public types (same as before) ───────────────────────────────────────────
 
 export interface DrawnPolygon {
   type: 'Polygon';
@@ -15,159 +28,118 @@ export interface DrawControlHandle {
 }
 
 interface DrawControlProps {
+  readonly map: maplibregl.Map;
   readonly onPolygonCreated: (geometry: DrawnPolygon) => void;
   readonly onPolygonDeleted: () => void;
+  /** When false the draw toolbar is not added to the map (role gate for ciudadano). */
   readonly showControls?: boolean;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
-  ({ onPolygonCreated, onPolygonDeleted, showControls = false }, ref) => {
-    const map = useMap();
-    const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
-    const drawControlRef = useRef<L.Control.Draw | null>(null);
-    const polygonDrawerRef = useRef<L.Draw.Polygon | null>(null);
+  ({ map, onPolygonCreated, onPolygonDeleted, showControls = false }, ref) => {
+    const drawRef = useRef<MapboxDraw | null>(null);
+
+    // Stable callbacks via ref so the effect doesn't re-run on every render
+    const onPolygonCreatedRef = useRef(onPolygonCreated);
+    const onPolygonDeletedRef = useRef(onPolygonDeleted);
+    onPolygonCreatedRef.current = onPolygonCreated;
+    onPolygonDeletedRef.current = onPolygonDeleted;
 
     useImperativeHandle(ref, () => ({
       startDrawing: () => {
-        if (polygonDrawerRef.current) {
-          polygonDrawerRef.current.disable();
-        }
-        // Cast map to DrawMap for leaflet-draw compatibility
-        polygonDrawerRef.current = new L.Draw.Polygon(map as L.DrawMap, {
-          allowIntersection: false,
-          showArea: true,
-          shapeOptions: {
-            color: '#3b82f6',
-            weight: 3,
-            fillOpacity: 0.2,
-          },
-        });
-        polygonDrawerRef.current.enable();
+        drawRef.current?.changeMode('draw_polygon');
       },
       clearDrawing: () => {
-        if (drawnItemsRef.current) {
-          drawnItemsRef.current.clearLayers();
-        }
-        if (polygonDrawerRef.current) {
-          polygonDrawerRef.current.disable();
-          polygonDrawerRef.current = null;
-        }
-        onPolygonDeleted();
+        drawRef.current?.deleteAll();
+        onPolygonDeletedRef.current();
       },
     }));
 
     useEffect(() => {
-      // Create feature group for drawn items
-      const drawnItems = new L.FeatureGroup();
-      drawnItemsRef.current = drawnItems;
-      map.addLayer(drawnItems);
-
-      // Only add visual controls if showControls is true
-      if (showControls) {
-        const drawControl = new L.Control.Draw({
-          position: 'topleft',
-          draw: {
-            polygon: {
-              allowIntersection: false,
-              showArea: true,
-              shapeOptions: {
-                color: '#3b82f6',
-                weight: 3,
-                fillOpacity: 0.2,
-              },
-            },
-            rectangle: {
-              shapeOptions: {
-                color: '#3b82f6',
-                weight: 3,
-                fillOpacity: 0.2,
-              },
-            },
-            polyline: false,
-            circle: false,
-            circlemarker: false,
-            marker: false,
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: showControls
+          ? { polygon: true, trash: true }
+          : undefined,
+        defaultMode: 'simple_select',
+        styles: [
+          // Polygon fill (active)
+          {
+            id: 'gl-draw-polygon-fill',
+            type: 'fill',
+            filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.2 },
           },
-          edit: {
-            featureGroup: drawnItems,
-            remove: true,
+          // Polygon outline (active)
+          {
+            id: 'gl-draw-polygon-stroke-active',
+            type: 'line',
+            filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            paint: { 'line-color': '#3b82f6', 'line-width': 3 },
           },
-        });
+          // Vertex points
+          {
+            id: 'gl-draw-polygon-and-line-vertex-active',
+            type: 'circle',
+            filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
+            paint: { 'circle-radius': 5, 'circle-color': '#3b82f6' },
+          },
+        ],
+      });
 
-        drawControlRef.current = drawControl;
-        map.addControl(drawControl);
-      }
+      drawRef.current = draw;
+      // MapboxDraw is compatible with maplibre-gl maps — it targets the same GL API
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map.addControl(draw as unknown as maplibregl.IControl);
 
-      // Handle polygon creation
-      const handleCreated = (e: L.LeafletEvent) => {
-        const event = e as L.DrawEvents.Created;
-        const layer = event.layer;
-
-        // Remove previous polygon if exists
-        drawnItems.clearLayers();
-
-        // Add new polygon
-        drawnItems.addLayer(layer);
-
-        // Reset drawer reference
-        if (polygonDrawerRef.current) {
-          polygonDrawerRef.current = null;
-        }
-
-        // Convert to GeoJSON
-        const geoJson = (layer as L.Polygon).toGeoJSON();
-        const geometry: DrawnPolygon = {
+      const handleCreate = () => {
+        const all = draw.getAll();
+        const polygon = all.features.find((f) => f.geometry.type === 'Polygon');
+        if (!polygon || polygon.geometry.type !== 'Polygon') return;
+        // Keep only the most-recently drawn polygon
+        const idsToRemove = all.features
+          .filter((f) => f.id !== polygon.id)
+          .map((f) => f.id as string);
+        if (idsToRemove.length > 0) draw.delete(idsToRemove);
+        onPolygonCreatedRef.current({
           type: 'Polygon',
-          coordinates: geoJson.geometry.coordinates as number[][][],
-        };
-
-        onPolygonCreated(geometry);
-      };
-
-      // Handle polygon deletion
-      const handleDeleted = () => {
-        onPolygonDeleted();
-      };
-
-      // Handle polygon edit
-      const handleEdited = (e: L.LeafletEvent) => {
-        const event = e as L.DrawEvents.Edited;
-        const layers = event.layers;
-
-        layers.eachLayer((layer) => {
-          const geoJson = (layer as L.Polygon).toGeoJSON();
-          const geometry: DrawnPolygon = {
-            type: 'Polygon',
-            coordinates: geoJson.geometry.coordinates as number[][][],
-          };
-          onPolygonCreated(geometry);
+          coordinates: polygon.geometry.coordinates as number[][][],
         });
       };
 
-      map.on(L.Draw.Event.CREATED, handleCreated);
-      map.on(L.Draw.Event.DELETED, handleDeleted);
-      map.on(L.Draw.Event.EDITED, handleEdited);
-
-      // Cleanup
-      return () => {
-        map.off(L.Draw.Event.CREATED, handleCreated);
-        map.off(L.Draw.Event.DELETED, handleDeleted);
-        map.off(L.Draw.Event.EDITED, handleEdited);
-
-        if (polygonDrawerRef.current) {
-          polygonDrawerRef.current.disable();
-        }
-        if (drawControlRef.current) {
-          map.removeControl(drawControlRef.current);
-        }
-        if (drawnItemsRef.current) {
-          map.removeLayer(drawnItemsRef.current);
-        }
+      const handleDelete = () => {
+        onPolygonDeletedRef.current();
       };
-    }, [map, onPolygonCreated, onPolygonDeleted, showControls]);
+
+      const handleUpdate = () => {
+        const all = draw.getAll();
+        const polygon = all.features.find((f) => f.geometry.type === 'Polygon');
+        if (!polygon || polygon.geometry.type !== 'Polygon') return;
+        onPolygonCreatedRef.current({
+          type: 'Polygon',
+          coordinates: polygon.geometry.coordinates as number[][][],
+        });
+      };
+
+      map.on('draw.create', handleCreate);
+      map.on('draw.delete', handleDelete);
+      map.on('draw.update', handleUpdate);
+
+      return () => {
+        map.off('draw.create', handleCreate);
+        map.off('draw.delete', handleDelete);
+        map.off('draw.update', handleUpdate);
+        if (map.hasControl(draw as unknown as maplibregl.IControl)) {
+          map.removeControl(draw as unknown as maplibregl.IControl);
+        }
+        drawRef.current = null;
+      };
+    }, [map, showControls]);
 
     return null;
-  }
+  },
 );
 
 DrawControl.displayName = 'DrawControl';
