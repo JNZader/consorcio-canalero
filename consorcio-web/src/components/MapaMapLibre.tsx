@@ -38,7 +38,12 @@ import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'geojson';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { Protocol } from 'pmtiles';
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+
+// Register PMTiles protocol once at module level
+const _pmtilesProtocol = new Protocol();
+maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
@@ -1107,36 +1112,56 @@ export default function MapaMapLibre() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // ── Waterways ──────────────────────────────────────────────────────────
-    ensureGeoJsonSource(map, WATERWAYS_SOURCE_ID, waterwaysCollection ?? asFeatureCollection([]));
-    if (!map.getLayer(`${WATERWAYS_SOURCE_ID}-line`)) {
-      map.addLayer({
-        id: `${WATERWAYS_SOURCE_ID}-line`,
-        type: 'line',
-        source: WATERWAYS_SOURCE_ID,
-        paint: {
-          'line-color': ['coalesce', ['get', '__color'], '#1565C0'],
-          'line-width': 3,
-          'line-opacity': 0.9,
-        },
-      });
+    // ── Waterways (PMTiles — multi-source, one layer per file) ────────────
+    const waterwayFiles = [
+      { id: `${WATERWAYS_SOURCE_ID}-rio-tercero`,        url: 'pmtiles:///waterways/rio_tercero.pmtiles',        layer: 'rio_tercero',        color: '#1565C0' },
+      { id: `${WATERWAYS_SOURCE_ID}-arroyo-algodon`,     url: 'pmtiles:///waterways/arroyo_algodon.pmtiles',     layer: 'arroyo_algodon',     color: '#1976D2' },
+      { id: `${WATERWAYS_SOURCE_ID}-canal-desviador`,    url: 'pmtiles:///waterways/canal_desviador.pmtiles',    layer: 'canal_desviador',    color: '#0288D1' },
+      { id: `${WATERWAYS_SOURCE_ID}-canal-litin`,        url: 'pmtiles:///waterways/canal_litin_tortugas.pmtiles', layer: 'canal_litin_tortugas', color: '#039BE5' },
+      { id: `${WATERWAYS_SOURCE_ID}-canales-existentes`, url: 'pmtiles:///waterways/canales_existentes.pmtiles', layer: 'canales_existentes', color: '#2196F3' },
+      { id: `${WATERWAYS_SOURCE_ID}-arroyo-mojarras`,    url: 'pmtiles:///waterways/arroyo_las_mojarras.pmtiles', layer: 'arroyo_las_mojarras', color: '#42A5F5' },
+    ];
+    for (const wf of waterwayFiles) {
+      if (!map.getSource(wf.id)) {
+        map.addSource(wf.id, { type: 'vector', url: wf.url });
+      }
+      const lineLayerId = `${wf.id}-line`;
+      if (!map.getLayer(lineLayerId)) {
+        map.addLayer({
+          id: lineLayerId,
+          type: 'line',
+          source: wf.id,
+          'source-layer': wf.layer,
+          paint: {
+            'line-color': wf.color,
+            'line-width': 3,
+            'line-opacity': 0.9,
+          },
+        });
+      }
+      setLayerVisibility(map, lineLayerId, !!vectorVisibility.waterways);
     }
-    setLayerVisibility(map, `${WATERWAYS_SOURCE_ID}-line`, !!vectorVisibility.waterways && !!waterwaysCollection);
-  }, [mapReady, waterwaysCollection, vectorVisibility.waterways]);
+  }, [mapReady, vectorVisibility.waterways]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // ── Soil ───────────────────────────────────────────────────────────────
-    ensureGeoJsonSource(map, SOIL_SOURCE_ID, soilCollection ?? asFeatureCollection([]));
+    // ── Soil (PMTiles) ─────────────────────────────────────────────────────
+    if (!map.getSource(SOIL_SOURCE_ID)) {
+      map.addSource(SOIL_SOURCE_ID, {
+        type: 'vector',
+        url: 'pmtiles:///data/suelos_cu.pmtiles',
+      });
+    }
     if (!map.getLayer(`${SOIL_SOURCE_ID}-fill`)) {
       map.addLayer({
         id: `${SOIL_SOURCE_ID}-fill`,
         type: 'fill',
         source: SOIL_SOURCE_ID,
+        'source-layer': 'suelos_cu',
         paint: {
-          'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
+          'fill-color': '#8d6e63',
           'fill-opacity': 0.22,
         },
       });
@@ -1146,29 +1171,36 @@ export default function MapaMapLibre() {
         id: `${SOIL_SOURCE_ID}-line`,
         type: 'line',
         source: SOIL_SOURCE_ID,
+        'source-layer': 'suelos_cu',
         paint: { 'line-color': '#6d4c41', 'line-width': 0.8, 'line-opacity': 0.55 },
       });
     }
-    setLayerVisibility(map, `${SOIL_SOURCE_ID}-fill`, !!vectorVisibility.soil && !!soilCollection);
-    setLayerVisibility(map, `${SOIL_SOURCE_ID}-line`, !!vectorVisibility.soil && !!soilCollection);
-  }, [mapReady, soilCollection, vectorVisibility.soil]);
+    setLayerVisibility(map, `${SOIL_SOURCE_ID}-fill`, !!vectorVisibility.soil);
+    setLayerVisibility(map, `${SOIL_SOURCE_ID}-line`, !!vectorVisibility.soil);
+  }, [mapReady, vectorVisibility.soil]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // ── Catastro ───────────────────────────────────────────────────────────
-    ensureGeoJsonSource(map, CATASTRO_SOURCE_ID, catastroMap ?? asFeatureCollection([]));
+    // ── Catastro (PMTiles) ─────────────────────────────────────────────────
+    if (!map.getSource(CATASTRO_SOURCE_ID)) {
+      map.addSource(CATASTRO_SOURCE_ID, {
+        type: 'vector',
+        url: 'pmtiles:///data/catastro_rural_cu.pmtiles',
+      });
+    }
     if (!map.getLayer(`${CATASTRO_SOURCE_ID}-line`)) {
       map.addLayer({
         id: `${CATASTRO_SOURCE_ID}-line`,
         type: 'line',
         source: CATASTRO_SOURCE_ID,
+        'source-layer': 'catastro_rural_cu',
         paint: { 'line-color': '#f8f9fa', 'line-width': 0.7, 'line-opacity': 0.7 },
       });
     }
-    setLayerVisibility(map, `${CATASTRO_SOURCE_ID}-line`, !!vectorVisibility.catastro && !!catastroMap);
-  }, [mapReady, catastroMap, vectorVisibility.catastro]);
+    setLayerVisibility(map, `${CATASTRO_SOURCE_ID}-line`, !!vectorVisibility.catastro);
+  }, [mapReady, vectorVisibility.catastro]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1656,7 +1688,12 @@ export default function MapaMapLibre() {
     if (!map || !mapReady) return;
 
     const clickableLayers = [
-      `${WATERWAYS_SOURCE_ID}-line`,
+      `${WATERWAYS_SOURCE_ID}-rio-tercero-line`,
+      `${WATERWAYS_SOURCE_ID}-arroyo-algodon-line`,
+      `${WATERWAYS_SOURCE_ID}-canal-desviador-line`,
+      `${WATERWAYS_SOURCE_ID}-canal-litin-line`,
+      `${WATERWAYS_SOURCE_ID}-canales-existentes-line`,
+      `${WATERWAYS_SOURCE_ID}-arroyo-mojarras-line`,
       `${SOIL_SOURCE_ID}-fill`,
       `${CATASTRO_SOURCE_ID}-line`,
       `${ROADS_SOURCE_ID}-line`,

@@ -23,7 +23,8 @@
     "test:a11y": "playwright test -c tests/accessibility/playwright.config.ts",
     "test:smoke": "vitest run tests/unit/api.test.ts",
     "mutation:run": "stryker run",
-    "generate:types": "openapi-typescript http://localhost:8000/openapi.json -o ./src/types/schema.d.ts"
+    "generate:types": "openapi-typescript http://localhost:8000/openapi.json -o ./src/types/schema.d.ts",
+    "gen:pmtiles": "tippecanoe -o public/data/suelos_cu.pmtiles -z12 -Z6 --force --layer=suelos_cu public/data/suelos_cu.geojson && tippecanoe -o public/data/catastro_rural_cu.pmtiles -z14 -Z8 --force --layer=catastro_rural_cu public/data/catastro_rural_cu.geojson && tippecanoe -o public/waterways/rio_tercero.pmtiles -z14 -Z8 --force --layer=rio_tercero public/waterways/rio_tercero.geojson && tippecanoe -o public/waterways/arroyo_algodon.pmtiles -z14 -Z8 --force --layer=arroyo_algodon public/waterways/arroyo_algodon.geojson && tippecanoe -o public/waterways/canal_desviador.pmtiles -z14 -Z8 --force --layer=canal_desviador public/waterways/canal_desviador.geojson && tippecanoe -o public/waterways/canal_litin_tortugas.pmtiles -z14 -Z8 --force --layer=canal_litin_tortugas public/waterways/canal_litin_tortugas.geojson && tippecanoe -o public/waterways/canales_existentes.pmtiles -z14 -Z8 --force --layer=canales_existentes public/waterways/canales_existentes.geojson && tippecanoe -o public/waterways/arroyo_las_mojarras.pmtiles -z14 -Z8 --force --layer=arroyo_las_mojarras public/waterways/arroyo_las_mojarras.geojson"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -42,6 +43,7 @@
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
     "maplibre-gl": "^4.7.1",
+    "pmtiles": "^4.4.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-helmet-async": "^2.0.5",
