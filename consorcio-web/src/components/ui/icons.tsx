@@ -99,3 +99,5 @@ export { default as IconCloudRain } from '@tabler/icons-react/dist/esm/icons/Ico
 export { default as IconEye } from '@tabler/icons-react/dist/esm/icons/IconEye.mjs';
 export { default as IconChevronDown } from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
 export { default as IconChevronUp } from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
+export { default as IconCalculator } from '@tabler/icons-react/dist/esm/icons/IconCalculator.mjs';
+export { default as IconChartHistogram } from '@tabler/icons-react/dist/esm/icons/IconChartHistogram.mjs';

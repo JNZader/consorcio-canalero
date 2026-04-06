@@ -6,8 +6,7 @@
  */
 
 import L from 'leaflet';
-import 'leaflet.vectorgrid';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMap } from 'react-leaflet';
 
 interface StyleDef {
@@ -49,8 +48,18 @@ export default function MartinVectorLayer({
 }: MartinVectorLayerProps) {
   const map = useMap();
   const layerRef = useRef<L.Layer | null>(null);
+  const [vgReady, setVgReady] = useState(false);
+
+  // Dynamically import leaflet.vectorgrid (CJS module, mutates L)
+  useEffect(() => {
+    import('leaflet.vectorgrid').then(() => setVgReady(true)).catch(() => {
+      console.warn('leaflet.vectorgrid failed to load — Martin MVT layers unavailable');
+    });
+  }, []);
 
   useEffect(() => {
+    if (!vgReady) return;
+
     // Remove previous layer instance when props change
     if (layerRef.current) {
       map.removeLayer(layerRef.current);
@@ -60,7 +69,7 @@ export default function MartinVectorLayer({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const vg = (L as any).vectorGrid;
     if (!vg?.protobuf) {
-      console.warn('leaflet.vectorgrid not loaded');
+      console.warn('L.vectorGrid.protobuf not available');
       return;
     }
 
@@ -88,7 +97,7 @@ export default function MartinVectorLayer({
         layerRef.current = null;
       }
     };
-  }, [tileUrl, layerName, style, featureStyle, pane, minZoom, maxZoom, maxNativeZoom, map]);
+  }, [vgReady, tileUrl, layerName, style, featureStyle, pane, minZoom, maxZoom, maxNativeZoom, map]);
 
   return null;
 }

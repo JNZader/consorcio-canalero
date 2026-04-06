@@ -76,3 +76,58 @@ export async function getFloodFlowHistory(
     `/geo/hydrology/flood-flow/${zonaId}?limit=${limit}`
   );
 }
+
+// ===========================================
+// MANNING HYDRAULIC CAPACITY
+// ===========================================
+
+export interface ManningRequest {
+  ancho_m: number;
+  profundidad_m: number;
+  slope: number;
+  talud: number;
+  material?: string | null;
+  coef_manning?: number | null;
+}
+
+export interface ManningResponse {
+  ancho_m: number;
+  profundidad_m: number;
+  talud: number;
+  slope: number;
+  n: number;
+  area_m2: number;
+  perimeter_m: number;
+  radio_hidraulico_m: number;
+  q_capacity_m3s: number;
+  velocidad_ms: number;
+}
+
+export async function computeManning(req: ManningRequest): Promise<ManningResponse> {
+  return apiFetch<ManningResponse>('/geo/hydrology/manning', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+// ===========================================
+// RETURN PERIODS (GUMBEL EV-I)
+// ===========================================
+
+export interface ReturnPeriodResult {
+  return_period_years: number;
+  precipitation_mm: number;
+}
+
+export interface ReturnPeriodsResponse {
+  zona_id: string;
+  years_of_data: number;
+  annual_maxima_count: number;
+  mean_annual_max_mm: number;
+  std_annual_max_mm: number;
+  return_periods: ReturnPeriodResult[];
+}
+
+export async function getReturnPeriods(zonaId: string): Promise<ReturnPeriodsResponse> {
+  return apiFetch<ReturnPeriodsResponse>(`/geo/hydrology/return-periods/${zonaId}`);
+}

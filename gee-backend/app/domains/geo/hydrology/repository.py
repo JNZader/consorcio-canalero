@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.domains.geo.hydrology.models import FloodFlowResult
@@ -120,3 +120,32 @@ class FloodFlowRepository:
             .order_by(FloodFlowResult.zona_id)
         )
         return list(db.execute(stmt).scalars().all())
+
+    def get_annual_maxima(
+        self,
+        db: Session,
+        zona_id: uuid.UUID,
+    ) -> list[dict]:
+        """Return annual maximum daily precipitation per year for a zona.
+
+        Uses CHIRPS/IMERG rainfall_records with IMERG priority (DISTINCT ON).
+        """
+        sql = text("""
+            WITH deduped AS (
+                SELECT DISTINCT ON (date)
+                    date,
+                    precipitation_mm
+                FROM rainfall_records
+                WHERE zona_operativa_id = :zona_id
+                ORDER BY date,
+                         CASE WHEN source = 'IMERG' THEN 0 ELSE 1 END
+            )
+            SELECT
+                EXTRACT(YEAR FROM date)::int AS year,
+                MAX(precipitation_mm)        AS max_mm
+            FROM deduped
+            GROUP BY EXTRACT(YEAR FROM date)
+            ORDER BY year
+        """)
+        rows = db.execute(sql, {"zona_id": str(zona_id)}).mappings().all()
+        return [{"year": r["year"], "max_mm": float(r["max_mm"])} for r in rows]

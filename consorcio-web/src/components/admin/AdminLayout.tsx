@@ -17,7 +17,9 @@ import ThemeToggle from '../ThemeToggle';
 import {
   IconArrowLeft,
   IconCalendar,
+  IconCalculator,
   IconChartBar,
+  IconChartHistogram,
   IconClipboardList,
   IconCoin,
   IconDroplet,
@@ -48,6 +50,8 @@ const NAV_SECTIONS = [
       { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
       { label: 'Caudal Estimado', to: '/admin/flood-flow', icon: IconWaveSine },
       { label: 'Afectados por Zona', to: '/admin/afectados', icon: IconUsers },
+      { label: 'Manning (Capacidad)', to: '/admin/manning', icon: IconCalculator },
+      { label: 'Períodos de Retorno', to: '/admin/return-periods', icon: IconChartHistogram },
     ],
   },
   {

@@ -64,3 +64,51 @@ class ZonaRiskSummary(BaseModel):
 
     zona_id: str
     nivel_riesgo: Optional[str]
+
+
+# ── Manning ───────────────────────────────────────────────────────────────────
+
+class ManningRequest(BaseModel):
+    """Parameters for Manning hydraulic capacity calculation."""
+
+    ancho_m: float = Field(..., gt=0, description="Canal bottom width in meters")
+    profundidad_m: float = Field(..., gt=0, description="Normal depth in meters")
+    slope: float = Field(..., gt=0, description="Bed slope (dimensionless, rise/run)")
+    talud: float = Field(default=0.0, ge=0, description="Side slope H:V (0=rectangular)")
+    material: Optional[str] = Field(default=None, description="Channel material for Manning n lookup")
+    coef_manning: Optional[float] = Field(default=None, gt=0, description="Override Manning n directly")
+
+
+class ManningResponse(BaseModel):
+    """Manning hydraulic capacity result."""
+
+    ancho_m: float
+    profundidad_m: float
+    talud: float
+    slope: float
+    n: float
+    area_m2: float
+    perimeter_m: float
+    radio_hidraulico_m: float
+    q_capacity_m3s: float
+    velocidad_ms: float
+
+
+# ── Return Periods ────────────────────────────────────────────────────────────
+
+class ReturnPeriodResult(BaseModel):
+    """Gumbel EV-I return period precipitation estimate."""
+
+    return_period_years: int
+    precipitation_mm: float
+
+
+class ReturnPeriodsResponse(BaseModel):
+    """Full return period analysis for a zona operativa."""
+
+    zona_id: str
+    years_of_data: int
+    annual_maxima_count: int
+    mean_annual_max_mm: float
+    std_annual_max_mm: float
+    return_periods: list[ReturnPeriodResult]

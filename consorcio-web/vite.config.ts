@@ -173,6 +173,7 @@ export default defineConfig({
       '@mantine/hooks',
       'leaflet',
       'react-leaflet',
+      'leaflet.vectorgrid',
     ],
   },
 

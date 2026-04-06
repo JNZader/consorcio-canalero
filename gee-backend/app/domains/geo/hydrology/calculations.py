@@ -109,3 +109,144 @@ def classify_hydraulic_risk(
         nivel = "critico"
 
     return (nivel, percentage)
+
+
+# ── Manning Formula ────────────────────────────────────────────────────────
+
+
+def manning_section(
+    ancho_m: float,
+    profundidad_m: float,
+    talud: float = 0.0,
+) -> tuple[float, float]:
+    """Compute cross-sectional area and wetted perimeter for a trapezoidal section.
+
+    Args:
+        ancho_m:      Bottom width of the canal in meters.
+        profundidad_m: Normal depth (water depth) in meters.
+        talud:         Side slope ratio H:V (0 = rectangular, 1 = 1:1).
+
+    Returns:
+        (area_m2, perimeter_m) tuple.
+    """
+    import math
+
+    y = profundidad_m
+    b = ancho_m
+    z = talud
+    area = (b + z * y) * y
+    perimeter = b + 2 * y * math.sqrt(1 + z**2)
+    return area, perimeter
+
+
+def manning_q(
+    ancho_m: float,
+    profundidad_m: float,
+    slope: float,
+    n: float,
+    talud: float = 0.0,
+) -> float:
+    """Compute canal discharge via Manning's equation.
+
+    Q = (1/n) × A × R^(2/3) × S^(1/2)
+
+    Args:
+        ancho_m:       Bottom width in meters.
+        profundidad_m: Normal depth in meters.
+        slope:         Longitudinal bed slope (dimensionless, rise/run).
+        n:             Manning roughness coefficient.
+        talud:         Side slope H:V (0 = rectangular).
+
+    Returns:
+        Discharge Q in m³/s. Returns 0.0 if inputs are non-positive.
+    """
+    import math
+
+    if ancho_m <= 0 or profundidad_m <= 0 or slope <= 0 or n <= 0:
+        return 0.0
+
+    area, perimeter = manning_section(ancho_m, profundidad_m, talud)
+    if perimeter == 0:
+        return 0.0
+
+    R = area / perimeter  # hydraulic radius
+    return (1.0 / n) * area * (R ** (2.0 / 3.0)) * math.sqrt(slope)
+
+
+# Default Manning n values by material
+MANNING_N_DEFAULTS: dict[str, float] = {
+    "hormigon": 0.014,
+    "hormigon_prefabricado": 0.013,
+    "mamposteria": 0.020,
+    "tierra": 0.025,
+    "tierra_limpia": 0.022,
+    "tierra_vegetacion": 0.030,
+    "tierra_maleza": 0.035,
+    "riprap": 0.035,
+    "default": 0.025,
+}
+
+
+def get_manning_n(material: str | None, coef_override: float | None = None) -> float:
+    """Resolve Manning n from material string or explicit override.
+
+    Priority: coef_override > material lookup > 0.025 (earth channel default).
+    """
+    if coef_override is not None and coef_override > 0:
+        return coef_override
+    if material:
+        key = material.lower().replace(" ", "_").replace("-", "_")
+        return MANNING_N_DEFAULTS.get(key, MANNING_N_DEFAULTS["default"])
+    return MANNING_N_DEFAULTS["default"]
+
+
+# ── Gumbel return periods ──────────────────────────────────────────────────
+
+
+def gumbel_return_period(
+    annual_maxima: list[float],
+    return_periods: list[int] | None = None,
+) -> dict[int, float]:
+    """Fit a Gumbel EV-I distribution to annual maxima and compute quantiles.
+
+    Gumbel parameters (method of moments):
+        μ (location) = mean - 0.5772 × β
+        β  (scale)   = std × √6 / π
+
+    Quantile formula:
+        xT = μ - β × ln(-ln(1 - 1/T))
+
+    Args:
+        annual_maxima:  List of annual maximum precipitation values (mm).
+        return_periods: List of return period years to compute. Defaults to
+                        [5, 10, 25, 50, 100].
+
+    Returns:
+        Dict mapping return_period → estimated precipitation (mm).
+        Returns empty dict if fewer than 5 years of data.
+    """
+    import math
+    import statistics
+
+    if return_periods is None:
+        return_periods = [5, 10, 25, 50, 100]
+
+    data = [x for x in annual_maxima if x is not None and x > 0]
+    if len(data) < 5:
+        return {}
+
+    mean = statistics.mean(data)
+    std = statistics.stdev(data)
+
+    if std == 0:
+        return {t: mean for t in return_periods}
+
+    beta = std * math.sqrt(6) / math.pi
+    mu = mean - 0.5772156649 * beta
+
+    result: dict[int, float] = {}
+    for T in return_periods:
+        y = -math.log(-math.log(1.0 - 1.0 / T))
+        result[T] = round(mu + beta * y, 2)
+
+    return result
