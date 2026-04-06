@@ -70,17 +70,6 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https:\/\/unpkg\.com\/leaflet@.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'leaflet-assets',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-            },
-          },
-          {
             urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/i,
             handler: 'CacheFirst',
             options: {
@@ -153,7 +142,7 @@ export default defineConfig({
           ],
           'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
           'vendor-charts': ['recharts'],
-          'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw', 'leaflet', 'react-leaflet'],
+          'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw'],
 'vendor-router': ['@tanstack/react-router'],
         },
       },
@@ -173,8 +162,6 @@ export default defineConfig({
       '@mantine/hooks',
       'maplibre-gl',
       '@mapbox/mapbox-gl-draw',
-      'leaflet',
-      'react-leaflet',
     ],
   },
 
