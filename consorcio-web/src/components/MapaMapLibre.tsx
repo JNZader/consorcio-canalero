@@ -54,7 +54,7 @@ import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { getMartinTileUrl, MARTIN_SOURCES, useZonaRiskColors } from '../hooks/useMartinLayers';
 import { usePublicLayers } from '../hooks/usePublicLayers';
-import { useSelectedImageListener, type SelectedImage } from '../hooks/useSelectedImage';
+import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { getSoilColor, useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
 import { useWaterways } from '../hooks/useWaterways';
@@ -169,32 +169,6 @@ function formatExportFilename(title: string, extension: 'png' | 'pdf') {
   return `${safeTitle}_${new Date().toISOString().slice(0, 10)}.${extension}`;
 }
 
-/** Convert GEE tile URL bounds to MapLibre image source 4-corner format */
-function selectedImageToMapLibreCoords(
-  image: SelectedImage,
-): [[number, number], [number, number], [number, number], [number, number]] | null {
-  // GEE tile_url contains bounds as query params: ?bbox=minLng,minLat,maxLng,maxLat
-  // If we can't parse bounds, we use the consorcio's IGN bounds as fallback
-  try {
-    const url = new URL(image.tile_url);
-    const bbox = url.searchParams.get('bbox');
-    if (bbox) {
-      const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number);
-      if ([minLng, minLat, maxLng, maxLat].every(isFinite)) {
-        return [
-          [minLng, maxLat],   // NW
-          [maxLng, maxLat],   // NE
-          [maxLng, minLat],   // SE
-          [minLng, minLat],   // SW
-        ];
-      }
-    }
-  } catch {
-    // URL parsing failed — fall through to consorcio bounds
-  }
-  // Fallback: use consorcio bounds
-  return IGN_MAPLIBRE_COORDS;
-}
 
 /* -------------------------------------------------------------------------- */
 /*  Sub-components (reused from original MapaLeaflet UI — no Leaflet deps)    */
@@ -1132,8 +1106,13 @@ export default function MapaMapLibre() {
         source: SOIL_SOURCE_ID,
         'source-layer': 'suelos_cu',
         paint: {
-          'fill-color': '#8d6e63',
-          'fill-opacity': 0.22,
+          'fill-color': [
+            'match', ['get', 'cap'],
+            'I', '#1b5e20', 'II', '#2e7d32', 'III', '#689f38', 'IV', '#c0ca33',
+            'V', '#f9a825', 'VI', '#fb8c00', 'VII', '#ef6c00', 'VIII', '#c62828',
+            '#8d6e63',
+          ],
+          'fill-opacity': 0.45,
         },
       });
     }
@@ -1161,6 +1140,16 @@ export default function MapaMapLibre() {
         url: 'pmtiles:///data/catastro_rural_cu.pmtiles',
       });
     }
+    // Transparent fill first so parcelas are clickable, then line on top
+    if (!map.getLayer(`${CATASTRO_SOURCE_ID}-fill`)) {
+      map.addLayer({
+        id: `${CATASTRO_SOURCE_ID}-fill`,
+        type: 'fill',
+        source: CATASTRO_SOURCE_ID,
+        'source-layer': 'catastro_rural_cu',
+        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.01 },
+      });
+    }
     if (!map.getLayer(`${CATASTRO_SOURCE_ID}-line`)) {
       map.addLayer({
         id: `${CATASTRO_SOURCE_ID}-line`,
@@ -1170,6 +1159,7 @@ export default function MapaMapLibre() {
         paint: { 'line-color': '#f8f9fa', 'line-width': 0.7, 'line-opacity': 0.7 },
       });
     }
+    setLayerVisibility(map, `${CATASTRO_SOURCE_ID}-fill`, !!vectorVisibility.catastro);
     setLayerVisibility(map, `${CATASTRO_SOURCE_ID}-line`, !!vectorVisibility.catastro);
   }, [mapReady, vectorVisibility.catastro]);
 
@@ -1234,8 +1224,9 @@ export default function MapaMapLibre() {
         paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
       });
     }
-    setLayerVisibility(map, `${ZONA_SOURCE_ID}-line`, !!vectorVisibility.zona && !!zonaCollection);
-  }, [mapReady, zonaCollection, vectorVisibility.zona]);
+    // Zona consorcio is always visible — not user-toggleable
+    setLayerVisibility(map, `${ZONA_SOURCE_ID}-line`, !!zonaCollection);
+  }, [mapReady, zonaCollection]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1482,27 +1473,25 @@ export default function MapaMapLibre() {
     const showComparison = viewMode === 'comparison' && !!comparison?.left && !!comparison?.right;
 
     // ── Single selected image ──────────────────────────────────────────────
+    // GEE tile_url is an XYZ tile template — use type:'raster', not type:'image'
     if (showSingle && selectedImage) {
-      const coords = selectedImageToMapLibreCoords(selectedImage);
-      if (coords) {
-        const existing = map.getSource(SATELLITE_IMAGE_SOURCE_ID);
-        if (existing) {
-          map.removeLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`);
-          map.removeSource(SATELLITE_IMAGE_SOURCE_ID);
-        }
-        map.addSource(SATELLITE_IMAGE_SOURCE_ID, {
-          type: 'image',
-          url: selectedImage.tile_url,
-          coordinates: coords,
+      const existing = map.getSource(SATELLITE_IMAGE_SOURCE_ID);
+      if (existing) {
+        map.removeLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`);
+        map.removeSource(SATELLITE_IMAGE_SOURCE_ID);
+      }
+      map.addSource(SATELLITE_IMAGE_SOURCE_ID, {
+        type: 'raster',
+        tiles: [selectedImage.tile_url],
+        tileSize: 256,
+      });
+      if (!map.getLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`)) {
+        map.addLayer({
+          id: `${SATELLITE_IMAGE_SOURCE_ID}-layer`,
+          type: 'raster',
+          source: SATELLITE_IMAGE_SOURCE_ID,
+          paint: { 'raster-opacity': 0.85 },
         });
-        if (!map.getLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`)) {
-          map.addLayer({
-            id: `${SATELLITE_IMAGE_SOURCE_ID}-layer`,
-            type: 'raster',
-            source: SATELLITE_IMAGE_SOURCE_ID,
-            paint: { 'raster-opacity': 0.85 },
-          });
-        }
       }
     } else {
       if (map.getLayer(`${SATELLITE_IMAGE_SOURCE_ID}-layer`)) {
@@ -1515,40 +1504,33 @@ export default function MapaMapLibre() {
 
     // ── Comparison images ──────────────────────────────────────────────────
     if (showComparison && comparison?.left && comparison?.right) {
-      const leftCoords = selectedImageToMapLibreCoords(comparison.left);
-      const rightCoords = selectedImageToMapLibreCoords(comparison.right);
+      if (map.getLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`);
+      if (map.getSource(COMPARISON_LEFT_SOURCE_ID)) map.removeSource(COMPARISON_LEFT_SOURCE_ID);
+      map.addSource(COMPARISON_LEFT_SOURCE_ID, {
+        type: 'raster',
+        tiles: [comparison.left.tile_url],
+        tileSize: 256,
+      });
+      map.addLayer({
+        id: `${COMPARISON_LEFT_SOURCE_ID}-layer`,
+        type: 'raster',
+        source: COMPARISON_LEFT_SOURCE_ID,
+        paint: { 'raster-opacity': 0.85 },
+      });
 
-      if (leftCoords) {
-        if (map.getLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`);
-        if (map.getSource(COMPARISON_LEFT_SOURCE_ID)) map.removeSource(COMPARISON_LEFT_SOURCE_ID);
-        map.addSource(COMPARISON_LEFT_SOURCE_ID, {
-          type: 'image',
-          url: comparison.left.tile_url,
-          coordinates: leftCoords,
-        });
-        map.addLayer({
-          id: `${COMPARISON_LEFT_SOURCE_ID}-layer`,
-          type: 'raster',
-          source: COMPARISON_LEFT_SOURCE_ID,
-          paint: { 'raster-opacity': 0.85 },
-        });
-      }
-
-      if (rightCoords) {
-        if (map.getLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`);
-        if (map.getSource(COMPARISON_RIGHT_SOURCE_ID)) map.removeSource(COMPARISON_RIGHT_SOURCE_ID);
-        map.addSource(COMPARISON_RIGHT_SOURCE_ID, {
-          type: 'image',
-          url: comparison.right.tile_url,
-          coordinates: rightCoords,
-        });
-        map.addLayer({
-          id: `${COMPARISON_RIGHT_SOURCE_ID}-layer`,
-          type: 'raster',
-          source: COMPARISON_RIGHT_SOURCE_ID,
-          paint: { 'raster-opacity': 0.85 },
-        });
-      }
+      if (map.getLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_RIGHT_SOURCE_ID}-layer`);
+      if (map.getSource(COMPARISON_RIGHT_SOURCE_ID)) map.removeSource(COMPARISON_RIGHT_SOURCE_ID);
+      map.addSource(COMPARISON_RIGHT_SOURCE_ID, {
+        type: 'raster',
+        tiles: [comparison.right.tile_url],
+        tileSize: 256,
+      });
+      map.addLayer({
+        id: `${COMPARISON_RIGHT_SOURCE_ID}-layer`,
+        type: 'raster',
+        source: COMPARISON_RIGHT_SOURCE_ID,
+        paint: { 'raster-opacity': 0.85 },
+      });
     } else {
       if (map.getLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`)) map.removeLayer(`${COMPARISON_LEFT_SOURCE_ID}-layer`);
       if (map.getSource(COMPARISON_LEFT_SOURCE_ID)) map.removeSource(COMPARISON_LEFT_SOURCE_ID);
@@ -1633,7 +1615,7 @@ export default function MapaMapLibre() {
       `${WATERWAYS_SOURCE_ID}-canales-existentes-line`,
       `${WATERWAYS_SOURCE_ID}-arroyo-mojarras-line`,
       `${SOIL_SOURCE_ID}-fill`,
-      `${CATASTRO_SOURCE_ID}-line`,
+      `${CATASTRO_SOURCE_ID}-fill`,
       `${ROADS_SOURCE_ID}-line`,
       `${BASINS_SOURCE_ID}-fill`,
       `${APPROVED_ZONES_SOURCE_ID}-fill`,
@@ -2006,9 +1988,8 @@ export default function MapaMapLibre() {
           <Text size="xs" fw={600} c="dimmed" mb={6}>Capas</Text>
           <Stack gap={4}>
             {[
-              { id: 'zona', label: 'Zona Consorcio' },
-              { id: 'basins', label: 'Subcuencas operativas' },
-              { id: 'approved_zones', label: 'Zonificación aprobada' },
+              { id: 'basins', label: 'Subcuencas' },
+              { id: 'approved_zones', label: 'Cuencas' },
               { id: 'waterways', label: 'Hidrografía' },
               { id: 'roads', label: 'Red vial' },
               { id: 'soil', label: 'Suelos IDECOR' },
