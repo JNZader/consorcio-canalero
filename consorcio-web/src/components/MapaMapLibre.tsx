@@ -1122,11 +1122,13 @@ export default function MapaMapLibre() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // ── Catastro (PMTiles) ─────────────────────────────────────────────────
+    // ── Catastro (Martin MVT — parcelas_catastro table) ───────────────────
     if (!map.getSource(CATASTRO_SOURCE_ID)) {
       map.addSource(CATASTRO_SOURCE_ID, {
         type: 'vector',
-        url: 'pmtiles:///data/catastro_rural_cu.pmtiles',
+        tiles: [getMartinTileUrl('parcelas_catastro')],
+        minzoom: 10,
+        maxzoom: 19,
       });
     }
     // Transparent fill first so parcelas are clickable, then line on top
@@ -1135,7 +1137,7 @@ export default function MapaMapLibre() {
         id: `${CATASTRO_SOURCE_ID}-fill`,
         type: 'fill',
         source: CATASTRO_SOURCE_ID,
-        'source-layer': 'catastro_rural_cu',
+        'source-layer': 'parcelas_catastro',
         paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.01 },
       });
     }
@@ -1144,7 +1146,7 @@ export default function MapaMapLibre() {
         id: `${CATASTRO_SOURCE_ID}-line`,
         type: 'line',
         source: CATASTRO_SOURCE_ID,
-        'source-layer': 'catastro_rural_cu',
+        'source-layer': 'parcelas_catastro',
         paint: { 'line-color': '#f8f9fa', 'line-width': 0.7, 'line-opacity': 0.7 },
       });
     }
