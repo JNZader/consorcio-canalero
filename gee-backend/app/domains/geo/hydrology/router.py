@@ -17,6 +17,7 @@ from app.domains.geo.hydrology.schemas import (
     FloodFlowRequest,
     FloodFlowResponse,
     ZonaFloodFlowResult,
+    ZonaRiskSummary,
 )
 from app.domains.geo.hydrology.service import FloodFlowService
 
@@ -58,6 +59,25 @@ async def compute_flood_flow(
 # ──────────────────────────────────────────────
 # FLOOD FLOW HISTORY
 # ──────────────────────────────────────────────
+
+
+@router.get("/flood-flow/latest", response_model=list[ZonaRiskSummary])
+def get_latest_flood_risk(
+    db: Session = Depends(get_db),
+    repo: FloodFlowRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
+    """Return the latest flood risk level per zone (all zones).
+
+    Used by the frontend map to color zones by hydraulic risk.
+    """
+    from datetime import date
+
+    records = repo.get_latest_by_all_zonas(db, fecha=date.today())
+    return [
+        ZonaRiskSummary(zona_id=str(r.zona_id), nivel_riesgo=r.nivel_riesgo)
+        for r in records
+    ]
 
 
 @router.get("/flood-flow/{zona_id}", response_model=FloodFlowHistoryResponse)

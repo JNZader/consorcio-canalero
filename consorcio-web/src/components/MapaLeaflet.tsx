@@ -48,6 +48,8 @@ import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
 import { useGEELayers, GEE_LAYER_STYLES } from '../hooks/useGEELayers';
 import { useGeoLayers, GEO_LAYER_LABELS, buildTileUrl } from '../hooks/useGeoLayers';
+import { MARTIN_SOURCES, getMartinTileUrl, useZonaRiskColors, getZonaFillColor } from '../hooks/useMartinLayers';
+import MartinVectorLayer from './MartinVectorLayer';
 import { useCaminosColoreados, type ConsorcioInfo } from '../hooks/useCaminosColoreados';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePublicLayers } from '../hooks/usePublicLayers';
@@ -805,6 +807,9 @@ function OverlayTracker({
     'Suelos IDECOR 1:50.000': 'soil',
     'Catastro rural IDECOR': 'catastro',
     'Activos de Infraestructura': 'infrastructure',
+    'Riesgo Hidráulico (zonas)': 'hydraulic_risk',
+    'Puntos de Conflicto': 'puntos_conflicto',
+    'Sugerencias de Canal': 'canal_suggestions',
   };
 
   const resolveVectorLayerId = (name: string): string | null => {
@@ -969,6 +974,9 @@ export default function MapaLeaflet() {
 
   // DEM pipeline raster layers for tile overlays (authenticated)
   const { layers: allGeoLayers, loading: loadingDemLayers } = useGeoLayers();
+
+  // Flood risk colors per zona (for Martin zonas_operativas layer)
+  const { data: zonaRiskColors = {} } = useZonaRiskColors();
 
   // Track which raster overlay layers are currently visible (for legend)
   const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
@@ -2186,6 +2194,55 @@ export default function MapaLeaflet() {
             </LayersControl.Overlay>
             );
           })}
+
+          {/* Martin MVT: zonas_operativas coloreadas por riesgo hidráulico */}
+          <LayersControl.Overlay checked={false} name="Riesgo Hidráulico (zonas)">
+            <MartinVectorLayer
+              tileUrl={getMartinTileUrl('zonas_operativas')}
+              layerName="zonas_operativas"
+              pane="vectorOverlayPane"
+              minZoom={8}
+              style={{
+                fill: true,
+                fillColor: '#3b82f6',
+                fillOpacity: 0.35,
+                color: '#1d4ed8',
+                weight: 1.5,
+                opacity: 0.8,
+              }}
+              featureStyle={(props) => {
+                const zonaId = props['id'] as string | undefined;
+                const fillColor = getZonaFillColor(zonaId, zonaRiskColors);
+                return { fillColor, color: fillColor };
+              }}
+            />
+          </LayersControl.Overlay>
+
+          {/* Martin MVT: puntos de conflicto de infraestructura */}
+          <LayersControl.Overlay
+            checked={false}
+            name={MARTIN_SOURCES.puntos_conflicto.label}
+          >
+            <MartinVectorLayer
+              tileUrl={getMartinTileUrl(MARTIN_SOURCES.puntos_conflicto.table)}
+              layerName={MARTIN_SOURCES.puntos_conflicto.table}
+              pane="vectorOverlayPane"
+              style={MARTIN_SOURCES.puntos_conflicto.style}
+            />
+          </LayersControl.Overlay>
+
+          {/* Martin MVT: sugerencias de canal generadas por análisis */}
+          <LayersControl.Overlay
+            checked={false}
+            name={MARTIN_SOURCES.canal_suggestions.label}
+          >
+            <MartinVectorLayer
+              tileUrl={getMartinTileUrl(MARTIN_SOURCES.canal_suggestions.table)}
+              layerName={MARTIN_SOURCES.canal_suggestions.table}
+              pane="vectorOverlayPane"
+              style={MARTIN_SOURCES.canal_suggestions.style}
+            />
+          </LayersControl.Overlay>
 
           {/* Caminos coloreados por consorcio caminero */}
           {caminos && (

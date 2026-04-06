@@ -57,3 +57,10 @@ class FloodFlowHistoryResponse(BaseModel):
     zona_id: uuid.UUID
     records: list[ZonaFloodFlowResult]
     total: int
+
+
+class ZonaRiskSummary(BaseModel):
+    """Minimal risk summary per zone — used for map coloring."""
+
+    zona_id: str
+    nivel_riesgo: Optional[str]
