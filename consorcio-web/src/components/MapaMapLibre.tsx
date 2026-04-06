@@ -1208,7 +1208,7 @@ export default function MapaMapLibre() {
       map.addSource(CATASTRO_SOURCE_ID, {
         type: 'vector',
         tiles: [getMartinTileUrl('parcelas_catastro')],
-        minzoom: 10,
+        minzoom: 8,
         maxzoom: 19,
       });
     }
@@ -1228,7 +1228,7 @@ export default function MapaMapLibre() {
         type: 'line',
         source: CATASTRO_SOURCE_ID,
         'source-layer': 'parcelas_catastro',
-        paint: { 'line-color': '#f8f9fa', 'line-width': 0.7, 'line-opacity': 0.7 },
+        paint: { 'line-color': '#888888', 'line-width': 1, 'line-opacity': 0.85 },
       });
     }
     setLayerVisibility(map, `${CATASTRO_SOURCE_ID}-fill`, !!vectorVisibility.catastro);
