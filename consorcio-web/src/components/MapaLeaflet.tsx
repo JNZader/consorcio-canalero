@@ -1879,6 +1879,7 @@ export default function MapaLeaflet() {
       >
         <Pane name="selectedImageBasePane" style={{ zIndex: 250 }} />
         <Pane name="analysisOverlayPane" style={{ zIndex: 420 }} />
+        <Pane name="vectorOverlayPane" style={{ zIndex: 450 }} />
         <MapViewUpdater center={center} zoom={zoom} />
         <AddPointEvents onMapClick={handleMapClick} enabled={isOperator && markingMode} />
         {/* Forzar recalculo del tamano del mapa en primera carga */}
@@ -1968,7 +1969,7 @@ export default function MapaLeaflet() {
           {/* Subcuencas operativas from PostGIS */}
           {basins && basins.features.length > 0 && (
             <LayersControl.Overlay
-              checked={sharedVisibleVectors.basins ?? false}
+              checked={false}
               name="Subcuencas Operativas"
             >
               <GeoJSON
@@ -2196,12 +2197,16 @@ export default function MapaLeaflet() {
           })}
 
           {/* Martin MVT: zonas_operativas coloreadas por riesgo hidráulico */}
-          <LayersControl.Overlay checked={false} name="Riesgo Hidráulico (zonas)">
+          <LayersControl.Overlay
+            checked={sharedVisibleVectors.hydraulic_risk ?? false}
+            name="Riesgo Hidráulico (zonas)"
+          >
             <MartinVectorLayer
               tileUrl={getMartinTileUrl('zonas_operativas')}
               layerName="zonas_operativas"
               pane="vectorOverlayPane"
               minZoom={8}
+              enabled={sharedVisibleVectors.hydraulic_risk ?? false}
               style={{
                 fill: true,
                 fillColor: '#3b82f6',
@@ -2220,26 +2225,28 @@ export default function MapaLeaflet() {
 
           {/* Martin MVT: puntos de conflicto de infraestructura */}
           <LayersControl.Overlay
-            checked={false}
+            checked={sharedVisibleVectors.puntos_conflicto ?? false}
             name={MARTIN_SOURCES.puntos_conflicto.label}
           >
             <MartinVectorLayer
               tileUrl={getMartinTileUrl(MARTIN_SOURCES.puntos_conflicto.table)}
               layerName={MARTIN_SOURCES.puntos_conflicto.table}
               pane="vectorOverlayPane"
+              enabled={sharedVisibleVectors.puntos_conflicto ?? false}
               style={MARTIN_SOURCES.puntos_conflicto.style}
             />
           </LayersControl.Overlay>
 
           {/* Martin MVT: sugerencias de canal generadas por análisis */}
           <LayersControl.Overlay
-            checked={false}
+            checked={sharedVisibleVectors.canal_suggestions ?? false}
             name={MARTIN_SOURCES.canal_suggestions.label}
           >
             <MartinVectorLayer
               tileUrl={getMartinTileUrl(MARTIN_SOURCES.canal_suggestions.table)}
               layerName={MARTIN_SOURCES.canal_suggestions.table}
               pane="vectorOverlayPane"
+              enabled={sharedVisibleVectors.canal_suggestions ?? false}
               style={MARTIN_SOURCES.canal_suggestions.style}
             />
           </LayersControl.Overlay>

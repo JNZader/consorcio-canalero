@@ -34,6 +34,9 @@ const defaultVisibleVectors: Record<string, boolean> = {
   catastro: false,
   public_layers: false,
   infrastructure: false,
+  hydraulic_risk: false,
+  puntos_conflicto: false,
+  canal_suggestions: false,
 };
 
 const inMemoryStorage = {
@@ -107,11 +110,30 @@ export const useMapLayerSyncStore = create<MapLayerSyncStoreState & SharedMapLay
         })),
     }),
     {
-      name: 'cc-map-layer-sync',
+      name: 'cc-map-layer-sync-v2',
       storage,
       partialize: (state) => ({
-        map2d: state.map2d,
-        map3d: state.map3d,
+        map2d: {
+          ...state.map2d,
+          visibleVectors: {
+            ...state.map2d.visibleVectors,
+            // Heavy / MVT layers — always start OFF, never persist as true
+            basins: false,
+            hydraulic_risk: false,
+            puntos_conflicto: false,
+            canal_suggestions: false,
+          },
+        },
+        map3d: {
+          ...state.map3d,
+          visibleVectors: {
+            ...state.map3d.visibleVectors,
+            basins: false,
+            hydraulic_risk: false,
+            puntos_conflicto: false,
+            canal_suggestions: false,
+          },
+        },
         initializedViews: state.initializedViews,
       }),
     },

@@ -34,6 +34,8 @@ interface MartinVectorLayerProps {
   minZoom?: number;
   maxZoom?: number;
   maxNativeZoom?: number;
+  /** When false the layer is removed from the map. Defaults to true. */
+  enabled?: boolean;
 }
 
 export default function MartinVectorLayer({
@@ -45,6 +47,7 @@ export default function MartinVectorLayer({
   minZoom = 8,
   maxZoom = 18,
   maxNativeZoom = 16,
+  enabled = true,
 }: MartinVectorLayerProps) {
   const map = useMap();
   const layerRef = useRef<L.Layer | null>(null);
@@ -56,6 +59,16 @@ export default function MartinVectorLayer({
       console.warn('leaflet.vectorgrid failed to load — Martin MVT layers unavailable');
     });
   }, []);
+
+  // Add/remove layer based on enabled prop
+  useEffect(() => {
+    if (!layerRef.current) return;
+    if (enabled) {
+      map.addLayer(layerRef.current);
+    } else {
+      map.removeLayer(layerRef.current);
+    }
+  }, [enabled, map]);
 
   useEffect(() => {
     if (!vgReady) return;
@@ -88,7 +101,9 @@ export default function MartinVectorLayer({
       maxNativeZoom,
     });
 
-    layer.addTo(map);
+    if (enabled) {
+      layer.addTo(map);
+    }
     layerRef.current = layer;
 
     return () => {
