@@ -22,13 +22,12 @@ from pyproj import CRS
 from rasterio.enums import Resampling
 from rasterio.transform import from_bounds
 from rasterio.warp import reproject, transform_bounds
-
-logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
-
 from rio_tiler.io import Reader
 from rio_tiler.errors import TileOutsideBounds
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Geo Tile Service",

@@ -279,7 +279,6 @@ def vectorize_water_mask(
     with rasterio.open(mask_path) as src:
         mask = src.read(1)
         transform = src.transform
-        crs = src.crs
 
     features = []
     for geom, value in rasterio_shapes(mask, mask=(mask == 1), transform=transform):

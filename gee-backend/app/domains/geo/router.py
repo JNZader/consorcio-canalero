@@ -1792,7 +1792,6 @@ def compute_zonal_statistics(
     from geoalchemy2.functions import ST_AsText
 
     # 1. Find the raster layer
-    repo = _get_repo()
     layer = (
         db.query(GeoLayer)
         .filter(GeoLayer.tipo == body.layer_tipo)
@@ -3385,24 +3384,24 @@ def get_ndwi_baselines(
 router.include_router(gee_router)
 
 # ── Include Intelligence sub-router ──
-from app.domains.geo.intelligence.router import router as intel_router
+from app.domains.geo.intelligence.router import router as intel_router  # noqa: E402
 
 router.include_router(intel_router, prefix="/intelligence")
 
 # ── Include Hydrology sub-router ──
-from app.domains.geo.hydrology.router import router as hydrology_router
+from app.domains.geo.hydrology.router import router as hydrology_router  # noqa: E402
 
 router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
 
 
 # ── Catastro / Afectados endpoints ───────────────────────────────────────────
 
-from app.domains.geo.intelligence.service import (
+from app.domains.geo.intelligence.service import (  # noqa: E402
     import_catastro_geojson,
     get_afectados_zona,
     get_afectados_evento,
 )
-from app.domains.geo.schemas import (
+from app.domains.geo.schemas import (  # noqa: E402
     AfectadosResponse,
     EventoAfectadosResponse,
     ParcelaImportResult,

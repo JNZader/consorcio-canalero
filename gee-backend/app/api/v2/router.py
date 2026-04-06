@@ -22,6 +22,7 @@ from app.domains.geo.router import router as geo_router
 from app.domains.monitoring.router import router as monitoring_router
 from app.domains.settings.router import router as settings_router
 from app.domains.settings.router import public_settings_router
+from app.domains.territorial.router import router as territorial_router
 
 api_router = APIRouter()
 
@@ -42,6 +43,9 @@ api_router.include_router(geo_router, prefix="/geo")
 
 # Monitoring has no prefix on its router — paths are /sugerencias and /monitoring/*
 api_router.include_router(monitoring_router)
+
+# Territorial report (suelos + canales geo layers)
+api_router.include_router(territorial_router)
 
 # System settings
 api_router.include_router(settings_router)

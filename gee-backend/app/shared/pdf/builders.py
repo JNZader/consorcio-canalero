@@ -463,7 +463,6 @@ def build_approved_zoning_map_pdf(
     story: list = []
 
     title = str(payload.get("title") or "Mapa del Consorcio")
-    subtitle = str(payload.get("subtitle") or "")
     image_data_url = str(payload.get("mapImageDataUrl") or "")
     zone_legend = payload.get("zoneLegend") or []
     road_legend = payload.get("roadLegend") or []

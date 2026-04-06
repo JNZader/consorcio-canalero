@@ -102,7 +102,7 @@ def get_dashboard(
         return _get_intel_service().get_dashboard(db)
 
     stats = repo.get_dashboard_stats(db)
-    alertas = repo.get_alertas_resumen(db)
+    repo.get_alertas_resumen(db)
 
     if not stats:
         # Mat view is empty (never refreshed) — fall back to live

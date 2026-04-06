@@ -184,7 +184,6 @@ def build_info_table(
 ) -> Table:
     """Build a two-column key-value info table."""
     styles = get_pdf_styles(branding)
-    primary = _hex_to_color(branding.color_primario)
 
     rows = []
     for label, value in data:

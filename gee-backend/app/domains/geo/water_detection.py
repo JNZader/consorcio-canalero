@@ -139,7 +139,6 @@ def detect_water_from_gee(
     wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(ndwi.lt(NDWI_WATER_THRESHOLD))  # Wet soil
 
     # Morphological cleanup: remove isolated pixels, fill small holes
-    kernel = ee.Kernel.circle(radius=2, units="pixels")
     water_clean = water_mask.focalMode(radius=2, kernelType="circle", units="pixels")
     water_clean = water_clean.updateMask(water_clean)
 

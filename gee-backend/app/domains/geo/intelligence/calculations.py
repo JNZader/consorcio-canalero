@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    import geopandas as gpd
 
 import numpy as np
 from shapely.geometry import LineString, mapping

@@ -436,10 +436,6 @@ class IntelligenceRepository:
             select(func.count()).select_from(ZonaOperativa)
         ).scalar_one()
 
-        area_total = db.execute(
-            select(func.coalesce(func.sum(ZonaOperativa.superficie_ha), 0.0))
-        ).scalar_one()
-
         # Count zones by risk level (latest HCI per zone)
         latest_hci = (
             select(

@@ -659,7 +659,7 @@ def delineate_basins_task(
         basins_raster = str(output_dir / "basins.tif")
         basins_geojson = str(output_dir / "basins.geojson")
 
-        result_path = _run_step(
+        _run_step(
             job_id or "no-job",
             "delineate_basins",
             _get_processing().delineate_basins,

@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    import geopandas as gpd
 
 import structlog
 from sqlalchemy.orm import Session
@@ -79,7 +82,7 @@ def calculate_hci_for_zone(
     )
     nivel = clasificar_nivel_riesgo(indice)
 
-    ih = intel_repo.create_indice_hidrico(
+    intel_repo.create_indice_hidrico(
         db,
         zona_id=zona_id,
         fecha_calculo=date.today(),
@@ -475,14 +478,14 @@ def get_dashboard(db: Session) -> dict[str, Any]:
 # Catastro / Afectados
 # ---------------------------------------------------------------------------
 
-from fastapi import HTTPException
+from fastapi import HTTPException  # noqa: E402
 
-from app.domains.geo.intelligence.repository import (
+from app.domains.geo.intelligence.repository import (  # noqa: E402
     bulk_upsert_parcelas,
     get_afectados_by_flood_event,
     get_afectados_by_zona,
 )
-from app.domains.geo.schemas import (
+from app.domains.geo.schemas import (  # noqa: E402
     AfectadosResponse,
     EventoAfectadosResponse,
     ParcelaImportResult,

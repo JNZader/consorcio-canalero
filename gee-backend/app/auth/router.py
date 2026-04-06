@@ -143,8 +143,6 @@ if settings.google_oauth_client_id:
             # Decode without verification — we already trust Google's token endpoint
             id_info = jose_jwt.get_unverified_claims(id_token)
             account_email = id_info.get("email")
-            account_id = id_info.get("sub")
-
             if not account_email:
                 return RedirectResponse(
                     url=f"{frontend_callback}?{urlencode({'error': 'no_email'})}"

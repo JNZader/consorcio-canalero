@@ -83,7 +83,7 @@ def build_topology(db: Session, tolerance: float = 0.0001) -> dict[str, Any]:
     db.execute(text("UPDATE canal_network SET the_geom = geom WHERE the_geom IS NULL;"))
     db.commit()
 
-    result = db.execute(
+    db.execute(
         text("SELECT pgr_createTopology('canal_network', :tol, 'the_geom', 'id');"),
         {"tol": tolerance},
     )

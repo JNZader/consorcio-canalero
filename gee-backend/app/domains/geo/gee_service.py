@@ -14,10 +14,12 @@ Funcionalidades:
 import calendar
 import ee
 import json
-from datetime import date, timedelta
+import logging as _logging
+import statistics as _statistics
+from datetime import date, datetime as _datetime, timedelta
 from functools import lru_cache
-from typing import Any, Dict, List
 from pathlib import Path
+from typing import Any, Dict, List
 
 from app.config import settings
 
@@ -875,9 +877,6 @@ def get_image_explorer() -> ImageExplorer:
 # NDWI BASELINE — dry-season historical reference per zona
 # =========================================================================
 
-import logging as _logging
-import statistics as _statistics
-from datetime import datetime as _datetime
 
 _baseline_logger = _logging.getLogger(__name__)
 

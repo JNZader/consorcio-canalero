@@ -57,6 +57,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
         # Prefer per-user rate limiting when authenticated; fall back to IP.
         user_id = _extract_user_id_from_token(request.headers.get("authorization"))
+        client_ip = request.client.host if request.client else "unknown"
         rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
 
         allowed, remaining, reset_time = await self.rate_limiter.check(rate_limit_key)
