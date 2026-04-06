@@ -1092,27 +1092,17 @@ export default function MapaMapLibre() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // ── Soil (PMTiles) ─────────────────────────────────────────────────────
-    if (!map.getSource(SOIL_SOURCE_ID)) {
-      map.addSource(SOIL_SOURCE_ID, {
-        type: 'vector',
-        url: 'pmtiles:///data/suelos_cu.pmtiles',
-      });
-    }
+    // ── Soil (GeoJSON — same approach as TerrainViewer3D for identical colors)
+    // Uses __color pre-decorated by getSoilColor(cap) — exact same as 3D viewer
+    ensureGeoJsonSource(map, SOIL_SOURCE_ID, soilCollection ?? asFeatureCollection([]));
     if (!map.getLayer(`${SOIL_SOURCE_ID}-fill`)) {
       map.addLayer({
         id: `${SOIL_SOURCE_ID}-fill`,
         type: 'fill',
         source: SOIL_SOURCE_ID,
-        'source-layer': 'suelos_cu',
         paint: {
-          'fill-color': [
-            'match', ['get', 'cap'],
-            'I', '#1b5e20', 'II', '#2e7d32', 'III', '#689f38', 'IV', '#c0ca33',
-            'V', '#f9a825', 'VI', '#fb8c00', 'VII', '#ef6c00', 'VIII', '#c62828',
-            '#8d6e63',
-          ],
-          'fill-opacity': 0.45,
+          'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
+          'fill-opacity': 0.22,
         },
       });
     }
@@ -1121,13 +1111,12 @@ export default function MapaMapLibre() {
         id: `${SOIL_SOURCE_ID}-line`,
         type: 'line',
         source: SOIL_SOURCE_ID,
-        'source-layer': 'suelos_cu',
         paint: { 'line-color': '#6d4c41', 'line-width': 0.8, 'line-opacity': 0.55 },
       });
     }
     setLayerVisibility(map, `${SOIL_SOURCE_ID}-fill`, !!vectorVisibility.soil);
     setLayerVisibility(map, `${SOIL_SOURCE_ID}-line`, !!vectorVisibility.soil);
-  }, [mapReady, vectorVisibility.soil]);
+  }, [mapReady, soilCollection, vectorVisibility.soil]);
 
   useEffect(() => {
     const map = mapRef.current;
