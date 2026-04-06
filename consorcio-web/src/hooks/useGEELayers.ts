@@ -31,11 +31,17 @@ export const GEE_LAYER_COLORS: Record<GEELayerName, string> = {
   caminos: '#FFEB3B',
 };
 
-// Default styles for GeoJSON layers (Leaflet PathOptions)
-export const GEE_LAYER_STYLES: Record<
-  GEELayerName,
-  { color: string; weight: number; fillOpacity: number; fillColor?: string }
-> = {
+/** GEE layer paint properties for MapLibre GL rendering.
+ *  Previously named GEE_LAYER_STYLES and typed as Leaflet PathOptions — now
+ *  typed as plain MapLibre-compatible paint descriptors. */
+export interface GEELayerPaint {
+  color: string;
+  weight: number;
+  fillOpacity: number;
+  fillColor?: string;
+}
+
+export const GEE_LAYER_STYLES: Record<GEELayerName, GEELayerPaint> = {
   zona: { color: '#FF0000', weight: 3, fillOpacity: 0 },
   candil: { color: '#2196F3', weight: 2, fillOpacity: 0.1, fillColor: '#2196F3' },
   ml: { color: '#4CAF50', weight: 2, fillOpacity: 0.1, fillColor: '#4CAF50' },

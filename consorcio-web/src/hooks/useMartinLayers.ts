@@ -1,11 +1,11 @@
 /**
- * Martin MVT layer utilities for Leaflet.
+ * Martin MVT layer utilities for MapLibre GL.
  *
  * Martin auto-publishes all PostGIS tables with geometry columns as MVT.
  * Sources we care about: zonas_operativas, puntos_conflicto, canal_suggestions.
  *
  * Flood risk colors are fetched from the backend flood-flow API and applied
- * as fill colors per zona via the vectorgrid styling function.
+ * as fill colors per zona via MapLibre paint properties.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -14,21 +14,29 @@ const MARTIN_URL = import.meta.env.VITE_MARTIN_URL || 'http://localhost:3000';
 
 // ─── Source definitions ──────────────────────────────────────────────────────
 
+/** Paint properties for a Martin MVT source (used for MapLibre GL rendering). */
+export interface MartinSourceStyle {
+  /** Stroke / circle stroke color */
+  color: string;
+  /** Fill / circle fill color */
+  fillColor: string;
+  /** Fill opacity (0–1) */
+  fillOpacity: number;
+  /** Line or circle stroke width */
+  weight: number;
+  /** Line or circle stroke opacity (0–1) */
+  opacity: number;
+  /** Circle radius in pixels (point layers only) */
+  radius?: number;
+}
+
 export interface MartinSource {
   /** Martin table/view name — must match what's auto-published */
   table: string;
   label: string;
   defaultVisible: boolean;
-  /** Leaflet vectorgrid styling */
-  style: {
-    fill: boolean;
-    color: string;
-    fillColor: string;
-    fillOpacity: number;
-    weight: number;
-    opacity: number;
-    radius?: number;
-  };
+  /** Paint properties for this source */
+  style: MartinSourceStyle;
 }
 
 export const MARTIN_SOURCES: Record<string, MartinSource> = {
@@ -37,7 +45,6 @@ export const MARTIN_SOURCES: Record<string, MartinSource> = {
     label: 'Puntos de Conflicto',
     defaultVisible: false,
     style: {
-      fill: true,
       color: '#b91c1c',
       fillColor: '#ef4444',
       fillOpacity: 0.85,
@@ -51,7 +58,6 @@ export const MARTIN_SOURCES: Record<string, MartinSource> = {
     label: 'Sugerencias de Canal',
     defaultVisible: false,
     style: {
-      fill: true,
       color: '#0369a1',
       fillColor: '#38bdf8',
       fillOpacity: 0.6,

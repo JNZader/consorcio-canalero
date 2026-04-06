@@ -4,17 +4,24 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import type { PathOptions } from 'leaflet';
 import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 
+/** Paint properties for a waterway layer — used by both MapLibre GL and Leaflet renderers. */
+export interface WaterwayStyle {
+  color: string;
+  weight: number;
+  opacity: number;
+  dashArray?: string;
+}
+
 export interface WaterwayLayer {
   id: string;
   nombre: string;
   data: FeatureCollection;
-  style: PathOptions;
+  style: WaterwayStyle;
 }
 
 /** Waterway definitions with display name and styling */
@@ -23,37 +30,37 @@ const WATERWAY_DEFS = [
     id: 'rio_tercero',
     file: 'rio_tercero.geojson',
     nombre: 'Río Tercero',
-    style: { color: '#1565C0', weight: 4, opacity: 0.9 } satisfies PathOptions,
+    style: { color: '#1565C0', weight: 4, opacity: 0.9 } satisfies WaterwayStyle,
   },
   {
     id: 'canal_desviador',
     file: 'canal_desviador.geojson',
     nombre: 'Canal Desviador a Río Tercero',
-    style: { color: '#00897B', weight: 3, opacity: 0.9 } satisfies PathOptions,
+    style: { color: '#00897B', weight: 3, opacity: 0.9 } satisfies WaterwayStyle,
   },
   {
     id: 'canal_litin_tortugas',
     file: 'canal_litin_tortugas.geojson',
     nombre: 'Canal Litín Tortugas',
-    style: { color: '#00ACC1', weight: 3, opacity: 0.9 } satisfies PathOptions,
+    style: { color: '#00ACC1', weight: 3, opacity: 0.9 } satisfies WaterwayStyle,
   },
   {
     id: 'arroyo_algodon',
     file: 'arroyo_algodon.geojson',
     nombre: 'Arroyo Algodón',
-    style: { color: '#42A5F5', weight: 2, opacity: 0.85 } satisfies PathOptions,
+    style: { color: '#42A5F5', weight: 2, opacity: 0.85 } satisfies WaterwayStyle,
   },
   {
     id: 'arroyo_las_mojarras',
     file: 'arroyo_las_mojarras.geojson',
     nombre: 'A. Las Saladas / de las Mojarras',
-    style: { color: '#64B5F6', weight: 2, opacity: 0.85 } satisfies PathOptions,
+    style: { color: '#64B5F6', weight: 2, opacity: 0.85 } satisfies WaterwayStyle,
   },
   {
     id: 'canales_existentes',
     file: 'canales_existentes.geojson',
     nombre: 'Canales existentes',
-    style: { color: '#0B3D91', weight: 4, opacity: 0.95, dashArray: '6 4' } satisfies PathOptions,
+    style: { color: '#0B3D91', weight: 4, opacity: 0.95, dashArray: '6 4' } satisfies WaterwayStyle,
   },
 ] as const;
 
@@ -96,7 +103,7 @@ export function useWaterways() {
               id: def.id,
               nombre: def.nombre,
               data: mergedData,
-              style: def.style as PathOptions,
+              style: def.style as WaterwayStyle,
             } satisfies WaterwayLayer;
           } catch (err) {
             logger.warn(`Error loading waterway '${def.id}'`, err);
