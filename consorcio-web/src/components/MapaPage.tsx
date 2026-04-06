@@ -137,7 +137,7 @@ export function MapaContent() {
                   {
                     value: '2d',
                     label: (
-                      <Tooltip label="Mapa 2D (Leaflet)" position="bottom" withArrow>
+                      <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
                         <Group gap={4}>
                           <IconMap size={16} />
                           <Text size="xs">2D</Text>

@@ -3,9 +3,9 @@ import { Suspense, lazy } from 'react';
 import styles from '../styles/components/map.module.css';
 import { ErrorBoundary } from './ErrorBoundary';
 
-// Lazy load del componente de mapa con Leaflet
-// Esto separa Leaflet (~400KB) del bundle inicial
-const MapaLeaflet = lazy(() => import('./MapaLeaflet'));
+// Lazy load del componente de mapa con MapLibre GL
+// Esto separa MapLibre del bundle inicial
+const MapaMapLibre = lazy(() => import('./MapaMapLibre'));
 
 // Componente de carga mientras se descarga Leaflet
 function MapaLoadingSkeleton() {
@@ -56,7 +56,7 @@ function MapaContenido() {
   return (
     <ErrorBoundary fallback={<MapaErrorFallback />}>
       <Suspense fallback={<MapaLoadingSkeleton />}>
-        <MapaLeaflet />
+        <MapaMapLibre />
       </Suspense>
     </ErrorBoundary>
   );
