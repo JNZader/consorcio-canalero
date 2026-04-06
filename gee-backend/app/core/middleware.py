@@ -50,8 +50,12 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/", "/health"] or "/tiles/" in request.url.path:
             return await call_next(request)
 
+        # Skip rate limiting when disabled via env (local dev / E2E)
+        import os
+        if os.getenv("RATE_LIMIT_DISABLED", "").lower() in ("1", "true", "yes"):
+            return await call_next(request)
+
         # Prefer per-user rate limiting when authenticated; fall back to IP.
-        client_ip = request.client.host if request.client else "unknown"
         user_id = _extract_user_id_from_token(request.headers.get("authorization"))
         rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
 

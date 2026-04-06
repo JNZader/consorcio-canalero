@@ -6,7 +6,29 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _wkb_to_geojson(v: Any) -> Optional[dict[str, Any]]:
+    """Convert WKBElement / WKT / dict to a plain GeoJSON dict."""
+    if v is None or isinstance(v, dict):
+        return v
+    try:
+        from geoalchemy2.shape import to_shape
+        shape = to_shape(v)
+        import json
+        from shapely.geometry import mapping
+        return json.loads(json.dumps(mapping(shape)))
+    except Exception:
+        try:
+            # Fallback: try shapely WKB/WKT
+            from shapely import wkb, wkt
+            from shapely.geometry import mapping
+            import json
+            shape = wkb.loads(bytes(v.data)) if hasattr(v, "data") else wkt.loads(str(v))
+            return json.loads(json.dumps(mapping(shape)))
+        except Exception:
+            return None
 
 
 # ──────────────────────────────────────────────
@@ -29,6 +51,11 @@ class ZonaOperativaResponse(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("geometria", mode="before")
+    @classmethod
+    def parse_geometria(cls, v: Any) -> Optional[dict[str, Any]]:
+        return _wkb_to_geojson(v)
 
 
 class ZonaOperativaListResponse(BaseModel):

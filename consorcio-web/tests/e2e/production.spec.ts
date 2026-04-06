@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-const API_BASE = 'https://cc10demayo-api.javierzader.com';
-const APP_URL = 'https://consorcio-canalero.pages.dev';
+const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:8000';
+const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123';
 
 // ============================================
 // 1. HEALTH & INFRASTRUCTURE
@@ -97,8 +99,8 @@ test.describe('Authentication', () => {
   test('login with email/password returns JWT', async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
       form: {
-        username: 'jnzader@gmail.com',
-        password: '1qaz2wsx',
+        username: ADMIN_EMAIL,
+        password: ADMIN_PASSWORD,
       },
     });
     expect(res.ok()).toBeTruthy();
@@ -115,7 +117,7 @@ test.describe('Authentication', () => {
     });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
-    expect(body.email).toBe('jnzader@gmail.com');
+    expect(body.email).toBe(ADMIN_EMAIL);
     expect(body.role).toBe('admin');
     expect(body.is_superuser).toBe(true);
   });
@@ -136,7 +138,7 @@ test.describe('Authentication', () => {
 test.describe('Authenticated CRUD', () => {
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     const body = await res.json();
     authToken = body.access_token;
@@ -331,7 +333,7 @@ test.describe('Google Earth Engine', () => {
 test.describe('Geo Intelligence', () => {
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     authToken = (await res.json()).access_token;
   });
@@ -411,7 +413,7 @@ test.describe('Auth Extended', () => {
   test('logout invalidates session', async ({ request }) => {
     // Login first
     const loginRes = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     const token = (await loginRes.json()).access_token;
 
@@ -432,7 +434,7 @@ test.describe('Denuncias State Transitions', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -495,7 +497,7 @@ test.describe('Infraestructura Extended', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -563,7 +565,7 @@ test.describe('Finanzas Extended', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -626,7 +628,7 @@ test.describe('Tramites State Transitions', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -684,7 +686,7 @@ test.describe('Capas CRUD', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -752,7 +754,7 @@ test.describe('Sugerencias Management', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -797,7 +799,7 @@ test.describe('Settings Update', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -887,7 +889,7 @@ test.describe('Geo Intelligence Extended', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
@@ -930,7 +932,7 @@ test.describe('Geo Jobs & Layers', () => {
 
   test.beforeAll(async ({ request }) => {
     const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: 'jnzader@gmail.com', password: '1qaz2wsx' },
+      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
     token = (await res.json()).access_token;
   });
