@@ -1500,6 +1500,20 @@ export default function MapaMapLibre() {
     }
   }, [mapReady, demTileUrl, showDemOverlay]);
 
+  // Update visible raster layers for RasterLegend
+  useEffect(() => {
+    if (!showDemOverlay || !activeDemLayerId) {
+      setVisibleRasterLayers([]);
+      return;
+    }
+    const layer = allGeoLayers.find((l) => l.id === activeDemLayerId);
+    if (layer) {
+      setVisibleRasterLayers([{ tipo: layer.tipo }]);
+    } else {
+      setVisibleRasterLayers([]);
+    }
+  }, [showDemOverlay, activeDemLayerId, allGeoLayers]);
+
   /* ---------------------------------------------------------------------- */
   /*  IGN static image overlay — Task 2.9                                    */
   /* ---------------------------------------------------------------------- */

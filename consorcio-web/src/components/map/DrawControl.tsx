@@ -90,6 +90,22 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
       });
 
       drawRef.current = draw;
+
+      // Before adding the control, remove any stale Draw sources/layers that may
+      // linger after WebGL context loss+restore (MapboxDraw re-fires its setup on
+      // every map 'load' event, causing "source already exists" on context restore).
+      const existingStyle = map.getStyle();
+      if (existingStyle && map.getSource('mapbox-gl-draw-cold')) {
+        for (const layer of existingStyle.layers ?? []) {
+          if (layer.id.startsWith('gl-draw-') || layer.id.includes('mapbox-gl-draw')) {
+            try { map.removeLayer(layer.id); } catch { /* ignore */ }
+          }
+        }
+        for (const id of ['mapbox-gl-draw-cold', 'mapbox-gl-draw-hot']) {
+          try { map.removeSource(id); } catch { /* ignore */ }
+        }
+      }
+
       // MapboxDraw is compatible with maplibre-gl maps — it targets the same GL API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       map.addControl(draw as unknown as maplibregl.IControl);
