@@ -936,13 +936,80 @@ export default function MapaMapLibre() {
   );
 
   const activeLegendItems = useMemo(() => {
-    if (!hasApprovedZones || !approvedZones) return [];
-    return approvedZones.features.map((feature) => ({
-      color: (feature.properties?.__color as string | undefined) || '#1971c2',
-      label: String(feature.properties?.nombre || 'Zona aprobada'),
-      type: 'fill',
-    }));
-  }, [approvedZones, hasApprovedZones]);
+    const items: { color: string; label: string; type: string }[] = [];
+
+    // Zona consorcio — always shown when data is available
+    if (zonaCollection && zonaCollection.features.length > 0) {
+      items.push({ color: '#FF0000', label: 'Zona Consorcio', type: 'border' });
+    }
+
+    // Cuencas aprobadas — per-zone color from __color
+    if (vectorVisibility.approved_zones && hasApprovedZones && approvedZones) {
+      for (const feature of approvedZones.features) {
+        items.push({
+          color: (feature.properties?.__color as string | undefined) || '#1971c2',
+          label: String(feature.properties?.nombre || 'Cuenca'),
+          type: 'fill',
+        });
+      }
+    }
+
+    // Subcuencas operativas
+    if (vectorVisibility.basins && basins && basins.features.length > 0) {
+      items.push({ color: '#00897B', label: 'Subcuencas operativas', type: 'border' });
+    }
+
+    // Suelos IDECOR — one entry per cap class present in the data
+    if (vectorVisibility.soil && soilMap && soilMap.features.length > 0) {
+      const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+      const presentCaps = new Set<string>();
+      for (const f of soilMap.features) {
+        const cap = (f.properties as { cap?: string | null } | null)?.cap;
+        if (cap) {
+          const normalized = cap.trim().toUpperCase();
+          const match = normalized.match(/^(VIII|VII|VI|IV|III|II|I)/);
+          if (match) presentCaps.add(match[1]);
+        }
+      }
+      for (const cap of capOrder) {
+        if (presentCaps.has(cap)) {
+          items.push({ color: getSoilColor(cap), label: `Clase ${cap}`, type: 'fill' });
+        }
+      }
+    }
+
+    // Waterways — one entry per named watercourse
+    if (vectorVisibility.waterways) {
+      const waterwayEntries = [
+        { color: '#1565C0', label: 'Río Tercero' },
+        { color: '#1976D2', label: 'Arroyo Algodón' },
+        { color: '#0288D1', label: 'Canal Desviador' },
+        { color: '#039BE5', label: 'Canal Litín-Tortugas' },
+        { color: '#2196F3', label: 'Canales existentes' },
+        { color: '#42A5F5', label: 'Arroyo Las Mojarras' },
+      ];
+      for (const entry of waterwayEntries) {
+        items.push({ ...entry, type: 'line' });
+      }
+    }
+
+    // Red vial — handled by Leyenda's consorcios prop (collapsible section)
+
+    // Infrastructure points
+    if (vectorVisibility.infrastructure && infrastructureCollection && infrastructureCollection.features.length > 0) {
+      items.push({ color: '#fd7e14', label: 'Infraestructura', type: 'fill' });
+    }
+
+    return items;
+  }, [
+    zonaCollection,
+    vectorVisibility,
+    hasApprovedZones,
+    approvedZones,
+    basins,
+    soilMap,
+    infrastructureCollection,
+  ]);
 
   // Auto-activate comparison when comparison state changes
   useEffect(() => {
@@ -2116,7 +2183,7 @@ export default function MapaMapLibre() {
 
         {showLegend && (
           <Leyenda
-            consorcios={consorcios}
+            consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
             customItems={activeLegendItems}
             floating={false}
           />
