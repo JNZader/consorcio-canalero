@@ -59,6 +59,21 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
     });
 
     drawRef.current = draw;
+
+    // Clean stale Draw sources/layers before adding — prevents "source already exists"
+    // crash after WebGL context loss+restore (same fix as DrawControl.tsx).
+    const existingStyle = map.getStyle();
+    if (existingStyle && map.getSource('mapbox-gl-draw-cold')) {
+      for (const layer of existingStyle.layers ?? []) {
+        if (layer.id.startsWith('gl-draw-') || layer.id.includes('mapbox-gl-draw')) {
+          try { map.removeLayer(layer.id); } catch { /* ignore */ }
+        }
+      }
+      for (const id of ['mapbox-gl-draw-cold', 'mapbox-gl-draw-hot']) {
+        try { map.removeSource(id); } catch { /* ignore */ }
+      }
+    }
+
     // MapboxDraw targets the same GL API as maplibre-gl
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     map.addControl(draw as unknown as import('maplibre-gl').IControl);
