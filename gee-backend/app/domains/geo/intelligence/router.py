@@ -16,7 +16,6 @@ from app.db.session import get_db
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
-    AnalysisSummaryResponse,
     BasinRiskRankingResponse,
     CanalSuggestionResponse,
     CompositeComparisonItemResponse,

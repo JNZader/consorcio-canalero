@@ -51,6 +51,11 @@ class ZonaOperativa(UUIDMixin, TimestampMixin, Base):
         default=0.0,
         comment="Area in hectares",
     )
+    capacidad_m3s: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Canal hydraulic capacity m3/s",
+    )
 
     # Relationships
     indices_hidricos: Mapped[list["IndiceHidrico"]] = relationship(

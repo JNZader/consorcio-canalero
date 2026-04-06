@@ -869,3 +869,165 @@ class ImageExplorer:
 def get_image_explorer() -> ImageExplorer:
     """Obtener instancia del explorador de imagenes (singleton)."""
     return ImageExplorer()
+
+
+# =========================================================================
+# NDWI BASELINE — dry-season historical reference per zona
+# =========================================================================
+
+import logging as _logging
+import statistics as _statistics
+from datetime import datetime as _datetime
+
+_baseline_logger = _logging.getLogger(__name__)
+
+
+def compute_ndwi_baselines_gee(
+    zones: list[dict],
+    dry_season_months: list[int] | None = None,
+    years_back: int = 3,
+) -> list[dict]:
+    """Compute NDWI mean and std per zona using S2 dry-season historical data.
+
+    For each zone, queries COPERNICUS/S2_SR_HARMONIZED filtered to the given
+    dry-season months over the last ``years_back`` years, computes per-image
+    mean NDWI, then returns mean and std across images.
+
+    Args:
+        zones: List of dicts with 'id', 'nombre', 'ee_geometry' keys.
+        dry_season_months: Month numbers (1-12). Default [6, 7, 8] (austral winter).
+        years_back: How many years of history to use (default 3).
+
+    Returns:
+        List of dicts: {zona_id, ndwi_mean, ndwi_std, sample_count}.
+        Zones that fail GEE queries are silently skipped (logged as warnings).
+    """
+    _ensure_initialized()
+
+    if dry_season_months is None:
+        dry_season_months = [6, 7, 8]
+
+    now = _datetime.utcnow()
+    start_dt = now.replace(year=now.year - years_back)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = now.strftime("%Y-%m-%d")
+
+    # Build month filter (OR across selected months)
+    month_filters = [ee.Filter.calendarRange(m, m, "month") for m in dry_season_months]
+    month_filter = ee.Filter.Or(*month_filters) if len(month_filters) > 1 else month_filters[0]
+
+    collection = (
+        ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+        .filterDate(start_str, end_str)
+        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+        .filter(month_filter)
+        .map(lambda img: img.normalizedDifference(["B3", "B8"]).rename("ndwi"))
+    )
+
+    results = []
+
+    for zone in zones:
+        try:
+            geometry = zone["ee_geometry"]
+
+            def _get_mean(img: ee.Image) -> ee.Feature:
+                val = img.reduceRegion(
+                    reducer=ee.Reducer.mean(),
+                    geometry=geometry,
+                    scale=10,
+                    maxPixels=1e9,
+                ).get("ndwi")
+                return ee.Feature(None, {"ndwi": val})
+
+            ndwi_values = (
+                collection.map(_get_mean)
+                .filter(ee.Filter.notNull(["ndwi"]))
+                .aggregate_array("ndwi")
+                .getInfo()
+            )
+
+            if not ndwi_values:
+                _baseline_logger.warning(
+                    "compute_ndwi_baselines: no dry-season images for zone %s", zone["id"]
+                )
+                continue
+
+            mean_val = _statistics.mean(ndwi_values)
+            std_val = _statistics.stdev(ndwi_values) if len(ndwi_values) > 1 else 0.05
+
+            results.append(
+                {
+                    "zona_id": str(zone["id"]),
+                    "ndwi_mean": round(mean_val, 4),
+                    "ndwi_std": round(max(std_val, 0.001), 4),  # floor std to avoid div/0
+                    "sample_count": len(ndwi_values),
+                }
+            )
+
+        except Exception as exc:
+            _baseline_logger.warning(
+                "compute_ndwi_baselines: failed for zone %s: %s", zone.get("id"), exc
+            )
+
+    return results
+
+
+# =========================================================================
+# LAND COVER C COEFFICIENT — ESA WorldCover → runoff coefficient
+# =========================================================================
+
+
+def get_landcover_c_coefficient(zone_geometry: ee.Geometry) -> float | None:
+    """Get runoff coefficient C from ESA WorldCover v200 for a zone.
+
+    Uses area-weighted mean of per-pixel C values derived from the 10m
+    ESA/WorldCover/v200 land cover classification.
+
+    C coefficient mapping for rural Argentine NE (Mesopotamia/Chaco):
+        10  Trees/Forest        → 0.20
+        20  Shrubland           → 0.35
+        30  Grassland           → 0.40
+        40  Cropland            → 0.55
+        50  Built-up            → 0.75
+        60  Bare/Sparse         → 0.65
+        70  Snow/Ice            → 0.10
+        80  Open Water          → 0.05
+        90  Herbaceous Wetland  → 0.15
+        95  Mangroves           → 0.20
+       100  Moss/Lichen         → 0.30
+
+    Args:
+        zone_geometry: ee.Geometry for the zone of interest.
+
+    Returns:
+        Float C value in [0, 1], or None if the GEE call fails.
+    """
+    _ensure_initialized()
+
+    try:
+        # C values × 100 to work with integer remap (avoids float precision issues)
+        class_values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+        c_x100 = [20, 35, 40, 55, 75, 65, 10, 5, 15, 20, 30]
+
+        lc_image = (
+            ee.ImageCollection("ESA/WorldCover/v200")
+            .first()
+            .select("Map")
+        )
+        c_band = lc_image.remap(class_values, c_x100, defaultValue=40).rename("c_x100")
+
+        result = c_band.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=zone_geometry,
+            scale=10,
+            maxPixels=1e9,
+        ).get("c_x100").getInfo()
+
+        if result is None:
+            return None
+
+        return round(float(result) / 100.0, 3)
+
+    except Exception as exc:
+        _baseline_logger.warning("get_landcover_c_coefficient failed: %s", exc)
+        return None

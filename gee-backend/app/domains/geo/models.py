@@ -424,3 +424,54 @@ class RainfallRecord(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<RainfallRecord {self.id} zona={self.zona_operativa_id} date={self.date} mm={self.precipitation_mm}>"
+
+
+class NdwiBaseline(UUIDMixin, TimestampMixin, Base):
+    """Historical NDWI baseline per zona operativa.
+
+    Computed from Sentinel-2 dry-season imagery over multiple years.
+    Used to detect anomalous water levels: z-score = (ndwi - mean) / std.
+    """
+
+    __tablename__ = "ndwi_baselines"
+
+    zona_operativa_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("zonas_operativas.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        comment="One baseline per zona",
+    )
+    ndwi_mean: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Mean NDWI across dry-season images",
+    )
+    ndwi_std: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Std dev of NDWI across dry-season images",
+    )
+    sample_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Number of S2 images used",
+    )
+    dry_season_months: Mapped[list] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="Month numbers used e.g. [6,7,8]",
+    )
+    years_back: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Years of history used",
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        comment="When the baseline was last computed",
+    )
+
+    def __repr__(self) -> str:
+        return f"<NdwiBaseline zona={self.zona_operativa_id} mean={self.ndwi_mean:.3f} std={self.ndwi_std:.3f}>"
