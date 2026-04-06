@@ -293,13 +293,18 @@ class RainfallRecordResponse(BaseModel):
 
 
 class BackfillRequest(BaseModel):
-    """Payload to trigger a CHIRPS backfill job."""
+    """Payload to trigger a rainfall backfill job."""
 
-    start_date: date = Field(..., description="Start date for CHIRPS backfill")
-    end_date: date = Field(..., description="End date for CHIRPS backfill")
+    start_date: date = Field(..., description="Start date for backfill")
+    end_date: date = Field(..., description="End date for backfill")
     zona_ids: Optional[list[uuid.UUID]] = Field(
         None,
         description="Specific zona IDs to backfill. If null, all active zonas.",
+    )
+    source: str = Field(
+        default="CHIRPS",
+        description="Rainfall data source: CHIRPS (historical) or IMERG (extreme events)",
+        pattern="^(CHIRPS|IMERG)$",
     )
 
 
@@ -324,6 +329,48 @@ class RainfallSuggestionResponse(BaseModel):
     accumulated_mm: float
     suggested_image_date: Optional[date] = None
     cloud_cover_pct: Optional[float] = None
+
+
+# ──────────────────────────────────────────────
+# NDWI BASELINE SCHEMAS
+# ──────────────────────────────────────────────
+
+
+class NdwiBaselineComputeRequest(BaseModel):
+    """Payload to trigger NDWI baseline computation."""
+
+    zona_ids: Optional[list[uuid.UUID]] = Field(
+        None,
+        description="Specific zona IDs. If null, all active zonas.",
+    )
+    dry_season_months: Optional[list[int]] = Field(
+        None,
+        description="Month numbers for dry season (1-12). Default: [6,7,8]",
+        example=[6, 7, 8],
+    )
+    years_back: int = Field(
+        3,
+        ge=1,
+        le=10,
+        description="Years of Sentinel-2 history to use",
+    )
+
+
+class NdwiBaselineResponse(BaseModel):
+    """NDWI dry-season baseline for a zona operativa."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    zona_operativa_id: uuid.UUID
+    ndwi_mean: float
+    ndwi_std: float
+    sample_count: int
+    dry_season_months: list[int]
+    years_back: int
+    computed_at: datetime
+    created_at: datetime
+    updated_at: datetime
 
 
 class RainfallSummaryResponse(BaseModel):

@@ -23,6 +23,8 @@ import {
   Loader,
   Modal,
   Paper,
+  Progress,
+  SegmentedControl,
   Skeleton,
   Stack,
   Table,
@@ -47,7 +49,12 @@ import {
   selectSuggestionsCount,
 } from '../../stores/floodCalibrationStore';
 import { floodCalibrationApi } from '../../lib/api/floodCalibration';
-import type { RainfallSuggestion } from '../../lib/api/floodCalibration';
+import type {
+  RainfallSuggestion,
+  BackfillStatusResponse,
+  NdwiBaselineResponse,
+  FloodEventDetailResponse,
+} from '../../lib/api/floodCalibration';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import {
@@ -125,6 +132,20 @@ function getRainfallLabel(mm: number): string {
   if (mm <= 30) return 'Lluvia moderada';
   if (mm <= 50) return 'Lluvia intensa';
   return 'Lluvia muy intensa';
+}
+
+// ─── NDWI z-score helpers ────────────────────────────────────
+
+function formatZScore(z: number): string {
+  const sign = z >= 0 ? '+' : '';
+  return `${sign}${z.toFixed(1)}σ`;
+}
+
+function getZScoreColor(z: number): string {
+  const abs = Math.abs(z);
+  if (abs > 2) return 'red';
+  if (abs > 1) return 'orange';
+  return 'green';
 }
 
 // ─── Calendar Grid (reused from ImageExplorerPanel pattern) ────────
@@ -369,32 +390,76 @@ export default function FloodCalibrationPanel() {
     setSuggestionsLoading,
   } = useFloodCalibrationStore.getState();
 
+  // NDWI baseline state
+  const [ndwiBaselines, setNdwiBaselines] = useState<NdwiBaselineResponse[]>([]);
+  const [baselineLoading, setBaselineLoading] = useState(false);
+
+  // Event expand state (for NDWI z-score display)
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [expandedEventDetail, setExpandedEventDetail] = useState<FloodEventDetailResponse | null>(null);
+  const [expandedEventLoading, setExpandedEventLoading] = useState(false);
+
   // Backfill state
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillSource, setBackfillSource] = useState<'CHIRPS' | 'IMERG'>('CHIRPS');
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatusResponse | null>(null);
+  const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (backfillPollRef.current) {
+      clearInterval(backfillPollRef.current);
+      backfillPollRef.current = null;
+    }
+  }, []);
 
   const handleBackfill = useCallback(async () => {
     setBackfillLoading(true);
+    setBackfillStatus(null);
     try {
-      // Backfill last 2 years of CHIRPS data
       const endDate = new Date().toISOString().split('T')[0];
       const startDate = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
-      await floodCalibrationApi.triggerBackfill(startDate, endDate);
-      notifications.show({
-        title: 'Backfill iniciado',
-        message: `Cargando datos de lluvia desde ${startDate}. Esto puede tardar unos minutos.`,
-        color: 'blue',
-        icon: <IconCloudRain size={16} />,
-      });
+      const { job_id } = await floodCalibrationApi.triggerBackfill(startDate, endDate, backfillSource);
+
+      // Start polling every 4 seconds
+      backfillPollRef.current = setInterval(async () => {
+        try {
+          const status = await floodCalibrationApi.getBackfillStatus(job_id);
+          setBackfillStatus(status);
+
+          if (status.state === 'SUCCESS' || status.state === 'FAILURE') {
+            stopPolling();
+            setBackfillLoading(false);
+            if (status.state === 'SUCCESS') {
+              notifications.show({
+                title: 'Carga completada',
+                message: `${status.records.toLocaleString()} registros guardados en ${status.current} batches.`,
+                color: 'green',
+                icon: <IconCloudRain size={16} />,
+              });
+            } else {
+              notifications.show({
+                title: 'Error en backfill',
+                message: status.error ?? 'El proceso falló',
+                color: 'red',
+              });
+            }
+          }
+        } catch {
+          // polling errors are silent — network hiccup, retry next interval
+        }
+      }, 4000);
     } catch (err) {
+      setBackfillLoading(false);
       notifications.show({
         title: 'Error',
         message: err instanceof Error ? err.message : 'No se pudo iniciar la carga de datos',
         color: 'red',
       });
-    } finally {
-      setBackfillLoading(false);
     }
-  }, []);
+  }, [backfillSource, stopPolling]);
+
+  // Cleanup polling on unmount
+  useEffect(() => stopPolling, [stopPolling]);
 
   // Map refs
   const mapRef = useRef<HTMLDivElement>(null);
@@ -422,6 +487,9 @@ export default function FloodCalibrationPanel() {
   // Suggestions panel collapse state
   const [suggestionsExpanded, setSuggestionsExpanded] = useState(true);
 
+  // ─── Source filter for rainfall display ──────────────────────
+  const [rainfallSource, setRainfallSource] = useState<'CHIRPS' | 'IMERG' | 'best'>('best');
+
   // ─── Fetch rainfall data for visible month ────────────────────
 
   useEffect(() => {
@@ -429,9 +497,10 @@ export default function FloodCalibrationPanel() {
     const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-01`;
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
     const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    const sourceParam = rainfallSource === 'best' ? undefined : rainfallSource;
 
     floodCalibrationApi
-      .getRainfallDaily(startDate, endDate)
+      .getRainfallDaily(startDate, endDate, sourceParam)
       .then((records) => {
         const byDate: Record<string, number> = {};
         for (const r of records) {
@@ -445,14 +514,17 @@ export default function FloodCalibrationPanel() {
         setRainfallByDate({});
       })
       .finally(() => setRainfallLoading(false));
-  }, [calendarYear, calendarMonth, setRainfallByDate, setRainfallLoading]);
+  }, [calendarYear, calendarMonth, rainfallSource, setRainfallByDate, setRainfallLoading]);
 
   // ─── Fetch rainfall suggestions ─────────────────────────────
 
   const fetchSuggestions = useCallback(async () => {
     setSuggestionsLoading(true);
     try {
-      const data = await floodCalibrationApi.getRainfallSuggestions();
+      const data = await floodCalibrationApi.getRainfallSuggestions({
+        threshold_mm: 20,  // 20mm/3-day — ajustado a la zona
+        window_days: 3,
+      });
       setSuggestions(Array.isArray(data) ? data : []);
     } catch (err) {
       logger.warn('Error cargando sugerencias de lluvia:', err);
@@ -465,6 +537,56 @@ export default function FloodCalibrationPanel() {
   useEffect(() => {
     fetchSuggestions();
   }, [fetchSuggestions]);
+
+  // ─── Load NDWI baselines ─────────────────────────────────────
+
+  useEffect(() => {
+    floodCalibrationApi.getNdwiBaselines()
+      .then(setNdwiBaselines)
+      .catch((err) => logger.warn('Error cargando baselines NDWI:', err));
+  }, []);
+
+  const handleComputeBaseline = useCallback(async () => {
+    setBaselineLoading(true);
+    try {
+      await floodCalibrationApi.computeNdwiBaseline();
+      notifications.show({
+        title: 'Baseline NDWI',
+        message: 'Cálculo iniciado. Los resultados estarán disponibles en unos minutos.',
+        color: 'blue',
+        icon: <IconDroplet size={16} />,
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'No se pudo iniciar el cálculo',
+        color: 'red',
+      });
+    } finally {
+      setBaselineLoading(false);
+    }
+  }, []);
+
+  // ─── Toggle event expansion with detail fetch ────────────────
+
+  const handleToggleEvent = useCallback(async (eventId: string) => {
+    if (expandedEventId === eventId) {
+      setExpandedEventId(null);
+      setExpandedEventDetail(null);
+      return;
+    }
+    setExpandedEventId(eventId);
+    setExpandedEventDetail(null);
+    setExpandedEventLoading(true);
+    try {
+      const detail = await floodCalibrationApi.getEvent(eventId);
+      setExpandedEventDetail(detail);
+    } catch (err) {
+      logger.warn('Error cargando detalle del evento:', err);
+    } finally {
+      setExpandedEventLoading(false);
+    }
+  }, [expandedEventId]);
 
   // ─── Initialize map ─────────────────────────────────────────
 
@@ -835,19 +957,53 @@ export default function FloodCalibrationPanel() {
       {/* Rainfall backfill controls */}
       {!rainfallLoading && Object.keys(rainfallByDate).length === 0 && (
         <Alert color="blue" icon={<IconCloudRain size={18} />} title="Sin datos de lluvia">
-          <Group justify="space-between" align="center">
+          <Stack gap="xs">
             <Text size="sm">
               No hay datos de precipitacion cargados. Cargalos para ver la lluvia en el calendario y recibir sugerencias de eventos.
             </Text>
-            <Button
-              size="xs"
-              variant="filled"
-              loading={backfillLoading}
-              onClick={handleBackfill}
-            >
-              Cargar datos de lluvia
-            </Button>
-          </Group>
+            {backfillLoading && backfillStatus ? (
+              <Stack gap={4}>
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">
+                    {backfillStatus.state === 'PENDING'
+                      ? 'Esperando worker...'
+                      : `Batch ${backfillStatus.current ?? 0} / ${backfillStatus.total ?? 0} — ${(backfillStatus.records ?? 0).toLocaleString()} registros`}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {backfillStatus.total > 0
+                      ? `${Math.round((backfillStatus.current / backfillStatus.total) * 100)}%`
+                      : ''}
+                  </Text>
+                </Group>
+                <Progress
+                  value={(backfillStatus.total ?? 0) > 0 ? ((backfillStatus.current ?? 0) / (backfillStatus.total ?? 1)) * 100 : 0}
+                  animated={backfillStatus.state === 'PROGRESS' || backfillStatus.state === 'PENDING'}
+                  color="blue"
+                  size="sm"
+                />
+              </Stack>
+            ) : (
+              <Group align="center">
+                <SegmentedControl
+                  size="xs"
+                  value={backfillSource}
+                  onChange={(v) => setBackfillSource(v as 'CHIRPS' | 'IMERG')}
+                  data={[
+                    { label: 'CHIRPS (histórico)', value: 'CHIRPS' },
+                    { label: 'IMERG (eventos extremos)', value: 'IMERG' },
+                  ]}
+                />
+                <Button
+                  size="xs"
+                  variant="filled"
+                  loading={backfillLoading}
+                  onClick={handleBackfill}
+                >
+                  Cargar datos
+                </Button>
+              </Group>
+            )}
+          </Stack>
         </Alert>
       )}
 
@@ -861,6 +1017,18 @@ export default function FloodCalibrationPanel() {
       >
         {/* Left column: Calendar + Save controls */}
         <Stack gap="md">
+          <Group justify="flex-end">
+            <SegmentedControl
+              size="xs"
+              value={rainfallSource}
+              onChange={(v) => setRainfallSource(v as 'CHIRPS' | 'IMERG' | 'best')}
+              data={[
+                { label: 'Mejor', value: 'best' },
+                { label: 'CHIRPS', value: 'CHIRPS' },
+                { label: 'IMERG', value: 'IMERG' },
+              ]}
+            />
+          </Group>
           <CalendarGrid
             year={calendarYear}
             month={calendarMonth}
@@ -1126,34 +1294,101 @@ export default function FloodCalibrationPanel() {
 
           {!eventsLoading && events.length > 0 && (
             <Stack gap="xs">
-              {events.map((event) => (
-                <Paper key={event.id} p="sm" withBorder radius="sm">
-                  <Group justify="space-between" wrap="nowrap">
-                    <div>
-                      <Group gap="xs">
-                        <IconCalendar size={14} />
-                        <Text size="sm" fw={500}>{event.event_date}</Text>
-                        <Badge size="xs" variant="light">
-                          {event.label_count} zona{event.label_count !== 1 ? 's' : ''}
-                        </Badge>
-                      </Group>
-                      {event.description && (
-                        <Text size="xs" c="dimmed" mt={2}>{event.description}</Text>
-                      )}
-                    </div>
-                    <Tooltip label="Eliminar evento">
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        size="sm"
-                        onClick={() => handleRequestDelete(event.id)}
+              {events.map((event) => {
+                const isExpanded = expandedEventId === event.id;
+                return (
+                  <Paper key={event.id} p="sm" withBorder radius="sm">
+                    <Group justify="space-between" wrap="nowrap">
+                      <div
+                        style={{ cursor: 'pointer', flex: 1 }}
+                        onClick={() => handleToggleEvent(event.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && handleToggleEvent(event.id)}
                       >
-                        <IconTrash size={14} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                </Paper>
-              ))}
+                        <Group gap="xs">
+                          <IconCalendar size={14} />
+                          <Text size="sm" fw={500}>{event.event_date}</Text>
+                          <Badge size="xs" variant="light">
+                            {event.label_count} zona{event.label_count !== 1 ? 's' : ''}
+                          </Badge>
+                          {isExpanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+                        </Group>
+                        {event.description && (
+                          <Text size="xs" c="dimmed" mt={2}>{event.description}</Text>
+                        )}
+                      </div>
+                      <Tooltip label="Eliminar evento">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          size="sm"
+                          onClick={() => handleRequestDelete(event.id)}
+                        >
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+
+                    {/* Expanded detail: labels with NDWI z-scores */}
+                    {isExpanded && (
+                      <div style={{ marginTop: 8 }}>
+                        {expandedEventLoading && <Loader size="xs" />}
+                        {!expandedEventLoading && expandedEventDetail && (
+                          <Table fz="xs" withRowBorders={false} verticalSpacing={2}>
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>Zona</Table.Th>
+                                <Table.Th>Label</Table.Th>
+                                <Table.Th>NDWI</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {expandedEventDetail.labels.map((lbl) => {
+                                const baseline = ndwiBaselines.find(
+                                  (b) => b.zona_operativa_id === lbl.zona_id,
+                                );
+                                const z =
+                                  lbl.ndwi_value != null && baseline
+                                    ? (lbl.ndwi_value - baseline.ndwi_mean) / baseline.ndwi_std
+                                    : null;
+                                return (
+                                  <Table.Tr key={lbl.id}>
+                                    <Table.Td>
+                                      <Text size="xs" c="dimmed" style={{ fontFamily: 'monospace' }}>
+                                        {lbl.zona_id.slice(0, 8)}…
+                                      </Text>
+                                    </Table.Td>
+                                    <Table.Td>
+                                      {lbl.is_flooded
+                                        ? <Badge size="xs" color="red">Inundado</Badge>
+                                        : <Badge size="xs" color="green">No inundado</Badge>}
+                                    </Table.Td>
+                                    <Table.Td>
+                                      {lbl.ndwi_value != null ? (
+                                        <Group gap={4} wrap="nowrap">
+                                          <Text size="xs">{lbl.ndwi_value.toFixed(3)}</Text>
+                                          {z != null && (
+                                            <Text size="xs" fw={600} c={getZScoreColor(z)}>
+                                              ({formatZScore(z)})
+                                            </Text>
+                                          )}
+                                        </Group>
+                                      ) : (
+                                        <Text size="xs" c="dimmed">—</Text>
+                                      )}
+                                    </Table.Td>
+                                  </Table.Tr>
+                                );
+                              })}
+                            </Table.Tbody>
+                          </Table>
+                        )}
+                      </div>
+                    )}
+                  </Paper>
+                );
+              })}
             </Stack>
           )}
         </Paper>
@@ -1173,6 +1408,10 @@ export default function FloodCalibrationPanel() {
                 <Text size="xs" c="dimmed">Eventos totales</Text>
                 <Text size="lg" fw={700}>{events.length}</Text>
               </div>
+              <div>
+                <Text size="xs" c="dimmed">Baselines NDWI</Text>
+                <Text size="lg" fw={700}>{ndwiBaselines.length}</Text>
+              </div>
             </Group>
 
             <Tooltip
@@ -1187,6 +1426,19 @@ export default function FloodCalibrationPanel() {
                 color="blue"
               >
                 Entrenar Modelo
+              </Button>
+            </Tooltip>
+
+            <Tooltip label="Recalcula el baseline NDWI de estación seca para todas las zonas (tarda unos minutos)">
+              <Button
+                fullWidth
+                variant="light"
+                color="teal"
+                leftSection={<IconDroplet size={16} />}
+                loading={baselineLoading}
+                onClick={handleComputeBaseline}
+              >
+                Recalcular Baseline NDWI
               </Button>
             </Tooltip>
 

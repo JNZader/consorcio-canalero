@@ -21,6 +21,9 @@ export const HEALTH_TIMEOUT = 5000; // 5 segundos para health check
 const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+// Guard: prevent multiple simultaneous 401s from each triggering a separate logout flow
+let _handlingAuthExpiry = false;
+
 /**
  * Get the current authentication token from JWT adapter.
  * Caches the token respecting the cache TTL.
@@ -101,14 +104,17 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       const error = await response.json().catch(() => ({}));
 
       // Handle expired/invalid token — auto-logout + redirect
+      // Guard prevents multiple parallel 401s from each triggering a separate logout
       if (response.status === 401 && !skipAuth) {
-        logger.warn('Sesion expirada — redirigiendo a login');
-        clearAuthTokenCache();
-        authAdapter.clearTokens();
-
-        // Notify user via custom event (picked up by AuthExpiredHandler)
-        window.dispatchEvent(new CustomEvent('auth:expired'));
-
+        if (!_handlingAuthExpiry) {
+          _handlingAuthExpiry = true;
+          logger.warn('Sesion expirada — redirigiendo a login');
+          clearAuthTokenCache();
+          authAdapter.clearTokens();
+          window.dispatchEvent(new CustomEvent('auth:expired'));
+          // Reset flag after redirect completes (fallback: 10s)
+          setTimeout(() => { _handlingAuthExpiry = false; }, 10_000);
+        }
         throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
       }
 

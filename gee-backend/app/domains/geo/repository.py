@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -729,6 +729,33 @@ class GeoRepository:
 
     # ── RAINFALL RECORD READ ───────────────────────
 
+    def _best_source_subquery(self, source: Optional[str] = None):
+        """Return a subquery that deduplicates (zona_id, date) pairs.
+
+        When source is None: prefers IMERG over CHIRPS via DISTINCT ON.
+        When source is specified: filters to that source only.
+
+        Uses raw SQL for DISTINCT ON (PostgreSQL-specific).
+        """
+        if source is not None:
+            # Simple filter — no deduplication needed
+            return (
+                select(RainfallRecord)
+                .where(RainfallRecord.source == source)
+                .subquery()
+            )
+
+        # DISTINCT ON keeps one row per (zona_id, date), ordered so IMERG wins
+        return text(
+            """
+            SELECT DISTINCT ON (zona_operativa_id, date)
+                id, zona_operativa_id, date, precipitation_mm, source, created_at
+            FROM rainfall_records
+            ORDER BY zona_operativa_id, date,
+                     (source = 'IMERG') DESC
+            """
+        )
+
     def get_rainfall_by_zone(
         self,
         db: Session,
@@ -736,16 +763,35 @@ class GeoRepository:
         *,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        source: Optional[str] = None,
     ) -> list[RainfallRecord]:
-        """Return rainfall records for a zone, optionally filtered by date range."""
+        """Return rainfall records for a zone, optionally filtered by date range.
+
+        When source is None, deduplicates by preferring IMERG over CHIRPS
+        for dates where both exist.
+        """
         stmt = select(RainfallRecord).where(
             RainfallRecord.zona_operativa_id == zona_operativa_id
         )
+        if source is not None:
+            stmt = stmt.where(RainfallRecord.source == source)
         if start_date is not None:
             stmt = stmt.where(RainfallRecord.date >= start_date)
         if end_date is not None:
             stmt = stmt.where(RainfallRecord.date <= end_date)
-        stmt = stmt.order_by(RainfallRecord.date.asc())
+
+        # Deduplicate when no source filter: prefer IMERG over CHIRPS
+        if source is None:
+            stmt = stmt.distinct(RainfallRecord.date).order_by(
+                RainfallRecord.date.asc(),
+                case(
+                    (RainfallRecord.source == "IMERG", literal(0)),
+                    else_=literal(1),
+                ).asc(),
+            )
+        else:
+            stmt = stmt.order_by(RainfallRecord.date.asc())
+
         return list(db.execute(stmt).scalars().all())
 
     def get_rainfall_summary(
@@ -755,32 +801,60 @@ class GeoRepository:
         start_date: date,
         end_date: date,
         zona_operativa_id: Optional[uuid.UUID] = None,
+        source: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Return aggregated rainfall stats per zone for a date range.
 
+        When source is None, deduplicates by preferring IMERG over CHIRPS
+        for dates where both exist (avoids double-counting).
+
         Returns list of dicts with: zona_operativa_id, total_mm, avg_mm, max_mm, rainy_days.
         """
-        stmt = (
+        # Inner subquery: pick best source per (zona_id, date)
+        priority = case(
+            (RainfallRecord.source == "IMERG", literal(0)),
+            else_=literal(1),
+        )
+        inner = (
             select(
                 RainfallRecord.zona_operativa_id,
-                func.sum(RainfallRecord.precipitation_mm).label("total_mm"),
-                func.avg(RainfallRecord.precipitation_mm).label("avg_mm"),
-                func.max(RainfallRecord.precipitation_mm).label("max_mm"),
-                func.count(
-                    func.nullif(RainfallRecord.precipitation_mm > 0, False)
-                ).label("rainy_days"),
+                RainfallRecord.date,
+                RainfallRecord.precipitation_mm,
             )
             .where(
                 RainfallRecord.date >= start_date,
                 RainfallRecord.date <= end_date,
             )
-            .group_by(RainfallRecord.zona_operativa_id)
+            .distinct(RainfallRecord.zona_operativa_id, RainfallRecord.date)
+            .order_by(
+                RainfallRecord.zona_operativa_id,
+                RainfallRecord.date,
+                priority.asc(),
+            )
         )
 
+        if source is not None:
+            inner = inner.where(RainfallRecord.source == source)
+
         if zona_operativa_id is not None:
-            stmt = stmt.where(
+            inner = inner.where(
                 RainfallRecord.zona_operativa_id == zona_operativa_id
             )
+
+        sub = inner.subquery()
+
+        stmt = (
+            select(
+                sub.c.zona_operativa_id,
+                func.sum(sub.c.precipitation_mm).label("total_mm"),
+                func.avg(sub.c.precipitation_mm).label("avg_mm"),
+                func.max(sub.c.precipitation_mm).label("max_mm"),
+                func.count(
+                    func.nullif(sub.c.precipitation_mm > 0, False)
+                ).label("rainy_days"),
+            )
+            .group_by(sub.c.zona_operativa_id)
+        )
 
         rows = db.execute(stmt).all()
         return [
@@ -800,20 +874,50 @@ class GeoRepository:
         *,
         start_date: date,
         end_date: date,
+        source: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Return max rainfall across all zones per day (for calendar overlay)."""
-        stmt = (
+        """Return max rainfall across all zones per day (for calendar overlay).
+
+        When source is None, deduplicates by preferring IMERG over CHIRPS
+        before taking the cross-zone max.
+        """
+        # Inner: pick best source per (zona_id, date), then outer: max across zones
+        priority = case(
+            (RainfallRecord.source == "IMERG", literal(0)),
+            else_=literal(1),
+        )
+        inner = (
             select(
                 RainfallRecord.date,
-                func.max(RainfallRecord.precipitation_mm).label("max_mm"),
+                RainfallRecord.zona_operativa_id,
+                RainfallRecord.precipitation_mm,
             )
             .where(
                 RainfallRecord.date >= start_date,
                 RainfallRecord.date <= end_date,
             )
-            .group_by(RainfallRecord.date)
-            .order_by(RainfallRecord.date)
+            .distinct(RainfallRecord.date, RainfallRecord.zona_operativa_id)
+            .order_by(
+                RainfallRecord.date,
+                RainfallRecord.zona_operativa_id,
+                priority.asc(),
+            )
         )
+
+        if source is not None:
+            inner = inner.where(RainfallRecord.source == source)
+
+        sub = inner.subquery()
+
+        stmt = (
+            select(
+                sub.c.date,
+                func.max(sub.c.precipitation_mm).label("max_mm"),
+            )
+            .group_by(sub.c.date)
+            .order_by(sub.c.date)
+        )
+
         rows = db.execute(stmt).all()
         return [
             {"date": row.date.isoformat(), "precipitation_mm": round(float(row.max_mm or 0), 2)}

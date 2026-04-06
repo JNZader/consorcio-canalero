@@ -2,7 +2,24 @@
  * Flood Calibration API module - CRUD for flood events + model training + rainfall.
  */
 
-import { apiFetch, LONG_TIMEOUT } from './core';
+import { apiFetch, GEE_TIMEOUT, LONG_TIMEOUT } from './core';
+
+// ===========================================
+// TYPES — NDWI Baseline
+// ===========================================
+
+export interface NdwiBaselineResponse {
+  id: string;
+  zona_operativa_id: string;
+  ndwi_mean: number;
+  ndwi_std: number;
+  sample_count: number;
+  dry_season_months: number[];
+  years_back: number;
+  computed_at: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ===========================================
 // TYPES — Flood Events
@@ -97,6 +114,16 @@ export interface BackfillResponse {
   status: string;
 }
 
+export interface BackfillStatusResponse {
+  state: 'PENDING' | 'PROGRESS' | 'SUCCESS' | 'FAILURE' | string;
+  current: number;
+  total: number;
+  records: number;
+  source?: string;
+  errors?: string[];
+  error?: string;
+}
+
 // ===========================================
 // API
 // ===========================================
@@ -181,12 +208,16 @@ export const floodCalibrationApi = {
 
   /**
    * Obtener max diario de lluvia entre todas las zonas (para calendario).
+   * source: "CHIRPS" | "IMERG" | undefined (sin filtro → IMERG tiene prioridad)
    */
   getRainfallDaily: (
     start: string,
     end: string,
-  ): Promise<RainfallRecord[]> =>
-    apiFetch(`/geo/rainfall/daily?start=${start}&end=${end}`),
+    source?: 'CHIRPS' | 'IMERG',
+  ): Promise<RainfallRecord[]> => {
+    const qs = source ? `&source=${source}` : '';
+    return apiFetch(`/geo/rainfall/daily?start=${start}&end=${end}${qs}`);
+  },
 
   /**
    * Obtener eventos de lluvia detectados por umbral.
@@ -209,20 +240,67 @@ export const floodCalibrationApi = {
   /**
    * Obtener sugerencias de imagenes S2 post-evento de lluvia.
    */
-  getRainfallSuggestions: (): Promise<RainfallSuggestion[]> =>
-    apiFetch('/geo/rainfall/suggestions'),
+  getRainfallSuggestions: (params?: {
+    threshold_mm?: number;
+    window_days?: number;
+    start?: string;
+    end?: string;
+  }): Promise<RainfallSuggestion[]> => {
+    const qs = new URLSearchParams();
+    if (params?.threshold_mm != null) qs.set('threshold_mm', String(params.threshold_mm));
+    if (params?.window_days != null) qs.set('window_days', String(params.window_days));
+    if (params?.start) qs.set('start', params.start);
+    if (params?.end) qs.set('end', params.end);
+    const query = qs.toString();
+    return apiFetch(`/geo/rainfall/suggestions${query ? `?${query}` : ''}`, {
+      timeout: GEE_TIMEOUT,
+    });
+  },
 
   /**
-   * Disparar backfill de datos CHIRPS (admin-only).
+   * Disparar backfill de datos de lluvia (admin-only).
+   * source: "CHIRPS" (registro historico) o "IMERG" (mejor para eventos extremos).
    * Retorna 202 con job_id de Celery.
    */
   triggerBackfill: (
     startDate: string,
     endDate: string,
+    source: 'CHIRPS' | 'IMERG' = 'CHIRPS',
   ): Promise<BackfillResponse> =>
     apiFetch('/geo/rainfall/backfill', {
       method: 'POST',
-      body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+      body: JSON.stringify({ start_date: startDate, end_date: endDate, source }),
       timeout: LONG_TIMEOUT,
+    }),
+
+  /**
+   * Poll the status of a running backfill task.
+   */
+  getBackfillStatus: (taskId: string): Promise<BackfillStatusResponse> =>
+    apiFetch(`/geo/rainfall/backfill/${taskId}`),
+
+  // =========================================
+  // NDWI BASELINE
+  // =========================================
+
+  /**
+   * Get NDWI dry-season baselines for all zones.
+   * Use these to compute z-scores: z = (ndwi - mean) / std
+   */
+  getNdwiBaselines: (): Promise<NdwiBaselineResponse[]> =>
+    apiFetch('/geo/ndwi/baseline'),
+
+  /**
+   * Trigger NDWI baseline computation (admin only).
+   */
+  computeNdwiBaseline: (params?: {
+    zona_ids?: string[];
+    dry_season_months?: number[];
+    years_back?: number;
+  }): Promise<{ job_id: string; status: string; message: string }> =>
+    apiFetch('/geo/ndwi/baseline/compute', {
+      method: 'POST',
+      body: JSON.stringify(params ?? {}),
+      timeout: GEE_TIMEOUT,
     }),
 };

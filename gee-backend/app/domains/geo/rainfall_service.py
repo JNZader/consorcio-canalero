@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Callable
 
 import ee
 from geoalchemy2.functions import ST_AsGeoJSON
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 CHIRPS_COLLECTION = "UCSB-CHG/CHIRPS/DAILY"
 CHIRPS_BAND = "precipitation"
+
+IMERG_COLLECTION = "NASA/GPM_L3/IMERG_V06"
+IMERG_BAND = "precipitationCal"  # mm/hr, 30-min granules
 
 repo = GeoRepository()
 
@@ -55,6 +59,7 @@ def _load_zone_geometries(
 
     Returns list of dicts: {id, nombre, ee_geometry}.
     """
+    _ensure_initialized()
     stmt = select(
         ZonaOperativa.id,
         ZonaOperativa.nombre,
@@ -149,6 +154,87 @@ def fetch_chirps_daily(
     return records
 
 
+def fetch_imerg_daily(
+    zones: list[dict],
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    """Fetch daily precipitation totals from NASA IMERG V07.
+
+    IMERG has 30-minute granules (precipitationCal in mm/hr).
+    Daily total = sum(precipitationCal * 0.5) over all 48 half-hour images in a day.
+
+    Better than CHIRPS for capturing intense convective events (storms).
+    Availability: ~2000-present with ~3-week latency for the Final run.
+    """
+    _ensure_initialized()
+
+    features = [
+        ee.Feature(z["ee_geometry"], {"zona_id": str(z["id"])}) for z in zones
+    ]
+    zones_fc = ee.FeatureCollection(features)
+
+    n_days = (end_date - start_date).days  # exclusive end
+
+    def _daily_image(n: ee.Number) -> ee.Image:
+        day_start = ee.Date(start_date.isoformat()).advance(n, "day")
+        day_end = day_start.advance(1, "day")
+        # Merge a zero-image fallback so the collection is never empty.
+        # This prevents reduce.sum from failing on days with no IMERG granules.
+        zero = ee.Image.constant(0).rename(IMERG_BAND).set(
+            "system:time_start", day_start.millis()
+        )
+        daily = (
+            ee.ImageCollection(IMERG_COLLECTION)
+            .filterDate(day_start, day_end)
+            .select(IMERG_BAND)
+            .merge(ee.ImageCollection([zero]))  # guarantees ≥1 image
+            .sum()
+            .multiply(0.5)  # mm/hr × 0.5 hr = mm per granule → sum = daily total mm
+        )
+        return daily.set("system:time_start", day_start.millis()).set(
+            "date", day_start.format("YYYY-MM-dd")
+        )
+
+    daily_collection = ee.ImageCollection(
+        ee.List.sequence(0, n_days).map(_daily_image)
+    )
+
+    def _reduce_image(image: ee.Image) -> ee.FeatureCollection:
+        img_date = image.get("date")
+        reduced = image.reduceRegions(
+            collection=zones_fc,
+            reducer=ee.Reducer.mean(),
+            scale=11132,  # ~0.1° IMERG native resolution
+        )
+        return reduced.map(lambda f: f.set("image_date", img_date))
+
+    all_results = daily_collection.map(_reduce_image).flatten()
+    result_info = all_results.getInfo()
+
+    records: list[dict[str, Any]] = []
+    if not result_info or "features" not in result_info:
+        return records
+
+    for feat in result_info["features"]:
+        props = feat.get("properties", {})
+        zona_id_str = props.get("zona_id")
+        img_date_str = props.get("image_date")
+        precip = props.get("mean")
+
+        if zona_id_str and img_date_str and precip is not None:
+            records.append(
+                {
+                    "zona_operativa_id": uuid.UUID(zona_id_str),
+                    "date": date.fromisoformat(img_date_str),
+                    "precipitation_mm": round(float(precip), 2),
+                    "source": "IMERG",
+                }
+            )
+
+    return records
+
+
 # ── Backfill ────────────────────────────────────
 
 
@@ -157,10 +243,13 @@ def backfill_rainfall(
     start_date: date,
     end_date: date,
     zona_ids: list[uuid.UUID] | None = None,
+    source: str = "CHIRPS",
+    on_batch_complete: Callable[[int, int, int], None] | None = None,
 ) -> dict[str, Any]:
     """Backfill rainfall data in monthly batches to avoid GEE quota issues.
 
-    Processes one month at a time, calling fetch_chirps_daily() per batch,
+    Processes one month at a time, calling fetch_chirps_daily() or
+    fetch_imerg_daily() per batch depending on the source parameter,
     then bulk-upserting into the database.
 
     Args:
@@ -168,17 +257,26 @@ def backfill_rainfall(
         start_date: Start of the backfill period.
         end_date: End of the backfill period.
         zona_ids: Optional list of specific zone IDs. If None, all zones.
+        source: "CHIRPS" (default) or "IMERG".
+        on_batch_complete: Optional callback(current_batch, total_batches, total_records).
+            Called after each batch completes (success or failure).
 
     Returns:
-        Summary dict: {total_records, batches_processed, errors}.
+        Summary dict: {total_records, batches_processed, total_batches, errors}.
     """
     zones = _load_zone_geometries(db, zona_ids)
     if not zones:
-        return {"total_records": 0, "batches_processed": 0, "errors": ["No zones found"]}
+        return {"total_records": 0, "batches_processed": 0, "total_batches": 0, "errors": ["No zones found"]}
+
+    # Pre-compute total number of batches so progress % is available upfront
+    total_days = (end_date - start_date).days + 1
+    total_batches = math.ceil(total_days / 30)
 
     total_records = 0
     batches_processed = 0
     errors: list[str] = []
+
+    fetch_fn = fetch_imerg_daily if source == "IMERG" else fetch_chirps_daily
 
     # Process in monthly batches (~30 days)
     batch_start = start_date
@@ -187,7 +285,7 @@ def backfill_rainfall(
         batch_end = min(batch_start + timedelta(days=29), end_date)
 
         try:
-            records = fetch_chirps_daily(zones, batch_start, batch_end)
+            records = fetch_fn(zones, batch_start, batch_end)
             if records:
                 count = repo.bulk_upsert_rainfall(db, records)
                 total_records += count
@@ -205,6 +303,10 @@ def backfill_rainfall(
             logger.error(error_msg, exc_info=True)
             errors.append(error_msg)
             db.rollback()
+            batches_processed += 1  # count failed batches too so progress keeps moving
+
+        if on_batch_complete:
+            on_batch_complete(batches_processed, total_batches, total_records)
 
         # Move to next batch
         batch_start = batch_end + timedelta(days=1)
@@ -212,6 +314,7 @@ def backfill_rainfall(
     return {
         "total_records": total_records,
         "batches_processed": batches_processed,
+        "total_batches": total_batches,
         "errors": errors,
     }
 
@@ -237,7 +340,6 @@ def detect_rainfall_events(
     Returns a list of event dicts:
         {zona_operativa_id, event_start, event_end, accumulated_mm, duration_days}
     """
-    from app.domains.geo.intelligence.models import ZonaOperativa
     from app.domains.geo.models import RainfallRecord
 
     # Default range: last 90 days

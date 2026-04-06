@@ -39,6 +39,8 @@ from app.domains.geo.schemas import (
     GeoJobResponse,
     GeoLayerListResponse,
     GeoLayerResponse,
+    NdwiBaselineComputeRequest,
+    NdwiBaselineResponse,
     TrainingResultResponse,
 )
 from app.domains.geo.service import dispatch_job
@@ -3001,8 +3003,9 @@ def trigger_rainfall_backfill(
     db: Session = Depends(get_db),
     _user=Depends(_require_admin()),
 ):
-    """Trigger a CHIRPS rainfall backfill (admin only).
+    """Trigger a rainfall backfill (admin only).
 
+    Supports CHIRPS (long historical record) and IMERG (better extreme events).
     Enqueues a Celery task that processes data in monthly batches.
     Returns 202 with the Celery task ID for status polling.
     """
@@ -3015,11 +3018,61 @@ def trigger_rainfall_backfill(
         start_date=payload.start_date.isoformat(),
         end_date=payload.end_date.isoformat(),
         zona_ids=zona_ids_str,
+        source=payload.source,
     )
     return {
         "job_id": task.id,
         "status": "accepted",
-        "message": f"Backfill enqueued from {payload.start_date} to {payload.end_date}",
+        "message": f"Backfill enqueued ({payload.source}) from {payload.start_date} to {payload.end_date}",
+    }
+
+
+@router.get("/rainfall/backfill/{task_id}")
+def get_backfill_status(
+    task_id: str,
+    _user=Depends(_require_admin()),
+):
+    """Poll the status of a rainfall backfill Celery task.
+
+    Returns:
+        state: PENDING | PROGRESS | SUCCESS | FAILURE
+        current, total: batch progress (only when state=PROGRESS)
+        records: records upserted so far
+        result: final summary (only when state=SUCCESS)
+        error: error message (only when state=FAILURE)
+    """
+    from app.core.celery_app import celery_app as _celery
+
+    result = _celery.AsyncResult(task_id)
+    state = result.state
+
+    if state == "PENDING":
+        return {"state": "PENDING", "current": 0, "total": 0, "records": 0}
+
+    if state == "PROGRESS":
+        meta = result.info or {}
+        return {
+            "state": "PROGRESS",
+            "current": meta.get("current", 0),
+            "total": meta.get("total", 0),
+            "records": meta.get("records", 0),
+            "source": meta.get("source", "CHIRPS"),
+        }
+
+    if state == "SUCCESS":
+        info = result.info or {}
+        return {
+            "state": "SUCCESS",
+            "current": info.get("batches_processed", 0),
+            "total": info.get("total_batches", 0),
+            "records": info.get("total_records", 0),
+            "errors": info.get("errors", []),
+        }
+
+    # FAILURE or REVOKED
+    return {
+        "state": state,
+        "error": str(result.info) if result.info else "Task failed",
     }
 
 
@@ -3028,16 +3081,18 @@ def get_rainfall_for_zone(
     zone_id: uuid.UUID,
     start: Optional[date] = Query(None, description="Start date (inclusive)"),
     end: Optional[date] = Query(None, description="End date (inclusive)"),
+    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
 ):
     """Get daily rainfall records for a specific zone.
 
-    Returns a list of {date, precipitation_mm} sorted by date ascending.
+    Returns a list of {date, precipitation_mm, source} sorted by date ascending.
+    When source is omitted, IMERG takes priority over CHIRPS for duplicate dates.
     """
     records = repo.get_rainfall_by_zone(
-        db, zone_id, start_date=start, end_date=end
+        db, zone_id, start_date=start, end_date=end, source=source
     )
     return {
         "zona_operativa_id": str(zone_id),
@@ -3057,6 +3112,7 @@ def get_rainfall_for_zone(
 def get_rainfall_summary(
     start: date = Query(..., description="Start date (inclusive)"),
     end: date = Query(..., description="End date (inclusive)"),
+    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -3064,13 +3120,12 @@ def get_rainfall_summary(
     """Get rainfall summary across all zones for a date range.
 
     Returns per-zone aggregates: total_mm, avg_mm, max_mm, rainy_days.
+    When source is omitted, IMERG takes priority over CHIRPS for duplicate dates.
     """
-    # Enrich summary with zone names
     from app.domains.geo.intelligence.models import ZonaOperativa
 
-    summaries = repo.get_rainfall_summary(db, start_date=start, end_date=end)
+    summaries = repo.get_rainfall_summary(db, start_date=start, end_date=end, source=source)
 
-    # Build zone name lookup
     zona_ids = [s["zona_operativa_id"] for s in summaries]
     if zona_ids:
         zones = (
@@ -3089,6 +3144,7 @@ def get_rainfall_summary(
     return {
         "start": start.isoformat(),
         "end": end.isoformat(),
+        "source_filter": source,
         "zones": summaries,
     }
 
@@ -3097,12 +3153,16 @@ def get_rainfall_summary(
 def get_rainfall_daily(
     start: date = Query(..., description="Start date (inclusive)"),
     end: date = Query(..., description="End date (inclusive)"),
+    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
 ):
-    """Get max daily rainfall across all zones (for calendar overlay)."""
-    return repo.get_rainfall_daily_max(db, start_date=start, end_date=end)
+    """Get max daily rainfall across all zones (for calendar overlay).
+
+    When source is omitted, IMERG takes priority over CHIRPS for duplicate dates.
+    """
+    return repo.get_rainfall_daily_max(db, start_date=start, end_date=end, source=source)
 
 
 @router.get("/rainfall/events")
@@ -3252,6 +3312,75 @@ def get_rainfall_suggestions(
     }
 
 
+# ──────────────────────────────────────────────
+# NDWI BASELINE ENDPOINTS
+# ──────────────────────────────────────────────
+
+
+@router.post("/ndwi/baseline/compute", status_code=202)
+def compute_ndwi_baseline(
+    payload: NdwiBaselineComputeRequest,
+    _user=Depends(_require_admin()),
+):
+    """Trigger NDWI dry-season baseline computation (admin only).
+
+    Enqueues a Celery task that queries S2_SR_HARMONIZED for each zona
+    over the requested dry-season months and years, computing mean and
+    std NDWI per zone. Results are upserted to ndwi_baselines table.
+
+    Returns 202 with the Celery task ID for status polling.
+    """
+    from app.domains.geo.tasks import compute_ndwi_baselines_task
+
+    zona_ids_str = [str(z) for z in payload.zona_ids] if payload.zona_ids else None
+    task = compute_ndwi_baselines_task.delay(
+        zona_ids=zona_ids_str,
+        dry_season_months=payload.dry_season_months,
+        years_back=payload.years_back,
+    )
+    return {
+        "job_id": task.id,
+        "status": "accepted",
+        "message": f"NDWI baseline computation enqueued for {payload.years_back} years of dry-season data",
+    }
+
+
+@router.get("/ndwi/baseline/status/{task_id}")
+def get_ndwi_baseline_status(
+    task_id: str,
+    _user=Depends(_require_admin()),
+):
+    """Poll the status of a NDWI baseline computation task (admin only)."""
+    from app.core.celery_app import celery_app as _celery
+
+    result = _celery.AsyncResult(task_id)
+    state = result.state
+
+    if state == "PENDING":
+        return {"state": "PENDING"}
+    if state == "PROGRESS":
+        return {"state": "PROGRESS", **(result.info or {})}
+    if state == "SUCCESS":
+        return {"state": "SUCCESS", **(result.info or {})}
+    return {"state": state, "error": str(result.info) if result.info else "Task failed"}
+
+
+@router.get("/ndwi/baseline", response_model=list[NdwiBaselineResponse])
+def get_ndwi_baselines(
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+):
+    """Get NDWI dry-season baselines for all zones (operator+).
+
+    Use these baselines to compute z-scores at analysis time:
+        z = (ndwi_observed - ndwi_mean) / ndwi_std
+    """
+    from app.domains.geo.models import NdwiBaseline
+    from sqlalchemy import select
+
+    return list(db.execute(select(NdwiBaseline)).scalars().all())
+
+
 # ── Include GEE sub-router into main geo router ──
 router.include_router(gee_router)
 
@@ -3259,3 +3388,8 @@ router.include_router(gee_router)
 from app.domains.geo.intelligence.router import router as intel_router
 
 router.include_router(intel_router, prefix="/intelligence")
+
+# ── Include Hydrology sub-router ──
+from app.domains.geo.hydrology.router import router as hydrology_router
+
+router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
