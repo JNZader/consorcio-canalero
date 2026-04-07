@@ -49,6 +49,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["Geo Processing"])
 
+
 class ApprovedZonesBuildRequest(BaseModel):
     assignments: dict[str, str] = Field(default_factory=dict)
     zone_names: dict[str, str] = Field(default_factory=dict)
@@ -119,11 +120,19 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     title: str
     subtitle: Optional[str] = None
     map_image_data_url: str = Field(..., alias="mapImageDataUrl")
-    zone_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="zoneLegend")
-    road_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="roadLegend")
-    raster_legends: list[RasterLegendGroupRequest] = Field(default_factory=list, alias="rasterLegends")
+    zone_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="zoneLegend"
+    )
+    road_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="roadLegend"
+    )
+    raster_legends: list[RasterLegendGroupRequest] = Field(
+        default_factory=list, alias="rasterLegends"
+    )
     info_rows: list[MapInfoRowRequest] = Field(default_factory=list, alias="infoRows")
-    zone_summary: list[ZoneSummaryRowRequest] = Field(default_factory=list, alias="zoneSummary")
+    zone_summary: list[ZoneSummaryRowRequest] = Field(
+        default_factory=list, alias="zoneSummary"
+    )
 
 
 # Shared httpx client for tile proxying (avoids creating one per request)
@@ -172,7 +181,10 @@ def _validate_geojson_filename(filename: str | None) -> None:
     if not filename:
         raise HTTPException(status_code=400, detail="Nombre de archivo requerido")
     if not filename.lower().endswith((".geojson", ".json")):
-        raise HTTPException(status_code=400, detail="Formato no soportado. Use archivos .geojson o .json")
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Use archivos .geojson o .json",
+        )
 
 
 def _read_geojson_upload(content: bytes) -> dict:
@@ -185,11 +197,16 @@ def _read_geojson_upload(content: bytes) -> dict:
         raise HTTPException(status_code=400, detail="GeoJSON invalido") from exc
 
     if payload.get("type") != "FeatureCollection":
-        raise HTTPException(status_code=400, detail="El archivo debe ser un FeatureCollection GeoJSON")
+        raise HTTPException(
+            status_code=400, detail="El archivo debe ser un FeatureCollection GeoJSON"
+        )
 
     features = payload.get("features")
     if not isinstance(features, list):
-        raise HTTPException(status_code=400, detail="El archivo GeoJSON no contiene una lista de features")
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo GeoJSON no contiene una lista de features",
+        )
 
     return payload
 
@@ -212,7 +229,9 @@ def _get_geo_bundle_storage_dir() -> Path:
             return candidate
         except OSError:
             continue
-    raise HTTPException(status_code=500, detail="No se pudo preparar el directorio de bundles geo")
+    raise HTTPException(
+        status_code=500, detail="No se pudo preparar el directorio de bundles geo"
+    )
 
 
 def _build_zonas_operativas_export(db: Session) -> dict:
@@ -254,7 +273,9 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
         if not geometry:
-            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+            raise HTTPException(
+                status_code=400, detail=f"Feature {index} sin geometria"
+            )
 
         geometry_type = geometry.get("type")
         if geometry_type not in {"Polygon", "MultiPolygon"}:
@@ -306,7 +327,9 @@ def _import_approved_zoning_payload(
     else:
         features = payload.get("features", [])
         if not features:
-            raise HTTPException(status_code=400, detail="El archivo no contiene zonas aprobadas")
+            raise HTTPException(
+                status_code=400, detail="El archivo no contiene zonas aprobadas"
+            )
 
         normalized_features = []
         zone_names = {}
@@ -317,7 +340,9 @@ def _import_approved_zoning_payload(
         for index, feature in enumerate(features, start=1):
             geometry = feature.get("geometry")
             if not geometry:
-                raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+                raise HTTPException(
+                    status_code=400, detail=f"Feature {index} sin geometria"
+                )
 
             geometry_type = geometry.get("type")
             if geometry_type not in {"Polygon", "MultiPolygon"}:
@@ -338,8 +363,14 @@ def _import_approved_zoning_payload(
 
             approved_name = str(props.get("approved_nombre") or approved_name)
             approved_cuenca = props.get("approved_cuenca") or approved_cuenca
-            zone_id = str(source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}")
-            zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
+            zone_id = str(
+                source_properties.get("zone_id")
+                or props.get("zone_id")
+                or f"zone_{index}"
+            )
+            zone_name = str(
+                source_properties.get("name") or props.get("name") or f"Zona {index}"
+            )
             zone_names[zone_id] = zone_name
 
     previous_active = repo.get_active_approved_zoning(db, cuenca=approved_cuenca)
@@ -380,11 +411,19 @@ def _upsert_bundle_layer(
 ) -> GeoLayer:
     existing = None
     if area_id:
-        existing = db.query(GeoLayer).filter(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id).one_or_none()
+        existing = (
+            db.query(GeoLayer)
+            .filter(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id)
+            .one_or_none()
+        )
     else:
         existing = (
             db.query(GeoLayer)
-            .filter(GeoLayer.tipo == tipo, GeoLayer.nombre == nombre, GeoLayer.area_id.is_(None))
+            .filter(
+                GeoLayer.tipo == tipo,
+                GeoLayer.nombre == nombre,
+                GeoLayer.area_id.is_(None),
+            )
             .one_or_none()
         )
 
@@ -555,7 +594,9 @@ def list_public_geo_layers(
     )
     filtered_items = [layer for layer in items if layer.tipo in allowed_types]
     return {
-        "items": [GeoLayerListResponse.model_validate(layer) for layer in filtered_items],
+        "items": [
+            GeoLayerListResponse.model_validate(layer) for layer in filtered_items
+        ],
         "total": len(filtered_items),
         "page": page,
         "limit": limit,
@@ -698,9 +739,7 @@ async def proxy_tile(
     if hide_ranges:
         params["hide_ranges"] = hide_ranges
 
-    upstream_url = (
-        f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
-    )
+    upstream_url = f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
 
     try:
         client = _get_tile_client()
@@ -864,11 +903,15 @@ def export_geo_bundle(
             "format": "geo-bundle-v1",
             "vectors": {
                 "zonas_operativas": "vectors/zonas_operativas.geojson",
-                "approved_zoning": "vectors/approved_zoning.json" if approved_payload else None,
+                "approved_zoning": "vectors/approved_zoning.json"
+                if approved_payload
+                else None,
             },
             "layers": manifest_layers,
         }
-        bundle.writestr("manifest.json", json.dumps(manifest_payload, ensure_ascii=False, indent=2))
+        bundle.writestr(
+            "manifest.json", json.dumps(manifest_payload, ensure_ascii=False, indent=2)
+        )
 
     buffer.seek(0)
     filename = f"geo_bundle_{date.today().isoformat()}.zip"
@@ -904,9 +947,14 @@ async def import_geo_bundle(
             try:
                 manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
             except KeyError as exc:
-                raise HTTPException(status_code=400, detail="El bundle no contiene manifest.json") from exc
+                raise HTTPException(
+                    status_code=400, detail="El bundle no contiene manifest.json"
+                ) from exc
 
-            bundle_dir = _get_geo_bundle_storage_dir() / f"import_{date.today().isoformat()}_{uuid.uuid4().hex[:8]}"
+            bundle_dir = (
+                _get_geo_bundle_storage_dir()
+                / f"import_{date.today().isoformat()}_{uuid.uuid4().hex[:8]}"
+            )
             bundle_dir.mkdir(parents=True, exist_ok=True)
 
             vectors_imported: dict[str, int] = {}
@@ -919,7 +967,9 @@ async def import_geo_bundle(
 
             approved_path = manifest.get("vectors", {}).get("approved_zoning")
             if approved_path:
-                approved_payload = json.loads(archive.read(approved_path).decode("utf-8"))
+                approved_payload = json.loads(
+                    archive.read(approved_path).decode("utf-8")
+                )
                 approved_result = _import_approved_zoning_payload(
                     db,
                     repo,
@@ -927,7 +977,9 @@ async def import_geo_bundle(
                     approved_by_id=getattr(user, "id", None),
                     notes=f"Importado desde bundle: {file.filename}",
                 )
-                vectors_imported["zonificacion_aprobada"] = approved_result["imported_count"]
+                vectors_imported["zonificacion_aprobada"] = approved_result[
+                    "imported_count"
+                ]
 
             layers_imported = 0
             for layer_entry in manifest.get("layers", []):
@@ -935,7 +987,10 @@ async def import_geo_bundle(
                 if not archive_path:
                     continue
                 target_path = bundle_dir / Path(archive_path).name
-                with archive.open(archive_path) as source, target_path.open("wb") as target:
+                with (
+                    archive.open(archive_path) as source,
+                    target_path.open("wb") as target,
+                ):
                     shutil.copyfileobj(source, target)
 
                 _upsert_bundle_layer(
@@ -944,7 +999,11 @@ async def import_geo_bundle(
                     tipo=str(layer_entry.get("tipo") or "dem_raw"),
                     fuente=str(layer_entry.get("fuente") or "manual"),
                     archivo_path=str(target_path),
-                    formato=str(layer_entry.get("formato") or target_path.suffix.lstrip(".") or "geotiff"),
+                    formato=str(
+                        layer_entry.get("formato")
+                        or target_path.suffix.lstrip(".")
+                        or "geotiff"
+                    ),
                     srid=int(layer_entry.get("srid") or 4326),
                     bbox=layer_entry.get("bbox"),
                     metadata_extra=layer_entry.get("metadata_extra"),
@@ -971,7 +1030,9 @@ async def import_geo_bundle(
 
 @router.get("/basins/suggested-zones", response_model=dict)
 def get_suggested_basin_zones(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
     db: Session = Depends(get_db),
 ):
     """Generate a draft territorial proposal from existing operational basins.
@@ -1016,9 +1077,13 @@ def build_approved_basin_zones(
     )
 
 
-@router.get("/basins/approved-zones/current", response_model=ApprovedZonesResponse | None)
+@router.get(
+    "/basins/approved-zones/current", response_model=ApprovedZonesResponse | None
+)
 def get_current_approved_basin_zones(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
@@ -1086,7 +1151,9 @@ async def import_current_approved_basin_zones(
 
 @router.delete("/basins/approved-zones/current", response_model=dict)
 def clear_current_approved_basin_zones(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -1097,9 +1164,13 @@ def clear_current_approved_basin_zones(
     return {"deleted": deleted}
 
 
-@router.get("/basins/approved-zones/history", response_model=list[ApprovedZonesResponse])
+@router.get(
+    "/basins/approved-zones/history", response_model=list[ApprovedZonesResponse]
+)
 def list_approved_basin_zone_history(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
@@ -1111,7 +1182,9 @@ def list_approved_basin_zone_history(
 
 @router.get("/basins/approved-zones/current/export-pdf")
 def export_current_approved_basin_zones_pdf(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
@@ -1120,7 +1193,9 @@ def export_current_approved_basin_zones_pdf(
 
     zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
     if zoning is None:
-        raise HTTPException(status_code=404, detail="No hay una zonificación aprobada activa")
+        raise HTTPException(
+            status_code=404, detail="No hay una zonificación aprobada activa"
+        )
 
     branding = get_branding(db)
     approved_by_name = _get_user_display_name(db, zoning.approved_by_id)
@@ -1134,7 +1209,7 @@ def export_current_approved_basin_zones_pdf(
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -1147,16 +1222,20 @@ def export_current_map_approved_basin_zones_pdf(
     from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
 
     branding = get_branding(db)
-    pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
+    pdf_buffer = build_approved_zoning_map_pdf(
+        payload.model_dump(by_alias=True), branding
+    )
     filename = "zonificacion-aprobada-mapa.pdf"
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
-@router.post("/basins/approved-zones/{zoning_id}/restore", response_model=ApprovedZonesResponse)
+@router.post(
+    "/basins/approved-zones/{zoning_id}/restore", response_model=ApprovedZonesResponse
+)
 def restore_approved_basin_zone_version(
     zoning_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -1166,7 +1245,9 @@ def restore_approved_basin_zone_version(
     """Create a new active version by restoring a historical approved zoning."""
     source = repo.get_approved_zoning_by_id(db, zoning_id)
     if source is None:
-        raise HTTPException(status_code=404, detail="Versión de zonificación no encontrada")
+        raise HTTPException(
+            status_code=404, detail="Versión de zonificación no encontrada"
+        )
 
     restored = repo.create_approved_zoning_version(
         db,
@@ -1205,6 +1286,7 @@ def _lazy_gee_service():
         get_layer_geojson,
         ImageExplorer,
     )
+
     return {
         "ensure_init": _ensure_initialized,
         "get_available_layers": gee_available_layers,
@@ -1314,7 +1396,9 @@ async def get_caminos_consorcio(codigo: str) -> JSONResponse:
     except AppException:
         raise
     except Exception as e:
-        logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
+        logger.error(
+            "Error obteniendo caminos por consorcio", codigo=codigo, error=str(e)
+        )
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -1329,7 +1413,9 @@ async def get_caminos_por_nombre_consorcio(
     """Obtener caminos de un consorcio caminero por nombre."""
     svc = _ensure_gee()
     try:
-        geojson = await asyncio.to_thread(svc["get_caminos_by_consorcio_nombre"], nombre)
+        geojson = await asyncio.to_thread(
+            svc["get_caminos_by_consorcio_nombre"], nombre
+        )
         if not geojson.get("features"):
             raise NotFoundError(
                 message=f"No se encontraron caminos para el consorcio '{nombre}'",
@@ -1539,7 +1625,9 @@ async def get_available_image_dates(
     year: int = Query(..., ge=2015, le=2030, description="Ano"),
     month: int = Query(..., ge=1, le=12, description="Mes"),
     sensor: str = Query("sentinel2", description="Sensor: sentinel2 o sentinel1"),
-    max_cloud: int = Query(60, ge=0, le=100, description="Porcentaje maximo de nubes (solo S2)"),
+    max_cloud: int = Query(
+        60, ge=0, le=100, description="Porcentaje maximo de nubes (solo S2)"
+    ),
 ):
     """Obtener fechas con imagenes disponibles para un mes dado."""
     svc = _ensure_gee()
@@ -1828,19 +1916,27 @@ def compute_zonal_statistics(
     elif body.zona_source == "assets":
         from app.domains.infraestructura.models import Asset
 
-        rows = db.query(
-            Asset.id,
-            ST_AsText(Asset.geom),
-            Asset.nombre,
-        ).filter(Asset.geom.isnot(None)).all()
+        rows = (
+            db.query(
+                Asset.id,
+                ST_AsText(Asset.geom),
+                Asset.nombre,
+            )
+            .filter(Asset.geom.isnot(None))
+            .all()
+        )
     elif body.zona_source == "denuncias":
         from app.domains.denuncias.models import Denuncia
 
-        rows = db.query(
-            Denuncia.id,
-            ST_AsText(Denuncia.geom),
-            Denuncia.tipo,
-        ).filter(Denuncia.geom.isnot(None)).all()
+        rows = (
+            db.query(
+                Denuncia.id,
+                ST_AsText(Denuncia.geom),
+                Denuncia.tipo,
+            )
+            .filter(Denuncia.geom.isnot(None))
+            .all()
+        )
     else:
         raise AppException(
             message=f"Invalid zona_source: {body.zona_source}",
@@ -1894,6 +1990,7 @@ def predict_flood_ml(
     ).scalar()
 
     from app.domains.geo.zonal_stats import compute_stats_for_zones
+
     zone_data = [(str(zona.id), zona_wkt, zona.nombre)]
 
     features = {
@@ -1922,7 +2019,9 @@ def predict_flood_ml(
             continue
 
         try:
-            stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "count"])
+            stats = compute_stats_for_zones(
+                zone_data, path, ["mean", "max", "min", "count"]
+            )
             if stats and stats[0].get("count", 0) > 0:
                 layer_stats[tipo] = stats[0]
         except Exception:
@@ -1996,7 +2095,9 @@ def predict_flood_all_zones(
 
     for zona in zonas:
         zona_wkt = db.execute(
-            select(ST_AsText(ZonaOperativa.geometria)).where(ZonaOperativa.id == zona.id)
+            select(ST_AsText(ZonaOperativa.geometria)).where(
+                ZonaOperativa.id == zona.id
+            )
         ).scalar()
 
         zone_data = [(str(zona.id), zona_wkt, zona.nombre)]
@@ -2004,7 +2105,9 @@ def predict_flood_all_zones(
 
         for tipo, path in raster_paths.items():
             try:
-                stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "count"])
+                stats = compute_stats_for_zones(
+                    zone_data, path, ["mean", "max", "min", "count"]
+                )
                 if stats and stats[0].get("count", 0) > 0:
                     s = stats[0]
                     if tipo == "hand":
@@ -2022,14 +2125,16 @@ def predict_flood_all_zones(
                 pass
 
         prediction = model.predict(features)
-        results.append({
-            "zona_id": str(zona.id),
-            "zona_name": zona.nombre,
-            "cuenca": zona.cuenca,
-            "superficie_ha": zona.superficie_ha,
-            "probability": prediction["probability"],
-            "risk_level": prediction["risk_level"],
-        })
+        results.append(
+            {
+                "zona_id": str(zona.id),
+                "zona_name": zona.nombre,
+                "cuenca": zona.cuenca,
+                "superficie_ha": zona.superficie_ha,
+                "probability": prediction["probability"],
+                "risk_level": prediction["risk_level"],
+            }
+        )
 
     # Sort by probability descending
     results.sort(key=lambda r: r["probability"], reverse=True)
@@ -2108,10 +2213,13 @@ def detect_water(
         raise NotFoundError(f"Zona not found: {body.zona_id}")
 
     geojson_str = db.execute(
-        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
+            ZonaOperativa.id == body.zona_id
+        )
     ).scalar()
 
     import json
+
     geometry = json.loads(geojson_str)
 
     from app.domains.geo.water_detection import detect_water_from_gee
@@ -2146,10 +2254,13 @@ def detect_water_multi(
         raise NotFoundError(f"Zona not found: {body.zona_id}")
 
     geojson_str = db.execute(
-        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
+            ZonaOperativa.id == body.zona_id
+        )
     ).scalar()
 
     import json
+
     geometry = json.loads(geojson_str)
 
     from app.domains.geo.water_detection import detect_water_multi_date
@@ -2191,6 +2302,7 @@ def stac_collections(
 ):
     """List STAC collections (grouped by GeoLayer type)."""
     from app.domains.geo.stac import get_collections
+
     base_url = f"{request.base_url}api/v2/geo"
     return get_collections(db, base_url)
 
@@ -2207,6 +2319,7 @@ def stac_search(
 ):
     """Search the STAC catalog with filters."""
     from app.domains.geo.stac import search_catalog
+
     base_url = f"{request.base_url}api/v2/geo"
     return search_catalog(
         db,
@@ -2227,6 +2340,7 @@ def stac_item(
 ):
     """Get a single STAC item by ID."""
     from app.domains.geo.stac import layer_to_stac_item
+
     layer = db.query(GeoLayer).filter(GeoLayer.id == item_id).first()
     if not layer:
         raise NotFoundError(f"Item not found: {item_id}")
@@ -2267,11 +2381,15 @@ def analyze_ndwi_trend(
 
     # Get geometry as GeoJSON
     from sqlalchemy import select
+
     geojson_str = db.execute(
-        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
+            ZonaOperativa.id == body.zona_id
+        )
     ).scalar()
 
     import json
+
     geometry = json.loads(geojson_str)
 
     from app.domains.geo.temporal import analyze_ndwi_trend_gee
@@ -2293,7 +2411,9 @@ class RasterCompareRequest(BaseModel):
     """Request to compare multiple rasters temporally."""
 
     layer_tipo: str = Field(..., description="GeoLayer type (e.g. slope, twi)")
-    zona_id: uuid.UUID | None = Field(default=None, description="Optional zona to clip to")
+    zona_id: uuid.UUID | None = Field(
+        default=None, description="Optional zona to clip to"
+    )
 
 
 @router.post("/temporal/compare-rasters")
@@ -2330,15 +2450,22 @@ def compare_rasters(
             labels.append(f"{layer.tipo}_{layer.created_at.date()}")
 
     if not raster_paths:
-        raise AppException(message="No raster files found on disk", code="RASTERS_NOT_FOUND", status_code=404)
+        raise AppException(
+            message="No raster files found on disk",
+            code="RASTERS_NOT_FOUND",
+            status_code=404,
+        )
 
     # Get zona geometry if provided
     zona_wkt = None
     if body.zona_id:
         from geoalchemy2.functions import ST_AsText
         from sqlalchemy import select
+
         zona_wkt = db.execute(
-            select(ST_AsText(ZonaOperativa.geometria)).where(ZonaOperativa.id == body.zona_id)
+            select(ST_AsText(ZonaOperativa.geometria)).where(
+                ZonaOperativa.id == body.zona_id
+            )
         ).scalar()
 
     from app.domains.geo.temporal import compare_rasters_temporal
@@ -2396,6 +2523,7 @@ def get_zona_flood_risk(
 
     # Get zone geometry as WKT
     from sqlalchemy import select
+
     zona_wkt = db.execute(
         select(ST_AsText(ZonaOperativa.geometria)).where(ZonaOperativa.id == zona_id)
     ).scalar()
@@ -2408,7 +2536,9 @@ def get_zona_flood_risk(
 
     for tipo, path in raster_paths.items():
         try:
-            stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "median", "count"])
+            stats = compute_stats_for_zones(
+                zone_data, path, ["mean", "max", "min", "median", "count"]
+            )
             if stats and stats[0].get("count", 0) > 0:
                 metrics[tipo] = {
                     "mean": stats[0].get("mean"),
@@ -2465,10 +2595,13 @@ def get_zona_flood_risk(
 
     risk_score = min(risk_score, 100)
     risk_level = (
-        "critico" if risk_score >= 70 else
-        "alto" if risk_score >= 50 else
-        "moderado" if risk_score >= 30 else
-        "bajo"
+        "critico"
+        if risk_score >= 70
+        else "alto"
+        if risk_score >= 50
+        else "moderado"
+        if risk_score >= 30
+        else "bajo"
     )
 
     return {
@@ -2512,7 +2645,9 @@ def get_twi_summary(
             raster_path = cog
 
     if not Path(raster_path).exists():
-        raise AppException(message="TWI raster not found", code="RASTER_NOT_FOUND", status_code=404)
+        raise AppException(
+            message="TWI raster not found", code="RASTER_NOT_FOUND", status_code=404
+        )
 
     from app.domains.geo.hydrology import compute_twi_zone_summary
 
@@ -2546,12 +2681,18 @@ def get_canal_capacity(
             raster_path = cog
 
     if not Path(raster_path).exists():
-        raise AppException(message="Flow accumulation raster not found", code="RASTER_NOT_FOUND", status_code=404)
+        raise AppException(
+            message="Flow accumulation raster not found",
+            code="RASTER_NOT_FOUND",
+            status_code=404,
+        )
 
     # Use canales_existentes as the primary canal source
     canal_path = "/app/data/waterways/canales_existentes.geojson"
     if not Path(canal_path).exists():
-        raise AppException(message="Canal GeoJSON not found", code="GEOJSON_NOT_FOUND", status_code=404)
+        raise AppException(
+            message="Canal GeoJSON not found", code="GEOJSON_NOT_FOUND", status_code=404
+        )
 
     from app.domains.geo.hydrology import compute_flow_acc_at_canals
 
@@ -2650,16 +2791,18 @@ def find_shortest_path(
     features = []
     for edge in path:
         if edge["geometry"]:
-            features.append({
-                "type": "Feature",
-                "properties": {
-                    "nombre": edge["nombre"],
-                    "cost": edge["cost"],
-                    "agg_cost": edge["agg_cost"],
-                    "path_seq": edge["path_seq"],
-                },
-                "geometry": edge["geometry"],
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "nombre": edge["nombre"],
+                        "cost": edge["cost"],
+                        "agg_cost": edge["agg_cost"],
+                        "path_seq": edge["path_seq"],
+                    },
+                    "geometry": edge["geometry"],
+                }
+            )
 
     total_cost = path[-1]["agg_cost"] if path else 0
 
@@ -2716,9 +2859,7 @@ def _run_feature_extraction(
                     event_date=event_date,
                 )
                 if features:
-                    repo.update_label_features(
-                        db, uuid.UUID(label_id_str), features
-                    )
+                    repo.update_label_features(db, uuid.UUID(label_id_str), features)
                     db.commit()
                     extracted_count += 1
                 else:
@@ -2818,9 +2959,7 @@ async def create_flood_event(
 
     # Kick off background feature extraction (non-blocking)
     # GEE unavailability is handled gracefully inside _run_feature_extraction
-    label_ids_and_zonas = [
-        (str(lbl.id), str(lbl.zona_id)) for lbl in created.labels
-    ]
+    label_ids_and_zonas = [(str(lbl.id), str(lbl.zona_id)) for lbl in created.labels]
     asyncio.ensure_future(
         asyncio.to_thread(
             _run_feature_extraction,
@@ -3010,9 +3149,7 @@ def trigger_rainfall_backfill(
     """
     from app.domains.geo.tasks import rainfall_backfill
 
-    zona_ids_str = (
-        [str(z) for z in payload.zona_ids] if payload.zona_ids else None
-    )
+    zona_ids_str = [str(z) for z in payload.zona_ids] if payload.zona_ids else None
     task = rainfall_backfill.delay(
         start_date=payload.start_date.isoformat(),
         end_date=payload.end_date.isoformat(),
@@ -3080,7 +3217,10 @@ def get_rainfall_for_zone(
     zone_id: uuid.UUID,
     start: Optional[date] = Query(None, description="Start date (inclusive)"),
     end: Optional[date] = Query(None, description="End date (inclusive)"),
-    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
+    source: Optional[str] = Query(
+        None,
+        description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day.",
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -3111,7 +3251,10 @@ def get_rainfall_for_zone(
 def get_rainfall_summary(
     start: date = Query(..., description="Start date (inclusive)"),
     end: date = Query(..., description="End date (inclusive)"),
-    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
+    source: Optional[str] = Query(
+        None,
+        description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day.",
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -3123,7 +3266,9 @@ def get_rainfall_summary(
     """
     from app.domains.geo.intelligence.models import ZonaOperativa
 
-    summaries = repo.get_rainfall_summary(db, start_date=start, end_date=end, source=source)
+    summaries = repo.get_rainfall_summary(
+        db, start_date=start, end_date=end, source=source
+    )
 
     zona_ids = [s["zona_operativa_id"] for s in summaries]
     if zona_ids:
@@ -3152,7 +3297,10 @@ def get_rainfall_summary(
 def get_rainfall_daily(
     start: date = Query(..., description="Start date (inclusive)"),
     end: date = Query(..., description="End date (inclusive)"),
-    source: Optional[str] = Query(None, description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day."),
+    source: Optional[str] = Query(
+        None,
+        description="Filter by source: CHIRPS or IMERG. If omitted, IMERG takes priority over CHIRPS for the same day.",
+    ),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -3161,14 +3309,18 @@ def get_rainfall_daily(
 
     When source is omitted, IMERG takes priority over CHIRPS for duplicate dates.
     """
-    return repo.get_rainfall_daily_max(db, start_date=start, end_date=end, source=source)
+    return repo.get_rainfall_daily_max(
+        db, start_date=start, end_date=end, source=source
+    )
 
 
 @router.get("/rainfall/events")
 def get_rainfall_events(
     start: Optional[date] = Query(None, description="Start date (inclusive)"),
     end: Optional[date] = Query(None, description="End date (inclusive)"),
-    threshold_mm: float = Query(50.0, ge=1.0, description="Precipitation threshold in mm"),
+    threshold_mm: float = Query(
+        50.0, ge=1.0, description="Precipitation threshold in mm"
+    ),
     window_days: int = Query(3, ge=1, le=30, description="Rolling window in days"),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
@@ -3223,9 +3375,13 @@ def get_rainfall_events(
 def get_rainfall_suggestions(
     start: Optional[date] = Query(None, description="Start date (inclusive)"),
     end: Optional[date] = Query(None, description="End date (inclusive)"),
-    threshold_mm: float = Query(50.0, ge=1.0, description="Precipitation threshold in mm"),
+    threshold_mm: float = Query(
+        50.0, ge=1.0, description="Precipitation threshold in mm"
+    ),
     window_days: int = Query(3, ge=1, le=30, description="Rolling window in days"),
-    days_after: int = Query(5, ge=1, le=15, description="Max days after event to search for S2 images"),
+    days_after: int = Query(
+        5, ge=1, le=15, description="Max days after event to search for S2 images"
+    ),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ):
@@ -3288,9 +3444,7 @@ def get_rainfall_suggestions(
                 "event_end": e["event_end"].isoformat(),
                 "accumulated_mm": e["accumulated_mm"],
                 "duration_days": e["duration_days"],
-                "suggested_image_date": (
-                    best["date"].isoformat() if best else None
-                ),
+                "suggested_image_date": (best["date"].isoformat() if best else None),
                 "cloud_cover_pct": best["cloud_cover_pct"] if best else None,
                 "all_suggestions": [
                     {
@@ -3447,3 +3601,40 @@ async def afectados_por_evento(
 ):
     """Consorcistas affected by a flood event (only zones labeled as flooded)."""
     return get_afectados_evento(db, event_id)
+
+
+# ──────────────────────────────────────────────
+# QGIS EXPORT
+# ──────────────────────────────────────────────
+
+
+@router.get("/export/qgis", tags=["Export"])
+async def export_qgis_project(
+    _user: User = Depends(_require_operator()),
+):
+    """Download a network-connected QGIS project file (.qgz).
+
+    The generated project is pre-configured with all active Martin vector tile
+    layers so technicians can open live PostGIS data in QGIS 3.16+ without
+    manual setup.
+
+    Requires operator or admin role.
+    Returns HTTP 503 if MARTIN_PUBLIC_URL is not configured.
+    """
+    from app.config import settings
+    from app.domains.geo.qgis_export import QGISProjectGenerator, fetch_vt_layers
+
+    if not settings.martin_public_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Martin tile server URL not configured (MARTIN_PUBLIC_URL)",
+        )
+
+    layers = await fetch_vt_layers(settings.martin_internal_url)
+    zip_bytes = QGISProjectGenerator.build(layers, settings.martin_public_url)
+
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'},
+    )
