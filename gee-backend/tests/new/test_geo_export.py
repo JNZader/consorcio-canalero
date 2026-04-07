@@ -369,6 +369,23 @@ class TestExportQgisEndpointUnit:
         assert exc_info.value.status_code == 503
         assert "MARTIN_PUBLIC_URL" in exc_info.value.detail
 
+    def test_endpoint_requires_operator_dependency(self):
+        """The export endpoint must declare the operator auth dependency."""
+        import inspect
+
+        from app.domains.geo.router import export_qgis_project as ep
+
+        sig = inspect.signature(ep)
+        # FastAPI stores Depends() as the default value of the parameter
+        _user_param = sig.parameters.get("_user")
+        assert _user_param is not None, "export_qgis_project has no _user parameter"
+        dep = _user_param.default
+        # The default is a Depends() object — it must not be inspect.Parameter.empty
+        assert dep is not inspect.Parameter.empty, "_user has no Depends() default"
+        # The dependency callable must be _require_operator (auth guard)
+        from fastapi import params as fa_params
+        assert isinstance(dep, fa_params.Depends), "_user default is not a Depends()"
+
     @pytest.mark.asyncio
     async def test_returned_bytes_are_valid_zip(self):
         mock_user = MagicMock()
