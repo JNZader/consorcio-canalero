@@ -22,3 +22,5 @@ export {
 } from './useContactVerification';
 
 export { useMartinCatalog, type MartinCatalogItem } from './useMartinCatalog';
+
+export { useQgisExport, type UseQgisExportReturn } from './useQgisExport';

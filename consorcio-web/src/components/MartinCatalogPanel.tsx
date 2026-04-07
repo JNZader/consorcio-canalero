@@ -11,6 +11,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   Center,
   Code,
   Group,
@@ -26,10 +27,12 @@ import {
   IconCheck,
   IconCopy,
   IconClipboardCheck,
+  IconDownload,
   IconMapSearch,
   IconRefresh,
 } from './ui/icons';
 import { useMartinCatalog, type MartinCatalogItem } from '../hooks/useMartinCatalog';
+import { useQgisExport } from '../hooks/useQgisExport';
 
 // ===========================================
 // CONSTANTS
@@ -133,6 +136,7 @@ function LayerCard({ layer }: LayerCardProps) {
 
 export default function MartinCatalogPanel() {
   const { layers, isLoading, isError, error, reload } = useMartinCatalog();
+  const { download: downloadQgis, isDownloading, error: downloadError } = useQgisExport();
 
   return (
     <Stack gap="md">
@@ -145,18 +149,43 @@ export default function MartinCatalogPanel() {
           </Text>
         </div>
 
-        <Tooltip label="Recargar catalogo">
-          <ActionIcon
+        <Group gap="xs">
+          <Button
             variant="light"
-            size="lg"
-            onClick={() => reload()}
-            loading={isLoading}
-            aria-label="Recargar catalogo"
+            size="sm"
+            leftSection={<IconDownload size={16} />}
+            onClick={() => void downloadQgis()}
+            loading={isDownloading}
+            disabled={isDownloading}
+            aria-label="Descargar proyecto QGIS"
           >
-            <IconRefresh size={18} />
-          </ActionIcon>
-        </Tooltip>
+            Descargar proyecto QGIS
+          </Button>
+
+          <Tooltip label="Recargar catalogo">
+            <ActionIcon
+              variant="light"
+              size="lg"
+              onClick={() => reload()}
+              loading={isLoading}
+              aria-label="Recargar catalogo"
+            >
+              <IconRefresh size={18} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
+
+      {/* Download error state */}
+      {downloadError && (
+        <Alert
+          color="orange"
+          icon={<IconAlertTriangle size={18} />}
+          title="Error al descargar el proyecto QGIS"
+        >
+          {downloadError}
+        </Alert>
+      )}
 
       {/* Error state */}
       {isError && (
