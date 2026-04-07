@@ -117,12 +117,14 @@ export default function TerrainViewer3D({
 }: TerrainViewer3DProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const activeRasterLayerIdRef = useRef<string | null>(null);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(textureLayerId ?? demLayerId ?? null);
+  activeRasterLayerIdRef.current = activeRasterLayerId;
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
@@ -199,10 +201,13 @@ export default function TerrainViewer3D({
     if (selectedImage && sharedActiveRasterType === null) return;
     if (sharedActiveRasterType === null) return;
     const matched = rasterLayers.find((layer) => layer.tipo === sharedActiveRasterType);
-    if (matched && matched.id !== activeRasterLayerId) {
+    if (matched && matched.id !== activeRasterLayerIdRef.current) {
       setActiveRasterLayerId(matched.id);
     }
-  }, [activeRasterLayerId, rasterLayers, selectedImage, sharedActiveRasterType]);
+    // activeRasterLayerId intentionally omitted — read via ref to avoid re-triggering this effect
+    // when the effect itself sets the value (would create a setState loop)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rasterLayers, selectedImage, sharedActiveRasterType]);
 
   const handleVectorLayerToggle = useCallback((layerId: string, visible: boolean) => {
     setVectorLayerVisibility((prev) => ({ ...prev, [layerId]: visible }));
