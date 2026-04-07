@@ -639,6 +639,7 @@ class TestMartinCatalogHandler:
 
     @pytest.mark.asyncio
     async def test_empty_catalog_returns_zero_count(self):
+
         """When Martin returns no tiles, response has empty layers and count=0."""
         from app.api.v2.public import get_martin_catalog
 
@@ -657,3 +658,57 @@ class TestMartinCatalogHandler:
 
         assert result.count == 0
         assert result.layers == []
+
+
+@pytest.mark.integration
+class TestMartinCatalogIntegration:
+    """Integration tests — require real Martin running at localhost:3000."""
+
+    @pytest.mark.asyncio
+    async def test_catalog_returns_layers_from_real_martin(self):
+        """Real Martin catalog must return at least the expected vt_ views."""
+        from app.api.v2.public import get_martin_catalog
+
+        with (
+            patch("app.api.v2.public.settings.martin_internal_url", "http://localhost:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "http://localhost:3000"),
+        ):
+            result = await get_martin_catalog()
+
+        assert result.count > 0
+        layer_ids = [layer.id for layer in result.layers]
+        for expected in ("vt_zonas_operativas", "vt_puntos_conflicto", "vt_denuncias", "vt_assets"):
+            assert expected in layer_ids, f"Expected layer '{expected}' not found in catalog"
+
+    @pytest.mark.asyncio
+    async def test_catalog_tile_url_contains_public_base(self):
+        """Tile URLs must use MARTIN_PUBLIC_URL, not the internal host."""
+        from app.api.v2.public import get_martin_catalog
+
+        public_base = "http://localhost:3000"
+        with (
+            patch("app.api.v2.public.settings.martin_internal_url", "http://localhost:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", public_base),
+        ):
+            result = await get_martin_catalog()
+
+        for layer in result.layers:
+            assert layer.tile_url.startswith(public_base), (
+                f"tile_url '{layer.tile_url}' does not start with public base '{public_base}'"
+            )
+
+    @pytest.mark.asyncio
+    async def test_catalog_geometry_types_are_lowercase(self):
+        """geometry_type field must be lowercase regardless of what Martin returns."""
+        from app.api.v2.public import get_martin_catalog
+
+        with (
+            patch("app.api.v2.public.settings.martin_internal_url", "http://localhost:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "http://localhost:3000"),
+        ):
+            result = await get_martin_catalog()
+
+        for layer in result.layers:
+            assert layer.geometry_type == layer.geometry_type.lower(), (
+                f"geometry_type '{layer.geometry_type}' is not lowercase for layer '{layer.id}'"
+            )
