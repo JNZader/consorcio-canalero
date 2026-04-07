@@ -1,0 +1,30 @@
+# Martin Vector Tile Server - Consorcio Canalero (Produccion)
+# Docs: https://maplibre.org/martin/
+#
+# La variable ${DATABASE_URL} la inyecta el docker-compose (desde .env → MARTIN_DB_URL).
+# Martin expande ${DATABASE_URL} internamente al leer el config.
+#
+# IMPORTANTE — Caddy debe usar handle_path (NO handle) para el prefix /tiles:
+#
+#   consorcio.DOMINIO {
+#     handle_path /tiles/* {          ← strips /tiles antes de forwarding a Martin
+#       reverse_proxy consorcio-martin:3000
+#     }
+#     handle /api/* {
+#       reverse_proxy consorcio-backend:8000
+#     }
+#     handle {
+#       reverse_proxy consorcio-frontend:80
+#     }
+#   }
+
+listen_addresses: '0.0.0.0:3000'
+
+postgres:
+  connection_string: ${DATABASE_URL}
+
+  # Auto-descubrir vistas vt_* con columnas de geometria
+  auto_publish:
+    tables:
+      from: public
+    functions: false

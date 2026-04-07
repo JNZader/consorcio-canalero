@@ -1,186 +1,166 @@
 # ===========================================
-# Docker Compose - Production (Coolify/Hetzner)
+# Docker Compose - Produccion (Hetzner / Dockge)
 # ===========================================
-# Frontend is on Cloudflare Pages — NOT included here.
-# This runs: Postgres + Redis + Backend API + Celery Worker
+# Frontend: Cloudflare Pages (NO incluido aqui).
+# Esquema: imagenes pre-buildeadas desde GHCR.
+# PostgreSQL y Redis son EXTERNOS (shared stack).
+# Redes: proxy y backend son EXTERNAS (creadas una vez en el server).
 #
-# Required env vars (set in Coolify):
-#   DATABASE_URL, JWT_SECRET, REDIS_PASSWORD
+# Arquitectura de dominios:
+#   consorcio.DOMINIO       → Cloudflare Pages (frontend React)
+#   api.consorcio.DOMINIO   → Caddy → consorcio-backend:8000
+#   tiles.consorcio.DOMINIO → Caddy → consorcio-martin:3000
+#
+# Caddyfile en el server:
+#   api.consorcio.{$DOMAIN} {
+#     reverse_proxy consorcio-backend:8000
+#   }
+#   tiles.consorcio.{$DOMAIN} {
+#     reverse_proxy consorcio-martin:3000
+#   }
+#
+# Uso en servidor:
+#   cp docker-compose.prod.yml /home/javier/stacks/consorcio/docker-compose.yml
+#   cp .env.prod.example /home/javier/stacks/consorcio/.env  # editar con valores reales
+#   cp martin/config.prod.yaml /home/javier/stacks/consorcio/martin-config.yaml
+#   cd /home/javier/stacks/consorcio && docker compose up -d
+# ===========================================
 
 services:
-  # ===========================================
-  # DATABASE - PostgreSQL + PostGIS
-  # ===========================================
-  postgres:
-    image: postgis/postgis:16-3.4-alpine
-    container_name: consorcio-postgres
-    restart: always
+  # --- Backend FastAPI ---
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: consorcio
-      POSTGRES_USER: consorcio
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      - geo-data:/data/geo
     networks:
-      - consorcio-network
+      - proxy
+      - backend
+      - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U consorcio -d consorcio"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      geo-worker:
+        condition: service_started
     deploy:
       resources:
         limits:
           memory: 512M
-        reservations:
-          memory: 128M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  # ===========================================
-  # REDIS - Cache & Task Queue Broker
-  # ===========================================
-  redis:
-    image: redis:7-alpine
-    container_name: consorcio-redis
-    restart: always
-    command: >
-      redis-server
-      --appendonly yes
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD:-changeme}
+  # --- Celery Worker (solo queue celery, sin GDAL) ---
+  celery-worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-celery-worker
+    restart: unless-stopped
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    env_file: .env
     volumes:
-      - redis-data:/data
+      - geo-data:/data/geo
     networks:
-      - consorcio-network
+      - backend
+      - consorcio-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Geo Worker (GDAL + WhiteboxTools, queue geo) ---
+  geo-worker:
+    image: ${GEO_WORKER_IMAGE:-ghcr.io/jnzader/consorcio-canalero/geo-worker:latest}
+    container_name: consorcio-geo-worker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    env_file: .env
+    volumes:
+      - geo-data:/data/geo
+    networks:
+      - backend
+      - consorcio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Martin Vector Tile Server ---
+  martin:
+    image: ghcr.io/maplibre/martin:v0.14.2
+    container_name: consorcio-martin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./martin-config.yaml:/config/config.yaml:ro
+    command: --config /config/config.yaml
+    environment:
+      # Martin necesita URL sin +asyncpg (postgresql://, no postgresql+asyncpg://)
+      - DATABASE_URL=${MARTIN_DB_URL}
+    networks:
+      - backend
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     logging:
       driver: "json-file"
       options:
         max-size: "5m"
         max-file: "2"
 
-  # ===========================================
-  # BACKEND - FastAPI API
-  # ===========================================
-  backend:
-    build:
-      context: ./gee-backend
-      dockerfile: Dockerfile
-      target: production
-    container_name: consorcio-backend
-    restart: always
-    expose:
-      - "8000"
-    volumes:
-      - geo-data:/data/geo
-    environment:
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - DATABASE_URL=postgresql://consorcio:${POSTGRES_PASSWORD:-changeme}@postgres:5432/consorcio
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
-      - JWT_SECRET=${JWT_SECRET}
-      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
-      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
-      - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://consorcio-canalero.pages.dev}
-      - FRONTEND_URL=${FRONTEND_URL:-https://consorcio-canalero.pages.dev}
-      - API_PREFIX=/api/v2
-    networks:
-      - consorcio-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ===========================================
-  # WORKER - Celery Background Tasks
-  # ===========================================
-  worker:
-    build:
-      context: ./gee-backend
-      dockerfile: Dockerfile
-      target: production
-    container_name: consorcio-worker
-    restart: always
-    volumes:
-      - geo-data:/data/geo
-    environment:
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - DATABASE_URL=postgresql://consorcio:${POSTGRES_PASSWORD:-changeme}@postgres:5432/consorcio
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
-      - JWT_SECRET=${JWT_SECRET}
-      - GEE_PROJECT_ID=${GEE_PROJECT_ID:-cc10demayo}
-      - GEE_SERVICE_ACCOUNT_KEY=${GEE_SERVICE_ACCOUNT_KEY:-}
-    networks:
-      - consorcio-network
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
-    healthcheck:
-      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-# ===========================================
-# NETWORKS
-# ===========================================
+# Redes EXTERNAS — creadas una sola vez en el server:
+#   docker network create proxy
+#   docker network create backend
 networks:
-  consorcio-network:
+  proxy:
+    external: true
+  backend:
+    external: true
+  consorcio-internal:
     driver: bridge
+    name: consorcio-internal
 
-# ===========================================
-# VOLUMES
-# ===========================================
 volumes:
-  postgres-data:
-  redis-data:
   geo-data:
+    name: consorcio-geo-data

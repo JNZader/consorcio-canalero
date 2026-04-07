@@ -4,15 +4,17 @@ on:
   push:
     branches: [main]
     paths:
-      - 'consorcio-web/**'
       - 'gee-backend/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
+# Frontend: Cloudflare Pages buildea y deployea automaticamente desde este repo.
+# Este workflow solo buildea y publica las imagenes Docker del backend y geo-worker.
+
 env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ${{ github.repository }}/backend
-  FRONTEND_IMAGE: ${{ github.repository }}/frontend
+  GEO_WORKER_IMAGE: ${{ github.repository }}/geo-worker
 
 concurrency:
   group: deploy-production
@@ -37,24 +39,6 @@ jobs:
       - run: ruff check .
       - run: mypy app/ --ignore-missing-imports
       - run: python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q
-
-  quality-frontend:
-    name: Frontend quality gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: consorcio-web
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test:smoke
-      - run: npm run mutation:run
 
   build-backend:
     name: Build Backend Image
@@ -90,11 +74,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-frontend:
-    name: Build Frontend Image
+  build-geo-worker:
+    name: Build Geo Worker Image
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [quality-frontend]
+    timeout-minutes: 25
+    needs: [quality-backend]
     permissions:
       contents: read
       packages: write
@@ -109,19 +93,30 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
+          images: ${{ env.REGISTRY }}/${{ env.GEO_WORKER_IMAGE }}
           tags: |
             type=sha,prefix=
             type=raw,value=latest
       - uses: docker/build-push-action@v5
         with:
-          context: consorcio-web
-          file: consorcio-web/Dockerfile
-          target: runtime
+          context: gee-backend
+          file: gee-backend/Dockerfile.geo
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL }}
+
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-backend, build-geo-worker]
+    # Solo deployar si el webhook esta configurado en el repo
+    if: ${{ vars.DEPLOY_WEBHOOK_URL != '' }}
+    steps:
+      - name: Trigger redeploy via webhook
+        run: |
+          curl -X POST "${{ vars.DEPLOY_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_SECRET }}" \
+            --fail --silent --show-error
