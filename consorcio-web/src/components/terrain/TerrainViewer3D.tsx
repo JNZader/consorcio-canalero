@@ -6,7 +6,7 @@
  * Ctrl+drag (or two-finger drag on mobile) to see elevation.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
@@ -146,7 +146,7 @@ export default function TerrainViewer3D({
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
   const seedViewFromOther = useMapLayerSyncStore((state) => state.seedViewFromOther);
-  const rasterLayers = getSupported3DRasterLayers(allGeoLayers);
+  const rasterLayers = useMemo(() => getSupported3DRasterLayers(allGeoLayers), [allGeoLayers]);
   const selectedImageOption = selectedImage
     ? {
         value: SELECTED_IMAGE_LAYER_ID,
@@ -219,12 +219,10 @@ export default function TerrainViewer3D({
   }, [sharedVisibleVectors]);
 
   useEffect(() => {
-    if (selectedImageIsActive) {
-      setSharedActiveRasterType('map3d', null);
-      return;
-    }
-    setSharedActiveRasterType('map3d', activeRasterType ?? null);
-  }, [activeRasterType, selectedImageIsActive, setSharedActiveRasterType]);
+    const next = selectedImageIsActive ? null : (activeRasterType ?? null);
+    if (next === sharedActiveRasterType) return;
+    setSharedActiveRasterType('map3d', next);
+  }, [activeRasterType, selectedImageIsActive, setSharedActiveRasterType, sharedActiveRasterType]);
 
   const zonaCollection = geeLayers.zona ?? null;
   const approvedZonesCollection = approvedZones;
@@ -393,15 +391,29 @@ export default function TerrainViewer3D({
     });
 
     map.on('error', (event) => {
-      const candidate =
+      const msg =
         typeof event.error === 'string'
           ? event.error
           : event.error instanceof Error
             ? event.error.message
-            : 'Error desconocido cargando el terreno 3D';
+            : '';
+
+      // Tile-level HTTP errors (4xx/5xx on individual tiles) are transient —
+      // don't block the entire 3D view. GEE map IDs expire after ~24–72 h,
+      // so a 503 from earthengine.googleapis.com is expected if the session
+      // was generated much earlier. Just log and continue.
+      const isTileError =
+        'tile' in event ||
+        /AJAXError/i.test(msg) ||
+        /earthengine\.googleapis\.com/i.test(msg);
+
+      if (isTileError) {
+        console.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
+        return;
+      }
 
       console.error('MapLibre terrain error', event.error);
-      setErrorMessage(candidate);
+      setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
     });
 
     mapRef.current = map;
