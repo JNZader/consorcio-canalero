@@ -49,6 +49,8 @@ services:
       - DATABASE_URL=postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
       - REDIS_URL=redis://redis:6379/0
       - GEO_WORKER_TILE_URL=http://geo-worker:8001
+      - MARTIN_INTERNAL_URL=http://martin:3000
+      - MARTIN_PUBLIC_URL=
       - CORS_ORIGINS=https://consorcio-canalero.pages.dev,http://localhost:5173,http://localhost:3000
     env_file:
       - ./gee-backend/.env
@@ -122,7 +124,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    command: celery -A app.core.celery_app worker --loglevel=info -Q celery,geo
+    command: celery -A app.core.celery_app worker --loglevel=info -Q celery
 
   # ============================================
   # GEO WORKER - GDAL-based terrain analysis
