@@ -902,12 +902,12 @@ def run_full_dem_pipeline(
         _get_processing().remove_off_terrain_objects(dem_clipped, dem_filtered)
         dem_utm = dem_filtered  # use filtered DEM for all subsequent processing
 
-        # Register the CLIPPED DEM (not the raw rectangle)
-        dem_cog = _convert_to_cog_safe(dem_clipped)
+        # Register the FILTERED DEM (off-terrain objects removed)
+        dem_cog = _convert_to_cog_safe(dem_filtered)
         _register_layer(
             nombre=f"dem_raw_{area_id}",
             tipo=TipoGeoLayer.DEM_RAW,
-            archivo_path=dem_clipped,
+            archivo_path=dem_filtered,
             area_id=area_id,
             metadata_extra={"cog_path": dem_cog}
             if dem_cog
