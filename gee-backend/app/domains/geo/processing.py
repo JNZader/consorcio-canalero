@@ -20,21 +20,21 @@ from rasterio.warp import Resampling, calculate_default_transform, reproject
 from rasterio.features import shapes
 from rasterio.mask import mask as rasterio_mask
 from shapely.geometry import box, mapping, shape
-from whitebox import WhiteboxTools
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# WhiteboxTools singleton
+# WhiteboxTools singleton (lazy import — only available in geo-worker)
 # ---------------------------------------------------------------------------
 
-_wbt: WhiteboxTools | None = None
+_wbt: Any | None = None
 
 
-def _get_wbt() -> WhiteboxTools:
-    """Lazily initialise a WhiteboxTools instance (verbose off)."""
+def _get_wbt() -> Any:
+    """Lazily import and initialise WhiteboxTools (only installed in geo-worker)."""
     global _wbt  # noqa: PLW0603
     if _wbt is None:
+        from whitebox import WhiteboxTools  # noqa: PLC0415
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
     return _wbt
