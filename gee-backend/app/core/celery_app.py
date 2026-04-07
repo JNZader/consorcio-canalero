@@ -66,7 +66,9 @@ celery_app.conf.update(
         },
         "compute-ndwi-baselines-yearly": {
             "task": "geo.compute_ndwi_baselines",
-            "schedule": crontab(month_of_year="8", day_of_month="1", hour="2", minute="0"),
+            "schedule": crontab(
+                month_of_year="8", day_of_month="1", hour="2", minute="0"
+            ),
             "options": {"queue": "geo"},
         },
     },

@@ -40,17 +40,11 @@ class Gasto(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "gastos_v2"
 
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
-    monto: Mapped[float] = mapped_column(
-        Numeric(12, 2), nullable=False
-    )
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     categoria: Mapped[str] = mapped_column(String(50), nullable=False)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
-    comprobante_url: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True
-    )
-    proveedor: Mapped[Optional[str]] = mapped_column(
-        String(200), nullable=True
-    )
+    comprobante_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    proveedor: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     usuario_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -67,18 +61,14 @@ class Ingreso(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "ingresos_v2"
 
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
-    monto: Mapped[float] = mapped_column(
-        Numeric(12, 2), nullable=False
-    )
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     categoria: Mapped[str] = mapped_column(String(50), nullable=False)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     consorcista_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
     )
-    comprobante_url: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True
-    )
+    comprobante_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     usuario_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -96,9 +86,7 @@ class Presupuesto(UUIDMixin, TimestampMixin, Base):
 
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
     rubro: Mapped[str] = mapped_column(String(100), nullable=False)
-    monto_proyectado: Mapped[float] = mapped_column(
-        Numeric(12, 2), nullable=False
-    )
+    monto_proyectado: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
     def __repr__(self) -> str:
         return (

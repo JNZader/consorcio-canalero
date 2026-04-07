@@ -35,7 +35,9 @@ class TerritorialRepository:
                     )
                 """),
                 {
-                    "simbolo": props.get("simbolo") or props.get("SIMBOLO") or "SIN_DATOS",
+                    "simbolo": props.get("simbolo")
+                    or props.get("SIMBOLO")
+                    or "SIN_DATOS",
                     "cap": props.get("cap") or props.get("CAP"),
                     "ip": props.get("ip") or props.get("IP"),
                     "geom_json": json.dumps(geom),
@@ -63,7 +65,9 @@ class TerritorialRepository:
                     )
                 """),
                 {
-                    "nombre": props.get("name") or props.get("nombre") or props.get("NOMBRE"),
+                    "nombre": props.get("name")
+                    or props.get("nombre")
+                    or props.get("NOMBRE"),
                     "tipo": props.get("tipo") or props.get("TIPO") or props.get("type"),
                     "geom_json": json.dumps(geom),
                 },
@@ -141,13 +145,17 @@ class TerritorialRepository:
     def get_zona_nombre(self, db: Session, zona_id: str) -> str | None:
         """Fetch the zona name from the materialized view (avoids extra join)."""
         row = db.execute(
-            text("SELECT zona_nombre FROM mv_suelos_por_zona WHERE zona_id = :id::uuid LIMIT 1"),
+            text(
+                "SELECT zona_nombre FROM mv_suelos_por_zona WHERE zona_id = :id::uuid LIMIT 1"
+            ),
             {"id": zona_id},
         ).fetchone()
         if row:
             return row.zona_nombre
         row = db.execute(
-            text("SELECT zona_nombre FROM mv_canales_por_zona WHERE zona_id = :id::uuid LIMIT 1"),
+            text(
+                "SELECT zona_nombre FROM mv_canales_por_zona WHERE zona_id = :id::uuid LIMIT 1"
+            ),
             {"id": zona_id},
         ).fetchone()
         return row.zona_nombre if row else zona_id

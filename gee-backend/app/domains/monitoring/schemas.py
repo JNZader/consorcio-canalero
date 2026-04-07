@@ -24,7 +24,9 @@ class SugerenciaCreate(BaseModel):
 
     @field_validator("geometry")
     @classmethod
-    def validate_geometry(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def validate_geometry(
+        cls, value: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
         if value is None:
             return value
         if value.get("type") != "FeatureCollection":

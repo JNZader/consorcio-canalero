@@ -228,7 +228,9 @@ class FloodEventListResponse(BaseModel):
 class TrainingResultResponse(BaseModel):
     """Response from the flood model training endpoint."""
 
-    events_used: int = Field(..., description="Number of labeled events used for training")
+    events_used: int = Field(
+        ..., description="Number of labeled events used for training"
+    )
     epochs: int = Field(..., description="Number of training epochs run")
     initial_loss: float = Field(..., description="Loss at epoch 0")
     final_loss: float = Field(..., description="Loss at final epoch")
@@ -417,6 +419,4 @@ class RainfallSummaryResponse(BaseModel):
     total_mm: float = Field(..., description="Total precipitation in mm")
     avg_mm: float = Field(..., description="Average daily precipitation in mm")
     max_mm: float = Field(..., description="Maximum single-day precipitation in mm")
-    rainy_days: int = Field(
-        ..., description="Number of days with precipitation > 0"
-    )
+    rainy_days: int = Field(..., description="Number of days with precipitation > 0")

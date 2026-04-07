@@ -228,9 +228,7 @@ def detectar_puntos_conflicto(
     return gpd.GeoDataFrame(conflicts, geometry="geometry", crs="EPSG:4326")
 
 
-def _clasificar_severidad_conflicto(
-    acumulacion: float, pendiente: float
-) -> str:
+def _clasificar_severidad_conflicto(acumulacion: float, pendiente: float) -> str:
     """Classify conflict severity based on accumulation and slope."""
     if acumulacion > 5000 or pendiente < 0.5:
         return "alta"
@@ -269,14 +267,14 @@ def simular_escorrentia(
     # D8 direction encoding (WhiteboxTools convention):
     # 1=E, 2=NE, 4=N, 8=NW, 16=W, 32=SW, 64=S, 128=SE
     d8_offsets = {
-        1: (0, 1),     # East
-        2: (-1, 1),    # NE
-        4: (-1, 0),    # North
-        8: (-1, -1),   # NW
-        16: (0, -1),   # West
-        32: (1, -1),   # SW
-        64: (1, 0),    # South
-        128: (1, 1),   # SE
+        1: (0, 1),  # East
+        2: (-1, 1),  # NE
+        4: (-1, 0),  # North
+        8: (-1, -1),  # NW
+        16: (0, -1),  # West
+        32: (1, -1),  # SW
+        64: (1, 0),  # South
+        128: (1, 1),  # SE
     }
 
     with rasterio.open(flow_dir_path) as fd_src:
@@ -310,9 +308,11 @@ def simular_escorrentia(
         if fd_nodata is not None and direction == int(fd_nodata):
             break
 
-        fa_val = float(fa_data[row, col]) if (
-            0 <= row < fa_data.shape[0] and 0 <= col < fa_data.shape[1]
-        ) else 0.0
+        fa_val = (
+            float(fa_data[row, col])
+            if (0 <= row < fa_data.shape[0] and 0 <= col < fa_data.shape[1])
+            else 0.0
+        )
         accumulations.append(fa_val * lluvia_mm)
 
         offset = d8_offsets.get(direction)
@@ -604,8 +604,12 @@ def clasificar_terreno_dinamico(
     # NDVI-based vegetation classification
     if sentinel2_data is not None:
         dense_veg = (sentinel2_data > 0.5) & (classified == 0)
-        sparse_veg = (sentinel2_data > 0.2) & (sentinel2_data <= 0.5) & (classified == 0)
-        bare_soil = (sentinel2_data <= 0.2) & (sentinel2_data > -0.1) & (classified == 0)
+        sparse_veg = (
+            (sentinel2_data > 0.2) & (sentinel2_data <= 0.5) & (classified == 0)
+        )
+        bare_soil = (
+            (sentinel2_data <= 0.2) & (sentinel2_data > -0.1) & (classified == 0)
+        )
 
         classified[dense_veg] = 2
         classified[sparse_veg] = 4
@@ -626,7 +630,9 @@ def clasificar_terreno_dinamico(
         count = int(np.sum(classified == code))
         stats[name] = {
             "pixeles": count,
-            "porcentaje": round((count / total_pixels) * 100.0, 2) if total_pixels > 0 else 0.0,
+            "porcentaje": round((count / total_pixels) * 100.0, 2)
+            if total_pixels > 0
+            else 0.0,
         }
 
     result["clasificacion"] = classified
@@ -690,15 +696,17 @@ def rank_canal_hotspots(
         fa_max = max(values)
         fa_mean = sum(values) / len(values)
 
-        raw_results.append({
-            "geometry": mapping(geom),
-            "segment_index": idx,
-            "id": canal.get("id"),
-            "nombre": canal.get("nombre"),
-            "flow_acc_max": round(fa_max, 2),
-            "flow_acc_mean": round(fa_mean, 2),
-            "score": round(fa_max, 2),
-        })
+        raw_results.append(
+            {
+                "geometry": mapping(geom),
+                "segment_index": idx,
+                "id": canal.get("id"),
+                "nombre": canal.get("nombre"),
+                "flow_acc_max": round(fa_max, 2),
+                "flow_acc_mean": round(fa_mean, 2),
+                "score": round(fa_max, 2),
+            }
+        )
 
     if not raw_results:
         return []
@@ -806,13 +814,15 @@ def detect_coverage_gaps(
         else:
             severity = "moderado"
 
-        gaps.append({
-            "geometry": mapping(centroid),
-            "gap_km": round(dist_km, 2),
-            "hci_score": round(hci, 2),
-            "zone_id": zone_id,
-            "severity": severity,
-        })
+        gaps.append(
+            {
+                "geometry": mapping(centroid),
+                "gap_km": round(dist_km, 2),
+                "hci_score": round(hci, 2),
+                "zone_id": zone_id,
+                "severity": severity,
+            }
+        )
 
     # Sort: critico > alto > moderado, then by hci descending
     severity_order = {"critico": 0, "alto": 1, "moderado": 2}
@@ -895,7 +905,10 @@ def compute_maintenance_priority(
         if node_id in centrality_scores:
             raw = centrality_scores[node_id]
             norm = (raw - cent_min) / (cent_max - cent_min)
-            components["centrality"] = {"raw": round(raw, 6), "normalized": round(norm, 4)}
+            components["centrality"] = {
+                "raw": round(raw, 6),
+                "normalized": round(norm, 4),
+            }
             available_weight += base_weights["centrality"]
         else:
             missing_factors.append("centrality")
@@ -904,7 +917,10 @@ def compute_maintenance_priority(
         if node_id in flow_acc_scores:
             raw = flow_acc_scores[node_id]
             norm = (raw - fa_min) / (fa_max - fa_min)
-            components["flow_acc"] = {"raw": round(raw, 2), "normalized": round(norm, 4)}
+            components["flow_acc"] = {
+                "raw": round(raw, 2),
+                "normalized": round(norm, 4),
+            }
             available_weight += base_weights["flow_acc"]
         else:
             missing_factors.append("flow_acc")
@@ -914,7 +930,10 @@ def compute_maintenance_priority(
         if hci_key in hci_scores:
             raw = hci_scores[hci_key]
             norm = (raw - hci_min) / (hci_max - hci_min)
-            components["upstream_hci"] = {"raw": round(raw, 2), "normalized": round(norm, 4)}
+            components["upstream_hci"] = {
+                "raw": round(raw, 2),
+                "normalized": round(norm, 4),
+            }
             available_weight += base_weights["upstream_hci"]
         else:
             missing_factors.append("upstream_hci")
@@ -923,7 +942,10 @@ def compute_maintenance_priority(
         if node_id in conflict_counts:
             raw = float(conflict_counts[node_id])
             norm = (raw - conf_min) / (conf_max - conf_min)
-            components["conflict_count"] = {"raw": int(raw), "normalized": round(norm, 4)}
+            components["conflict_count"] = {
+                "raw": int(raw),
+                "normalized": round(norm, 4),
+            }
             available_weight += base_weights["conflict_count"]
         else:
             missing_factors.append("conflict_count")
@@ -939,12 +961,14 @@ def compute_maintenance_priority(
                 adjusted_weight = weight * redistribution_factor
                 composite += adjusted_weight * components[factor]["normalized"]
 
-        results.append({
-            "node_id": node_id,
-            "composite_score": round(composite, 4),
-            "components": components,
-            "missing_factors": missing_factors if missing_factors else None,
-        })
+        results.append(
+            {
+                "node_id": node_id,
+                "composite_score": round(composite, 4),
+                "components": components,
+                "missing_factors": missing_factors if missing_factors else None,
+            }
+        )
 
     results.sort(key=lambda r: r["composite_score"], reverse=True)
     return results
@@ -978,9 +1002,7 @@ def generate_cost_surface(
     import rasterio
 
     if not Path(slope_raster_path).exists():
-        raise FileNotFoundError(
-            f"Slope raster not found: {slope_raster_path}"
-        )
+        raise FileNotFoundError(f"Slope raster not found: {slope_raster_path}")
 
     with rasterio.open(slope_raster_path) as src:
         slope = src.read(1).astype(np.float64)
@@ -1004,20 +1026,20 @@ def generate_cost_surface(
         max_slope = 1.0  # avoid division by zero on perfectly flat terrain
 
     cost = np.ones(slope.shape, dtype=np.float32)
-    cost[valid_mask] = (
-        1.0 + (slope[valid_mask] / max_slope) * 10.0
-    ).astype(np.float32)
+    cost[valid_mask] = (1.0 + (slope[valid_mask] / max_slope) * 10.0).astype(np.float32)
 
     # Mark nodata pixels with a high sentinel so WBT treats them as barriers
     out_nodata = np.float32(-9999.0)
     cost[~valid_mask] = out_nodata
 
-    meta.update({
-        "dtype": "float32",
-        "count": 1,
-        "driver": "GTiff",
-        "nodata": float(out_nodata),
-    })
+    meta.update(
+        {
+            "dtype": "float32",
+            "count": 1,
+            "driver": "GTiff",
+            "nodata": float(out_nodata),
+        }
+    )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(cost, 1)
@@ -1058,9 +1080,7 @@ def cost_distance(
     from rasterio.transform import rowcol
 
     if not Path(cost_surface_path).exists():
-        raise FileNotFoundError(
-            f"Cost surface raster not found: {cost_surface_path}"
-        )
+        raise FileNotFoundError(f"Cost surface raster not found: {cost_surface_path}")
 
     wbt = _get_wbt()
 
@@ -1086,16 +1106,16 @@ def cost_distance(
                 continue
 
         if points_burned == 0:
-            raise ValueError(
-                "No source points fall within the cost surface extent"
-            )
+            raise ValueError("No source points fall within the cost surface extent")
 
         source_meta = meta.copy()
-        source_meta.update({
-            "dtype": "uint8",
-            "count": 1,
-            "nodata": 0,
-        })
+        source_meta.update(
+            {
+                "dtype": "uint8",
+                "count": 1,
+                "nodata": 0,
+            }
+        )
         with rasterio.open(source_raster_path, "w", **source_meta) as dst:
             dst.write(source_data, 1)
 
@@ -1169,11 +1189,13 @@ def least_cost_path(
         target_data[r, c] = 1
 
         target_meta = meta.copy()
-        target_meta.update({
-            "dtype": "uint8",
-            "count": 1,
-            "nodata": 0,
-        })
+        target_meta.update(
+            {
+                "dtype": "uint8",
+                "count": 1,
+                "nodata": 0,
+            }
+        )
         with rasterio.open(target_raster_path, "w", **target_meta) as dst:
             dst.write(target_data, 1)
 
@@ -1203,7 +1225,9 @@ def least_cost_path(
             cd_data = src.read(1)
 
         cost_values = cd_data[rows, cols]
-        sort_idx = np.argsort(cost_values)[::-1]  # highest cost first (farthest from source)
+        sort_idx = np.argsort(cost_values)[
+            ::-1
+        ]  # highest cost first (farthest from source)
         rows = rows[sort_idx]
         cols = cols[sort_idx]
 
@@ -1262,9 +1286,7 @@ def suggest_canal_routes(
         return []
 
     if not Path(slope_raster_path).exists():
-        raise FileNotFoundError(
-            f"Slope raster not found: {slope_raster_path}"
-        )
+        raise FileNotFoundError(f"Slope raster not found: {slope_raster_path}")
 
     # Resolve canal geometries to Shapely objects
     canal_shapes = []
@@ -1313,9 +1335,7 @@ def suggest_canal_routes(
         backlink_path = str(Path(work_dir) / "cost_backlink.tif")
 
         try:
-            cost_distance(
-                cost_surface_path, source_coords, accum_path, backlink_path
-            )
+            cost_distance(cost_surface_path, source_coords, accum_path, backlink_path)
         except ValueError as exc:
             logger.warning("Cost distance failed: %s", exc)
             return []
@@ -1333,26 +1353,28 @@ def suggest_canal_routes(
             try:
                 path_geom = least_cost_path(accum_path, backlink_path, target)
             except Exception as exc:
-                logger.warning(
-                    "Least-cost path failed for gap %s: %s", zone_id, exc
+                logger.warning("Least-cost path failed for gap %s: %s", zone_id, exc)
+                routes.append(
+                    {
+                        "geometry": None,
+                        "source_gap_id": zone_id,
+                        "target_point": mapping(nearest_canal_pt),
+                        "estimated_cost": None,
+                        "status": f"unreachable: {exc}",
+                    }
                 )
-                routes.append({
-                    "geometry": None,
-                    "source_gap_id": zone_id,
-                    "target_point": mapping(nearest_canal_pt),
-                    "estimated_cost": None,
-                    "status": f"unreachable: {exc}",
-                })
                 continue
 
             if path_geom is None:
-                routes.append({
-                    "geometry": None,
-                    "source_gap_id": zone_id,
-                    "target_point": mapping(nearest_canal_pt),
-                    "estimated_cost": None,
-                    "status": "unreachable: path could not be traced",
-                })
+                routes.append(
+                    {
+                        "geometry": None,
+                        "source_gap_id": zone_id,
+                        "target_point": mapping(nearest_canal_pt),
+                        "estimated_cost": None,
+                        "status": "unreachable: path could not be traced",
+                    }
+                )
                 continue
 
             # Sample the accumulated cost at the target to get estimated cost
@@ -1367,13 +1389,15 @@ def suggest_canal_routes(
             except Exception:
                 pass
 
-            routes.append({
-                "geometry": mapping(path_geom),
-                "source_gap_id": zone_id,
-                "target_point": mapping(nearest_canal_pt),
-                "estimated_cost": estimated_cost,
-                "status": "ok",
-            })
+            routes.append(
+                {
+                    "geometry": mapping(path_geom),
+                    "source_gap_id": zone_id,
+                    "target_point": mapping(nearest_canal_pt),
+                    "estimated_cost": estimated_cost,
+                    "status": "ok",
+                }
+            )
 
         return routes
 

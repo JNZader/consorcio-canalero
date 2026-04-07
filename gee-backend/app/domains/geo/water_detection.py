@@ -18,9 +18,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # NDWI thresholds calibrated for Argentine Pampas flat terrain
-NDWI_WATER_THRESHOLD = 0.1       # Definite water
-NDWI_WET_THRESHOLD = -0.05       # Wet/saturated soil
-MIN_WATER_AREA_PIXELS = 10       # Minimum contiguous pixels to count as water body
+NDWI_WATER_THRESHOLD = 0.1  # Definite water
+NDWI_WET_THRESHOLD = -0.05  # Wet/saturated soil
+MIN_WATER_AREA_PIXELS = 10  # Minimum contiguous pixels to count as water body
 
 # SCL (Scene Classification Layer) values to KEEP for valid pixels.
 # 2=dark area, 4=vegetation, 5=not-vegetated, 6=water, 7=unclassified
@@ -61,6 +61,7 @@ def detect_water_from_gee(
 
     # Parse date and create search window
     from datetime import datetime, timedelta
+
     dt = datetime.strptime(target_date, "%Y-%m-%d")
     start = (dt - timedelta(days=days_window)).strftime("%Y-%m-%d")
     end = (dt + timedelta(days=days_window)).strftime("%Y-%m-%d")
@@ -76,8 +77,13 @@ def detect_water_from_gee(
     )
 
     if s2 is None:
-        info = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED") \
-            .filterBounds(ee_geom).filterDate(start, end).size().getInfo()
+        info = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(ee_geom)
+            .filterDate(start, end)
+            .size()
+            .getInfo()
+        )
         return {
             "status": "no_imagery",
             "message": f"No Sentinel-2 images with <{cloud_cover_max}% clouds found ({info} total images in window)",
@@ -136,7 +142,9 @@ def detect_water_from_gee(
 
     # Classify
     water_mask = ndwi.gte(NDWI_WATER_THRESHOLD)  # Definite water
-    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(ndwi.lt(NDWI_WATER_THRESHOLD))  # Wet soil
+    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(
+        ndwi.lt(NDWI_WATER_THRESHOLD)
+    )  # Wet soil
 
     # Morphological cleanup: remove isolated pixels, fill small holes
     water_clean = water_mask.focalMode(radius=2, kernelType="circle", units="pixels")
@@ -145,19 +153,27 @@ def detect_water_from_gee(
     # Compute area statistics — only over cloud-free (masked) pixels
     pixel_area = ee.Image.pixelArea()
 
-    water_area = water_mask.multiply(pixel_area).reduceRegion(
-        reducer=ee.Reducer.sum(),
-        geometry=ee_geom,
-        scale=10,
-        maxPixels=1e8,
-    ).getInfo()
+    water_area = (
+        water_mask.multiply(pixel_area)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=ee_geom,
+            scale=10,
+            maxPixels=1e8,
+        )
+        .getInfo()
+    )
 
-    wet_area = wet_mask.multiply(pixel_area).reduceRegion(
-        reducer=ee.Reducer.sum(),
-        geometry=ee_geom,
-        scale=10,
-        maxPixels=1e8,
-    ).getInfo()
+    wet_area = (
+        wet_mask.multiply(pixel_area)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=ee_geom,
+            scale=10,
+            maxPixels=1e8,
+        )
+        .getInfo()
+    )
 
     # Total area uses a cloud-free-masked pixel area so percentages are
     # relative to the analysable surface, not the full geometry.
@@ -171,11 +187,9 @@ def detect_water_from_gee(
 
     # NDWI statistics (already masked, only cloud-free pixels)
     ndwi_stats = ndwi.reduceRegion(
-        reducer=ee.Reducer.mean().combine(
-            ee.Reducer.stdDev(), sharedInputs=True
-        ).combine(
-            ee.Reducer.minMax(), sharedInputs=True
-        ),
+        reducer=ee.Reducer.mean()
+        .combine(ee.Reducer.stdDev(), sharedInputs=True)
+        .combine(ee.Reducer.minMax(), sharedInputs=True),
         geometry=ee_geom,
         scale=10,
         maxPixels=1e8,
@@ -253,11 +267,13 @@ def detect_water_multi_date(
             )
             results.append({"date": target_date, **result})
         except Exception as exc:
-            results.append({
-                "date": target_date,
-                "status": "error",
-                "message": str(exc),
-            })
+            results.append(
+                {
+                    "date": target_date,
+                    "status": "error",
+                    "message": str(exc),
+                }
+            )
 
     # Change analysis
     successful = [r for r in results if r.get("status") == "success"]
@@ -275,8 +291,10 @@ def detect_water_multi_date(
                 last["area"]["water_pct"] - first["area"]["water_pct"], 2
             ),
             "trend": (
-                "increasing" if last["area"]["water_pct"] > first["area"]["water_pct"] + 1
-                else "decreasing" if last["area"]["water_pct"] < first["area"]["water_pct"] - 1
+                "increasing"
+                if last["area"]["water_pct"] > first["area"]["water_pct"] + 1
+                else "decreasing"
+                if last["area"]["water_pct"] < first["area"]["water_pct"] - 1
                 else "stable"
             ),
         }

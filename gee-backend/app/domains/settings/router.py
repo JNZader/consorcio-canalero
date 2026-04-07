@@ -79,9 +79,7 @@ def update_setting(
     _user=Depends(_require_admin()),
 ):
     """Update a setting value (require admin)."""
-    updated = service.update_setting(
-        db, clave, payload.valor, payload.descripcion
-    )
+    updated = service.update_setting(db, clave, payload.valor, payload.descripcion)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Setting '{clave}' no encontrado")
     return updated
@@ -111,9 +109,7 @@ def get_public_branding(
 ):
     """Public branding settings for frontend theming (no auth required)."""
     return BrandingResponse(
-        nombre_organizacion=service.get_setting(
-            db, "general/nombre_organizacion"
-        ),
+        nombre_organizacion=service.get_setting(db, "general/nombre_organizacion"),
         logo_url=service.get_setting(db, "branding/logo_url"),
         color_primario=service.get_setting(db, "branding/color_primario"),
         color_secundario=service.get_setting(db, "branding/color_secundario"),

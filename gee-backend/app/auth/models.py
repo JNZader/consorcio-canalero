@@ -26,7 +26,9 @@ class User(SQLAlchemyBaseUserTableUUID, TimestampMixin, Base):
     apellido: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     telefono: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
         default=UserRole.CIUDADANO,
     )
@@ -41,9 +43,13 @@ class PreAuthorizedEmail(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "pre_authorized_emails"
 
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(
+        String(320), nullable=False, unique=True, index=True
+    )
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
     )
     invited_by: Mapped[uuid.UUID] = mapped_column(

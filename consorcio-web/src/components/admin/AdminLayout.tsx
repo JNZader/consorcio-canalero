@@ -25,6 +25,7 @@ import {
   IconDroplet,
   IconHome,
   IconLightbulb,
+  IconLeaf,
   IconLogout,
   IconMap,
   IconMountain,
@@ -52,6 +53,7 @@ const NAV_SECTIONS = [
       { label: 'Afectados por Zona', to: '/admin/afectados', icon: IconUsers },
       { label: 'Manning (Capacidad)', to: '/admin/manning', icon: IconCalculator },
       { label: 'Períodos de Retorno', to: '/admin/return-periods', icon: IconChartHistogram },
+      { label: 'Informe Territorial', to: '/admin/informe-territorial', icon: IconLeaf },
     ],
   },
   {

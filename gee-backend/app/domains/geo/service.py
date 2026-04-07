@@ -66,7 +66,9 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
         TipoGeoJob.DRAINAGE: lambda p: extract_drainage_network.delay(**p),
         TipoGeoJob.TERRAIN_CLASS: lambda p: classify_terrain.delay(**p),
         TipoGeoJob.GEE_FLOOD: lambda p: analyze_flood_task.delay(**p),
-        TipoGeoJob.GEE_CLASSIFICATION: lambda p: supervised_classification_task.delay(**p),
+        TipoGeoJob.GEE_CLASSIFICATION: lambda p: supervised_classification_task.delay(
+            **p
+        ),
         TipoGeoJob.DEM_FULL_PIPELINE: lambda p: run_full_dem_pipeline.delay(**p),
         TipoGeoJob.BASIN_DELINEATION: lambda p: delineate_basins_task.delay(**p),
         TipoGeoJob.COMPOSITE_ANALYSIS: lambda p: composite_analysis_task.delay(**p),
@@ -193,7 +195,9 @@ def list_jobs(
     tipo: Optional[str] = None,
 ) -> tuple[list[GeoJob], int]:
     """Paginated list of geo jobs."""
-    return repo.get_jobs(db, page=page, limit=limit, estado_filter=estado, tipo_filter=tipo)
+    return repo.get_jobs(
+        db, page=page, limit=limit, estado_filter=estado, tipo_filter=tipo
+    )
 
 
 # ---------------------------------------------------------------------------

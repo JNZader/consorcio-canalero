@@ -46,6 +46,7 @@ def analyze_ndwi_trend_gee(
 
     # Initialize GEE using the project's standard init
     from app.domains.geo.gee_service import _ensure_initialized
+
     _ensure_initialized()
 
     # Create GEE geometry
@@ -108,11 +109,21 @@ def analyze_ndwi_trend_gee(
         coeffs = np.polyfit(x, y, 1)
         trend = {
             "slope_per_image": round(float(coeffs[0]), 6),
-            "direction": "increasing" if coeffs[0] > 0.001 else
-                        "decreasing" if coeffs[0] < -0.001 else "stable",
-            "r_squared": round(float(1 - np.sum((y - np.polyval(coeffs, x))**2) /
-                                    np.sum((y - np.mean(y))**2)), 4)
-                        if np.std(y) > 0 else 0,
+            "direction": "increasing"
+            if coeffs[0] > 0.001
+            else "decreasing"
+            if coeffs[0] < -0.001
+            else "stable",
+            "r_squared": round(
+                float(
+                    1
+                    - np.sum((y - np.polyval(coeffs, x)) ** 2)
+                    / np.sum((y - np.mean(y)) ** 2)
+                ),
+                4,
+            )
+            if np.std(y) > 0
+            else 0,
         }
 
     # Anomaly detection (2-sigma)
@@ -124,11 +135,13 @@ def analyze_ndwi_trend_gee(
         if std_val > 0:
             for idx, val in valid_pairs:
                 if abs(val - mean_val) > 2 * std_val:
-                    anomalies.append({
-                        "date": dates[idx],
-                        "ndwi": val,
-                        "deviation_sigma": round((val - mean_val) / std_val, 2),
-                    })
+                    anomalies.append(
+                        {
+                            "date": dates[idx],
+                            "ndwi": val,
+                            "deviation_sigma": round((val - mean_val) / std_val, 2),
+                        }
+                    )
 
     ds.close()
 
@@ -178,14 +191,21 @@ def compare_rasters_temporal(
             from pyproj import Transformer
             from shapely.geometry import mapping
             from shapely.ops import transform as shapely_transform
+
             geom = shapely_wkt.loads(geometry_wkt)
             raster_crs = da.rio.crs
             if raster_crs and str(raster_crs) != "EPSG:4326":
-                transformer = Transformer.from_crs("EPSG:4326", raster_crs, always_xy=True)
+                transformer = Transformer.from_crs(
+                    "EPSG:4326", raster_crs, always_xy=True
+                )
                 geom = shapely_transform(transformer.transform, geom)
             da = da.rio.clip([mapping(geom)], all_touched=True)
 
-        values = da.values[da.values != da.rio.nodata] if da.rio.nodata is not None else da.values
+        values = (
+            da.values[da.values != da.rio.nodata]
+            if da.rio.nodata is not None
+            else da.values
+        )
         values = values[np.isfinite(values)]
 
         stat = {
@@ -211,8 +231,11 @@ def compare_rasters_temporal(
             "from": labels[0],
             "to": labels[-1],
             "mean_change": round(mean_last - mean_first, 4),
-            "percent_change": round(((mean_last - mean_first) / abs(mean_first)) * 100, 2)
-                              if mean_first != 0 else None,
+            "percent_change": round(
+                ((mean_last - mean_first) / abs(mean_first)) * 100, 2
+            )
+            if mean_first != 0
+            else None,
         }
 
     return {

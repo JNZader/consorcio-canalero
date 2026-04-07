@@ -2,6 +2,9 @@
 # MONOREPO - Consorcio Canalero
 # ===========================================
 
+# SDD infrastructure (agent-local, not committed)
+.atl/
+
 # ===========================================
 # ENVIRONMENT & SECRETS
 # ===========================================

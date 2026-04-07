@@ -39,12 +39,12 @@ class ZoneFeatures:
     slope_mean: float = 0.0
     flow_acc_max: float = 0.0
     flow_acc_mean: float = 0.0
-    water_pct_current: float = 0.0   # From latest water detection
+    water_pct_current: float = 0.0  # From latest water detection
     water_pct_historical: float = 0.0  # Average from historical detections
     elevation_range: float = 0.0
-    rainfall_48h: float = 0.0   # Accumulated rainfall last 48 hours (mm)
-    rainfall_7d: float = 0.0    # Accumulated rainfall last 7 days (mm)
-    rainfall_30d: float = 0.0   # Accumulated rainfall last 30 days (mm)
+    rainfall_48h: float = 0.0  # Accumulated rainfall last 48 hours (mm)
+    rainfall_7d: float = 0.0  # Accumulated rainfall last 7 days (mm)
+    rainfall_30d: float = 0.0  # Accumulated rainfall last 30 days (mm)
 
 
 @dataclass
@@ -55,20 +55,22 @@ class FloodModel:
     Can be retrained from historical data via `train_from_events()`.
     """
 
-    weights: dict[str, float] = field(default_factory=lambda: {
-        "hand_mean": -0.35,        # Lower HAND = higher flood risk (negative)
-        "hand_min": -0.10,         # Very low minimum HAND = flood prone
-        "twi_mean": 0.20,          # Higher TWI = more water accumulation
-        "twi_max": 0.05,           # Extreme TWI spots
-        "slope_mean": -0.10,       # Flatter terrain = worse drainage
-        "flow_acc_log_max": 0.15,  # More upstream flow = more water
-        "flow_acc_log_mean": 0.05, # Average upstream contribution
-        "water_pct_current": 0.25, # Current water presence is strong signal
-        "water_pct_historical": 0.15, # Historical pattern
-        "rainfall_48h": 0.0,   # Short-term rainfall (enabled after training)
-        "rainfall_7d": 0.0,    # Medium-term accumulation (enabled after training)
-        "rainfall_30d": 0.0,   # Long-term saturation (enabled after training)
-    })
+    weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "hand_mean": -0.35,  # Lower HAND = higher flood risk (negative)
+            "hand_min": -0.10,  # Very low minimum HAND = flood prone
+            "twi_mean": 0.20,  # Higher TWI = more water accumulation
+            "twi_max": 0.05,  # Extreme TWI spots
+            "slope_mean": -0.10,  # Flatter terrain = worse drainage
+            "flow_acc_log_max": 0.15,  # More upstream flow = more water
+            "flow_acc_log_mean": 0.05,  # Average upstream contribution
+            "water_pct_current": 0.25,  # Current water presence is strong signal
+            "water_pct_historical": 0.15,  # Historical pattern
+            "rainfall_48h": 0.0,  # Short-term rainfall (enabled after training)
+            "rainfall_7d": 0.0,  # Medium-term accumulation (enabled after training)
+            "rainfall_30d": 0.0,  # Long-term saturation (enabled after training)
+        }
+    )
     bias: float = 0.3  # Base flood probability for Pampas terrain
     version: str = "2.0.0-rainfall"
 
@@ -88,9 +90,13 @@ class FloodModel:
             "twi_max": max(0, min(1, (features.twi_max - 10) / 15.0)),
             "slope_mean": max(0, min(1, 1 - features.slope_mean / 5.0)),
             "flow_acc_log_max": max(0, min(1, np.log1p(features.flow_acc_max) / 15.0)),
-            "flow_acc_log_mean": max(0, min(1, np.log1p(features.flow_acc_mean) / 10.0)),
+            "flow_acc_log_mean": max(
+                0, min(1, np.log1p(features.flow_acc_mean) / 10.0)
+            ),
             "water_pct_current": max(0, min(1, features.water_pct_current / 20.0)),
-            "water_pct_historical": max(0, min(1, features.water_pct_historical / 15.0)),
+            "water_pct_historical": max(
+                0, min(1, features.water_pct_historical / 15.0)
+            ),
             "rainfall_48h": max(0, min(1, features.rainfall_48h / 100.0)),
             "rainfall_7d": max(0, min(1, features.rainfall_7d / 200.0)),
             "rainfall_30d": max(0, min(1, features.rainfall_30d / 400.0)),
@@ -114,10 +120,13 @@ class FloodModel:
 
         # Risk level
         risk_level = (
-            "critico" if probability >= 0.75 else
-            "alto" if probability >= 0.55 else
-            "moderado" if probability >= 0.35 else
-            "bajo"
+            "critico"
+            if probability >= 0.75
+            else "alto"
+            if probability >= 0.55
+            else "moderado"
+            if probability >= 0.35
+            else "bajo"
         )
 
         return {
@@ -198,10 +207,18 @@ class FloodModel:
                 "twi_mean": max(0, min(1, (feat.get("twi_mean", 0) - 5) / 15.0)),
                 "twi_max": max(0, min(1, (feat.get("twi_max", 0) - 10) / 15.0)),
                 "slope_mean": max(0, min(1, 1 - feat.get("slope_mean", 0) / 5.0)),
-                "flow_acc_log_max": max(0, min(1, np.log1p(feat.get("flow_acc_max", 0)) / 15.0)),
-                "flow_acc_log_mean": max(0, min(1, np.log1p(feat.get("flow_acc_mean", 0)) / 10.0)),
-                "water_pct_current": max(0, min(1, feat.get("water_pct_current", 0) / 20.0)),
-                "water_pct_historical": max(0, min(1, feat.get("water_pct_historical", 0) / 15.0)),
+                "flow_acc_log_max": max(
+                    0, min(1, np.log1p(feat.get("flow_acc_max", 0)) / 15.0)
+                ),
+                "flow_acc_log_mean": max(
+                    0, min(1, np.log1p(feat.get("flow_acc_mean", 0)) / 10.0)
+                ),
+                "water_pct_current": max(
+                    0, min(1, feat.get("water_pct_current", 0) / 20.0)
+                ),
+                "water_pct_historical": max(
+                    0, min(1, feat.get("water_pct_historical", 0) / 15.0)
+                ),
                 "rainfall_48h": max(0, min(1, feat.get("rainfall_48h", 0) / 100.0)),
                 "rainfall_7d": max(0, min(1, feat.get("rainfall_7d", 0) / 200.0)),
                 "rainfall_30d": max(0, min(1, feat.get("rainfall_30d", 0) / 400.0)),

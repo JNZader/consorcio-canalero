@@ -58,7 +58,9 @@ class TramiteRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Tramite.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Tramite.created_at.desc()).offset(offset).limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -137,22 +139,19 @@ class TramiteRepository:
         """Aggregate counts by estado, tipo, and prioridad."""
         # By estado
         estado_rows = db.execute(
-            select(Tramite.estado, func.count())
-            .group_by(Tramite.estado)
+            select(Tramite.estado, func.count()).group_by(Tramite.estado)
         ).all()
         por_estado = {row[0]: row[1] for row in estado_rows}
 
         # By tipo
         tipo_rows = db.execute(
-            select(Tramite.tipo, func.count())
-            .group_by(Tramite.tipo)
+            select(Tramite.tipo, func.count()).group_by(Tramite.tipo)
         ).all()
         por_tipo = {row[0]: row[1] for row in tipo_rows}
 
         # By prioridad
         prioridad_rows = db.execute(
-            select(Tramite.prioridad, func.count())
-            .group_by(Tramite.prioridad)
+            select(Tramite.prioridad, func.count()).group_by(Tramite.prioridad)
         ).all()
         por_prioridad = {row[0]: row[1] for row in prioridad_rows}
 

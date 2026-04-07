@@ -26,23 +26,46 @@ def upgrade() -> None:
 
     op.create_table(
         "users",
-        sa.Column("id", sa.UUID(), nullable=False, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id", sa.UUID(), nullable=False, server_default=sa.text("gen_random_uuid()")
+        ),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("hashed_password", sa.String(length=1024), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("is_superuser", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("is_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "is_superuser",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+        sa.Column(
+            "is_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.Column("nombre", sa.String(length=200), nullable=False, server_default=""),
         sa.Column("apellido", sa.String(length=200), nullable=False, server_default=""),
         sa.Column("telefono", sa.String(length=50), nullable=False, server_default=""),
         sa.Column(
             "role",
-            postgresql.ENUM("ciudadano", "operador", "admin", name="user_role", create_type=False),
+            postgresql.ENUM(
+                "ciudadano", "operador", "admin", name="user_role", create_type=False
+            ),
             nullable=False,
             server_default="ciudadano",
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)

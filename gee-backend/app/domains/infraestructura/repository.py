@@ -115,9 +115,7 @@ class InfraestructuraRepository:
 
         Returns (items, total_count).
         """
-        base = select(MantenimientoLog).where(
-            MantenimientoLog.asset_id == asset_id
-        )
+        base = select(MantenimientoLog).where(MantenimientoLog.asset_id == asset_id)
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total: int = db.execute(count_stmt).scalar_one()

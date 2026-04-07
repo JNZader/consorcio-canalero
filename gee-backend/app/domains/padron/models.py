@@ -43,7 +43,11 @@ class Consorcista(UUIDMixin, TimestampMixin, Base):
         comment="propietario, arrendatario, otro",
     )
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoConsorcista, name="estado_consorcista", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            EstadoConsorcista,
+            name="estado_consorcista",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=EstadoConsorcista.ACTIVO,
     )
@@ -52,6 +56,5 @@ class Consorcista(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Consorcista {self.id} "
-            f"{self.apellido}, {self.nombre} cuit={self.cuit}>"
+            f"<Consorcista {self.id} {self.apellido}, {self.nombre} cuit={self.cuit}>"
         )

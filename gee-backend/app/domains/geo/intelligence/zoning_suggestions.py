@@ -139,7 +139,9 @@ def _split_special_basin_records(records: list[dict[str, Any]]) -> list[dict[str
     if divider is None:
         return records
 
-    ml_union = unary_union([record["geometry"] for record in records if record["family"] == "ml"])
+    ml_union = unary_union(
+        [record["geometry"] for record in records if record["family"] == "ml"]
+    )
     candil_union = unary_union(
         [record["geometry"] for record in records if record["family"] == "candil"]
     )
@@ -172,7 +174,8 @@ def _split_special_basin_records(records: list[dict[str, Any]]) -> list[dict[str
                     "cuenca": record["cuenca"],
                     "family": "sin_asignar",
                     "target_hint": target_hint,
-                    "superficie_ha": record["superficie_ha"] * (piece.area / record["geometry"].area),
+                    "superficie_ha": record["superficie_ha"]
+                    * (piece.area / record["geometry"].area),
                     "geometry": piece,
                     "centroid": piece.centroid,
                 }
@@ -190,7 +193,9 @@ def _consorcio_zone_geometry():
     features = zona_geojson.get("features", [])
     if not features:
         return None
-    return unary_union([shape(feature["geometry"]) for feature in features if feature.get("geometry")])
+    return unary_union(
+        [shape(feature["geometry"]) for feature in features if feature.get("geometry")]
+    )
 
 
 def _iter_gap_polygons(geom):
@@ -200,7 +205,11 @@ def _iter_gap_polygons(geom):
         return [geom]
     if geom.geom_type == "MultiPolygon":
         return list(geom.geoms)
-    return [part for part in getattr(geom, "geoms", []) if part.geom_type in {"Polygon", "MultiPolygon"}]
+    return [
+        part
+        for part in getattr(geom, "geoms", [])
+        if part.geom_type in {"Polygon", "MultiPolygon"}
+    ]
 
 
 def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -247,18 +256,24 @@ def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         target_geometry = target["geometry"].union(gap)
         target["geometry"] = target_geometry
         target["centroid"] = target_geometry.centroid
-        target["superficie_ha"] = float(target["superficie_ha"]) + (gap.area * area_to_ha_factor)
+        target["superficie_ha"] = float(target["superficie_ha"]) + (
+            gap.area * area_to_ha_factor
+        )
 
     return updated_records
 
 
-def split_basins_for_display(basin_features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def split_basins_for_display(
+    basin_features: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Return basin features with special visual splits applied."""
     if not basin_features:
         return []
 
     split_records = _attach_zone_gaps(
-        _split_special_basin_records([_basin_record(feature) for feature in basin_features])
+        _split_special_basin_records(
+            [_basin_record(feature) for feature in basin_features]
+        )
     )
     assignments = _resolve_zone_assignments(split_records)
     display_features: list[dict[str, Any]] = []
@@ -289,7 +304,9 @@ def split_basins_for_display(basin_features: list[dict[str, Any]]) -> list[dict[
 def _anchor_centroids(records: list[dict[str, Any]]) -> dict[str, Any]:
     anchors: dict[str, Any] = {}
     for zone_id, zone_def in _ZONE_DEFINITIONS.items():
-        members = [record for record in records if record["family"] in zone_def["families"]]
+        members = [
+            record for record in records if record["family"] in zone_def["families"]
+        ]
         if not members:
             continue
         union_geom = unary_union([record["geometry"] for record in members])
@@ -309,7 +326,9 @@ def _assign_zone_id(record: dict[str, Any], anchors: dict[str, Any]) -> str:
             return "draft-zone-monte-lena"
         if target_hint == "candil":
             return "draft-zone-candil"
-        candidate_zone_ids = [zone_id for zone_id in _UNASSIGNED_TARGETS if zone_id in anchors]
+        candidate_zone_ids = [
+            zone_id for zone_id in _UNASSIGNED_TARGETS if zone_id in anchors
+        ]
         if candidate_zone_ids:
             return min(
                 candidate_zone_ids,
@@ -344,7 +363,9 @@ def _resolve_zone_assignments(records: list[dict[str, Any]]) -> dict[str, str]:
         elif record.get("target_hint") == "candil":
             assignments[record["id"]] = "draft-zone-candil"
 
-    remaining_ids = {record["id"] for record in records if record["id"] not in assignments}
+    remaining_ids = {
+        record["id"] for record in records if record["id"] not in assignments
+    }
 
     while remaining_ids:
         progressed = False
@@ -364,15 +385,21 @@ def _resolve_zone_assignments(records: list[dict[str, Any]]) -> dict[str, str]:
                 ):
                     continue
 
-                shared = record["geometry"].boundary.intersection(other["geometry"].boundary)
+                shared = record["geometry"].boundary.intersection(
+                    other["geometry"].boundary
+                )
                 shared_length = shared.length if not shared.is_empty else 0.0
                 if shared_length <= 0:
                     continue
                 zone_id = assignments[other_id]
-                neighbor_scores[zone_id] = neighbor_scores.get(zone_id, 0.0) + shared_length
+                neighbor_scores[zone_id] = (
+                    neighbor_scores.get(zone_id, 0.0) + shared_length
+                )
 
             if neighbor_scores:
-                assignments[record_id] = max(neighbor_scores.items(), key=lambda item: item[1])[0]
+                assignments[record_id] = max(
+                    neighbor_scores.items(), key=lambda item: item[1]
+                )[0]
                 remaining_ids.remove(record_id)
                 progressed = True
 
@@ -411,9 +438,13 @@ def suggest_grouped_zones(basin_features: list[dict[str, Any]]) -> dict[str, Any
         }
 
     records = _attach_zone_gaps(
-        _split_special_basin_records([_basin_record(feature) for feature in basin_features])
+        _split_special_basin_records(
+            [_basin_record(feature) for feature in basin_features]
+        )
     )
-    grouped: dict[str, list[dict[str, Any]]] = {zone_id: [] for zone_id in _ZONE_DEFINITIONS}
+    grouped: dict[str, list[dict[str, Any]]] = {
+        zone_id: [] for zone_id in _ZONE_DEFINITIONS
+    }
     assignments = _resolve_zone_assignments(records)
     for record in records:
         zone_id = assignments[record["id"]]
@@ -435,11 +466,14 @@ def suggest_grouped_zones(basin_features: list[dict[str, Any]]) -> dict[str, Any
                     "family": "+".join(sorted(zone_def["families"])),
                     "status": "draft",
                     "suggestion_method": "fixed-three-zones-nearest-unassigned-v2",
-                    "superficie_ha": round(sum(item["superficie_ha"] for item in members), 1),
+                    "superficie_ha": round(
+                        sum(item["superficie_ha"] for item in members), 1
+                    ),
                     "basin_count": len(members),
                     "member_basin_ids": [item["id"] for item in members],
                     "member_basin_names": [
-                        _display_basin_name(item, assignments.get(item["id"])) for item in members
+                        _display_basin_name(item, assignments.get(item["id"]))
+                        for item in members
                     ],
                     "member_basin_families": [item["family"] for item in members],
                     "__color": zone_def["color"],
@@ -455,7 +489,9 @@ def suggest_grouped_zones(basin_features: list[dict[str, Any]]) -> dict[str, Any
             "suggestion_method": "fixed-three-zones-nearest-unassigned-v2",
             "zone_count": len(draft_features),
             "basin_count": len(basin_features),
-            "zone_names": [feature["properties"]["nombre"] for feature in draft_features],
+            "zone_names": [
+                feature["properties"]["nombre"] for feature in draft_features
+            ],
         },
     }
 
@@ -492,7 +528,9 @@ def build_zones_from_assignments(
 
     grouped: dict[str, list[dict[str, Any]]] = {zone_id: [] for zone_id in zone_meta}
     for record in _attach_zone_gaps(
-        _split_special_basin_records([_basin_record(feature) for feature in basin_features])
+        _split_special_basin_records(
+            [_basin_record(feature) for feature in basin_features]
+        )
     ):
         zone_id = effective_assignments.get(record["id"])
         if zone_id is None and record.get("source_basin_id") in manual_assignments:
@@ -506,7 +544,9 @@ def build_zones_from_assignments(
             continue
         meta = zone_meta[zone_id]
         union_geom = unary_union([item["geometry"] for item in members])
-        display_name = (zone_names or {}).get(zone_id, meta["default_name"]).strip() or meta["default_name"]
+        display_name = (zone_names or {}).get(
+            zone_id, meta["default_name"]
+        ).strip() or meta["default_name"]
         approved_features.append(
             {
                 "type": "Feature",
@@ -517,7 +557,9 @@ def build_zones_from_assignments(
                     "family": meta["family"],
                     "status": "approved-draft",
                     "source": "suggested-zones-editor",
-                    "superficie_ha": round(sum(item["superficie_ha"] for item in members), 1),
+                    "superficie_ha": round(
+                        sum(item["superficie_ha"] for item in members), 1
+                    ),
                     "basin_count": len(members),
                     "member_basin_ids": [item["id"] for item in members],
                     "member_basin_names": [

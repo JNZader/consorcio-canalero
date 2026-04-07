@@ -41,8 +41,12 @@ def upgrade() -> None:
     """)
 
     # 3. Create spatial index
-    op.execute("CREATE INDEX idx_canal_network_geom ON canal_network USING GIST (geom);")
-    op.execute("CREATE INDEX idx_canal_network_the_geom ON canal_network USING GIST (the_geom);")
+    op.execute(
+        "CREATE INDEX idx_canal_network_geom ON canal_network USING GIST (geom);"
+    )
+    op.execute(
+        "CREATE INDEX idx_canal_network_the_geom ON canal_network USING GIST (the_geom);"
+    )
 
     # 4. Create vector tile view
     op.execute("""

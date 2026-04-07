@@ -23,12 +23,8 @@ class DenunciaCreate(BaseModel):
     latitud: float = Field(..., ge=-90, le=90)
     longitud: float = Field(..., ge=-180, le=180)
     cuenca: Optional[str] = None
-    contacto_telefono: Optional[str] = Field(
-        default=None, max_length=50
-    )
-    contacto_email: Optional[str] = Field(
-        default=None, max_length=255
-    )
+    contacto_telefono: Optional[str] = Field(default=None, max_length=50)
+    contacto_email: Optional[str] = Field(default=None, max_length=255)
     foto_url: Optional[str] = None
 
 

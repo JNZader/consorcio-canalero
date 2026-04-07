@@ -76,6 +76,7 @@ def compute_zonal_stats(
             geom_shape = wkt.loads(geom)
         else:
             from shapely.geometry import shape
+
             geom_shape = shape(geom)
         geom_shape = _reproject_geom(geom_shape, geometry_crs, raster_crs)
         geojson_geoms.append(geom_shape.__geo_interface__)

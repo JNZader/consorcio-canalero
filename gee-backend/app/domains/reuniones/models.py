@@ -113,9 +113,7 @@ class AgendaItem(UUIDMixin, Base):
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    completado: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    completado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,
@@ -143,24 +141,15 @@ class AgendaReferencia(UUIDMixin, Base):
         nullable=False,
     )
     entidad_tipo: Mapped[str] = mapped_column(String(50), nullable=False)
-    entidad_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
-    metadata_json: Mapped[Optional[dict]] = mapped_column(
-        JSON, nullable=True
-    )
+    entidad_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,
     )
 
     # Relationships
-    agenda_item: Mapped["AgendaItem"] = relationship(
-        back_populates="referencias"
-    )
+    agenda_item: Mapped["AgendaItem"] = relationship(back_populates="referencias")
 
     def __repr__(self) -> str:
-        return (
-            f"<AgendaReferencia {self.id} "
-            f"{self.entidad_tipo}:{self.entidad_id}>"
-        )
+        return f"<AgendaReferencia {self.id} {self.entidad_tipo}:{self.entidad_id}>"

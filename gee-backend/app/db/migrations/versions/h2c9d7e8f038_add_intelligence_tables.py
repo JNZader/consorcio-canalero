@@ -124,12 +124,8 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_indices_hidricos_zona_id", "indices_hidricos", ["zona_id"])
-    op.create_index(
-        "ix_indices_hidricos_fecha", "indices_hidricos", ["fecha_calculo"]
-    )
-    op.create_index(
-        "ix_indices_hidricos_nivel", "indices_hidricos", ["nivel_riesgo"]
-    )
+    op.create_index("ix_indices_hidricos_fecha", "indices_hidricos", ["fecha_calculo"])
+    op.create_index("ix_indices_hidricos_nivel", "indices_hidricos", ["nivel_riesgo"])
 
     # ── puntos_conflicto ──
     op.create_table(
@@ -193,9 +189,7 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_puntos_conflicto_tipo", "puntos_conflicto", ["tipo"])
-    op.create_index(
-        "ix_puntos_conflicto_severidad", "puntos_conflicto", ["severidad"]
-    )
+    op.create_index("ix_puntos_conflicto_severidad", "puntos_conflicto", ["severidad"])
 
     # ── alertas_geo ──
     op.create_table(
@@ -231,9 +225,7 @@ def upgrade() -> None:
             nullable=True,
             comment="Additional alert data payload",
         ),
-        sa.Column(
-            "activa", sa.Boolean, nullable=False, server_default=sa.text("true")
-        ),
+        sa.Column("activa", sa.Boolean, nullable=False, server_default=sa.text("true")),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

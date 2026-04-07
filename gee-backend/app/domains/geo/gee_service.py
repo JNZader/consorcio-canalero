@@ -720,33 +720,21 @@ class ImageExplorer:
         if sensor == "sentinel2":
             use_toa = year < 2019
             collection_name = (
-                "COPERNICUS/S2_HARMONIZED"
-                if use_toa
-                else "COPERNICUS/S2_SR_HARMONIZED"
+                "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
             )
             collection = (
                 ee.ImageCollection(collection_name)
                 .filterBounds(self.zona)
-                .filterDate(
-                    start_date.isoformat(), end_date_exclusive.isoformat()
-                )
-                .filter(
-                    ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", max_cloud)
-                )
+                .filterDate(start_date.isoformat(), end_date_exclusive.isoformat())
+                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", max_cloud))
             )
         else:
             collection = (
                 ee.ImageCollection("COPERNICUS/S1_GRD")
                 .filterBounds(self.zona)
-                .filterDate(
-                    start_date.isoformat(), end_date_exclusive.isoformat()
-                )
+                .filterDate(start_date.isoformat(), end_date_exclusive.isoformat())
                 .filter(ee.Filter.eq("instrumentMode", "IW"))
-                .filter(
-                    ee.Filter.listContains(
-                        "transmitterReceiverPolarisation", "VV"
-                    )
-                )
+                .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
             )
 
         dates_list = (
@@ -808,9 +796,7 @@ class ImageExplorer:
             .filterBounds(self.zona)
             .filterDate(start_date.isoformat(), end_date.isoformat())
             .filter(ee.Filter.eq("instrumentMode", "IW"))
-            .filter(
-                ee.Filter.listContains("transmitterReceiverPolarisation", "VV")
-            )
+            .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
             .select("VV")
         )
 
@@ -826,9 +812,7 @@ class ImageExplorer:
 
         def _extract_vv_mean(image: ee.Image) -> ee.Feature:
             """Map function: compute mean VV over zona for a single image."""
-            img_date = ee.Date(image.get("system:time_start")).format(
-                "YYYY-MM-dd"
-            )
+            img_date = ee.Date(image.get("system:time_start")).format("YYYY-MM-dd")
             stats = image.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=self.zona.geometry(),
@@ -913,7 +897,9 @@ def compute_ndwi_baselines_gee(
 
     # Build month filter (OR across selected months)
     month_filters = [ee.Filter.calendarRange(m, m, "month") for m in dry_season_months]
-    month_filter = ee.Filter.Or(*month_filters) if len(month_filters) > 1 else month_filters[0]
+    month_filter = (
+        ee.Filter.Or(*month_filters) if len(month_filters) > 1 else month_filters[0]
+    )
 
     collection = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
@@ -947,7 +933,8 @@ def compute_ndwi_baselines_gee(
 
             if not ndwi_values:
                 _baseline_logger.warning(
-                    "compute_ndwi_baselines: no dry-season images for zone %s", zone["id"]
+                    "compute_ndwi_baselines: no dry-season images for zone %s",
+                    zone["id"],
                 )
                 continue
 
@@ -958,7 +945,9 @@ def compute_ndwi_baselines_gee(
                 {
                     "zona_id": str(zone["id"]),
                     "ndwi_mean": round(mean_val, 4),
-                    "ndwi_std": round(max(std_val, 0.001), 4),  # floor std to avoid div/0
+                    "ndwi_std": round(
+                        max(std_val, 0.001), 4
+                    ),  # floor std to avoid div/0
                     "sample_count": len(ndwi_values),
                 }
             )
@@ -1008,19 +997,19 @@ def get_landcover_c_coefficient(zone_geometry: ee.Geometry) -> float | None:
         class_values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
         c_x100 = [20, 35, 40, 55, 75, 65, 10, 5, 15, 20, 30]
 
-        lc_image = (
-            ee.ImageCollection("ESA/WorldCover/v200")
-            .first()
-            .select("Map")
-        )
+        lc_image = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
         c_band = lc_image.remap(class_values, c_x100, defaultValue=40).rename("c_x100")
 
-        result = c_band.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=zone_geometry,
-            scale=10,
-            maxPixels=1e9,
-        ).get("c_x100").getInfo()
+        result = (
+            c_band.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=zone_geometry,
+                scale=10,
+                maxPixels=1e9,
+            )
+            .get("c_x100")
+            .getInfo()
+        )
 
         if result is None:
             return None

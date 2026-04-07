@@ -210,8 +210,7 @@ def rasterize_drainage(
         geojson_data = json.load(f)
 
     geometries = [
-        (shape(feat["geometry"]), 1)
-        for feat in geojson_data.get("features", [])
+        (shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])
     ]
 
     with rasterio.open(reference_tif) as src:
@@ -244,17 +243,17 @@ def rasterize_drainage(
 # ---------------------------------------------------------------------------
 
 DEFAULT_FLOOD_WEIGHTS: dict[str, float] = {
-    "twi": 0.30,                # Wetness index
-    "hand": 0.30,               # Height above drainage
+    "twi": 0.30,  # Wetness index
+    "hand": 0.30,  # Height above drainage
     "profile_curvature": 0.25,  # Concavities trap water (INVERTED: negative = high risk)
-    "tpi": 0.15,                # Depressions (INVERTED: negative = high risk)
+    "tpi": 0.15,  # Depressions (INVERTED: negative = high risk)
 }
 
 DEFAULT_DRAINAGE_WEIGHTS: dict[str, float] = {
     "dist_drainage": 0.30,  # Distance to existing drainage
-    "flow_acc": 0.25,       # Water accumulation volume
-    "hand": 0.20,           # Low-lying areas
-    "tpi": 0.25,            # Depressions need drainage (INVERTED)
+    "flow_acc": 0.25,  # Water accumulation volume
+    "hand": 0.20,  # Low-lying areas
+    "tpi": 0.25,  # Depressions need drainage (INVERTED)
 }
 
 
@@ -456,17 +455,13 @@ def compute_drainage_need(
         # Prefer combined drainage (real + auto) over plain auto-generated
         combined_path = area / "drainage_combined.geojson"
         geojson_path = area / "drainage.geojson"
-        source_geojson = (
-            combined_path if combined_path.exists() else geojson_path
-        )
+        source_geojson = combined_path if combined_path.exists() else geojson_path
         if source_geojson.exists():
             # Find a reference raster for CRS/transform/shape
             reference = area / "flow_acc.tif"
             if not reference.exists():
                 reference = area / "hand.tif"
-            rasterize_drainage(
-                str(source_geojson), str(reference), str(drainage_path)
-            )
+            rasterize_drainage(str(source_geojson), str(reference), str(drainage_path))
             logger.info(
                 "compute_drainage_need: auto-rasterized %s → drainage.tif",
                 source_geojson.name,
@@ -579,9 +574,7 @@ def extract_composite_zonal_stats(
         src_crs = CRS.from_user_input(zona_crs)
         dst_crs = CRS.from_user_input(raster_crs) if raster_crs else None
         if dst_crs and src_crs != dst_crs:
-            transformer = Transformer.from_crs(
-                src_crs, dst_crs, always_xy=True
-            )
+            transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
             _reproject_geom = lambda geom: shapely_transform(  # noqa: E731
                 transformer.transform, geom
             )
@@ -602,8 +595,10 @@ def extract_composite_zonal_stats(
             m_per_deg_lat = 111_320.0
             m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
             pixel_area_ha = (
-                abs(src.transform.a) * m_per_deg_lon
-                * abs(src.transform.e) * m_per_deg_lat
+                abs(src.transform.a)
+                * m_per_deg_lon
+                * abs(src.transform.e)
+                * m_per_deg_lat
             ) / 10_000.0
 
         for zona in zonas:

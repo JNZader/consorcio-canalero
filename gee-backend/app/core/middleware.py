@@ -24,7 +24,7 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization or not authorization.startswith("Bearer "):
         return None
 
-    token = authorization[len("Bearer "):]
+    token = authorization[len("Bearer ") :]
     try:
         payload = jwt.decode(
             token,
@@ -52,6 +52,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
         # Skip rate limiting when disabled via env (local dev / E2E)
         import os
+
         if os.getenv("RATE_LIMIT_DISABLED", "").lower() in ("1", "true", "yes"):
             return await call_next(request)
 
@@ -126,17 +127,31 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
             logger.warning("CSRF: Invalid origin", origin=origin, path=request.url.path)
             return JSONResponse(
                 status_code=403,
-                content={"error": {"code": "CSRF_INVALID_ORIGIN", "message": "Origin not allowed"}},
+                content={
+                    "error": {
+                        "code": "CSRF_INVALID_ORIGIN",
+                        "message": "Origin not allowed",
+                    }
+                },
             )
 
         content_type = request.headers.get("content-type", "")
         is_multipart = "multipart/form-data" in content_type
         is_json = "application/json" in content_type
 
-        if not is_multipart and not is_json and request.url.path not in self.UPLOAD_PATHS:
+        if (
+            not is_multipart
+            and not is_json
+            and request.url.path not in self.UPLOAD_PATHS
+        ):
             return JSONResponse(
                 status_code=415,
-                content={"error": {"code": "INVALID_CONTENT_TYPE", "message": "Content-Type must be application/json"}},
+                content={
+                    "error": {
+                        "code": "INVALID_CONTENT_TYPE",
+                        "message": "Content-Type must be application/json",
+                    }
+                },
             )
 
         return await call_next(request)

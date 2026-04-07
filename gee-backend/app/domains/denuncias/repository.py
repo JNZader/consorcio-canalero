@@ -56,7 +56,9 @@ class DenunciaRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Denuncia.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Denuncia.created_at.desc()).offset(offset).limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -138,15 +140,13 @@ class DenunciaRepository:
         """Aggregate counts by estado, tipo, and cuenca."""
         # By estado
         estado_rows = db.execute(
-            select(Denuncia.estado, func.count())
-            .group_by(Denuncia.estado)
+            select(Denuncia.estado, func.count()).group_by(Denuncia.estado)
         ).all()
         por_estado = {row[0]: row[1] for row in estado_rows}
 
         # By tipo
         tipo_rows = db.execute(
-            select(Denuncia.tipo, func.count())
-            .group_by(Denuncia.tipo)
+            select(Denuncia.tipo, func.count()).group_by(Denuncia.tipo)
         ).all()
         por_tipo = {row[0]: row[1] for row in tipo_rows}
 

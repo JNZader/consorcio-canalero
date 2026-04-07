@@ -21,7 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum type for analysis tipo
     tipo_analisis_geo = postgresql.ENUM(
-        "flood", "vegetation", "ndvi", "custom",
+        "flood",
+        "vegetation",
+        "ndvi",
+        "custom",
         name="tipo_analisis_geo",
         create_type=False,
     )
@@ -54,7 +57,10 @@ def upgrade() -> None:
         sa.Column(
             "estado",
             postgresql.ENUM(
-                "pending", "running", "completed", "failed",
+                "pending",
+                "running",
+                "completed",
+                "failed",
                 name="estado_geo_job",
                 create_type=False,
             ),
@@ -96,9 +102,7 @@ def upgrade() -> None:
 
     op.create_index("ix_geo_analisis_gee_tipo", "geo_analisis_gee", ["tipo"])
     op.create_index("ix_geo_analisis_gee_estado", "geo_analisis_gee", ["estado"])
-    op.create_index(
-        "ix_geo_analisis_gee_fecha", "geo_analisis_gee", ["fecha_analisis"]
-    )
+    op.create_index("ix_geo_analisis_gee_fecha", "geo_analisis_gee", ["fecha_analisis"])
 
 
 def downgrade() -> None:

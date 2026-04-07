@@ -90,11 +90,7 @@ class CapasRepository:
         """
         count = 0
         for idx, capa_id in enumerate(ordered_ids):
-            stmt = (
-                update(Capa)
-                .where(Capa.id == capa_id)
-                .values(orden=idx)
-            )
+            stmt = update(Capa).where(Capa.id == capa_id).values(orden=idx)
             result = db.execute(stmt)
             count += result.rowcount
         db.flush()

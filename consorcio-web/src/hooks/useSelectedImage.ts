@@ -170,12 +170,23 @@ export function useSelectedImage() {
   };
 }
 
+// GEE map IDs expire after ~24–72 h. Regenerate if cached tile is older than this.
+const GEE_TILE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function isTileStale(image: SelectedImage): boolean {
+  if (!image.selected_at) return true;
+  const age = Date.now() - new Date(image.selected_at).getTime();
+  return age > GEE_TILE_MAX_AGE_MS;
+}
+
 /**
  * Hook to listen for selected image changes without ability to modify.
  * Useful for map components that just need to display the layer.
  *
  * If localStorage is empty on mount, attempts to fetch saved params from
  * the backend and regenerate the tile URL from GEE.
+ * If the cached tile URL is older than GEE_TILE_MAX_AGE_MS, it regenerates
+ * from the backend even when localStorage has data (GEE map IDs expire).
  */
 export function useSelectedImageListener() {
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
@@ -184,13 +195,20 @@ export function useSelectedImageListener() {
   useEffect(() => {
     // Load initial value with validation
     let hasLocal = false;
+    let needsRefresh = false;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (isValidSelectedImage(parsed)) {
-          setSelectedImage(parsed as SelectedImage);
-          hasLocal = true;
+          const image = parsed as SelectedImage;
+          if (isTileStale(image)) {
+            // Tile URL may be expired — use params for display label but trigger refresh
+            needsRefresh = true;
+          } else {
+            setSelectedImage(image);
+            hasLocal = true;
+          }
         } else {
           localStorage.removeItem(STORAGE_KEY);
         }
@@ -199,8 +217,8 @@ export function useSelectedImageListener() {
       localStorage.removeItem(STORAGE_KEY);
     }
 
-    // If no local image, try fetching from backend
-    if (!hasLocal && !fetchedFromBackend.current) {
+    // If no local image OR tile is stale, regenerate from backend
+    if ((!hasLocal || needsRefresh) && !fetchedFromBackend.current) {
       fetchedFromBackend.current = true;
       restoreFromBackend()
         .then((restored) => {
@@ -211,10 +229,14 @@ export function useSelectedImageListener() {
             window.dispatchEvent(
               new CustomEvent('selectedImageChange', { detail: restored })
             );
+          } else if (needsRefresh) {
+            // Backend couldn't regenerate — remove stale entry
+            localStorage.removeItem(STORAGE_KEY);
           }
         })
         .catch((err) => {
           logger.warn('Failed to restore image from backend:', err);
+          if (needsRefresh) localStorage.removeItem(STORAGE_KEY);
         });
     }
 

@@ -102,7 +102,12 @@ def _build_color_legend_table(
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(branding.color_primario)),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor(branding.color_primario),
+                ),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
@@ -177,12 +182,14 @@ def build_tramite_pdf(tramite: Any, branding: BrandingInfo) -> io.BytesIO:
         rows = []
         # Show chronological (oldest first)
         for s in reversed(list(seguimiento)):
-            rows.append([
-                _fmt_datetime(getattr(s, "created_at", None)),
-                getattr(s, "estado_anterior", ""),
-                getattr(s, "estado_nuevo", ""),
-                getattr(s, "comentario", ""),
-            ])
+            rows.append(
+                [
+                    _fmt_datetime(getattr(s, "created_at", None)),
+                    getattr(s, "estado_anterior", ""),
+                    getattr(s, "estado_nuevo", ""),
+                    getattr(s, "comentario", ""),
+                ]
+            )
         story.append(build_data_table(headers, rows, branding))
 
     return pdf.build(story, title=f"Tramite - {getattr(tramite, 'titulo', '')}")
@@ -233,13 +240,15 @@ def build_asset_pdf(asset: Any, branding: BrandingInfo) -> io.BytesIO:
         headers = ["Fecha", "Tipo Trabajo", "Descripcion", "Realizado Por", "Costo"]
         rows = []
         for m in mantenimientos:
-            rows.append([
-                _fmt_date(getattr(m, "fecha_trabajo", None)),
-                getattr(m, "tipo_trabajo", ""),
-                getattr(m, "descripcion", ""),
-                getattr(m, "realizado_por", ""),
-                _fmt_money(getattr(m, "costo", None)),
-            ])
+            rows.append(
+                [
+                    _fmt_date(getattr(m, "fecha_trabajo", None)),
+                    getattr(m, "tipo_trabajo", ""),
+                    getattr(m, "descripcion", ""),
+                    getattr(m, "realizado_por", ""),
+                    _fmt_money(getattr(m, "costo", None)),
+                ]
+            )
         story.append(build_data_table(headers, rows, branding))
 
     return pdf.build(story, title=f"Asset - {getattr(asset, 'nombre', '')}")
@@ -285,7 +294,10 @@ def build_reunion_pdf(reunion: Any, branding: BrandingInfo) -> io.BytesIO:
                 story.append(Paragraph(f"{i}. {item}", styles["body"]))
             elif isinstance(item, dict):
                 story.append(
-                    Paragraph(f"{i}. {item.get('titulo', item.get('text', str(item)))}", styles["body"])
+                    Paragraph(
+                        f"{i}. {item.get('titulo', item.get('text', str(item)))}",
+                        styles["body"],
+                    )
                 )
         story.append(Spacer(1, 3 * mm))
 
@@ -297,12 +309,14 @@ def build_reunion_pdf(reunion: Any, branding: BrandingInfo) -> io.BytesIO:
         rows = []
         for item in agenda_items:
             completado = "Si" if getattr(item, "completado", False) else "No"
-            rows.append([
-                str(getattr(item, "orden", "")),
-                getattr(item, "titulo", ""),
-                getattr(item, "descripcion", "") or "—",
-                completado,
-            ])
+            rows.append(
+                [
+                    str(getattr(item, "orden", "")),
+                    getattr(item, "titulo", ""),
+                    getattr(item, "descripcion", "") or "—",
+                    completado,
+                ]
+            )
         story.append(build_data_table(headers, rows, branding))
 
     return pdf.build(story, title=f"Reunion - {getattr(reunion, 'titulo', '')}")
@@ -352,12 +366,14 @@ def build_finanzas_pdf(
                 diff = Decimal(str(real)) - Decimal(str(proyectado))
             except Exception:
                 diff = 0
-            rows.append([
-                item.get("rubro", ""),
-                _fmt_money(proyectado),
-                _fmt_money(real),
-                _fmt_money(diff),
-            ])
+            rows.append(
+                [
+                    item.get("rubro", ""),
+                    _fmt_money(proyectado),
+                    _fmt_money(real),
+                    _fmt_money(diff),
+                ]
+            )
         story.append(build_data_table(headers, rows, branding))
 
     return pdf.build(story, title=f"Finanzas - Ejercicio {year}")
@@ -404,7 +420,11 @@ def build_approved_zoning_pdf(
         story.append(Spacer(1, 3 * mm))
 
     feature_collection = getattr(zoning, "feature_collection", None) or {}
-    features = feature_collection.get("features", []) if isinstance(feature_collection, dict) else []
+    features = (
+        feature_collection.get("features", [])
+        if isinstance(feature_collection, dict)
+        else []
+    )
     if features:
         total_area = 0.0
         total_subcuencas = 0
@@ -442,11 +462,13 @@ def build_approved_zoning_pdf(
                 area_value = float(area)
             except Exception:
                 area_value = 0.0
-            rows.append([
-                str(props.get("nombre", "Zona")),
-                str(props.get("basin_count", "—")),
-                f"{area_value:,.1f}",
-            ])
+            rows.append(
+                [
+                    str(props.get("nombre", "Zona")),
+                    str(props.get("basin_count", "—")),
+                    f"{area_value:,.1f}",
+                ]
+            )
         rows.append(["TOTAL", "", f"{total_area:,.1f}"])
         story.append(build_data_table(headers, rows, branding))
 
@@ -510,11 +532,18 @@ def build_approved_zoning_map_pdf(
                 ]
             )
 
-        zone_table = Table(rows, colWidths=[8 * mm, 82 * mm, 35 * mm, 35 * mm], repeatRows=1)
+        zone_table = Table(
+            rows, colWidths=[8 * mm, 82 * mm, 35 * mm, 35 * mm], repeatRows=1
+        )
         zone_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(branding.color_primario)),
+                    (
+                        "BACKGROUND",
+                        (0, 0),
+                        (-1, 0),
+                        colors.HexColor(branding.color_primario),
+                    ),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
@@ -535,7 +564,9 @@ def build_approved_zoning_map_pdf(
 
     if zone_legend and not zone_summary:
         story.append(Paragraph("Leyendas", styles["subtitle"]))
-        story.extend(_build_color_legend_table("Leyenda de zonas", zone_legend, branding))
+        story.extend(
+            _build_color_legend_table("Leyenda de zonas", zone_legend, branding)
+        )
         story.append(Spacer(1, 3 * mm))
     elif zone_legend or road_legend or raster_legends:
         story.append(Paragraph("Leyendas", styles["subtitle"]))

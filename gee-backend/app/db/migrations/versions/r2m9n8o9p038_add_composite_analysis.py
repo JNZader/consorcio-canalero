@@ -25,9 +25,7 @@ def upgrade() -> None:
     op.execute("ALTER TYPE tipo_geo_layer ADD VALUE IF NOT EXISTS 'drainage_need'")
 
     # Add new value to tipo_geo_job enum
-    op.execute(
-        "ALTER TYPE tipo_geo_job ADD VALUE IF NOT EXISTS 'composite_analysis'"
-    )
+    op.execute("ALTER TYPE tipo_geo_job ADD VALUE IF NOT EXISTS 'composite_analysis'")
 
     # ── composite_zonal_stats ──
     op.create_table(

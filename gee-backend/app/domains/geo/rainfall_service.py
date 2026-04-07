@@ -41,9 +41,7 @@ repo = GeoRepository()
 def _postgis_to_ee_geometry(db: Session, zona_id: uuid.UUID) -> ee.Geometry | None:
     """Convert a PostGIS geometry to an ee.Geometry for GEE queries."""
     geojson_str = db.execute(
-        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
-            ZonaOperativa.id == zona_id
-        )
+        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == zona_id)
     ).scalar()
     if geojson_str is None:
         return None
@@ -103,9 +101,7 @@ def fetch_chirps_daily(
     _ensure_initialized()
 
     # Build a FeatureCollection from zone geometries
-    features = [
-        ee.Feature(z["ee_geometry"], {"zona_id": str(z["id"])}) for z in zones
-    ]
+    features = [ee.Feature(z["ee_geometry"], {"zona_id": str(z["id"])}) for z in zones]
     zones_fc = ee.FeatureCollection(features)
 
     # GEE filterDate is exclusive on end
@@ -169,9 +165,7 @@ def fetch_imerg_daily(
     """
     _ensure_initialized()
 
-    features = [
-        ee.Feature(z["ee_geometry"], {"zona_id": str(z["id"])}) for z in zones
-    ]
+    features = [ee.Feature(z["ee_geometry"], {"zona_id": str(z["id"])}) for z in zones]
     zones_fc = ee.FeatureCollection(features)
 
     n_days = (end_date - start_date).days  # exclusive end
@@ -181,8 +175,10 @@ def fetch_imerg_daily(
         day_end = day_start.advance(1, "day")
         # Merge a zero-image fallback so the collection is never empty.
         # This prevents reduce.sum from failing on days with no IMERG granules.
-        zero = ee.Image.constant(0).rename(IMERG_BAND).set(
-            "system:time_start", day_start.millis()
+        zero = (
+            ee.Image.constant(0)
+            .rename(IMERG_BAND)
+            .set("system:time_start", day_start.millis())
         )
         daily = (
             ee.ImageCollection(IMERG_COLLECTION)
@@ -196,9 +192,7 @@ def fetch_imerg_daily(
             "date", day_start.format("YYYY-MM-dd")
         )
 
-    daily_collection = ee.ImageCollection(
-        ee.List.sequence(0, n_days).map(_daily_image)
-    )
+    daily_collection = ee.ImageCollection(ee.List.sequence(0, n_days).map(_daily_image))
 
     def _reduce_image(image: ee.Image) -> ee.FeatureCollection:
         img_date = image.get("date")
@@ -266,7 +260,12 @@ def backfill_rainfall(
     """
     zones = _load_zone_geometries(db, zona_ids)
     if not zones:
-        return {"total_records": 0, "batches_processed": 0, "total_batches": 0, "errors": ["No zones found"]}
+        return {
+            "total_records": 0,
+            "batches_processed": 0,
+            "total_batches": 0,
+            "errors": ["No zones found"],
+        }
 
     # Pre-compute total number of batches so progress % is available upfront
     total_days = (end_date - start_date).days + 1
@@ -466,9 +465,7 @@ def suggest_images_for_event(
     # Use SR collection for post-2019, TOA for earlier dates
     use_toa = search_start.year < 2019
     collection_name = (
-        "COPERNICUS/S2_HARMONIZED"
-        if use_toa
-        else "COPERNICUS/S2_SR_HARMONIZED"
+        "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
     )
 
     collection = (

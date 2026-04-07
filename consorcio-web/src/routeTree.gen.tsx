@@ -54,6 +54,7 @@ const FloodFlowPanel = lazy(() => import('./components/admin/FloodFlowPanel'));
 const AfectadosPanel = lazy(() => import('./components/admin/AfectadosPanel'));
 const ManningPanel = lazy(() => import('./components/admin/ManningPanel'));
 const ReturnPeriodsPanel = lazy(() => import('./components/admin/ReturnPeriodsPanel'));
+const InformesTerritorialesPanel = lazy(() => import('./components/admin/InformesTerritorialesPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -551,6 +552,12 @@ const adminReturnPeriodsRoute = createRoute({
   component: () => <ReturnPeriodsPanel />,
 });
 
+const adminInformesTerritorialesRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/informe-territorial',
+  component: () => <InformesTerritorialesPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -567,6 +574,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminAfectadosRoute,
   adminManningRoute,
   adminReturnPeriodsRoute,
+  adminInformesTerritorialesRoute,
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,

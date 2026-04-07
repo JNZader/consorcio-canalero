@@ -39,7 +39,9 @@ def upgrade() -> None:
             nullable=True,
             comment="Land capability class (I–VIII)",
         ),
-        sa.Column("ip", sa.String(50), nullable=True, comment="Índice de productividad"),
+        sa.Column(
+            "ip", sa.String(50), nullable=True, comment="Índice de productividad"
+        ),
         sa.Column(
             "geometria",
             geoalchemy2.types.Geometry(geometry_type="MULTIPOLYGON", srid=4326),
@@ -55,9 +57,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_suelos_catastro_geometria ON suelos_catastro USING GIST (geometria)"
     )
-    op.execute(
-        "CREATE INDEX ix_suelos_catastro_simbolo ON suelos_catastro (simbolo)"
-    )
+    op.execute("CREATE INDEX ix_suelos_catastro_simbolo ON suelos_catastro (simbolo)")
 
     # ── canales_geo ──────────────────────────────────────────────────────────
     op.create_table(
@@ -118,9 +118,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE UNIQUE INDEX uix_mv_suelos_zona_simbolo ON mv_suelos_por_zona (zona_id, simbolo)"
     )
-    op.execute(
-        "CREATE INDEX ix_mv_suelos_cuenca ON mv_suelos_por_zona (cuenca)"
-    )
+    op.execute("CREATE INDEX ix_mv_suelos_cuenca ON mv_suelos_por_zona (cuenca)")
 
     # ── materialized view: canales por zona ──────────────────────────────────
     # ST_Length on ST_Transform(..., 32720) gives length in metres; / 1000 → km.
@@ -144,9 +142,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE UNIQUE INDEX uix_mv_canales_zona ON mv_canales_por_zona (zona_id)"
     )
-    op.execute(
-        "CREATE INDEX ix_mv_canales_cuenca ON mv_canales_por_zona (cuenca)"
-    )
+    op.execute("CREATE INDEX ix_mv_canales_cuenca ON mv_canales_por_zona (cuenca)")
 
 
 def downgrade() -> None:

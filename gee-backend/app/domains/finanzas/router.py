@@ -251,11 +251,13 @@ def export_financial_summary_pdf(
         elif isinstance(item, dict):
             execution_list.append(item)
         else:
-            execution_list.append({
-                "rubro": getattr(item, "rubro", ""),
-                "proyectado": getattr(item, "proyectado", 0),
-                "real": getattr(item, "real", 0),
-            })
+            execution_list.append(
+                {
+                    "rubro": getattr(item, "rubro", ""),
+                    "proyectado": getattr(item, "proyectado", 0),
+                    "real": getattr(item, "real", 0),
+                }
+            )
 
     pdf_buffer = build_finanzas_pdf(summary_dict, execution_list, year, branding)
 

@@ -21,17 +21,28 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum types
     tipo_tramite = postgresql.ENUM(
-        "obra", "permiso", "habilitacion", "reclamo", "otro",
+        "obra",
+        "permiso",
+        "habilitacion",
+        "reclamo",
+        "otro",
         name="tipo_tramite",
         create_type=False,
     )
     estado_tramite = postgresql.ENUM(
-        "ingresado", "en_tramite", "aprobado", "rechazado", "archivado",
+        "ingresado",
+        "en_tramite",
+        "aprobado",
+        "rechazado",
+        "archivado",
         name="estado_tramite",
         create_type=False,
     )
     prioridad_tramite = postgresql.ENUM(
-        "baja", "media", "alta", "urgente",
+        "baja",
+        "media",
+        "alta",
+        "urgente",
         name="prioridad_tramite",
         create_type=False,
     )

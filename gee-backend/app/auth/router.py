@@ -95,7 +95,11 @@ if settings.google_oauth_client_id:
 
         authorization_url = await google_oauth_client.get_authorization_url(
             redirect_url,
-            scope=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"],
+            scope=[
+                "openid",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "https://www.googleapis.com/auth/userinfo.profile",
+            ],
         )
         return {"authorization_url": authorization_url}
 
@@ -116,7 +120,9 @@ if settings.google_oauth_client_id:
 
         if error:
             _oauth_logger.error("Google OAuth error: %s - %s", error, error_description)
-            params = urlencode({"error": error, "error_description": error_description or ""})
+            params = urlencode(
+                {"error": error, "error_description": error_description or ""}
+            )
             return RedirectResponse(url=f"{frontend_callback}?{params}")
 
         if not code:
@@ -173,7 +179,9 @@ if settings.google_oauth_client_id:
                 session.add(user)
                 await session.commit()
                 await session.refresh(user)
-                _oauth_logger.info("Created new user via Google OAuth: %s", account_email)
+                _oauth_logger.info(
+                    "Created new user via Google OAuth: %s", account_email
+                )
 
             if not user.is_active:
                 return RedirectResponse(

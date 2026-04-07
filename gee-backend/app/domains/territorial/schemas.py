@@ -32,7 +32,7 @@ class SueloBreakdown(BaseModel):
 class TerritorialReportResponse(BaseModel):
     """Aggregated territorial report for a given scope."""
 
-    scope: str        # "consorcio" | "cuenca" | "zona"
+    scope: str  # "consorcio" | "cuenca" | "zona"
     scope_name: str
     km_canales: float
     suelos: list[SueloBreakdown]

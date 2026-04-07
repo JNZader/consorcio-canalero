@@ -32,6 +32,7 @@ from app.domains.geo.intelligence.schemas import (
     ZonaOperativaResponse,
     ZonificacionRequest,
 )
+
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Intelligence"])
@@ -40,6 +41,7 @@ router = APIRouter(tags=["Intelligence"])
 def _get_intel_service():
     """Lazy import to avoid loading geopandas at startup."""
     from app.domains.geo.intelligence import service as intel_service
+
     return intel_service
 
 
@@ -323,7 +325,9 @@ def generate_zonas(
     """Dispatch zone generation from DEM as a background Celery task."""
     from app.domains.geo.intelligence.tasks import task_generate_zonification
 
-    task = task_generate_zonification.delay(str(payload.dem_layer_id), payload.threshold)
+    task = task_generate_zonification.delay(
+        str(payload.dem_layer_id), payload.threshold
+    )
     return {"task_id": task.id, "status": "submitted"}
 
 
@@ -541,11 +545,13 @@ def compare_composite_stats(
     for z in zonas:
         try:
             geom_shapely = to_shape(z.geometria)
-            zona_dicts.append({
-                "id": z.id,
-                "nombre": z.nombre,
-                "geometry": shapely_mapping(geom_shapely),
-            })
+            zona_dicts.append(
+                {
+                    "id": z.id,
+                    "nombre": z.nombre,
+                    "geometry": shapely_mapping(geom_shapely),
+                }
+            )
             zona_meta[z.id] = {
                 "nombre": z.nombre,
                 "cuenca": z.cuenca,
@@ -571,7 +577,12 @@ def compare_composite_stats(
                 )
             with TemporaryDirectory(prefix="composite-compare-") as tmpdir:
                 tmp = Path(tmpdir)
-                for filename in ["flow_acc.tif", "hand.tif", "tpi.tif", "drainage.geojson"]:
+                for filename in [
+                    "flow_acc.tif",
+                    "hand.tif",
+                    "tpi.tif",
+                    "drainage.geojson",
+                ]:
                     (tmp / filename).symlink_to(area_dir / filename)
 
                 baseline_raster = str(tmp / "drainage_need_baseline.tif")
@@ -588,7 +599,9 @@ def compare_composite_stats(
                 area_id=area_id,
                 tipo=tipo,
             )
-            return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=[], total=0)
+            return CompositeComparisonResponse(
+                area_id=area_id, tipo=tipo, items=[], total=0
+            )
     else:
         for item in current_stats:
             baseline_by_zona[item.zona_id] = {
@@ -615,12 +628,15 @@ def compare_composite_stats(
                 delta_mean_score=stat.mean_score - float(baseline["mean_score"]),
                 current_area_high_risk_ha=stat.area_high_risk_ha,
                 baseline_area_high_risk_ha=float(baseline["area_high_risk_ha"]),
-                delta_area_high_risk_ha=stat.area_high_risk_ha - float(baseline["area_high_risk_ha"]),
+                delta_area_high_risk_ha=stat.area_high_risk_ha
+                - float(baseline["area_high_risk_ha"]),
             )
         )
 
     items.sort(key=lambda item: abs(item.delta_mean_score), reverse=True)
-    return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=items, total=len(items))
+    return CompositeComparisonResponse(
+        area_id=area_id, tipo=tipo, items=items, total=len(items)
+    )
 
 
 # ──────────────────────────────────────────────
@@ -734,18 +750,14 @@ def get_suggestion_results_by_batch(
 
         from app.domains.geo.intelligence.models import CanalSuggestion
 
-        base = select(CanalSuggestion).where(
-            CanalSuggestion.batch_id == batch_id
-        )
+        base = select(CanalSuggestion).where(CanalSuggestion.batch_id == batch_id)
         total = db.execute(
             select(sa_func.count()).select_from(base.subquery())
         ).scalar_one()
         offset = (page - 1) * limit
         items = list(
             db.execute(
-                base.order_by(CanalSuggestion.score.desc())
-                .offset(offset)
-                .limit(limit)
+                base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit)
             )
             .scalars()
             .all()
@@ -801,8 +813,7 @@ def get_suggestion_summary(
         )
         if items:
             top_per_tipo[tipo] = [
-                CanalSuggestionResponse.model_validate(i).model_dump()
-                for i in items
+                CanalSuggestionResponse.model_validate(i).model_dump() for i in items
             ]
 
     return {
@@ -810,7 +821,9 @@ def get_suggestion_summary(
         "total_suggestions": summary["total_suggestions"],
         "by_tipo": summary["by_tipo"],
         "avg_score": summary["avg_score"],
-        "created_at": summary["created_at"].isoformat() if summary.get("created_at") else None,
+        "created_at": summary["created_at"].isoformat()
+        if summary.get("created_at")
+        else None,
         "top_per_tipo": top_per_tipo,
     }
 

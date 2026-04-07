@@ -44,9 +44,7 @@ class CapasService:
         db.refresh(capa)
         return capa
 
-    def update(
-        self, db: Session, capa_id: uuid.UUID, data: CapaUpdate
-    ) -> Capa:
+    def update(self, db: Session, capa_id: uuid.UUID, data: CapaUpdate) -> Capa:
         """Update a layer and commit."""
         # Verify it exists first (raises 404 if not)
         self.get_by_id(db, capa_id)
@@ -67,9 +65,7 @@ class CapasService:
     def reorder(self, db: Session, ordered_ids: list[uuid.UUID]) -> int:
         """Reorder layers and commit. Returns count of reordered layers."""
         if not ordered_ids:
-            raise HTTPException(
-                status_code=400, detail="Lista de IDs vacia"
-            )
+            raise HTTPException(status_code=400, detail="Lista de IDs vacia")
         count = self.repo.reorder(db, ordered_ids)
         db.commit()
         return count

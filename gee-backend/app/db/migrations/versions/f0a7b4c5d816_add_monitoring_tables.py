@@ -21,12 +21,18 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum types
     estado_sugerencia = postgresql.ENUM(
-        "pendiente", "revisada", "implementada", "descartada",
+        "pendiente",
+        "revisada",
+        "implementada",
+        "descartada",
         name="estado_sugerencia",
         create_type=False,
     )
     tipo_analisis = postgresql.ENUM(
-        "inundacion", "vegetacion", "sar", "clasificacion",
+        "inundacion",
+        "vegetacion",
+        "sar",
+        "clasificacion",
         name="tipo_analisis",
         create_type=False,
     )

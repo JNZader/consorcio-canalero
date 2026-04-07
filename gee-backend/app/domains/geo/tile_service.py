@@ -77,10 +77,10 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
 # Keys are the RAW uint8 values in the raster (no rescale needed).
 CATEGORICAL_COLORS: dict[str, dict[int, tuple[int, int, int, int]]] = {
     "terrain_class": {
-        0: (76, 175, 80, 180),      # Sin Riesgo — verde semi-transparente
-        1: (30, 136, 229, 255),     # Drenaje Natural — azul medio
-        2: (211, 47, 47, 255),      # Riesgo Alto — rojo
-        3: (255, 143, 0, 255),      # Riesgo Medio — ámbar
+        0: (76, 175, 80, 180),  # Sin Riesgo — verde semi-transparente
+        1: (30, 136, 229, 255),  # Drenaje Natural — azul medio
+        2: (211, 47, 47, 255),  # Riesgo Alto — rojo
+        3: (255, 143, 0, 255),  # Riesgo Medio — ámbar
     },
 }
 
@@ -117,12 +117,42 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Alto (>2m)", "min": 2.0, "max": 4.0, "color": "#ffffb2"},
     ],
     "slope": [
-        {"label": "Muy baja zona I (<0.5 m/1000m)", "min": 0, "max": 0.0265, "color": "#0b7d3b"},
-        {"label": "Muy baja zona II (0.5-2.1 m/1000m)", "min": 0.0265, "max": 0.1227, "color": "#1a9850"},
-        {"label": "Baja zona (2.1-4.2 m/1000m)", "min": 0.1227, "max": 0.2420, "color": "#91cf60"},
-        {"label": "Suave zona (4.2-6.9 m/1000m)", "min": 0.2420, "max": 0.3964, "color": "#d9ef8b"},
-        {"label": "Moderada zona (6.9-15.3 m/1000m)", "min": 0.3964, "max": 0.8754, "color": "#fc8d59"},
-        {"label": "Alta puntual (>15.3 m/1000m)", "min": 0.8754, "max": 90.0, "color": "#d73027"},
+        {
+            "label": "Muy baja zona I (<0.5 m/1000m)",
+            "min": 0,
+            "max": 0.0265,
+            "color": "#0b7d3b",
+        },
+        {
+            "label": "Muy baja zona II (0.5-2.1 m/1000m)",
+            "min": 0.0265,
+            "max": 0.1227,
+            "color": "#1a9850",
+        },
+        {
+            "label": "Baja zona (2.1-4.2 m/1000m)",
+            "min": 0.1227,
+            "max": 0.2420,
+            "color": "#91cf60",
+        },
+        {
+            "label": "Suave zona (4.2-6.9 m/1000m)",
+            "min": 0.2420,
+            "max": 0.3964,
+            "color": "#d9ef8b",
+        },
+        {
+            "label": "Moderada zona (6.9-15.3 m/1000m)",
+            "min": 0.3964,
+            "max": 0.8754,
+            "color": "#fc8d59",
+        },
+        {
+            "label": "Alta puntual (>15.3 m/1000m)",
+            "min": 0.8754,
+            "max": 90.0,
+            "color": "#d73027",
+        },
     ],
     "dem_raw": [
         {"label": "100-105m", "min": 100, "max": 105, "color": "#08306b"},
@@ -140,7 +170,12 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Bajo (6-53)", "min": 6, "max": 53, "color": "#addd8e"},
         {"label": "Moderado (53-210)", "min": 53, "max": 210, "color": "#78c679"},
         {"label": "Alto (210-6.525)", "min": 210, "max": 6525.22, "color": "#41b6c4"},
-        {"label": "Muy alto (>6.525)", "min": 6525.22, "max": 487848, "color": "#0c2c84"},
+        {
+            "label": "Muy alto (>6.525)",
+            "min": 6525.22,
+            "max": 487848,
+            "color": "#0c2c84",
+        },
     ],
     "profile_curvature": [
         {"label": "Cóncavo", "min": -0.001, "max": -0.0002, "color": "#b2182b"},
@@ -246,10 +281,7 @@ def _bounds_intersect(
     a_left, a_bottom, a_right, a_top = a
     b_left, b_bottom, b_right, b_top = b
     return not (
-        a_right <= b_left
-        or a_left >= b_right
-        or a_top <= b_bottom
-        or a_bottom >= b_top
+        a_right <= b_left or a_left >= b_right or a_top <= b_bottom or a_bottom >= b_top
     )
 
 
@@ -374,7 +406,9 @@ def _render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-def _render_flat_terrain_rgb_png(*, tilesize: int = 256, elevation: float = 0.0) -> bytes:
+def _render_flat_terrain_rgb_png(
+    *, tilesize: int = 256, elevation: float = 0.0
+) -> bytes:
     """Render a constant-elevation terrain-rgb PNG.
 
     Returning a real DEM tile instead of HTTP 204 keeps the raster-dem source
@@ -515,7 +549,9 @@ def get_tile(
     _hidden_classes: set[int] = set()
     if hide_classes:
         try:
-            _hidden_classes = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
+            _hidden_classes = {
+                int(c.strip()) for c in hide_classes.split(",") if c.strip()
+            }
         except ValueError:
             logger.warning("Invalid hide_classes value: %s", hide_classes)
 
@@ -523,7 +559,9 @@ def get_tile(
     _hidden_ranges: set[int] = set()
     if hide_ranges:
         try:
-            _hidden_ranges = {int(r.strip()) for r in hide_ranges.split(",") if r.strip()}
+            _hidden_ranges = {
+                int(r.strip()) for r in hide_ranges.split(",") if r.strip()
+            }
         except ValueError:
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
 
@@ -566,11 +604,15 @@ def get_tile(
         if _hidden_ranges and layer.tipo in RANGE_CONFIGS:
             try:
                 content = _render_continuous_with_ranges(
-                    img, layer.tipo, cmap_name, _hidden_ranges,
+                    img,
+                    layer.tipo,
+                    cmap_name,
+                    _hidden_ranges,
                 )
             except Exception as e:
                 logger.warning(
-                    "Error rendering with hidden ranges, falling back to standard: %s", e,
+                    "Error rendering with hidden ranges, falling back to standard: %s",
+                    e,
                 )
                 content = img.render(img_format="PNG")
         else:

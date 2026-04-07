@@ -72,19 +72,31 @@ class Tramite(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "tramites_v2"
 
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoTramite, name="tipo_tramite", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            TipoTramite,
+            name="tipo_tramite",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     solicitante: Mapped[str] = mapped_column(String(200), nullable=False)
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoTramite, name="estado_tramite", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            EstadoTramite,
+            name="estado_tramite",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=EstadoTramite.INGRESADO,
     )
     prioridad: Mapped[str] = mapped_column(
-        Enum(PrioridadTramite, name="prioridad_tramite", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            PrioridadTramite,
+            name="prioridad_tramite",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=PrioridadTramite.MEDIA,
     )
@@ -93,9 +105,7 @@ class Tramite(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         server_default=func.current_date(),
     )
-    fecha_resolucion: Mapped[Optional[date]] = mapped_column(
-        Date, nullable=True
-    )
+    fecha_resolucion: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     resolucion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     usuario_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

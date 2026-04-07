@@ -93,7 +93,9 @@ def get_branding(db: Session) -> BrandingInfo:
     logo_path = None
     if logo_url:
         # logo_url is like "/static/logo.png" — resolve to filesystem
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        base_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
         candidate = os.path.join(base_dir, logo_url.lstrip("/"))
         if os.path.exists(candidate):
             logo_path = candidate
@@ -187,24 +189,30 @@ def build_info_table(
 
     rows = []
     for label, value in data:
-        rows.append([
-            Paragraph(f"<b>{label}</b>", styles["table_cell"]),
-            Paragraph(str(value) if value else "—", styles["table_cell"]),
-        ])
+        rows.append(
+            [
+                Paragraph(f"<b>{label}</b>", styles["table_cell"]),
+                Paragraph(str(value) if value else "—", styles["table_cell"]),
+            ]
+        )
 
     if not col_widths:
         col_widths = (5 * cm, 12 * cm)
 
     table = Table(rows, colWidths=col_widths)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
     return table
 
 
@@ -223,29 +231,35 @@ def build_data_table(
     # Data rows
     data_rows = []
     for row in rows:
-        data_rows.append([
-            Paragraph(str(cell) if cell is not None else "—", styles["table_cell"])
-            for cell in row
-        ])
+        data_rows.append(
+            [
+                Paragraph(str(cell) if cell is not None else "—", styles["table_cell"])
+                for cell in row
+            ]
+        )
 
     all_rows = [header_row] + data_rows
     table = Table(all_rows, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
-        # Header styling
-        ("BACKGROUND", (0, 0), (-1, 0), primary),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        # Alternating row colors
-        *[
-            ("BACKGROUND", (0, i), (-1, i), colors.Color(0.95, 0.95, 0.97))
-            for i in range(2, len(all_rows), 2)
-        ],
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                # Header styling
+                ("BACKGROUND", (0, 0), (-1, 0), primary),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                # Alternating row colors
+                *[
+                    ("BACKGROUND", (0, i), (-1, i), colors.Color(0.95, 0.95, 0.97))
+                    for i in range(2, len(all_rows), 2)
+                ],
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
     return table
 
 
@@ -336,6 +350,8 @@ class BrandedPDF:
             leftMargin=1.5 * cm,
             rightMargin=1.5 * cm,
         )
-        doc.build(flowables, onFirstPage=self._header_footer, onLaterPages=self._header_footer)
+        doc.build(
+            flowables, onFirstPage=self._header_footer, onLaterPages=self._header_footer
+        )
         buffer.seek(0)
         return buffer

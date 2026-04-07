@@ -68,15 +68,22 @@ class ZonaRiskSummary(BaseModel):
 
 # ── Manning ───────────────────────────────────────────────────────────────────
 
+
 class ManningRequest(BaseModel):
     """Parameters for Manning hydraulic capacity calculation."""
 
     ancho_m: float = Field(..., gt=0, description="Canal bottom width in meters")
     profundidad_m: float = Field(..., gt=0, description="Normal depth in meters")
     slope: float = Field(..., gt=0, description="Bed slope (dimensionless, rise/run)")
-    talud: float = Field(default=0.0, ge=0, description="Side slope H:V (0=rectangular)")
-    material: Optional[str] = Field(default=None, description="Channel material for Manning n lookup")
-    coef_manning: Optional[float] = Field(default=None, gt=0, description="Override Manning n directly")
+    talud: float = Field(
+        default=0.0, ge=0, description="Side slope H:V (0=rectangular)"
+    )
+    material: Optional[str] = Field(
+        default=None, description="Channel material for Manning n lookup"
+    )
+    coef_manning: Optional[float] = Field(
+        default=None, gt=0, description="Override Manning n directly"
+    )
 
 
 class ManningResponse(BaseModel):
@@ -95,6 +102,7 @@ class ManningResponse(BaseModel):
 
 
 # ── Return Periods ────────────────────────────────────────────────────────────
+
 
 class ReturnPeriodResult(BaseModel):
     """Gumbel EV-I return period precipitation estimate."""

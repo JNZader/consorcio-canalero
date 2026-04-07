@@ -21,29 +21,48 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum types
     tipo_geo_layer = postgresql.ENUM(
-        "slope", "aspect", "flow_dir", "flow_acc", "twi",
-        "hand", "drainage", "terrain_class",
+        "slope",
+        "aspect",
+        "flow_dir",
+        "flow_acc",
+        "twi",
+        "hand",
+        "drainage",
+        "terrain_class",
         name="tipo_geo_layer",
         create_type=False,
     )
     fuente_geo_layer = postgresql.ENUM(
-        "dem_pipeline", "gee", "manual",
+        "dem_pipeline",
+        "gee",
+        "manual",
         name="fuente_geo_layer",
         create_type=False,
     )
     formato_geo_layer = postgresql.ENUM(
-        "geotiff", "geojson",
+        "geotiff",
+        "geojson",
         name="formato_geo_layer",
         create_type=False,
     )
     tipo_geo_job = postgresql.ENUM(
-        "dem_pipeline", "slope", "aspect", "flow_dir", "flow_acc",
-        "twi", "hand", "drainage", "terrain_class",
+        "dem_pipeline",
+        "slope",
+        "aspect",
+        "flow_dir",
+        "flow_acc",
+        "twi",
+        "hand",
+        "drainage",
+        "terrain_class",
         name="tipo_geo_job",
         create_type=False,
     )
     estado_geo_job = postgresql.ENUM(
-        "pending", "running", "completed", "failed",
+        "pending",
+        "running",
+        "completed",
+        "failed",
         name="estado_geo_job",
         create_type=False,
     )
@@ -73,7 +92,9 @@ def upgrade() -> None:
             nullable=False,
             comment="Path to the GeoTIFF/GeoJSON file on disk",
         ),
-        sa.Column("formato", formato_geo_layer, nullable=False, server_default="geotiff"),
+        sa.Column(
+            "formato", formato_geo_layer, nullable=False, server_default="geotiff"
+        ),
         sa.Column("srid", sa.Integer, nullable=False, server_default="4326"),
         sa.Column(
             "bbox",

@@ -49,9 +49,7 @@ class IntelligenceRepository:
 
         offset = (page - 1) * limit
         items = list(
-            db.execute(
-                base.order_by(ZonaOperativa.nombre).offset(offset).limit(limit)
-            )
+            db.execute(base.order_by(ZonaOperativa.nombre).offset(offset).limit(limit))
             .scalars()
             .all()
         )
@@ -127,9 +125,7 @@ class IntelligenceRepository:
         if bbox is not None:
             minx, miny, maxx, maxy = bbox
             envelope = func.ST_MakeEnvelope(minx, miny, maxx, maxy, 4326)
-            stmt = stmt.where(
-                func.ST_Intersects(ZonaOperativa.geometria, envelope)
-            )
+            stmt = stmt.where(func.ST_Intersects(ZonaOperativa.geometria, envelope))
 
         stmt = stmt.order_by(ZonaOperativa.nombre).limit(limit)
 
@@ -385,9 +381,7 @@ class IntelligenceRepository:
 
     # ── ALERTAS ───────────────────────────────────
 
-    def get_alertas_activas(
-        self, db: Session, *, limit: int = 100
-    ) -> list[AlertaGeo]:
+    def get_alertas_activas(self, db: Session, *, limit: int = 100) -> list[AlertaGeo]:
         stmt = (
             select(AlertaGeo)
             .where(AlertaGeo.activa.is_(True))
@@ -446,7 +440,12 @@ class IntelligenceRepository:
             .subquery()
         )
 
-        zonas_por_nivel: dict[str, int] = {"bajo": 0, "medio": 0, "alto": 0, "critico": 0}
+        zonas_por_nivel: dict[str, int] = {
+            "bajo": 0,
+            "medio": 0,
+            "alto": 0,
+            "critico": 0,
+        }
         nivel_counts = db.execute(
             select(IndiceHidrico.nivel_riesgo, func.count())
             .join(
@@ -506,9 +505,7 @@ class IntelligenceRepository:
         results: dict[str, str] = {}
         for view in views:
             try:
-                db.execute(
-                    text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}")
-                )
+                db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}"))
                 results[view] = "ok"
             except Exception:
                 # If the view has no data yet, CONCURRENTLY fails — fallback
@@ -523,9 +520,11 @@ class IntelligenceRepository:
 
     def get_dashboard_stats(self, db: Session) -> dict[str, Any]:
         """Read pre-computed dashboard KPIs from mv_dashboard_geo_stats."""
-        row = db.execute(
-            text("SELECT * FROM mv_dashboard_geo_stats LIMIT 1")
-        ).mappings().first()
+        row = (
+            db.execute(text("SELECT * FROM mv_dashboard_geo_stats LIMIT 1"))
+            .mappings()
+            .first()
+        )
 
         if row is None:
             return {}
@@ -567,9 +566,11 @@ class IntelligenceRepository:
 
     def get_alertas_resumen(self, db: Session) -> dict[str, Any]:
         """Read active alerts summary from mv_alertas_resumen."""
-        row = db.execute(
-            text("SELECT * FROM mv_alertas_resumen LIMIT 1")
-        ).mappings().first()
+        row = (
+            db.execute(text("SELECT * FROM mv_alertas_resumen LIMIT 1"))
+            .mappings()
+            .first()
+        )
 
         if row is None:
             return {}
@@ -666,7 +667,9 @@ class IntelligenceRepository:
             )
             if tipo:
                 fallback_stmt = fallback_stmt.where(CompositeZonalStats.tipo == tipo)
-            fallback_stmt = fallback_stmt.order_by(CompositeZonalStats.mean_score.desc())
+            fallback_stmt = fallback_stmt.order_by(
+                CompositeZonalStats.mean_score.desc()
+            )
             return list(db.execute(fallback_stmt).scalars().unique().all())
 
         return items
@@ -726,9 +729,7 @@ class IntelligenceRepository:
         offset = (page - 1) * limit
         items = list(
             db.execute(
-                base.order_by(CanalSuggestion.score.desc())
-                .offset(offset)
-                .limit(limit)
+                base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit)
             )
             .scalars()
             .all()
@@ -828,9 +829,7 @@ _UPSERT_PARCELA_SQL = text("""
 """)
 
 
-def bulk_upsert_parcelas(
-    db: Session, features: list[dict]
-) -> tuple[int, int]:
+def bulk_upsert_parcelas(db: Session, features: list[dict]) -> tuple[int, int]:
     """Upsert IDECOR parcelas from a GeoJSON FeatureCollection features list.
 
     Returns (imported, skipped) counts.
@@ -892,10 +891,14 @@ def get_afectados_by_zona(db: Session, zona_id: str) -> dict | None:
     rows = db.execute(_AFECTADOS_BY_ZONA_SQL, {"zona_id": zona_id}).mappings().all()
 
     # Verify the zona actually exists even when no consorcistas match
-    zona_row = db.execute(
-        text("SELECT id, nombre FROM zonas_operativas WHERE id = :id::uuid"),
-        {"id": zona_id},
-    ).mappings().first()
+    zona_row = (
+        db.execute(
+            text("SELECT id, nombre FROM zonas_operativas WHERE id = :id::uuid"),
+            {"id": zona_id},
+        )
+        .mappings()
+        .first()
+    )
     if zona_row is None:
         return None
 
@@ -912,22 +915,30 @@ def get_afectados_by_zona(db: Session, zona_id: str) -> dict | None:
 
 def get_afectados_by_flood_event(db: Session, event_id: str) -> dict | None:
     """Return afectados grouped by flooded zone for a given flood event."""
-    event_row = db.execute(
-        text("SELECT id, event_date FROM flood_events WHERE id = :id::uuid"),
-        {"id": event_id},
-    ).mappings().first()
+    event_row = (
+        db.execute(
+            text("SELECT id, event_date FROM flood_events WHERE id = :id::uuid"),
+            {"id": event_id},
+        )
+        .mappings()
+        .first()
+    )
     if event_row is None:
         return None
 
-    flooded_zones = db.execute(
-        text("""
+    flooded_zones = (
+        db.execute(
+            text("""
             SELECT zo.id::text AS zona_id
             FROM flood_labels fl
             JOIN zonas_operativas zo ON zo.id = fl.zona_id
             WHERE fl.event_id = :event_id::uuid AND fl.is_flooded = true
         """),
-        {"event_id": event_id},
-    ).mappings().all()
+            {"event_id": event_id},
+        )
+        .mappings()
+        .all()
+    )
 
     zonas_afectadas = []
     for row in flooded_zones:
@@ -936,9 +947,7 @@ def get_afectados_by_flood_event(db: Session, event_id: str) -> dict | None:
             zonas_afectadas.append(zona_data)
 
     all_consorcista_ids = {
-        a["consorcista_id"]
-        for z in zonas_afectadas
-        for a in z["afectados"]
+        a["consorcista_id"] for z in zonas_afectadas for a in z["afectados"]
     }
     total_ha = sum(z["total_ha"] for z in zonas_afectadas)
 

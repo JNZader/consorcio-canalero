@@ -38,9 +38,7 @@ class AssetUpdate(BaseModel):
 
     nombre: Optional[str] = Field(default=None, min_length=2, max_length=200)
     tipo: Optional[str] = None
-    descripcion: Optional[str] = Field(
-        default=None, min_length=10, max_length=5000
-    )
+    descripcion: Optional[str] = Field(default=None, min_length=10, max_length=5000)
     estado_actual: Optional[str] = None
     longitud_km: Optional[float] = Field(default=None, ge=0)
     material: Optional[str] = Field(default=None, max_length=100)

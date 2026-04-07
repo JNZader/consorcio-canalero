@@ -323,9 +323,7 @@ def calculate_canal_priorities(
         zonas_criticas = intel_repo.get_zonas_criticas(db, "alto")
         if zonas_criticas:
             geometries = [to_shape(z.geometria) for z in zonas_criticas]
-            zonas_criticas_gdf = gpd.GeoDataFrame(
-                geometry=geometries, crs="EPSG:4326"
-            )
+            zonas_criticas_gdf = gpd.GeoDataFrame(geometry=geometries, crs="EPSG:4326")
     except Exception:
         pass
 
@@ -443,8 +441,7 @@ def check_alerts(db: Session) -> dict[str, Any]:
                 db,
                 tipo="umbral_superado",
                 mensaje=(
-                    f"La zona '{zona.nombre}' presenta nivel alto "
-                    f"de indice hidrico"
+                    f"La zona '{zona.nombre}' presenta nivel alto de indice hidrico"
                 ),
                 nivel="advertencia",
                 zona_id=zona.id,
@@ -514,5 +511,7 @@ def get_afectados_zona(db: Session, zona_id: str) -> AfectadosResponse:
 def get_afectados_evento(db: Session, event_id: str) -> EventoAfectadosResponse:
     data = get_afectados_by_flood_event(db, event_id)
     if data is None:
-        raise HTTPException(status_code=404, detail="Evento de inundación no encontrado")
+        raise HTTPException(
+            status_code=404, detail="Evento de inundación no encontrado"
+        )
     return EventoAfectadosResponse(**data)

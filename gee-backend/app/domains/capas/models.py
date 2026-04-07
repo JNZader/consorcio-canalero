@@ -40,17 +40,21 @@ class Capa(UUIDMixin, TimestampMixin, Base):
     nombre: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoCapa, name="tipo_capa", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            TipoCapa, name="tipo_capa", values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
     )
     fuente: Mapped[str] = mapped_column(
-        Enum(FuenteCapa, name="fuente_capa", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            FuenteCapa,
+            name="fuente_capa",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    geojson_data: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSON, nullable=True
-    )
+    geojson_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     estilo: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=False,

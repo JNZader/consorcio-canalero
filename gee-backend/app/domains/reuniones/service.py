@@ -113,9 +113,7 @@ class ReunionService:
 
     # ── AGENDA ITEMS ──────────────────────────
 
-    def get_agenda_items(
-        self, db: Session, reunion_id: uuid.UUID
-    ) -> list[AgendaItem]:
+    def get_agenda_items(self, db: Session, reunion_id: uuid.UUID) -> list[AgendaItem]:
         """List agenda items for a reunion (validates reunion exists)."""
         self.get_by_id(db, reunion_id)  # 404 if not found
         return self.agenda_repo.get_by_reunion_id(db, reunion_id)
@@ -143,8 +141,6 @@ class ReunionService:
         self.get_by_id(db, reunion_id)  # 404 if reunion not found
         item = self.agenda_repo.get_by_id(db, item_id)
         if item is None or item.reunion_id != reunion_id:
-            raise HTTPException(
-                status_code=404, detail="Agenda item no encontrado"
-            )
+            raise HTTPException(status_code=404, detail="Agenda item no encontrado")
         self.agenda_repo.delete(db, item_id)
         db.commit()

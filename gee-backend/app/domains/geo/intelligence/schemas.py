@@ -15,9 +15,11 @@ def _wkb_to_geojson(v: Any) -> Optional[dict[str, Any]]:
         return v
     try:
         from geoalchemy2.shape import to_shape
+
         shape = to_shape(v)
         import json
         from shapely.geometry import mapping
+
         return json.loads(json.dumps(mapping(shape)))
     except Exception:
         try:
@@ -25,7 +27,10 @@ def _wkb_to_geojson(v: Any) -> Optional[dict[str, Any]]:
             from shapely import wkb, wkt
             from shapely.geometry import mapping
             import json
-            shape = wkb.loads(bytes(v.data)) if hasattr(v, "data") else wkt.loads(str(v))
+
+            shape = (
+                wkb.loads(bytes(v.data)) if hasattr(v, "data") else wkt.loads(str(v))
+            )
             return json.loads(json.dumps(mapping(shape)))
         except Exception:
             return None
@@ -253,15 +258,11 @@ class DashboardInteligente(BaseModel):
     canales_criticos: int = Field(
         ..., description="Number of canals with priority > 70"
     )
-    caminos_vulnerables: int = Field(
-        ..., description="Number of roads with risk > 70"
-    )
+    caminos_vulnerables: int = Field(..., description="Number of roads with risk > 70")
     conflictos_activos: int = Field(
         ..., description="Number of detected conflict points"
     )
-    alertas_activas: int = Field(
-        ..., description="Number of active alerts"
-    )
+    alertas_activas: int = Field(..., description="Number of active alerts")
     zonas_por_nivel: dict[str, int] = Field(
         default_factory=dict,
         description="Count of zones per risk level",
@@ -301,8 +302,12 @@ class CompositeZonalStatsResponse(BaseModel):
     zona_nombre: Optional[str] = Field(
         default=None, description="Zone name (joined from ZonaOperativa)"
     )
-    cuenca: Optional[str] = Field(default=None, description="Parent watershed / basin family")
-    superficie_ha: Optional[float] = Field(default=None, description="Zone area in hectares")
+    cuenca: Optional[str] = Field(
+        default=None, description="Parent watershed / basin family"
+    )
+    superficie_ha: Optional[float] = Field(
+        default=None, description="Zone area in hectares"
+    )
     tipo: str = Field(..., description="flood_risk | drainage_need")
     mean_score: float
     max_score: float
@@ -396,7 +401,5 @@ class AnalysisSummaryResponse(BaseModel):
         default_factory=dict,
         description="Count of suggestions per tipo",
     )
-    avg_score: float = Field(
-        ..., description="Average score across all suggestions"
-    )
+    avg_score: float = Field(..., description="Average score across all suggestions")
     created_at: datetime

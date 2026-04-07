@@ -22,8 +22,18 @@ logger = logging.getLogger(__name__)
 TWI_CLASSES = {
     "seco": {"label": "Terreno seco", "min": None, "max": 7.0, "color": "#f59e0b"},
     "normal": {"label": "Humedad normal", "min": 7.0, "max": 11.0, "color": "#22c55e"},
-    "humedo": {"label": "Acumulación moderada", "min": 11.0, "max": 15.0, "color": "#3b82f6"},
-    "saturado": {"label": "Saturación alta", "min": 15.0, "max": None, "color": "#ef4444"},
+    "humedo": {
+        "label": "Acumulación moderada",
+        "min": 11.0,
+        "max": 15.0,
+        "color": "#3b82f6",
+    },
+    "saturado": {
+        "label": "Saturación alta",
+        "min": 15.0,
+        "max": None,
+        "color": "#ef4444",
+    },
 }
 
 
@@ -56,8 +66,8 @@ def classify_twi(twi_path: str, output_path: str) -> str:
     classified = np.zeros(twi.shape, dtype=np.uint8)
     valid = ~nodata_mask
 
-    classified[valid & (twi < 7.0)] = 1   # seco
-    classified[valid & (twi >= 7.0) & (twi < 11.0)] = 2   # normal
+    classified[valid & (twi < 7.0)] = 1  # seco
+    classified[valid & (twi >= 7.0) & (twi < 11.0)] = 2  # normal
     classified[valid & (twi >= 11.0) & (twi < 15.0)] = 3  # humedo
     classified[valid & (twi >= 15.0)] = 4  # saturado
 
@@ -87,7 +97,7 @@ def compute_twi_zone_summary(twi_path: str) -> dict[str, Any]:
 
     valid = ~nodata_mask
     total_valid = int(np.sum(valid))
-    cell_area_m2 = cell_size ** 2
+    cell_area_m2 = cell_size**2
 
     classes = []
     for key, info in TWI_CLASSES.items():
@@ -101,14 +111,16 @@ def compute_twi_zone_summary(twi_path: str) -> dict[str, Any]:
         area_ha = round((count * cell_area_m2) / 10_000, 2)
         pct = round((count / total_valid * 100), 1) if total_valid > 0 else 0
 
-        classes.append({
-            "class": key,
-            "label": info["label"],
-            "color": info["color"],
-            "pixel_count": count,
-            "area_ha": area_ha,
-            "percentage": pct,
-        })
+        classes.append(
+            {
+                "class": key,
+                "label": info["label"],
+                "color": info["color"],
+                "pixel_count": count,
+                "area_ha": area_ha,
+                "percentage": pct,
+            }
+        )
 
     return {
         "total_pixels": total_valid,
@@ -184,15 +196,20 @@ def compute_flow_acc_at_canals(
                     sample_values.append(float(val))
 
         if sample_values:
-            results.append({
-                "nombre": nombre,
-                "samples": len(sample_values),
-                "flow_acc_max": round(max(sample_values), 0),
-                "flow_acc_mean": round(sum(sample_values) / len(sample_values), 0),
-                "flow_acc_min": round(min(sample_values), 0),
-                "capacity_risk": "alto" if max(sample_values) > 5000 else
-                                 "medio" if max(sample_values) > 1000 else "bajo",
-            })
+            results.append(
+                {
+                    "nombre": nombre,
+                    "samples": len(sample_values),
+                    "flow_acc_max": round(max(sample_values), 0),
+                    "flow_acc_mean": round(sum(sample_values) / len(sample_values), 0),
+                    "flow_acc_min": round(min(sample_values), 0),
+                    "capacity_risk": "alto"
+                    if max(sample_values) > 5000
+                    else "medio"
+                    if max(sample_values) > 1000
+                    else "bajo",
+                }
+            )
 
     # Sort by max flow accumulation descending
     results.sort(key=lambda r: r["flow_acc_max"], reverse=True)

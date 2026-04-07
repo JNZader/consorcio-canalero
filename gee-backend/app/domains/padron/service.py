@@ -162,37 +162,45 @@ class PadronService:
 
                 if not payload.get("nombre") or not payload.get("apellido"):
                     skipped += 1
-                    errors.append({
-                        "row": row_number,
-                        "error": "Nombre y apellido son obligatorios",
-                    })
+                    errors.append(
+                        {
+                            "row": row_number,
+                            "error": "Nombre y apellido son obligatorios",
+                        }
+                    )
                     continue
 
                 cuit = payload.get("cuit")
                 if not cuit:
                     skipped += 1
-                    errors.append({
-                        "row": row_number,
-                        "error": "CUIT/CUIL es obligatorio",
-                    })
+                    errors.append(
+                        {
+                            "row": row_number,
+                            "error": "CUIT/CUIL es obligatorio",
+                        }
+                    )
                     continue
 
                 # Duplicate within file
                 if cuit in seen_cuits:
                     skipped += 1
-                    errors.append({
-                        "row": row_number,
-                        "error": f"CUIT {cuit} duplicado en el archivo",
-                    })
+                    errors.append(
+                        {
+                            "row": row_number,
+                            "error": f"CUIT {cuit} duplicado en el archivo",
+                        }
+                    )
                     continue
 
                 # Duplicate in DB
                 if self.repo.get_by_cuit(db, cuit) is not None:
                     skipped += 1
-                    errors.append({
-                        "row": row_number,
-                        "error": f"CUIT {cuit} ya existe en el padron",
-                    })
+                    errors.append(
+                        {
+                            "row": row_number,
+                            "error": f"CUIT {cuit} ya existe en el padron",
+                        }
+                    )
                     continue
 
                 seen_cuits.add(cuit)
@@ -316,14 +324,11 @@ class PadronService:
             return []
 
         headers = [
-            str(sheet.cell_value(0, col) or "").strip()
-            for col in range(sheet.ncols)
+            str(sheet.cell_value(0, col) or "").strip() for col in range(sheet.ncols)
         ]
         rows: list[tuple[int, dict[str, Any]]] = []
         for row_idx in range(1, sheet.nrows):
-            values = [
-                sheet.cell_value(row_idx, col) for col in range(sheet.ncols)
-            ]
+            values = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
             row_dict = {headers[idx]: value for idx, value in enumerate(values)}
             rows.append((row_idx + 1, row_dict))
         return rows

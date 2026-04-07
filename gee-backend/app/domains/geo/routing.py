@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
-def import_canals_from_geojson(db: Session, geojson_path: str, tipo: str = "canal") -> int:
+def import_canals_from_geojson(
+    db: Session, geojson_path: str, tipo: str = "canal"
+) -> int:
     """Import canal LineStrings from a GeoJSON file into canal_network table.
 
     Args:
@@ -161,21 +163,27 @@ def get_network_stats(db: Session) -> dict[str, Any]:
         text("SELECT count(*) FROM canal_network;")
     ).scalar()
 
-    stats["total_vertices"] = db.execute(
-        text("SELECT count(*) FROM canal_network_vertices_pgr;")
-    ).scalar() or 0
+    stats["total_vertices"] = (
+        db.execute(text("SELECT count(*) FROM canal_network_vertices_pgr;")).scalar()
+        or 0
+    )
 
-    stats["total_length_km"] = db.execute(
-        text("""
+    stats["total_length_km"] = (
+        db.execute(
+            text("""
             SELECT ROUND((SUM(ST_Length(ST_Transform(geom, 32720))) / 1000)::numeric, 2)
             FROM canal_network WHERE geom IS NOT NULL;
         """)
-    ).scalar() or 0
+        ).scalar()
+        or 0
+    )
 
     stats["types"] = [
         {"tipo": r[0], "count": r[1]}
         for r in db.execute(
-            text("SELECT tipo, count(*) FROM canal_network GROUP BY tipo ORDER BY count DESC;")
+            text(
+                "SELECT tipo, count(*) FROM canal_network GROUP BY tipo ORDER BY count DESC;"
+            )
         ).fetchall()
     ]
 

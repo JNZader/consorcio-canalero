@@ -53,9 +53,7 @@ class MonitoringRepository:
 
         return items, total
 
-    def create_sugerencia(
-        self, db: Session, data: SugerenciaCreate
-    ) -> Sugerencia:
+    def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
         sugerencia = Sugerencia(
             titulo=data.titulo,
             descripcion=data.descripcion,
@@ -86,9 +84,7 @@ class MonitoringRepository:
         db.flush()
         return sugerencia
 
-    def get_incorporated_channel_suggestions(
-        self, db: Session
-    ) -> list[Sugerencia]:
+    def get_incorporated_channel_suggestions(self, db: Session) -> list[Sugerencia]:
         stmt = (
             select(Sugerencia)
             .where(Sugerencia.estado == EstadoSugerencia.IMPLEMENTADA)
@@ -136,9 +132,7 @@ class MonitoringRepository:
 
     # ── ANALISIS GEE ───────────────────────────
 
-    def save_analysis(
-        self, db: Session, data: dict[str, Any]
-    ) -> AnalisisGee:
+    def save_analysis(self, db: Session, data: dict[str, Any]) -> AnalisisGee:
         """Persist a GEE analysis result."""
         analysis = AnalisisGee(
             tipo=data["tipo"],
@@ -184,14 +178,8 @@ class MonitoringRepository:
 
         return items, total
 
-    def get_latest_analyses(
-        self, db: Session, *, limit: int = 5
-    ) -> list[AnalisisGee]:
-        stmt = (
-            select(AnalisisGee)
-            .order_by(AnalisisGee.created_at.desc())
-            .limit(limit)
-        )
+    def get_latest_analyses(self, db: Session, *, limit: int = 5) -> list[AnalisisGee]:
+        stmt = select(AnalisisGee).order_by(AnalisisGee.created_at.desc()).limit(limit)
         return list(db.execute(stmt).scalars().all())
 
     # ── DASHBOARD STATS ────────────────────────
@@ -231,12 +219,12 @@ class MonitoringRepository:
         ).scalar_one()
 
         # Financial summary
-        total_gastos = (
-            db.execute(select(func.coalesce(func.sum(Gasto.monto), 0))).scalar_one()
-        )
-        total_ingresos = (
-            db.execute(select(func.coalesce(func.sum(Ingreso.monto), 0))).scalar_one()
-        )
+        total_gastos = db.execute(
+            select(func.coalesce(func.sum(Gasto.monto), 0))
+        ).scalar_one()
+        total_ingresos = db.execute(
+            select(func.coalesce(func.sum(Ingreso.monto), 0))
+        ).scalar_one()
 
         # Latest analyses
         latest = self.get_latest_analyses(db, limit=5)

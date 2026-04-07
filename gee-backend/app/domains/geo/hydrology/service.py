@@ -295,7 +295,9 @@ class FloodFlowService:
 
     # ── Zone geometry fetch ──────────────────────────────────────────────────
 
-    def _get_zona_geojson(self, db: Session, zona_id: uuid.UUID) -> Optional[dict[str, Any]]:
+    def _get_zona_geojson(
+        self, db: Session, zona_id: uuid.UUID
+    ) -> Optional[dict[str, Any]]:
         """Fetch the PostGIS geometry of a ZonaOperativa as a GeoJSON dict."""
         geojson_str = db.execute(
             select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
@@ -352,12 +354,19 @@ class FloodFlowService:
         for zona_id in zona_ids:
             zona = zona_map.get(zona_id)
             if zona is None:
-                errors.append({"zona_id": str(zona_id), "error": "Zona operativa no encontrada"})
+                errors.append(
+                    {"zona_id": str(zona_id), "error": "Zona operativa no encontrada"}
+                )
                 continue
 
             geometria = self._get_zona_geojson(db, zona_id)
             if geometria is None:
-                errors.append({"zona_id": str(zona_id), "error": "La zona no tiene geometría cargada"})
+                errors.append(
+                    {
+                        "zona_id": str(zona_id),
+                        "error": "La zona no tiene geometría cargada",
+                    }
+                )
                 continue
 
             superficie_ha = zona.superficie_ha or 1.0
@@ -415,7 +424,11 @@ class FloodFlowService:
                 except Exception as exc:
                     logger.error("flood_flow.gee_error zona=%s error=%s", zona_id, exc)
                     # GEE failed — use safe defaults so the zone is not lost
-                    gee_results[zona_id] = {"S": math.tan(math.radians(0.5)), "c_val": 0.4, "c_source": "fallback_default"}
+                    gee_results[zona_id] = {
+                        "S": math.tan(math.radians(0.5)),
+                        "c_val": 0.4,
+                        "c_source": "fallback_default",
+                    }
 
         # ── Phase C: compute + DB writes in the main thread ──────────────────
         today = date.today()
@@ -425,8 +438,14 @@ class FloodFlowService:
                 zona = db_data["zona"]
 
                 tc = kirpich_tc(db_data["L_m"], gee["S"])
-                Q = rational_method_q(gee["c_val"], db_data["intensidad_mm_h"], db_data["superficie_ha"] / 100.0)
-                nivel_riesgo, porcentaje = classify_hydraulic_risk(Q, db_data["capacidad_m3s"])
+                Q = rational_method_q(
+                    gee["c_val"],
+                    db_data["intensidad_mm_h"],
+                    db_data["superficie_ha"] / 100.0,
+                )
+                nivel_riesgo, porcentaje = classify_hydraulic_risk(
+                    Q, db_data["capacidad_m3s"]
+                )
 
                 self.repository.upsert(
                     db,
@@ -446,23 +465,30 @@ class FloodFlowService:
                     },
                 )
 
-                results.append(ZonaFloodFlowResult(
-                    zona_id=zona_id,
-                    zona_nombre=zona.nombre,
-                    tc_minutos=tc,
-                    c_escorrentia=gee["c_val"],
-                    c_source=gee["c_source"],
-                    intensidad_mm_h=db_data["intensidad_mm_h"],
-                    area_km2=db_data["superficie_ha"] / 100.0,
-                    caudal_m3s=Q,
-                    capacidad_m3s=db_data["capacidad_m3s"],
-                    porcentaje_capacidad=porcentaje,
-                    nivel_riesgo=nivel_riesgo,
-                    fecha_lluvia=fecha_lluvia,
-                    fecha_calculo=today,
-                ))
+                results.append(
+                    ZonaFloodFlowResult(
+                        zona_id=zona_id,
+                        zona_nombre=zona.nombre,
+                        tc_minutos=tc,
+                        c_escorrentia=gee["c_val"],
+                        c_source=gee["c_source"],
+                        intensidad_mm_h=db_data["intensidad_mm_h"],
+                        area_km2=db_data["superficie_ha"] / 100.0,
+                        caudal_m3s=Q,
+                        capacidad_m3s=db_data["capacidad_m3s"],
+                        porcentaje_capacidad=porcentaje,
+                        nivel_riesgo=nivel_riesgo,
+                        fecha_lluvia=fecha_lluvia,
+                        fecha_calculo=today,
+                    )
+                )
             except Exception as exc:
-                logger.error("flood_flow.compute_error zona=%s error=%s", zona_id, exc, exc_info=True)
+                logger.error(
+                    "flood_flow.compute_error zona=%s error=%s",
+                    zona_id,
+                    exc,
+                    exc_info=True,
+                )
                 errors.append({"zona_id": str(zona_id), "error": str(exc)})
 
         db.commit()

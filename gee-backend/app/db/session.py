@@ -42,7 +42,9 @@ async_engine = create_async_engine(
     max_overflow=10,
 )
 
-AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(
+    async_engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:

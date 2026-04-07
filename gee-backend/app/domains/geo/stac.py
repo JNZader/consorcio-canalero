@@ -31,13 +31,15 @@ def layer_to_stac_item(layer: GeoLayer, base_url: str = "") -> dict[str, Any]:
     if bbox and len(bbox) == 4:
         geometry = {
             "type": "Polygon",
-            "coordinates": [[
-                [bbox[0], bbox[1]],
-                [bbox[2], bbox[1]],
-                [bbox[2], bbox[3]],
-                [bbox[0], bbox[3]],
-                [bbox[0], bbox[1]],
-            ]],
+            "coordinates": [
+                [
+                    [bbox[0], bbox[1]],
+                    [bbox[2], bbox[1]],
+                    [bbox[2], bbox[3]],
+                    [bbox[0], bbox[3]],
+                    [bbox[0], bbox[1]],
+                ]
+            ],
         }
 
     properties = {
@@ -147,7 +149,9 @@ def search_catalog(
         query = query.filter(GeoLayer.created_at <= end_dt)
 
     total = query.count()
-    layers = query.order_by(GeoLayer.created_at.desc()).offset(offset).limit(limit).all()
+    layers = (
+        query.order_by(GeoLayer.created_at.desc()).offset(offset).limit(limit).all()
+    )
 
     features = [layer_to_stac_item(layer, base_url) for layer in layers]
 
@@ -172,28 +176,28 @@ def search_catalog(
 def get_collections(db: Session, base_url: str = "") -> dict[str, Any]:
     """Get STAC collections (grouped by GeoLayer type)."""
     type_counts = (
-        db.query(GeoLayer.tipo, func.count(GeoLayer.id))
-        .group_by(GeoLayer.tipo)
-        .all()
+        db.query(GeoLayer.tipo, func.count(GeoLayer.id)).group_by(GeoLayer.tipo).all()
     )
 
     collections = []
     for tipo, count in type_counts:
-        collections.append({
-            "type": "Collection",
-            "stac_version": STAC_VERSION,
-            "id": str(tipo),
-            "title": str(tipo).split(".")[-1].replace("_", " ").title(),
-            "description": f"{count} {tipo} layers",
-            "extent": {
-                "spatial": {"bbox": [[-63.0, -33.0, -62.0, -32.0]]},
-                "temporal": {"interval": [[None, None]]},
-            },
-            "links": [
-                {"rel": "items", "href": f"{base_url}/stac/search?tipo={tipo}"},
-            ],
-            "item_count": count,
-        })
+        collections.append(
+            {
+                "type": "Collection",
+                "stac_version": STAC_VERSION,
+                "id": str(tipo),
+                "title": str(tipo).split(".")[-1].replace("_", " ").title(),
+                "description": f"{count} {tipo} layers",
+                "extent": {
+                    "spatial": {"bbox": [[-63.0, -33.0, -62.0, -32.0]]},
+                    "temporal": {"interval": [[None, None]]},
+                },
+                "links": [
+                    {"rel": "items", "href": f"{base_url}/stac/search?tipo={tipo}"},
+                ],
+                "item_count": count,
+            }
+        )
 
     return {
         "collections": collections,

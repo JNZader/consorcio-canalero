@@ -21,12 +21,18 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum types
     tipo_capa = postgresql.ENUM(
-        "polygon", "line", "point", "raster", "tile",
+        "polygon",
+        "line",
+        "point",
+        "raster",
+        "tile",
         name="tipo_capa",
         create_type=False,
     )
     fuente_capa = postgresql.ENUM(
-        "local", "gee", "upload",
+        "local",
+        "gee",
+        "upload",
         name="fuente_capa",
         create_type=False,
     )

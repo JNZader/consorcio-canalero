@@ -107,9 +107,7 @@ def get_asset_history(
     service: InfraestructuraService = Depends(get_service),
 ):
     """Historial de mantenimiento de un asset."""
-    items, total = service.get_asset_history(
-        db, asset_id, page=page, limit=limit
-    )
+    items, total = service.get_asset_history(db, asset_id, page=page, limit=limit)
     return {
         "items": [MantenimientoLogResponse.model_validate(m) for m in items],
         "total": total,

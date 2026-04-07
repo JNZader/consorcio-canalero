@@ -261,15 +261,13 @@ class FinanzasRepository:
         """
         Total ingresos, total gastos, and balance for a given year.
         """
-        ingresos_stmt = (
-            select(func.coalesce(func.sum(Ingreso.monto), 0))
-            .where(extract("year", Ingreso.fecha) == year)
+        ingresos_stmt = select(func.coalesce(func.sum(Ingreso.monto), 0)).where(
+            extract("year", Ingreso.fecha) == year
         )
         total_ingresos = Decimal(str(db.execute(ingresos_stmt).scalar_one()))
 
-        gastos_stmt = (
-            select(func.coalesce(func.sum(Gasto.monto), 0))
-            .where(extract("year", Gasto.fecha) == year)
+        gastos_stmt = select(func.coalesce(func.sum(Gasto.monto), 0)).where(
+            extract("year", Gasto.fecha) == year
         )
         total_gastos = Decimal(str(db.execute(gastos_stmt).scalar_one()))
 

@@ -20,34 +20,84 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "flood_events",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("event_date", sa.Date(), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True, comment="Optional notes about this event"),
+        sa.Column(
+            "description",
+            sa.Text(),
+            nullable=True,
+            comment="Optional notes about this event",
+        ),
         sa.Column(
             "satellite_source",
             sa.String(100),
             nullable=False,
             server_default="COPERNICUS/S2_SR_HARMONIZED",
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
     )
 
     op.create_table(
         "flood_labels",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("event_id", UUID(as_uuid=True), sa.ForeignKey("flood_events.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("zona_id", UUID(as_uuid=True), sa.ForeignKey("zonas_operativas.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "id",
+            UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "event_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("flood_events.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "zona_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("zonas_operativas.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("is_flooded", sa.Boolean(), nullable=False),
-        sa.Column("ndwi_value", sa.Float(), nullable=True, comment="NDWI value at event date for this zone"),
+        sa.Column(
+            "ndwi_value",
+            sa.Float(),
+            nullable=True,
+            comment="NDWI value at event date for this zone",
+        ),
         sa.Column(
             "extracted_features",
             JSON,
             nullable=True,
             comment="DEM-based features: {hand_mean, twi_mean, slope_mean, flow_acc_mean}",
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.UniqueConstraint("event_id", "zona_id", name="uq_flood_label_event_zona"),
     )
 

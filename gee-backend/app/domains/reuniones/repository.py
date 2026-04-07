@@ -28,9 +28,7 @@ class ReunionRepository:
         stmt = (
             select(Reunion)
             .options(
-                selectinload(Reunion.agenda_items).selectinload(
-                    AgendaItem.referencias
-                )
+                selectinload(Reunion.agenda_items).selectinload(AgendaItem.referencias)
             )
             .where(Reunion.id == reunion_id)
         )
@@ -126,9 +124,7 @@ class AgendaItemRepository:
 
     # ── READ ──────────────────────────────────
 
-    def get_by_id(
-        self, db: Session, item_id: uuid.UUID
-    ) -> Optional[AgendaItem]:
+    def get_by_id(self, db: Session, item_id: uuid.UUID) -> Optional[AgendaItem]:
         """Return a single agenda item with referencias, or None."""
         stmt = (
             select(AgendaItem)
@@ -137,9 +133,7 @@ class AgendaItemRepository:
         )
         return db.execute(stmt).scalar_one_or_none()
 
-    def get_by_reunion_id(
-        self, db: Session, reunion_id: uuid.UUID
-    ) -> list[AgendaItem]:
+    def get_by_reunion_id(self, db: Session, reunion_id: uuid.UUID) -> list[AgendaItem]:
         """Return all agenda items for a reunion, ordered by orden."""
         stmt = (
             select(AgendaItem)

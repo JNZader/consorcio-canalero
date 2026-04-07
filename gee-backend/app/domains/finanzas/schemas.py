@@ -31,7 +31,9 @@ class GastoUpdate(BaseModel):
     """Partial update for a gasto."""
 
     descripcion: Optional[str] = Field(default=None, min_length=3, max_length=2000)
-    monto: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    monto: Optional[Decimal] = Field(
+        default=None, gt=0, max_digits=12, decimal_places=2
+    )
     categoria: Optional[str] = None
     fecha: Optional[date] = None
     comprobante_url: Optional[str] = None
@@ -92,7 +94,9 @@ class IngresoUpdate(BaseModel):
     """Partial update for an ingreso."""
 
     descripcion: Optional[str] = Field(default=None, min_length=3, max_length=2000)
-    monto: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    monto: Optional[Decimal] = Field(
+        default=None, gt=0, max_digits=12, decimal_places=2
+    )
     categoria: Optional[str] = None
     fecha: Optional[date] = None
     consorcista_id: Optional[uuid.UUID] = None

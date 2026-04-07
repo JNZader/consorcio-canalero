@@ -55,9 +55,7 @@ class GeoRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(GeoJob.created_at.desc()).offset(offset).limit(limit)
-        )
+        items_stmt = base.order_by(GeoJob.created_at.desc()).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -115,9 +113,7 @@ class GeoRepository:
 
     # ── LAYER READ ───────────────────────────────
 
-    def get_layer_by_id(
-        self, db: Session, layer_id: uuid.UUID
-    ) -> Optional[GeoLayer]:
+    def get_layer_by_id(self, db: Session, layer_id: uuid.UUID) -> Optional[GeoLayer]:
         """Return a single geo layer, or None."""
         stmt = select(GeoLayer).where(GeoLayer.id == layer_id)
         return db.execute(stmt).scalar_one_or_none()
@@ -215,9 +211,7 @@ class GeoRepository:
         Otherwise create a new record.
         """
         existing = (
-            self.get_layer_by_tipo_and_area(db, tipo, area_id)
-            if area_id
-            else None
+            self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
         )
         if existing:
             existing.nombre = nombre
@@ -282,7 +276,9 @@ class GeoRepository:
             stmt = stmt.where(GeoApprovedZoning.cuenca.is_(None))
         else:
             stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
-        stmt = stmt.order_by(GeoApprovedZoning.version.desc(), GeoApprovedZoning.approved_at.desc()).limit(limit)
+        stmt = stmt.order_by(
+            GeoApprovedZoning.version.desc(), GeoApprovedZoning.approved_at.desc()
+        ).limit(limit)
         return list(db.execute(stmt).scalars().all())
 
     def get_approved_zoning_by_id(
@@ -393,9 +389,7 @@ class GeoRepository:
 
         offset = (page - 1) * limit
         items_stmt = (
-            base.order_by(AnalisisGeo.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+            base.order_by(AnalisisGeo.created_at.desc()).offset(offset).limit(limit)
         )
         items = list(db.execute(items_stmt).scalars().all())
 
@@ -526,9 +520,7 @@ class GeoRepository:
         db.flush()
         return event
 
-    def delete_flood_event(
-        self, db: Session, event_id: uuid.UUID
-    ) -> bool:
+    def delete_flood_event(self, db: Session, event_id: uuid.UUID) -> bool:
         """Delete a flood event and its labels (cascade). Returns True if found."""
         event = self.get_flood_event_by_id(db, event_id)
         if event is None:
@@ -640,9 +632,7 @@ class GeoRepository:
                         import numpy as np
 
                         raw_max = s.get("max", 0) or 0
-                        features["flow_acc_log_max"] = float(
-                            np.log1p(raw_max)
-                        )
+                        features["flow_acc_log_max"] = float(np.log1p(raw_max))
             except Exception:
                 logger.warning(
                     "extract_zone_features: failed raster stats for %s/%s",
@@ -666,9 +656,7 @@ class GeoRepository:
                     days_window=15,
                 )
                 if result.get("status") == "success":
-                    features["water_pct_current"] = result["area"].get(
-                        "water_pct", 0
-                    )
+                    features["water_pct_current"] = result["area"].get("water_pct", 0)
             except Exception:
                 logger.warning(
                     "extract_zone_features: water detection failed for %s",
@@ -740,9 +728,7 @@ class GeoRepository:
         if source is not None:
             # Simple filter — no deduplication needed
             return (
-                select(RainfallRecord)
-                .where(RainfallRecord.source == source)
-                .subquery()
+                select(RainfallRecord).where(RainfallRecord.source == source).subquery()
             )
 
         # DISTINCT ON keeps one row per (zona_id, date), ordered so IMERG wins
@@ -837,24 +823,19 @@ class GeoRepository:
             inner = inner.where(RainfallRecord.source == source)
 
         if zona_operativa_id is not None:
-            inner = inner.where(
-                RainfallRecord.zona_operativa_id == zona_operativa_id
-            )
+            inner = inner.where(RainfallRecord.zona_operativa_id == zona_operativa_id)
 
         sub = inner.subquery()
 
-        stmt = (
-            select(
-                sub.c.zona_operativa_id,
-                func.sum(sub.c.precipitation_mm).label("total_mm"),
-                func.avg(sub.c.precipitation_mm).label("avg_mm"),
-                func.max(sub.c.precipitation_mm).label("max_mm"),
-                func.count(
-                    func.nullif(sub.c.precipitation_mm > 0, False)
-                ).label("rainy_days"),
-            )
-            .group_by(sub.c.zona_operativa_id)
-        )
+        stmt = select(
+            sub.c.zona_operativa_id,
+            func.sum(sub.c.precipitation_mm).label("total_mm"),
+            func.avg(sub.c.precipitation_mm).label("avg_mm"),
+            func.max(sub.c.precipitation_mm).label("max_mm"),
+            func.count(func.nullif(sub.c.precipitation_mm > 0, False)).label(
+                "rainy_days"
+            ),
+        ).group_by(sub.c.zona_operativa_id)
 
         rows = db.execute(stmt).all()
         return [
@@ -920,7 +901,10 @@ class GeoRepository:
 
         rows = db.execute(stmt).all()
         return [
-            {"date": row.date.isoformat(), "precipitation_mm": round(float(row.max_mm or 0), 2)}
+            {
+                "date": row.date.isoformat(),
+                "precipitation_mm": round(float(row.max_mm or 0), 2),
+            }
             for row in rows
         ]
 

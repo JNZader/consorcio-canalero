@@ -52,6 +52,7 @@ export const queryKeys = {
   caminosColoreados: () => ['caminos-coloreados'] as const,
   publicLayers: () => ['public-layers'] as const,
   infrastructure: () => ['infrastructure'] as const,
+  martinCatalog: () => ['martin-catalog'] as const,
 } as const;
 
 // ===========================================

@@ -15,7 +15,9 @@ class PadronRepository:
 
     # ── READ ──────────────────────────────────
 
-    def get_by_id(self, db: Session, consorcista_id: uuid.UUID) -> Optional[Consorcista]:
+    def get_by_id(
+        self, db: Session, consorcista_id: uuid.UUID
+    ) -> Optional[Consorcista]:
         """Return a single consorcista, or None."""
         stmt = select(Consorcista).where(Consorcista.id == consorcista_id)
         return db.execute(stmt).scalar_one_or_none()
@@ -148,8 +150,7 @@ class PadronRepository:
         """Aggregate counts by estado, by categoria, and total hectareas."""
         # By estado
         estado_rows = db.execute(
-            select(Consorcista.estado, func.count())
-            .group_by(Consorcista.estado)
+            select(Consorcista.estado, func.count()).group_by(Consorcista.estado)
         ).all()
         por_estado = {row[0]: row[1] for row in estado_rows}
 
@@ -164,11 +165,9 @@ class PadronRepository:
         total = sum(por_estado.values())
 
         # Total hectareas
-        total_hectareas: float = (
-            db.execute(
-                select(func.coalesce(func.sum(Consorcista.hectareas), 0.0))
-            ).scalar_one()
-        )
+        total_hectareas: float = db.execute(
+            select(func.coalesce(func.sum(Consorcista.hectareas), 0.0))
+        ).scalar_one()
 
         return {
             "total": total,

@@ -81,7 +81,8 @@ def task_calculate_hci_all_zones(
                 )
 
                 result = deps["intel_service"].calculate_hci_for_zone(
-                    db, zona.id,
+                    db,
+                    zona.id,
                     pendiente_media=zona_stats["pendiente_media"],
                     acumulacion_media=zona_stats["acumulacion_media"],
                     twi_medio=zona_stats["twi_medio"],
@@ -215,7 +216,10 @@ def task_detect_all_conflicts(buffer_m: float = 50.0) -> dict:
             db, tipo_filter=deps["TipoGeoLayer"].SLOPE, page=1, limit=1
         )
         if not flow_acc_layers or not slope_layers:
-            return {"status": "skipped", "reason": "No flow_acc or slope layers available"}
+            return {
+                "status": "skipped",
+                "reason": "No flow_acc or slope layers available",
+            }
 
         flow_acc_path = flow_acc_layers[0].archivo_path
         slope_path = slope_layers[0].archivo_path
@@ -308,9 +312,7 @@ def _load_caminos_from_gee() -> "gpd.GeoDataFrame":
 
         geojson = get_layer_geojson("caminos")
         if geojson and geojson.get("features"):
-            return gpd.GeoDataFrame.from_features(
-                geojson["features"], crs="EPSG:4326"
-            )
+            return gpd.GeoDataFrame.from_features(geojson["features"], crs="EPSG:4326")
     except ImportError:
         logger.warning("conflicts.gee_not_available")
     except Exception:
@@ -349,15 +351,23 @@ def task_generate_zonification(dem_layer_id: str, threshold: int = 2000) -> dict
         if layer is None:
             return {"status": "failed", "error": f"DEM layer {dem_layer_id} not found"}
         flow_acc_layers, _ = deps["geo_repo"].get_layers(
-            db, tipo_filter=deps["TipoGeoLayer"].FLOW_ACC,
-            area_id_filter=layer.area_id, page=1, limit=1,
+            db,
+            tipo_filter=deps["TipoGeoLayer"].FLOW_ACC,
+            area_id_filter=layer.area_id,
+            page=1,
+            limit=1,
         )
         if not flow_acc_layers:
-            return {"status": "failed", "error": "No flow_acc layer available for this area"}
+            return {
+                "status": "failed",
+                "error": "No flow_acc layer available for this area",
+            }
         result = deps["intel_service"].generate_zones(
-            db, dem_path=layer.archivo_path,
+            db,
+            dem_path=layer.archivo_path,
             flow_acc_path=flow_acc_layers[0].archivo_path,
-            cuenca=layer.area_id or "default", threshold=threshold,
+            cuenca=layer.area_id or "default",
+            threshold=threshold,
         )
         logger.info("zonification.done", zonas=result["zonas_creadas"])
         return {"status": "completed", **result}

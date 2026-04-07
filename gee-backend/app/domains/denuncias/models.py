@@ -58,16 +58,16 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
     )
     cuenca: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoDenuncia, name="estado_denuncia", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            EstadoDenuncia,
+            name="estado_denuncia",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=EstadoDenuncia.PENDIENTE,
     )
-    contacto_telefono: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True
-    )
-    contacto_email: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
+    contacto_telefono: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    contacto_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -115,6 +115,5 @@ class DenunciaHistorial(UUIDMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<DenunciaHistorial {self.id} "
-            f"{self.estado_anterior}->{self.estado_nuevo}>"
+            f"<DenunciaHistorial {self.id} {self.estado_anterior}->{self.estado_nuevo}>"
         )

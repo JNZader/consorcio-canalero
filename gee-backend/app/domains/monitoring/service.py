@@ -19,11 +19,13 @@ class MonitoringService:
 
     _BACKEND_WATERWAYS_CANDIDATES = (
         Path("/app/data/waterways/canales_existentes.geojson"),
-        Path(__file__).resolve().parents[4] / "gee-backend/data/waterways/canales_existentes.geojson",
+        Path(__file__).resolve().parents[4]
+        / "gee-backend/data/waterways/canales_existentes.geojson",
     )
     _FRONTEND_WATERWAYS_CANDIDATES = (
         Path("/app/public/waterways/canales_existentes.geojson"),
-        Path(__file__).resolve().parents[4] / "consorcio-web/public/waterways/canales_existentes.geojson",
+        Path(__file__).resolve().parents[4]
+        / "consorcio-web/public/waterways/canales_existentes.geojson",
     )
 
     def __init__(self, repository: MonitoringRepository | None = None) -> None:
@@ -107,11 +109,15 @@ class MonitoringService:
         )
 
         if not already_present:
-            existing_features.extend(self._build_channel_features_from_sugerencia(sugerencia))
+            existing_features.extend(
+                self._build_channel_features_from_sugerencia(sugerencia)
+            )
             payload["features"] = existing_features
             self._write_feature_collection(backend_path, payload)
 
-            frontend_path = self._resolve_existing_path(self._FRONTEND_WATERWAYS_CANDIDATES)
+            frontend_path = self._resolve_existing_path(
+                self._FRONTEND_WATERWAYS_CANDIDATES
+            )
             if frontend_path is not None:
                 self._write_feature_collection(frontend_path, payload)
 
@@ -152,9 +158,7 @@ class MonitoringService:
             categoria_filter=categoria,
         )
 
-    def create_sugerencia(
-        self, db: Session, data: SugerenciaCreate
-    ) -> Sugerencia:
+    def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
         sugerencia = self.repo.create_sugerencia(db, data)
         db.commit()
         db.refresh(sugerencia)
@@ -252,9 +256,7 @@ class MonitoringService:
             db, page=page, limit=limit, tipo_filter=tipo
         )
 
-    def save_analysis(
-        self, db: Session, data: dict[str, Any]
-    ) -> AnalisisGee:
+    def save_analysis(self, db: Session, data: dict[str, Any]) -> AnalisisGee:
         analysis = self.repo.save_analysis(db, data)
         db.commit()
         db.refresh(analysis)

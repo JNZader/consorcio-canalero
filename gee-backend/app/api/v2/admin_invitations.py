@@ -75,9 +75,7 @@ async def invite_users(
         email_lower = invitation.email.lower()
 
         # Check if already registered
-        existing_user = await db.execute(
-            select(User).where(User.email == email_lower)
-        )
+        existing_user = await db.execute(select(User).where(User.email == email_lower))
         if existing_user.scalar_one_or_none() is not None:
             results.append(
                 InvitationResult(
@@ -132,9 +130,7 @@ async def list_invitations(
         .where(PreAuthorizedEmail.claimed == False)  # noqa: E712
         .order_by(PreAuthorizedEmail.created_at.desc())
     )
-    return [
-        InvitationRead.model_validate(row) for row in result.scalars().all()
-    ]
+    return [InvitationRead.model_validate(row) for row in result.scalars().all()]
 
 
 @router.delete("/{email}", response_model=RevokeResponse)

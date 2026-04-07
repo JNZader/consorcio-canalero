@@ -29,7 +29,11 @@ class SystemSettings(UUIDMixin, TimestampMixin, Base):
     )
     valor: Mapped[Any] = mapped_column(JSONB, nullable=False)
     categoria: Mapped[str] = mapped_column(
-        Enum(CategoriaSettings, name="categoria_settings", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            CategoriaSettings,
+            name="categoria_settings",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     descripcion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

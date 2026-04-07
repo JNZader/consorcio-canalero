@@ -41,8 +41,7 @@ class WaterSegmentationStrategy(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
     @property
     def requires_model(self) -> bool:
@@ -78,6 +77,7 @@ class NDWIStrategy(WaterSegmentationStrategy):
         # Morphological cleanup: remove small isolated pixels
         try:
             from scipy.ndimage import binary_opening, binary_closing, label
+
             struct = np.ones((3, 3))
             mask = binary_opening(mask, structure=struct).astype(np.uint8)
             mask = binary_closing(mask, structure=struct).astype(np.uint8)
@@ -131,8 +131,8 @@ class UNetStrategy(WaterSegmentationStrategy):
         self._model = smp.Unet(
             encoder_name="resnet34",
             encoder_weights=None,  # We load our own weights
-            in_channels=4,         # B2(blue), B3(green), B4(red), B8(nir)
-            classes=1,             # Binary: water/not-water
+            in_channels=4,  # B2(blue), B3(green), B4(red), B8(nir)
+            classes=1,  # Binary: water/not-water
             activation="sigmoid",
         )
 
@@ -167,14 +167,16 @@ class UNetStrategy(WaterSegmentationStrategy):
             return NDWIStrategy().segment(bands, profile)
 
         stack = np.stack([bands[b] for b in band_order], axis=0)  # (4, H, W)
-        tensor = torch.from_numpy(stack).unsqueeze(0).float()     # (1, 4, H, W)
+        tensor = torch.from_numpy(stack).unsqueeze(0).float()  # (1, 4, H, W)
 
         # Pad to multiple of 32 (U-Net requirement)
         h, w = stack.shape[1], stack.shape[2]
         pad_h = (32 - h % 32) % 32
         pad_w = (32 - w % 32) % 32
         if pad_h > 0 or pad_w > 0:
-            tensor = torch.nn.functional.pad(tensor, (0, pad_w, 0, pad_h), mode="reflect")
+            tensor = torch.nn.functional.pad(
+                tensor, (0, pad_w, 0, pad_h), mode="reflect"
+            )
 
         with torch.no_grad():
             output = self._model(tensor)  # (1, 1, H+pad, W+pad)
@@ -197,7 +199,9 @@ def get_strategy(name: str = "ndwi") -> WaterSegmentationStrategy:
     }
     cls = strategies.get(name)
     if cls is None:
-        raise ValueError(f"Unknown strategy: {name}. Available: {list(strategies.keys())}")
+        raise ValueError(
+            f"Unknown strategy: {name}. Available: {list(strategies.keys())}"
+        )
     return cls()
 
 
@@ -252,15 +256,19 @@ def segment_raster(
     water_pixels = int(np.sum(mask == 1))
     total_pixels = int(mask.size)
     cell_size = abs(profile["transform"].a)
-    water_area_ha = (water_pixels * cell_size ** 2) / 10_000
+    water_area_ha = (water_pixels * cell_size**2) / 10_000
 
     return {
         "strategy": strategy.name,
-        "model_available": strategy.model_available if hasattr(strategy, "model_available") else True,
+        "model_available": strategy.model_available
+        if hasattr(strategy, "model_available")
+        else True,
         "output_path": output_path,
         "water_pixels": water_pixels,
         "total_pixels": total_pixels,
-        "water_pct": round((water_pixels / total_pixels) * 100, 2) if total_pixels > 0 else 0,
+        "water_pct": round((water_pixels / total_pixels) * 100, 2)
+        if total_pixels > 0
+        else 0,
         "water_area_ha": round(water_area_ha, 2),
     }
 
@@ -284,13 +292,15 @@ def vectorize_water_mask(
     for geom, value in rasterio_shapes(mask, mask=(mask == 1), transform=transform):
         if value == 1:
             area = shape(geom).area
-            features.append({
-                "type": "Feature",
-                "geometry": geom,
-                "properties": {
-                    "class": "water",
-                    "area_m2": round(area, 2),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {
+                        "class": "water",
+                        "area_m2": round(area, 2),
+                    },
+                }
+            )
 
     return features

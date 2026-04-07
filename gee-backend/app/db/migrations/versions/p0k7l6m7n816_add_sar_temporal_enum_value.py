@@ -18,9 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TYPE tipo_analisis_geo ADD VALUE IF NOT EXISTS 'sar_temporal'"
-    )
+    op.execute("ALTER TYPE tipo_analisis_geo ADD VALUE IF NOT EXISTS 'sar_temporal'")
 
 
 def downgrade() -> None:

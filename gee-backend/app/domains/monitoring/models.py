@@ -48,19 +48,17 @@ class Sugerencia(UUIDMixin, TimestampMixin, Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     categoria: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     estado: Mapped[str] = mapped_column(
-        Enum(EstadoSugerencia, name="estado_sugerencia", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            EstadoSugerencia,
+            name="estado_sugerencia",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=EstadoSugerencia.PENDIENTE,
     )
-    contacto_email: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
-    contacto_nombre: Mapped[Optional[str]] = mapped_column(
-        String(200), nullable=True
-    )
-    geometry: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSON, nullable=True
-    )
+    contacto_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contacto_nombre: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    geometry: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     respuesta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -81,7 +79,11 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "analisis_gee"
 
     tipo: Mapped[str] = mapped_column(
-        Enum(TipoAnalisis, name="tipo_analisis", values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            TipoAnalisis,
+            name="tipo_analisis",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
@@ -89,12 +91,8 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     resultados: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
-    hectareas_afectadas: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    porcentaje_area: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    hectareas_afectadas: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    porcentaje_area: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     parametros: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )

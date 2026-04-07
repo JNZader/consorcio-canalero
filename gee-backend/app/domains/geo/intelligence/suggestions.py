@@ -94,9 +94,7 @@ def run_full_analysis(db: Session) -> dict[str, Any]:
             )
             for g in gap_results:
                 score = _gap_severity_to_score(g.get("severity", "moderado"))
-                all_suggestions.append(
-                    _to_suggestion(batch_id, "gap", score, g)
-                )
+                all_suggestions.append(_to_suggestion(batch_id, "gap", score, g))
             logger.info("suggestions.gaps", count=len(gap_results))
         except Exception:
             logger.error("suggestions.gaps_failed", exc_info=True)
@@ -267,9 +265,7 @@ def _load_canal_geometries(db: Session) -> list[dict]:
         ).fetchall()
 
         return [
-            {"id": r.id, "geometry": r.geometry}
-            for r in rows
-            if r.geometry is not None
+            {"id": r.id, "geometry": r.geometry} for r in rows if r.geometry is not None
         ]
     except Exception:
         logger.warning("suggestions.canal_geom_load_failed", exc_info=True)
@@ -284,12 +280,14 @@ def _load_zones(db: Session, intel_repo: IntelligenceRepository) -> list[dict]:
         for z in zonas:
             try:
                 geom = to_shape(z.geometria)
-                result.append({
-                    "id": str(z.id),
-                    "geometry": shapely_mapping(geom),
-                    "nombre": z.nombre,
-                    "cuenca": z.cuenca,
-                })
+                result.append(
+                    {
+                        "id": str(z.id),
+                        "geometry": shapely_mapping(geom),
+                        "nombre": z.nombre,
+                        "cuenca": z.cuenca,
+                    }
+                )
             except Exception:
                 continue
         return result
@@ -316,13 +314,10 @@ def _load_hci_scores(
             .group_by(IndiceHidrico.zona_id)
             .subquery()
         )
-        stmt = (
-            select(IndiceHidrico.zona_id, IndiceHidrico.indice_final)
-            .join(
-                latest,
-                (IndiceHidrico.zona_id == latest.c.zona_id)
-                & (IndiceHidrico.fecha_calculo == latest.c.max_fecha),
-            )
+        stmt = select(IndiceHidrico.zona_id, IndiceHidrico.indice_final).join(
+            latest,
+            (IndiceHidrico.zona_id == latest.c.zona_id)
+            & (IndiceHidrico.fecha_calculo == latest.c.max_fecha),
         )
         rows = db.execute(stmt).all()
         return {str(r.zona_id): float(r.indice_final) for r in rows}

@@ -21,12 +21,17 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create enum types
     tipo_reunion = postgresql.ENUM(
-        "ordinaria", "extraordinaria", "urgente",
+        "ordinaria",
+        "extraordinaria",
+        "urgente",
         name="tipo_reunion",
         create_type=False,
     )
     estado_reunion = postgresql.ENUM(
-        "planificada", "en_curso", "finalizada", "cancelada",
+        "planificada",
+        "en_curso",
+        "finalizada",
+        "cancelada",
         name="estado_reunion",
         create_type=False,
     )
@@ -58,7 +63,9 @@ def upgrade() -> None:
         ),
         sa.Column("descripcion", sa.Text, nullable=True),
         sa.Column("tipo", tipo_reunion, nullable=False, server_default="ordinaria"),
-        sa.Column("estado", estado_reunion, nullable=False, server_default="planificada"),
+        sa.Column(
+            "estado", estado_reunion, nullable=False, server_default="planificada"
+        ),
         sa.Column(
             "orden_del_dia_items",
             postgresql.JSON,

@@ -82,9 +82,7 @@ def analyze_flood_task(
 
     # Mark as running
     if analisis_id:
-        repo.update_analisis_status(
-            db, uuid.UUID(analisis_id), estado=Estado.RUNNING
-        )
+        repo.update_analisis_status(db, uuid.UUID(analisis_id), estado=Estado.RUNNING)
         db.commit()
 
     try:
@@ -119,9 +117,7 @@ def analyze_flood_task(
                 max_cloud=60,
                 visualization="ndwi",
             )
-            resultado["ndwi"] = {
-                k: v for k, v in ndwi_result.items() if k != "error"
-            }
+            resultado["ndwi"] = {k: v for k, v in ndwi_result.items() if k != "error"}
 
         # SAR-based water detection
         if method in ("fusion", "sar_only"):
@@ -130,9 +126,7 @@ def analyze_flood_task(
                 days_buffer=(end_date - start_date).days or 10,
                 visualization="vv_flood",
             )
-            resultado["sar"] = {
-                k: v for k, v in sar_result.items() if k != "error"
-            }
+            resultado["sar"] = {k: v for k, v in sar_result.items() if k != "error"}
             if "error" in sar_result:
                 resultado["sar"]["warning"] = sar_result["error"]
 
@@ -220,9 +214,7 @@ def supervised_classification_task(
 
     # Mark as running
     if analisis_id:
-        repo.update_analisis_status(
-            db, uuid.UUID(analisis_id), estado=Estado.RUNNING
-        )
+        repo.update_analisis_status(db, uuid.UUID(analisis_id), estado=Estado.RUNNING)
         db.commit()
 
     try:
@@ -243,9 +235,7 @@ def supervised_classification_task(
             max_cloud=60,
             visualization="ndvi",
         )
-        resultado["ndvi"] = {
-            k: v for k, v in ndvi_result.items() if k != "error"
-        }
+        resultado["ndvi"] = {k: v for k, v in ndvi_result.items() if k != "error"}
         if "error" in ndvi_result:
             resultado["ndvi"]["warning"] = ndvi_result["error"]
 
@@ -256,9 +246,7 @@ def supervised_classification_task(
             max_cloud=60,
             visualization="rgb",
         )
-        resultado["rgb"] = {
-            k: v for k, v in rgb_result.items() if k != "error"
-        }
+        resultado["rgb"] = {k: v for k, v in rgb_result.items() if k != "error"}
 
         # Get agriculture visualization
         agri_result = explorer.get_sentinel2_image(
@@ -278,9 +266,7 @@ def supervised_classification_task(
             max_cloud=60,
             visualization="falso_color",
         )
-        resultado["falso_color"] = {
-            k: v for k, v in fc_result.items() if k != "error"
-        }
+        resultado["falso_color"] = {k: v for k, v in fc_result.items() if k != "error"}
 
         # ── Pixel-level classification via GEE reduceRegion ──
         # Uses NDVI + NDWI thresholds to classify land cover and compute
@@ -291,9 +277,7 @@ def supervised_classification_task(
             days_buf = (end_date - start_date).days or 10
             use_toa = start_date.year < 2019
             collection_name = (
-                "COPERNICUS/S2_HARMONIZED"
-                if use_toa
-                else "COPERNICUS/S2_SR_HARMONIZED"
+                "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
             )
             zona = explorer.zona
 
@@ -301,8 +285,12 @@ def supervised_classification_task(
                 ee.ImageCollection(collection_name)
                 .filterBounds(zona)
                 .filterDate(
-                    (start_date - __import__("datetime").timedelta(days=days_buf)).isoformat(),
-                    (start_date + __import__("datetime").timedelta(days=days_buf)).isoformat(),
+                    (
+                        start_date - __import__("datetime").timedelta(days=days_buf)
+                    ).isoformat(),
+                    (
+                        start_date + __import__("datetime").timedelta(days=days_buf)
+                    ).isoformat(),
                 )
                 .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 60))
             )
@@ -361,7 +349,11 @@ def supervised_classification_task(
                 # Compute percentages
                 classification_stats = {}
                 for class_name, px_count in pixel_counts.items():
-                    pct = round((px_count / total_pixels) * 100.0, 2) if total_pixels > 0 else 0.0
+                    pct = (
+                        round((px_count / total_pixels) * 100.0, 2)
+                        if total_pixels > 0
+                        else 0.0
+                    )
                     classification_stats[class_name] = {
                         "pixeles": px_count,
                         "porcentaje": pct,
@@ -510,9 +502,7 @@ def sar_temporal_task(
 
     # Mark as running
     if analisis_id:
-        repo.update_analisis_status(
-            db, uuid.UUID(analisis_id), estado=Estado.RUNNING
-        )
+        repo.update_analisis_status(db, uuid.UUID(analisis_id), estado=Estado.RUNNING)
         db.commit()
 
     try:

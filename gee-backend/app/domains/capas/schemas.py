@@ -33,12 +33,8 @@ class CapaCreate(BaseModel):
 
     nombre: str = Field(..., min_length=1, max_length=200)
     descripcion: Optional[str] = None
-    tipo: str = Field(
-        ..., description="polygon | line | point | raster | tile"
-    )
-    fuente: str = Field(
-        ..., description="local | gee | upload"
-    )
+    tipo: str = Field(..., description="polygon | line | point | raster | tile")
+    fuente: str = Field(..., description="local | gee | upload")
     url: Optional[str] = Field(
         default=None, max_length=1000, description="URL for external tile/raster layers"
     )

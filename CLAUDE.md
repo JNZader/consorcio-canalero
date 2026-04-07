@@ -32,6 +32,7 @@ consorcio-canalero/
 │   │   │   ├── denuncias/      # Citizen reports
 │   │   │   ├── finanzas/       # Finance (ingresos, gastos, presupuestos)
 │   │   │   ├── geo/            # Geo processing + GEE + intelligence
+│   │   │   │   └── hydrology/  # Flood flow estimation (Kirpich + Método Racional)
 │   │   │   ├── infraestructura/# Assets + maintenance logs
 │   │   │   ├── monitoring/     # Sugerencias + GEE analysis tracking
 │   │   │   ├── padron/         # Consorcista registry
@@ -61,6 +62,12 @@ domain/
 ```
 
 Base classes: `UUIDMixin`, `TimestampMixin`, `Base` from `app.db.base`.
+
+**Geo subdomain — hydrology/**
+Nested under `geo/`, the `hydrology/` subdomain handles quantitative peak flow
+estimation (Kirpich + Método Racional) for storm event dates. Distinct from:
+- `geo/hydrology.py` (TWI — static terrain property, no storm modelling)
+- `ml/flood_prediction.py` (U-Net pixel-level flood detection post-event)
 
 ---
 
@@ -200,5 +207,5 @@ Pattern: real database, transaction-per-test, no mocking for data access.
 
 ---
 
-Last updated: 2026-03-24
+Last updated: 2026-04-05
 Maintained by: @javier
