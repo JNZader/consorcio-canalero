@@ -20,3 +20,5 @@ export {
   type ContactVerificationActions,
   type UseContactVerificationReturn,
 } from './useContactVerification';
+
+export { useMartinCatalog, type MartinCatalogItem } from './useMartinCatalog';

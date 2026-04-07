@@ -101,3 +101,8 @@ export { default as IconChevronDown } from '@tabler/icons-react/dist/esm/icons/I
 export { default as IconChevronUp } from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
 export { default as IconCalculator } from '@tabler/icons-react/dist/esm/icons/IconCalculator.mjs';
 export { default as IconChartHistogram } from '@tabler/icons-react/dist/esm/icons/IconChartHistogram.mjs';
+
+// Martin Catalog icons
+export { default as IconCopy } from '@tabler/icons-react/dist/esm/icons/IconCopy.mjs';
+export { default as IconClipboardCheck } from '@tabler/icons-react/dist/esm/icons/IconClipboardCheck.mjs';
+export { default as IconMapSearch } from '@tabler/icons-react/dist/esm/icons/IconMapSearch.mjs';
