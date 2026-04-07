@@ -45,7 +45,9 @@ def _get_wbt() -> WhiteboxTools:
 # ---------------------------------------------------------------------------
 
 
-def ensure_nodata(dem_path: str, output_path: str, nodata_value: float = -32768.0) -> str:
+def ensure_nodata(
+    dem_path: str, output_path: str, nodata_value: float = -32768.0
+) -> str:
     """Ensure the DEM has an explicit nodata value set in metadata.
 
     GEE exports DEMs without nodata metadata. WhiteboxTools assumes -32768
@@ -161,14 +163,10 @@ def clip_to_geometry(
             from pyproj import Transformer
             from shapely.ops import transform as shapely_transform
 
-            transformer = Transformer.from_crs(
-                geometry_crs, dem_crs, always_xy=True
-            )
+            transformer = Transformer.from_crs(geometry_crs, dem_crs, always_xy=True)
             clip_geom = shapely_transform(transformer.transform, clip_geom)
 
-        out_image, out_transform = rasterio_mask(
-            src, [mapping(clip_geom)], crop=True
-        )
+        out_image, out_transform = rasterio_mask(src, [mapping(clip_geom)], crop=True)
         profile = src.profile.copy()
         profile.update(
             height=out_image.shape[1],
@@ -206,9 +204,7 @@ def clip_dem(
     geom = box(*bbox)
 
     with rasterio.open(dem_path) as src:
-        out_image, out_transform = rasterio_mask(
-            src, [mapping(geom)], crop=True
-        )
+        out_image, out_transform = rasterio_mask(src, [mapping(geom)], crop=True)
         out_meta = src.meta.copy()
         out_meta.update(
             {
@@ -223,6 +219,52 @@ def clip_dem(
     with rasterio.open(output_path, "w", **out_meta) as dst:
         dst.write(out_image)
 
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# b0) Remove off-terrain objects (trees, buildings)
+# ---------------------------------------------------------------------------
+
+
+def remove_off_terrain_objects(
+    dem_path: str,
+    output_path: str,
+    filter_size: int = 7,
+    slope_threshold: float = 5.0,
+) -> str:
+    """Remove vegetation and building artifacts from a DSM using WhiteboxTools.
+
+    Copernicus GLO-30 is a DSM — trees and buildings appear as raised spikes.
+    This step produces a pseudo-DTM by applying a morphological filter that
+    removes upward protrusions smaller than filter_size × pixel_resolution.
+
+    For Copernicus 30m over flat terrain (e.g. Córdoba irrigation zones):
+      - filter_size=7 → 210m search window — catches isolated trees/buildings
+        without flattening real terrain features (hills, canal embankments)
+      - slope_threshold=5.0 → suitable for near-flat agricultural plains;
+        raise to 10–15 for hilly terrain
+
+    IMPORTANT: {z}/{x}/{y} are resolved internally by WBT — do not use this
+    function on non-projected DEMs; input must already be in UTM.
+
+    Args:
+        dem_path: Input DSM path (projected, nodata set).
+        output_path: Output filtered DEM path.
+        filter_size: Morphological filter kernel size in pixels (default 7).
+        slope_threshold: Max expected terrain slope in degrees (default 5.0).
+
+    Returns:
+        output_path on success.
+    """
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    wbt = _get_wbt()
+    wbt.remove_off_terrain_objects(
+        dem_path,
+        output_path,
+        filter=filter_size,
+        slope=slope_threshold,
+    )
     return output_path
 
 
@@ -545,7 +587,9 @@ def extract_drainage_network(
     drainage_binary = drainage_mask.astype(np.uint8)
 
     features = []
-    for geom, value in shapes(drainage_binary, mask=drainage_binary, transform=transform):
+    for geom, value in shapes(
+        drainage_binary, mask=drainage_binary, transform=transform
+    ):
         if value == 1:
             features.append(
                 {
@@ -645,10 +689,10 @@ def compute_tpi(
 # ---------------------------------------------------------------------------
 
 # Classification codes (0-4)
-TERRAIN_SIN_RIESGO = 0        # No risk — transparent on map
-TERRAIN_DRENAJE_NATURAL = 1   # Natural drainage lines
-TERRAIN_RIESGO_ALTO = 2       # High flood risk
-TERRAIN_RIESGO_MEDIO = 3      # Moderate flood risk
+TERRAIN_SIN_RIESGO = 0  # No risk — transparent on map
+TERRAIN_DRENAJE_NATURAL = 1  # Natural drainage lines
+TERRAIN_RIESGO_ALTO = 2  # High flood risk
+TERRAIN_RIESGO_MEDIO = 3  # Moderate flood risk
 
 TERRAIN_CLASS_LABELS = {
     0: "Drenaje Natural",

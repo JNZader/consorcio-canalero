@@ -39,6 +39,7 @@ def _get_processing():
 
     return processing
 
+
 logger = structlog.get_logger(__name__)
 
 repo = GeoRepository()
@@ -200,7 +201,12 @@ def process_dem_pipeline(
         # 1. Clip ----------------------------------------------------------
         if bbox:
             clipped = str(output_dir / "dem_clipped.tif")
-            _run_step(job_id, "clip_dem", _get_processing().clip_dem, (dem_path, tuple(bbox), clipped))
+            _run_step(
+                job_id,
+                "clip_dem",
+                _get_processing().clip_dem,
+                (dem_path, tuple(bbox), clipped),
+            )
             working_dem = clipped
             outputs["clipped_dem"] = clipped
         else:
@@ -209,13 +215,17 @@ def process_dem_pipeline(
 
         # 2. Fill sinks ----------------------------------------------------
         filled = str(output_dir / "dem_filled.tif")
-        _run_step(job_id, "fill_sinks", _get_processing().fill_sinks, (working_dem, filled))
+        _run_step(
+            job_id, "fill_sinks", _get_processing().fill_sinks, (working_dem, filled)
+        )
         outputs["filled_dem"] = filled
         _progress()
 
         # 3. Slope ---------------------------------------------------------
         slope = str(output_dir / "slope.tif")
-        _run_step(job_id, "compute_slope", _get_processing().compute_slope, (filled, slope))
+        _run_step(
+            job_id, "compute_slope", _get_processing().compute_slope, (filled, slope)
+        )
         outputs["slope"] = slope
         slope_cog = _convert_to_cog_safe(slope)
         _register_layer(
@@ -223,13 +233,17 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.SLOPE,
             archivo_path=slope,
             area_id=area_id,
-            metadata_extra={"cog_path": slope_cog} if slope_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": slope_cog}
+            if slope_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
         # 4. Aspect --------------------------------------------------------
         aspect = str(output_dir / "aspect.tif")
-        _run_step(job_id, "compute_aspect", _get_processing().compute_aspect, (filled, aspect))
+        _run_step(
+            job_id, "compute_aspect", _get_processing().compute_aspect, (filled, aspect)
+        )
         outputs["aspect"] = aspect
         aspect_cog = _convert_to_cog_safe(aspect)
         _register_layer(
@@ -237,14 +251,19 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.ASPECT,
             archivo_path=aspect,
             area_id=area_id,
-            metadata_extra={"cog_path": aspect_cog} if aspect_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": aspect_cog}
+            if aspect_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
         # 5. Flow direction ------------------------------------------------
         flow_dir = str(output_dir / "flow_dir.tif")
         _run_step(
-            job_id, "compute_flow_direction", _get_processing().compute_flow_direction, (filled, flow_dir)
+            job_id,
+            "compute_flow_direction",
+            _get_processing().compute_flow_direction,
+            (filled, flow_dir),
         )
         outputs["flow_dir"] = flow_dir
         flow_dir_cog = _convert_to_cog_safe(flow_dir)
@@ -253,7 +272,9 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.FLOW_DIR,
             archivo_path=flow_dir,
             area_id=area_id,
-            metadata_extra={"cog_path": flow_dir_cog} if flow_dir_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": flow_dir_cog}
+            if flow_dir_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -263,7 +284,10 @@ def process_dem_pipeline(
             job_id,
             "compute_flow_accumulation",
             _get_processing().compute_flow_accumulation,
-            (filled, flow_acc),  # DEM input, not flow_dir — WBT handles flat terrain better
+            (
+                filled,
+                flow_acc,
+            ),  # DEM input, not flow_dir — WBT handles flat terrain better
         )
         outputs["flow_acc"] = flow_acc
         flow_acc_cog = _convert_to_cog_safe(flow_acc)
@@ -272,13 +296,17 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.FLOW_ACC,
             archivo_path=flow_acc,
             area_id=area_id,
-            metadata_extra={"cog_path": flow_acc_cog} if flow_acc_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": flow_acc_cog}
+            if flow_acc_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
         # 7. TWI -----------------------------------------------------------
         twi = str(output_dir / "twi.tif")
-        _run_step(job_id, "compute_twi", _get_processing().compute_twi, (slope, flow_acc, twi))
+        _run_step(
+            job_id, "compute_twi", _get_processing().compute_twi, (slope, flow_acc, twi)
+        )
         outputs["twi"] = twi
         twi_cog = _convert_to_cog_safe(twi)
         _register_layer(
@@ -286,14 +314,19 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.TWI,
             archivo_path=twi,
             area_id=area_id,
-            metadata_extra={"cog_path": twi_cog} if twi_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": twi_cog}
+            if twi_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
         # 8. HAND ----------------------------------------------------------
         hand = str(output_dir / "hand.tif")
         _run_step(
-            job_id, "compute_hand", _get_processing().compute_hand, (filled, flow_dir, flow_acc, hand)
+            job_id,
+            "compute_hand",
+            _get_processing().compute_hand,
+            (filled, flow_dir, flow_acc, hand),
         )
         outputs["hand"] = hand
         hand_cog = _convert_to_cog_safe(hand)
@@ -302,7 +335,9 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.HAND,
             archivo_path=hand,
             area_id=area_id,
-            metadata_extra={"cog_path": hand_cog} if hand_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": hand_cog}
+            if hand_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -338,7 +373,9 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.PROFILE_CURVATURE,
             archivo_path=profile_curvature,
             area_id=area_id,
-            metadata_extra={"cog_path": pc_cog} if pc_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": pc_cog}
+            if pc_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -356,7 +393,9 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.TPI,
             archivo_path=tpi,
             area_id=area_id,
-            metadata_extra={"cog_path": tpi_cog} if tpi_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": tpi_cog}
+            if tpi_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -381,7 +420,9 @@ def process_dem_pipeline(
             tipo=TipoGeoLayer.TERRAIN_CLASS,
             archivo_path=terrain_class,
             area_id=area_id,
-            metadata_extra={"cog_path": tc_cog} if tc_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": tc_cog}
+            if tc_cog
+            else {"cog_error": "conversion failed"},
         )
         _progress()
 
@@ -401,7 +442,9 @@ def process_dem_pipeline(
             estado=EstadoGeoJob.FAILED,
             error=traceback.format_exc(),
         )
-        logger.error("dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True)
+        logger.error(
+            "dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True
+        )
         raise
 
 
@@ -421,7 +464,9 @@ def compute_slope(dem_path: str, output_path: str, job_id: str | None = None) ->
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -437,7 +482,9 @@ def compute_aspect(dem_path: str, output_path: str, job_id: str | None = None) -
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -455,7 +502,9 @@ def compute_flow_direction(
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -473,7 +522,9 @@ def compute_flow_accumulation(
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -494,7 +545,9 @@ def compute_twi(
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -510,13 +563,17 @@ def compute_hand(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _get_processing().compute_hand(dem_path, flow_dir_path, flow_acc_path, output_path)
+        result = _get_processing().compute_hand(
+            dem_path, flow_dir_path, flow_acc_path, output_path
+        )
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -531,13 +588,17 @@ def extract_drainage_network(
     if job_id:
         _update_job(job_id, estado=EstadoGeoJob.RUNNING)
     try:
-        result = _get_processing().extract_drainage_network(flow_acc_path, threshold, output_path)
+        result = _get_processing().extract_drainage_network(
+            flow_acc_path, threshold, output_path
+        )
         if job_id:
             _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -570,7 +631,9 @@ def classify_terrain(
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
+            )
         raise
 
 
@@ -833,7 +896,11 @@ def run_full_dem_pipeline(
 
         dem_clipped = str(output_dir / "dem_clipped.tif")
         _get_processing().clip_to_geometry(dem_utm, zona_geojson, dem_clipped)
-        dem_utm = dem_clipped  # use clipped DEM for all subsequent processing
+
+        # Remove off-terrain objects (trees, buildings) from Copernicus DSM
+        dem_filtered = str(output_dir / "dem_filtered.tif")
+        _get_processing().remove_off_terrain_objects(dem_clipped, dem_filtered)
+        dem_utm = dem_filtered  # use filtered DEM for all subsequent processing
 
         # Register the CLIPPED DEM (not the raw rectangle)
         dem_cog = _convert_to_cog_safe(dem_clipped)
@@ -842,7 +909,9 @@ def run_full_dem_pipeline(
             tipo=TipoGeoLayer.DEM_RAW,
             archivo_path=dem_clipped,
             area_id=area_id,
-            metadata_extra={"cog_path": dem_cog} if dem_cog else {"cog_error": "conversion failed"},
+            metadata_extra={"cog_path": dem_cog}
+            if dem_cog
+            else {"cog_error": "conversion failed"},
         )
 
         _update_job(job_id, progreso=20)
@@ -869,7 +938,9 @@ def run_full_dem_pipeline(
             from sqlalchemy import text
 
             manual_count = db.execute(
-                text("SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'")
+                text(
+                    "SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'"
+                )
             ).scalar()
         finally:
             db.close()
@@ -1064,7 +1135,13 @@ def composite_analysis_task(
         # -- Validate prerequisite files exist on disk --------------------
         # drainage can be either .tif (binary raster) or .geojson (vector);
         # compute_drainage_need() auto-rasterizes from geojson if .tif is missing.
-        required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "profile_curvature.tif", "tpi.tif"]
+        required_files = [
+            "hand.tif",
+            "twi.tif",
+            "flow_acc.tif",
+            "profile_curvature.tif",
+            "tpi.tif",
+        ]
         missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
         has_drainage = (
             (Path(area_dir) / "drainage.tif").exists()
@@ -1176,11 +1253,13 @@ def composite_analysis_task(
                 for z in zonas:
                     try:
                         geom_shapely = to_shape(z.geometria)
-                        zona_dicts.append({
-                            "id": z.id,
-                            "nombre": z.nombre,
-                            "geometry": shapely_mapping(geom_shapely),
-                        })
+                        zona_dicts.append(
+                            {
+                                "id": z.id,
+                                "nombre": z.nombre,
+                                "geometry": shapely_mapping(geom_shapely),
+                            }
+                        )
                     except Exception:
                         logger.warning(
                             "composite_analysis.zona_geom_error",
@@ -1211,8 +1290,12 @@ def composite_analysis_task(
                 if all_stats:
                     from sqlalchemy import delete
 
-                    zona_ids = list({stat["zona_id"] for stat in all_stats if stat.get("zona_id")})
-                    tipos = list({stat["tipo"] for stat in all_stats if stat.get("tipo")})
+                    zona_ids = list(
+                        {stat["zona_id"] for stat in all_stats if stat.get("zona_id")}
+                    )
+                    tipos = list(
+                        {stat["tipo"] for stat in all_stats if stat.get("tipo")}
+                    )
                     if zona_ids and tipos:
                         db.execute(
                             delete(CompositeZonalStats).where(
@@ -1253,7 +1336,9 @@ def composite_analysis_task(
             estado=EstadoGeoJob.FAILED,
             error=traceback.format_exc(),
         )
-        logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
+        logger.error(
+            "composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True
+        )
         raise
 
 
@@ -1292,9 +1377,7 @@ def rainfall_backfill(
     try:
         parsed_start = date_type.fromisoformat(start_date)
         parsed_end = date_type.fromisoformat(end_date)
-        parsed_zona_ids = (
-            [uuid.UUID(z) for z in zona_ids] if zona_ids else None
-        )
+        parsed_zona_ids = [uuid.UUID(z) for z in zona_ids] if zona_ids else None
 
         def _on_batch(current: int, total: int, records: int) -> None:
             self.update_state(
