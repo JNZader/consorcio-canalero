@@ -785,10 +785,8 @@ def classify_terrain(
     twi_p35 = _percentile(twi, 35)
 
     logger.info(
-        "classify_terrain thresholds",
-        fa_p99=fa_p99,
-        twi_p55=twi_p55,
-        twi_p35=twi_p35,
+        "classify_terrain thresholds fa_p99=%.2f twi_p55=%.2f twi_p35=%.2f",
+        fa_p99, twi_p55, twi_p35,
     )
 
     # --- Default: SIN_RIESGO (class 0) — transparent on map ------------------
