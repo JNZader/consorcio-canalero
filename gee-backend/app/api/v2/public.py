@@ -9,18 +9,22 @@ Admin endpoints under /admin/publish/* require admin role.
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.v2.public_schemas import (
     AdminLayerPublishStatus,
+    MartinCatalogResponse,
+    MartinLayerCatalogItem,
     PublicDenunciaStatusResponse,
     PublicLayerDetailResponse,
     PublicLayerListResponse,
     PublicStatsResponse,
     PublishLayerResponse,
 )
+from app.config import settings
 from app.db.session import get_db
 from app.domains.capas.models import Capa
 from app.domains.capas.repository import CapasRepository
@@ -75,6 +79,75 @@ def list_public_layers(
 ):
     """List all public layers (es_publica=True, visible=True)."""
     return repo.get_public(db)
+
+
+# ──────────────────────────────────────────────
+# MARTIN TILE CATALOG (no auth)
+# NOTE: must be declared before /layers/{layer_id} so FastAPI does not
+# attempt to parse the literal string "catalog" as a UUID path param.
+# ──────────────────────────────────────────────
+
+# Map Martin geometry type strings to normalized lowercase values.
+_GEOMETRY_TYPE_MAP: dict[str, str] = {
+    "multipolygon": "polygon",
+    "polygon": "polygon",
+    "multilinestring": "linestring",
+    "linestring": "linestring",
+    "multipoint": "point",
+    "point": "point",
+    "geometrycollection": "geometry",
+}
+
+
+@public_router.get("/layers/catalog", response_model=MartinCatalogResponse)
+async def get_martin_catalog():
+    """
+    Return the catalog of Martin-published vector tile layers.
+
+    Fetches Martin's /catalog endpoint internally and rewrites tile URLs
+    so the internal Docker hostname is never exposed to callers.
+    Returns HTTP 503 if Martin is unreachable.
+    """
+    catalog_url = f"{settings.martin_internal_url}/catalog"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(catalog_url)
+            response.raise_for_status()
+            martin_data = response.json()
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.ConnectTimeout):
+        raise HTTPException(
+            status_code=503,
+            detail="Martin tile server unavailable",
+        )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Martin tile server returned an unexpected status: {exc.response.status_code}",
+        )
+
+    # Martin /catalog response: {"tiles": {"<source_id>": {...}, ...}}
+    tiles: dict = martin_data.get("tiles", {})
+    public_base = settings.martin_public_url.rstrip("/")
+
+    items: list[MartinLayerCatalogItem] = []
+    for source_id, meta in tiles.items():
+        raw_geom = (meta.get("geometry_type") or "").lower()
+        geometry_type = _GEOMETRY_TYPE_MAP.get(raw_geom, raw_geom or "unknown")
+
+        tile_url = f"{public_base}/{source_id}/{{z}}/{{x}}/{{y}}"
+
+        items.append(
+            MartinLayerCatalogItem(
+                id=source_id,
+                tile_url=tile_url,
+                description=meta.get("description") or meta.get("name") or source_id,
+                geometry_type=geometry_type,
+                source_layer=source_id,
+            )
+        )
+
+    return MartinCatalogResponse(layers=items, count=len(items))
 
 
 @public_router.get("/layers/{layer_id}", response_model=PublicLayerDetailResponse)
@@ -143,7 +216,9 @@ def get_public_stats(
 # ══════════════════════════════════════════════
 
 
-@public_router.post("/denuncias", response_model=DenunciaCreateResponse, status_code=201)
+@public_router.post(
+    "/denuncias", response_model=DenunciaCreateResponse, status_code=201
+)
 def create_anonymous_denuncia(
     payload: DenunciaCreate,
     db: Session = Depends(get_db),
@@ -163,9 +238,7 @@ def create_anonymous_denuncia(
     )
 
 
-@public_router.post(
-    "/sugerencias", response_model=SugerenciaResponse, status_code=201
-)
+@public_router.post("/sugerencias", response_model=SugerenciaResponse, status_code=201)
 def create_anonymous_sugerencia(
     payload: SugerenciaCreate,
     db: Session = Depends(get_db),
@@ -225,9 +298,7 @@ def list_layers_with_publish_status(
     return repo.get_all(db)
 
 
-@admin_publish_router.post(
-    "/layers/{layer_id}", response_model=PublishLayerResponse
-)
+@admin_publish_router.post("/layers/{layer_id}", response_model=PublishLayerResponse)
 def publish_layer(
     layer_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -240,9 +311,7 @@ def publish_layer(
         raise HTTPException(status_code=404, detail="Capa no encontrada")
 
     if capa.es_publica:
-        raise HTTPException(
-            status_code=409, detail="La capa ya esta publicada"
-        )
+        raise HTTPException(status_code=409, detail="La capa ya esta publicada")
 
     capa.es_publica = True
     capa.publicacion_fecha = datetime.now(timezone.utc)
@@ -252,9 +321,7 @@ def publish_layer(
     return capa
 
 
-@admin_publish_router.delete(
-    "/layers/{layer_id}", response_model=PublishLayerResponse
-)
+@admin_publish_router.delete("/layers/{layer_id}", response_model=PublishLayerResponse)
 def unpublish_layer(
     layer_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -267,9 +334,7 @@ def unpublish_layer(
         raise HTTPException(status_code=404, detail="Capa no encontrada")
 
     if not capa.es_publica:
-        raise HTTPException(
-            status_code=409, detail="La capa no esta publicada"
-        )
+        raise HTTPException(status_code=409, detail="La capa no esta publicada")
 
     capa.es_publica = False
     capa.publicacion_fecha = None

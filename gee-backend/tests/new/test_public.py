@@ -2,7 +2,9 @@
 
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -418,3 +420,240 @@ class TestPublicSchemas:
         assert "es_publica" in fields
         assert "publicacion_fecha" in fields
         assert "visible" in fields
+
+    def test_martin_catalog_schema_fields(self):
+        from app.api.v2.public_schemas import MartinCatalogResponse, MartinLayerCatalogItem
+
+        item_fields = set(MartinLayerCatalogItem.model_fields.keys())
+        assert item_fields == {"id", "tile_url", "description", "geometry_type", "source_layer"}
+
+        response_fields = set(MartinCatalogResponse.model_fields.keys())
+        assert response_fields == {"layers", "count"}
+
+
+# ──────────────────────────────────────────────
+# MARTIN CATALOG HANDLER
+# ──────────────────────────────────────────────
+
+
+MARTIN_CATALOG_RESPONSE = {
+    "tiles": {
+        "vt_zonas_operativas": {
+            "content_type": "application/x-protobuf",
+            "description": "Zonas Operativas",
+            "geometry_type": "MULTIPOLYGON",
+            "id": "vt_zonas_operativas",
+            "name": "vt_zonas_operativas",
+            "tilejson": "http://martin:3000/vt_zonas_operativas",
+        },
+        "vt_puntos_conflicto": {
+            "content_type": "application/x-protobuf",
+            "description": "",
+            "geometry_type": "POINT",
+            "id": "vt_puntos_conflicto",
+            "name": "vt_puntos_conflicto",
+            "tilejson": "http://martin:3000/vt_puntos_conflicto",
+        },
+    }
+}
+
+
+def _make_httpx_response(json_data: dict, status_code: int = 200) -> MagicMock:
+    """Build a mock httpx.Response that behaves like a real one."""
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = status_code
+    mock_response.json.return_value = json_data
+    mock_response.raise_for_status = MagicMock()  # no-op for 200
+    return mock_response
+
+
+class TestMartinCatalogHandler:
+    """Unit tests for GET /public/layers/catalog — httpx is mocked throughout."""
+
+    @pytest.mark.asyncio
+    async def test_url_rewriting_no_internal_host_in_response(self):
+        """tile_url must use MARTIN_PUBLIC_URL base, never martin:3000."""
+        from app.api.v2.public import get_martin_catalog
+
+        mock_resp = _make_httpx_response(MARTIN_CATALOG_RESPONSE)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            result = await get_martin_catalog()
+
+        assert result.count == 2
+        for item in result.layers:
+            assert "martin:3000" not in item.tile_url
+            assert item.tile_url.startswith("https://tiles.example.com/")
+
+    @pytest.mark.asyncio
+    async def test_tile_url_pattern_contains_xyz_placeholders(self):
+        """tile_url must follow the {base}/{id}/{z}/{x}/{y} pattern."""
+        from app.api.v2.public import get_martin_catalog
+
+        mock_resp = _make_httpx_response(MARTIN_CATALOG_RESPONSE)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            result = await get_martin_catalog()
+
+        for item in result.layers:
+            assert "{z}" in item.tile_url
+            assert "{x}" in item.tile_url
+            assert "{y}" in item.tile_url
+
+    @pytest.mark.asyncio
+    async def test_geometry_type_normalized_to_lowercase(self):
+        """Martin returns MULTIPOLYGON/POINT — handler must normalize to polygon/point."""
+        from app.api.v2.public import get_martin_catalog
+
+        mock_resp = _make_httpx_response(MARTIN_CATALOG_RESPONSE)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            result = await get_martin_catalog()
+
+        geom_types = {item.id: item.geometry_type for item in result.layers}
+        assert geom_types["vt_zonas_operativas"] == "polygon"
+        assert geom_types["vt_puntos_conflicto"] == "point"
+
+    @pytest.mark.asyncio
+    async def test_response_schema_fields_present(self):
+        """Response must match MartinCatalogResponse — layers array + count."""
+        from app.api.v2.public import get_martin_catalog
+        from app.api.v2.public_schemas import MartinCatalogResponse
+
+        mock_resp = _make_httpx_response(MARTIN_CATALOG_RESPONSE)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            result = await get_martin_catalog()
+
+        assert isinstance(result, MartinCatalogResponse)
+        assert result.count == len(result.layers)
+        for item in result.layers:
+            assert item.id
+            assert item.tile_url
+            assert item.source_layer == item.id
+
+    @pytest.mark.asyncio
+    async def test_connect_error_returns_503(self):
+        """When Martin is down (ConnectError), the handler must raise HTTPException(503)."""
+        from fastapi import HTTPException
+
+        from app.api.v2.public import get_martin_catalog
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_martin_catalog()
+
+        assert exc_info.value.status_code == 503
+        assert "Martin tile server unavailable" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_timeout_error_returns_503(self):
+        """Timeout from Martin must also produce 503."""
+        from fastapi import HTTPException
+
+        from app.api.v2.public import get_martin_catalog
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(
+            side_effect=httpx.TimeoutException("Request timed out")
+        )
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_martin_catalog()
+
+        assert exc_info.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_error_detail_does_not_contain_internal_host(self):
+        """The 503 error detail must not leak the internal Docker hostname."""
+        from fastapi import HTTPException
+
+        from app.api.v2.public import get_martin_catalog
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_martin_catalog()
+
+        assert "martin:3000" not in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_empty_catalog_returns_zero_count(self):
+        """When Martin returns no tiles, response has empty layers and count=0."""
+        from app.api.v2.public import get_martin_catalog
+
+        mock_resp = _make_httpx_response({"tiles": {}})
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with (
+            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            result = await get_martin_catalog()
+
+        assert result.count == 0
+        assert result.layers == []

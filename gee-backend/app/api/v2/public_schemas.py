@@ -102,3 +102,27 @@ class AdminLayerPublishStatus(BaseModel):
     es_publica: bool
     publicacion_fecha: Optional[datetime] = None
     created_at: datetime
+
+
+# ──────────────────────────────────────────────
+# MARTIN TILE CATALOG
+# ──────────────────────────────────────────────
+
+
+class MartinLayerCatalogItem(BaseModel):
+    """A single Martin-published vector tile layer, URL-rewritten for public consumption."""
+
+    id: str
+    tile_url: str  # public-facing template: {base}/{id}/{z}/{x}/{y}
+    description: str
+    geometry_type: (
+        str  # normalized to lowercase: "polygon", "point", "linestring", etc.
+    )
+    source_layer: str  # same as id for Martin auto-published PostGIS views
+
+
+class MartinCatalogResponse(BaseModel):
+    """Catalog of all Martin-published vector tile layers."""
+
+    layers: list[MartinLayerCatalogItem]
+    count: int
