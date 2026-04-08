@@ -162,26 +162,23 @@ class TestSimularEscorrentia:
     def test_point_outside_raster_returns_error(self):
         from app.domains.geo.intelligence.calculations import simular_escorrentia
 
-        with patch("app.domains.geo.intelligence.calculations.rasterio") as mock_rio:
-            mock_fd_src = MagicMock()
-            mock_fd_src.read.return_value = np.zeros((10, 10), dtype=np.int32)
-            mock_fd_src.transform = MagicMock()
-            mock_fd_src.nodata = None
-            mock_fd_src.__enter__ = MagicMock(return_value=mock_fd_src)
-            mock_fd_src.__exit__ = MagicMock(return_value=False)
+        # rasterio is imported lazily INSIDE the function, so we must patch
+        # rasterio.open (and rasterio.transform.rowcol) in sys.modules — not
+        # as a calculations module-level attribute.
+        mock_fd_src = MagicMock()
+        mock_fd_src.read.return_value = np.zeros((10, 10), dtype=np.int32)
+        mock_fd_src.transform = MagicMock()
+        mock_fd_src.nodata = None
+        mock_fd_src.__enter__ = MagicMock(return_value=mock_fd_src)
+        mock_fd_src.__exit__ = MagicMock(return_value=False)
 
-            mock_fa_src = MagicMock()
-            mock_fa_src.read.return_value = np.zeros((10, 10))
-            mock_fa_src.__enter__ = MagicMock(return_value=mock_fa_src)
-            mock_fa_src.__exit__ = MagicMock(return_value=False)
+        mock_fa_src = MagicMock()
+        mock_fa_src.read.return_value = np.zeros((10, 10))
+        mock_fa_src.__enter__ = MagicMock(return_value=mock_fa_src)
+        mock_fa_src.__exit__ = MagicMock(return_value=False)
 
-            mock_rio.open.side_effect = [mock_fd_src, mock_fa_src]
-
-            with patch(
-                "app.domains.geo.intelligence.calculations.rowcol",
-                create=True,
-                side_effect=Exception("outside"),
-            ):
+        with patch("rasterio.open", side_effect=[mock_fd_src, mock_fa_src]):
+            with patch("rasterio.transform.rowcol", side_effect=Exception("outside")):
                 result = simular_escorrentia(
                     "/fake/fd.tif", "/fake/fa.tif",
                     punto_inicio=(-999, -999),
@@ -235,21 +232,23 @@ class TestCalcularPrioridadCanal:
     def test_computes_score_with_critical_zones(self, mock_sample):
         from app.domains.geo.intelligence.calculations import calcular_prioridad_canal
         import geopandas as gpd
-        from shapely.geometry import Point
+        from shapely.geometry import LineString, Point
 
         mock_sample.side_effect = [
             [5000, 8000],  # flow_acc
             [3.0, 5.0],   # slope
         ]
 
-        mock_geom = MagicMock()
+        # Must be a real Shapely geometry — GeoSeries.distance() cannot accept
+        # a MagicMock and will raise a TypeError.
+        canal_geom = LineString([(0, 0), (0.001, 0.001)])
         zonas = gpd.GeoDataFrame(
             {"geometry": [Point(0, 0)]},
             geometry="geometry",
         )
 
         result = calcular_prioridad_canal(
-            mock_geom, "/fake/fa.tif", "/fake/slope.tif",
+            canal_geom, "/fake/fa.tif", "/fake/slope.tif",
             zonas_criticas_gdf=zonas,
         )
         assert 0 <= result <= 100
@@ -287,7 +286,7 @@ class TestCalcularRiesgoCamino:
     def test_computes_score_with_drainage(self, mock_sample):
         from app.domains.geo.intelligence.calculations import calcular_riesgo_camino
         import geopandas as gpd
-        from shapely.geometry import Point
+        from shapely.geometry import LineString, Point
 
         mock_sample.side_effect = [
             [5000],    # flow_acc
@@ -300,8 +299,11 @@ class TestCalcularRiesgoCamino:
             geometry="geometry",
         )
 
+        # Must be a real Shapely geometry — GeoSeries.distance() cannot accept
+        # a MagicMock and will raise a TypeError.
+        camino_geom = LineString([(0, 0), (0.001, 0.001)])
         result = calcular_riesgo_camino(
-            MagicMock(), "/fake/fa.tif", "/fake/slope.tif", "/fake/twi.tif",
+            camino_geom, "/fake/fa.tif", "/fake/slope.tif", "/fake/twi.tif",
             drainage_gdf=drainage,
         )
         assert 0 <= result <= 100
@@ -377,8 +379,7 @@ class TestGenerateCostSurface:
             generate_cost_surface("/nonexistent/slope.tif", "/out/cost.tif")
 
     @_skip_geo
-    @patch("app.domains.geo.intelligence.calculations.rasterio", create=True)
-    def test_generates_cost_surface(self, mock_rasterio, tmp_path):
+    def test_generates_cost_surface(self, tmp_path):
         from app.domains.geo.intelligence.calculations import generate_cost_surface
 
         slope_path = str(tmp_path / "slope.tif")
@@ -397,14 +398,13 @@ class TestGenerateCostSurface:
         mock_dst.__enter__ = MagicMock(return_value=mock_dst)
         mock_dst.__exit__ = MagicMock(return_value=False)
 
-        mock_rasterio.open.side_effect = [mock_src, mock_dst]
-
-        result = generate_cost_surface(slope_path, output_path)
-        assert result == output_path
+        # rasterio is imported lazily inside the function; patch sys.modules entry.
+        with patch("rasterio.open", side_effect=[mock_src, mock_dst]):
+            result = generate_cost_surface(slope_path, output_path)
+            assert result == output_path
 
     @_skip_geo
-    @patch("app.domains.geo.intelligence.calculations.rasterio", create=True)
-    def test_all_nodata_raises_value_error(self, mock_rasterio, tmp_path):
+    def test_all_nodata_raises_value_error(self, tmp_path):
         from app.domains.geo.intelligence.calculations import generate_cost_surface
 
         slope_path = str(tmp_path / "slope.tif")
@@ -419,10 +419,9 @@ class TestGenerateCostSurface:
         mock_src.__enter__ = MagicMock(return_value=mock_src)
         mock_src.__exit__ = MagicMock(return_value=False)
 
-        mock_rasterio.open.return_value = mock_src
-
-        with pytest.raises(ValueError, match="only nodata"):
-            generate_cost_surface(slope_path, output_path)
+        with patch("rasterio.open", return_value=mock_src):
+            with pytest.raises(ValueError, match="only nodata"):
+                generate_cost_surface(slope_path, output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -446,8 +445,7 @@ class TestSampleRasterAlongLine:
         assert result == []
 
     @_skip_geo
-    @patch("app.domains.geo.intelligence.calculations.rasterio", create=True)
-    def test_samples_along_line(self, mock_rasterio):
+    def test_samples_along_line(self):
         from app.domains.geo.intelligence.calculations import _sample_raster_along_line
         from shapely.geometry import LineString
 
@@ -459,9 +457,11 @@ class TestSampleRasterAlongLine:
         mock_src.transform = MagicMock()
         mock_src.__enter__ = MagicMock(return_value=mock_src)
         mock_src.__exit__ = MagicMock(return_value=False)
-        mock_rasterio.open.return_value = mock_src
 
-        with patch("app.domains.geo.intelligence.calculations.rowcol", create=True, return_value=(5, 5)):
+        # rasterio and rowcol are both imported lazily inside the function.
+        # Patch sys.modules entries so the in-function imports pick up the mocks.
+        with patch("rasterio.open", return_value=mock_src), \
+             patch("rasterio.transform.rowcol", return_value=(5, 5)):
             result = _sample_raster_along_line(line, "/fake.tif", num_points=5)
             assert len(result) > 0
 
