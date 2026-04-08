@@ -365,7 +365,7 @@ def build_finanzas_pdf(
             try:
                 diff = Decimal(str(real)) - Decimal(str(proyectado))
             except Exception:
-                diff = 0
+                diff = Decimal(0)
             rows.append(
                 [
                     item.get("rubro", ""),

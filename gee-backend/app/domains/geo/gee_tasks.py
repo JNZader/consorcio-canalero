@@ -94,7 +94,7 @@ def analyze_flood_task(
         gee = _get_gee()
         explorer = gee["explorer"]
 
-        resultado = {}
+        resultado: dict[str, Any] = {}
 
         # Optical-based flood detection (NDWI water mask)
         if method in ("fusion", "optical_only"):
@@ -159,15 +159,15 @@ def analyze_flood_task(
             db.commit()
 
         logger.info(
-            "analyze_flood_task.completed",
-            analisis_id=analisis_id,
-            method=method,
+            "analyze_flood_task.completed analisis_id=%s method=%s",
+            analisis_id,
+            method,
         )
         return resultado
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
-        logger.error("analyze_flood_task.failed", error=str(exc))
+        logger.error("analyze_flood_task.failed: %s", exc)
 
         if analisis_id:
             try:
@@ -226,7 +226,7 @@ def supervised_classification_task(
         gee = _get_gee()
         explorer = gee["explorer"]
 
-        resultado = {}
+        resultado: dict[str, Any] = {}
 
         # Get NDVI visualization tiles
         ndvi_result = explorer.get_sentinel2_image(
@@ -376,8 +376,8 @@ def supervised_classification_task(
                 }
         except Exception as cls_err:
             logger.warning(
-                "supervised_classification_task.classification_stats_failed",
-                error=str(cls_err),
+                "supervised_classification_task.classification_stats_failed: %s",
+                cls_err,
             )
             resultado["classification"] = {"error": str(cls_err)}
 
@@ -397,14 +397,14 @@ def supervised_classification_task(
             db.commit()
 
         logger.info(
-            "supervised_classification_task.completed",
-            analisis_id=analisis_id,
+            "supervised_classification_task.completed analisis_id=%s",
+            analisis_id,
         )
         return resultado
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
-        logger.error("supervised_classification_task.failed", error=str(exc))
+        logger.error("supervised_classification_task.failed: %s", exc)
 
         if analisis_id:
             try:
@@ -557,15 +557,15 @@ def sar_temporal_task(
             db.commit()
 
         logger.info(
-            "sar_temporal_task.completed",
-            analisis_id=analisis_id,
-            image_count=time_series["image_count"],
+            "sar_temporal_task.completed analisis_id=%s image_count=%s",
+            analisis_id,
+            time_series["image_count"],
         )
         return resultado
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
-        logger.error("sar_temporal_task.failed", error=str(exc))
+        logger.error("sar_temporal_task.failed: %s", exc)
 
         if analisis_id:
             try:

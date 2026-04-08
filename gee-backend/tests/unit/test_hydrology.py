@@ -20,7 +20,7 @@ from affine import Affine
 
 
 def test_twi_classes_boundaries():
-    from app.domains.geo.hydrology import TWI_CLASSES
+    from app.domains.geo.hydrology_terrain import TWI_CLASSES
     assert TWI_CLASSES["seco"]["max"] == 7.0
     assert TWI_CLASSES["normal"]["min"] == 7.0
     assert TWI_CLASSES["normal"]["max"] == 11.0
@@ -32,7 +32,7 @@ def test_twi_classes_boundaries():
 
 def test_twi_classes_no_gaps():
     """Boundary values must form a continuous range with no gaps."""
-    from app.domains.geo.hydrology import TWI_CLASSES
+    from app.domains.geo.hydrology_terrain import TWI_CLASSES
     keys = list(TWI_CLASSES.keys())
     for i in range(len(keys) - 1):
         current_max = TWI_CLASSES[keys[i]]["max"]
@@ -45,10 +45,10 @@ def test_twi_classes_no_gaps():
 # ---------------------------------------------------------------------------
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_classify_twi_seco(mock_rio):
     """TWI < 7 → class 1 (seco)."""
-    from app.domains.geo.hydrology import classify_twi
+    from app.domains.geo.hydrology_terrain import classify_twi
 
     twi_data = np.full((5, 5), 5.0, dtype=np.float64)
 
@@ -59,17 +59,17 @@ def test_classify_twi_seco(mock_rio):
     mock_rio.open.return_value.__enter__ = MagicMock(return_value=src)
     mock_rio.open.return_value.__exit__ = MagicMock(return_value=False)
 
-    with patch("app.domains.geo.hydrology.Path") as mock_path:
+    with patch("app.domains.geo.hydrology_terrain.Path") as mock_path:
         mock_path.return_value.parent.mkdir = MagicMock()
         result = classify_twi("/fake/twi.tif", "/fake/output.tif")
 
     assert result == "/fake/output.tif"
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_classify_twi_all_classes(mock_rio):
     """Verify each TWI range maps to the correct class value."""
-    from app.domains.geo.hydrology import classify_twi
+    from app.domains.geo.hydrology_terrain import classify_twi
 
     twi_data = np.array([[3.0, 9.0, 13.0, 18.0]], dtype=np.float64)
 
@@ -105,7 +105,7 @@ def test_classify_twi_all_classes(mock_rio):
 
     mock_rio.open.side_effect = side_effect_open
 
-    with patch("app.domains.geo.hydrology.Path") as mock_path:
+    with patch("app.domains.geo.hydrology_terrain.Path") as mock_path:
         mock_path.return_value.parent.mkdir = MagicMock()
         classify_twi("/fake/twi.tif", "/fake/output.tif")
 
@@ -116,10 +116,10 @@ def test_classify_twi_all_classes(mock_rio):
         assert written_data["data"][0, 3] == 4  # saturado (18.0 >= 15)
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_classify_twi_nodata_handling(mock_rio):
     """NoData pixels should be classified as 0."""
-    from app.domains.geo.hydrology import classify_twi
+    from app.domains.geo.hydrology_terrain import classify_twi
 
     twi_data = np.array([[-9999, 5.0, np.nan]], dtype=np.float64)
 
@@ -152,7 +152,7 @@ def test_classify_twi_nodata_handling(mock_rio):
 
     mock_rio.open.side_effect = side_effect_open
 
-    with patch("app.domains.geo.hydrology.Path") as mock_path:
+    with patch("app.domains.geo.hydrology_terrain.Path") as mock_path:
         mock_path.return_value.parent.mkdir = MagicMock()
         classify_twi("/fake/twi.tif", "/fake/output.tif")
 
@@ -166,9 +166,9 @@ def test_classify_twi_nodata_handling(mock_rio):
 # ---------------------------------------------------------------------------
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_twi_zone_summary_basic(mock_rio):
-    from app.domains.geo.hydrology import compute_twi_zone_summary
+    from app.domains.geo.hydrology_terrain import compute_twi_zone_summary
 
     # 4 pixels: one per class
     twi_data = np.array([[3.0, 9.0], [13.0, 18.0]], dtype=np.float64)
@@ -191,9 +191,9 @@ def test_twi_zone_summary_basic(mock_rio):
         assert cls["percentage"] == 25.0
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_twi_zone_summary_all_seco(mock_rio):
-    from app.domains.geo.hydrology import compute_twi_zone_summary
+    from app.domains.geo.hydrology_terrain import compute_twi_zone_summary
 
     twi_data = np.full((3, 3), 4.0, dtype=np.float64)
 
@@ -211,10 +211,10 @@ def test_twi_zone_summary_all_seco(mock_rio):
     assert seco["percentage"] == 100.0
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_twi_zone_summary_area_calculation(mock_rio):
     """Cell area should be cell_size^2 / 10000 in hectares."""
-    from app.domains.geo.hydrology import compute_twi_zone_summary
+    from app.domains.geo.hydrology_terrain import compute_twi_zone_summary
 
     twi_data = np.full((10, 10), 5.0, dtype=np.float64)  # 100 pixels
 
@@ -231,9 +231,9 @@ def test_twi_zone_summary_area_calculation(mock_rio):
     assert result["total_area_ha"] == 1.0
 
 
-@patch("app.domains.geo.hydrology.rasterio")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
 def test_twi_zone_summary_with_nodata(mock_rio):
-    from app.domains.geo.hydrology import compute_twi_zone_summary
+    from app.domains.geo.hydrology_terrain import compute_twi_zone_summary
 
     twi_data = np.array([[5.0, -9999]], dtype=np.float64)
 
@@ -283,10 +283,10 @@ def _fc(*features):
 
 
 @patch("shapely.geometry.shape")
-@patch("app.domains.geo.hydrology.rasterio")
-@patch("app.domains.geo.hydrology.Path")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
+@patch("app.domains.geo.hydrology_terrain.Path")
 def test_flow_acc_at_canals_basic(mock_path_cls, mock_rio, mock_shape):
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     flow_data = np.full((100, 100), 500.0, dtype=np.float64)
     _make_flow_acc_mocks(mock_rio, mock_path_cls, flow_data,
@@ -306,10 +306,10 @@ def test_flow_acc_at_canals_basic(mock_path_cls, mock_rio, mock_shape):
 
 
 @patch("shapely.geometry.shape")
-@patch("app.domains.geo.hydrology.rasterio")
-@patch("app.domains.geo.hydrology.Path")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
+@patch("app.domains.geo.hydrology_terrain.Path")
 def test_flow_acc_capacity_risk_alto(mock_path_cls, mock_rio, mock_shape):
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     flow_data = np.full((100, 100), 6000.0, dtype=np.float64)
     _make_flow_acc_mocks(mock_rio, mock_path_cls, flow_data,
@@ -327,10 +327,10 @@ def test_flow_acc_capacity_risk_alto(mock_path_cls, mock_rio, mock_shape):
 
 
 @patch("shapely.geometry.shape")
-@patch("app.domains.geo.hydrology.rasterio")
-@patch("app.domains.geo.hydrology.Path")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
+@patch("app.domains.geo.hydrology_terrain.Path")
 def test_flow_acc_capacity_risk_medio(mock_path_cls, mock_rio, mock_shape):
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     flow_data = np.full((100, 100), 2000.0, dtype=np.float64)
     _make_flow_acc_mocks(mock_rio, mock_path_cls, flow_data,
@@ -347,10 +347,10 @@ def test_flow_acc_capacity_risk_medio(mock_path_cls, mock_rio, mock_shape):
 
 
 @patch("shapely.geometry.shape")
-@patch("app.domains.geo.hydrology.rasterio")
-@patch("app.domains.geo.hydrology.Path")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
+@patch("app.domains.geo.hydrology_terrain.Path")
 def test_flow_acc_skips_non_linestring(mock_path_cls, mock_rio, mock_shape):
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     flow_data = np.full((10, 10), 100.0, dtype=np.float64)
     _make_flow_acc_mocks(mock_rio, mock_path_cls, flow_data,
@@ -361,11 +361,11 @@ def test_flow_acc_skips_non_linestring(mock_path_cls, mock_rio, mock_shape):
 
 
 @patch("shapely.geometry.shape")
-@patch("app.domains.geo.hydrology.rasterio")
-@patch("app.domains.geo.hydrology.Path")
+@patch("app.domains.geo.hydrology_terrain.rasterio")
+@patch("app.domains.geo.hydrology_terrain.Path")
 def test_flow_acc_sorted_by_max_descending(mock_path_cls, mock_rio, mock_shape):
     """Results should be sorted by flow_acc_max descending."""
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     flow_data = np.full((100, 100), 100.0, dtype=np.float64)
     flow_data[50:60, :] = 3000.0

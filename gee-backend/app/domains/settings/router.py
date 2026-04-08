@@ -94,7 +94,10 @@ def get_settings_by_category(
 ):
     """Get settings by category (require operator)."""
     items = service.get_settings_by_category(db, categoria)
-    return SettingsByCategoryResponse(categoria=categoria, settings=items)
+    return SettingsByCategoryResponse(
+        categoria=categoria,
+        settings=[SettingResponse.model_validate(i) for i in items],
+    )
 
 
 # ──────────────────────────────────────────────

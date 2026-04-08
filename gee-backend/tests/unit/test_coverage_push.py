@@ -194,7 +194,7 @@ class TestHydrologyCogPath:
         mock_layer.metadata_extra = {"cog_path": cog_path}
         mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_layer
 
-        with patch("app.domains.geo.hydrology.compute_twi_zone_summary", return_value={"zones": []}) as mock_fn:
+        with patch("app.domains.geo.hydrology_terrain.compute_twi_zone_summary", return_value={"zones": []}) as mock_fn:
             result = get_twi_summary(area_id="zona_principal", db=mock_db, _user=mock_user)
             mock_fn.assert_called_once_with(cog_path)
 

@@ -403,17 +403,31 @@ class TestExtractDrainageNetwork:
 
 
 class TestGetWbt:
-    @patch("app.domains.geo.processing.WhiteboxTools")
-    def test_creates_singleton(self, mock_wbt_cls):
+    def test_creates_singleton(self):
+        # WhiteboxTools is lazily imported inside _get_wbt() via
+        # `from whitebox import WhiteboxTools`, so we mock the module.
+        mock_wbt_cls = MagicMock()
+        mock_whitebox_module = MagicMock()
+        mock_whitebox_module.WhiteboxTools = mock_wbt_cls
+
+        import sys
         import app.domains.geo.processing as proc
 
+        original = sys.modules.get("whitebox")
+        sys.modules["whitebox"] = mock_whitebox_module
         proc._wbt = None  # Reset singleton
-        wbt1 = proc._get_wbt()
-        wbt2 = proc._get_wbt()
+        try:
+            wbt1 = proc._get_wbt()
+            wbt2 = proc._get_wbt()
 
-        assert wbt1 is wbt2
-        mock_wbt_cls.return_value.set_verbose_mode.assert_called_with(False)
-        proc._wbt = None  # Cleanup
+            assert wbt1 is wbt2
+            mock_wbt_cls.return_value.set_verbose_mode.assert_called_with(False)
+        finally:
+            proc._wbt = None  # Cleanup
+            if original is None:
+                sys.modules.pop("whitebox", None)
+            else:
+                sys.modules["whitebox"] = original
 
 
 # ---------------------------------------------------------------------------

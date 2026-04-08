@@ -1305,7 +1305,8 @@ def suggest_canal_routes(
 
     use_tmpdir = output_dir is None
     tmpdir_obj = tempfile.TemporaryDirectory() if use_tmpdir else None
-    work_dir = tmpdir_obj.name if use_tmpdir else output_dir
+    work_dir = tmpdir_obj.name if tmpdir_obj is not None else output_dir
+    assert work_dir is not None
     Path(work_dir).mkdir(parents=True, exist_ok=True)
 
     try:

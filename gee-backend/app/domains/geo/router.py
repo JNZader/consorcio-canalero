@@ -2649,7 +2649,7 @@ def get_twi_summary(
             message="TWI raster not found", code="RASTER_NOT_FOUND", status_code=404
         )
 
-    from app.domains.geo.hydrology import compute_twi_zone_summary
+    from app.domains.geo.hydrology_terrain import compute_twi_zone_summary
 
     return compute_twi_zone_summary(raster_path)
 
@@ -2694,7 +2694,7 @@ def get_canal_capacity(
             message="Canal GeoJSON not found", code="GEOJSON_NOT_FOUND", status_code=404
         )
 
-    from app.domains.geo.hydrology import compute_flow_acc_at_canals
+    from app.domains.geo.hydrology_terrain import compute_flow_acc_at_canals
 
     results = compute_flow_acc_at_canals(raster_path, canal_path)
 
@@ -2956,6 +2956,12 @@ async def create_flood_event(
 
     # Re-fetch with labels loaded
     created = repo.get_flood_event_by_id(db, event.id)
+    if created is None:
+        raise AppException(
+            message="Flood event not found after creation",
+            code="FLOOD_EVENT_NOT_FOUND",
+            status_code=404,
+        )
 
     # Kick off background feature extraction (non-blocking)
     # GEE unavailability is handled gracefully inside _run_feature_extraction
@@ -3636,5 +3642,7 @@ async def export_qgis_project(
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'
+        },
     )

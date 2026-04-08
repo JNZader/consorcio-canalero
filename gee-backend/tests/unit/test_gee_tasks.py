@@ -26,7 +26,7 @@ def _mock_gee_logger():
 
 def _make_deps(**overrides):
     deps = {
-        "SessionLocal": MagicMock,
+        "SessionLocal": MagicMock(),  # instance so .return_value works correctly
         "EstadoGeoJob": MagicMock(RUNNING="running", COMPLETED="completed", FAILED="failed"),
         "repo": MagicMock(),
     }

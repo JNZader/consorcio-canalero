@@ -327,7 +327,7 @@ def calculate_canal_priorities(
     except Exception:
         pass
 
-    results = []
+    results: list[dict[str, Any]] = []
     for _, row in canales_gdf.iterrows():
         score = calcular_prioridad_canal(
             canal_geom=row.geometry,
@@ -373,7 +373,7 @@ def calculate_road_risks(
     Returns:
         List of road risk dicts, sorted by risk descending.
     """
-    results = []
+    results: list[dict[str, Any]] = []
     for _, row in caminos_gdf.iterrows():
         score = calcular_riesgo_camino(
             camino_geom=row.geometry,

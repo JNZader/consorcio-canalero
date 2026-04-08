@@ -195,11 +195,11 @@ def list_hci(
             "limit": limit,
         }
 
-    items, total = repo.get_indices_hidricos(
+    hci_items, total = repo.get_indices_hidricos(
         db, zona_id=zona_id, page=page, limit=limit
     )
     return {
-        "items": [IndiceHidricoResponse.model_validate(i) for i in items],
+        "items": [IndiceHidricoResponse.model_validate(i) for i in hci_items],
         "total": total,
         "page": page,
         "limit": limit,

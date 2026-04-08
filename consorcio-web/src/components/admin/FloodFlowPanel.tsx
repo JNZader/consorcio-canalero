@@ -165,7 +165,7 @@ function ResultsTable({
             <Table.Th>Cap. (m³/s)</Table.Th>
             <Table.Th>% Cap.</Table.Th>
             <Table.Th>Riesgo</Table.Th>
-            <Table.Th></Table.Th>
+            <Table.Th />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>

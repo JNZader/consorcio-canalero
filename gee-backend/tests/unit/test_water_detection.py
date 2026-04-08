@@ -137,7 +137,8 @@ def _setup_area_mocks(mock_ee, *, water=50000, wet=30000, total=500000,
 
     mul_result = MagicMock()
     mul_result.reduceRegion.return_value = reduce_mock
-    pixel_area.reduceRegion = MagicMock(return_value=reduce_mock)
+    new_rr = MagicMock(return_value=reduce_mock)
+    pixel_area.reduceRegion = new_rr
 
     return reduce_mock, mul_result
 

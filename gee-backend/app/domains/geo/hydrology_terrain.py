@@ -19,7 +19,7 @@ import rasterio
 logger = logging.getLogger(__name__)
 
 # TWI classification thresholds for flat Pampas terrain
-TWI_CLASSES = {
+TWI_CLASSES: dict[str, dict[str, Any]] = {
     "seco": {"label": "Terreno seco", "min": None, "max": 7.0, "color": "#f59e0b"},
     "normal": {"label": "Humedad normal", "min": 7.0, "max": 11.0, "color": "#22c55e"},
     "humedo": {

@@ -118,7 +118,7 @@ export function useWaterways() {
       }
       return loaded;
     },
-    staleTime: Infinity,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
   return {

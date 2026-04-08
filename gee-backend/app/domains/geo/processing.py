@@ -35,6 +35,7 @@ def _get_wbt() -> Any:
     global _wbt  # noqa: PLW0603
     if _wbt is None:
         from whitebox import WhiteboxTools  # noqa: PLC0415
+
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
     return _wbt
@@ -786,7 +787,9 @@ def classify_terrain(
 
     logger.info(
         "classify_terrain thresholds fa_p99=%.2f twi_p55=%.2f twi_p35=%.2f",
-        fa_p99, twi_p55, twi_p35,
+        fa_p99,
+        twi_p55,
+        twi_p35,
     )
 
     # --- Default: SIN_RIESGO (class 0) — transparent on map ------------------

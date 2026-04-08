@@ -23,7 +23,7 @@ export function useCatastroMap() {
       }
       return (await response.json()) as FeatureCollection;
     },
-    staleTime: Infinity,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
   return {

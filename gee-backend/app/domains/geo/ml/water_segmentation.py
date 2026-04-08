@@ -179,6 +179,7 @@ class UNetStrategy(WaterSegmentationStrategy):
             )
 
         with torch.no_grad():
+            assert self._model is not None
             output = self._model(tensor)  # (1, 1, H+pad, W+pad)
 
         # Remove padding and threshold

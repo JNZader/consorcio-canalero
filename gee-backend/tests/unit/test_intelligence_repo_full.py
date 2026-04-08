@@ -256,18 +256,12 @@ class TestAlertasCrud:
 
 class TestGetDashboardInteligente:
     def test_returns_dashboard_metrics(self, repo, db):
-        # Mock multiple execute calls in sequence
-        db.execute.return_value.scalar_one.side_effect = [10, 500.0, 2]
-        db.execute.return_value.all.return_value = [
-            MagicMock(nivel_riesgo="alto", **{"__iter__": lambda s: iter(("alto", 3))}),
-        ]
-
-        # More granular mock for the nivel counts
-        mock_nivel_result = MagicMock()
-        mock_nivel_result.all.return_value = [("alto", 3), ("bajo", 7)]
-
+        # The function makes 4 db.execute calls in order:
+        # 1. scalar_one → zonas_total
+        # 2. .all()     → nivel_counts (list of (nivel, count) tuples)
+        # 3. scalar_one → conflictos
+        # 4. scalar_one → alertas
         call_count = [0]
-        original_execute = db.execute
 
         def side_effect_execute(*args, **kwargs):
             call_count[0] += 1
@@ -275,12 +269,10 @@ class TestGetDashboardInteligente:
             if call_count[0] == 1:
                 result.scalar_one.return_value = 10  # zonas_total
             elif call_count[0] == 2:
-                result.scalar_one.return_value = 500.0  # area_total
-            elif call_count[0] == 3:
                 result.all.return_value = [("alto", 3), ("bajo", 7)]  # nivel counts
-            elif call_count[0] == 4:
+            elif call_count[0] == 3:
                 result.scalar_one.return_value = 5  # conflictos
-            elif call_count[0] == 5:
+            elif call_count[0] == 4:
                 result.scalar_one.return_value = 2  # alertas
             return result
 
