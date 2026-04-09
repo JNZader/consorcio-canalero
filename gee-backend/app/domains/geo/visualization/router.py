@@ -10,10 +10,10 @@ Exposes 4 GET endpoints under the /render prefix (mounted by geo/router.py):
 All endpoints require operator role (require_admin_or_operator).
 Thin HTTP layer — all work is delegated to VisualizationService.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -50,6 +50,7 @@ def _get_service() -> VisualizationService:
 @router.get("/cuencas")
 def render_cuencas(
     dem_path: str = Query(..., description="Filesystem path to the DEM GeoTIFF"),
+    flow_acc_path: str = Query(..., description="Filesystem path to the flow accumulation raster"),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
     _svc: VisualizationService = Depends(_get_service),
@@ -61,30 +62,45 @@ def render_cuencas(
 
     Raises HTTP 404 if the DEM file does not exist at dem_path.
     """
-    png_bytes = _svc.render_cuencas(db, Path(dem_path))
+    png_bytes = _svc.render_cuencas(db, Path(dem_path), Path(flow_acc_path))
     return Response(content=png_bytes, media_type="image/png")
 
 
 @router.get("/escorrentia")
 def render_escorrentia(
     dem_path: str = Query(..., description="Filesystem path to the DEM GeoTIFF"),
-    fecha: Optional[str] = Query(default="", description="Storm date (YYYY-MM-DD)"),
+    flow_dir_path: str = Query(..., description="Filesystem path to the D8 flow direction raster"),
+    flow_acc_path: str = Query(..., description="Filesystem path to the flow accumulation raster"),
+    lon: float = Query(default=-63.0, description="Longitude of the starting point"),
+    lat: float = Query(default=-31.0, description="Latitude of the starting point"),
+    lluvia_mm: float = Query(default=50.0, description="Rainfall amount in mm"),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
     _svc: VisualizationService = Depends(_get_service),
 ) -> Response:
     """Render escorrentia (runoff) flow paths as 3D polylines over DEM terrain.
 
+    Traces a downstream flow path from (lon, lat) weighted by lluvia_mm.
     Returns a PNG image. Requires operator role.
     Raises HTTP 404 if the DEM file does not exist at dem_path.
     """
-    png_bytes = _svc.render_escorrentia(db, Path(dem_path))
+    png_bytes = _svc.render_escorrentia(
+        db,
+        Path(dem_path),
+        Path(flow_dir_path),
+        Path(flow_acc_path),
+        lon=lon,
+        lat=lat,
+        lluvia_mm=lluvia_mm,
+    )
     return Response(content=png_bytes, media_type="image/png")
 
 
 @router.get("/riesgo")
 def render_riesgo(
     dem_path: str = Query(..., description="Filesystem path to the DEM GeoTIFF"),
+    flow_acc_path: str = Query(..., description="Filesystem path to the flow accumulation raster"),
+    slope_path: str = Query(..., description="Filesystem path to the slope raster"),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
     _svc: VisualizationService = Depends(_get_service),
@@ -95,14 +111,15 @@ def render_riesgo(
     Returns a PNG image. Requires operator role.
     Raises HTTP 404 if the DEM file does not exist at dem_path.
     """
-    png_bytes = _svc.render_riesgo(db, Path(dem_path))
+    png_bytes = _svc.render_riesgo(db, Path(dem_path), Path(flow_acc_path), Path(slope_path))
     return Response(content=png_bytes, media_type="image/png")
 
 
 @router.get("/animacion")
 def render_animacion(
     dem_path: str = Query(..., description="Filesystem path to the DEM GeoTIFF"),
-    fecha: Optional[str] = Query(default="", description="Storm date (YYYY-MM-DD)"),
+    flow_acc_path: str = Query(..., description="Filesystem path to the flow accumulation raster"),
+    slope_path: str = Query(..., description="Filesystem path to the slope raster"),
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
     _svc: VisualizationService = Depends(_get_service),
@@ -113,5 +130,7 @@ def render_animacion(
     fly-through animation. Returns MP4 video bytes. Requires operator role.
     Raises HTTP 404 if the DEM file does not exist at dem_path.
     """
-    mp4_bytes = _svc.render_animacion(db, Path(dem_path), fecha=fecha or "")
+    mp4_bytes = _svc.render_animacion(
+        db, Path(dem_path), Path(flow_acc_path), Path(slope_path)
+    )
     return Response(content=mp4_bytes, media_type="video/mp4")

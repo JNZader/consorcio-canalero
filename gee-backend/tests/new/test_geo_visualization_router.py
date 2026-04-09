@@ -6,6 +6,9 @@ pattern as test_hydrology_router.py. This avoids full TestClient + JWT
 stack while still validating endpoint logic, response media types, and
 error propagation.
 
+Updated: new query params include flow_acc_path, flow_dir_path, slope_path,
+lon, lat, lluvia_mm to match the wired service signatures.
+
 TDD cycle: RED → GREEN → REFACTOR
 """
 from __future__ import annotations
@@ -81,7 +84,7 @@ def _make_service(
 # ---------------------------------------------------------------------------
 
 class TestRenderCuencasEndpoint:
-    """GET /render/cuencas — tasks 4.1 & 4.2."""
+    """GET /render/cuencas — tasks 4.1 & 4.2 (updated: requires flow_acc_path)."""
 
     def test_returns_response_object(self):
         """Endpoint must return a Response (not a dict or model)."""
@@ -90,6 +93,7 @@ class TestRenderCuencasEndpoint:
         mock_svc = _make_service()
         result = render_cuencas(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -104,6 +108,7 @@ class TestRenderCuencasEndpoint:
         mock_svc = _make_service()
         result = render_cuencas(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -118,6 +123,7 @@ class TestRenderCuencasEndpoint:
         mock_svc = _make_service()
         result = render_cuencas(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -133,6 +139,7 @@ class TestRenderCuencasEndpoint:
         mock_svc = _make_service(cuencas_bytes=expected)
         result = render_cuencas(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -141,7 +148,7 @@ class TestRenderCuencasEndpoint:
         assert result.body == expected
 
     def test_delegates_to_service_with_correct_args(self):
-        """Endpoint must call service.render_cuencas(db, dem_path)."""
+        """Endpoint must call service.render_cuencas(db, dem_path, flow_acc_path)."""
         from app.domains.geo.visualization.router import render_cuencas
 
         mock_svc = _make_service()
@@ -149,6 +156,7 @@ class TestRenderCuencasEndpoint:
 
         render_cuencas(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
             db=mock_db,
             _user=MagicMock(),
             _svc=mock_svc,
@@ -158,6 +166,7 @@ class TestRenderCuencasEndpoint:
         call_args = mock_svc.render_cuencas.call_args
         assert call_args[0][0] is mock_db
         assert call_args[0][1] == Path("/data/dem.tif")
+        assert call_args[0][2] == Path("/data/flow_acc.tif")
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +174,7 @@ class TestRenderCuencasEndpoint:
 # ---------------------------------------------------------------------------
 
 class TestRenderEscorrentiaEndpoint:
-    """GET /render/escorrentia → 200 + image/png (tasks 4.3 & 4.4)."""
+    """GET /render/escorrentia → 200 + image/png (updated: new params)."""
 
     def test_returns_200_png(self):
         from app.domains.geo.visualization.router import render_escorrentia
@@ -173,7 +182,11 @@ class TestRenderEscorrentiaEndpoint:
         mock_svc = _make_service()
         result = render_escorrentia(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_dir_path="/data/flow_dir.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            lon=-63.0,
+            lat=-31.0,
+            lluvia_mm=50.0,
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -190,7 +203,11 @@ class TestRenderEscorrentiaEndpoint:
         mock_svc = _make_service(escorrentia_bytes=expected)
         result = render_escorrentia(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_dir_path="/data/flow_dir.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            lon=-63.0,
+            lat=-31.0,
+            lluvia_mm=50.0,
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -198,13 +215,43 @@ class TestRenderEscorrentiaEndpoint:
 
         assert result.body == expected
 
+    def test_delegates_to_service_with_correct_args(self):
+        """Endpoint must pass all params to render_escorrentia."""
+        from app.domains.geo.visualization.router import render_escorrentia
+
+        mock_svc = _make_service()
+        mock_db = MagicMock()
+
+        render_escorrentia(
+            dem_path="/data/dem.tif",
+            flow_dir_path="/data/flow_dir.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            lon=-63.0,
+            lat=-31.0,
+            lluvia_mm=50.0,
+            db=mock_db,
+            _user=MagicMock(),
+            _svc=mock_svc,
+        )
+
+        mock_svc.render_escorrentia.assert_called_once()
+        args, kwargs = mock_svc.render_escorrentia.call_args
+        assert args[0] is mock_db
+        assert args[1] == Path("/data/dem.tif")
+        assert args[2] == Path("/data/flow_dir.tif")
+        assert args[3] == Path("/data/flow_acc.tif")
+
     def test_delegates_to_service(self):
         from app.domains.geo.visualization.router import render_escorrentia
 
         mock_svc = _make_service()
         render_escorrentia(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_dir_path="/data/flow_dir.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            lon=-63.0,
+            lat=-31.0,
+            lluvia_mm=50.0,
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -214,7 +261,7 @@ class TestRenderEscorrentiaEndpoint:
 
 
 class TestRenderRiesgoEndpoint:
-    """GET /render/riesgo → 200 + image/png (tasks 4.3 & 4.4)."""
+    """GET /render/riesgo → 200 + image/png (updated: requires slope_path)."""
 
     def test_returns_200_png(self):
         from app.domains.geo.visualization.router import render_riesgo
@@ -222,6 +269,8 @@ class TestRenderRiesgoEndpoint:
         mock_svc = _make_service()
         result = render_riesgo(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -238,6 +287,8 @@ class TestRenderRiesgoEndpoint:
         mock_svc = _make_service(riesgo_bytes=expected)
         result = render_riesgo(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -245,12 +296,36 @@ class TestRenderRiesgoEndpoint:
 
         assert result.body == expected
 
+    def test_delegates_to_service_with_correct_args(self):
+        from app.domains.geo.visualization.router import render_riesgo
+
+        mock_svc = _make_service()
+        mock_db = MagicMock()
+
+        render_riesgo(
+            dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
+            db=mock_db,
+            _user=MagicMock(),
+            _svc=mock_svc,
+        )
+
+        mock_svc.render_riesgo.assert_called_once()
+        args, _ = mock_svc.render_riesgo.call_args
+        assert args[0] is mock_db
+        assert args[1] == Path("/data/dem.tif")
+        assert args[2] == Path("/data/flow_acc.tif")
+        assert args[3] == Path("/data/slope.tif")
+
     def test_delegates_to_service(self):
         from app.domains.geo.visualization.router import render_riesgo
 
         mock_svc = _make_service()
         render_riesgo(
             dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -260,7 +335,7 @@ class TestRenderRiesgoEndpoint:
 
 
 class TestRenderAnimacionEndpoint:
-    """GET /render/animacion → 200 + video/mp4 (tasks 4.3 & 4.4)."""
+    """GET /render/animacion → 200 + video/mp4 (updated: requires flow_acc + slope)."""
 
     def test_returns_200_mp4(self):
         from app.domains.geo.visualization.router import render_animacion
@@ -268,7 +343,8 @@ class TestRenderAnimacionEndpoint:
         mock_svc = _make_service()
         result = render_animacion(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -285,7 +361,8 @@ class TestRenderAnimacionEndpoint:
         mock_svc = _make_service(animacion_bytes=expected)
         result = render_animacion(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -293,13 +370,36 @@ class TestRenderAnimacionEndpoint:
 
         assert result.body == expected
 
+    def test_delegates_to_service_with_correct_args(self):
+        from app.domains.geo.visualization.router import render_animacion
+
+        mock_svc = _make_service()
+        mock_db = MagicMock()
+
+        render_animacion(
+            dem_path="/data/dem.tif",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
+            db=mock_db,
+            _user=MagicMock(),
+            _svc=mock_svc,
+        )
+
+        mock_svc.render_animacion.assert_called_once()
+        args, _ = mock_svc.render_animacion.call_args
+        assert args[0] is mock_db
+        assert args[1] == Path("/data/dem.tif")
+        assert args[2] == Path("/data/flow_acc.tif")
+        assert args[3] == Path("/data/slope.tif")
+
     def test_delegates_to_service(self):
         from app.domains.geo.visualization.router import render_animacion
 
         mock_svc = _make_service()
         render_animacion(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -314,7 +414,8 @@ class TestRenderAnimacionEndpoint:
         mock_svc = _make_service()
         result = render_animacion(
             dem_path="/data/dem.tif",
-            fecha="2025-03-15",
+            flow_acc_path="/data/flow_acc.tif",
+            slope_path="/data/slope.tif",
             db=MagicMock(),
             _user=MagicMock(),
             _svc=mock_svc,
@@ -374,6 +475,7 @@ class TestDemNotFoundPropagation:
         with pytest.raises(HTTPException) as exc_info:
             render_cuencas(
                 dem_path="/missing.tif",
+                flow_acc_path="/data/flow_acc.tif",
                 db=MagicMock(),
                 _user=MagicMock(),
                 _svc=mock_svc,
@@ -393,7 +495,11 @@ class TestDemNotFoundPropagation:
         with pytest.raises(HTTPException) as exc_info:
             render_escorrentia(
                 dem_path="/missing.tif",
-                fecha="2025-03-15",
+                flow_dir_path="/data/flow_dir.tif",
+                flow_acc_path="/data/flow_acc.tif",
+                lon=-63.0,
+                lat=-31.0,
+                lluvia_mm=50.0,
                 db=MagicMock(),
                 _user=MagicMock(),
                 _svc=mock_svc,
@@ -412,6 +518,8 @@ class TestDemNotFoundPropagation:
         with pytest.raises(HTTPException) as exc_info:
             render_riesgo(
                 dem_path="/missing.tif",
+                flow_acc_path="/data/flow_acc.tif",
+                slope_path="/data/slope.tif",
                 db=MagicMock(),
                 _user=MagicMock(),
                 _svc=mock_svc,
@@ -430,7 +538,8 @@ class TestDemNotFoundPropagation:
         with pytest.raises(HTTPException) as exc_info:
             render_animacion(
                 dem_path="/missing.tif",
-                fecha="2025-03-15",
+                flow_acc_path="/data/flow_acc.tif",
+                slope_path="/data/slope.tif",
                 db=MagicMock(),
                 _user=MagicMock(),
                 _svc=mock_svc,
@@ -448,9 +557,6 @@ class TestRouterIsThin:
 
     def test_router_has_no_rasterio_import(self):
         """Router must NOT import rasterio — that belongs to service."""
-        import importlib
-        import importlib.util
-
         router_path = Path(
             "/home/javier/programacion/consorcio-canalero/gee-backend"
             "/app/domains/geo/visualization/router.py"
@@ -482,17 +588,47 @@ class TestRouterIsThin:
             render_animacion,
         )
 
-        # Each handler can be called with a mock service — if they skip the
-        # service call and do inline work, they would fail or not call the mock.
         for handler, kwargs in [
-            (render_cuencas, {"dem_path": "/d.tif", "db": MagicMock(), "_user": MagicMock()}),
-            (render_escorrentia, {"dem_path": "/d.tif", "fecha": "", "db": MagicMock(), "_user": MagicMock()}),
-            (render_riesgo, {"dem_path": "/d.tif", "db": MagicMock(), "_user": MagicMock()}),
-            (render_animacion, {"dem_path": "/d.tif", "fecha": "", "db": MagicMock(), "_user": MagicMock()}),
+            (
+                render_cuencas,
+                {"dem_path": "/d.tif", "flow_acc_path": "/fa.tif", "db": MagicMock(), "_user": MagicMock()},
+            ),
+            (
+                render_escorrentia,
+                {
+                    "dem_path": "/d.tif",
+                    "flow_dir_path": "/fd.tif",
+                    "flow_acc_path": "/fa.tif",
+                    "lon": -63.0,
+                    "lat": -31.0,
+                    "lluvia_mm": 50.0,
+                    "db": MagicMock(),
+                    "_user": MagicMock(),
+                },
+            ),
+            (
+                render_riesgo,
+                {
+                    "dem_path": "/d.tif",
+                    "flow_acc_path": "/fa.tif",
+                    "slope_path": "/sl.tif",
+                    "db": MagicMock(),
+                    "_user": MagicMock(),
+                },
+            ),
+            (
+                render_animacion,
+                {
+                    "dem_path": "/d.tif",
+                    "flow_acc_path": "/fa.tif",
+                    "slope_path": "/sl.tif",
+                    "db": MagicMock(),
+                    "_user": MagicMock(),
+                },
+            ),
         ]:
             mock_svc = _make_service()
             handler(**kwargs, _svc=mock_svc)
-            # At least one of the render_* methods must have been called
             called = (
                 mock_svc.render_cuencas.called
                 or mock_svc.render_escorrentia.called
