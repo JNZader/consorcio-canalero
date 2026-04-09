@@ -2,10 +2,11 @@
 VisualizationService — orchestration layer for 3D terrain rendering.
 
 Responsibilities:
-  - Load DEM from disk via rasterio (path passed directly from router).
+  - Look up layer paths from the geo_layers table via GeoRepository.
+  - Load DEM from disk via rasterio.
   - Call calculation functions from intelligence/calculations.py.
   - Call pure render functions from renderer.py.
-  - Raise HTTPException(404) when the DEM file is not found.
+  - Raise HTTPException(404) when no layer of the requested type is found.
 
 Does NOT contain rendering logic — that lives in renderer.py.
 Does NOT contain geo calculation logic — that lives in calculations.py.
@@ -30,6 +31,8 @@ import numpy as np
 import rasterio
 from fastapi import HTTPException
 
+from app.domains.geo.models import TipoGeoLayer
+from app.domains.geo.repository import GeoRepository
 from app.domains.geo.visualization import renderer
 from app.domains.geo.intelligence.calculations import (
     detectar_puntos_conflicto,
@@ -51,6 +54,39 @@ class VisualizationService:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _get_layer_path(
+        self,
+        db: "Session",
+        tipo: TipoGeoLayer,
+        area_id: str | None = None,
+    ) -> str:
+        """Query geo_layers table for latest layer of given type.
+
+        Args:
+            db: SQLAlchemy session.
+            tipo: Layer type enum value (e.g. TipoGeoLayer.DEM_RAW).
+            area_id: Optional area identifier to scope the lookup.
+
+        Returns:
+            The archivo_path string for the found layer.
+
+        Raises:
+            HTTPException(404): If no layer of the given type is found.
+        """
+        repo = GeoRepository()
+        if area_id:
+            layer = repo.get_layer_by_tipo_and_area(db, tipo, area_id)
+        else:
+            layers, _total = repo.get_layers(db, tipo_filter=tipo, page=1, limit=1)
+            layer = layers[0] if layers else None
+
+        if not layer:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No layer of type '{tipo.value}' found. Run terrain analysis first.",
+            )
+        return layer.archivo_path
 
     def _load_dem(self, dem_path: Path) -> tuple[np.ndarray, object]:
         """Load a DEM GeoTIFF from disk and return (elevation_array, transform).
@@ -81,63 +117,64 @@ class VisualizationService:
     def render_cuencas(
         self,
         db: "Session",
-        dem_path: Path,
-        flow_acc_path: Path,
+        area_id: str | None = None,
     ) -> bytes:
         """Render 3D terrain surface with basin polygon overlays.
 
-        Calls generar_zonificacion to delineate sub-basins, then loads the DEM
-        and renders the 3D terrain with basin overlays.
+        Looks up DEM_RAW and FLOW_ACC layers from the database, then calls
+        generar_zonificacion to delineate sub-basins and renders the 3D terrain
+        with basin overlays.
 
         Args:
-            db: SQLAlchemy session (reserved for future DB wiring).
-            dem_path: Path to the DEM GeoTIFF file.
-            flow_acc_path: Path to the flow accumulation raster.
+            db: SQLAlchemy session.
+            area_id: Optional area ID to scope layer lookup.
 
         Returns:
             PNG image as bytes.
 
         Raises:
-            HTTPException(404): If dem_path does not exist.
+            HTTPException(404): If required layers are not found in the DB.
         """
+        dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
+        flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
         elevation, transform = self._load_dem(dem_path)
-        cuencas_gdf = generar_zonificacion(str(dem_path), str(flow_acc_path))
+        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
         return renderer.render_cuencas_3d(elevation, transform, cuencas_gdf)
 
     def render_escorrentia(
         self,
         db: "Session",
-        dem_path: Path,
-        flow_dir_path: Path,
-        flow_acc_path: Path,
         lon: float = -63.0,
         lat: float = -31.0,
         lluvia_mm: float = 50.0,
+        area_id: str | None = None,
     ) -> bytes:
         """Render escorrentia (runoff) flow paths as 3D polylines over DEM terrain.
 
-        Traces a downstream flow path from the given starting point using D8 flow
+        Looks up FLOW_DIR, FLOW_ACC, and DEM_RAW layers from the database, then
+        traces a downstream flow path from the given starting point using D8 flow
         direction, weighted by rainfall amount.
 
         Args:
-            db: SQLAlchemy session (reserved for future DB wiring).
-            dem_path: Path to the DEM GeoTIFF file (used as visual terrain base).
-            flow_dir_path: Path to the D8 flow direction raster.
-            flow_acc_path: Path to the flow accumulation raster.
+            db: SQLAlchemy session.
             lon: Longitude of the starting point (default: -63.0).
             lat: Latitude of the starting point (default: -31.0).
             lluvia_mm: Rainfall amount in mm (default: 50.0).
+            area_id: Optional area ID to scope layer lookup.
 
         Returns:
             PNG image as bytes.
 
         Raises:
-            HTTPException(404): If dem_path does not exist.
+            HTTPException(404): If required layers are not found in the DB.
         """
+        flow_dir_path = self._get_layer_path(db, TipoGeoLayer.FLOW_DIR, area_id)
+        flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         elevation, transform = self._load_dem(dem_path)
         geojson_result = simular_escorrentia(
-            str(flow_dir_path),
-            str(flow_acc_path),
+            flow_dir_path,
+            flow_acc_path,
             punto_inicio=(lon, lat),
             lluvia_mm=lluvia_mm,
         )
@@ -146,69 +183,69 @@ class VisualizationService:
     def render_riesgo(
         self,
         db: "Session",
-        dem_path: Path,
-        flow_acc_path: Path,
-        slope_path: Path,
+        area_id: str | None = None,
     ) -> bytes:
         """Render hydraulic risk zones as colored polygons over DEM terrain.
 
-        Detects infrastructure conflict points where flow accumulation and slope
-        thresholds indicate hydraulic risk, then renders them color-coded by level.
+        Looks up DEM_RAW, FLOW_ACC, and SLOPE layers from the database, then
+        detects infrastructure conflict points where flow accumulation and slope
+        thresholds indicate hydraulic risk, and renders them color-coded by level.
 
         Args:
-            db: SQLAlchemy session (reserved for future DB wiring).
-            dem_path: Path to the DEM GeoTIFF file.
-            flow_acc_path: Path to the flow accumulation raster.
-            slope_path: Path to the slope raster.
+            db: SQLAlchemy session.
+            area_id: Optional area ID to scope layer lookup.
 
         Returns:
             PNG image as bytes.
 
         Raises:
-            HTTPException(404): If dem_path does not exist.
+            HTTPException(404): If required layers are not found in the DB.
         """
+        dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
+        flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        slope_path = self._get_layer_path(db, TipoGeoLayer.SLOPE, area_id)
         elevation, transform = self._load_dem(dem_path)
         conflictos_gdf = detectar_puntos_conflicto(
             _EMPTY_LINES_GDF,
             _EMPTY_LINES_GDF,
             _EMPTY_LINES_GDF,
-            str(flow_acc_path),
-            str(slope_path),
+            flow_acc_path,
+            slope_path,
         )
         return renderer.render_riesgo_3d(elevation, transform, conflictos_gdf)
 
     def render_animacion(
         self,
         db: "Session",
-        dem_path: Path,
-        flow_acc_path: Path,
-        slope_path: Path,
+        area_id: str | None = None,
     ) -> bytes:
         """Produce an MP4 animation via animated camera flyover.
 
-        Combines terrain, basin delineation (generar_zonificacion) and conflict
+        Looks up DEM_RAW, FLOW_ACC, and SLOPE layers from the database, then
+        combines terrain, basin delineation (generar_zonificacion) and conflict
         points (detectar_puntos_conflicto) into a fly-through animation.
 
         Args:
-            db: SQLAlchemy session (reserved for future DB wiring).
-            dem_path: Path to the DEM GeoTIFF file.
-            flow_acc_path: Path to the flow accumulation raster.
-            slope_path: Path to the slope raster.
+            db: SQLAlchemy session.
+            area_id: Optional area ID to scope layer lookup.
 
         Returns:
             MP4 video as bytes.
 
         Raises:
-            HTTPException(404): If dem_path does not exist.
+            HTTPException(404): If required layers are not found in the DB.
         """
+        dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
+        flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        slope_path = self._get_layer_path(db, TipoGeoLayer.SLOPE, area_id)
         elevation, transform = self._load_dem(dem_path)
-        cuencas_gdf = generar_zonificacion(str(dem_path), str(flow_acc_path))
+        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
         conflictos_gdf = detectar_puntos_conflicto(
             _EMPTY_LINES_GDF,
             _EMPTY_LINES_GDF,
             _EMPTY_LINES_GDF,
-            str(flow_acc_path),
-            str(slope_path),
+            flow_acc_path,
+            slope_path,
         )
         return renderer.render_animacion_tormenta(
             elevation, transform, cuencas_gdf, conflictos_gdf
