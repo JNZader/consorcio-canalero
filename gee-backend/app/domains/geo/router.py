@@ -269,7 +269,7 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
 
     imported_count = 0
-    cuencas = Counter()
+    cuencas: Counter[str] = Counter()
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
         if not geometry:
@@ -3552,6 +3552,11 @@ router.include_router(intel_router, prefix="/intelligence")
 from app.domains.geo.hydrology.router import router as hydrology_router  # noqa: E402
 
 router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
+
+# ── Include Visualization sub-router ──
+from app.domains.geo.visualization.router import router as visualization_router  # noqa: E402
+
+router.include_router(visualization_router, prefix="/render", tags=["Visualization"])
 
 
 # ── Catastro / Afectados endpoints ───────────────────────────────────────────
