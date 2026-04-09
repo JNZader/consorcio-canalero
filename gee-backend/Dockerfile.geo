@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     supervisor \
-    libgl1-mesa-glx \
+    libgl1 \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
