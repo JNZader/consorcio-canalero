@@ -51,16 +51,78 @@ db.close()
 print('Settings seeded successfully')
 "
 
-# 6. Start all services
+# 6. Generate terrain derivatives (flow_dir, flow_acc, slope) from DEM
+# Drop a DEM GeoTIFF at gee-backend/data/geo/dem.tif before running setup,
+# or set GEO_DEM_PATH in .env to point to your DEM file.
+echo ""
+echo "--- Terrain Preprocessing ---"
+GEO_DEM_SOURCE="${GEO_DEM_PATH:-gee-backend/data/geo/dem.tif}"
+if [ -f "$GEO_DEM_SOURCE" ]; then
+  echo "DEM found at $GEO_DEM_SOURCE — generating flow derivatives..."
+  docker compose run --rm geo-worker python - <<'PYEOF'
+import os
+from pathlib import Path
+from whitebox import WhiteboxTools
+
+geo_dir = Path("/data/geo")
+geo_dir.mkdir(parents=True, exist_ok=True)
+
+dem = str(geo_dir / "dem.tif")
+dem_filled = str(geo_dir / "dem_filled.tif")
+flow_dir = str(geo_dir / "flow_dir.tif")
+flow_acc = str(geo_dir / "flow_acc.tif")
+slope = str(geo_dir / "slope.tif")
+
+if not Path(dem).exists():
+    print("No DEM found at /data/geo/dem.tif — skipping terrain preprocessing")
+    raise SystemExit(0)
+
+wbt = WhiteboxTools()
+wbt.set_verbose_mode(False)
+
+print("  Filling depressions...")
+wbt.fill_depressions(dem, dem_filled)
+
+print("  Computing D8 flow direction...")
+wbt.d8_pointer(dem_filled, flow_dir)
+
+print("  Computing flow accumulation...")
+wbt.d8_flow_accumulation(flow_dir, flow_acc, pntr=True)
+
+print("  Computing slope...")
+wbt.slope(dem_filled, slope)
+
+print("Terrain derivatives ready:")
+for f in [flow_dir, flow_acc, slope]:
+    size_mb = Path(f).stat().st_size / 1_048_576
+    print(f"  {Path(f).name}: {size_mb:.1f} MB")
+PYEOF
+  echo "Terrain derivatives generated at geo-data volume."
+else
+  echo "No DEM found at $GEO_DEM_SOURCE — skipping terrain preprocessing."
+  echo "To enable 3D terrain visualization:"
+  echo "  1. Copy your DEM GeoTIFF to gee-backend/data/geo/dem.tif"
+  echo "  2. Re-run: ./setup.sh"
+  echo "  (Or mount it into the geo-data volume and run the geo-worker manually)"
+fi
+
+# 7. Start all services
 echo ""
 echo "Starting all services..."
 docker compose up -d
 
 echo ""
 echo "=== Setup Complete ==="
-echo "Frontend: http://localhost:5173"
-echo "Backend:  http://localhost:8000"
-echo "API Docs: http://localhost:8000/docs"
+echo "Frontend:   http://localhost:5173"
+echo "Backend:    http://localhost:8000"
+echo "API Docs:   http://localhost:8000/docs"
+echo "Geo Worker: http://localhost:8001"
+echo ""
+echo "3D Terrain Visualization endpoints (requires auth token):"
+echo "  GET /api/v2/geo/render/cuencas?dem_path=/data/geo/dem.tif&flow_acc_path=/data/geo/flow_acc.tif"
+echo "  GET /api/v2/geo/render/riesgo?dem_path=/data/geo/dem.tif&flow_acc_path=/data/geo/flow_acc.tif&slope_path=/data/geo/slope.tif"
+echo "  GET /api/v2/geo/render/escorrentia?dem_path=/data/geo/dem.tif&flow_dir_path=/data/geo/flow_dir.tif&flow_acc_path=/data/geo/flow_acc.tif&lon=-63.0&lat=-31.0&lluvia_mm=50.0"
+echo "  GET /api/v2/geo/render/animacion?dem_path=/data/geo/dem.tif&flow_acc_path=/data/geo/flow_acc.tif&slope_path=/data/geo/slope.tif"
 echo ""
 echo "Next steps:"
 echo "  1. Edit gee-backend/.env with your credentials"

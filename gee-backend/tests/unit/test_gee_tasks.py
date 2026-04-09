@@ -119,6 +119,88 @@ class TestDetectVvAnomalies:
         decimals = baseline_str.split(".")[-1] if "." in baseline_str else ""
         assert len(decimals) <= 4
 
+    def test_std_exact_value(self):
+        """Kill mutmut_18: variance = (v-baseline)**2 vs (v-baseline)*2."""
+        from app.domains.geo.gee_tasks import detect_vv_anomalies
+
+        # values: [-10, -12]. baseline = -11. variance = ((1)^2 + (-1)^2)/2 = 1.0 → std = 1.0
+        # With *2 mutation: variance = (1*2 + (-1)*2)/2 = 0.0 → std = 0.0 (different result)
+        dates = ["d1", "d2"]
+        values = [-10.0, -12.0]
+        result = detect_vv_anomalies(dates, values)
+        assert result["std"] == pytest.approx(1.0, abs=1e-9)
+
+    def test_default_sigma_boundary(self):
+        """Kill mutmut_1: default sigma=2.0 vs sigma=3.0.
+
+        Use values where the outlier is clearly between threshold@2 and threshold@3
+        with enough margin to avoid floating-point boundary issues.
+        8 copies of -10, 1 outlier of -20:
+          baseline ≈ -11.11, std ≈ 3.14
+          threshold@2 ≈ -17.4  → -20 < -17.4  → anomaly ✓
+          threshold@3 ≈ -20.5  → -20 > -20.5  → no anomaly
+        """
+        from app.domains.geo.gee_tasks import detect_vv_anomalies
+
+        dates = [f"d{i}" for i in range(9)]
+        values = [-10.0] * 8 + [-20.0]
+        result_default = detect_vv_anomalies(dates, values)       # sigma=2.0
+        result_sigma3 = detect_vv_anomalies(dates, values, sigma=3.0)
+        assert len(result_default["anomalies"]) > len(result_sigma3["anomalies"])
+
+    def test_anomaly_dict_has_vv_key(self):
+        """Kill mutmut_29, mutmut_30: 'vv' key renamed to 'XXvvXX' or 'VV'."""
+        from app.domains.geo.gee_tasks import detect_vv_anomalies
+
+        dates = [f"2024-01-{i:02d}" for i in range(1, 12)]
+        values = [-10.0] * 10 + [-30.0]
+        result = detect_vv_anomalies(dates, values, sigma=2.0)
+
+        assert len(result["anomalies"]) >= 1
+        anomaly = result["anomalies"][0]
+        assert "vv" in anomaly
+        assert "VV" not in anomaly
+        assert "XXvvXX" not in anomaly
+        assert isinstance(anomaly["vv"], float)
+
+    def test_rounding_exactly_4_decimals(self):
+        """Kill mutmut_32-35, _48-51, _55-58: round(x,4) vs round(x,5) or round(x,None).
+
+        round(x, None) returns an int, round(x, 5) preserves a 5th decimal digit.
+        Verify all returned numeric fields are float AND match 4-decimal rounding.
+        """
+        from app.domains.geo.gee_tasks import detect_vv_anomalies
+
+        # Values that produce irrational std/threshold (not clean integers or 4-decimal floats)
+        dates = [f"d{i}" for i in range(3)]
+        values = [-10.123456789, -10.987654321, -11.111111111]
+        result = detect_vv_anomalies(dates, values, sigma=0.5)
+
+        # All numeric fields MUST be float, not int (kills round(x, None) → returns int)
+        assert isinstance(result["baseline"], float), "baseline must be float"
+        assert isinstance(result["std"], float), "std must be float"
+        assert isinstance(result["threshold"], float), "threshold must be float"
+
+        # std and threshold must equal 4-decimal rounding, NOT 5-decimal
+        import math as _math
+        n = len(values)
+        baseline_exact = sum(values) / n
+        variance_exact = sum((v - baseline_exact) ** 2 for v in values) / n
+        std_exact = _math.sqrt(variance_exact)
+        threshold_exact = baseline_exact - 0.5 * std_exact
+
+        assert result["std"] == round(std_exact, 4)
+        assert result["std"] != round(std_exact, 5) or round(std_exact, 4) == round(std_exact, 5)
+        assert result["threshold"] == round(threshold_exact, 4)
+
+        # anomaly vv values must also be float and match 4-decimal rounding
+        # Build date→original_value lookup to verify per-value rounding
+        date_to_value = {f"d{i}": values[i] for i in range(n)}
+        for anomaly in result["anomalies"]:
+            assert isinstance(anomaly["vv"], float), "anomaly vv must be float"
+            original = date_to_value[anomaly["date"]]
+            assert anomaly["vv"] == round(original, 4)
+
 
 # ---------------------------------------------------------------------------
 # _get_deps

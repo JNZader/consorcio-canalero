@@ -11,6 +11,7 @@ Render functions are intentionally pure:
   - They do NOT access the database, filesystem, or network.
 All I/O (DEM loading, DB reads) lives in service.py.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,10 +34,10 @@ except Exception:
 
 # Risk level → RGB color mapping (0-255 per channel)
 _RISK_COLORS: dict[str, tuple[int, int, int]] = {
-    "bajo": (0, 200, 0),       # green
-    "medio": (255, 255, 0),    # yellow
-    "alto": (255, 140, 0),     # orange
-    "critico": (220, 0, 0),    # red
+    "bajo": (0, 200, 0),  # green
+    "medio": (255, 255, 0),  # yellow
+    "alto": (255, 140, 0),  # orange
+    "critico": (220, 0, 0),  # red
 }
 _DEFAULT_RISK_COLOR: tuple[int, int, int] = (128, 128, 128)  # grey for unknown levels
 
@@ -47,6 +48,7 @@ _ANIMATION_AZIMUTHS: list[int] = [0, 45, 90, 135, 180, 225, 270, 315]
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _dem_to_grid(elevation: np.ndarray, transform) -> "pyvista.StructuredGrid":
     """Convert a 2-D elevation array + affine transform to a PyVista StructuredGrid.
@@ -181,6 +183,7 @@ def _add_linestring_overlay(
 # ---------------------------------------------------------------------------
 # Public render functions
 # ---------------------------------------------------------------------------
+
 
 def render_cuencas_3d(
     elevation: np.ndarray,

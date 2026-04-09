@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     gcc \
     libgdal-dev \
     libexpat1 \
+    libgl1-mesa-glx \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Environment variables

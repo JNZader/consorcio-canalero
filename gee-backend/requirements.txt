@@ -30,6 +30,9 @@ xarray>=2024.1.0
 rioxarray>=0.15.0
 xee>=0.0.16
 
+# 3D Visualization
+pyvista>=0.43.0
+
 # Auth
 fastapi-users[sqlalchemy]>=13.0.0
 httpx-oauth>=0.16.0
