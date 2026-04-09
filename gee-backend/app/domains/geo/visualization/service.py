@@ -24,28 +24,22 @@ domain stores point assets, not linestrings. detectar_puntos_conflicto skips emp
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import geopandas as gpd
-import numpy as np
-import rasterio
 from fastapi import HTTPException
 
 from app.domains.geo.models import TipoGeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.visualization import renderer
-from app.domains.geo.intelligence.calculations import (
-    detectar_puntos_conflicto,
-    generar_zonificacion,
-    simular_escorrentia,
-)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-# Empty GeoDataFrames used as placeholders for infrastructure linestrings
-# until the infrastructure domain exposes canal/road LineString geometries.
-_EMPTY_LINES_GDF = gpd.GeoDataFrame({"geometry": []})
+
+def _empty_lines_gdf() -> Any:
+    """Return an empty GeoDataFrame — lazy import to avoid top-level geopandas dep."""
+    import geopandas as gpd  # noqa: PLC0415
+    return gpd.GeoDataFrame({"geometry": []})
 
 
 class VisualizationService:
@@ -88,7 +82,7 @@ class VisualizationService:
             )
         return layer.archivo_path
 
-    def _load_dem(self, dem_path: Path) -> tuple[np.ndarray, object]:
+    def _load_dem(self, dem_path: Path) -> tuple[Any, Any]:
         """Load a DEM GeoTIFF from disk and return (elevation_array, transform).
 
         Args:
@@ -100,6 +94,9 @@ class VisualizationService:
         Raises:
             HTTPException(404): If dem_path does not exist on disk.
         """
+        import numpy as np  # noqa: PLC0415
+        import rasterio  # noqa: PLC0415
+
         if not Path(dem_path).exists():
             raise HTTPException(
                 status_code=404,
@@ -137,6 +134,8 @@ class VisualizationService:
         """
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        from app.domains.geo.intelligence.calculations import generar_zonificacion  # noqa: PLC0415
+
         elevation, transform = self._load_dem(dem_path)
         cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
         return renderer.render_cuencas_3d(elevation, transform, cuencas_gdf)
@@ -171,6 +170,8 @@ class VisualizationService:
         flow_dir_path = self._get_layer_path(db, TipoGeoLayer.FLOW_DIR, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
+        from app.domains.geo.intelligence.calculations import simular_escorrentia  # noqa: PLC0415
+
         elevation, transform = self._load_dem(dem_path)
         geojson_result = simular_escorrentia(
             flow_dir_path,
@@ -204,13 +205,12 @@ class VisualizationService:
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
         slope_path = self._get_layer_path(db, TipoGeoLayer.SLOPE, area_id)
+        from app.domains.geo.intelligence.calculations import detectar_puntos_conflicto  # noqa: PLC0415
+
+        empty = _empty_lines_gdf()
         elevation, transform = self._load_dem(dem_path)
         conflictos_gdf = detectar_puntos_conflicto(
-            _EMPTY_LINES_GDF,
-            _EMPTY_LINES_GDF,
-            _EMPTY_LINES_GDF,
-            flow_acc_path,
-            slope_path,
+            empty, empty, empty, flow_acc_path, slope_path,
         )
         return renderer.render_riesgo_3d(elevation, transform, conflictos_gdf)
 
@@ -238,14 +238,16 @@ class VisualizationService:
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
         slope_path = self._get_layer_path(db, TipoGeoLayer.SLOPE, area_id)
+        from app.domains.geo.intelligence.calculations import (  # noqa: PLC0415
+            detectar_puntos_conflicto,
+            generar_zonificacion,
+        )
+
+        empty = _empty_lines_gdf()
         elevation, transform = self._load_dem(dem_path)
         cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
         conflictos_gdf = detectar_puntos_conflicto(
-            _EMPTY_LINES_GDF,
-            _EMPTY_LINES_GDF,
-            _EMPTY_LINES_GDF,
-            flow_acc_path,
-            slope_path,
+            empty, empty, empty, flow_acc_path, slope_path,
         )
         return renderer.render_animacion_tormenta(
             elevation, transform, cuencas_gdf, conflictos_gdf
