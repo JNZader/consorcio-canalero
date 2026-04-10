@@ -207,7 +207,7 @@ function translateAuthError(message: string): string {
 export async function resetPassword(email: string): Promise<AuthResult> {
   try {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    const res = await fetch(`${API_URL}/api/v2/auth/forgot-password`, {
+    await fetch(`${API_URL}/api/v2/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),

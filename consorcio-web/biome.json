@@ -74,7 +74,15 @@
       "*.ts",
       "*.js"
     ],
-    "ignore": ["node_modules", "dist", "*.min.js", "public/", ".vercel", "coverage"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      "*.min.js",
+      "public/",
+      ".vercel",
+      "coverage",
+      "src/routeTree.gen.tsx"
+    ]
   },
   "vcs": {
     "enabled": true,

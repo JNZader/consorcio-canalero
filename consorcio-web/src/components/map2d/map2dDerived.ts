@@ -89,6 +89,55 @@ export function buildSuggestedZoneSummaries(
   });
 }
 
+function pushApprovedZoneLegendItems(
+  items: Array<{ color: string; label: string; type: string }>,
+  approvedZones: FeatureCollection,
+) {
+  for (const feature of approvedZones.features) {
+    items.push({
+      color: (feature.properties?.__color as string | undefined) || '#1971c2',
+      label: String(feature.properties?.nombre || 'Cuenca'),
+      type: 'fill',
+    });
+  }
+}
+
+function pushSoilLegendItems(
+  items: Array<{ color: string; label: string; type: string }>,
+  soilMap: FeatureCollection,
+) {
+  const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+  const presentCaps = new Set<string>();
+  for (const feature of soilMap.features) {
+    const cap = (feature.properties as { cap?: string | null } | null)?.cap;
+    if (!cap) continue;
+    const normalized = cap.trim().toUpperCase();
+    const match = normalized.match(/^(VIII|VII|VI|IV|III|II|I)/);
+    if (match) presentCaps.add(match[1]);
+  }
+  for (const cap of capOrder) {
+    if (presentCaps.has(cap)) {
+      items.push({ color: getSoilColor(cap), label: `Clase ${cap}`, type: 'fill' });
+    }
+  }
+}
+
+function pushWaterwayLegendItems(items: Array<{ color: string; label: string; type: string }>) {
+  const waterwayEntries = [...WATERWAY_DEFS]
+    .sort((a, b) => {
+      if (a.id === 'canales_existentes') return 1;
+      if (b.id === 'canales_existentes') return -1;
+      return 0;
+    })
+    .map((waterway) => ({
+      color: waterway.style.color,
+      label: waterway.nombre,
+    }));
+  for (const entry of waterwayEntries) {
+    items.push({ ...entry, type: 'line' });
+  }
+}
+
 export function buildActiveLegendItems(params: {
   zonaCollection: FeatureCollection | null;
   vectorVisibility: Record<string, boolean>;
@@ -108,13 +157,7 @@ export function buildActiveLegendItems(params: {
   }
 
   if (vectorVisibility.approved_zones && hasApprovedZones && approvedZones) {
-    for (const feature of approvedZones.features) {
-      items.push({
-        color: (feature.properties?.__color as string | undefined) || '#1971c2',
-        label: String(feature.properties?.nombre || 'Cuenca'),
-        type: 'fill',
-      });
-    }
+    pushApprovedZoneLegendItems(items, approvedZones);
   }
 
   if (vectorVisibility.basins && basins && basins.features.length > 0) {
@@ -122,37 +165,11 @@ export function buildActiveLegendItems(params: {
   }
 
   if (vectorVisibility.soil && soilMap && soilMap.features.length > 0) {
-    const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
-    const presentCaps = new Set<string>();
-    for (const feature of soilMap.features) {
-      const cap = (feature.properties as { cap?: string | null } | null)?.cap;
-      if (cap) {
-        const normalized = cap.trim().toUpperCase();
-        const match = normalized.match(/^(VIII|VII|VI|IV|III|II|I)/);
-        if (match) presentCaps.add(match[1]);
-      }
-    }
-    for (const cap of capOrder) {
-      if (presentCaps.has(cap)) {
-        items.push({ color: getSoilColor(cap), label: `Clase ${cap}`, type: 'fill' });
-      }
-    }
+    pushSoilLegendItems(items, soilMap);
   }
 
   if (vectorVisibility.waterways) {
-    const waterwayEntries = [...WATERWAY_DEFS]
-      .sort((a, b) => {
-        if (a.id === 'canales_existentes') return 1;
-        if (b.id === 'canales_existentes') return -1;
-        return 0;
-      })
-      .map((waterway) => ({
-        color: waterway.style.color,
-        label: waterway.nombre,
-      }));
-    for (const entry of waterwayEntries) {
-      items.push({ ...entry, type: 'line' });
-    }
+    pushWaterwayLegendItems(items);
   }
 
   if (vectorVisibility.infrastructure && infrastructureCollection && infrastructureCollection.features.length > 0) {

@@ -10,6 +10,38 @@ interface LayerLike {
   tipo: string;
 }
 
+function removeRasterOverlay(map: maplibregl.Map, sourceId: string) {
+  if (map.getLayer(`${sourceId}-layer`)) {
+    map.removeLayer(`${sourceId}-layer`);
+  }
+  if (map.getSource(sourceId)) {
+    map.removeSource(sourceId);
+  }
+}
+
+function addRasterOverlay(
+  map: maplibregl.Map,
+  sourceId: string,
+  tileUrl: string,
+  beforeLayerId = 'vector-layers-start',
+) {
+  removeRasterOverlay(map, sourceId);
+  map.addSource(sourceId, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+  });
+  map.addLayer(
+    {
+      id: `${sourceId}-layer`,
+      type: 'raster',
+      source: sourceId,
+      paint: { 'raster-opacity': 0.85 },
+    },
+    beforeLayerId,
+  );
+}
+
 export function syncDemRasterLayer(
   map: maplibregl.Map,
   params: {
@@ -111,91 +143,17 @@ export function syncImageOverlays(
     !!params.comparison?.right;
 
   if (showSingle && params.selectedImage) {
-    const existing = map.getSource(SOURCE_IDS.SATELLITE_IMAGE);
-    if (existing) {
-      map.removeLayer(`${SOURCE_IDS.SATELLITE_IMAGE}-layer`);
-      map.removeSource(SOURCE_IDS.SATELLITE_IMAGE);
-    }
-    map.addSource(SOURCE_IDS.SATELLITE_IMAGE, {
-      type: 'raster',
-      tiles: [params.selectedImage.tile_url],
-      tileSize: 256,
-    });
-    if (!map.getLayer(`${SOURCE_IDS.SATELLITE_IMAGE}-layer`)) {
-      map.addLayer(
-        {
-          id: `${SOURCE_IDS.SATELLITE_IMAGE}-layer`,
-          type: 'raster',
-          source: SOURCE_IDS.SATELLITE_IMAGE,
-          paint: { 'raster-opacity': 0.85 },
-        },
-        'vector-layers-start',
-      );
-    }
+    addRasterOverlay(map, SOURCE_IDS.SATELLITE_IMAGE, params.selectedImage.tile_url);
   } else {
-    if (map.getLayer(`${SOURCE_IDS.SATELLITE_IMAGE}-layer`)) {
-      map.removeLayer(`${SOURCE_IDS.SATELLITE_IMAGE}-layer`);
-    }
-    if (map.getSource(SOURCE_IDS.SATELLITE_IMAGE)) {
-      map.removeSource(SOURCE_IDS.SATELLITE_IMAGE);
-    }
+    removeRasterOverlay(map, SOURCE_IDS.SATELLITE_IMAGE);
   }
 
   if (showComparison && params.comparison?.left && params.comparison?.right) {
-    if (map.getLayer(`${SOURCE_IDS.COMPARISON_LEFT}-layer`)) {
-      map.removeLayer(`${SOURCE_IDS.COMPARISON_LEFT}-layer`);
-    }
-    if (map.getSource(SOURCE_IDS.COMPARISON_LEFT)) {
-      map.removeSource(SOURCE_IDS.COMPARISON_LEFT);
-    }
-    map.addSource(SOURCE_IDS.COMPARISON_LEFT, {
-      type: 'raster',
-      tiles: [params.comparison.left.tile_url],
-      tileSize: 256,
-    });
-    map.addLayer(
-      {
-        id: `${SOURCE_IDS.COMPARISON_LEFT}-layer`,
-        type: 'raster',
-        source: SOURCE_IDS.COMPARISON_LEFT,
-        paint: { 'raster-opacity': 0.85 },
-      },
-      'vector-layers-start',
-    );
-
-    if (map.getLayer(`${SOURCE_IDS.COMPARISON_RIGHT}-layer`)) {
-      map.removeLayer(`${SOURCE_IDS.COMPARISON_RIGHT}-layer`);
-    }
-    if (map.getSource(SOURCE_IDS.COMPARISON_RIGHT)) {
-      map.removeSource(SOURCE_IDS.COMPARISON_RIGHT);
-    }
-    map.addSource(SOURCE_IDS.COMPARISON_RIGHT, {
-      type: 'raster',
-      tiles: [params.comparison.right.tile_url],
-      tileSize: 256,
-    });
-    map.addLayer(
-      {
-        id: `${SOURCE_IDS.COMPARISON_RIGHT}-layer`,
-        type: 'raster',
-        source: SOURCE_IDS.COMPARISON_RIGHT,
-        paint: { 'raster-opacity': 0.85 },
-      },
-      'vector-layers-start',
-    );
+    addRasterOverlay(map, SOURCE_IDS.COMPARISON_LEFT, params.comparison.left.tile_url);
+    addRasterOverlay(map, SOURCE_IDS.COMPARISON_RIGHT, params.comparison.right.tile_url);
   } else {
-    if (map.getLayer(`${SOURCE_IDS.COMPARISON_LEFT}-layer`)) {
-      map.removeLayer(`${SOURCE_IDS.COMPARISON_LEFT}-layer`);
-    }
-    if (map.getSource(SOURCE_IDS.COMPARISON_LEFT)) {
-      map.removeSource(SOURCE_IDS.COMPARISON_LEFT);
-    }
-    if (map.getLayer(`${SOURCE_IDS.COMPARISON_RIGHT}-layer`)) {
-      map.removeLayer(`${SOURCE_IDS.COMPARISON_RIGHT}-layer`);
-    }
-    if (map.getSource(SOURCE_IDS.COMPARISON_RIGHT)) {
-      map.removeSource(SOURCE_IDS.COMPARISON_RIGHT);
-    }
+    removeRasterOverlay(map, SOURCE_IDS.COMPARISON_LEFT);
+    removeRasterOverlay(map, SOURCE_IDS.COMPARISON_RIGHT);
   }
 }
 

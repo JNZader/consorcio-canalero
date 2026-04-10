@@ -178,7 +178,7 @@ export function useImageExplorerController() {
     if (selectedDay && result) {
       fetchImageForDate(selectedDay);
     }
-  }, [fetchImageForDate, result, selectedDay, visualization]);
+  }, [fetchImageForDate, result, selectedDay]);
 
   return {
     isMobile,

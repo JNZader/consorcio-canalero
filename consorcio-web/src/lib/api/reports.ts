@@ -217,7 +217,7 @@ export const statsApi = {
       includeReports?: boolean;
     } = {}
   ): Promise<Blob> => {
-    const { format = 'csv', dateFrom, dateTo, cuencas, includeReports = false } = options;
+    const { format = 'csv' } = options;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LONG_TIMEOUT);

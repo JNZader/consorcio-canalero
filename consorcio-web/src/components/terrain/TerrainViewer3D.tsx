@@ -78,6 +78,8 @@ export default function TerrainViewer3D({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const activeRasterLayerIdRef = useRef<string | null>(null);
+  const activeRasterTileUrlRef = useRef<string | null>(null);
+  const overlayOpacityRef = useRef(0.7);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [ready, setReady] = useState(false);
@@ -136,6 +138,14 @@ export default function TerrainViewer3D({
             : undefined,
         })
       : `${API_URL}/api/v2/geo/layers/${textureLayerId ?? demLayerId}/tiles/{z}/{x}/{y}.png?v=${TERRAIN_TILE_CACHE_BUSTER}`;
+
+  useEffect(() => {
+    activeRasterTileUrlRef.current = activeRasterTileUrl;
+  }, [activeRasterTileUrl]);
+
+  useEffect(() => {
+    overlayOpacityRef.current = overlayOpacity;
+  }, [overlayOpacity]);
 
   useEffect(() => {
     if (!activeRasterLayerId && selectedImage) {
@@ -246,7 +256,7 @@ export default function TerrainViewer3D({
           },
           'terrain-texture': {
             type: 'raster',
-            tiles: [activeRasterTileUrl],
+            tiles: [activeRasterTileUrlRef.current ?? ''],
             tileSize: 256,
           },
           'satellite': {
@@ -269,7 +279,7 @@ export default function TerrainViewer3D({
             id: 'dem-overlay',
             type: 'raster',
             source: 'terrain-texture',
-            paint: { 'raster-opacity': overlayOpacity },
+            paint: { 'raster-opacity': overlayOpacityRef.current },
           },
         ],
         terrain: {
@@ -384,16 +394,8 @@ export default function TerrainViewer3D({
     infrastructureCollection,
     roadsCollection,
     ready,
-    vectorLayerVisibility.approved_zones,
-    vectorLayerVisibility.basins,
-    vectorLayerVisibility.cuencas,
-    vectorLayerVisibility.catastro,
-    vectorLayerVisibility.infrastructure,
-    vectorLayerVisibility.roads,
-    vectorLayerVisibility.soil,
-    vectorLayerVisibility.waterways,
     soilCollection,
-    vectorLayerVisibility.zona,
+    vectorLayerVisibility,
     waterwaysCollection,
     zonaCollection,
   ]);

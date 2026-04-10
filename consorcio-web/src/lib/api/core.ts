@@ -64,6 +64,15 @@ export interface ApiFetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+function hasItemsArray<T>(data: unknown): data is { items: T[] } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'items' in data &&
+    Array.isArray((data as { items?: unknown }).items)
+  );
+}
+
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
@@ -157,9 +166,7 @@ export const healthCheck = async (): Promise<boolean> => {
  */
 export function unwrapItems<T>(data: T[] | { items: T[] } | unknown): T[] {
   if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object' && 'items' in (data as any)) {
-    return (data as any).items ?? [];
-  }
+  if (hasItemsArray<T>(data)) return data.items;
   return [];
 }
 

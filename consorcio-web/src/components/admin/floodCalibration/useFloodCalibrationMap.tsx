@@ -14,7 +14,6 @@ const BASINS_URL = `${API_URL}/api/v2/geo/basins`;
 
 export function useFloodCalibrationMap() {
   const config = useConfigStore((state) => state.config);
-  const labeledZones = useFloodCalibrationStore((s) => s.labeledZones);
   const toggleZoneLabel = useFloodCalibrationStore.getState().toggleZoneLabel;
 
   const mapRef = useRef<HTMLDivElement>(null);
@@ -191,7 +190,7 @@ export function useFloodCalibrationMap() {
     const geojson = zonasDataRef.current;
     if (!map || !geojson || !mapReady) return;
     renderZonas(map, geojson);
-  }, [labeledZones, mapReady, renderZonas]);
+  }, [mapReady, renderZonas]);
 
   return { mapRef, loadingImage, error, fetchImageForDate };
 }
