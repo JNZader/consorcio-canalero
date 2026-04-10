@@ -11,7 +11,7 @@
     "dev": "make dev",
     "dev:frontend": "cd consorcio-web && npm run dev",
     "dev:backend": "make backend-dev",
-    "build": "make build",
+    "build": "./scripts/build-local.sh",
     "build:frontend": "cd consorcio-web && npm run build",
     "test": "make test",
     "test:frontend": "cd consorcio-web && npm run test",
