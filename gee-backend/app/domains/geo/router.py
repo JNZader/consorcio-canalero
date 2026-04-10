@@ -73,7 +73,9 @@ from app.domains.geo.router_gee_support import (
     list_gee_layers_impl,
 )
 from app.domains.geo.router_hydrology_routing import (
+    CorridorRoutingRequest as _CorridorRoutingRequest,
     ImportCanalsRequest,
+    calculate_corridor_route as _calculate_corridor_route,
     router as hydrology_routing_router,
 )
 from app.domains.geo.router_hydromet import (
@@ -108,6 +110,13 @@ from app.domains.geo.service import dispatch_job
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
+CorridorRoutingRequest = _CorridorRoutingRequest
+
+
+def calculate_corridor_route(*args, **kwargs):
+    return _calculate_corridor_route(*args, **kwargs)
+
+
 for subrouter in (
     core_router,
     basins_bundle_router,

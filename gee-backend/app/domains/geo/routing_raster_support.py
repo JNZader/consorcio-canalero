@@ -28,10 +28,26 @@ RASTER_PROFILE_WEIGHTS = {
 }
 
 
-def _resolve_raster_profile_weights(profile: str) -> dict[str, float]:
-    return dict(
+def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
+    total = sum(max(value, 0.0) for value in weights.values())
+    if total <= 0:
+        return dict(RASTER_PROFILE_WEIGHTS["balanceado"])
+    return {key: round(max(value, 0.0) / total, 4) for key, value in weights.items()}
+
+
+def _resolve_raster_profile_weights(
+    profile: str,
+    weight_overrides: dict[str, float | None] | None = None,
+) -> dict[str, float]:
+    weights = dict(
         RASTER_PROFILE_WEIGHTS.get(profile, RASTER_PROFILE_WEIGHTS["balanceado"])
     )
+    if weight_overrides:
+        for key in ("slope", "hydric", "property"):
+            value = weight_overrides.get(key)
+            if value is not None:
+                weights[key] = float(value)
+    return _normalize_weights(weights)
 
 
 def _resolve_layer_path(layer: GeoLayer) -> str:
@@ -78,6 +94,7 @@ def build_multicriteria_cost_surface(
     output_path: str,
     *,
     profile: str,
+    weight_overrides: dict[str, float | None] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     import rasterio
     from rasterio.features import rasterize
@@ -99,7 +116,7 @@ def build_multicriteria_cost_surface(
         raise ValueError("Cost surface contains only nodata")
 
     srid = int(raster_crs.to_epsg() or 4326) if raster_crs else 4326
-    weights = _resolve_raster_profile_weights(profile)
+    weights = _resolve_raster_profile_weights(profile, weight_overrides)
     meta_breakdown: dict[str, Any] = {
         "mode": "raster",
         "weights": weights,
@@ -220,6 +237,7 @@ def raster_corridor_routing(
     profile: str,
     corridor_width_m: float,
     area_id: str | None = None,
+    weight_overrides: dict[str, float | None] | None = None,
 ) -> dict[str, Any]:
     slope_raster_path = get_latest_slope_raster_path(db, area_id)
     with tempfile.TemporaryDirectory(prefix="routing-raster-") as tmpdir:
@@ -228,6 +246,7 @@ def raster_corridor_routing(
             slope_raster_path,
             str(Path(tmpdir) / "corridor_cost_surface.tif"),
             profile=profile,
+            weight_overrides=weight_overrides,
         )
         accum_path = str(Path(tmpdir) / "corridor_accum.tif")
         backlink_path = str(Path(tmpdir) / "corridor_backlink.tif")

@@ -25,12 +25,25 @@ from app.domains.geo.intelligence.calculations import (
     simular_escorrentia,
 )
 from app.domains.geo.intelligence.repository import IntelligenceRepository
+from app.domains.geo.intelligence import service_catastro_support
 from app.domains.geo.repository import GeoRepository
 
 logger = structlog.get_logger(__name__)
 
 intel_repo = IntelligenceRepository()
 geo_repo = GeoRepository()
+
+
+def import_catastro_geojson(db: Session, geojson_data: dict):
+    return service_catastro_support.import_catastro_geojson(db, geojson_data)
+
+
+def get_afectados_zona(db: Session, zona_id: str):
+    return service_catastro_support.get_afectados_zona(db, zona_id)
+
+
+def get_afectados_evento(db: Session, event_id: str):
+    return service_catastro_support.get_afectados_evento(db, event_id)
 
 
 # ---------------------------------------------------------------------------

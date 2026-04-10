@@ -14,6 +14,8 @@ export function CorridorScenarioHistory({
   onExport,
   onExportPdf,
   onApprove,
+  onUnapprove,
+  onFavorite,
 }: Readonly<{
   items: CorridorScenarioListItem[];
   loading: boolean;
@@ -21,6 +23,8 @@ export function CorridorScenarioHistory({
   onExport: (scenarioId: string) => void;
   onExportPdf: (scenarioId: string) => void;
   onApprove: (scenarioId: string) => void;
+  onUnapprove: (scenarioId: string) => void;
+  onFavorite: (scenarioId: string, isFavorite: boolean) => void;
 }>) {
   return (
     <Paper withBorder radius="md" p="md">
@@ -40,11 +44,17 @@ export function CorridorScenarioHistory({
             <Stack gap={4}>
               <Group justify="space-between" align="center">
                 <Text fw={600}>{item.name}</Text>
-                {item.is_approved ? (
-                  <Badge color="green" variant="light">Aprobado</Badge>
-                ) : (
-                  <Badge color="gray" variant="light">Borrador</Badge>
-                )}
+                <Group gap="xs">
+                  {item.is_favorite ? (
+                    <Badge color="yellow" variant="light">Favorito</Badge>
+                  ) : null}
+                  <Badge color="blue" variant="light">v{item.version ?? 1}</Badge>
+                  {item.is_approved ? (
+                    <Badge color="green" variant="light">Aprobado</Badge>
+                  ) : (
+                    <Badge color="gray" variant="light">Borrador</Badge>
+                  )}
+                </Group>
               </Group>
               <Text size="xs" c="dimmed">
                 Perfil: {PROFILE_LABELS[item.profile]} · {new Date(item.created_at).toLocaleString('es-AR')}
@@ -59,6 +69,11 @@ export function CorridorScenarioHistory({
                   {item.notes}
                 </Text>
               )}
+              {item.approval_note && (
+                <Text size="xs" c="dimmed">
+                  Última nota de aprobación: {item.approval_note}
+                </Text>
+              )}
               <Stack gap={4}>
                 <Button variant="subtle" size="xs" onClick={() => onLoad(item.id)}>
                   Cargar escenario
@@ -68,6 +83,19 @@ export function CorridorScenarioHistory({
                     Marcar aprobado
                   </Button>
                 )}
+                {item.is_approved && (
+                  <Button variant="subtle" color="yellow" size="xs" onClick={() => onUnapprove(item.id)}>
+                    Volver a borrador
+                  </Button>
+                )}
+                <Button
+                  variant="subtle"
+                  color={item.is_favorite ? 'yellow' : 'gray'}
+                  size="xs"
+                  onClick={() => onFavorite(item.id, !item.is_favorite)}
+                >
+                  {item.is_favorite ? 'Quitar favorito' : 'Marcar favorito'}
+                </Button>
                 <Button variant="subtle" color="gray" size="xs" onClick={() => onExport(item.id)}>
                   Exportar GeoJSON
                 </Button>

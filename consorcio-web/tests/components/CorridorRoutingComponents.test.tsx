@@ -59,6 +59,9 @@ describe('Corridor routing components', () => {
           toLat: -32.1,
           corridorWidthM: 75,
           alternativeCount: 2,
+          weightSlope: 0.45,
+          weightHydric: 0.25,
+          weightProperty: 0.3,
         }}
         loading={false}
         error={null}
@@ -66,6 +69,7 @@ describe('Corridor routing components', () => {
         pickTarget={null}
         scenarioName="Escenario Norte"
         scenarioNotes="Notas"
+        currentScenarioId={null}
         onChange={vi.fn()}
         onModeChange={vi.fn()}
         onProfileChange={vi.fn()}
@@ -101,6 +105,9 @@ describe('Corridor routing components', () => {
           toLat: '',
           corridorWidthM: 50,
           alternativeCount: 2,
+          weightSlope: 0.45,
+          weightHydric: 0.25,
+          weightProperty: 0.3,
         }}
         loading={false}
         error={null}
@@ -108,6 +115,7 @@ describe('Corridor routing components', () => {
         pickTarget={null}
         scenarioName=""
         scenarioNotes=""
+        currentScenarioId={null}
         onChange={vi.fn()}
         onModeChange={vi.fn()}
         onProfileChange={onProfileChange}
@@ -132,6 +140,8 @@ describe('Corridor routing components', () => {
     const onExport = vi.fn();
     const onExportPdf = vi.fn();
     const onApprove = vi.fn();
+    const onUnapprove = vi.fn();
+    const onFavorite = vi.fn();
 
     renderWithMantine(
       <CorridorScenarioHistory
@@ -142,7 +152,10 @@ describe('Corridor routing components', () => {
             name: 'Escenario Norte',
             profile: 'hidraulico',
             notes: 'Cruce principal',
-            is_approved: false,
+            approval_note: 'Ajustar trazado al oeste',
+            is_approved: true,
+            is_favorite: true,
+            version: 3,
             created_at: '2026-04-10T00:00:00Z',
           },
         ]}
@@ -150,19 +163,27 @@ describe('Corridor routing components', () => {
         onExport={onExport}
         onExportPdf={onExportPdf}
         onApprove={onApprove}
+        onUnapprove={onUnapprove}
+        onFavorite={onFavorite}
       />,
     );
 
     expect(screen.getByText('Escenario Norte')).toBeInTheDocument();
     expect(screen.getByText(/Cruce principal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Última nota de aprobación/i)).toBeInTheDocument();
+    expect(screen.getByText('Favorito')).toBeInTheDocument();
+    expect(screen.getByText('v3')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /cargar escenario/i }));
-    await user.click(screen.getByRole('button', { name: /marcar aprobado/i }));
+    await user.click(screen.getByRole('button', { name: /volver a borrador/i }));
+    await user.click(screen.getByRole('button', { name: /quitar favorito/i }));
     await user.click(screen.getByRole('button', { name: /exportar geojson/i }));
     await user.click(screen.getByRole('button', { name: /exportar pdf/i }));
 
     expect(onLoad).toHaveBeenCalledWith('scenario-1');
-    expect(onApprove).toHaveBeenCalledWith('scenario-1');
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(onUnapprove).toHaveBeenCalledWith('scenario-1');
+    expect(onFavorite).toHaveBeenCalledWith('scenario-1', false);
     expect(onExport).toHaveBeenCalledWith('scenario-1');
     expect(onExportPdf).toHaveBeenCalledWith('scenario-1');
   });

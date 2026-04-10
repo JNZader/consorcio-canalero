@@ -11,6 +11,9 @@ interface CorridorFormState {
   toLat: number | '';
   corridorWidthM: number;
   alternativeCount: number;
+  weightSlope: number;
+  weightHydric: number;
+  weightProperty: number;
 }
 
 export function CorridorRoutingCard({
@@ -21,6 +24,7 @@ export function CorridorRoutingCard({
   pickTarget,
   scenarioName,
   scenarioNotes,
+  currentScenarioId,
   onChange,
   onModeChange,
   onProfileChange,
@@ -38,6 +42,7 @@ export function CorridorRoutingCard({
   pickTarget: 'from' | 'to' | null;
   scenarioName: string;
   scenarioNotes: string;
+  currentScenarioId: string | null;
   onChange: <K extends keyof CorridorFormState>(field: K, value: CorridorFormState[K]) => void;
   onModeChange: (mode: RoutingMode) => void;
   onProfileChange: (profile: RoutingProfile) => void;
@@ -104,6 +109,38 @@ export function CorridorRoutingCard({
           <NumberInput label="Destino lon" value={form.toLon} onChange={(value) => onChange('toLon', value as number | '')} decimalScale={6} />
           <NumberInput label="Destino lat" value={form.toLat} onChange={(value) => onChange('toLat', value as number | '')} decimalScale={6} />
         </SimpleGrid>
+
+        {form.mode === 'raster' && (
+          <SimpleGrid cols={{ base: 1, md: 3 }}>
+            <NumberInput
+              label="Peso pendiente"
+              value={form.weightSlope}
+              onChange={(value) => onChange('weightSlope', Number(value) || 0)}
+              min={0}
+              max={1}
+              step={0.05}
+              decimalScale={2}
+            />
+            <NumberInput
+              label="Peso hidrología"
+              value={form.weightHydric}
+              onChange={(value) => onChange('weightHydric', Number(value) || 0)}
+              min={0}
+              max={1}
+              step={0.05}
+              decimalScale={2}
+            />
+            <NumberInput
+              label="Peso propiedad"
+              value={form.weightProperty}
+              onChange={(value) => onChange('weightProperty', Number(value) || 0)}
+              min={0}
+              max={1}
+              step={0.05}
+              decimalScale={2}
+            />
+          </SimpleGrid>
+        )}
 
         <Group gap="sm">
           <Button variant={pickTarget === 'from' ? 'filled' : 'light'} onClick={() => onStartPick('from')}>
@@ -237,7 +274,7 @@ export function CorridorRoutingCard({
 
             <Group justify="flex-end">
               <Button variant="light" onClick={onSaveScenario}>
-                Guardar escenario
+                {currentScenarioId ? 'Guardar nueva versión' : 'Guardar escenario'}
               </Button>
             </Group>
           </Stack>

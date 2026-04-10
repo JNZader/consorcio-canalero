@@ -26,7 +26,10 @@ def paginated_results(
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
     total: int = db.execute(count_stmt).scalar_one()
     offset = (page - 1) * limit
-    items_stmt = base_stmt.order_by(order_by).offset(offset).limit(limit)
+    if isinstance(order_by, (list, tuple)):
+        items_stmt = base_stmt.order_by(*order_by).offset(offset).limit(limit)
+    else:
+        items_stmt = base_stmt.order_by(order_by).offset(offset).limit(limit)
     items = list(db.execute(items_stmt).scalars().all())
     return items, total
 

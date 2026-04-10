@@ -55,6 +55,9 @@ describe('routingApi', () => {
       profile: 'hidraulico',
       corridor_width_m: 50,
       alternative_count: 2,
+      weight_slope: 0.35,
+      weight_hydric: 0.55,
+      weight_property: 0.1,
     });
 
     expect(result.summary.total_distance_m).toBe(1234);
@@ -71,6 +74,9 @@ describe('routingApi', () => {
           profile: 'hidraulico',
           corridor_width_m: 50,
           alternative_count: 2,
+          weight_slope: 0.35,
+          weight_hydric: 0.55,
+          weight_property: 0.1,
         }),
       }),
     );
@@ -202,7 +208,7 @@ describe('routingApi', () => {
     );
   });
 
-  it('approves and exports a saved scenario as pdf', async () => {
+  it('approves, favorites and exports a saved scenario as pdf', async () => {
     const blob = new Blob(['pdf']);
     mockFetch
       .mockResolvedValueOnce({
@@ -213,6 +219,33 @@ describe('routingApi', () => {
             name: 'Escenario Norte',
             profile: 'balanceado',
             is_approved: true,
+            approval_note: 'Validado en comité',
+            request_payload: {},
+            result_payload: {
+              source: { id: 1 },
+              target: { id: 2 },
+              summary: {
+                mode: 'network',
+                profile: 'balanceado',
+                total_distance_m: 1234,
+                edges: 4,
+                corridor_width_m: 50,
+              },
+              centerline: { type: 'FeatureCollection', features: [] },
+              corridor: null,
+              alternatives: [],
+            },
+            created_at: '2026-04-10T00:00:00Z',
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: 'scenario-1',
+            name: 'Escenario Norte',
+            profile: 'balanceado',
+            is_favorite: true,
             request_payload: {},
             result_payload: {
               source: { id: 1 },
@@ -237,18 +270,31 @@ describe('routingApi', () => {
       });
 
     const { routingApi } = await import('../../src/lib/api/routing');
-    const approved = await routingApi.approveScenario('scenario-1');
+    const approved = await routingApi.approveScenario('scenario-1', 'Validado en comité');
+    const favorite = await routingApi.favoriteScenario('scenario-1', true);
     const pdf = await routingApi.exportScenarioPdf('scenario-1');
 
     expect(approved.is_approved).toBe(true);
+    expect(favorite.is_favorite).toBe(true);
     expect(pdf).toBe(blob);
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
       'http://localhost:8000/api/v2/geo/routing/corridor/scenarios/scenario-1/approve',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ note: 'Validado en comité' }),
+      }),
     );
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
+      'http://localhost:8000/api/v2/geo/routing/corridor/scenarios/scenario-1/favorite',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ is_favorite: true }),
+      }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
       'http://localhost:8000/api/v2/geo/routing/corridor/scenarios/scenario-1/pdf',
       expect.any(Object),
     );

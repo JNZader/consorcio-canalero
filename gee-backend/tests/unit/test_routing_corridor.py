@@ -207,6 +207,7 @@ class TestCorridorRouting:
                 mode="raster",
                 profile="hidraulico",
                 corridor_width_m=80,
+                weight_overrides={"slope": 0.2, "hydric": 0.6, "property": 0.2},
             )
 
         assert result["summary"]["mode"] == "raster"
@@ -375,6 +376,39 @@ class TestCorridorEndpoint:
         repo.approve_routing_scenario.assert_called_once()
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(scenario)
+
+    def test_unapprove_and_favorite_scenario_update_state(self):
+        from app.domains.geo.router_hydrology_routing import (
+            CorridorScenarioFavoriteRequest,
+            unapprove_corridor_scenario,
+            favorite_corridor_scenario,
+        )
+
+        db = MagicMock()
+        repo = MagicMock()
+        scenario = MagicMock(id=uuid.uuid4())
+        repo.unapprove_routing_scenario.return_value = scenario
+        repo.set_routing_scenario_favorite.return_value = scenario
+        repo.list_routing_scenario_approval_events.return_value = []
+
+        unapproved = unapprove_corridor_scenario(
+            uuid.uuid4(),
+            db,
+            _user=MagicMock(id="user-1"),
+            repo=repo,
+        )
+        favorited = favorite_corridor_scenario(
+            uuid.uuid4(),
+            db,
+            _user=MagicMock(id="user-1"),
+            repo=repo,
+            body=CorridorScenarioFavoriteRequest(is_favorite=True),
+        )
+
+        assert unapproved is scenario
+        assert favorited is scenario
+        repo.unapprove_routing_scenario.assert_called_once()
+        repo.set_routing_scenario_favorite.assert_called_once()
 
     def test_export_scenario_pdf_streams_pdf_document(self):
         from app.domains.geo.router_hydrology_routing import export_corridor_scenario_pdf

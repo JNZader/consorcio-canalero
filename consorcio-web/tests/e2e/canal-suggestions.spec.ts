@@ -63,6 +63,7 @@ test.describe('Canal Suggestions Panel', () => {
   test('flujo completo de corridor routing: calcular, guardar, aprobar y exportar', async ({ page }) => {
     let saved = false;
     let approved = false;
+    let favorite = false;
     let geojsonExported = false;
     let pdfExported = false;
 
@@ -71,7 +72,9 @@ test.describe('Canal Suggestions Panel', () => {
       name: 'Escenario corredor test',
       profile: 'hidraulico',
       notes: 'Escenario generado por Playwright',
+      approval_note: approved ? 'Validado en comité' : favorite ? 'Ajuste pendiente' : null,
       is_approved: approved,
+      is_favorite: favorite,
       approved_at: approved ? '2026-04-10T12:00:00Z' : null,
       request_payload: {
         from_lon: -63.0,
@@ -157,7 +160,10 @@ test.describe('Canal Suggestions Panel', () => {
               name: 'Escenario corredor test',
               profile: 'hidraulico',
               notes: 'Escenario generado por Playwright',
+              approval_note: approved ? 'Validado en comité' : favorite ? 'Ajuste pendiente' : null,
               is_approved: approved,
+              is_favorite: favorite,
+              version: 2,
               approved_at: approved ? '2026-04-10T12:00:00Z' : null,
               created_at: '2026-04-10T10:00:00Z',
             }] : [],
@@ -193,6 +199,25 @@ test.describe('Canal Suggestions Panel', () => {
       });
     });
 
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/unapprove', async (route) => {
+      approved = false;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse()),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/favorite', async (route) => {
+      const body = route.request().postDataJSON() as { is_favorite: boolean };
+      favorite = body.is_favorite;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse()),
+      });
+    });
+
     await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/geojson', async (route) => {
       geojsonExported = true;
       await route.fulfill({
@@ -221,6 +246,9 @@ test.describe('Canal Suggestions Panel', () => {
     await page.getByLabel('Origen lat').fill('-32.0');
     await page.getByLabel('Destino lon').fill('-63.1');
     await page.getByLabel('Destino lat').fill('-32.1');
+    await page.getByLabel('Peso pendiente').fill('0.30');
+    await page.getByLabel('Peso hidrología').fill('0.55');
+    await page.getByLabel('Peso propiedad').fill('0.15');
 
     await page.getByRole('button', { name: /calcular corredor/i }).click();
 
@@ -231,13 +259,23 @@ test.describe('Canal Suggestions Panel', () => {
     await page.getByRole('button', { name: /guardar escenario/i }).click();
 
     await expect(page.getByText('Escenario corredor test')).toBeVisible();
+    await expect(page.getByText('v2')).toBeVisible();
 
+    page.once('dialog', async (dialog) => dialog.accept('Validado en comité'));
     await page.getByRole('button', { name: /marcar aprobado/i }).click();
     await expect(page.getByText('Aprobado', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: /marcar favorito/i }).click();
+    await expect(page.getByText('Favorito', { exact: true })).toBeVisible();
+
+    page.once('dialog', async (dialog) => dialog.accept('Ajuste pendiente'));
+    await page.getByRole('button', { name: /volver a borrador/i }).click();
+    await expect(page.getByText('Borrador', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: /exportar geojson/i }).click();
     await page.getByRole('button', { name: /exportar pdf/i }).click();
 
+    expect(favorite).toBeTruthy();
     expect(geojsonExported).toBeTruthy();
     expect(pdfExported).toBeTruthy();
   });

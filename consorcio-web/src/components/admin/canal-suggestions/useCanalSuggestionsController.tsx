@@ -14,7 +14,7 @@ import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { IconCheck } from '../../ui/icons';
 import { buildSuggestionStats, createVisibleTypesSet, sortSuggestions } from './canalSuggestionsUtils';
-import { ROUTING_PROFILE_PRESETS } from './corridorRoutingUtils';
+import { RASTER_WEIGHT_PRESETS, ROUTING_PROFILE_PRESETS } from './corridorRoutingUtils';
 
 export function useCanalSuggestionsController() {
   const [suggestions, setSuggestions] = useState<CanalSuggestion[]>([]);
@@ -36,6 +36,9 @@ export function useCanalSuggestionsController() {
     toLat: '' as number | '',
     corridorWidthM: 50,
     alternativeCount: 2,
+    weightSlope: RASTER_WEIGHT_PRESETS.balanceado.slope,
+    weightHydric: RASTER_WEIGHT_PRESETS.balanceado.hydric,
+    weightProperty: RASTER_WEIGHT_PRESETS.balanceado.property,
   });
   const [corridorLoading, setCorridorLoading] = useState(false);
   const [corridorError, setCorridorError] = useState<string | null>(null);
@@ -43,6 +46,7 @@ export function useCanalSuggestionsController() {
   const [corridorPickTarget, setCorridorPickTarget] = useState<'from' | 'to' | null>(null);
   const [corridorScenarioName, setCorridorScenarioName] = useState('Escenario corredor');
   const [corridorScenarioNotes, setCorridorScenarioNotes] = useState('');
+  const [currentScenarioId, setCurrentScenarioId] = useState<string | null>(null);
   const [corridorScenarios, setCorridorScenarios] = useState<CorridorScenarioListItem[]>([]);
   const [corridorScenarioLoading, setCorridorScenarioLoading] = useState(false);
 
@@ -167,7 +171,7 @@ export function useCanalSuggestionsController() {
     <K extends keyof typeof corridorForm>(field: K, value: (typeof corridorForm)[K]) => {
       setCorridorForm((prev) => ({ ...prev, [field]: value }));
     },
-    [corridorForm],
+    [],
   );
 
   const handleCalculateCorridor = useCallback(async () => {
@@ -194,8 +198,12 @@ export function useCanalSuggestionsController() {
         profile: corridorForm.profile,
         corridor_width_m: corridorForm.corridorWidthM,
         alternative_count: corridorForm.alternativeCount,
+        weight_slope: corridorForm.weightSlope,
+        weight_hydric: corridorForm.weightHydric,
+        weight_property: corridorForm.weightProperty,
       });
       setCorridorResult(result);
+      setCurrentScenarioId(null);
       setCorridorScenarioName(
         `Corridor ${corridorForm.profile} ${new Date().toLocaleDateString('es-AR')}`,
       );
@@ -234,11 +242,15 @@ export function useCanalSuggestionsController() {
 
   const handleCorridorProfileChange = useCallback((profile: RoutingProfile) => {
     const preset = ROUTING_PROFILE_PRESETS[profile];
+    const weightPreset = RASTER_WEIGHT_PRESETS[profile];
     setCorridorForm((prev) => ({
       ...prev,
       profile,
       corridorWidthM: preset.corridorWidthM,
       alternativeCount: preset.alternativeCount,
+      weightSlope: weightPreset.slope,
+      weightHydric: weightPreset.hydric,
+      weightProperty: weightPreset.property,
     }));
     setCorridorError(null);
   }, []);
@@ -255,7 +267,7 @@ export function useCanalSuggestionsController() {
     }
 
     try {
-      await routingApi.saveScenario({
+      const saved = await routingApi.saveScenario({
         name: corridorScenarioName.trim() || 'Escenario corredor',
         profile: corridorForm.profile,
         request_payload: {
@@ -267,10 +279,19 @@ export function useCanalSuggestionsController() {
           profile: corridorForm.profile,
           corridor_width_m: corridorForm.corridorWidthM,
           alternative_count: corridorForm.alternativeCount,
+          weight_slope: corridorForm.weightSlope,
+          weight_hydric: corridorForm.weightHydric,
+          weight_property: corridorForm.weightProperty,
         },
         result_payload: corridorResult,
         notes: corridorScenarioNotes.trim() || undefined,
+        previous_version_id: currentScenarioId ?? undefined,
+        is_favorite: currentScenarioId
+          ? corridorScenarios.find((item) => item.id === currentScenarioId)?.is_favorite ?? false
+          : false,
       });
+      setCurrentScenarioId(saved.id);
+      setCorridorResult(saved.result_payload);
       notifications.show({
         title: 'Escenario guardado',
         message: 'El corridor routing quedó persistido para reutilizarlo luego.',
@@ -288,6 +309,8 @@ export function useCanalSuggestionsController() {
     corridorResult,
     corridorScenarioName,
     corridorScenarioNotes,
+    corridorScenarios,
+    currentScenarioId,
     fetchCorridorScenarios,
   ]);
 
@@ -303,7 +326,11 @@ export function useCanalSuggestionsController() {
         toLat: scenario.request_payload.to_lat,
         corridorWidthM: scenario.request_payload.corridor_width_m ?? 50,
         alternativeCount: scenario.request_payload.alternative_count ?? 2,
+        weightSlope: scenario.request_payload.weight_slope ?? RASTER_WEIGHT_PRESETS[scenario.profile].slope,
+        weightHydric: scenario.request_payload.weight_hydric ?? RASTER_WEIGHT_PRESETS[scenario.profile].hydric,
+        weightProperty: scenario.request_payload.weight_property ?? RASTER_WEIGHT_PRESETS[scenario.profile].property,
       });
+      setCurrentScenarioId(scenario.id);
       setCorridorScenarioName(scenario.name);
       setCorridorScenarioNotes(scenario.notes ?? '');
       setCorridorResult(scenario.result_payload);
@@ -352,7 +379,8 @@ export function useCanalSuggestionsController() {
 
   const handleApproveCorridorScenario = useCallback(async (scenarioId: string) => {
     try {
-      const scenario = await routingApi.approveScenario(scenarioId);
+      const note = window.prompt('Nota de aprobación (opcional):') ?? undefined;
+      const scenario = await routingApi.approveScenario(scenarioId, note);
       if (corridorResult && scenario.id) {
         setCorridorResult(scenario.result_payload);
       }
@@ -369,6 +397,37 @@ export function useCanalSuggestionsController() {
       logger.error('[CanalSuggestions] Error approving corridor scenario:', err);
     }
   }, [corridorResult, fetchCorridorScenarios]);
+
+  const handleUnapproveCorridorScenario = useCallback(async (scenarioId: string) => {
+    try {
+      const note = window.prompt('Motivo de desaprobación (opcional):') ?? undefined;
+      const scenario = await routingApi.unapproveScenario(scenarioId, note);
+      if (corridorResult && scenario.id) {
+        setCorridorResult(scenario.result_payload);
+      }
+      notifications.show({
+        title: 'Escenario actualizado',
+        message: `${scenario.name} volvió a borrador.`,
+        color: 'yellow',
+      });
+      fetchCorridorScenarios();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al desaprobar escenario';
+      setCorridorError(message);
+      logger.error('[CanalSuggestions] Error unapproving corridor scenario:', err);
+    }
+  }, [corridorResult, fetchCorridorScenarios]);
+
+  const handleFavoriteCorridorScenario = useCallback(async (scenarioId: string, isFavorite: boolean) => {
+    try {
+      await routingApi.favoriteScenario(scenarioId, isFavorite);
+      fetchCorridorScenarios();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al actualizar favorito';
+      setCorridorError(message);
+      logger.error('[CanalSuggestions] Error toggling favorite corridor scenario:', err);
+    }
+  }, [fetchCorridorScenarios]);
 
   return {
     suggestions,
@@ -395,12 +454,15 @@ export function useCanalSuggestionsController() {
     corridorPickTarget,
     corridorScenarioName,
     corridorScenarioNotes,
+    currentScenarioId,
     corridorScenarios,
     corridorScenarioLoading,
     updateCorridorField,
     handleCorridorModeChange,
     handleExportCorridorScenarioPdf,
     handleApproveCorridorScenario,
+    handleUnapproveCorridorScenario,
+    handleFavoriteCorridorScenario,
     handleCorridorProfileChange,
     handleCalculateCorridor,
     beginCorridorPick,

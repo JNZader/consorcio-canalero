@@ -24,6 +24,7 @@ from app.domains.geo.routing_raster_support import (
 )
 from app.domains.geo.routing_support import (
     RoutingProfileName,
+    build_corridor_export_feature_collection as _build_corridor_export_feature_collection,
     merge_edge_factors,
     resolve_profile_edge_factors,
     resolve_routing_profile,
@@ -31,6 +32,12 @@ from app.domains.geo.routing_support import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def build_corridor_export_feature_collection(
+    result_payload: dict[str, Any],
+) -> dict[str, Any]:
+    return _build_corridor_export_feature_collection(result_payload)
 
 
 def import_canals_from_geojson(
@@ -341,6 +348,7 @@ def corridor_routing(
     corridor_width_m: float | None = None,
     alternative_count: int | None = None,
     penalty_factor: float | None = None,
+    weight_overrides: dict[str, float | None] | None = None,
 ) -> dict[str, Any]:
     """Compute a network or raster corridor routing response."""
     resolved = resolve_routing_profile(
@@ -360,6 +368,7 @@ def corridor_routing(
             profile=profile,
             corridor_width_m=float(resolved["corridor_width_m"]),
             area_id=area_id,
+            weight_overrides=weight_overrides,
         )
         pseudo_route = [
             {

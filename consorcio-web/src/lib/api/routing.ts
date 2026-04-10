@@ -72,29 +72,49 @@ export interface CorridorRoutingRequest {
   corridor_width_m?: number;
   alternative_count?: number;
   penalty_factor?: number;
+  weight_slope?: number;
+  weight_hydric?: number;
+  weight_property?: number;
+}
+
+export interface CorridorScenarioApprovalEvent {
+  id: string;
+  scenario_id: string;
+  action: 'approved' | 'unapproved' | string;
+  note?: string | null;
+  acted_by_id?: string | null;
+  acted_at: string;
 }
 
 export interface CorridorScenario {
   id: string;
   name: string;
   profile: RoutingProfile;
+  version?: number;
+  previous_version_id?: string | null;
   request_payload: CorridorRoutingRequest;
   result_payload: CorridorRoutingResponse;
   notes?: string | null;
+  approval_note?: string | null;
   is_approved?: boolean;
+  is_favorite?: boolean;
   approved_at?: string | null;
   approved_by_id?: string | null;
   created_by_id?: string | null;
   created_at: string;
   updated_at?: string;
+  approval_history?: CorridorScenarioApprovalEvent[];
 }
 
 export interface CorridorScenarioListItem {
   id: string;
   name: string;
   profile: RoutingProfile;
+  version?: number;
   notes?: string | null;
+  approval_note?: string | null;
   is_approved?: boolean;
+  is_favorite?: boolean;
   approved_at?: string | null;
   created_at: string;
 }
@@ -105,6 +125,8 @@ export interface CorridorScenarioSaveRequest {
   request_payload: CorridorRoutingRequest;
   result_payload: CorridorRoutingResponse;
   notes?: string;
+  previous_version_id?: string;
+  is_favorite?: boolean;
 }
 
 export interface GeoJsonFeatureCollection {
@@ -142,9 +164,23 @@ export const routingApi = {
     apiFetch(`${BASE}/corridor/scenarios`),
   getScenario: (scenarioId: string): Promise<CorridorScenario> =>
     apiFetch(`${BASE}/corridor/scenarios/${scenarioId}`),
-  approveScenario: (scenarioId: string): Promise<CorridorScenario> =>
+  approveScenario: (scenarioId: string, note?: string): Promise<CorridorScenario> =>
     apiFetch(`${BASE}/corridor/scenarios/${scenarioId}/approve`, {
       method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
+  unapproveScenario: (scenarioId: string, note?: string): Promise<CorridorScenario> =>
+    apiFetch(`${BASE}/corridor/scenarios/${scenarioId}/unapprove`, {
+      method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
+  favoriteScenario: (
+    scenarioId: string,
+    is_favorite: boolean,
+  ): Promise<CorridorScenario> =>
+    apiFetch(`${BASE}/corridor/scenarios/${scenarioId}/favorite`, {
+      method: 'POST',
+      body: JSON.stringify({ is_favorite }),
     }),
   exportScenarioGeoJson: (scenarioId: string): Promise<GeoJsonFeatureCollection> =>
     apiFetch(`${BASE}/corridor/scenarios/${scenarioId}/geojson`),

@@ -49,6 +49,7 @@ export default function CanalSuggestionsPanel() {
           pickTarget={controller.corridorPickTarget}
           scenarioName={controller.corridorScenarioName}
           scenarioNotes={controller.corridorScenarioNotes}
+          currentScenarioId={controller.currentScenarioId}
           onChange={controller.updateCorridorField}
           onModeChange={controller.handleCorridorModeChange}
           onProfileChange={controller.handleCorridorProfileChange}
@@ -65,6 +66,8 @@ export default function CanalSuggestionsPanel() {
           loading={controller.corridorScenarioLoading}
           onLoad={controller.handleLoadCorridorScenario}
           onApprove={controller.handleApproveCorridorScenario}
+          onUnapprove={controller.handleUnapproveCorridorScenario}
+          onFavorite={controller.handleFavoriteCorridorScenario}
           onExport={controller.handleExportCorridorScenario}
           onExportPdf={controller.handleExportCorridorScenarioPdf}
         />

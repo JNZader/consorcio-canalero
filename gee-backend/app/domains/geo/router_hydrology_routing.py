@@ -15,6 +15,9 @@ from app.db.session import get_db
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.router_common import _get_user_display_name, _require_operator
 from app.domains.geo.routing_schemas import (
+    CorridorScenarioApprovalEventResponse,
+    CorridorScenarioApprovalRequest,
+    CorridorScenarioFavoriteRequest,
     CorridorScenarioListItem,
     CorridorScenarioResponse,
     CorridorScenarioSaveRequest,
@@ -26,6 +29,20 @@ router = APIRouter(tags=["Geo Processing"])
 
 def _get_repo() -> GeoRepository:
     return GeoRepository()
+
+
+def _attach_scenario_history(repo: GeoRepository, db: Session, scenario):
+    if scenario is None or not getattr(scenario, "id", None):
+        return scenario
+    setattr(
+        scenario,
+        "approval_history",
+        [
+            CorridorScenarioApprovalEventResponse.model_validate(event)
+            for event in repo.list_routing_scenario_approval_events(db, scenario.id)
+        ],
+    )
+    return scenario
 
 
 # ── Hydrology Analysis ────────────────────────────────────────────
@@ -156,6 +173,9 @@ class CorridorRoutingRequest(BaseModel):
     corridor_width_m: float | None = Field(default=None, gt=0)
     alternative_count: int | None = Field(default=None, ge=0, le=5)
     penalty_factor: float | None = Field(default=None, ge=1.0)
+    weight_slope: float | None = Field(default=None, ge=0.0)
+    weight_hydric: float | None = Field(default=None, ge=0.0)
+    weight_property: float | None = Field(default=None, ge=0.0)
 
 
 @router.post("/routing/import")
@@ -263,6 +283,11 @@ def calculate_corridor_route(
         corridor_width_m=body.corridor_width_m,
         alternative_count=body.alternative_count,
         penalty_factor=body.penalty_factor,
+        weight_overrides={
+            "slope": body.weight_slope,
+            "hydric": body.weight_hydric,
+            "property": body.weight_property,
+        },
     )
 
 
@@ -295,11 +320,13 @@ def save_corridor_scenario(
         request_payload=body.request_payload,
         result_payload=body.result_payload,
         notes=body.notes,
+        previous_version_id=body.previous_version_id,
+        is_favorite=body.is_favorite,
         created_by_id=_user.id,
     )
     db.commit()
     db.refresh(scenario)
-    return scenario
+    return _attach_scenario_history(repo, db, scenario)
 
 
 @router.get("/routing/corridor/scenarios")
@@ -332,7 +359,7 @@ def get_corridor_scenario(
     scenario = repo.get_routing_scenario(db, scenario_id)
     if scenario is None:
         raise NotFoundError("Routing scenario not found")
-    return scenario
+    return _attach_scenario_history(repo, db, scenario)
 
 
 @router.post(
@@ -344,17 +371,66 @@ def approve_corridor_scenario(
     db: Session = Depends(get_db),
     _user: User = Depends(_require_operator),
     repo: GeoRepository = Depends(_get_repo),
+    body: CorridorScenarioApprovalRequest | None = None,
 ):
     scenario = repo.approve_routing_scenario(
         db,
         scenario_id,
         approved_by_id=getattr(_user, "id", None),
+        note=body.note if body else None,
     )
     if scenario is None:
         raise NotFoundError("Routing scenario not found")
     db.commit()
     db.refresh(scenario)
-    return scenario
+    return _attach_scenario_history(repo, db, scenario)
+
+
+@router.post(
+    "/routing/corridor/scenarios/{scenario_id}/unapprove",
+    response_model=CorridorScenarioResponse,
+)
+def unapprove_corridor_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+    body: CorridorScenarioApprovalRequest | None = None,
+):
+    scenario = repo.unapprove_routing_scenario(
+        db,
+        scenario_id,
+        approved_by_id=getattr(_user, "id", None),
+        note=body.note if body else None,
+    )
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+    db.commit()
+    db.refresh(scenario)
+    return _attach_scenario_history(repo, db, scenario)
+
+
+@router.post(
+    "/routing/corridor/scenarios/{scenario_id}/favorite",
+    response_model=CorridorScenarioResponse,
+)
+def favorite_corridor_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+    body: CorridorScenarioFavoriteRequest | None = None,
+):
+    scenario = repo.set_routing_scenario_favorite(
+        db,
+        scenario_id,
+        is_favorite=body.is_favorite if body else True,
+    )
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+    db.commit()
+    db.refresh(scenario)
+    return _attach_scenario_history(repo, db, scenario)
 
 
 @router.get("/routing/corridor/scenarios/{scenario_id}/geojson")
@@ -384,6 +460,7 @@ def export_corridor_scenario_pdf(
     scenario = repo.get_routing_scenario(db, scenario_id)
     if scenario is None:
         raise NotFoundError("Routing scenario not found")
+    approval_history = repo.list_routing_scenario_approval_events(db, scenario_id)
 
     pdf_buffer = build_corridor_routing_pdf(
         scenario,
@@ -391,6 +468,7 @@ def export_corridor_scenario_pdf(
         approved_by_name=_get_user_display_name(
             db, getattr(scenario, "approved_by_id", None)
         ),
+        approval_history=approval_history,
     )
     filename = f"corridor-scenario-{scenario.id}.pdf"
     return StreamingResponse(

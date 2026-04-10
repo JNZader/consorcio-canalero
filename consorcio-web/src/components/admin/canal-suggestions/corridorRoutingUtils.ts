@@ -54,6 +54,19 @@ export const ROUTING_MODE_PRESETS: Record<
   },
 };
 
+export const RASTER_WEIGHT_PRESETS: Record<
+  RoutingProfile,
+  {
+    slope: number;
+    hydric: number;
+    property: number;
+  }
+> = {
+  balanceado: { slope: 0.45, hydric: 0.25, property: 0.3 },
+  hidraulico: { slope: 0.35, hydric: 0.55, property: 0.1 },
+  evitar_propiedad: { slope: 0.25, hydric: 0.15, property: 0.6 },
+};
+
 export function formatCorridorDistance(totalDistanceM: number): string {
   if (totalDistanceM >= 1000) {
     return `${(totalDistanceM / 1000).toFixed(2)} km`;
