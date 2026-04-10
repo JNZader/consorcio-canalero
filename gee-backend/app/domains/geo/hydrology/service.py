@@ -357,11 +357,11 @@ class FloodFlowService:
         errors.extend(compute_errors)
 
         return FloodFlowResponse(
-                total_zonas=len(zona_ids),
-                fecha_lluvia=fecha_lluvia,
-                results=[],
-                errors=errors,
-            )
+            total_zonas=len(zona_ids),
+            fecha_lluvia=fecha_lluvia,
+            results=[],
+            errors=errors,
+        )
 
         # ── Phase B: GEE calls in thread pool (NO db session inside) ─────────
         def _gee_for_zona(zona_id: uuid.UUID) -> dict[str, Any]:

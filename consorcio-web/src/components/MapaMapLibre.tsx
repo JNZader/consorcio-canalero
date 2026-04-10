@@ -12,11 +12,11 @@
 import { Box } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature, } from 'geojson';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 // Register PMTiles protocol once at module level
 const _pmtilesProtocol = new Protocol();
@@ -24,34 +24,26 @@ maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
-import { useCatastroMap } from '../hooks/useCatastroMap';
-import { GEE_LAYER_COLORS, useGEELayers } from '../hooks/useGEELayers';
+import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
-import { getMartinTileUrl, MARTIN_SOURCES, useZonaRiskColors } from '../hooks/useMartinLayers';
 import { usePublicLayers } from '../hooks/usePublicLayers';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
-import { formatDate } from '../lib/formatters';
 import { useCanAccess } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import styles from '../styles/components/map.module.css';
-import DrawControl, { type DrawControlHandle, type DrawnPolygon } from './map/DrawControl';
+import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
-import { LAYER_LEGEND_CONFIG } from '../config/rasterLegend';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import { GEE_LAYER_NAMES, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2d/map2dConfig';
-import {
-  IGN_IMAGE_URL,
-  IGN_MAPLIBRE_COORDS,
-  leafletCenterToMapLibre,
-} from './map2d/map2dUtils';
+import { GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import { leafletCenterToMapLibre } from './map2d/map2dUtils';
 import {
   useAssetCreationHandler,
   useMapExportHandlers,
@@ -62,7 +54,7 @@ import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
-import { type ViewMode } from './map2d/ViewModePanel';
+import type { ViewMode } from './map2d/ViewModePanel';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -81,14 +73,10 @@ export default function MapaMapLibre() {
   const canManageZoning = useCanAccess(['admin', 'operador']);
   const _mapInstanceId = useId();
 
-  const center = useMemo<[number, number]>(
-    () =>
-      config?.map.center
-        ? leafletCenterToMapLibre([config.map.center.lat, config.map.center.lng])
-        : leafletCenterToMapLibre(MAP_CENTER),
-    [config?.map.center?.lat, config?.map.center?.lng],
-  );
-  const zoom = useMemo(() => config?.map.zoom ?? DEFAULT_ZOOM, [config?.map.zoom]);
+  const center: [number, number] = config?.map.center
+    ? leafletCenterToMapLibre([config.map.center.lat, config.map.center.lng])
+    : leafletCenterToMapLibre(MAP_CENTER);
+  const zoom = config?.map.zoom ?? DEFAULT_ZOOM;
 
   // ── Map refs ──────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +95,7 @@ export default function MapaMapLibre() {
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>('osm');
   const [viewMode, setViewMode] = useState<ViewMode>('base');
-  const [showLegend, setShowLegend] = useState(true);
+  const showLegend = true;
   const [showSuggestedZonesPanel, setShowSuggestedZonesPanel] = useState(false);
   const [showIGNOverlay, setShowIGNOverlay] = useState(false);
   const [showDemOverlay, setShowDemOverlay] = useState(false);
@@ -115,7 +103,6 @@ export default function MapaMapLibre() {
   const [markingMode, setMarkingMode] = useState(false);
   const [newPoint, setNewPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [captureMode, setCaptureMode] = useState(false);
   const [exportPngModalOpen, setExportPngModalOpen] = useState(false);
   const [exportIncludeLegend, setExportIncludeLegend] = useState(true);
   const [exportIncludeMetadata, setExportIncludeMetadata] = useState(true);
@@ -126,7 +113,6 @@ export default function MapaMapLibre() {
   const [draftBasinAssignments, setDraftBasinAssignments] = useState<Record<string, string>>({});
   const [selectedDraftBasinId, setSelectedDraftBasinId] = useState<string | null>(null);
   const [draftDestinationZoneId, setDraftDestinationZoneId] = useState<string | null>(null);
-  const [drawnPolygon, setDrawnPolygon] = useState<DrawnPolygon | null>(null);
   const [drawnLine, setDrawnLine] = useState<DrawnLineFeatureCollection | null>(null);
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
@@ -140,9 +126,6 @@ export default function MapaMapLibre() {
   // ── Layer sync store ──────────────────────────────────────────────────────
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
-  const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
-  const is2DViewInitialized = useMapLayerSyncStore((state) => state.initializedViews.map2d);
-  const hydrateSharedViewState = useMapLayerSyncStore((state) => state.hydrateViewState);
 
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)
   const [vectorVisibility, setVectorVisibility] = useState<Record<string, boolean>>(
@@ -168,12 +151,10 @@ export default function MapaMapLibre() {
   const { assets, intersections, createAsset } = useInfrastructure();
   const { layers: publicLayers } = usePublicLayers();
   const { soilMap } = useSoilMap();
-  const { catastroMap } = useCatastroMap();
   const { basins } = useBasins();
   const { suggestedZones } = useSuggestedZones();
   const { waterways } = useWaterways();
   const { layers: allGeoLayers } = useGeoLayers();
-  const { data: zonaRiskColors = {} } = useZonaRiskColors();
   const {
     approvedZones,
     approvedAt,
@@ -191,7 +172,6 @@ export default function MapaMapLibre() {
   const {
     zonaCollection,
     roadsCollection,
-    waterwaysCollection,
     soilCollection,
     infrastructureCollection,
     approvedZonesCollection,
@@ -245,7 +225,7 @@ export default function MapaMapLibre() {
     if (selectedImage && viewMode === 'base') {
       setViewMode('single');
     }
-  }, [selectedImage]);
+  }, [selectedImage, viewMode]);
 
   useMapLayerEffects({
     mapRef,
@@ -370,8 +350,8 @@ export default function MapaMapLibre() {
           <DrawControl
             ref={drawControlRef}
             map={mapRef.current}
-            onPolygonCreated={setDrawnPolygon}
-            onPolygonDeleted={() => setDrawnPolygon(null)}
+            onPolygonCreated={() => {}}
+            onPolygonDeleted={() => {}}
             showControls={isOperator}
           />
           <LineDrawControl

@@ -224,8 +224,8 @@ export function useFloodCalibrationController() {
   const handleSuggestionClick = useCallback((suggestion: RainfallSuggestion) => {
     const suggestedDate = suggestion.suggested_image_date;
     const [yearStr, monthStr] = suggestedDate.split('-');
-    setCalendarYear(parseInt(yearStr, 10));
-    setCalendarMonth(parseInt(monthStr, 10) - 1);
+    setCalendarYear(Number.parseInt(yearStr, 10));
+    setCalendarMonth(Number.parseInt(monthStr, 10) - 1);
     setSelectedDate(suggestedDate);
     clearLabels();
     fetchImageForDate(suggestedDate);

@@ -130,7 +130,6 @@ def is_initialized() -> bool:
     return _gee_initialized
 
 
-
 class GEEService:
     """Servicio principal para interactuar con GEE."""
 
@@ -196,7 +195,6 @@ def get_gee_service() -> GEEService:
     return GEEService()
 
 
-
 def get_layer_geojson(layer_name: str) -> Dict[str, Any]:
     return fetch_layer_geojson(
         layer_name,
@@ -208,7 +206,6 @@ def get_layer_geojson(layer_name: str) -> Dict[str, Any]:
 
 def get_available_layers() -> List[Dict[str, str]]:
     return get_available_layers_payload()
-
 
 
 def _get_red_vial_features() -> list[dict[str, Any]]:
@@ -276,7 +273,6 @@ def get_estadisticas_consorcios() -> Dict[str, Any]:
         update_breakdown=_update_breakdown,
         safe_float=_safe_float,
     )
-
 
 
 class ImageExplorer:
@@ -393,7 +389,6 @@ def get_image_explorer() -> ImageExplorer:
     return ImageExplorer()
 
 
-
 _baseline_logger = _logging.getLogger(__name__)
 
 
@@ -413,7 +408,6 @@ def compute_ndwi_baselines_gee(
         dry_season_months=dry_season_months,
         years_back=years_back,
     )
-
 
 
 def get_landcover_c_coefficient(zone_geometry: ee.Geometry) -> float | None:

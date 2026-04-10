@@ -21,8 +21,6 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -38,6 +36,15 @@ interface ChartDataPoint {
   date: string;
   vv: number;
   isAnomaly: boolean;
+}
+
+function formatTooltipValue(value: unknown) {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  return [`${numericValue.toFixed(2)} dB`, 'VV Mean'];
+}
+
+function formatTooltipLabel(label: unknown) {
+  return `Fecha: ${String(label)}`;
 }
 
 export default function SarTemporalChart({ data }: SarTemporalChartProps) {
@@ -93,8 +100,8 @@ export default function SarTemporalChart({ data }: SarTemporalChartProps) {
               label={{ value: 'VV (dB)', angle: -90, position: 'insideLeft', fontSize: 12 }}
             />
             <Tooltip
-              formatter={(value: any) => [`${(value as number).toFixed(2)} dB`, 'VV Mean']}
-              labelFormatter={(label: any) => `Fecha: ${label}`}
+              formatter={formatTooltipValue}
+              labelFormatter={formatTooltipLabel}
             />
 
             {/* VV time series line */}

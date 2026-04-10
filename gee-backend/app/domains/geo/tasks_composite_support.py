@@ -49,7 +49,13 @@ def composite_analysis_task_impl(
         outputs: dict[str, str] = {}
 
         flood_output = str(Path(area_dir) / "flood_risk.tif")
-        run_step(job_id, "compute_flood_risk", composites.compute_flood_risk, (area_dir, flood_output), {"weights": weights_flood})
+        run_step(
+            job_id,
+            "compute_flood_risk",
+            composites.compute_flood_risk,
+            (area_dir, flood_output),
+            {"weights": weights_flood},
+        )
         flood_cog = convert_to_cog_safe(flood_output)
         flood_weights = weights_flood or composites.DEFAULT_FLOOD_WEIGHTS
         register_layer(
@@ -65,7 +71,11 @@ def composite_analysis_task_impl(
         update_job(job_id, progreso=30)
 
         merge_drainage_networks_if_available(
-            job_id=job_id, area_id=area_id, area_dir=area_dir, composites=composites, outputs=outputs
+            job_id=job_id,
+            area_id=area_id,
+            area_dir=area_dir,
+            composites=composites,
+            outputs=outputs,
         )
         update_job(job_id, progreso=40)
 
@@ -102,28 +112,44 @@ def composite_analysis_task_impl(
         )
         outputs["zonal_stats_count"] = str(zonal_stats_count)
         update_job(job_id, progreso=90)
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
+        update_job(
+            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs
+        )
         logger.info("composite_analysis.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
     except Exception:
         update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
-        logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
+        logger.error(
+            "composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True
+        )
         raise
 
 
-def resolve_composite_area_dir_impl(*, area_id: str, get_db, geo_repo, tipo_geo_layer) -> str:
+def resolve_composite_area_dir_impl(
+    *, area_id: str, get_db, geo_repo, tipo_geo_layer
+) -> str:
     db = get_db()
     try:
-        layers, _ = geo_repo.get_layers(db, area_id_filter=area_id, tipo_filter=tipo_geo_layer.HAND, limit=1)
+        layers, _ = geo_repo.get_layers(
+            db, area_id_filter=area_id, tipo_filter=tipo_geo_layer.HAND, limit=1
+        )
         if not layers:
-            raise RuntimeError(f"No HAND layer found for area '{area_id}'. Run the DEM pipeline first.")
+            raise RuntimeError(
+                f"No HAND layer found for area '{area_id}'. Run the DEM pipeline first."
+            )
         return str(Path(layers[0].archivo_path).parent)
     finally:
         db.close()
 
 
 def validate_composite_prerequisites_impl(area_dir: str) -> None:
-    required_files = ["hand.tif", "twi.tif", "flow_acc.tif", "profile_curvature.tif", "tpi.tif"]
+    required_files = [
+        "hand.tif",
+        "twi.tif",
+        "flow_acc.tif",
+        "profile_curvature.tif",
+        "tpi.tif",
+    ]
     missing = [f for f in required_files if not (Path(area_dir) / f).exists()]
     has_drainage = (
         (Path(area_dir) / "drainage.tif").exists()
@@ -139,7 +165,13 @@ def validate_composite_prerequisites_impl(area_dir: str) -> None:
 
 
 def merge_drainage_networks_if_available_impl(
-    *, job_id: str, area_id: str, area_dir: str, composites, outputs: dict[str, str], run_step
+    *,
+    job_id: str,
+    area_id: str,
+    area_dir: str,
+    composites,
+    outputs: dict[str, str],
+    run_step,
 ) -> None:
     auto_drainage = str(Path(area_dir) / "drainage.geojson")
     combined_drainage = str(Path(area_dir) / "drainage_combined.geojson")
@@ -158,7 +190,9 @@ def merge_drainage_networks_if_available_impl(
         if stale_tif.exists():
             stale_tif.unlink()
     except Exception:
-        logger.warning("composite_analysis.merge_drainage_failed", area_id=area_id, exc_info=True)
+        logger.warning(
+            "composite_analysis.merge_drainage_failed", area_id=area_id, exc_info=True
+        )
 
 
 def store_composite_zonal_stats_impl(
@@ -194,24 +228,40 @@ def store_composite_zonal_stats_impl(
         for zona in zonas:
             try:
                 geom_shapely = to_shape(zona.geometria)
-                zona_dicts.append({"id": zona.id, "nombre": zona.nombre, "geometry": shapely_mapping(geom_shapely)})
+                zona_dicts.append(
+                    {
+                        "id": zona.id,
+                        "nombre": zona.nombre,
+                        "geometry": shapely_mapping(geom_shapely),
+                    }
+                )
             except Exception:
-                logger.warning("composite_analysis.zona_geom_error", zona_id=str(zona.id), exc_info=True)
+                logger.warning(
+                    "composite_analysis.zona_geom_error",
+                    zona_id=str(zona.id),
+                    exc_info=True,
+                )
 
         today = date_mod.today()
-        flood_stats = composites.extract_composite_zonal_stats(flood_output, zona_dicts, "flood_risk")
+        flood_stats = composites.extract_composite_zonal_stats(
+            flood_output, zona_dicts, "flood_risk"
+        )
         for stat in flood_stats:
             stat["weights_used"] = flood_weights
             stat["fecha_calculo"] = today
 
-        drainage_stats = composites.extract_composite_zonal_stats(drainage_output, zona_dicts, "drainage_need")
+        drainage_stats = composites.extract_composite_zonal_stats(
+            drainage_output, zona_dicts, "drainage_need"
+        )
         for stat in drainage_stats:
             stat["weights_used"] = drainage_weights
             stat["fecha_calculo"] = today
 
         all_stats = flood_stats + drainage_stats
         if all_stats:
-            zona_ids = list({stat["zona_id"] for stat in all_stats if stat.get("zona_id")})
+            zona_ids = list(
+                {stat["zona_id"] for stat in all_stats if stat.get("zona_id")}
+            )
             tipos = list({stat["tipo"] for stat in all_stats if stat.get("tipo")})
             if zona_ids and tipos:
                 db.execute(
@@ -223,7 +273,11 @@ def store_composite_zonal_stats_impl(
                 db.flush()
             db.add_all([composite_zonal_stats_model(**stat) for stat in all_stats])
             db.commit()
-            logger.info("composite_analysis.zonal_stats_inserted", count=len(all_stats), area_id=area_id)
+            logger.info(
+                "composite_analysis.zonal_stats_inserted",
+                count=len(all_stats),
+                area_id=area_id,
+            )
 
         return len(all_stats)
     finally:

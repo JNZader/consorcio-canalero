@@ -93,7 +93,9 @@ def compute_aspect_impl(
     cell_x = abs(transform.a)
     cell_y = abs(transform.e)
     dz_dy, dz_dx = np.gradient(dem, cell_y, cell_x)
-    aspect_deg = np.mod(np.degrees(np.arctan2(-dz_dy, dz_dx)).astype(np.float32), np.float32(360.0))
+    aspect_deg = np.mod(
+        np.degrees(np.arctan2(-dz_dy, dz_dx)).astype(np.float32), np.float32(360.0)
+    )
     if nodata is not None:
         aspect_deg[dem == nodata] = np.float32(nodata)
     meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": nodata})
@@ -124,7 +126,9 @@ def compute_twi_impl(
     twi = np.log(specific_area / np.tan(slope_rad)).astype(np.float32)
     out_nodata = np.float32(-9999.0)
     twi[nodata_mask] = out_nodata
-    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
     return write_single_band(output_path, twi, meta)
 
 
@@ -176,9 +180,13 @@ def clip_to_geometry_impl(
 
             transformer = Transformer.from_crs(geometry_crs, dem_crs, always_xy=True)
             clip_geom = shapely_transform(transformer.transform, clip_geom)
-        out_image, out_transform = rasterio_mask_fn(src, [mapping(clip_geom)], crop=True)
+        out_image, out_transform = rasterio_mask_fn(
+            src, [mapping(clip_geom)], crop=True
+        )
         profile = src.profile.copy()
-        profile.update(height=out_image.shape[1], width=out_image.shape[2], transform=out_transform)
+        profile.update(
+            height=out_image.shape[1], width=out_image.shape[2], transform=out_transform
+        )
     ensure_parent_dir(output_path)
     with rasterio_module.open(output_path, "w", **profile) as dst:
         dst.write(out_image)
@@ -201,7 +209,12 @@ def clip_bbox_impl(
         out_image, out_transform = rasterio_mask_fn(src, [mapping(geom)], crop=True)
         out_meta = src.meta.copy()
         out_meta.update(
-            {"driver": "GTiff", "height": out_image.shape[1], "width": out_image.shape[2], "transform": out_transform}
+            {
+                "driver": "GTiff",
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": out_transform,
+            }
         )
     ensure_parent_dir(output_path)
     with rasterio_module.open(output_path, "w", **out_meta) as dst:
@@ -223,7 +236,9 @@ def classify_terrain_arrays(
     if legacy_mode:
         classified = np.full(ref_shape, terreno_consts["plano_seco"], dtype=np.uint8)
         if twi is not None:
-            classified[valid & (twi >= valid_percentile(twi, valid, 50))] = terreno_consts["plano_humedo"]
+            classified[valid & (twi >= valid_percentile(twi, valid, 50))] = (
+                terreno_consts["plano_humedo"]
+            )
         if flow_acc is not None:
             classified[valid & (flow_acc > 1000)] = terreno_consts["drenaje_activo"]
             classified[valid & (flow_acc > 5000)] = terreno_consts["acumulacion"]

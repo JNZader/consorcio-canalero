@@ -97,10 +97,16 @@ class TerritorialRepository:
                     )
                 """),
                 {
-                    "nombre": props.get("nombre") or props.get("NOMBRE") or props.get("name"),
-                    "consorcio_codigo": props.get("ccc") or props.get("consorcio_codigo"),
-                    "consorcio_nombre": props.get("ccn") or props.get("consorcio_nombre"),
-                    "jerarquia": props.get("jerarquia") or props.get("tipo") or props.get("TIPO"),
+                    "nombre": props.get("nombre")
+                    or props.get("NOMBRE")
+                    or props.get("name"),
+                    "consorcio_codigo": props.get("ccc")
+                    or props.get("consorcio_codigo"),
+                    "consorcio_nombre": props.get("ccn")
+                    or props.get("consorcio_nombre"),
+                    "jerarquia": props.get("jerarquia")
+                    or props.get("tipo")
+                    or props.get("TIPO"),
                     "geom_json": json.dumps(geom),
                 },
             )
@@ -214,7 +220,9 @@ class TerritorialRepository:
         return [
             {
                 "consorcio_codigo": r.consorcio_codigo or "",
-                "consorcio_nombre": r.consorcio_nombre or r.consorcio_codigo or "Sin datos",
+                "consorcio_nombre": r.consorcio_nombre
+                or r.consorcio_codigo
+                or "Sin datos",
                 "km": float(r.km),
             }
             for r in rows

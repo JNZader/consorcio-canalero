@@ -12,7 +12,9 @@ from app.domains.geo.models import EstadoGeoJob, GeoJob, GeoLayer
 
 class GeoRepositoryJobsLayersMixin:
     def get_job_by_id(self, db: Session, job_id: uuid.UUID) -> Optional[GeoJob]:
-        return db.execute(select(GeoJob).where(GeoJob.id == job_id)).scalar_one_or_none()
+        return db.execute(
+            select(GeoJob).where(GeoJob.id == job_id)
+        ).scalar_one_or_none()
 
     def get_jobs(
         self,
@@ -28,7 +30,9 @@ class GeoRepositoryJobsLayersMixin:
             base = base.where(GeoJob.estado == estado_filter)
         if tipo_filter:
             base = base.where(GeoJob.tipo == tipo_filter)
-        return paginated_results(db, base, page=page, limit=limit, order_by=GeoJob.created_at.desc())
+        return paginated_results(
+            db, base, page=page, limit=limit, order_by=GeoJob.created_at.desc()
+        )
 
     def create_job(
         self,
@@ -38,7 +42,12 @@ class GeoRepositoryJobsLayersMixin:
         parametros: Optional[dict] = None,
         usuario_id: Optional[uuid.UUID] = None,
     ) -> GeoJob:
-        job = GeoJob(tipo=tipo, estado=EstadoGeoJob.PENDING, parametros=parametros, usuario_id=usuario_id)
+        job = GeoJob(
+            tipo=tipo,
+            estado=EstadoGeoJob.PENDING,
+            parametros=parametros,
+            usuario_id=usuario_id,
+        )
         db.add(job)
         db.flush()
         return job
@@ -71,7 +80,9 @@ class GeoRepositoryJobsLayersMixin:
         return job
 
     def get_layer_by_id(self, db: Session, layer_id: uuid.UUID) -> Optional[GeoLayer]:
-        return db.execute(select(GeoLayer).where(GeoLayer.id == layer_id)).scalar_one_or_none()
+        return db.execute(
+            select(GeoLayer).where(GeoLayer.id == layer_id)
+        ).scalar_one_or_none()
 
     def get_layers(
         self,
@@ -90,10 +101,16 @@ class GeoRepositoryJobsLayersMixin:
             base = base.where(GeoLayer.fuente == fuente_filter)
         if area_id_filter:
             base = base.where(GeoLayer.area_id == area_id_filter)
-        return paginated_results(db, base, page=page, limit=limit, order_by=GeoLayer.created_at.desc())
+        return paginated_results(
+            db, base, page=page, limit=limit, order_by=GeoLayer.created_at.desc()
+        )
 
-    def get_layer_by_tipo_and_area(self, db: Session, tipo: str, area_id: str) -> Optional[GeoLayer]:
-        stmt = select(GeoLayer).where(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id)
+    def get_layer_by_tipo_and_area(
+        self, db: Session, tipo: str, area_id: str
+    ) -> Optional[GeoLayer]:
+        stmt = select(GeoLayer).where(
+            GeoLayer.tipo == tipo, GeoLayer.area_id == area_id
+        )
         return db.execute(stmt).scalar_one_or_none()
 
     def create_layer(
@@ -139,7 +156,9 @@ class GeoRepositoryJobsLayersMixin:
         metadata_extra: Optional[dict] = None,
         area_id: Optional[str] = None,
     ) -> GeoLayer:
-        existing = self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
+        existing = (
+            self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
+        )
         if existing:
             existing.nombre = nombre
             existing.fuente = fuente

@@ -15,6 +15,7 @@ logger = structlog.get_logger(__name__)
 def _get_db():
     return SessionLocal()
 
+
 # ---------------------------------------------------------------------------
 # RAINFALL — CHIRPS backfill & daily sync
 # ---------------------------------------------------------------------------

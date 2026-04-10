@@ -57,10 +57,20 @@ def merge_drainage_networks_impl(
             with rasterio.open(reference_tif) as src:
                 target_crs = src.crs
             if target_crs and str(target_crs) != "EPSG:4326":
-                transformer = Transformer.from_crs(CRS.from_epsg(4326), CRS.from_user_input(target_crs), always_xy=True)
-                reproject_fn = lambda geom: shapely_transform(transformer.transform, geom)  # noqa: E731
+                transformer = Transformer.from_crs(
+                    CRS.from_epsg(4326), CRS.from_user_input(target_crs), always_xy=True
+                )
+
+                def _reproject_geom(geom):
+                    return shapely_transform(transformer.transform, geom)
+
+                reproject_fn = _reproject_geom
         except Exception:
-            logger.warning("merge_drainage_networks: failed to read CRS from %s", reference_tif, exc_info=True)
+            logger.warning(
+                "merge_drainage_networks: failed to read CRS from %s",
+                reference_tif,
+                exc_info=True,
+            )
 
     auto_path = Path(auto_drainage_path)
     if auto_path.exists():
@@ -70,7 +80,10 @@ def merge_drainage_networks_impl(
             feat.setdefault("properties", {})["source"] = "auto"
             combined_features.append(feat)
     else:
-        logger.warning("merge_drainage_networks: auto drainage not found at %s, skipping", auto_drainage_path)
+        logger.warning(
+            "merge_drainage_networks: auto drainage not found at %s, skipping",
+            auto_drainage_path,
+        )
 
     waterways_path = Path(waterways_dir)
     if waterways_path.is_dir():
@@ -80,32 +93,54 @@ def merge_drainage_networks_impl(
                     ww_data = json.load(f)
                 for feat in ww_data.get("features", []):
                     if reproject_fn is not None:
-                        feat["geometry"] = mapping(reproject_fn(shape(feat["geometry"])))
+                        feat["geometry"] = mapping(
+                            reproject_fn(shape(feat["geometry"]))
+                        )
                     feat.setdefault("properties", {})["source"] = "real"
                     feat["properties"].setdefault("waterway_file", geojson_file.stem)
                     combined_features.append(feat)
             except Exception:
-                logger.warning("merge_drainage_networks: failed to load %s, skipping", geojson_file.name, exc_info=True)
+                logger.warning(
+                    "merge_drainage_networks: failed to load %s, skipping",
+                    geojson_file.name,
+                    exc_info=True,
+                )
     else:
-        logger.warning("merge_drainage_networks: waterways dir not found at %s", waterways_dir)
+        logger.warning(
+            "merge_drainage_networks: waterways dir not found at %s", waterways_dir
+        )
 
     combined = {"type": "FeatureCollection", "features": combined_features}
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(combined, f)
-    logger.info("merge_drainage_networks: wrote %d features to %s", len(combined_features), output_path)
+    logger.info(
+        "merge_drainage_networks: wrote %d features to %s",
+        len(combined_features),
+        output_path,
+    )
     return output_path
 
 
-def rasterize_drainage_impl(geojson_path: str, reference_tif: str, output_path: str) -> str:
+def rasterize_drainage_impl(
+    geojson_path: str, reference_tif: str, output_path: str
+) -> str:
     with open(geojson_path) as f:
         geojson_data = json.load(f)
-    geometries = [(shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])]
+    geometries = [
+        (shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])
+    ]
     with rasterio.open(reference_tif) as src:
         meta = src.meta.copy()
         out_shape = (src.height, src.width)
         transform = src.transform
-    burned = rasterio_rasterize(geometries, out_shape=out_shape, transform=transform, fill=0, dtype="uint8") if geometries else np.zeros(out_shape, dtype=np.uint8)
+    burned = (
+        rasterio_rasterize(
+            geometries, out_shape=out_shape, transform=transform, fill=0, dtype="uint8"
+        )
+        if geometries
+        else np.zeros(out_shape, dtype=np.uint8)
+    )
     meta.update({"dtype": "uint8", "count": 1, "nodata": None, "driver": "GTiff"})
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
@@ -149,7 +184,9 @@ def compute_flood_risk_impl(
     ).astype(np.float32) * np.float32(100.0)
     out_nodata = np.float32(-9999.0)
     composite[nodata_mask] = out_nodata
-    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(composite, 1)
@@ -176,7 +213,9 @@ def compute_drainage_need_impl(
             reference = area / "flow_acc.tif"
             if not reference.exists():
                 reference = area / "hand.tif"
-            rasterize_drainage_fn(str(source_geojson), str(reference), str(drainage_path))
+            rasterize_drainage_fn(
+                str(source_geojson), str(reference), str(drainage_path)
+            )
         else:
             raise FileNotFoundError(
                 f"drainage.tif not found in {area_dir}. Run the DEM pipeline first to generate the drainage network."
@@ -206,7 +245,9 @@ def compute_drainage_need_impl(
 
     out_nodata = np.float32(-9999.0)
     composite[nodata_mask] = out_nodata
-    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(composite, 1)

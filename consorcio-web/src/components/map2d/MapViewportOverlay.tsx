@@ -34,6 +34,7 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
           aria-label="Divisor de comparación"
           role="separator"
           aria-orientation="vertical"
+          tabIndex={0}
         >
           <div
             style={{

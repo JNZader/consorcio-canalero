@@ -8,7 +8,13 @@ from reportlab.lib.utils import ImageReader
 from reportlab.lib.units import mm
 from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
-from app.shared.pdf.base import BrandedPDF, BrandingInfo, build_data_table, build_info_table, get_pdf_styles
+from app.shared.pdf.base import (
+    BrandedPDF,
+    BrandingInfo,
+    build_data_table,
+    build_info_table,
+    get_pdf_styles,
+)
 from app.shared.pdf.builders_common import (
     build_color_legend_table,
     decode_data_url_image,

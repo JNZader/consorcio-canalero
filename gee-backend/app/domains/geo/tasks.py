@@ -31,16 +31,26 @@ from app.domains.geo.tasks_support import (
     store_composite_zonal_stats_impl,
     validate_composite_prerequisites_impl,
 )
-from app.domains.geo.tasks_io_support import delineate_basins_task_impl, download_dem_from_gee_task_impl
+from app.domains.geo.tasks_io_support import (
+    delineate_basins_task_impl,
+    download_dem_from_gee_task_impl,
+)
+
+
 def _get_processing():
     from app.domains.geo import processing
+
     return processing
+
 
 logger = structlog.get_logger(__name__)
 repo = GeoRepository()
 
+
 def _get_db():
     return SessionLocal()
+
+
 def _update_job(job_id: str, **kwargs):
     db = _get_db()
     try:
@@ -48,6 +58,8 @@ def _update_job(job_id: str, **kwargs):
         db.commit()
     finally:
         db.close()
+
+
 def _register_layer(
     *,
     nombre: str,
@@ -73,6 +85,8 @@ def _register_layer(
         return str(layer.id)
     finally:
         db.close()
+
+
 def _convert_to_cog_safe(input_path: str) -> str | None:
     try:
         cog_path = _get_processing().convert_to_cog(input_path)
@@ -81,6 +95,8 @@ def _convert_to_cog_safe(input_path: str) -> str | None:
     except Exception:
         logger.warning("cog_conversion.failed", input=input_path, exc_info=True)
         return None
+
+
 def _run_step(
     job_id: str,
     step_name: str,
@@ -97,6 +113,8 @@ def _run_step(
     except Exception:
         logger.error(f"{step_name}.failed", job_id=job_id, exc_info=True)
         raise
+
+
 def _build_cog_metadata(cog_path: str | None, extra: dict | None = None) -> dict:
     metadata = dict(extra or {})
     if cog_path:
@@ -104,6 +122,8 @@ def _build_cog_metadata(cog_path: str | None, extra: dict | None = None) -> dict
     else:
         metadata["cog_error"] = "conversion failed"
     return metadata
+
+
 def _register_raster_layer(
     *,
     nombre: str,
@@ -121,6 +141,8 @@ def _register_raster_layer(
             _convert_to_cog_safe(archivo_path), metadata_extra
         ),
     )
+
+
 def _create_geo_job(*, tipo: str, parametros: dict) -> str:
     db = _get_db()
     try:
@@ -129,6 +151,7 @@ def _create_geo_job(*, tipo: str, parametros: dict) -> str:
         return str(job.id)
     finally:
         db.close()
+
 
 @celery_app.task(queue="geo", name="geo.process_dem_pipeline")
 def process_dem_pipeline(
@@ -154,6 +177,7 @@ def process_dem_pipeline(
         formato_geo_layer=FormatoGeoLayer,
     )
 
+
 def _run_simple_processing_task(
     processing_method: str,
     *args,
@@ -173,6 +197,8 @@ def _run_simple_processing_task(
                 job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
             )
         raise
+
+
 @celery_app.task(queue="geo", name="geo.compute_slope")
 def compute_slope(dem_path: str, output_path: str, job_id: str | None = None) -> dict:
     return _run_simple_processing_task(
@@ -181,6 +207,8 @@ def compute_slope(dem_path: str, output_path: str, job_id: str | None = None) ->
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.compute_aspect")
 def compute_aspect(dem_path: str, output_path: str, job_id: str | None = None) -> dict:
     return _run_simple_processing_task(
@@ -189,6 +217,8 @@ def compute_aspect(dem_path: str, output_path: str, job_id: str | None = None) -
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.compute_flow_direction")
 def compute_flow_direction(
     dem_path: str, output_path: str, job_id: str | None = None
@@ -199,6 +229,8 @@ def compute_flow_direction(
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.compute_flow_accumulation")
 def compute_flow_accumulation(
     dem_path: str, output_path: str, job_id: str | None = None
@@ -209,6 +241,8 @@ def compute_flow_accumulation(
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.compute_twi")
 def compute_twi(
     slope_path: str,
@@ -223,6 +257,8 @@ def compute_twi(
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.compute_hand")
 def compute_hand(
     dem_path: str,
@@ -239,6 +275,8 @@ def compute_hand(
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.extract_drainage_network")
 def extract_drainage_network(
     flow_acc_path: str,
@@ -253,6 +291,8 @@ def extract_drainage_network(
         output_path,
         job_id=job_id,
     )
+
+
 @celery_app.task(queue="geo", name="geo.classify_terrain")
 def classify_terrain(
     filled_dem_path: str,
@@ -275,11 +315,15 @@ def classify_terrain(
         twi_path=twi_path,
         job_id=job_id,
     )
+
+
 def _get_gee_service():
     from app.domains.geo.gee_service import GEEService, _ensure_initialized
 
     _ensure_initialized()
     return GEEService()
+
+
 @celery_app.task(queue="geo", name="geo.download_dem_from_gee")
 def download_dem_from_gee_task(
     area_id: str,
@@ -297,6 +341,8 @@ def download_dem_from_gee_task(
         estado_geo_job=EstadoGeoJob,
         logger=logger,
     )
+
+
 @celery_app.task(queue="geo", name="geo.delineate_basins")
 def delineate_basins_task(
     area_id: str,
@@ -321,6 +367,8 @@ def delineate_basins_task(
         get_db=_get_db,
         logger=logger,
     )
+
+
 def _cleanup_full_dem_state(area_id: str) -> None:
     from app.domains.geo.intelligence.repository import IntelligenceRepository
 
@@ -330,6 +378,8 @@ def _cleanup_full_dem_state(area_id: str) -> None:
         geo_repo=repo,
         intelligence_repo_cls=IntelligenceRepository,
     )
+
+
 def _prepare_full_pipeline_dem(area_id: str) -> tuple[str, str]:
     return prepare_full_pipeline_dem_impl(
         area_id=area_id,
@@ -338,8 +388,12 @@ def _prepare_full_pipeline_dem(area_id: str) -> tuple[str, str]:
         register_raster_layer=_register_raster_layer,
         tipo_geo_layer=TipoGeoLayer,
     )
+
+
 def _count_manual_basins() -> int:
     return count_manual_basins_impl(get_db=_get_db)
+
+
 def _store_auto_delineated_basins(
     *,
     area_id: str,
@@ -353,6 +407,8 @@ def _store_auto_delineated_basins(
         get_db=_get_db,
         intelligence_repo_cls=IntelligenceRepository,
     )
+
+
 def _generate_auto_basins(
     *,
     area_id: str,
@@ -372,6 +428,8 @@ def _generate_auto_basins(
         tipo_geo_layer=TipoGeoLayer,
         formato_geo_layer=FormatoGeoLayer,
     )
+
+
 @celery_app.task(queue="geo", name="geo.run_full_dem_pipeline")
 def run_full_dem_pipeline(
     area_id: str,
@@ -391,10 +449,14 @@ def run_full_dem_pipeline(
         tipo_geo_job=TipoGeoJob,
         estado_geo_job=EstadoGeoJob,
     )
+
+
 def _get_composites():
     from app.domains.geo import composites
 
     return composites
+
+
 def _resolve_composite_area_dir(area_id: str) -> str:
     return resolve_composite_area_dir_impl(
         area_id=area_id,
@@ -402,8 +464,12 @@ def _resolve_composite_area_dir(area_id: str) -> str:
         geo_repo=repo,
         tipo_geo_layer=TipoGeoLayer,
     )
+
+
 def _validate_composite_prerequisites(area_dir: str) -> None:
     validate_composite_prerequisites_impl(area_dir)
+
+
 def _merge_drainage_networks_if_available(
     job_id: str,
     area_id: str,
@@ -419,6 +485,8 @@ def _merge_drainage_networks_if_available(
         outputs=outputs,
         run_step=_run_step,
     )
+
+
 def _store_composite_zonal_stats(
     *,
     area_id: str,
@@ -442,6 +510,8 @@ def _store_composite_zonal_stats(
         get_db=_get_db,
         composite_zonal_stats_model=CompositeZonalStats,
     )
+
+
 @celery_app.task(queue="geo", name="geo.composite_analysis")
 def composite_analysis_task(
     area_id: str,
@@ -472,6 +542,7 @@ def composite_analysis_task(
         tipo_geo_layer=TipoGeoLayer,
         estado_geo_job=EstadoGeoJob,
     )
+
 
 @celery_app.task(queue="geo", name="geo.rainfall_daily_sync")
 def rainfall_daily_sync() -> dict:

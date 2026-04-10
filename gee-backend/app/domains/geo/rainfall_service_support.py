@@ -8,7 +8,16 @@ from datetime import date
 from typing import Any
 
 
-def postgis_to_ee_geometry_impl(*, db, select_fn, st_as_geojson, zona_model, json_module, ee_module, zona_id: uuid.UUID):
+def postgis_to_ee_geometry_impl(
+    *,
+    db,
+    select_fn,
+    st_as_geojson,
+    zona_model,
+    json_module,
+    ee_module,
+    zona_id: uuid.UUID,
+):
     geojson_str = db.execute(
         select_fn(st_as_geojson(zona_model.geometria)).where(zona_model.id == zona_id)
     ).scalar()
@@ -17,7 +26,17 @@ def postgis_to_ee_geometry_impl(*, db, select_fn, st_as_geojson, zona_model, jso
     return ee_module.Geometry(json_module.loads(geojson_str))
 
 
-def load_zone_geometries_impl(*, db, ensure_initialized, select_fn, st_as_geojson, zona_model, json_module, ee_module, zona_ids=None) -> list[dict[str, Any]]:
+def load_zone_geometries_impl(
+    *,
+    db,
+    ensure_initialized,
+    select_fn,
+    st_as_geojson,
+    zona_model,
+    json_module,
+    ee_module,
+    zona_ids=None,
+) -> list[dict[str, Any]]:
     stmt = select_fn(
         zona_model.id,
         zona_model.nombre,
@@ -36,7 +55,9 @@ def load_zone_geometries_impl(*, db, ensure_initialized, select_fn, st_as_geojso
     ]
 
 
-def build_reduce_regions_records(*, result_info, date_type, uuid_type, source: str) -> list[dict[str, Any]]:
+def build_reduce_regions_records(
+    *, result_info, date_type, uuid_type, source: str
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not result_info or "features" not in result_info:
         return records
@@ -57,10 +78,30 @@ def build_reduce_regions_records(*, result_info, date_type, uuid_type, source: s
     return records
 
 
-def run_backfill_impl(*, db, load_zones, start_date: date, end_date: date, zona_ids, source: str, fetch_chirps, fetch_imerg, repo, logger, timedelta_cls, math_module, on_batch_complete=None) -> dict[str, Any]:
+def run_backfill_impl(
+    *,
+    db,
+    load_zones,
+    start_date: date,
+    end_date: date,
+    zona_ids,
+    source: str,
+    fetch_chirps,
+    fetch_imerg,
+    repo,
+    logger,
+    timedelta_cls,
+    math_module,
+    on_batch_complete=None,
+) -> dict[str, Any]:
     zones = load_zones(db, zona_ids)
     if not zones:
-        return {"total_records": 0, "batches_processed": 0, "total_batches": 0, "errors": ["No zones found"]}
+        return {
+            "total_records": 0,
+            "batches_processed": 0,
+            "total_batches": 0,
+            "errors": ["No zones found"],
+        }
 
     total_days = (end_date - start_date).days + 1
     total_batches = math_module.ceil(total_days / 30)
@@ -101,7 +142,15 @@ def run_backfill_impl(*, db, load_zones, start_date: date, end_date: date, zona_
     }
 
 
-def detect_rainfall_events_impl(*, records, start_date: date, end_date: date, threshold_mm: float, window_days: int, timedelta_cls) -> list[dict[str, Any]]:
+def detect_rainfall_events_impl(
+    *,
+    records,
+    start_date: date,
+    end_date: date,
+    threshold_mm: float,
+    window_days: int,
+    timedelta_cls,
+) -> list[dict[str, Any]]:
     zone_records: dict[uuid.UUID, dict[date, float]] = defaultdict(dict)
     for rec in records:
         zone_records[rec.zona_operativa_id][rec.date] = rec.precipitation_mm
@@ -129,29 +178,35 @@ def detect_rainfall_events_impl(*, records, start_date: date, end_date: date, th
                 prev_date = d
             else:
                 duration = (prev_date - cluster_start).days + 1
-                events.append({
-                    "zona_operativa_id": zona_id,
-                    "event_start": cluster_start,
-                    "event_end": prev_date,
-                    "accumulated_mm": round(cluster_max_acc, 2),
-                    "duration_days": duration,
-                })
+                events.append(
+                    {
+                        "zona_operativa_id": zona_id,
+                        "event_start": cluster_start,
+                        "event_end": prev_date,
+                        "accumulated_mm": round(cluster_max_acc, 2),
+                        "duration_days": duration,
+                    }
+                )
                 cluster_start = d
                 cluster_max_acc = acc
                 prev_date = d
         duration = (prev_date - cluster_start).days + 1
-        events.append({
-            "zona_operativa_id": zona_id,
-            "event_start": cluster_start,
-            "event_end": prev_date,
-            "accumulated_mm": round(cluster_max_acc, 2),
-            "duration_days": duration,
-        })
+        events.append(
+            {
+                "zona_operativa_id": zona_id,
+                "event_start": cluster_start,
+                "event_end": prev_date,
+                "accumulated_mm": round(cluster_max_acc, 2),
+                "duration_days": duration,
+            }
+        )
     events.sort(key=lambda e: e["event_start"], reverse=True)
     return events
 
 
-def build_image_suggestions_impl(*, result, event_end_date: date, date_type) -> list[dict[str, Any]]:
+def build_image_suggestions_impl(
+    *, result, event_end_date: date, date_type
+) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
     if not result or "features" not in result:
         return suggestions
@@ -163,5 +218,10 @@ def build_image_suggestions_impl(*, result, event_end_date: date, date_type) -> 
         if d and cc is not None and (d not in date_best or cc < date_best[d]):
             date_best[d] = cc
     for d_str, cc in sorted(date_best.items(), key=lambda x: x[1]):
-        suggestions.append({"date": date_type.fromisoformat(d_str), "cloud_cover_pct": round(float(cc), 2)})
+        suggestions.append(
+            {
+                "date": date_type.fromisoformat(d_str),
+                "cloud_cover_pct": round(float(cc), 2),
+            }
+        )
     return suggestions

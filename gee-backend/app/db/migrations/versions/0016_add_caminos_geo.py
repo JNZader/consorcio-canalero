@@ -90,12 +90,8 @@ def upgrade() -> None:
             COALESCE(c.consorcio_nombre, c.jerarquia, 'Sin tipo')
         WITH DATA
     """)
-    op.execute(
-        "CREATE INDEX ix_mv_caminos_zona ON mv_caminos_por_zona (zona_id)"
-    )
-    op.execute(
-        "CREATE INDEX ix_mv_caminos_cuenca ON mv_caminos_por_zona (cuenca)"
-    )
+    op.execute("CREATE INDEX ix_mv_caminos_zona ON mv_caminos_por_zona (zona_id)")
+    op.execute("CREATE INDEX ix_mv_caminos_cuenca ON mv_caminos_por_zona (cuenca)")
     op.execute(
         "CREATE INDEX ix_mv_caminos_consorcio ON mv_caminos_por_zona (consorcio_codigo)"
     )

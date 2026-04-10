@@ -20,7 +20,6 @@ import { useState } from 'react';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import { apiFetch } from '../lib/api';
-import { formatDate } from '../lib/formatters';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
 interface ProfileFormValues {

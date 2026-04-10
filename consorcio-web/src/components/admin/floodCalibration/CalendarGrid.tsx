@@ -15,6 +15,103 @@ interface CalendarGridProps {
   rainfallByDate?: Record<string, number>;
 }
 
+interface CalendarCellData {
+  day: number;
+  dateStr: string;
+}
+
+interface CalendarCellProps {
+  cell: CalendarCellData | null;
+  index: number;
+  availableDates: Set<string>;
+  selectedDay: string | null;
+  todayStr: string;
+  onSelectDay: (dateStr: string) => void;
+  rainfallByDate: Record<string, number>;
+}
+
+function CalendarCell({
+  cell,
+  index,
+  availableDates,
+  selectedDay,
+  todayStr,
+  onSelectDay,
+  rainfallByDate,
+}: CalendarCellProps) {
+  if (!cell) return <div key={`empty-${index}`} />;
+
+  const isAvailable = availableDates.has(cell.dateStr);
+  const isSelected = selectedDay === cell.dateStr;
+  const isFuture = cell.dateStr > todayStr;
+  const rainfallMm = rainfallByDate[cell.dateStr];
+  const rainfallBg = getRainfallColor(rainfallMm);
+
+  const button = (
+    <button
+      type="button"
+      key={cell.dateStr}
+      disabled={!isAvailable || isFuture}
+      onClick={() => isAvailable && !isFuture && onSelectDay(cell.dateStr)}
+      style={{
+        aspectRatio: '1',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 'var(--mantine-radius-sm)',
+        border: isSelected ? '2px solid var(--mantine-color-blue-6)' : '1px solid transparent',
+        background: isSelected
+          ? 'var(--mantine-color-blue-0)'
+          : rainfallBg
+            ? rainfallBg
+            : isAvailable && !isFuture
+              ? 'var(--mantine-color-green-0)'
+              : 'transparent',
+        opacity: isFuture ? 0.3 : isAvailable ? 1 : 0.5,
+        cursor: isAvailable && !isFuture ? 'pointer' : 'default',
+        transition: 'all 150ms ease',
+        position: 'relative',
+      }}
+    >
+      <Text
+        size="sm"
+        fw={isSelected ? 700 : isAvailable ? 500 : 400}
+        c={isSelected ? 'blue.7' : rainfallMm != null && rainfallMm > 30 ? 'white' : isAvailable ? 'dark' : 'dimmed'}
+      >
+        {cell.day}
+      </Text>
+      {isAvailable && !isFuture && (
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: isSelected ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-green-6)',
+            position: 'absolute',
+            bottom: 3,
+          }}
+        />
+      )}
+    </button>
+  );
+
+  if (rainfallMm != null && rainfallMm > 0) {
+    return (
+      <Tooltip
+        key={cell.dateStr}
+        label={`${rainfallMm.toFixed(1)} mm — ${getRainfallLabel(rainfallMm)}`}
+        position="top"
+        withArrow
+      >
+        {button}
+      </Tooltip>
+    );
+  }
+
+  return button;
+}
+
 export function CalendarGrid({
   year,
   month,
@@ -32,7 +129,7 @@ export function CalendarGrid({
   let startDow = firstDay.getDay() - 1;
   if (startDow < 0) startDow = 6;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: Array<{ day: number; dateStr: string } | null> = [];
+  const cells: Array<CalendarCellData | null> = [];
 
   for (let i = 0; i < startDow; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) {
@@ -73,59 +170,18 @@ export function CalendarGrid({
             <Loader size="sm" />
           </div>
         )}
-        {cells.map((cell, idx) => {
-          if (!cell) return <div key={`empty-${idx}`} />;
-          const isAvailable = availableDates.has(cell.dateStr);
-          const isSelected = selectedDay === cell.dateStr;
-          const isFuture = cell.dateStr > todayStr;
-          const rainfallMm = rainfallByDate[cell.dateStr];
-          const rainfallBg = getRainfallColor(rainfallMm);
-
-          const button = (
-            <button
-              type="button"
-              key={cell.dateStr}
-              disabled={!isAvailable || isFuture}
-              onClick={() => isAvailable && !isFuture && onSelectDay(cell.dateStr)}
-              style={{
-                aspectRatio: '1',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 'var(--mantine-radius-sm)',
-                border: isSelected ? '2px solid var(--mantine-color-blue-6)' : '1px solid transparent',
-                background: isSelected
-                  ? 'var(--mantine-color-blue-0)'
-                  : rainfallBg
-                    ? rainfallBg
-                    : isAvailable && !isFuture
-                      ? 'var(--mantine-color-green-0)'
-                      : 'transparent',
-                opacity: isFuture ? 0.3 : isAvailable ? 1 : 0.5,
-                cursor: isAvailable && !isFuture ? 'pointer' : 'default',
-                transition: 'all 150ms ease',
-                position: 'relative',
-              }}
-            >
-              <Text size="sm" fw={isSelected ? 700 : isAvailable ? 500 : 400} c={isSelected ? 'blue.7' : rainfallMm != null && rainfallMm > 30 ? 'white' : isAvailable ? 'dark' : 'dimmed'}>
-                {cell.day}
-              </Text>
-              {isAvailable && !isFuture && (
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: isSelected ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-green-6)', position: 'absolute', bottom: 3 }} />
-              )}
-            </button>
-          );
-
-          if (rainfallMm != null && rainfallMm > 0) {
-            return (
-              <Tooltip key={cell.dateStr} label={`${rainfallMm.toFixed(1)} mm — ${getRainfallLabel(rainfallMm)}`} position="top" withArrow>
-                {button}
-              </Tooltip>
-            );
-          }
-          return button;
-        })}
+        {cells.map((cell, idx) => (
+          <CalendarCell
+            key={cell?.dateStr ?? `empty-${idx}`}
+            cell={cell}
+            index={idx}
+            availableDates={availableDates}
+            selectedDay={selectedDay}
+            todayStr={todayStr}
+            onSelectDay={onSelectDay}
+            rainfallByDate={rainfallByDate}
+          />
+        ))}
       </div>
     </Paper>
   );

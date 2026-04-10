@@ -43,7 +43,7 @@ export function AccessibleLoader({
             {loadingText}...
           </Text>
         </Stack>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
       </Box>
     );
   }

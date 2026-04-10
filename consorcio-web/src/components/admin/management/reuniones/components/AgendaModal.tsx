@@ -17,9 +17,19 @@ import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
 import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
 import type { AgendaItem, EntityOption, Reunion } from '../reunionesTypes';
 
+type AgendaFormValues = Record<string, unknown>;
+
+interface InputPropsLike extends Record<string, unknown> {
+  value?: unknown;
+  onChange?: (...args: unknown[]) => void;
+  error?: unknown;
+}
+
 interface SimpleFormLike {
-  getInputProps: (field: string) => any;
-  onSubmit: (handler: (values: any) => void | Promise<void>) => (event?: FormEvent<HTMLFormElement>) => void;
+  getInputProps: (field: string) => InputPropsLike;
+  onSubmit: (
+    handler: (values: AgendaFormValues) => void | Promise<void>,
+  ) => (event?: FormEvent<HTMLFormElement>) => void;
 }
 
 export function AgendaModal({
@@ -41,7 +51,7 @@ export function AgendaModal({
   exporting: boolean;
   onExport: () => void | Promise<void>;
   form: SimpleFormLike;
-  onAddTopic: (values: any) => void | Promise<void>;
+  onAddTopic: (values: AgendaFormValues) => void | Promise<void>;
   availableEntities: EntityOption[];
   loadingEntities: boolean;
 }>) {

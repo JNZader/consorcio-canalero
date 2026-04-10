@@ -190,7 +190,9 @@ def _iter_gap_polygons(geom):
 
 def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach uncovered consorcio-zone gaps to the neighboring basin record."""
-    return _attach_zone_gaps_support(records, _consorcio_zone_geometry, _iter_gap_polygons)
+    return _attach_zone_gaps_support(
+        records, _consorcio_zone_geometry, _iter_gap_polygons
+    )
 
 
 def split_basins_for_display(

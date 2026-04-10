@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import uuid
@@ -43,17 +42,29 @@ from app.domains.geo.intelligence.schemas import (
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Intelligence"])
+
+
 def _get_intel_service():
     from app.domains.geo.intelligence import service as intel_service
+
     return intel_service
+
+
 def _get_repo() -> IntelligenceRepository:
     return IntelligenceRepository()
+
+
 def _require_operator():
     from app.auth import require_admin_or_operator
+
     return require_admin_or_operator
+
+
 def _require_admin():
     from app.auth import require_admin
+
     return require_admin
+
 
 # MATERIALIZED VIEW REFRESH
 @router.post("/refresh-views", response_model=dict)
@@ -64,6 +75,7 @@ def refresh_views(
 ):
     results = repo.refresh_materialized_views(db)
     return {"status": "refreshed", "views": results}
+
 
 # DASHBOARD
 @router.get("/dashboard", response_model=DashboardInteligente)
@@ -89,6 +101,7 @@ def get_dashboard(
     hci_all, _ = repo.get_hci_por_zona(db, page=1, limit=10000)
     return build_dashboard_response(stats, hci_all)
 
+
 # HCI — Hydric Criticality Index
 @router.post("/hci/calculate", response_model=CriticidadResponse)
 def calculate_hci(
@@ -110,6 +123,8 @@ def calculate_hci(
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/hci", response_model=dict)
 def list_hci(
     zona_id: Optional[uuid.UUID] = Query(default=None),
@@ -140,6 +155,7 @@ def list_hci(
         limit=limit,
     )
 
+
 # CONFLICT POINTS
 @router.get("/conflictos", response_model=dict)
 def list_conflictos(
@@ -160,6 +176,8 @@ def list_conflictos(
         page=page,
         limit=limit,
     )
+
+
 @router.post("/conflictos/detectar", response_model=dict)
 def detect_conflictos(
     db: Session = Depends(get_db),
@@ -169,6 +187,7 @@ def detect_conflictos(
 
     task = task_detect_all_conflicts.delay()
     return task_response(task)
+
 
 # RUNOFF SIMULATION
 @router.post("/escorrentia", response_model=EscorrentiaResponse)
@@ -188,6 +207,7 @@ def run_escorrentia(
     )
     return result
 
+
 # OPERATIONAL ZONES
 @router.get("/zonas", response_model=dict)
 def list_zonas(
@@ -205,6 +225,8 @@ def list_zonas(
         page=page,
         limit=limit,
     )
+
+
 @router.post("/zonas/generar", response_model=dict)
 def generate_zonas(
     payload: ZonificacionRequest,
@@ -217,6 +239,8 @@ def generate_zonas(
         str(payload.dem_layer_id), payload.threshold
     )
     return task_response(task)
+
+
 @router.post("/hci/batch", response_model=dict)
 def batch_calculate_hci(
     db: Session = Depends(get_db),
@@ -226,6 +250,7 @@ def batch_calculate_hci(
 
     task = task_calculate_hci_all_zones.delay()
     return task_response(task)
+
 
 # CANAL PRIORITY
 @router.get("/canales/prioridad", response_model=dict)
@@ -239,6 +264,7 @@ def get_canal_priorities(
         "message": "Use POST /geo/intelligence/canales/prioridad/calcular to compute",
     }
 
+
 # ROAD RISK
 @router.get("/caminos/riesgo", response_model=dict)
 def get_road_risks(
@@ -249,6 +275,7 @@ def get_road_risks(
         "items": [],
         "message": "Use POST /geo/intelligence/caminos/riesgo/calcular to compute",
     }
+
 
 # ALERTS
 @router.get("/alertas", response_model=dict)
@@ -262,6 +289,8 @@ def list_alertas(
         "items": [AlertaResponse.model_validate(a) for a in alertas],
         "total": len(alertas),
     }
+
+
 @router.post("/alertas/evaluar", response_model=dict)
 def evaluate_alertas(
     db: Session = Depends(get_db),
@@ -269,6 +298,8 @@ def evaluate_alertas(
 ):
     result = _get_intel_service().check_alerts(db)
     return result
+
+
 @router.post("/alertas/{alerta_id}/desactivar", response_model=AlertaResponse)
 def deactivate_alerta(
     alerta_id: uuid.UUID,
@@ -281,6 +312,7 @@ def deactivate_alerta(
         raise HTTPException(status_code=404, detail="Alerta no encontrada")
     db.commit()
     return alerta
+
 
 # COMPOSITE ANALYSIS
 @router.post("/composite/analyze", response_model=dict)
@@ -297,6 +329,8 @@ def trigger_composite_analysis(
         weights_drainage=payload.weights_drainage,
     )
     return task_response(task)
+
+
 @router.get("/composite/stats/{area_id}", response_model=BasinRiskRankingResponse)
 def get_composite_stats(
     area_id: str,
@@ -318,6 +352,8 @@ def get_composite_stats(
 
     items = serialize_composite_stats(stats)
     return BasinRiskRankingResponse(items=items, total=len(items))
+
+
 @router.get("/composite/compare/{area_id}", response_model=CompositeComparisonResponse)
 def compare_composite_stats(
     area_id: str,
@@ -365,9 +401,11 @@ def compare_composite_stats(
         area_id=area_id, tipo=tipo, items=items, total=len(items)
     )
 
+
 # CANAL SUGGESTIONS
 
 suggestions_router = APIRouter(prefix="/suggestions", tags=["Canal Suggestions"])
+
 
 @suggestions_router.post("/analyze", status_code=202, response_model=dict)
 def trigger_canal_analysis(
@@ -377,6 +415,7 @@ def trigger_canal_analysis(
 
     task = run_canal_analysis.delay()
     return task_response(task)
+
 
 @suggestions_router.get("/results", response_model=dict)
 def get_suggestion_results(
@@ -411,6 +450,7 @@ def get_suggestion_results(
         limit=limit,
         batch_id=latest_batch,
     )
+
 
 @suggestions_router.get("/results/{batch_id}", response_model=dict)
 def get_suggestion_results_by_batch(
@@ -448,6 +488,7 @@ def get_suggestion_results_by_batch(
         batch_id=batch_id,
     )
 
+
 @suggestions_router.get("/summary", response_model=dict)
 def get_suggestion_summary(
     batch_id: Optional[uuid.UUID] = Query(
@@ -468,5 +509,6 @@ def get_suggestion_summary(
         }
 
     return build_suggestion_summary_payload(summary, repo, db)
+
 
 router.include_router(suggestions_router)

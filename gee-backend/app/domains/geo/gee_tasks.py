@@ -87,7 +87,13 @@ def analyze_flood_task(
     Estado = deps["EstadoGeoJob"]
 
     if analisis_id:
-        update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.RUNNING)
+        update_status_if_needed(
+            analisis_id=analisis_id,
+            repo=repo,
+            db=db,
+            uuid_module=uuid,
+            estado=Estado.RUNNING,
+        )
         db.commit()
 
     try:
@@ -111,7 +117,14 @@ def analyze_flood_task(
         resultado["status"] = "completed"
 
         if analisis_id:
-            update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.COMPLETED, resultado=resultado)
+            update_status_if_needed(
+                analisis_id=analisis_id,
+                repo=repo,
+                db=db,
+                uuid_module=uuid,
+                estado=Estado.COMPLETED,
+                resultado=resultado,
+            )
             db.commit()
 
         logger.info(
@@ -127,7 +140,14 @@ def analyze_flood_task(
 
         if analisis_id:
             try:
-                update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.FAILED, error=error_msg[:2000])
+                update_status_if_needed(
+                    analisis_id=analisis_id,
+                    repo=repo,
+                    db=db,
+                    uuid_module=uuid,
+                    estado=Estado.FAILED,
+                    error=error_msg[:2000],
+                )
                 db.commit()
             except Exception:
                 db.rollback()
@@ -164,7 +184,13 @@ def supervised_classification_task(
     Estado = deps["EstadoGeoJob"]
 
     if analisis_id:
-        update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.RUNNING)
+        update_status_if_needed(
+            analisis_id=analisis_id,
+            repo=repo,
+            db=db,
+            uuid_module=uuid,
+            estado=Estado.RUNNING,
+        )
         db.commit()
 
     try:
@@ -192,7 +218,14 @@ def supervised_classification_task(
         resultado["status"] = "completed"
 
         if analisis_id:
-            update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.COMPLETED, resultado=resultado)
+            update_status_if_needed(
+                analisis_id=analisis_id,
+                repo=repo,
+                db=db,
+                uuid_module=uuid,
+                estado=Estado.COMPLETED,
+                resultado=resultado,
+            )
             db.commit()
 
         logger.info(
@@ -207,7 +240,14 @@ def supervised_classification_task(
 
         if analisis_id:
             try:
-                update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.FAILED, error=error_msg[:2000])
+                update_status_if_needed(
+                    analisis_id=analisis_id,
+                    repo=repo,
+                    db=db,
+                    uuid_module=uuid,
+                    estado=Estado.FAILED,
+                    error=error_msg[:2000],
+                )
                 db.commit()
             except Exception:
                 db.rollback()
@@ -258,7 +298,13 @@ def sar_temporal_task(
     Estado = deps["EstadoGeoJob"]
 
     if analisis_id:
-        update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.RUNNING)
+        update_status_if_needed(
+            analisis_id=analisis_id,
+            repo=repo,
+            db=db,
+            uuid_module=uuid,
+            estado=Estado.RUNNING,
+        )
         db.commit()
 
     try:
@@ -279,7 +325,14 @@ def sar_temporal_task(
         )
 
         if analisis_id:
-            update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.COMPLETED, resultado=resultado)
+            update_status_if_needed(
+                analisis_id=analisis_id,
+                repo=repo,
+                db=db,
+                uuid_module=uuid,
+                estado=Estado.COMPLETED,
+                resultado=resultado,
+            )
             db.commit()
 
         logger.info(
@@ -295,7 +348,14 @@ def sar_temporal_task(
 
         if analisis_id:
             try:
-                update_status_if_needed(analisis_id=analisis_id, repo=repo, db=db, uuid_module=uuid, estado=Estado.FAILED, error=error_msg[:2000])
+                update_status_if_needed(
+                    analisis_id=analisis_id,
+                    repo=repo,
+                    db=db,
+                    uuid_module=uuid,
+                    estado=Estado.FAILED,
+                    error=error_msg[:2000],
+                )
                 db.commit()
             except Exception:
                 db.rollback()

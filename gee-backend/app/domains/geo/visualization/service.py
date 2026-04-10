@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 def _empty_lines_gdf() -> Any:
     """Return an empty GeoDataFrame — lazy import to avoid top-level geopandas dep."""
     import geopandas as gpd  # noqa: PLC0415
+
     return gpd.GeoDataFrame({"geometry": []})
 
 
@@ -210,7 +211,11 @@ class VisualizationService:
         empty = _empty_lines_gdf()
         elevation, transform = self._load_dem(dem_path)
         conflictos_gdf = detectar_puntos_conflicto(
-            empty, empty, empty, flow_acc_path, slope_path,
+            empty,
+            empty,
+            empty,
+            flow_acc_path,
+            slope_path,
         )
         return renderer.render_riesgo_3d(elevation, transform, conflictos_gdf)
 
@@ -247,7 +252,11 @@ class VisualizationService:
         elevation, transform = self._load_dem(dem_path)
         cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
         conflictos_gdf = detectar_puntos_conflicto(
-            empty, empty, empty, flow_acc_path, slope_path,
+            empty,
+            empty,
+            empty,
+            flow_acc_path,
+            slope_path,
         )
         return renderer.render_animacion_tormenta(
             elevation, transform, cuencas_gdf, conflictos_gdf

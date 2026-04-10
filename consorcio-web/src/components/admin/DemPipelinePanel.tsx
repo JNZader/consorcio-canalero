@@ -81,8 +81,6 @@ export default function DemPipelinePanel() {
   }, [submit, minBasinAreaHa]);
 
   const demRawLayer = layers.find((l) => l.tipo === 'dem_raw');
-  const drainageLayers = layers.filter((l) => l.tipo === 'drainage');
-  const drainageGeoJson = drainageLayers.length > 0 ? undefined : undefined;
 
   return (
     <Container size="xl" py="md">

@@ -5,8 +5,10 @@ import { IconUpload } from '../../../../ui/icons';
 
 interface SimpleFormLike {
   values: Record<string, unknown>;
-  getInputProps: (field: string) => any;
-  onSubmit: (handler: (values: any) => void | Promise<void>) => (event?: FormEvent<HTMLFormElement>) => void;
+  getInputProps: (field: string) => Record<string, unknown>;
+  onSubmit: (
+    handler: (values: Record<string, unknown>) => void | Promise<void>,
+  ) => (event?: FormEvent<HTMLFormElement>) => void;
 }
 
 export function EditGastoModal({
@@ -31,7 +33,7 @@ export function EditGastoModal({
   comprobanteFile: File | null;
   setComprobanteFile: (file: File | null) => void;
   onOpenCategory: () => void;
-  onSubmit: (values: any) => void | Promise<void>;
+  onSubmit: (values: Record<string, unknown>) => void | Promise<void>;
   loading: boolean;
 }>) {
   return (

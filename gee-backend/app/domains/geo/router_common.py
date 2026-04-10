@@ -89,11 +89,19 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     title: str
     subtitle: Optional[str] = None
     map_image_data_url: str = Field(..., alias="mapImageDataUrl")
-    zone_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="zoneLegend")
-    road_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="roadLegend")
-    raster_legends: list[RasterLegendGroupRequest] = Field(default_factory=list, alias="rasterLegends")
+    zone_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="zoneLegend"
+    )
+    road_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="roadLegend"
+    )
+    raster_legends: list[RasterLegendGroupRequest] = Field(
+        default_factory=list, alias="rasterLegends"
+    )
     info_rows: list[MapInfoRowRequest] = Field(default_factory=list, alias="infoRows")
-    zone_summary: list[ZoneSummaryRowRequest] = Field(default_factory=list, alias="zoneSummary")
+    zone_summary: list[ZoneSummaryRowRequest] = Field(
+        default_factory=list, alias="zoneSummary"
+    )
 
 
 _tile_client = None
@@ -251,7 +259,9 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
         if not geometry:
-            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
+            raise HTTPException(
+                status_code=400, detail=f"Feature {index} sin geometria"
+            )
 
         geometry_type = geometry.get("type")
         if geometry_type not in {"Polygon", "MultiPolygon"}:

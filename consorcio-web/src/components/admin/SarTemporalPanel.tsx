@@ -20,7 +20,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sarTemporalApi } from '../../lib/api/sarTemporal';
-import type { AnalisisGeoResponse, SarTemporalResultado } from '../../lib/api/sarTemporal';
+import type { SarTemporalResultado } from '../../lib/api/sarTemporal';
 import { logger } from '../../lib/logger';
 import { IconChartLine, IconRefresh, IconSatellite } from '../ui/icons';
 import { LoadingState } from '../ui';
@@ -50,7 +50,6 @@ export default function SarTemporalPanel() {
   const [endDate, setEndDate] = useState(defaults.end);
   const [scale, setScale] = useState<number>(100);
   const [state, setState] = useState<PanelState>('idle');
-  const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [resultado, setResultado] = useState<SarTemporalResultado | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -120,7 +119,6 @@ export default function SarTemporalPanel() {
         end_date: endDate,
         scale,
       });
-      setAnalysisId(analysis.id);
       notifications.show({
         title: 'Analisis iniciado',
         message: 'El analisis SAR temporal fue despachado. Esperando resultados...',

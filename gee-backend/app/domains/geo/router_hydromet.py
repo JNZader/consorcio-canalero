@@ -17,10 +17,16 @@ from app.domains.geo.router_common import (
     _require_authenticated,
     _require_operator,
 )
-from app.domains.geo.schemas import BackfillRequest, NdwiBaselineComputeRequest, NdwiBaselineResponse
+from app.domains.geo.schemas import (
+    BackfillRequest,
+    NdwiBaselineComputeRequest,
+    NdwiBaselineResponse,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
+
+
 @router.get("/flood-events")
 def list_flood_events(
     db: Session = Depends(get_db),
@@ -86,6 +92,7 @@ def delete_flood_event(
         raise HTTPException(status_code=404, detail="Flood event not found")
     db.commit()
     return Response(status_code=204)
+
 
 @router.post("/rainfall/backfill", status_code=202)
 def trigger_rainfall_backfill(

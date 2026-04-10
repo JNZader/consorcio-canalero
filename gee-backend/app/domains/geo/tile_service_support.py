@@ -84,12 +84,42 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Alto (>2m)", "min": 2.0, "max": 4.0, "color": "#ffffb2"},
     ],
     "slope": [
-        {"label": "Muy baja zona I (<0.5 m/1000m)", "min": 0, "max": 0.0265, "color": "#0b7d3b"},
-        {"label": "Muy baja zona II (0.5-2.1 m/1000m)", "min": 0.0265, "max": 0.1227, "color": "#1a9850"},
-        {"label": "Baja zona (2.1-4.2 m/1000m)", "min": 0.1227, "max": 0.2420, "color": "#91cf60"},
-        {"label": "Suave zona (4.2-6.9 m/1000m)", "min": 0.2420, "max": 0.3964, "color": "#d9ef8b"},
-        {"label": "Moderada zona (6.9-15.3 m/1000m)", "min": 0.3964, "max": 0.8754, "color": "#fc8d59"},
-        {"label": "Alta puntual (>15.3 m/1000m)", "min": 0.8754, "max": 90.0, "color": "#d73027"},
+        {
+            "label": "Muy baja zona I (<0.5 m/1000m)",
+            "min": 0,
+            "max": 0.0265,
+            "color": "#0b7d3b",
+        },
+        {
+            "label": "Muy baja zona II (0.5-2.1 m/1000m)",
+            "min": 0.0265,
+            "max": 0.1227,
+            "color": "#1a9850",
+        },
+        {
+            "label": "Baja zona (2.1-4.2 m/1000m)",
+            "min": 0.1227,
+            "max": 0.2420,
+            "color": "#91cf60",
+        },
+        {
+            "label": "Suave zona (4.2-6.9 m/1000m)",
+            "min": 0.2420,
+            "max": 0.3964,
+            "color": "#d9ef8b",
+        },
+        {
+            "label": "Moderada zona (6.9-15.3 m/1000m)",
+            "min": 0.3964,
+            "max": 0.8754,
+            "color": "#fc8d59",
+        },
+        {
+            "label": "Alta puntual (>15.3 m/1000m)",
+            "min": 0.8754,
+            "max": 90.0,
+            "color": "#d73027",
+        },
     ],
     "dem_raw": [
         {"label": "100-105m", "min": 100, "max": 105, "color": "#08306b"},
@@ -107,7 +137,12 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Bajo (6-53)", "min": 6, "max": 53, "color": "#addd8e"},
         {"label": "Moderado (53-210)", "min": 53, "max": 210, "color": "#78c679"},
         {"label": "Alto (210-6.525)", "min": 210, "max": 6525.22, "color": "#41b6c4"},
-        {"label": "Muy alto (>6.525)", "min": 6525.22, "max": 487848, "color": "#0c2c84"},
+        {
+            "label": "Muy alto (>6.525)",
+            "min": 6525.22,
+            "max": 487848,
+            "color": "#0c2c84",
+        },
     ],
     "profile_curvature": [
         {"label": "Cóncavo", "min": -0.001, "max": -0.0002, "color": "#b2182b"},
@@ -251,13 +286,19 @@ def render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:
         raise ValueError("No valid elevation pixels to render")
     terrain_rgb = encode_terrain_rgb(np.where(valid_mask, data, 0.0))
     rgb = np.zeros((data.shape[0], data.shape[1], 3), dtype=np.uint8)
-    rgb[..., 0], rgb[..., 1], rgb[..., 2] = terrain_rgb[0], terrain_rgb[1], terrain_rgb[2]
+    rgb[..., 0], rgb[..., 1], rgb[..., 2] = (
+        terrain_rgb[0],
+        terrain_rgb[1],
+        terrain_rgb[2],
+    )
     buf = io.BytesIO()
     PILImage.fromarray(rgb, "RGB").save(buf, format="PNG")
     return buf.getvalue()
 
 
-def render_flat_terrain_rgb_png(*, tilesize: int = 256, elevation: float = 0.0) -> bytes:
+def render_flat_terrain_rgb_png(
+    *, tilesize: int = 256, elevation: float = 0.0
+) -> bytes:
     return render_terrain_rgb_png(
         np.full((tilesize, tilesize), elevation, dtype=np.float32),
         np.ones((tilesize, tilesize), dtype=bool),
@@ -275,7 +316,9 @@ def render_continuous_with_ranges(
     original_data = img.data[0].astype(np.float64).copy()
     nodata_mask = img.mask
     if layer_tipo in LOG_SCALE_TYPES:
-        img.data[:] = np.where(img.data > 0, np.log1p(img.data.astype(np.float64)).astype(np.float32), 0)
+        img.data[:] = np.where(
+            img.data > 0, np.log1p(img.data.astype(np.float64)).astype(np.float32), 0
+        )
         img.rescale(((0.0, 13.0),))
     else:
         rescale = DEFAULT_RESCALE.get(layer_tipo)
@@ -297,8 +340,10 @@ def render_continuous_with_ranges(
     for idx in hidden_ranges:
         if idx < len(range_cfg):
             r = range_cfg[idx]
-            in_range = original_data >= r["min"] if idx == len(range_cfg) - 1 else (
-                (original_data >= r["min"]) & (original_data < r["max"])
+            in_range = (
+                original_data >= r["min"]
+                if idx == len(range_cfg) - 1
+                else ((original_data >= r["min"]) & (original_data < r["max"]))
             )
             rgba[in_range, 3] = 0
 

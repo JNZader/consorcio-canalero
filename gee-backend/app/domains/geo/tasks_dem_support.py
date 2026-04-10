@@ -48,7 +48,12 @@ def process_dem_pipeline_impl(
     try:
         if bbox:
             clipped = str(output_dir / "dem_clipped.tif")
-            run_step(job_id, "clip_dem", processing.clip_dem, (dem_path, tuple(bbox), clipped))
+            run_step(
+                job_id,
+                "clip_dem",
+                processing.clip_dem,
+                (dem_path, tuple(bbox), clipped),
+            )
             working_dem = clipped
             outputs["clipped_dem"] = clipped
         else:
@@ -64,7 +69,10 @@ def process_dem_pipeline_impl(
         run_step(job_id, "compute_slope", processing.compute_slope, (filled, slope))
         outputs["slope"] = slope
         register_raster_layer(
-            nombre=f"slope_{area_id}", tipo=tipo_geo_layer.SLOPE, archivo_path=slope, area_id=area_id
+            nombre=f"slope_{area_id}",
+            tipo=tipo_geo_layer.SLOPE,
+            archivo_path=slope,
+            area_id=area_id,
         )
         _progress()
 
@@ -72,23 +80,42 @@ def process_dem_pipeline_impl(
         run_step(job_id, "compute_aspect", processing.compute_aspect, (filled, aspect))
         outputs["aspect"] = aspect
         register_raster_layer(
-            nombre=f"aspect_{area_id}", tipo=tipo_geo_layer.ASPECT, archivo_path=aspect, area_id=area_id
+            nombre=f"aspect_{area_id}",
+            tipo=tipo_geo_layer.ASPECT,
+            archivo_path=aspect,
+            area_id=area_id,
         )
         _progress()
 
         flow_dir = str(output_dir / "flow_dir.tif")
-        run_step(job_id, "compute_flow_direction", processing.compute_flow_direction, (filled, flow_dir))
+        run_step(
+            job_id,
+            "compute_flow_direction",
+            processing.compute_flow_direction,
+            (filled, flow_dir),
+        )
         outputs["flow_dir"] = flow_dir
         register_raster_layer(
-            nombre=f"flow_dir_{area_id}", tipo=tipo_geo_layer.FLOW_DIR, archivo_path=flow_dir, area_id=area_id
+            nombre=f"flow_dir_{area_id}",
+            tipo=tipo_geo_layer.FLOW_DIR,
+            archivo_path=flow_dir,
+            area_id=area_id,
         )
         _progress()
 
         flow_acc = str(output_dir / "flow_acc.tif")
-        run_step(job_id, "compute_flow_accumulation", processing.compute_flow_accumulation, (filled, flow_acc))
+        run_step(
+            job_id,
+            "compute_flow_accumulation",
+            processing.compute_flow_accumulation,
+            (filled, flow_acc),
+        )
         outputs["flow_acc"] = flow_acc
         register_raster_layer(
-            nombre=f"flow_acc_{area_id}", tipo=tipo_geo_layer.FLOW_ACC, archivo_path=flow_acc, area_id=area_id
+            nombre=f"flow_acc_{area_id}",
+            tipo=tipo_geo_layer.FLOW_ACC,
+            archivo_path=flow_acc,
+            area_id=area_id,
         )
         _progress()
 
@@ -96,20 +123,36 @@ def process_dem_pipeline_impl(
         run_step(job_id, "compute_twi", processing.compute_twi, (slope, flow_acc, twi))
         outputs["twi"] = twi
         register_raster_layer(
-            nombre=f"twi_{area_id}", tipo=tipo_geo_layer.TWI, archivo_path=twi, area_id=area_id
+            nombre=f"twi_{area_id}",
+            tipo=tipo_geo_layer.TWI,
+            archivo_path=twi,
+            area_id=area_id,
         )
         _progress()
 
         hand = str(output_dir / "hand.tif")
-        run_step(job_id, "compute_hand", processing.compute_hand, (filled, flow_dir, flow_acc, hand))
+        run_step(
+            job_id,
+            "compute_hand",
+            processing.compute_hand,
+            (filled, flow_dir, flow_acc, hand),
+        )
         outputs["hand"] = hand
         register_raster_layer(
-            nombre=f"hand_{area_id}", tipo=tipo_geo_layer.HAND, archivo_path=hand, area_id=area_id
+            nombre=f"hand_{area_id}",
+            tipo=tipo_geo_layer.HAND,
+            archivo_path=hand,
+            area_id=area_id,
         )
         _progress()
 
         drainage = str(output_dir / "drainage.geojson")
-        run_step(job_id, "extract_drainage_network", processing.extract_drainage_network, (flow_acc, 1000, drainage))
+        run_step(
+            job_id,
+            "extract_drainage_network",
+            processing.extract_drainage_network,
+            (flow_acc, 1000, drainage),
+        )
         outputs["drainage"] = drainage
         register_layer(
             nombre=f"drainage_{area_id}",
@@ -121,7 +164,10 @@ def process_dem_pipeline_impl(
         _progress()
 
         profile_curvature = run_step(
-            job_id, "compute_profile_curvature", processing.compute_profile_curvature, (filled, str(output_dir))
+            job_id,
+            "compute_profile_curvature",
+            processing.compute_profile_curvature,
+            (filled, str(output_dir)),
         )
         outputs["profile_curvature"] = profile_curvature
         register_raster_layer(
@@ -132,10 +178,15 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        tpi = run_step(job_id, "compute_tpi", processing.compute_tpi, (filled, str(output_dir)))
+        tpi = run_step(
+            job_id, "compute_tpi", processing.compute_tpi, (filled, str(output_dir))
+        )
         outputs["tpi"] = tpi
         register_raster_layer(
-            nombre=f"tpi_{area_id}", tipo=tipo_geo_layer.TPI, archivo_path=tpi, area_id=area_id
+            nombre=f"tpi_{area_id}",
+            tipo=tipo_geo_layer.TPI,
+            archivo_path=tpi,
+            area_id=area_id,
         )
         _progress()
 
@@ -161,12 +212,16 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
+        update_job(
+            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs
+        )
         logger.info("dem_pipeline.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
     except Exception:
         update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
-        logger.error("dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True)
+        logger.error(
+            "dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True
+        )
         raise
 
 
@@ -204,7 +259,9 @@ def run_full_dem_pipeline_impl(
         update_job(job_id, progreso=20)
 
         logger.info("full_dem_pipeline.stage2_terrain", area_id=area_id)
-        pipeline_result = process_dem_pipeline(area_id=area_id, dem_path=prepared_dem_path, bbox=None, job_id=None)
+        pipeline_result = process_dem_pipeline(
+            area_id=area_id, dem_path=prepared_dem_path, bbox=None, job_id=None
+        )
         update_job(job_id, progreso=85)
 
         logger.info("full_dem_pipeline.stage3_basins", area_id=area_id)
@@ -221,8 +278,15 @@ def run_full_dem_pipeline_impl(
             "zonas_created": zonas_created,
             **pipeline_result.get("outputs", {}),
         }
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=all_outputs)
-        logger.info("full_dem_pipeline.done", area_id=area_id, job_id=job_id, zonas_created=zonas_created)
+        update_job(
+            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=all_outputs
+        )
+        logger.info(
+            "full_dem_pipeline.done",
+            area_id=area_id,
+            job_id=job_id,
+            zonas_created=zonas_created,
+        )
         return {"job_id": job_id, "status": "completed", "outputs": all_outputs}
     except Exception:
         update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
@@ -230,7 +294,9 @@ def run_full_dem_pipeline_impl(
         raise
 
 
-def cleanup_full_dem_state_impl(*, area_id: str, get_db, geo_repo, intelligence_repo_cls) -> None:
+def cleanup_full_dem_state_impl(
+    *, area_id: str, get_db, geo_repo, intelligence_repo_cls
+) -> None:
     logger.info("full_dem_pipeline.cleanup_start", area_id=area_id)
     db = get_db()
     try:
@@ -262,7 +328,12 @@ def cleanup_full_dem_state_impl(*, area_id: str, get_db, geo_repo, intelligence_
 
 
 def prepare_full_pipeline_dem_impl(
-    *, area_id: str, get_gee_service, get_processing, register_raster_layer, tipo_geo_layer
+    *,
+    area_id: str,
+    get_gee_service,
+    get_processing,
+    register_raster_layer,
+    tipo_geo_layer,
 ) -> tuple[str, str]:
     gee_svc = get_gee_service()
     zona_geojson = gee_svc.zona.geometry().getInfo()
@@ -284,7 +355,10 @@ def prepare_full_pipeline_dem_impl(
     processing.remove_off_terrain_objects(dem_clipped, dem_filtered)
 
     register_raster_layer(
-        nombre=f"dem_raw_{area_id}", tipo=tipo_geo_layer.DEM_RAW, archivo_path=dem_filtered, area_id=area_id
+        nombre=f"dem_raw_{area_id}",
+        tipo=tipo_geo_layer.DEM_RAW,
+        archivo_path=dem_filtered,
+        area_id=area_id,
     )
     return dem_raw, dem_filtered
 
@@ -295,13 +369,17 @@ def count_manual_basins_impl(*, get_db) -> int:
         from sqlalchemy import text
 
         return db.execute(
-            text("SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'")
+            text(
+                "SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'"
+            )
         ).scalar()
     finally:
         db.close()
 
 
-def store_auto_delineated_basins_impl(*, area_id: str, basins_geojson: str, get_db, intelligence_repo_cls) -> int:
+def store_auto_delineated_basins_impl(
+    *, area_id: str, basins_geojson: str, get_db, intelligence_repo_cls
+) -> int:
     import json as _json
     from shapely.geometry import shape as _shape
 
@@ -346,7 +424,11 @@ def generate_auto_basins_impl(
 ) -> tuple[int, str, str]:
     manual_count = count_manual_basins()
     if manual_count > 0:
-        logger.info("full_dem_pipeline.skip_auto_basins", area_id=area_id, manual_basins=manual_count)
+        logger.info(
+            "full_dem_pipeline.skip_auto_basins",
+            area_id=area_id,
+            manual_basins=manual_count,
+        )
         return 0, "", ""
 
     flow_dir_path = pipeline_result["outputs"].get("flow_dir")
@@ -356,7 +438,9 @@ def generate_auto_basins_impl(
     basins_raster = str(output_dir / "output" / area_id / "basins.tif")
     basins_geojson = str(output_dir / "output" / area_id / "basins.geojson")
 
-    get_processing().delineate_basins(flow_dir_path, basins_raster, basins_geojson, min_area_ha=min_basin_area_ha)
+    get_processing().delineate_basins(
+        flow_dir_path, basins_raster, basins_geojson, min_area_ha=min_basin_area_ha
+    )
     register_layer(
         nombre=f"basins_{area_id}",
         tipo=tipo_geo_layer.BASINS,
@@ -365,5 +449,7 @@ def generate_auto_basins_impl(
         formato=formato_geo_layer.GEOJSON,
     )
 
-    zonas_created = store_auto_delineated_basins(area_id=area_id, basins_geojson=basins_geojson)
+    zonas_created = store_auto_delineated_basins(
+        area_id=area_id, basins_geojson=basins_geojson
+    )
     return zonas_created, basins_raster, basins_geojson

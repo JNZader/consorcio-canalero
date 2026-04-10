@@ -155,7 +155,9 @@ def compute_raster_zone_features(
             continue
 
         try:
-            stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "count"])
+            stats = compute_stats_for_zones(
+                zone_data, path, ["mean", "max", "min", "count"]
+            )
             if stats and stats[0].get("count", 0) > 0:
                 _apply_raster_feature_stats(features, tipo, stats[0])
         except Exception:
@@ -169,7 +171,9 @@ def compute_raster_zone_features(
     return features
 
 
-def _apply_raster_feature_stats(features: dict[str, Any], tipo: str, stats: dict[str, Any]) -> None:
+def _apply_raster_feature_stats(
+    features: dict[str, Any], tipo: str, stats: dict[str, Any]
+) -> None:
     if tipo == "hand":
         features["hand_mean"] = stats.get("mean", 0) or 0
         features["hand_max"] = stats.get("max", 0) or 0
@@ -184,7 +188,9 @@ def _apply_raster_feature_stats(features: dict[str, Any], tipo: str, stats: dict
         features["flow_acc_log_max"] = float(np.log1p(raw_max))
 
 
-def compute_water_zone_features(*, zona_geojson_str: Optional[str], event_date: date, zona_id: uuid.UUID, logger) -> dict[str, Any]:
+def compute_water_zone_features(
+    *, zona_geojson_str: Optional[str], event_date: date, zona_id: uuid.UUID, logger
+) -> dict[str, Any]:
     """Extract current and historical water coverage features for a zone."""
     if not zona_geojson_str:
         return {}

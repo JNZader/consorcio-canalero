@@ -32,8 +32,6 @@ def _fmt_money(amount: Any) -> str:
     return fmt_money(amount)
 
 
-
-
 # ── Tramite PDF ───────────────────────────────────────────
 
 
@@ -280,4 +278,3 @@ def build_finanzas_pdf(
 
 
 # ── Zonificacion aprobada PDF ────────────────────────────
-

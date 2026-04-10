@@ -8,27 +8,47 @@ import numpy as np
 from shapely.geometry import LineString, Point, mapping
 
 
-def generate_cost_surface_impl(slope_raster_path: str, output_path: str, *, rasterio_module) -> str:
+def generate_cost_surface_impl(
+    slope_raster_path: str, output_path: str, *, rasterio_module
+) -> str:
     if not Path(slope_raster_path).exists():
         raise FileNotFoundError(f"Slope raster not found: {slope_raster_path}")
     with rasterio_module.open(slope_raster_path) as src:
-        slope, nodata, meta = src.read(1).astype(np.float64), src.nodata, src.meta.copy()
-    valid_mask = np.isfinite(slope) if nodata is None else np.isfinite(slope) & (slope != nodata)
+        slope, nodata, meta = (
+            src.read(1).astype(np.float64),
+            src.nodata,
+            src.meta.copy(),
+        )
+    valid_mask = (
+        np.isfinite(slope) if nodata is None else np.isfinite(slope) & (slope != nodata)
+    )
     if not np.any(valid_mask):
-        raise ValueError("Slope raster contains only nodata — cannot generate cost surface")
+        raise ValueError(
+            "Slope raster contains only nodata — cannot generate cost surface"
+        )
     max_slope = float(np.max(slope[valid_mask])) or 1.0
     cost = np.ones(slope.shape, dtype=np.float32)
     cost[valid_mask] = (1.0 + (slope[valid_mask] / max_slope) * 10.0).astype(np.float32)
     out_nodata = np.float32(-9999.0)
     cost[~valid_mask] = out_nodata
-    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
+    meta.update(
+        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio_module.open(output_path, "w", **meta) as dst:
         dst.write(cost, 1)
     return output_path
 
 
-def cost_distance_impl(cost_surface_path: str, source_points: list[tuple[float, float]], output_accum_path: str, output_backlink_path: str, *, rasterio_module, get_wbt) -> tuple[str, str]:
+def cost_distance_impl(
+    cost_surface_path: str,
+    source_points: list[tuple[float, float]],
+    output_accum_path: str,
+    output_backlink_path: str,
+    *,
+    rasterio_module,
+    get_wbt,
+) -> tuple[str, str]:
     from rasterio.transform import rowcol
 
     if not Path(cost_surface_path).exists():
@@ -36,7 +56,12 @@ def cost_distance_impl(cost_surface_path: str, source_points: list[tuple[float, 
     with tempfile.TemporaryDirectory() as tmpdir:
         source_raster_path = str(Path(tmpdir) / "sources.tif")
         with rasterio_module.open(cost_surface_path) as src:
-            meta, height, width, transform = src.meta.copy(), src.height, src.width, src.transform
+            meta, height, width, transform = (
+                src.meta.copy(),
+                src.height,
+                src.width,
+                src.transform,
+            )
         source_data, points_burned = np.zeros((height, width), dtype=np.uint8), 0
         for lon, lat in source_points:
             try:
@@ -54,19 +79,39 @@ def cost_distance_impl(cost_surface_path: str, source_points: list[tuple[float, 
             dst.write(source_data, 1)
         Path(output_accum_path).parent.mkdir(parents=True, exist_ok=True)
         Path(output_backlink_path).parent.mkdir(parents=True, exist_ok=True)
-        get_wbt().cost_distance(source_raster_path, cost_surface_path, output_accum_path, output_backlink_path)
+        get_wbt().cost_distance(
+            source_raster_path,
+            cost_surface_path,
+            output_accum_path,
+            output_backlink_path,
+        )
     return output_accum_path, output_backlink_path
 
 
-def least_cost_path_impl(cost_distance_path: str, backlink_path: str, target_point: tuple[float, float], *, rasterio_module, get_wbt) -> Optional[LineString]:
+def least_cost_path_impl(
+    cost_distance_path: str,
+    backlink_path: str,
+    target_point: tuple[float, float],
+    *,
+    rasterio_module,
+    get_wbt,
+) -> Optional[LineString]:
     from rasterio.transform import rowcol, xy
 
     if not Path(cost_distance_path).exists() or not Path(backlink_path).exists():
         return None
     with tempfile.TemporaryDirectory() as tmpdir:
-        target_raster_path, output_path = str(Path(tmpdir) / "target.tif"), str(Path(tmpdir) / "pathway.tif")
+        target_raster_path, output_path = (
+            str(Path(tmpdir) / "target.tif"),
+            str(Path(tmpdir) / "pathway.tif"),
+        )
         with rasterio_module.open(cost_distance_path) as src:
-            meta, height, width, transform = src.meta.copy(), src.height, src.width, src.transform
+            meta, height, width, transform = (
+                src.meta.copy(),
+                src.height,
+                src.width,
+                src.transform,
+            )
         try:
             r, c = rowcol(transform, *target_point)
         except Exception:
@@ -84,17 +129,35 @@ def least_cost_path_impl(cost_distance_path: str, backlink_path: str, target_poi
             return None
         with rasterio_module.open(output_path) as src:
             pathway, pw_transform, pw_nodata = src.read(1), src.transform, src.nodata
-        mask = (pathway > 0) & ((pathway != pw_nodata) if pw_nodata is not None else True)
+        mask = (pathway > 0) & (
+            (pathway != pw_nodata) if pw_nodata is not None else True
+        )
         rows, cols = np.where(mask)
         if len(rows) < 2:
             return None
         with rasterio_module.open(cost_distance_path) as src:
             cost_values = src.read(1)[rows, cols]
-        coords = [xy(pw_transform, int(row), int(col)) for row, col in zip(rows[np.argsort(cost_values)[::-1]], cols[np.argsort(cost_values)[::-1]])]
+        coords = [
+            xy(pw_transform, int(row), int(col))
+            for row, col in zip(
+                rows[np.argsort(cost_values)[::-1]], cols[np.argsort(cost_values)[::-1]]
+            )
+        ]
         return LineString(coords) if len(coords) >= 2 else None
 
 
-def suggest_canal_routes_impl(gap_centroids: list[dict], canal_geometries: list[dict], slope_raster_path: str, *, output_dir: str | None, normalize_shape, extract_geometries, generate_cost_surface, cost_distance, least_cost_path):
+def suggest_canal_routes_impl(
+    gap_centroids: list[dict],
+    canal_geometries: list[dict],
+    slope_raster_path: str,
+    *,
+    output_dir: str | None,
+    normalize_shape,
+    extract_geometries,
+    generate_cost_surface,
+    cost_distance,
+    least_cost_path,
+):
     import logging
     import rasterio
     from rasterio.transform import rowcol
@@ -116,12 +179,28 @@ def suggest_canal_routes_impl(gap_centroids: list[dict], canal_geometries: list[
     try:
         cost_surface_path = str(Path(work_dir) / "cost_surface.tif")
         generate_cost_surface(slope_raster_path, cost_surface_path)
-        gap_points = [(normalize_shape(gap["geometry"]).x, normalize_shape(gap["geometry"]).y, str(gap.get("zone_id", ""))) for gap in gap_centroids if gap.get("geometry") is not None]
+        gap_points = [
+            (
+                normalize_shape(gap["geometry"]).x,
+                normalize_shape(gap["geometry"]).y,
+                str(gap.get("zone_id", "")),
+            )
+            for gap in gap_centroids
+            if gap.get("geometry") is not None
+        ]
         if not gap_points:
             return []
-        accum_path, backlink_path = str(Path(work_dir) / "cost_accum.tif"), str(Path(work_dir) / "cost_backlink.tif")
+        accum_path, backlink_path = (
+            str(Path(work_dir) / "cost_accum.tif"),
+            str(Path(work_dir) / "cost_backlink.tif"),
+        )
         try:
-            cost_distance(cost_surface_path, [(lon, lat) for lon, lat, _ in gap_points], accum_path, backlink_path)
+            cost_distance(
+                cost_surface_path,
+                [(lon, lat) for lon, lat, _ in gap_points],
+                accum_path,
+                backlink_path,
+            )
         except ValueError as exc:
             logger.warning("Cost distance failed: %s", exc)
             return []
@@ -132,10 +211,26 @@ def suggest_canal_routes_impl(gap_centroids: list[dict], canal_geometries: list[
             try:
                 path_geom = least_cost_path(accum_path, backlink_path, target)
             except Exception as exc:
-                routes.append({"geometry": None, "source_gap_id": zone_id, "target_point": mapping(nearest_canal_pt), "estimated_cost": None, "status": f"unreachable: {exc}"})
+                routes.append(
+                    {
+                        "geometry": None,
+                        "source_gap_id": zone_id,
+                        "target_point": mapping(nearest_canal_pt),
+                        "estimated_cost": None,
+                        "status": f"unreachable: {exc}",
+                    }
+                )
                 continue
             if path_geom is None:
-                routes.append({"geometry": None, "source_gap_id": zone_id, "target_point": mapping(nearest_canal_pt), "estimated_cost": None, "status": "unreachable: path could not be traced"})
+                routes.append(
+                    {
+                        "geometry": None,
+                        "source_gap_id": zone_id,
+                        "target_point": mapping(nearest_canal_pt),
+                        "estimated_cost": None,
+                        "status": "unreachable: path could not be traced",
+                    }
+                )
                 continue
             estimated_cost = None
             try:
@@ -147,18 +242,31 @@ def suggest_canal_routes_impl(gap_centroids: list[dict], canal_geometries: list[
                             estimated_cost = round(val, 2)
             except Exception:
                 pass
-            routes.append({"geometry": mapping(path_geom), "source_gap_id": zone_id, "target_point": mapping(nearest_canal_pt), "estimated_cost": estimated_cost, "status": "ok"})
+            routes.append(
+                {
+                    "geometry": mapping(path_geom),
+                    "source_gap_id": zone_id,
+                    "target_point": mapping(nearest_canal_pt),
+                    "estimated_cost": estimated_cost,
+                    "status": "ok",
+                }
+            )
         return routes
     finally:
         if tmpdir_obj is not None:
             tmpdir_obj.cleanup()
 
 
-def sample_raster_along_line_impl(line_geom: Any, raster_path: str, *, num_points: int, rasterio_module) -> list[float]:
+def sample_raster_along_line_impl(
+    line_geom: Any, raster_path: str, *, num_points: int, rasterio_module
+) -> list[float]:
     if line_geom is None or line_geom.is_empty:
         return []
     try:
-        points = [line_geom.interpolate(f, normalized=True) for f in np.linspace(0, 1, num_points)]
+        points = [
+            line_geom.interpolate(f, normalized=True)
+            for f in np.linspace(0, 1, num_points)
+        ]
     except Exception:
         return []
     from rasterio.transform import rowcol

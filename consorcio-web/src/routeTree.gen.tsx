@@ -308,11 +308,10 @@ function AuthCallbackPage() {
               window.location.href = withBasePath('/');
             }
             return;
-          } else {
-            logger.error('[AUTH CALLBACK] Failed to fetch profile:', profileRes.status);
-            setError(`Error al obtener perfil: ${profileRes.status}`);
-            return;
           }
+          logger.error('[AUTH CALLBACK] Failed to fetch profile:', profileRes.status);
+          setError(`Error al obtener perfil: ${profileRes.status}`);
+          return;
         }
 
         // Fallback: check existing session

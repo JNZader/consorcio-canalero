@@ -173,7 +173,7 @@ function FormularioContenido() {
                 required
                 disabled={remainingToday === 0}
                 maxLength={MAX_LENGTHS.TITULO}
-                description={'Maximo ' + MAX_LENGTHS.TITULO + ' caracteres'}
+                description={`Maximo ${MAX_LENGTHS.TITULO} caracteres`}
                 {...form.getInputProps('titulo')}
               />
             </FormFieldWithSkeleton>
@@ -201,7 +201,7 @@ function FormularioContenido() {
                 required
                 disabled={remainingToday === 0}
                 maxLength={MAX_LENGTHS.DESCRIPCION}
-                description={'Maximo ' + MAX_LENGTHS.DESCRIPCION + ' caracteres'}
+                description={`Maximo ${MAX_LENGTHS.DESCRIPCION} caracteres`}
                 {...form.getInputProps('descripcion')}
               />
             </FormFieldWithSkeleton>

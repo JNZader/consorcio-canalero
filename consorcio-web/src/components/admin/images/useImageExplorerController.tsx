@@ -175,9 +175,10 @@ export function useImageExplorerController() {
   }, [calendarMonth, calendarYear, sensor, maxCloud]);
 
   useEffect(() => {
-    if (selectedDay && result) fetchImageForDate(selectedDay);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visualization]);
+    if (selectedDay && result) {
+      fetchImageForDate(selectedDay);
+    }
+  }, [fetchImageForDate, result, selectedDay, visualization]);
 
   return {
     isMobile,

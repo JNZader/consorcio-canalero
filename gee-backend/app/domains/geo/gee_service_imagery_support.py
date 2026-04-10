@@ -6,13 +6,50 @@ from datetime import date, timedelta
 from typing import Any, Dict, List
 
 VIS_PRESETS: Dict[str, Dict[str, Any]] = {
-    "rgb": {"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000, "description": "Color natural (RGB)"},
-    "falso_color": {"bands": ["B8", "B4", "B3"], "min": 0, "max": 5000, "description": "Falso color (vegetacion en rojo)"},
-    "agricultura": {"bands": ["B11", "B8", "B2"], "min": 0, "max": 5000, "description": "Agricultura (suelo en magenta)"},
-    "ndwi": {"index": "ndwi", "min": -0.5, "max": 0.5, "palette": ["brown", "white", "blue"], "description": "Indice de agua NDWI"},
-    "mndwi": {"index": "mndwi", "min": -0.5, "max": 0.5, "palette": ["brown", "white", "cyan"], "description": "Indice de agua modificado MNDWI"},
-    "ndvi": {"index": "ndvi", "min": -0.2, "max": 0.8, "palette": ["red", "yellow", "green", "darkgreen"], "description": "Indice de vegetacion NDVI"},
-    "inundacion": {"index": "flood", "palette": ["0000FF"], "description": "Deteccion de agua (NDWI > 0)"},
+    "rgb": {
+        "bands": ["B4", "B3", "B2"],
+        "min": 0,
+        "max": 3000,
+        "description": "Color natural (RGB)",
+    },
+    "falso_color": {
+        "bands": ["B8", "B4", "B3"],
+        "min": 0,
+        "max": 5000,
+        "description": "Falso color (vegetacion en rojo)",
+    },
+    "agricultura": {
+        "bands": ["B11", "B8", "B2"],
+        "min": 0,
+        "max": 5000,
+        "description": "Agricultura (suelo en magenta)",
+    },
+    "ndwi": {
+        "index": "ndwi",
+        "min": -0.5,
+        "max": 0.5,
+        "palette": ["brown", "white", "blue"],
+        "description": "Indice de agua NDWI",
+    },
+    "mndwi": {
+        "index": "mndwi",
+        "min": -0.5,
+        "max": 0.5,
+        "palette": ["brown", "white", "cyan"],
+        "description": "Indice de agua modificado MNDWI",
+    },
+    "ndvi": {
+        "index": "ndvi",
+        "min": -0.2,
+        "max": 0.8,
+        "palette": ["red", "yellow", "green", "darkgreen"],
+        "description": "Indice de vegetacion NDVI",
+    },
+    "inundacion": {
+        "index": "flood",
+        "palette": ["0000FF"],
+        "description": "Deteccion de agua (NDWI > 0)",
+    },
 }
 
 
@@ -27,8 +64,12 @@ def collection_dates(collection, distinct_collection_dates_fn) -> list[str]:
     return sorted(dates) if dates else []
 
 
-def build_sentinel2_collection(ee_module, zona, start_date: date, end_date: date, max_cloud: int, *, use_toa: bool):
-    collection_name = "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
+def build_sentinel2_collection(
+    ee_module, zona, start_date: date, end_date: date, max_cloud: int, *, use_toa: bool
+):
+    collection_name = (
+        "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
+    )
     collection = (
         ee_module.ImageCollection(collection_name)
         .filterBounds(zona)
@@ -48,15 +89,26 @@ def build_sentinel1_collection(ee_module, zona, start_date: date, end_date: date
     )
 
 
-def build_dem_download_payload(ee_module, zona, *, geometry=None, scale: int = 30) -> Dict[str, Any]:
+def build_dem_download_payload(
+    ee_module, zona, *, geometry=None, scale: int = 30
+) -> Dict[str, Any]:
     region = geometry or zona.geometry()
     dem = ee_module.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").mosaic()
     clipped = dem.clip(region)
-    url = clipped.getDownloadURL({"format": "GEO_TIFF", "scale": scale, "region": region, "crs": "EPSG:4326"})
-    return {"download_url": url, "scale": scale, "crs": "EPSG:4326", "image": "COPERNICUS/DEM/GLO30"}
+    url = clipped.getDownloadURL(
+        {"format": "GEO_TIFF", "scale": scale, "region": region, "crs": "EPSG:4326"}
+    )
+    return {
+        "download_url": url,
+        "scale": scale,
+        "crs": "EPSG:4326",
+        "image": "COPERNICUS/DEM/GLO30",
+    }
 
 
-def build_sentinel2_tiles_payload(ee_module, zona, *, start_date: date, end_date: date, max_cloud: int) -> Dict[str, Any]:
+def build_sentinel2_tiles_payload(
+    ee_module, zona, *, start_date: date, end_date: date, max_cloud: int
+) -> Dict[str, Any]:
     sentinel2 = (
         ee_module.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
         .filterBounds(zona)
@@ -65,8 +117,16 @@ def build_sentinel2_tiles_payload(ee_module, zona, *, start_date: date, end_date
     )
     count = sentinel2.size().getInfo()
     if count == 0:
-        return {"error": "No se encontraron imagenes Sentinel-2", "start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
-    map_id = sentinel2.mosaic().clip(zona).getMapId({"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000})
+        return {
+            "error": "No se encontraron imagenes Sentinel-2",
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }
+    map_id = (
+        sentinel2.mosaic()
+        .clip(zona)
+        .getMapId({"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000})
+    )
     return {
         "tile_url": map_id["tile_fetcher"].url_format,
         "imagenes_disponibles": count,
@@ -75,9 +135,15 @@ def build_sentinel2_tiles_payload(ee_module, zona, *, start_date: date, end_date
     }
 
 
-def build_flood_comparison_payload(explorer, *, flood_date: date, normal_date: date, days_buffer: int, max_cloud: int) -> Dict[str, Any]:
-    flood_result = explorer.get_sentinel2_image(flood_date, days_buffer, max_cloud, "inundacion")
-    normal_result = explorer.get_sentinel2_image(normal_date, days_buffer, max_cloud, "rgb")
+def build_flood_comparison_payload(
+    explorer, *, flood_date: date, normal_date: date, days_buffer: int, max_cloud: int
+) -> Dict[str, Any]:
+    flood_result = explorer.get_sentinel2_image(
+        flood_date, days_buffer, max_cloud, "inundacion"
+    )
+    normal_result = explorer.get_sentinel2_image(
+        normal_date, days_buffer, max_cloud, "rgb"
+    )
     flood_rgb = explorer.get_sentinel2_image(flood_date, days_buffer, max_cloud, "rgb")
     return {
         "flood_date": flood_date.isoformat(),
@@ -88,8 +154,14 @@ def build_flood_comparison_payload(explorer, *, flood_date: date, normal_date: d
     }
 
 
-def available_visualizations_payload(vis_presets: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
-    return [{"id": key, "description": value["description"]} for key, value in vis_presets.items()]
+def available_visualizations_payload(
+    vis_presets: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, str]]:
+    return [
+        {"id": key, "description": value["description"]}
+        for key, value in vis_presets.items()
+    ]
+
 
 def build_sentinel2_payload(
     explorer,
@@ -212,7 +284,9 @@ def build_sentinel1_payload(
     }
 
 
-def build_available_dates_payload(explorer, *, year: int, month: int, sensor: str, max_cloud: int) -> Dict[str, Any]:
+def build_available_dates_payload(
+    explorer, *, year: int, month: int, sensor: str, max_cloud: int
+) -> Dict[str, Any]:
     start_date = date(year, month, 1)
     end_date = date(year, month, __import__("calendar").monthrange(year, month)[1])
     end_date_exclusive = end_date + timedelta(days=1)
@@ -237,7 +311,9 @@ def build_available_dates_payload(explorer, *, year: int, month: int, sensor: st
     }
 
 
-def build_sar_time_series_payload(explorer, ee_module, *, start_date: date, end_date: date, scale: int) -> Dict[str, Any]:
+def build_sar_time_series_payload(
+    explorer, ee_module, *, start_date: date, end_date: date, scale: int
+) -> Dict[str, Any]:
     collection = (
         ee_module.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(explorer.zona)

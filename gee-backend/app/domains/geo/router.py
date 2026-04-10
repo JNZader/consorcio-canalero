@@ -28,7 +28,11 @@ from app.domains.geo.router_basins_bundle import (
     router as basins_bundle_router,
 )
 from app.domains.geo.router_bundle_io import router as bundle_io_router
-from app.domains.geo.router_catastro_support import afectados_por_evento_impl, afectados_por_zona_impl, import_catastro_impl
+from app.domains.geo.router_catastro_support import (
+    afectados_por_evento_impl,
+    afectados_por_zona_impl,
+    import_catastro_impl,
+)
 from app.domains.geo.router_common import (
     ApprovedZonesMapPdfRequest,
     ApprovedZonesSaveRequest,
@@ -45,7 +49,11 @@ from app.domains.geo.router_common import (
 from app.domains.geo.router_core import (
     router as core_router,
 )
-from app.domains.geo.router_flood_support import create_flood_event_impl, run_feature_extraction_impl, train_flood_model_impl
+from app.domains.geo.router_flood_support import (
+    create_flood_event_impl,
+    run_feature_extraction_impl,
+    train_flood_model_impl,
+)
 from app.domains.geo.router_gee_support import (
     compare_flood_dates_impl,
     export_qgis_project_impl,
@@ -64,7 +72,10 @@ from app.domains.geo.router_gee_support import (
     list_consorcios_camineros_impl,
     list_gee_layers_impl,
 )
-from app.domains.geo.router_hydrology_routing import ImportCanalsRequest, router as hydrology_routing_router
+from app.domains.geo.router_hydrology_routing import (
+    ImportCanalsRequest,
+    router as hydrology_routing_router,
+)
 from app.domains.geo.router_hydromet import (
     router as hydromet_router,
 )
@@ -97,64 +108,175 @@ from app.domains.geo.service import dispatch_job
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
-for subrouter in (core_router, basins_bundle_router, bundle_io_router, hydromet_router, analysis_router, ml_water_router, stac_temporal_router, hydrology_routing_router):
+for subrouter in (
+    core_router,
+    basins_bundle_router,
+    bundle_io_router,
+    hydromet_router,
+    analysis_router,
+    ml_water_router,
+    stac_temporal_router,
+    hydrology_routing_router,
+):
     router.include_router(subrouter)
 
 
-def submit_geo_job(payload: GeoJobCreate, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_operator())):
+def submit_geo_job(
+    payload: GeoJobCreate,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
     return dispatch_job(db, tipo=payload.tipo, parametros=payload.parametros)
 
 
-def trigger_dem_pipeline(payload: DemPipelineRequest = DemPipelineRequest(), db: Session = Depends(get_db), _user=Depends(_require_admin())):
+def trigger_dem_pipeline(
+    payload: DemPipelineRequest = DemPipelineRequest(),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+):
     from app.domains.geo.models import TipoGeoJob
 
-    job = dispatch_job(db, tipo=TipoGeoJob.DEM_FULL_PIPELINE, parametros={"area_id": payload.area_id, "min_basin_area_ha": payload.min_basin_area_ha})
+    job = dispatch_job(
+        db,
+        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+        parametros={
+            "area_id": payload.area_id,
+            "min_basin_area_ha": payload.min_basin_area_ha,
+        },
+    )
     return DemPipelineResponse(job_id=job.id, tipo=job.tipo, estado=job.estado)
 
 
-def save_current_approved_basin_zones(payload: ApprovedZonesSaveRequest, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), user=Depends(_require_operator())):
-    zoning = repo.create_approved_zoning_version(db, nombre=payload.nombre, cuenca=payload.cuenca, feature_collection=payload.feature_collection, assignments=payload.assignments, zone_names=payload.zone_names, approved_by_id=getattr(user, "id", None), notes=payload.notes)
+def save_current_approved_basin_zones(
+    payload: ApprovedZonesSaveRequest,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    user=Depends(_require_operator()),
+):
+    zoning = repo.create_approved_zoning_version(
+        db,
+        nombre=payload.nombre,
+        cuenca=payload.cuenca,
+        feature_collection=payload.feature_collection,
+        assignments=payload.assignments,
+        zone_names=payload.zone_names,
+        approved_by_id=getattr(user, "id", None),
+        notes=payload.notes,
+    )
     db.commit()
     db.refresh(zoning)
     return _serialize_approved_zoning(db, zoning)
 
 
-def export_geo_bundle(db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_admin())):
-    return export_geo_bundle_impl(db, repo, _build_zonas_operativas_export, _build_approved_zoning_export)
+def export_geo_bundle(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_admin()),
+):
+    return export_geo_bundle_impl(
+        db, repo, _build_zonas_operativas_export, _build_approved_zoning_export
+    )
 
 
-def export_current_approved_basin_zones_pdf(cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"), db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo)):
-    return export_current_approved_basin_zones_pdf_impl(cuenca, db, repo, _get_user_display_name)
+def export_current_approved_basin_zones_pdf(
+    cuenca: Optional[str] = Query(
+        default=None, description="Optional filter by cuenca name"
+    ),
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    return export_current_approved_basin_zones_pdf_impl(
+        cuenca, db, repo, _get_user_display_name
+    )
 
 
-def export_current_map_approved_basin_zones_pdf(payload: ApprovedZonesMapPdfRequest, db: Session = Depends(get_db)):
+def export_current_map_approved_basin_zones_pdf(
+    payload: ApprovedZonesMapPdfRequest, db: Session = Depends(get_db)
+):
     return export_current_map_approved_basin_zones_pdf_impl(payload, db)
 
 
-def import_canal_network(body: ImportCanalsRequest, db: Session = Depends(get_db), _user: User = Depends(_require_operator)):
+def import_canal_network(
+    body: ImportCanalsRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
     return import_canal_network_impl(body, db)
 
 
-async def proxy_tile(layer_id: uuid.UUID, z: int, x: int, y: int, colormap: Optional[str] = None, encoding: Optional[str] = None, hide_classes: Optional[str] = None, hide_ranges: Optional[str] = None):
+async def proxy_tile(
+    layer_id: uuid.UUID,
+    z: int,
+    x: int,
+    y: int,
+    colormap: Optional[str] = None,
+    encoding: Optional[str] = None,
+    hide_classes: Optional[str] = None,
+    hide_ranges: Optional[str] = None,
+):
     from app.config import settings
 
-    params = {k: v for k, v in {"colormap": colormap, "encoding": encoding, "hide_classes": hide_classes, "hide_ranges": hide_ranges}.items() if v}
+    params = {
+        k: v
+        for k, v in {
+            "colormap": colormap,
+            "encoding": encoding,
+            "hide_classes": hide_classes,
+            "hide_ranges": hide_ranges,
+        }.items()
+        if v
+    }
     try:
-        resp = await _get_tile_client().get(f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png", params=params)
+        resp = await _get_tile_client().get(
+            f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png",
+            params=params,
+        )
     except (httpx.ConnectError, httpx.TimeoutException):
         return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*"})
     if resp.status_code == 204 or resp.status_code >= 400:
         return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*"})
-    return Response(content=resp.content, media_type="image/png", headers={"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"})
+    return Response(
+        content=resp.content,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 gee_router = APIRouter(prefix="/gee", tags=["GEE"])
 
 
 def _lazy_gee_service():
-    from app.domains.geo.gee_service import ImageExplorer, _ensure_initialized, get_available_layers, get_caminos_by_consorcio, get_caminos_by_consorcio_nombre, get_caminos_con_colores, get_consorcios_camineros, get_estadisticas_consorcios, get_gee_service, get_image_explorer, get_layer_geojson
+    from app.domains.geo.gee_service import (
+        ImageExplorer,
+        _ensure_initialized,
+        get_available_layers,
+        get_caminos_by_consorcio,
+        get_caminos_by_consorcio_nombre,
+        get_caminos_con_colores,
+        get_consorcios_camineros,
+        get_estadisticas_consorcios,
+        get_gee_service,
+        get_image_explorer,
+        get_layer_geojson,
+    )
 
-    return {"ensure_init": _ensure_initialized, "get_available_layers": get_available_layers, "get_caminos_by_consorcio": get_caminos_by_consorcio, "get_caminos_by_consorcio_nombre": get_caminos_by_consorcio_nombre, "get_caminos_con_colores": get_caminos_con_colores, "get_consorcios_camineros": get_consorcios_camineros, "get_estadisticas_consorcios": get_estadisticas_consorcios, "get_gee_service": get_gee_service, "get_image_explorer": get_image_explorer, "get_layer_geojson": get_layer_geojson, "ImageExplorer": ImageExplorer}
+    return {
+        "ensure_init": _ensure_initialized,
+        "get_available_layers": get_available_layers,
+        "get_caminos_by_consorcio": get_caminos_by_consorcio,
+        "get_caminos_by_consorcio_nombre": get_caminos_by_consorcio_nombre,
+        "get_caminos_con_colores": get_caminos_con_colores,
+        "get_consorcios_camineros": get_consorcios_camineros,
+        "get_estadisticas_consorcios": get_estadisticas_consorcios,
+        "get_gee_service": get_gee_service,
+        "get_image_explorer": get_image_explorer,
+        "get_layer_geojson": get_layer_geojson,
+        "ImageExplorer": ImageExplorer,
+    }
 
 
 def _ensure_gee():
@@ -163,19 +285,25 @@ def _ensure_gee():
         svc["ensure_init"]()
     except Exception as e:
         logger.error("No se pudo inicializar GEE", error=str(e))
-        raise AppException(message="Google Earth Engine no esta disponible temporalmente", code="GEE_UNAVAILABLE", status_code=503)
+        raise AppException(
+            message="Google Earth Engine no esta disponible temporalmente",
+            code="GEE_UNAVAILABLE",
+            status_code=503,
+        )
     return svc
 
 
 def _gee_async(handler):
     async def endpoint(*args, **kwargs):
         return await handler(*args, **kwargs, ensure_gee=_ensure_gee)
+
     return endpoint
 
 
 def _gee_simple(handler):
     async def endpoint(*args, **kwargs):
         return await handler(*args, **kwargs)
+
     return endpoint
 
 
@@ -184,7 +312,12 @@ gee_router.get("/layers")(list_gee_layers)
 
 
 async def get_sentinel2_tiles(start_date: date, end_date: date, max_cloud: int = 20):
-    return await get_sentinel2_tiles_impl(start_date=start_date, end_date=end_date, max_cloud=max_cloud, ensure_gee=_ensure_gee)
+    return await get_sentinel2_tiles_impl(
+        start_date=start_date,
+        end_date=end_date,
+        max_cloud=max_cloud,
+        ensure_gee=_ensure_gee,
+    )
 
 
 async def list_consorcios_camineros():
@@ -196,7 +329,9 @@ async def get_caminos_consorcio(codigo: str):
 
 
 async def get_caminos_por_nombre_consorcio(nombre: str):
-    return await get_caminos_por_nombre_consorcio_impl(nombre=nombre, ensure_gee=_ensure_gee)
+    return await get_caminos_por_nombre_consorcio_impl(
+        nombre=nombre, ensure_gee=_ensure_gee
+    )
 
 
 async def get_caminos_coloreados():
@@ -211,20 +346,54 @@ async def get_gee_layer(layer_name: str):
     return await get_gee_layer_impl(layer_name=layer_name, ensure_gee=_ensure_gee)
 
 
-async def get_available_image_dates(year: int, month: int, sensor: str = "sentinel2", max_cloud: int = 20):
-    return await get_available_image_dates_impl(year=year, month=month, sensor=sensor, max_cloud=max_cloud, ensure_gee=_ensure_gee)
+async def get_available_image_dates(
+    year: int, month: int, sensor: str = "sentinel2", max_cloud: int = 20
+):
+    return await get_available_image_dates_impl(
+        year=year,
+        month=month,
+        sensor=sensor,
+        max_cloud=max_cloud,
+        ensure_gee=_ensure_gee,
+    )
 
 
-async def get_sentinel2_image(target_date: date, days_buffer: int = 15, max_cloud: int = 20, visualization: str = "natural_color"):
-    return await get_sentinel2_image_impl(target_date=target_date, days_buffer=days_buffer, max_cloud=max_cloud, visualization=visualization, ensure_gee=_ensure_gee)
+async def get_sentinel2_image(
+    target_date: date,
+    days_buffer: int = 15,
+    max_cloud: int = 20,
+    visualization: str = "natural_color",
+):
+    return await get_sentinel2_image_impl(
+        target_date=target_date,
+        days_buffer=days_buffer,
+        max_cloud=max_cloud,
+        visualization=visualization,
+        ensure_gee=_ensure_gee,
+    )
 
 
-async def get_sentinel1_image(target_date: date, days_buffer: int = 15, visualization: str = "vv"):
-    return await get_sentinel1_image_impl(target_date=target_date, days_buffer=days_buffer, visualization=visualization, ensure_gee=_ensure_gee)
+async def get_sentinel1_image(
+    target_date: date, days_buffer: int = 15, visualization: str = "vv"
+):
+    return await get_sentinel1_image_impl(
+        target_date=target_date,
+        days_buffer=days_buffer,
+        visualization=visualization,
+        ensure_gee=_ensure_gee,
+    )
 
 
-async def compare_flood_dates(flood_date: date, normal_date: date, days_buffer: int = 15, max_cloud: int = 20):
-    return await compare_flood_dates_impl(flood_date=flood_date, normal_date=normal_date, days_buffer=days_buffer, max_cloud=max_cloud, ensure_gee=_ensure_gee)
+async def compare_flood_dates(
+    flood_date: date, normal_date: date, days_buffer: int = 15, max_cloud: int = 20
+):
+    return await compare_flood_dates_impl(
+        flood_date=flood_date,
+        normal_date=normal_date,
+        days_buffer=days_buffer,
+        max_cloud=max_cloud,
+        ensure_gee=_ensure_gee,
+    )
 
 
 get_available_visualizations = _gee_simple(get_available_visualizations_impl)
@@ -234,7 +403,9 @@ gee_router.get("/images/historic-floods")(get_historic_floods)
 
 
 async def get_historic_flood_tiles(flood_id: str, visualization: str = "natural_color"):
-    return await get_historic_flood_tiles_impl(flood_id=flood_id, visualization=visualization, ensure_gee=_ensure_gee)
+    return await get_historic_flood_tiles_impl(
+        flood_id=flood_id, visualization=visualization, ensure_gee=_ensure_gee
+    )
 
 
 gee_router.get("/layers/tiles/sentinel2")(get_sentinel2_tiles)
@@ -252,39 +423,93 @@ gee_router.get("/images/historic-floods/{flood_id}")(get_historic_flood_tiles)
 
 
 @gee_router.post("/analysis", response_model=AnalisisGeoResponse, status_code=201)
-def submit_gee_analysis(payload: AnalisisGeoCreate, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_operator())):
+def submit_gee_analysis(
+    payload: AnalisisGeoCreate,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
     return submit_gee_analysis_impl(payload, db, repo)
 
 
 @gee_router.get("/analysis", response_model=dict)
-def list_gee_analyses(page: int = Query(default=1, ge=1), limit: int = Query(default=20, ge=1, le=100), tipo: Optional[str] = None, estado: Optional[str] = None, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_authenticated())):
+def list_gee_analyses(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    tipo: Optional[str] = None,
+    estado: Optional[str] = None,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
     return list_gee_analyses_impl(page, limit, tipo, estado, db, repo)
 
 
 @gee_router.get("/analysis/{analisis_id}", response_model=AnalisisGeoResponse)
-def get_gee_analysis(analisis_id: uuid.UUID, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_authenticated())):
+def get_gee_analysis(
+    analisis_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_authenticated()),
+):
     return get_gee_analysis_impl(analisis_id, db, repo)
 
 
 router.include_router(gee_router)
 
 
-def _run_feature_extraction(event_id: uuid.UUID, event_date: date, label_ids_and_zonas: list[tuple[str, str]]) -> None:
+def _run_feature_extraction(
+    event_id: uuid.UUID, event_date: date, label_ids_and_zonas: list[tuple[str, str]]
+) -> None:
     from app.db.session import SessionLocal
 
-    run_feature_extraction_impl(event_id=event_id, event_date=event_date, label_ids_and_zonas=label_ids_and_zonas, session_local=SessionLocal, geo_repository_cls=GeoRepository, logger=logger)
+    run_feature_extraction_impl(
+        event_id=event_id,
+        event_date=event_date,
+        label_ids_and_zonas=label_ids_and_zonas,
+        session_local=SessionLocal,
+        geo_repository_cls=GeoRepository,
+        logger=logger,
+    )
 
 
 @router.post("/flood-events", status_code=201)
-async def create_flood_event(payload: FloodEventCreate, db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_operator())):
+async def create_flood_event(
+    payload: FloodEventCreate,
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
     from app.domains.geo.models import FloodEvent as FloodEventModel
-    return create_flood_event_impl(payload=payload, db=db, repo=repo, zona_operativa_model=ZonaOperativa, flood_event_model=FloodEventModel, run_feature_extraction=_run_feature_extraction, asyncio_module=asyncio)
+
+    return create_flood_event_impl(
+        payload=payload,
+        db=db,
+        repo=repo,
+        zona_operativa_model=ZonaOperativa,
+        flood_event_model=FloodEventModel,
+        run_feature_extraction=_run_feature_extraction,
+        asyncio_module=asyncio,
+    )
 
 
 @router.post("/ml/flood-prediction/train", response_model=TrainingResultResponse)
-def train_flood_model(db: Session = Depends(get_db), repo: GeoRepository = Depends(_get_repo), _user=Depends(_require_operator())):
+def train_flood_model(
+    db: Session = Depends(get_db),
+    repo: GeoRepository = Depends(_get_repo),
+    _user=Depends(_require_operator()),
+):
     from app.domains.geo.ml.flood_prediction import FloodModel, MODEL_PATH
-    return train_flood_model_impl(db=db, repo=repo, flood_model_cls=FloodModel, model_path=MODEL_PATH, shutil_module=shutil, response_cls=TrainingResultResponse)
+
+    return train_flood_model_impl(
+        db=db,
+        repo=repo,
+        flood_model_cls=FloodModel,
+        model_path=MODEL_PATH,
+        shutil_module=shutil,
+        response_cls=TrainingResultResponse,
+    )
+
 
 router.include_router(intel_router, prefix="/intelligence")
 router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
@@ -292,18 +517,40 @@ router.include_router(visualization_router, prefix="/render", tags=["Visualizati
 
 
 @router.post("/catastro/import", response_model=ParcelaImportResult, tags=["Catastro"])
-async def import_catastro(geojson_data: dict, db: Session = Depends(get_db), _: User = Depends(_require_admin())):
-    return await import_catastro_impl(geojson_data=geojson_data, db=db, import_catastro_geojson=import_catastro_geojson)
+async def import_catastro(
+    geojson_data: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_admin()),
+):
+    return await import_catastro_impl(
+        geojson_data=geojson_data,
+        db=db,
+        import_catastro_geojson=import_catastro_geojson,
+    )
 
 
-@router.get("/zonas/{zona_id}/afectados", response_model=AfectadosResponse, tags=["Catastro"])
-async def afectados_por_zona(zona_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())):
-    return await afectados_por_zona_impl(zona_id=zona_id, db=db, get_afectados_zona=get_afectados_zona)
+@router.get(
+    "/zonas/{zona_id}/afectados", response_model=AfectadosResponse, tags=["Catastro"]
+)
+async def afectados_por_zona(
+    zona_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())
+):
+    return await afectados_por_zona_impl(
+        zona_id=zona_id, db=db, get_afectados_zona=get_afectados_zona
+    )
 
 
-@router.get("/flood-events/{event_id}/afectados", response_model=EventoAfectadosResponse, tags=["Catastro"])
-async def afectados_por_evento(event_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())):
-    return await afectados_por_evento_impl(event_id=event_id, db=db, get_afectados_evento=get_afectados_evento)
+@router.get(
+    "/flood-events/{event_id}/afectados",
+    response_model=EventoAfectadosResponse,
+    tags=["Catastro"],
+)
+async def afectados_por_evento(
+    event_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())
+):
+    return await afectados_por_evento_impl(
+        event_id=event_id, db=db, get_afectados_evento=get_afectados_evento
+    )
 
 
 @router.get("/export/qgis", tags=["Export"])

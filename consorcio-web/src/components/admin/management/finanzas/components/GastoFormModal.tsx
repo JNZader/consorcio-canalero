@@ -2,10 +2,20 @@ import { Button, FileInput, Group, Modal, NumberInput, Select, SimpleGrid, Stack
 import type { FormEvent } from 'react';
 import { IconUpload } from '../../../../ui/icons';
 
+type FormValues = Record<string, unknown>;
+
+interface InputPropsLike extends Record<string, unknown> {
+  value?: unknown;
+  onChange?: (...args: unknown[]) => void;
+  error?: unknown;
+}
+
 interface SimpleFormLike {
-  values: Record<string, unknown>;
-  getInputProps: (field: string) => any;
-  onSubmit: (handler: (values: any) => void | Promise<void>) => (event?: FormEvent<HTMLFormElement>) => void;
+  values: FormValues;
+  getInputProps: (field: string) => InputPropsLike;
+  onSubmit: (
+    handler: (values: FormValues) => void | Promise<void>,
+  ) => (event?: FormEvent<HTMLFormElement>) => void;
 }
 
 export function GastoFormModal({
@@ -26,7 +36,7 @@ export function GastoFormModal({
   comprobanteFile: File | null;
   setComprobanteFile: (file: File | null) => void;
   onOpenCategory: () => void;
-  onSubmit: (values: any) => void | Promise<void>;
+  onSubmit: (values: FormValues) => void | Promise<void>;
   loading: boolean;
 }>) {
   return (

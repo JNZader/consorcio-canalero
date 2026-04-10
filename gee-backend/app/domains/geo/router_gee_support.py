@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 async def _run_blocking(func, *args, **kwargs):
     return func(*args, **kwargs)
 
+
 HISTORIC_FLOODS = [
     {
         "id": "feb_2017",
@@ -101,7 +102,9 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
     except AppException:
         raise
     except Exception as e:
-        logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
+        logger.error(
+            "Error obteniendo caminos por consorcio", codigo=codigo, error=str(e)
+        )
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -109,7 +112,9 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
         )
 
 
-async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> JSONResponse:
+async def get_caminos_por_nombre_consorcio_impl(
+    *, nombre: str, ensure_gee
+) -> JSONResponse:
     svc = ensure_gee()
     try:
         geojson = await _run_blocking(svc["get_caminos_by_consorcio_nombre"], nombre)

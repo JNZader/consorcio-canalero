@@ -1,20 +1,15 @@
 import {
   Badge,
-  Button,
   Container,
   Group,
   Paper,
-  SimpleGrid,
-  Stack,
   Text,
   Title,
 } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { STATUS_OPTIONS } from '../../../constants';
 import { type Report, reportsApi, apiFetch } from '../../../lib/api';
-import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
 import type { SeguimientoEntry } from './reportsPanelTypes';

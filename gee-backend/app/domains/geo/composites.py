@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Drainage network merge (real waterways + DEM-generated)
 # ---------------------------------------------------------------------------
 
+
 def merge_drainage_networks(
     auto_drainage_path: str,
     waterways_dir: str = _DEFAULT_WATERWAYS_DIR,

@@ -176,7 +176,9 @@ def build_baseline_by_zona(
         return {}
 
 
-def serialize_comparison_items(current_stats, baseline_by_zona: dict, zona_meta: dict, tipo: str):
+def serialize_comparison_items(
+    current_stats, baseline_by_zona: dict, zona_meta: dict, tipo: str
+):
     items: list[CompositeComparisonItemResponse] = []
     for stat in current_stats:
         baseline = baseline_by_zona.get(stat.zona_id)
@@ -229,10 +231,14 @@ def list_suggestions_for_batch(
     from app.domains.geo.intelligence.models import CanalSuggestion
 
     base = select(CanalSuggestion).where(CanalSuggestion.batch_id == batch_id)
-    total = db.execute(select(sa_func.count()).select_from(base.subquery())).scalar_one()
+    total = db.execute(
+        select(sa_func.count()).select_from(base.subquery())
+    ).scalar_one()
     offset = (page - 1) * limit
     items = list(
-        db.execute(base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit))
+        db.execute(
+            base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit)
+        )
         .scalars()
         .all()
     )
@@ -249,7 +255,9 @@ def serialize_suggestion_page(*, items, total: int, page: int, limit: int, batch
     )
 
 
-def build_suggestion_summary_payload(summary: dict, repo: IntelligenceRepository, db: Session):
+def build_suggestion_summary_payload(
+    summary: dict, repo: IntelligenceRepository, db: Session
+):
     resolved_batch = summary["batch_id"]
     top_per_tipo: dict[str, list] = {}
     for tipo in SUGGESTION_TYPES:

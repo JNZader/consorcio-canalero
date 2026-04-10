@@ -469,5 +469,3 @@ def check_alerts(db: Session) -> dict[str, Any]:
 def get_dashboard(db: Session) -> dict[str, Any]:
     """Get the aggregated intelligence dashboard."""
     return intel_repo.get_dashboard_inteligente(db)
-
-

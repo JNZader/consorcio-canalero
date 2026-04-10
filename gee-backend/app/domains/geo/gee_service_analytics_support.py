@@ -7,7 +7,9 @@ from datetime import datetime as _datetime
 from typing import Any, Dict, List
 
 
-def build_consorcios_camineros(features: list[dict[str, Any]], safe_float) -> List[Dict[str, Any]]:
+def build_consorcios_camineros(
+    features: list[dict[str, Any]], safe_float
+) -> List[Dict[str, Any]]:
     consorcios_map: Dict[str, Dict[str, Any]] = {}
     for feature in features:
         props = feature.get("properties", {})
@@ -43,7 +45,9 @@ def build_colored_roads(
             consorcios_unicos.append(ccn)
 
     consorcios_unicos.sort()
-    color_map = {ccn: colors[i % len(colors)] for i, ccn in enumerate(consorcios_unicos)}
+    color_map = {
+        ccn: colors[i % len(colors)] for i, ccn in enumerate(consorcios_unicos)
+    }
 
     stats_map: Dict[str, Dict[str, Any]] = {}
     for ccn in consorcios_unicos:
@@ -88,7 +92,9 @@ def build_colored_roads(
     }
 
 
-def build_consorcio_stats(features, *, ensure_bucket, update_breakdown, safe_float) -> Dict[str, Any]:
+def build_consorcio_stats(
+    features, *, ensure_bucket, update_breakdown, safe_float
+) -> Dict[str, Any]:
     stats: Dict[str, Dict[str, Any]] = {}
     for feature in features:
         props = feature.get("properties", {})
@@ -99,15 +105,23 @@ def build_consorcio_stats(features, *, ensure_bucket, update_breakdown, safe_flo
 
         length_km = safe_float(props.get("lzn", 0))
         bucket["longitud_km"] += length_km
-        update_breakdown(bucket["por_jerarquia"], props.get("hct", "Desconocido"), length_km)
-        update_breakdown(bucket["por_superficie"], props.get("rst", "Desconocido"), length_km)
+        update_breakdown(
+            bucket["por_jerarquia"], props.get("hct", "Desconocido"), length_km
+        )
+        update_breakdown(
+            bucket["por_superficie"], props.get("rst", "Desconocido"), length_km
+        )
 
     for ccn in stats:
         stats[ccn]["longitud_km"] = round(stats[ccn]["longitud_km"], 2)
         for key in stats[ccn]["por_jerarquia"]:
-            stats[ccn]["por_jerarquia"][key]["km"] = round(stats[ccn]["por_jerarquia"][key]["km"], 2)
+            stats[ccn]["por_jerarquia"][key]["km"] = round(
+                stats[ccn]["por_jerarquia"][key]["km"], 2
+            )
         for key in stats[ccn]["por_superficie"]:
-            stats[ccn]["por_superficie"][key]["km"] = round(stats[ccn]["por_superficie"][key]["km"], 2)
+            stats[ccn]["por_superficie"][key]["km"] = round(
+                stats[ccn]["por_superficie"][key]["km"], 2
+            )
 
     consorcios_lista = list(stats.values())
     consorcios_lista.sort(key=lambda x: -x["longitud_km"])
@@ -122,14 +136,27 @@ def build_consorcio_stats(features, *, ensure_bucket, update_breakdown, safe_flo
     }
 
 
-def compute_ndwi_baselines_payload(ee_module, logger, *, zones: list[dict], dry_season_months: list[int], years_back: int) -> list[dict]:
+def compute_ndwi_baselines_payload(
+    ee_module,
+    logger,
+    *,
+    zones: list[dict],
+    dry_season_months: list[int],
+    years_back: int,
+) -> list[dict]:
     now = _datetime.utcnow()
     start_dt = now.replace(year=now.year - years_back)
     start_str = start_dt.strftime("%Y-%m-%d")
     end_str = now.strftime("%Y-%m-%d")
 
-    month_filters = [ee_module.Filter.calendarRange(m, m, "month") for m in dry_season_months]
-    month_filter = ee_module.Filter.Or(*month_filters) if len(month_filters) > 1 else month_filters[0]
+    month_filters = [
+        ee_module.Filter.calendarRange(m, m, "month") for m in dry_season_months
+    ]
+    month_filter = (
+        ee_module.Filter.Or(*month_filters)
+        if len(month_filters) > 1
+        else month_filters[0]
+    )
 
     collection = (
         ee_module.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
@@ -186,7 +213,9 @@ def get_landcover_c_payload(ee_module, logger, *, zone_geometry) -> float | None
     try:
         class_values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
         c_x100 = [20, 35, 40, 55, 75, 65, 10, 5, 15, 20, 30]
-        lc_image = ee_module.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+        lc_image = (
+            ee_module.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+        )
         c_band = lc_image.remap(class_values, c_x100, defaultValue=40).rename("c_x100")
         result = (
             c_band.reduceRegion(

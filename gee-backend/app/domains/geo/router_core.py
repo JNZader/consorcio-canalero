@@ -30,6 +30,8 @@ from app.domains.geo.schemas import (
 from app.domains.geo.service import dispatch_job
 
 router = APIRouter(tags=["Geo Processing"])
+
+
 @router.post("/jobs", response_model=GeoJobResponse, status_code=201)
 def submit_geo_job(
     payload: GeoJobCreate,

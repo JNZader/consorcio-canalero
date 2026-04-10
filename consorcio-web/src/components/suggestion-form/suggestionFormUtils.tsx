@@ -1,4 +1,4 @@
-import { Badge, Box, Button, Group, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
+import { Badge, Box, Button, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
 import { IconCheck } from '../ui/icons';

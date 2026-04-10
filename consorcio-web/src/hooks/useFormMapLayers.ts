@@ -10,7 +10,7 @@
 
 import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
-import maplibregl from 'maplibre-gl';
+import type maplibregl from 'maplibre-gl';
 import { useGEELayers } from './useGEELayers';
 import { useWaterways, type WaterwayLayer } from './useWaterways';
 import { logger } from '../lib/logger';
@@ -136,8 +136,10 @@ function pointInRing(point: [number, number], ring: number[][]): boolean {
   const [x, y] = point;
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1];
-    const xj = ring[j][0], yj = ring[j][1];
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
     if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }

@@ -35,17 +35,27 @@ def remove_off_terrain_objects_impl(
 
 
 def fill_sinks_impl(*, run_wbt_tool, dem_path: str, output_path: str) -> str:
-    return run_wbt_tool(output_path, lambda wbt, path: wbt.fill_depressions(dem_path, path))
+    return run_wbt_tool(
+        output_path, lambda wbt, path: wbt.fill_depressions(dem_path, path)
+    )
 
 
-def compute_flow_direction_impl(*, run_wbt_tool, filled_dem_path: str, output_path: str) -> str:
-    return run_wbt_tool(output_path, lambda wbt, path: wbt.d8_pointer(filled_dem_path, path))
+def compute_flow_direction_impl(
+    *, run_wbt_tool, filled_dem_path: str, output_path: str
+) -> str:
+    return run_wbt_tool(
+        output_path, lambda wbt, path: wbt.d8_pointer(filled_dem_path, path)
+    )
 
 
-def compute_flow_accumulation_impl(*, run_wbt_tool, flow_dir_path: str, output_path: str) -> str:
+def compute_flow_accumulation_impl(
+    *, run_wbt_tool, flow_dir_path: str, output_path: str
+) -> str:
     return run_wbt_tool(
         output_path,
-        lambda wbt, path: wbt.d8_flow_accumulation(flow_dir_path, path, out_type="cells"),
+        lambda wbt, path: wbt.d8_flow_accumulation(
+            flow_dir_path, path, out_type="cells"
+        ),
     )
 
 
@@ -57,7 +67,9 @@ def compute_profile_curvature_impl(
     output_dir: str,
 ) -> str:
     output_path = str(path_cls(output_dir) / "profile_curvature.tif")
-    return run_wbt_tool(output_path, lambda wbt, path: wbt.profile_curvature(filled_dem_path, path))
+    return run_wbt_tool(
+        output_path, lambda wbt, path: wbt.profile_curvature(filled_dem_path, path)
+    )
 
 
 def compute_tpi_impl(
@@ -124,9 +136,17 @@ def extract_drainage_network_impl(
         drainage_mask &= fa != nodata
     drainage_binary = drainage_mask.astype(np.uint8)
     features = []
-    for geom, value in shapes_fn(drainage_binary, mask=drainage_binary, transform=transform):
+    for geom, value in shapes_fn(
+        drainage_binary, mask=drainage_binary, transform=transform
+    ):
         if value == 1:
-            features.append({"type": "Feature", "geometry": geom, "properties": {"class": "drainage"}})
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {"class": "drainage"},
+                }
+            )
     return write_feature_collection(
         output_path,
         features=features,
@@ -153,6 +173,7 @@ def vectorize_basins_impl(
     need_reproject = crs and crs.is_projected
     if need_reproject:
         from pyproj import Transformer
+
         transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
     features: list[dict[str, Any]] = []
     for geom, basin_id in shapes_fn(basin_data, transform=transform):
@@ -170,13 +191,20 @@ def vectorize_basins_impl(
             continue
         if need_reproject:
             from shapely.ops import transform as shapely_transform
+
             out_geom = mapping(shapely_transform(transformer.transform, poly))
         else:
             out_geom = geom
         features.append(
-            {"type": "Feature", "geometry": out_geom, "properties": {"basin_id": int(basin_id), "area_ha": round(area_ha, 2)}}
+            {
+                "type": "Feature",
+                "geometry": out_geom,
+                "properties": {"basin_id": int(basin_id), "area_ha": round(area_ha, 2)},
+            }
         )
-    return write_feature_collection(output_geojson_path, features=features, crs_name="EPSG:4326")
+    return write_feature_collection(
+        output_geojson_path, features=features, crs_name="EPSG:4326"
+    )
 
 
 def download_dem_impl(

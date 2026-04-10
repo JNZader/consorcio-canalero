@@ -13,7 +13,6 @@ import {
   processLoadResults,
   shouldSetError,
   layersMapToArray,
-  GENERIC_ERROR_MESSAGE,
   NO_LAYERS_ERROR_MESSAGE,
 } from './geeLayerHelpers';
 

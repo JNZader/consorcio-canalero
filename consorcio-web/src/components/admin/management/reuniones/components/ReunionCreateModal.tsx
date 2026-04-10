@@ -11,15 +11,26 @@ import {
 import type { FormEvent } from 'react';
 import { IconTrash } from '../../../../ui/icons';
 
+type ReunionCreateFormValues = {
+  orden_del_dia_items: string[];
+  [key: string]: unknown;
+};
+
+interface InputPropsLike extends Record<string, unknown> {
+  value?: unknown;
+  onChange?: (...args: unknown[]) => void;
+  error?: unknown;
+}
+
 interface SimpleFormLike {
-  values: {
-    orden_del_dia_items: string[];
-  };
+  values: ReunionCreateFormValues;
   errors: {
     orden_del_dia_items?: string;
   };
-  getInputProps: (field: string) => any;
-  onSubmit: (handler: (values: any) => void | Promise<void>) => (event?: FormEvent<HTMLFormElement>) => void;
+  getInputProps: (field: string) => InputPropsLike;
+  onSubmit: (
+    handler: (values: ReunionCreateFormValues) => void | Promise<void>,
+  ) => (event?: FormEvent<HTMLFormElement>) => void;
   insertListItem: (field: 'orden_del_dia_items', value: string) => void;
   setFieldValue: (field: string, value: string) => void;
   removeListItem: (field: 'orden_del_dia_items', index: number) => void;
@@ -40,7 +51,7 @@ export function ReunionCreateModal({
   newChecklistPoint: string;
   setNewChecklistPoint: (value: string) => void;
   onAddChecklistPoint: () => void;
-  onSubmit: (values: any) => void | Promise<void>;
+  onSubmit: (values: ReunionCreateFormValues) => void | Promise<void>;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Nueva Reunion" size="lg">

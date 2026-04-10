@@ -47,7 +47,7 @@ export function formatExportFilename(title: string, extension: 'png' | 'pdf') {
     (title.trim() || 'mapa_consorcio')
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\p{M}/gu, '')
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '') || 'mapa_consorcio';
   return `${safeTitle}_${new Date().toISOString().slice(0, 10)}.${extension}`;

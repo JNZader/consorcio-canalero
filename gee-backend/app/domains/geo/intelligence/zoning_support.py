@@ -8,7 +8,9 @@ from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 
-def basin_record(feature: dict[str, Any], extract_family: Callable[[str | None, str | None], str]) -> dict[str, Any]:
+def basin_record(
+    feature: dict[str, Any], extract_family: Callable[[str | None, str | None], str]
+) -> dict[str, Any]:
     props = feature.get("properties") or {}
     geom = shape(feature["geometry"])
     return {
@@ -22,7 +24,9 @@ def basin_record(feature: dict[str, Any], extract_family: Callable[[str | None, 
     }
 
 
-def display_basin_name(record: dict[str, Any], zone_name_by_id: dict[str, str], zone_id: str | None = None) -> str:
+def display_basin_name(
+    record: dict[str, Any], zone_name_by_id: dict[str, str], zone_id: str | None = None
+) -> str:
     import re
 
     raw_name = str(record.get("nombre") or "Sub-cuenca")
@@ -37,7 +41,11 @@ def display_basin_name(record: dict[str, Any], zone_name_by_id: dict[str, str], 
     basin_number = number_match.group(1) if number_match else None
     if split_index and basin_number:
         suffix = chr(ord("A") + split_index - 1)
-        return f"Sub-cuenca {basin_number}{suffix} — {zone_name}" if zone_name else f"Sub-cuenca {basin_number}{suffix}"
+        return (
+            f"Sub-cuenca {basin_number}{suffix} — {zone_name}"
+            if zone_name
+            else f"Sub-cuenca {basin_number}{suffix}"
+        )
     if basin_number and zone_name:
         return f"Sub-cuenca {basin_number} — {zone_name}"
     return re.sub(r"\s*\(([^)]+)\)", "", raw_name).strip()
@@ -56,7 +64,11 @@ def attach_zone_gaps(
     coverage = unary_union([record["geometry"] for record in records])
     total_surface_ha = sum(float(record["superficie_ha"]) for record in records)
     area_to_ha_factor = (total_surface_ha / coverage.area) if coverage.area > 0 else 0.0
-    gap_polygons = [polygon for polygon in iter_gap_polygons_fn(zona_geom.difference(coverage)) if polygon.area > 0]
+    gap_polygons = [
+        polygon
+        for polygon in iter_gap_polygons_fn(zona_geom.difference(coverage))
+        if polygon.area > 0
+    ]
     if not gap_polygons:
         return records
 
@@ -87,7 +99,9 @@ def attach_zone_gaps(
         target_geometry = target["geometry"].union(gap)
         target["geometry"] = target_geometry
         target["centroid"] = target_geometry.centroid
-        target["superficie_ha"] = float(target["superficie_ha"]) + (gap.area * area_to_ha_factor)
+        target["superficie_ha"] = float(target["superficie_ha"]) + (
+            gap.area * area_to_ha_factor
+        )
 
     return updated_records
 

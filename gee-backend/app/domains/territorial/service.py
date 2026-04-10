@@ -140,7 +140,9 @@ class TerritorialService:
                 consorcio_codigo=c["consorcio_codigo"],
                 consorcio_nombre=c["consorcio_nombre"],
                 km=round(c["km"], 2),
-                pct=round(c["km"] / total_km_caminos * 100, 1) if total_km_caminos > 0 else 0.0,
+                pct=round(c["km"] / total_km_caminos * 100, 1)
+                if total_km_caminos > 0
+                else 0.0,
             )
             for c in caminos_data
         ]
