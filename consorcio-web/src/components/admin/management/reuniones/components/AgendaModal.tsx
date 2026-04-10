@@ -12,24 +12,15 @@ import {
   TextInput,
   Textarea,
 } from '@mantine/core';
-import type { FormEvent } from 'react';
+import type { UseFormReturnType } from '@mantine/form';
 import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
 import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
 import type { AgendaItem, EntityOption, Reunion } from '../reunionesTypes';
 
-type AgendaFormValues = Record<string, unknown>;
-
-interface InputPropsLike extends Record<string, unknown> {
-  value?: unknown;
-  onChange?: (...args: unknown[]) => void;
-  error?: unknown;
-}
-
-interface SimpleFormLike {
-  getInputProps: (field: string) => InputPropsLike;
-  onSubmit: (
-    handler: (values: AgendaFormValues) => void | Promise<void>,
-  ) => (event?: FormEvent<HTMLFormElement>) => void;
+export interface AgendaFormValues {
+  titulo: string;
+  descripcion: string;
+  referencias: string[];
 }
 
 export function AgendaModal({
@@ -50,7 +41,7 @@ export function AgendaModal({
   agenda: AgendaItem[];
   exporting: boolean;
   onExport: () => void | Promise<void>;
-  form: SimpleFormLike;
+  form: UseFormReturnType<AgendaFormValues>;
   onAddTopic: (values: AgendaFormValues) => void | Promise<void>;
   availableEntities: EntityOption[];
   loadingEntities: boolean;

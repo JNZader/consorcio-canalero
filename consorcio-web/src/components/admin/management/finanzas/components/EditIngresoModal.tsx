@@ -1,14 +1,7 @@
 import { Button, FileInput, Modal, NumberInput, Select, SimpleGrid, Stack, TextInput } from '@mantine/core';
-import type { FormEvent } from 'react';
+import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
-
-interface SimpleFormLike {
-  values: Record<string, unknown>;
-  getInputProps: (field: string) => Record<string, unknown>;
-  onSubmit: (
-    handler: (values: Record<string, unknown>) => void | Promise<void>,
-  ) => (event?: FormEvent<HTMLFormElement>) => void;
-}
+import type { IngresoFormValues } from './IngresoFormModal';
 
 export function EditIngresoModal({
   opened,
@@ -23,12 +16,12 @@ export function EditIngresoModal({
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
-  form: SimpleFormLike;
+  form: UseFormReturnType<IngresoFormValues>;
   sourceData: Array<{ value: string; label: string }>;
   comprobanteFile: File | null;
   setComprobanteFile: (file: File | null) => void;
   onOpenSource: () => void;
-  onSubmit: (values: Record<string, unknown>) => void | Promise<void>;
+  onSubmit: (values: IngresoFormValues) => void | Promise<void>;
   loading: boolean;
 }>) {
   return (

@@ -1,21 +1,13 @@
 import { Button, FileInput, Group, Modal, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
-import type { FormEvent } from 'react';
+import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 
-type FormValues = Record<string, unknown>;
-
-interface InputPropsLike extends Record<string, unknown> {
-  value?: unknown;
-  onChange?: (...args: unknown[]) => void;
-  error?: unknown;
-}
-
-interface SimpleFormLike {
-  values: FormValues;
-  getInputProps: (field: string) => InputPropsLike;
-  onSubmit: (
-    handler: (values: FormValues) => void | Promise<void>,
-  ) => (event?: FormEvent<HTMLFormElement>) => void;
+export interface GastoFormValues {
+  descripcion: string;
+  monto: number;
+  categoria: string;
+  comprobante_url: string;
+  fecha: string;
 }
 
 export function GastoFormModal({
@@ -31,12 +23,12 @@ export function GastoFormModal({
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
-  form: SimpleFormLike;
+  form: UseFormReturnType<GastoFormValues>;
   categoryData: Array<{ value: string; label: string }>;
   comprobanteFile: File | null;
   setComprobanteFile: (file: File | null) => void;
   onOpenCategory: () => void;
-  onSubmit: (values: FormValues) => void | Promise<void>;
+  onSubmit: (values: GastoFormValues) => void | Promise<void>;
   loading: boolean;
 }>) {
   return (

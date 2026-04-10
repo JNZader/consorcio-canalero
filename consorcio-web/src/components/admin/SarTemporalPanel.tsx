@@ -142,7 +142,6 @@ export default function SarTemporalPanel() {
     setState('idle');
     setResultado(null);
     setError(null);
-    setAnalysisId(null);
   };
 
   return (

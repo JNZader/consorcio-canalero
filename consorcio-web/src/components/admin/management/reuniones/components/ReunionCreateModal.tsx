@@ -8,32 +8,16 @@ import {
   TextInput,
   Textarea,
 } from '@mantine/core';
-import type { FormEvent } from 'react';
+import type { UseFormReturnType } from '@mantine/form';
 import { IconTrash } from '../../../../ui/icons';
 
-type ReunionCreateFormValues = {
+export interface ReunionCreateFormValues {
+  titulo: string;
+  fecha_reunion: string;
+  lugar: string;
+  descripcion: string;
   orden_del_dia_items: string[];
-  [key: string]: unknown;
-};
-
-interface InputPropsLike extends Record<string, unknown> {
-  value?: unknown;
-  onChange?: (...args: unknown[]) => void;
-  error?: unknown;
-}
-
-interface SimpleFormLike {
-  values: ReunionCreateFormValues;
-  errors: {
-    orden_del_dia_items?: string;
-  };
-  getInputProps: (field: string) => InputPropsLike;
-  onSubmit: (
-    handler: (values: ReunionCreateFormValues) => void | Promise<void>,
-  ) => (event?: FormEvent<HTMLFormElement>) => void;
-  insertListItem: (field: 'orden_del_dia_items', value: string) => void;
-  setFieldValue: (field: string, value: string) => void;
-  removeListItem: (field: 'orden_del_dia_items', index: number) => void;
+  tipo: string;
 }
 
 export function ReunionCreateModal({
@@ -47,7 +31,7 @@ export function ReunionCreateModal({
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
-  form: SimpleFormLike;
+  form: UseFormReturnType<ReunionCreateFormValues>;
   newChecklistPoint: string;
   setNewChecklistPoint: (value: string) => void;
   onAddChecklistPoint: () => void;
