@@ -17,6 +17,10 @@ from app.domains.geo.models import (
     TipoGeoLayer,
 )
 from app.domains.geo.repository import GeoRepository
+from app.domains.geo.tasks_io_support import (
+    delineate_basins_task_impl,
+    download_dem_from_gee_task_impl,
+)
 from app.domains.geo.tasks_support import (
     cleanup_full_dem_state_impl,
     composite_analysis_task_impl,
@@ -30,10 +34,6 @@ from app.domains.geo.tasks_support import (
     store_auto_delineated_basins_impl,
     store_composite_zonal_stats_impl,
     validate_composite_prerequisites_impl,
-)
-from app.domains.geo.tasks_io_support import (
-    delineate_basins_task_impl,
-    download_dem_from_gee_task_impl,
 )
 
 
@@ -116,12 +116,10 @@ def _run_step(
 
 
 def _build_cog_metadata(cog_path: str | None, extra: dict | None = None) -> dict:
-    metadata = dict(extra or {})
-    if cog_path:
-        metadata["cog_path"] = cog_path
-    else:
-        metadata["cog_error"] = "conversion failed"
-    return metadata
+    return {
+        **(extra or {}),
+        **({"cog_path": cog_path} if cog_path else {"cog_error": "conversion failed"}),
+    }
 
 
 def _register_raster_layer(

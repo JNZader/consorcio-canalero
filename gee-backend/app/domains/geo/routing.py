@@ -12,8 +12,23 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from shapely.geometry import shape, mapping
+from shapely.ops import unary_union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from app.core.exceptions import NotFoundError
+from app.domains.geo.routing_raster_support import (
+    build_raster_route_feature_collection,
+    raster_corridor_routing,
+)
+from app.domains.geo.routing_support import (
+    RoutingProfileName,
+    merge_edge_factors,
+    resolve_profile_edge_factors,
+    resolve_routing_profile,
+    summarize_profile_breakdown,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,155 +170,290 @@ def shortest_path(
     ]
 
 
-def get_network_stats(db: Session) -> dict[str, Any]:
-    """Get basic network statistics."""
-    stats = {}
-
-    stats["total_edges"] = db.execute(
-        text("SELECT count(*) FROM canal_network;")
-    ).scalar()
-
-    stats["total_vertices"] = (
-        db.execute(text("SELECT count(*) FROM canal_network_vertices_pgr;")).scalar()
-        or 0
-    )
-
-    stats["total_length_km"] = (
-        db.execute(
-            text("""
-            SELECT ROUND((SUM(ST_Length(ST_Transform(geom, 32720))) / 1000)::numeric, 2)
-            FROM canal_network WHERE geom IS NOT NULL;
-        """)
-        ).scalar()
-        or 0
-    )
-
-    stats["types"] = [
-        {"tipo": r[0], "count": r[1]}
-        for r in db.execute(
-            text(
-                "SELECT tipo, count(*) FROM canal_network GROUP BY tipo ORDER BY count DESC;"
-            )
-        ).fetchall()
-    ]
-
-    return stats
-
-
-def betweenness_centrality(
+def shortest_path_with_penalties(
     db: Session,
-    limit: int = 100,
-    timeout_seconds: int = 120,
+    source_id: int,
+    target_id: int,
+    edge_penalties: dict[int, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Compute betweenness centrality for the canal network graph.
-
-    Tries pgr_betweennessCentrality first (requires pgRouting 3.4+).
-    Falls back to NetworkX if pgRouting function is not available.
-
-    Args:
-        db: Database session.
-        limit: Maximum number of top-ranked nodes to return.
-        timeout_seconds: Statement timeout for the pgRouting query.
-
-    Returns:
-        List of dicts with node_id, centrality, and geometry,
-        sorted descending by centrality.
-    """
-    try:
-        return _betweenness_via_pgrouting(db, limit, timeout_seconds)
-    except Exception as exc:
-        logger.warning(
-            "pgr_betweennessCentrality not available (%s), falling back to NetworkX",
-            exc,
-        )
-        return _betweenness_via_networkx(db, limit)
-
-
-def _betweenness_via_pgrouting(
-    db: Session,
-    limit: int,
-    timeout_seconds: int,
-) -> list[dict[str, Any]]:
-    """Betweenness centrality using pgRouting SQL extension."""
-    db.execute(text(f"SET LOCAL statement_timeout = '{timeout_seconds}s';"))
+    """Find shortest path applying optional cost multipliers to specific edges."""
+    edge_penalties = edge_penalties or {}
 
     rows = db.execute(
         text("""
             SELECT
-                bc.vid AS node_id,
-                bc.centrality,
-                ST_AsGeoJSON(v.the_geom)::json AS geometry
-            FROM pgr_betweennessCentrality(
-                'SELECT id, source, target, cost FROM canal_network',
+                d.seq,
+                d.path_seq,
+                d.node,
+                d.edge,
+                d.cost,
+                d.agg_cost,
+                ST_AsGeoJSON(cn.geom)::json AS geometry,
+                cn.nombre
+            FROM pgr_dijkstra(
+                $$
+                SELECT
+                    id,
+                    source,
+                    target,
+                    cost * COALESCE(:penalties ->> id::text, '1')::double precision AS cost,
+                    reverse_cost * COALESCE(:penalties ->> id::text, '1')::double precision AS reverse_cost
+                FROM canal_network
+                $$,
+                :source,
+                :target,
                 directed := false
-            ) AS bc
-            JOIN canal_network_vertices_pgr v ON v.id = bc.vid
-            ORDER BY bc.centrality DESC
-            LIMIT :lim;
+            ) AS d
+            LEFT JOIN canal_network cn ON d.edge = cn.id
+            WHERE d.edge > 0
+            ORDER BY d.path_seq;
         """),
-        {"lim": limit},
+        {
+            "source": source_id,
+            "target": target_id,
+            "penalties": json.dumps({str(k): v for k, v in edge_penalties.items()}),
+        },
     ).fetchall()
 
     return [
         {
-            "node_id": r.node_id,
-            "centrality": round(float(r.centrality), 6),
+            "seq": r.seq,
+            "path_seq": r.path_seq,
+            "node": r.node,
+            "edge": r.edge,
+            "cost": round(r.cost, 2),
+            "agg_cost": round(r.agg_cost, 2),
             "geometry": r.geometry,
+            "nombre": r.nombre,
         }
         for r in rows
     ]
 
 
-def _betweenness_via_networkx(
-    db: Session,
-    limit: int,
-) -> list[dict[str, Any]]:
-    """Betweenness centrality fallback using NetworkX in-memory graph."""
-    import networkx as nx
+def build_route_feature_collection(route: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a GeoJSON FeatureCollection for a route."""
+    features = []
+    for edge in route:
+        geometry = edge.get("geometry")
+        if not geometry:
+            continue
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "edge_id": edge.get("edge"),
+                    "nombre": edge.get("nombre"),
+                    "cost": edge.get("cost"),
+                    "agg_cost": edge.get("agg_cost"),
+                    "path_seq": edge.get("path_seq"),
+                },
+                "geometry": geometry,
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
 
-    edges = db.execute(
-        text("""
-            SELECT id, source, target, cost
-            FROM canal_network
-            WHERE source IS NOT NULL AND target IS NOT NULL;
-        """)
-    ).fetchall()
 
-    if not edges:
-        return []
-
-    G = nx.Graph()
-    for e in edges:
-        G.add_edge(e.source, e.target, weight=e.cost, edge_id=e.id)
-
-    centrality = nx.betweenness_centrality(G, weight="weight")
-
-    # Fetch vertex geometries for the top-N nodes
-    sorted_nodes = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:limit]
-    node_ids = [n[0] for n in sorted_nodes]
-
-    if not node_ids:
-        return []
-
-    vertices = db.execute(
-        text("""
-            SELECT id, ST_AsGeoJSON(the_geom)::json AS geometry
-            FROM canal_network_vertices_pgr
-            WHERE id = ANY(:ids);
-        """),
-        {"ids": node_ids},
-    ).fetchall()
-
-    geom_map = {v.id: v.geometry for v in vertices}
-
-    return [
-        {
-            "node_id": node_id,
-            "centrality": round(float(score), 6),
-            "geometry": geom_map.get(node_id),
-        }
-        for node_id, score in sorted_nodes
+def build_corridor_polygon(
+    route: list[dict[str, Any]], width_m: float
+) -> dict[str, Any] | None:
+    """Build a corridor polygon as a buffer around the merged route geometry."""
+    lines = [
+        shape(edge["geometry"])
+        for edge in route
+        if edge.get("geometry") and edge["geometry"].get("type") == "LineString"
     ]
+    if not lines:
+        return None
+
+    merged = unary_union(lines)
+    width_deg = max(width_m / 111_320, 1e-6)
+    corridor = merged.buffer(width_deg)
+    return {
+        "type": "Feature",
+        "properties": {
+            "corridor_width_m": width_m,
+            "edge_ids": [
+                edge.get("edge") for edge in route if edge.get("edge") is not None
+            ],
+        },
+        "geometry": mapping(corridor),
+    }
+
+
+def summarize_route(route: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize a route for API responses."""
+    total_distance = route[-1]["agg_cost"] if route else 0.0
+    return {
+        "total_distance_m": round(float(total_distance), 2),
+        "edges": len(route),
+        "edge_ids": [
+            edge.get("edge") for edge in route if edge.get("edge") is not None
+        ],
+    }
+
+
+def compute_route_alternatives(
+    db: Session,
+    source_id: int,
+    target_id: int,
+    *,
+    base_route: list[dict[str, Any]],
+    alternative_count: int,
+    penalty_factor: float,
+    base_edge_factors: dict[int, float] | None = None,
+) -> list[list[dict[str, Any]]]:
+    """Compute alternative routes by penalizing previously used edges."""
+    alternatives: list[list[dict[str, Any]]] = []
+    used_edge_ids = {
+        edge["edge"] for edge in base_route if edge.get("edge") is not None
+    }
+    base_edge_factors = base_edge_factors or {}
+
+    for _ in range(max(alternative_count, 0)):
+        penalties = {edge_id: penalty_factor for edge_id in used_edge_ids}
+        route = shortest_path_with_penalties(
+            db,
+            source_id,
+            target_id,
+            merge_edge_factors(base_edge_factors, penalties),
+        )
+        route_edge_ids = {
+            edge["edge"] for edge in route if edge.get("edge") is not None
+        }
+        if not route or not route_edge_ids or route_edge_ids == used_edge_ids:
+            break
+        alternatives.append(route)
+        used_edge_ids.update(route_edge_ids)
+
+    return alternatives
+
+
+def corridor_routing(
+    db: Session,
+    *,
+    from_lon: float,
+    from_lat: float,
+    to_lon: float,
+    to_lat: float,
+    profile: RoutingProfileName = "balanceado",
+    mode: str = "network",
+    area_id: str | None = None,
+    corridor_width_m: float | None = None,
+    alternative_count: int | None = None,
+    penalty_factor: float | None = None,
+) -> dict[str, Any]:
+    """Compute a network or raster corridor routing response."""
+    resolved = resolve_routing_profile(
+        profile,
+        corridor_width_m=corridor_width_m,
+        alternative_count=alternative_count,
+        penalty_factor=penalty_factor,
+    )
+
+    if mode == "raster":
+        raster_result = raster_corridor_routing(
+            db,
+            from_lon=from_lon,
+            from_lat=from_lat,
+            to_lon=to_lon,
+            to_lat=to_lat,
+            profile=profile,
+            corridor_width_m=float(resolved["corridor_width_m"]),
+            area_id=area_id,
+        )
+        pseudo_route = [
+            {
+                "edge": None,
+                "path_seq": 1,
+                "cost": raster_result["total_distance_m"],
+                "agg_cost": raster_result["total_distance_m"],
+                "nombre": "Raster corridor path",
+                "geometry": mapping(raster_result["line"]),
+            }
+        ]
+        return {
+            "source": {
+                "id": "raster-source",
+                "geometry": {"type": "Point", "coordinates": [from_lon, from_lat]},
+            },
+            "target": {
+                "id": "raster-target",
+                "geometry": {"type": "Point", "coordinates": [to_lon, to_lat]},
+            },
+            "summary": {
+                "mode": "raster",
+                "profile": resolved["profile"],
+                "total_distance_m": raster_result["total_distance_m"],
+                "edges": 1,
+                "corridor_width_m": resolved["corridor_width_m"],
+                "penalty_factor": resolved["penalty_factor"],
+                "cost_breakdown": {
+                    "profile": profile,
+                    **raster_result["cost_meta"],
+                },
+            },
+            "centerline": build_raster_route_feature_collection(raster_result["line"]),
+            "corridor": build_corridor_polygon(
+                pseudo_route, float(resolved["corridor_width_m"])
+            ),
+            "alternatives": [],
+        }
+
+    source = find_nearest_vertex(db, from_lon, from_lat)
+    target = find_nearest_vertex(db, to_lon, to_lat)
+
+    if not source or not target:
+        raise NotFoundError("No vertices found near the given coordinates")
+
+    profile_factors, profile_meta = resolve_profile_edge_factors(db, profile)
+    base_route = shortest_path_with_penalties(
+        db,
+        source["id"],
+        target["id"],
+        edge_penalties=profile_factors,
+    )
+    centerline = build_route_feature_collection(base_route)
+    corridor = build_corridor_polygon(base_route, float(resolved["corridor_width_m"]))
+    summary = summarize_route(base_route) | {
+        "mode": "network",
+        "profile": resolved["profile"],
+        "corridor_width_m": resolved["corridor_width_m"],
+        "penalty_factor": resolved["penalty_factor"],
+        "cost_breakdown": summarize_profile_breakdown(
+            base_route, profile, profile_factors, profile_meta
+        ),
+    }
+
+    alternatives = []
+    for rank, route in enumerate(
+        compute_route_alternatives(
+            db,
+            source["id"],
+            target["id"],
+            base_route=base_route,
+            alternative_count=int(resolved["alternative_count"]),
+            penalty_factor=float(resolved["penalty_factor"]),
+            base_edge_factors=profile_factors,
+        ),
+        start=1,
+    ):
+        route_summary = summarize_route(route)
+        alternatives.append(
+            {
+                "rank": rank,
+                **route_summary,
+                "geojson": build_route_feature_collection(route),
+            }
+        )
+
+    return {
+        "source": source,
+        "target": target,
+        "summary": summary,
+        "centerline": centerline,
+        "corridor": corridor,
+        "alternatives": alternatives,
+    }
 
 
 def find_nearest_vertex(db: Session, lon: float, lat: float) -> dict[str, Any] | None:

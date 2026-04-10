@@ -59,4 +59,186 @@ test.describe('Canal Suggestions Panel', () => {
     // Requiere que haya datos de sugerencias previos en la base de datos.
     // Sin un run previo de analisis, la tabla esta vacia.
   });
+
+  test('flujo completo de corridor routing: calcular, guardar, aprobar y exportar', async ({ page }) => {
+    let saved = false;
+    let approved = false;
+    let geojsonExported = false;
+    let pdfExported = false;
+
+    const scenarioResponse = () => ({
+      id: 'scenario-1',
+      name: 'Escenario corredor test',
+      profile: 'hidraulico',
+      notes: 'Escenario generado por Playwright',
+      is_approved: approved,
+      approved_at: approved ? '2026-04-10T12:00:00Z' : null,
+      request_payload: {
+        from_lon: -63.0,
+        from_lat: -32.0,
+        to_lon: -63.1,
+        to_lat: -32.1,
+        mode: 'raster',
+        profile: 'hidraulico',
+        corridor_width_m: 80,
+        alternative_count: 1,
+      },
+      result_payload: {
+        source: { id: 'raster-source' },
+        target: { id: 'raster-target' },
+        summary: {
+          mode: 'raster',
+          profile: 'hidraulico',
+          total_distance_m: 1820,
+          edges: 1,
+          corridor_width_m: 80,
+          penalty_factor: 2,
+          cost_breakdown: {
+            profile: 'hidraulico',
+            avg_profile_factor: 0.86,
+            edge_count_with_profile_factor: 1,
+            max_profile_factor: 0.86,
+            min_profile_factor: 0.86,
+            avg_hydric_index: 72.4,
+            hydric_features: 3,
+            property_features: 2,
+            weights: { slope: 0.35, hydric: 0.55, property: 0.1 },
+          },
+        },
+        centerline: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: [[-63.0, -32.0], [-63.1, -32.1]] },
+              properties: {},
+            },
+          ],
+        },
+        corridor: {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-63.0, -32.0], [-63.1, -32.0], [-63.1, -32.1], [-63.0, -32.1], [-63.0, -32.0]]],
+          },
+          properties: { corridor_width_m: 80 },
+        },
+        alternatives: [],
+      },
+      created_at: '2026-04-10T10:00:00Z',
+      updated_at: '2026-04-10T10:00:00Z',
+    });
+
+    await page.route('**/api/v2/geo/intelligence/suggestions/results**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [], total: 0, page: 1, limit: 100, batch_id: null }),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse().result_payload),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios', async (route) => {
+      const method = route.request().method();
+      if (method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: saved ? [{
+              id: 'scenario-1',
+              name: 'Escenario corredor test',
+              profile: 'hidraulico',
+              notes: 'Escenario generado por Playwright',
+              is_approved: approved,
+              approved_at: approved ? '2026-04-10T12:00:00Z' : null,
+              created_at: '2026-04-10T10:00:00Z',
+            }] : [],
+            total: saved ? 1 : 0,
+            page: 1,
+            limit: 20,
+          }),
+        });
+        return;
+      }
+      saved = true;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse()),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse()),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/approve', async (route) => {
+      approved = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(scenarioResponse()),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/geojson', async (route) => {
+      geojsonExported = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ type: 'FeatureCollection', features: [] }),
+      });
+    });
+
+    await page.route('**/api/v2/geo/routing/corridor/scenarios/scenario-1/pdf', async (route) => {
+      pdfExported = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/pdf',
+        body: 'fake-pdf',
+      });
+    });
+
+    await page.goto('/admin/canal-suggestions');
+    await expect(page.getByText('Corridor Routing')).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole('textbox', { name: 'Modo de cálculo' }).click();
+    await page.getByRole('option', { name: /raster multi-criterio/i, hidden: true }).click();
+
+    await page.getByLabel('Origen lon').fill('-63.0');
+    await page.getByLabel('Origen lat').fill('-32.0');
+    await page.getByLabel('Destino lon').fill('-63.1');
+    await page.getByLabel('Destino lat').fill('-32.1');
+
+    await page.getByRole('button', { name: /calcular corredor/i }).click();
+
+    await expect(page.getByText('Raster multi-criterio').first()).toBeVisible();
+    await expect(page.getByText('1.82 km')).toBeVisible();
+
+    await page.getByLabel('Nombre del escenario').fill('Escenario corredor test');
+    await page.getByRole('button', { name: /guardar escenario/i }).click();
+
+    await expect(page.getByText('Escenario corredor test')).toBeVisible();
+
+    await page.getByRole('button', { name: /marcar aprobado/i }).click();
+    await expect(page.getByText('Aprobado', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: /exportar geojson/i }).click();
+    await page.getByRole('button', { name: /exportar pdf/i }).click();
+
+    expect(geojsonExported).toBeTruthy();
+    expect(pdfExported).toBeTruthy();
+  });
 });

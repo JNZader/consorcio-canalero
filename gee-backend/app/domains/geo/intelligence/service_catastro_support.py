@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.domains.geo.intelligence.repository import (
+from app.domains.geo.geo_repository_catastro import (
     bulk_upsert_parcelas,
     get_afectados_by_flood_event,
     get_afectados_by_zona,

@@ -124,7 +124,6 @@ def _load_optional_raster(path: str | None) -> tuple[np.ndarray | None, float | 
     return load_optional_raster_impl(path_cls=Path, rasterio_module=rasterio, path=path)
 
 
-# 0a) Ensure nodata is set
 def ensure_nodata(
     dem_path: str, output_path: str, nodata_value: float = -32768.0
 ) -> str:
@@ -138,7 +137,6 @@ def ensure_nodata(
     )
 
 
-# 0b) Reproject to UTM
 def reproject_to_utm(dem_path: str, output_path: str) -> str:
     return reproject_to_utm_impl(
         rasterio_module=rasterio,
@@ -153,7 +151,6 @@ def reproject_to_utm(dem_path: str, output_path: str) -> str:
     )
 
 
-# 0c) Clip DEM to polygon geometry
 def clip_to_geometry(
     dem_path: str,
     geometry: dict[str, Any],
@@ -171,7 +168,6 @@ def clip_to_geometry(
     )
 
 
-# a) Clip DEM
 def clip_dem(
     dem_path: str,
     bbox: tuple[float, float, float, float],
@@ -187,7 +183,6 @@ def clip_dem(
     )
 
 
-# b0) Remove off-terrain objects (trees, buildings)
 def remove_off_terrain_objects(
     dem_path: str,
     output_path: str,
@@ -203,7 +198,6 @@ def remove_off_terrain_objects(
     )
 
 
-# b) Fill sinks
 def fill_sinks(dem_path: str, output_path: str) -> str:
     return fill_sinks_impl(
         run_wbt_tool=_run_wbt_tool,
@@ -212,7 +206,6 @@ def fill_sinks(dem_path: str, output_path: str) -> str:
     )
 
 
-# c) Slope
 def compute_slope(dem_path: str, output_path: str) -> str:
     return compute_slope_impl(
         read_single_band=_read_single_band,
@@ -222,7 +215,6 @@ def compute_slope(dem_path: str, output_path: str) -> str:
     )
 
 
-# d) Aspect
 def compute_aspect(dem_path: str, output_path: str) -> str:
     return compute_aspect_impl(
         read_single_band=_read_single_band,
@@ -232,7 +224,6 @@ def compute_aspect(dem_path: str, output_path: str) -> str:
     )
 
 
-# e) Flow direction (D8)
 def compute_flow_direction(filled_dem_path: str, output_path: str) -> str:
     return compute_flow_direction_impl(
         run_wbt_tool=_run_wbt_tool,
@@ -241,7 +232,6 @@ def compute_flow_direction(filled_dem_path: str, output_path: str) -> str:
     )
 
 
-# f) Flow accumulation (D8)
 def compute_flow_accumulation(flow_dir_path: str, output_path: str) -> str:
     return compute_flow_accumulation_impl(
         run_wbt_tool=_run_wbt_tool,
@@ -249,8 +239,6 @@ def compute_flow_accumulation(flow_dir_path: str, output_path: str) -> str:
         output_path=output_path,
     )
 
-
-# g) Topographic Wetness Index (TWI)
 
 _MIN_SLOPE_RAD = np.float64(0.001)
 
@@ -269,8 +257,6 @@ def compute_twi(
         output_path=output_path,
     )
 
-
-# h) Height Above Nearest Drainage (HAND)
 
 _DEFAULT_DRAINAGE_THRESHOLD = 1000
 
@@ -295,7 +281,6 @@ def compute_hand(
     )
 
 
-# i) Extract drainage network (vector)
 def extract_drainage_network(
     flow_acc_path: str,
     threshold: int,
@@ -311,7 +296,6 @@ def extract_drainage_network(
     )
 
 
-# j-1) Profile curvature
 def compute_profile_curvature(filled_dem_path: str, output_dir: str) -> str:
     return compute_profile_curvature_impl(
         path_cls=Path,
@@ -321,7 +305,6 @@ def compute_profile_curvature(filled_dem_path: str, output_dir: str) -> str:
     )
 
 
-# j-2) Topographic Position Index (TPI)
 def compute_tpi(
     filled_dem_path: str,
     output_dir: str,
@@ -335,8 +318,6 @@ def compute_tpi(
         radius=radius,
     )
 
-
-# j) Terrain classification — 5 actionable classes for flat terrain management
 
 TERRAIN_SIN_RIESGO = 0  # No risk — transparent on map
 TERRAIN_DRENAJE_NATURAL = 1  # Natural drainage lines
@@ -423,7 +404,6 @@ def classify_terrain(
         output_path=output_path,
     )
 
-    # Reference metadata from filled DEM
     with rasterio.open(reference_raster_path) as src:
         ref_shape = (
             getattr(src, "height", src.meta["height"]),
@@ -435,7 +415,6 @@ def classify_terrain(
     flow_acc, nodata_fa = _load_optional_raster(flow_acc_path)
     twi, nodata_twi = _load_optional_raster(twi_path)
 
-    # --- Combined nodata mask -------------------------------------------------
     nodata_mask = np.zeros(ref_shape, dtype=bool)
     for data, nodata in [
         (hand, nodata_hand),
@@ -481,7 +460,6 @@ def classify_terrain(
         },
     )
 
-    # --- Nodata ---------------------------------------------------------------
     out_nodata = np.uint8(255)
     classified[nodata_mask] = out_nodata
 
@@ -491,7 +469,6 @@ def classify_terrain(
     return _write_single_band(resolved_output_path, classified, meta)
 
 
-# k) Download DEM from Google Earth Engine
 def download_dem_from_gee(
     zona_geometry: dict[str, Any],
     output_path: str,
@@ -511,7 +488,6 @@ def download_dem_from_gee(
     )
 
 
-# l) Delineate watershed basins
 def delineate_basins(
     flow_dir_path: str,
     output_raster_path: str,
@@ -531,7 +507,6 @@ def delineate_basins(
     )
 
 
-# m) Convert GeoTIFF to Cloud-Optimized GeoTIFF (COG)
 def convert_to_cog(input_path: str, output_path: str | None = None) -> str:
     from rio_cogeo.cogeo import cog_translate
     from rio_cogeo.profiles import cog_profiles

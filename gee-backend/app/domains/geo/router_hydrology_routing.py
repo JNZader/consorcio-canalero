@@ -1,8 +1,11 @@
 """Hydrology summaries and canal routing endpoints."""
 
 from pathlib import Path
+from typing import Literal
+import uuid
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -10,9 +13,20 @@ from app.auth.models import User
 from app.core.exceptions import AppException, NotFoundError
 from app.db.session import get_db
 from app.domains.geo.models import GeoLayer
-from app.domains.geo.router_common import _require_operator
+from app.domains.geo.router_common import _get_user_display_name, _require_operator
+from app.domains.geo.routing_schemas import (
+    CorridorScenarioListItem,
+    CorridorScenarioResponse,
+    CorridorScenarioSaveRequest,
+)
+from app.domains.geo.repository import GeoRepository
 
 router = APIRouter(tags=["Geo Processing"])
+
+
+def _get_repo() -> GeoRepository:
+    return GeoRepository()
+
 
 # ── Hydrology Analysis ────────────────────────────────────────────
 
@@ -129,6 +143,21 @@ class ShortestPathRequest(BaseModel):
     to_lat: float
 
 
+class CorridorRoutingRequest(BaseModel):
+    """Request for network-based corridor routing between two points."""
+
+    from_lon: float
+    from_lat: float
+    to_lon: float
+    to_lat: float
+    mode: Literal["network", "raster"] = "network"
+    area_id: str | None = None
+    profile: Literal["balanceado", "hidraulico", "evitar_propiedad"] = "balanceado"
+    corridor_width_m: float | None = Field(default=None, gt=0)
+    alternative_count: int | None = Field(default=None, ge=0, le=5)
+    penalty_factor: float | None = Field(default=None, ge=1.0)
+
+
 @router.post("/routing/import")
 def import_canal_network(
     body: ImportCanalsRequest,
@@ -213,6 +242,30 @@ def find_shortest_path(
     }
 
 
+@router.post("/routing/corridor")
+def calculate_corridor_route(
+    body: CorridorRoutingRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+):
+    """Compute a corridor routing payload with centerline, corridor and alternatives."""
+    from app.domains.geo.routing import corridor_routing
+
+    return corridor_routing(
+        db,
+        from_lon=body.from_lon,
+        from_lat=body.from_lat,
+        to_lon=body.to_lon,
+        to_lat=body.to_lat,
+        mode=body.mode,
+        area_id=body.area_id,
+        profile=body.profile,
+        corridor_width_m=body.corridor_width_m,
+        alternative_count=body.alternative_count,
+        penalty_factor=body.penalty_factor,
+    )
+
+
 @router.get("/routing/stats")
 def get_routing_network_stats(
     db: Session = Depends(get_db),
@@ -222,3 +275,126 @@ def get_routing_network_stats(
     from app.domains.geo.routing import get_network_stats
 
     return get_network_stats(db)
+
+
+@router.post(
+    "/routing/corridor/scenarios",
+    response_model=CorridorScenarioResponse,
+    status_code=201,
+)
+def save_corridor_scenario(
+    body: CorridorScenarioSaveRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    scenario = repo.create_routing_scenario(
+        db,
+        name=body.name,
+        profile=body.profile,
+        request_payload=body.request_payload,
+        result_payload=body.result_payload,
+        notes=body.notes,
+        created_by_id=_user.id,
+    )
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+@router.get("/routing/corridor/scenarios")
+def list_corridor_scenarios(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    items, total = repo.list_routing_scenarios(db, page=page, limit=limit)
+    return {
+        "items": [CorridorScenarioListItem.model_validate(item) for item in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.get(
+    "/routing/corridor/scenarios/{scenario_id}",
+    response_model=CorridorScenarioResponse,
+)
+def get_corridor_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    scenario = repo.get_routing_scenario(db, scenario_id)
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+    return scenario
+
+
+@router.post(
+    "/routing/corridor/scenarios/{scenario_id}/approve",
+    response_model=CorridorScenarioResponse,
+)
+def approve_corridor_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    scenario = repo.approve_routing_scenario(
+        db,
+        scenario_id,
+        approved_by_id=getattr(_user, "id", None),
+    )
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+@router.get("/routing/corridor/scenarios/{scenario_id}/geojson")
+def export_corridor_scenario_geojson(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    from app.domains.geo.routing import build_corridor_export_feature_collection
+
+    scenario = repo.get_routing_scenario(db, scenario_id)
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+    return build_corridor_export_feature_collection(scenario.result_payload)
+
+
+@router.get("/routing/corridor/scenarios/{scenario_id}/pdf")
+def export_corridor_scenario_pdf(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator),
+    repo: GeoRepository = Depends(_get_repo),
+):
+    from app.shared.pdf import build_corridor_routing_pdf, get_branding
+
+    scenario = repo.get_routing_scenario(db, scenario_id)
+    if scenario is None:
+        raise NotFoundError("Routing scenario not found")
+
+    pdf_buffer = build_corridor_routing_pdf(
+        scenario,
+        get_branding(db),
+        approved_by_name=_get_user_display_name(
+            db, getattr(scenario, "approved_by_id", None)
+        ),
+    )
+    filename = f"corridor-scenario-{scenario.id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

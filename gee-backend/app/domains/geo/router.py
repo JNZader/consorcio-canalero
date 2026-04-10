@@ -309,104 +309,23 @@ def _gee_simple(handler):
 
 list_gee_layers = _gee_simple(lambda: list_gee_layers_impl(_lazy_gee_service))
 gee_router.get("/layers")(list_gee_layers)
-
-
-async def get_sentinel2_tiles(start_date: date, end_date: date, max_cloud: int = 20):
-    return await get_sentinel2_tiles_impl(
-        start_date=start_date,
-        end_date=end_date,
-        max_cloud=max_cloud,
-        ensure_gee=_ensure_gee,
-    )
-
-
-async def list_consorcios_camineros():
-    return await list_consorcios_camineros_impl(ensure_gee=_ensure_gee)
-
-
-async def get_caminos_consorcio(codigo: str):
-    return await get_caminos_consorcio_impl(codigo=codigo, ensure_gee=_ensure_gee)
-
-
-async def get_caminos_por_nombre_consorcio(nombre: str):
-    return await get_caminos_por_nombre_consorcio_impl(
-        nombre=nombre, ensure_gee=_ensure_gee
-    )
-
-
-async def get_caminos_coloreados():
-    return await get_caminos_coloreados_impl(ensure_gee=_ensure_gee)
-
-
-async def get_estadisticas_caminos():
-    return await get_estadisticas_caminos_impl(ensure_gee=_ensure_gee)
-
-
-async def get_gee_layer(layer_name: str):
-    return await get_gee_layer_impl(layer_name=layer_name, ensure_gee=_ensure_gee)
-
-
-async def get_available_image_dates(
-    year: int, month: int, sensor: str = "sentinel2", max_cloud: int = 20
-):
-    return await get_available_image_dates_impl(
-        year=year,
-        month=month,
-        sensor=sensor,
-        max_cloud=max_cloud,
-        ensure_gee=_ensure_gee,
-    )
-
-
-async def get_sentinel2_image(
-    target_date: date,
-    days_buffer: int = 15,
-    max_cloud: int = 20,
-    visualization: str = "natural_color",
-):
-    return await get_sentinel2_image_impl(
-        target_date=target_date,
-        days_buffer=days_buffer,
-        max_cloud=max_cloud,
-        visualization=visualization,
-        ensure_gee=_ensure_gee,
-    )
-
-
-async def get_sentinel1_image(
-    target_date: date, days_buffer: int = 15, visualization: str = "vv"
-):
-    return await get_sentinel1_image_impl(
-        target_date=target_date,
-        days_buffer=days_buffer,
-        visualization=visualization,
-        ensure_gee=_ensure_gee,
-    )
-
-
-async def compare_flood_dates(
-    flood_date: date, normal_date: date, days_buffer: int = 15, max_cloud: int = 20
-):
-    return await compare_flood_dates_impl(
-        flood_date=flood_date,
-        normal_date=normal_date,
-        days_buffer=days_buffer,
-        max_cloud=max_cloud,
-        ensure_gee=_ensure_gee,
-    )
-
+get_sentinel2_tiles = _gee_async(get_sentinel2_tiles_impl)
+list_consorcios_camineros = _gee_async(list_consorcios_camineros_impl)
+get_caminos_consorcio = _gee_async(get_caminos_consorcio_impl)
+get_caminos_por_nombre_consorcio = _gee_async(get_caminos_por_nombre_consorcio_impl)
+get_caminos_coloreados = _gee_async(get_caminos_coloreados_impl)
+get_estadisticas_caminos = _gee_async(get_estadisticas_caminos_impl)
+get_gee_layer = _gee_async(get_gee_layer_impl)
+get_available_image_dates = _gee_async(get_available_image_dates_impl)
+get_sentinel2_image = _gee_async(get_sentinel2_image_impl)
+get_sentinel1_image = _gee_async(get_sentinel1_image_impl)
+compare_flood_dates = _gee_async(compare_flood_dates_impl)
 
 get_available_visualizations = _gee_simple(get_available_visualizations_impl)
 gee_router.get("/images/visualizations")(get_available_visualizations)
 get_historic_floods = _gee_simple(get_historic_floods_impl)
 gee_router.get("/images/historic-floods")(get_historic_floods)
-
-
-async def get_historic_flood_tiles(flood_id: str, visualization: str = "natural_color"):
-    return await get_historic_flood_tiles_impl(
-        flood_id=flood_id, visualization=visualization, ensure_gee=_ensure_gee
-    )
-
+get_historic_flood_tiles = _gee_async(get_historic_flood_tiles_impl)
 
 gee_router.get("/layers/tiles/sentinel2")(get_sentinel2_tiles)
 gee_router.get("/layers/caminos/consorcios")(list_consorcios_camineros)

@@ -2,12 +2,15 @@
 
 from app.shared.pdf.base import BrandedPDF, BrandingInfo, get_branding
 from app.shared.pdf.builders import (
-    build_approved_zoning_map_pdf,
-    build_approved_zoning_pdf,
     build_asset_pdf,
     build_finanzas_pdf,
     build_reunion_pdf,
     build_tramite_pdf,
+)
+from app.shared.pdf.builders_routing import build_corridor_routing_pdf
+from app.shared.pdf.builders_zoning import (
+    build_approved_zoning_map_pdf,
+    build_approved_zoning_pdf,
 )
 
 __all__ = [
@@ -20,4 +23,5 @@ __all__ = [
     "build_finanzas_pdf",
     "build_reunion_pdf",
     "build_tramite_pdf",
+    "build_corridor_routing_pdf",
 ]

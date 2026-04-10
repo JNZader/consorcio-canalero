@@ -1,5 +1,5 @@
 import { Checkbox, Group, Paper, Text } from '@mantine/core';
-import type { CanalSuggestion, SuggestionTipo } from '../../../../lib/api';
+import type { CanalSuggestion, CorridorRoutingResponse, SuggestionTipo } from '../../../../lib/api';
 import { ALL_SUGGESTION_TYPES, TIPO_COLORS, TIPO_LABELS } from '../canalSuggestionsConstants';
 import { SuggestionsMap } from './SuggestionsMap';
 
@@ -7,15 +7,35 @@ export function SuggestionsMapCard({
   suggestions,
   visibleTypes,
   onToggle,
+  corridorResult,
+  corridorForm,
+  corridorPickTarget,
+  onPickCoordinate,
 }: Readonly<{
   suggestions: CanalSuggestion[];
   visibleTypes: Set<SuggestionTipo>;
   onToggle: (tipo: SuggestionTipo) => void;
+  corridorResult: CorridorRoutingResponse | null;
+  corridorForm: {
+    fromLon: number | '';
+    fromLat: number | '';
+    toLon: number | '';
+    toLat: number | '';
+  };
+  corridorPickTarget: 'from' | 'to' | null;
+  onPickCoordinate: (coords: { lon: number; lat: number }) => void;
 }>) {
   return (
     <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
       <div style={{ height: 450 }}>
-        <SuggestionsMap suggestions={suggestions} visibleTypes={visibleTypes} />
+        <SuggestionsMap
+          suggestions={suggestions}
+          visibleTypes={visibleTypes}
+          corridorResult={corridorResult}
+          corridorForm={corridorForm}
+          corridorPickTarget={corridorPickTarget}
+          onPickCoordinate={onPickCoordinate}
+        />
       </div>
 
       <Group p="sm" gap="md" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>

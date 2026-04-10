@@ -99,6 +99,24 @@ export type {
 } from './canalSuggestions';
 
 // ===========================================
+// ROUTING EXPORTS
+// ===========================================
+export { routingApi } from './routing';
+export type {
+  RoutingMode,
+  RoutingProfile,
+  CorridorRoutingRequest,
+  CorridorRoutingResponse,
+  CorridorAlternative,
+  CorridorFeature,
+  CorridorFeatureCollection,
+  CorridorScenario,
+  CorridorScenarioListItem,
+  CorridorScenarioSaveRequest,
+  GeoJsonFeatureCollection,
+} from './routing';
+
+// ===========================================
 // FLOOD CALIBRATION EXPORTS
 // ===========================================
 export { floodCalibrationApi } from './floodCalibration';
