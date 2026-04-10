@@ -22,6 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.gee_service import _ensure_initialized
 from app.domains.geo.intelligence.models import ZonaOperativa
+from app.domains.geo.rainfall_service_support import (
+    build_image_suggestions_impl,
+    build_reduce_regions_records,
+    detect_rainfall_events_impl,
+    load_zone_geometries_impl,
+    postgis_to_ee_geometry_impl,
+    run_backfill_impl,
+)
 from app.domains.geo.repository import GeoRepository
 
 logger = logging.getLogger(__name__)
@@ -40,13 +48,15 @@ repo = GeoRepository()
 
 def _postgis_to_ee_geometry(db: Session, zona_id: uuid.UUID) -> ee.Geometry | None:
     """Convert a PostGIS geometry to an ee.Geometry for GEE queries."""
-    geojson_str = db.execute(
-        select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(ZonaOperativa.id == zona_id)
-    ).scalar()
-    if geojson_str is None:
-        return None
-    geojson = json.loads(geojson_str)
-    return ee.Geometry(geojson)
+    return postgis_to_ee_geometry_impl(
+        db=db,
+        select_fn=select,
+        st_as_geojson=ST_AsGeoJSON,
+        zona_model=ZonaOperativa,
+        json_module=json,
+        ee_module=ee,
+        zona_id=zona_id,
+    )
 
 
 def _load_zone_geometries(
@@ -57,27 +67,16 @@ def _load_zone_geometries(
 
     Returns list of dicts: {id, nombre, ee_geometry}.
     """
-    _ensure_initialized()
-    stmt = select(
-        ZonaOperativa.id,
-        ZonaOperativa.nombre,
-        ST_AsGeoJSON(ZonaOperativa.geometria).label("geojson"),
+    return load_zone_geometries_impl(
+        db=db,
+        ensure_initialized=_ensure_initialized,
+        select_fn=select,
+        st_as_geojson=ST_AsGeoJSON,
+        zona_model=ZonaOperativa,
+        json_module=json,
+        ee_module=ee,
+        zona_ids=zona_ids,
     )
-    if zona_ids:
-        stmt = stmt.where(ZonaOperativa.id.in_(zona_ids))
-
-    rows = db.execute(stmt).all()
-    zones = []
-    for row in rows:
-        geojson = json.loads(row.geojson)
-        zones.append(
-            {
-                "id": row.id,
-                "nombre": row.nombre,
-                "ee_geometry": ee.Geometry(geojson),
-            }
-        )
-    return zones
 
 
 # ── CHIRPS fetch ────────────────────────────────
@@ -127,27 +126,12 @@ def fetch_chirps_daily(
     all_results = collection.map(_reduce_image).flatten()
     result_info = all_results.getInfo()
 
-    records: list[dict[str, Any]] = []
-    if not result_info or "features" not in result_info:
-        return records
-
-    for feat in result_info["features"]:
-        props = feat.get("properties", {})
-        zona_id_str = props.get("zona_id")
-        img_date_str = props.get("image_date")
-        precip = props.get("mean")
-
-        if zona_id_str and img_date_str and precip is not None:
-            records.append(
-                {
-                    "zona_operativa_id": uuid.UUID(zona_id_str),
-                    "date": date.fromisoformat(img_date_str),
-                    "precipitation_mm": round(float(precip), 2),
-                    "source": "CHIRPS",
-                }
-            )
-
-    return records
+    return build_reduce_regions_records(
+        result_info=result_info,
+        date_type=date,
+        uuid_type=uuid.UUID,
+        source="CHIRPS",
+    )
 
 
 def fetch_imerg_daily(
@@ -206,27 +190,12 @@ def fetch_imerg_daily(
     all_results = daily_collection.map(_reduce_image).flatten()
     result_info = all_results.getInfo()
 
-    records: list[dict[str, Any]] = []
-    if not result_info or "features" not in result_info:
-        return records
-
-    for feat in result_info["features"]:
-        props = feat.get("properties", {})
-        zona_id_str = props.get("zona_id")
-        img_date_str = props.get("image_date")
-        precip = props.get("mean")
-
-        if zona_id_str and img_date_str and precip is not None:
-            records.append(
-                {
-                    "zona_operativa_id": uuid.UUID(zona_id_str),
-                    "date": date.fromisoformat(img_date_str),
-                    "precipitation_mm": round(float(precip), 2),
-                    "source": "IMERG",
-                }
-            )
-
-    return records
+    return build_reduce_regions_records(
+        result_info=result_info,
+        date_type=date,
+        uuid_type=uuid.UUID,
+        source="IMERG",
+    )
 
 
 # ── Backfill ────────────────────────────────────
@@ -329,107 +298,29 @@ def detect_rainfall_events(
     threshold_mm: float = 50.0,
     window_days: int = 3,
 ) -> list[dict[str, Any]]:
-    """Detect rainfall events where accumulated precipitation exceeds a threshold.
-
-    For each zone and each date in the range, computes the rolling sum of
-    precipitation over the previous ``window_days``. Dates where that sum
-    exceeds ``threshold_mm`` are flagged, then consecutive flagged dates are
-    clustered into single events.
-
-    Returns a list of event dicts:
-        {zona_operativa_id, event_start, event_end, accumulated_mm, duration_days}
-    """
+    """Detect rainfall events where accumulated precipitation exceeds a threshold."""
     from app.domains.geo.models import RainfallRecord
 
-    # Default range: last 90 days
     if end_date is None:
         end_date = date.today()
     if start_date is None:
         start_date = end_date - timedelta(days=90)
 
-    # We need records starting window_days *before* start_date for the
-    # rolling window to be accurate on the first date.
     query_start = start_date - timedelta(days=window_days)
-
-    # Fetch all records in the extended range, grouped by zone
     stmt = (
         select(RainfallRecord)
-        .where(
-            RainfallRecord.date >= query_start,
-            RainfallRecord.date <= end_date,
-        )
+        .where(RainfallRecord.date >= query_start, RainfallRecord.date <= end_date)
         .order_by(RainfallRecord.zona_operativa_id, RainfallRecord.date)
     )
     records = db.execute(stmt).scalars().all()
-
-    # Group by zone
-    from collections import defaultdict
-
-    zone_records: dict[uuid.UUID, dict[date, float]] = defaultdict(dict)
-    for rec in records:
-        zone_records[rec.zona_operativa_id][rec.date] = rec.precipitation_mm
-
-    events: list[dict[str, Any]] = []
-
-    for zona_id, daily_map in zone_records.items():
-        # For each date in the user-requested range, compute rolling sum
-        flagged_dates: list[tuple[date, float]] = []
-        current = start_date
-        while current <= end_date:
-            rolling_sum = 0.0
-            for offset in range(window_days):
-                day = current - timedelta(days=offset)
-                rolling_sum += daily_map.get(day, 0.0)
-
-            if rolling_sum >= threshold_mm:
-                flagged_dates.append((current, rolling_sum))
-            current += timedelta(days=1)
-
-        if not flagged_dates:
-            continue
-
-        # Cluster consecutive flagged dates into events
-        cluster_start = flagged_dates[0][0]
-        cluster_max_acc = flagged_dates[0][1]
-        prev_date = flagged_dates[0][0]
-
-        for d, acc in flagged_dates[1:]:
-            if (d - prev_date).days <= 1:
-                # Continue cluster
-                cluster_max_acc = max(cluster_max_acc, acc)
-                prev_date = d
-            else:
-                # Close previous cluster
-                duration = (prev_date - cluster_start).days + 1
-                events.append(
-                    {
-                        "zona_operativa_id": zona_id,
-                        "event_start": cluster_start,
-                        "event_end": prev_date,
-                        "accumulated_mm": round(cluster_max_acc, 2),
-                        "duration_days": duration,
-                    }
-                )
-                # Start new cluster
-                cluster_start = d
-                cluster_max_acc = acc
-                prev_date = d
-
-        # Close last cluster
-        duration = (prev_date - cluster_start).days + 1
-        events.append(
-            {
-                "zona_operativa_id": zona_id,
-                "event_start": cluster_start,
-                "event_end": prev_date,
-                "accumulated_mm": round(cluster_max_acc, 2),
-                "duration_days": duration,
-            }
-        )
-
-    # Sort by event_start descending
-    events.sort(key=lambda e: e["event_start"], reverse=True)
-    return events
+    return detect_rainfall_events_impl(
+        records=records,
+        start_date=start_date,
+        end_date=end_date,
+        threshold_mm=threshold_mm,
+        window_days=window_days,
+        timedelta_cls=timedelta,
+    )
 
 
 # ── Sentinel-2 image suggestions ──────────────
@@ -442,32 +333,19 @@ def suggest_images_for_event(
     days_after_max: int = 5,
     max_cloud: int = 60,
 ) -> list[dict[str, Any]]:
-    """Find Sentinel-2 images available after a rainfall event.
-
-    Queries the GEE S2 catalog for images between ``event_end_date + days_after_min``
-    and ``event_end_date + days_after_max``, filtered by cloud cover, and returns
-    them sorted by cloud cover ascending (best candidates first).
-
-    Reuses the same GEE pattern as ImageExplorer.get_available_dates().
-
-    Returns list of dicts: {date, cloud_cover_pct}
-    """
+    """Find Sentinel-2 images available after a rainfall event."""
     _ensure_initialized()
 
     from app.domains.geo.gee_service import ImageExplorer
 
     explorer = ImageExplorer()
-
     search_start = event_end_date + timedelta(days=days_after_min)
     search_end = event_end_date + timedelta(days=days_after_max)
     end_exclusive = (search_end + timedelta(days=1)).isoformat()
-
-    # Use SR collection for post-2019, TOA for earlier dates
     use_toa = search_start.year < 2019
     collection_name = (
         "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
     )
-
     collection = (
         ee.ImageCollection(collection_name)
         .filterBounds(explorer.zona)
@@ -475,7 +353,6 @@ def suggest_images_for_event(
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", max_cloud))
     )
 
-    # Extract date and cloud cover for each image
     def _extract_info(image: ee.Image) -> ee.Feature:
         img_date = ee.Date(image.get("system:time_start")).format("YYYY-MM-dd")
         cloud = image.get("CLOUDY_PIXEL_PERCENTAGE")
@@ -483,27 +360,8 @@ def suggest_images_for_event(
 
     info_fc = collection.map(_extract_info)
     result = info_fc.getInfo()
-
-    suggestions: list[dict[str, Any]] = []
-    if not result or "features" not in result:
-        return suggestions
-
-    # Deduplicate by date (keep lowest cloud cover per date)
-    date_best: dict[str, float] = {}
-    for feat in result["features"]:
-        props = feat.get("properties", {})
-        d = props.get("date")
-        cc = props.get("cloud_cover_pct")
-        if d and cc is not None:
-            if d not in date_best or cc < date_best[d]:
-                date_best[d] = cc
-
-    for d_str, cc in sorted(date_best.items(), key=lambda x: x[1]):
-        suggestions.append(
-            {
-                "date": date.fromisoformat(d_str),
-                "cloud_cover_pct": round(float(cc), 2),
-            }
-        )
-
-    return suggestions
+    return build_image_suggestions_impl(
+        result=result,
+        event_end_date=event_end_date,
+        date_type=date,
+    )

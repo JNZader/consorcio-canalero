@@ -9,6 +9,12 @@ from typing import Any
 
 from shapely.geometry import LineString, mapping, shape
 from shapely.ops import split, unary_union
+from app.domains.geo.intelligence.zoning_support import (
+    attach_zone_gaps as _attach_zone_gaps_support,
+    basin_record as _basin_record_support,
+    build_split_display_features,
+    display_basin_name as _display_basin_name_support,
+)
 
 _ZONE_DEFINITIONS = {
     "draft-zone-norte": {
@@ -64,45 +70,12 @@ def extract_basin_family(cuenca: str | None, nombre: str | None = None) -> str:
 
 
 def _basin_record(feature: dict[str, Any]) -> dict[str, Any]:
-    props = feature.get("properties") or {}
-    geom = shape(feature["geometry"])
-    return {
-        "id": props.get("id"),
-        "nombre": props.get("nombre"),
-        "cuenca": props.get("cuenca"),
-        "family": extract_basin_family(props.get("cuenca"), props.get("nombre")),
-        "superficie_ha": float(props.get("superficie_ha") or 0.0),
-        "geometry": geom,
-        "centroid": geom.centroid,
-    }
+    return _basin_record_support(feature, extract_basin_family)
 
 
 def _display_basin_name(record: dict[str, Any], zone_id: str | None = None) -> str:
     """Return a cleaner operator-facing basin name."""
-    raw_name = str(record.get("nombre") or "Sub-cuenca")
-    zone_name = _ZONE_NAME_BY_ID.get(zone_id or "", None)
-
-    split_index = None
-    if "::split-" in str(record.get("id") or ""):
-        try:
-            split_index = int(str(record["id"]).rsplit("::split-", 1)[1])
-        except (TypeError, ValueError):
-            split_index = None
-
-    number_match = re.search(r"Sub-cuenca\s+(\d+)", raw_name, flags=re.IGNORECASE)
-    basin_number = number_match.group(1) if number_match else None
-
-    if split_index and basin_number:
-        suffix = chr(ord("A") + split_index - 1)
-        if zone_name:
-            return f"Sub-cuenca {basin_number}{suffix} — {zone_name}"
-        return f"Sub-cuenca {basin_number}{suffix}"
-
-    if basin_number and zone_name:
-        return f"Sub-cuenca {basin_number} — {zone_name}"
-
-    cleaned = re.sub(r"\s*\(([^)]+)\)", "", raw_name).strip()
-    return cleaned
+    return _display_basin_name_support(record, _ZONE_NAME_BY_ID, zone_id)
 
 
 @lru_cache(maxsize=1)
@@ -189,7 +162,10 @@ def _consorcio_zone_geometry():
     """Return the authoritative consorcio zone geometry from GEE."""
     from app.domains.geo.gee_service import get_layer_geojson
 
-    zona_geojson = get_layer_geojson("zona")
+    try:
+        zona_geojson = get_layer_geojson("zona")
+    except Exception:
+        return None
     features = zona_geojson.get("features", [])
     if not features:
         return None
@@ -214,53 +190,7 @@ def _iter_gap_polygons(geom):
 
 def _attach_zone_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach uncovered consorcio-zone gaps to the neighboring basin record."""
-    if not records:
-        return records
-
-    zona_geom = _consorcio_zone_geometry()
-    if zona_geom is None:
-        return records
-
-    coverage = unary_union([record["geometry"] for record in records])
-    total_surface_ha = sum(float(record["superficie_ha"]) for record in records)
-    area_to_ha_factor = (total_surface_ha / coverage.area) if coverage.area > 0 else 0.0
-    gaps = zona_geom.difference(coverage)
-    gap_polygons = [polygon for polygon in _iter_gap_polygons(gaps) if polygon.area > 0]
-    if not gap_polygons:
-        return records
-
-    updated_records = [dict(record) for record in records]
-    for gap in gap_polygons:
-        best_index = None
-        best_score = -1.0
-        for index, record in enumerate(updated_records):
-            if not (
-                gap.touches(record["geometry"])
-                or gap.distance(record["geometry"]) < 1e-9
-                or gap.intersects(record["geometry"])
-            ):
-                continue
-            shared = gap.boundary.intersection(record["geometry"].boundary)
-            shared_length = shared.length if not shared.is_empty else 0.0
-            if shared_length > best_score:
-                best_score = shared_length
-                best_index = index
-
-        if best_index is None:
-            best_index = min(
-                range(len(updated_records)),
-                key=lambda idx: gap.centroid.distance(updated_records[idx]["centroid"]),
-            )
-
-        target = updated_records[best_index]
-        target_geometry = target["geometry"].union(gap)
-        target["geometry"] = target_geometry
-        target["centroid"] = target_geometry.centroid
-        target["superficie_ha"] = float(target["superficie_ha"]) + (
-            gap.area * area_to_ha_factor
-        )
-
-    return updated_records
+    return _attach_zone_gaps_support(records, _consorcio_zone_geometry, _iter_gap_polygons)
 
 
 def split_basins_for_display(
@@ -276,29 +206,7 @@ def split_basins_for_display(
         )
     )
     assignments = _resolve_zone_assignments(split_records)
-    display_features: list[dict[str, Any]] = []
-
-    for record in split_records:
-        properties = {
-            "id": record["id"],
-            "nombre": _display_basin_name(record, assignments.get(record["id"])),
-            "cuenca": record["cuenca"],
-            "superficie_ha": round(record["superficie_ha"], 1),
-        }
-        if record.get("source_basin_id"):
-            properties["source_basin_id"] = record["source_basin_id"]
-        if record.get("target_hint"):
-            properties["target_hint"] = record["target_hint"]
-
-        display_features.append(
-            {
-                "type": "Feature",
-                "geometry": mapping(record["geometry"]),
-                "properties": properties,
-            }
-        )
-
-    return display_features
+    return build_split_display_features(split_records, assignments, _display_basin_name)
 
 
 def _anchor_centroids(records: list[dict[str, Any]]) -> dict[str, Any]:

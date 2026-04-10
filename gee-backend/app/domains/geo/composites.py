@@ -7,29 +7,32 @@ Each function takes file paths and returns file paths — no Celery, no DB.
 
 from __future__ import annotations
 
-import json
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import rasterio
 from pyproj import CRS, Transformer
-from rasterio.features import rasterize as rasterio_rasterize
 from rasterio.mask import mask as rasterio_mask
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
+from app.domains.geo.composites_support import (
+    DEFAULT_DRAINAGE_WEIGHTS,
+    DEFAULT_FLOOD_WEIGHTS,
+    DEFAULT_WATERWAYS_DIR as _DEFAULT_WATERWAYS_DIR,
+    compute_drainage_need_impl,
+    compute_flood_risk_impl,
+    load_layer as _load_layer,
+    merge_drainage_networks_impl,
+    rasterize_drainage_impl,
+)
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Drainage network merge (real waterways + DEM-generated)
 # ---------------------------------------------------------------------------
-
-# Default waterways directory inside the geo-worker container
-_DEFAULT_WATERWAYS_DIR = "/app/data/waterways"
-
 
 def merge_drainage_networks(
     auto_drainage_path: str,
@@ -60,109 +63,12 @@ def merge_drainage_networks(
     Returns:
         The output path on success.
     """
-    if output_path is None:
-        output_path = str(Path(auto_drainage_path).parent / "drainage_combined.geojson")
-
-    combined_features: list[dict] = []
-
-    # Detect target CRS from a reference raster for reprojection
-    target_crs = None
-    _reproject_fn = None
-    area_dir = Path(auto_drainage_path).parent
-    if reference_tif is None:
-        for candidate in ["flow_acc.tif", "hand.tif"]:
-            ref = area_dir / candidate
-            if ref.exists():
-                reference_tif = str(ref)
-                break
-    if reference_tif and Path(reference_tif).exists():
-        try:
-            with rasterio.open(reference_tif) as src:
-                target_crs = src.crs
-            if target_crs and str(target_crs) != "EPSG:4326":
-                src_crs = CRS.from_epsg(4326)
-                dst_crs = CRS.from_user_input(target_crs)
-                transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-                _reproject_fn = lambda geom: shapely_transform(  # noqa: E731
-                    transformer.transform, geom
-                )
-                logger.info(
-                    "merge_drainage_networks: will reproject waterways from EPSG:4326 to %s",
-                    target_crs,
-                )
-        except Exception:
-            logger.warning(
-                "merge_drainage_networks: failed to read CRS from %s, skipping reprojection",
-                reference_tif,
-                exc_info=True,
-            )
-
-    # 1. Load auto-generated drainage (already in target CRS)
-    auto_path = Path(auto_drainage_path)
-    if auto_path.exists():
-        with open(auto_path) as f:
-            auto_data = json.load(f)
-        for feat in auto_data.get("features", []):
-            feat.setdefault("properties", {})["source"] = "auto"
-            combined_features.append(feat)
-        logger.info(
-            "merge_drainage_networks: loaded %d auto features from %s",
-            len(auto_data.get("features", [])),
-            auto_drainage_path,
-        )
-    else:
-        logger.warning(
-            "merge_drainage_networks: auto drainage not found at %s, skipping",
-            auto_drainage_path,
-        )
-
-    # 2. Load real waterway files (assumed EPSG:4326, reproject if needed)
-    waterways_path = Path(waterways_dir)
-    if waterways_path.is_dir():
-        for geojson_file in sorted(waterways_path.glob("*.geojson")):
-            try:
-                with open(geojson_file) as f:
-                    ww_data = json.load(f)
-                count = 0
-                for feat in ww_data.get("features", []):
-                    # Reproject geometry to target CRS if needed
-                    if _reproject_fn is not None:
-                        geom = shape(feat["geometry"])
-                        geom_reprojected = _reproject_fn(geom)
-                        feat["geometry"] = mapping(geom_reprojected)
-                    feat.setdefault("properties", {})["source"] = "real"
-                    feat["properties"].setdefault("waterway_file", geojson_file.stem)
-                    combined_features.append(feat)
-                    count += 1
-                logger.info(
-                    "merge_drainage_networks: loaded %d real features from %s",
-                    count,
-                    geojson_file.name,
-                )
-            except Exception:
-                logger.warning(
-                    "merge_drainage_networks: failed to load %s, skipping",
-                    geojson_file.name,
-                    exc_info=True,
-                )
-    else:
-        logger.warning(
-            "merge_drainage_networks: waterways dir not found at %s",
-            waterways_dir,
-        )
-
-    # 3. Write combined FeatureCollection
-    combined = {"type": "FeatureCollection", "features": combined_features}
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
-        json.dump(combined, f)
-
-    logger.info(
-        "merge_drainage_networks: wrote %d features to %s",
-        len(combined_features),
-        output_path,
+    return merge_drainage_networks_impl(
+        auto_drainage_path,
+        waterways_dir=waterways_dir,
+        output_path=output_path,
+        reference_tif=reference_tif,
     )
-    return output_path
 
 
 # ---------------------------------------------------------------------------
@@ -206,55 +112,7 @@ def rasterize_drainage(
     Returns:
         output_path on success.
     """
-    with open(geojson_path) as f:
-        geojson_data = json.load(f)
-
-    geometries = [
-        (shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])
-    ]
-
-    with rasterio.open(reference_tif) as src:
-        meta = src.meta.copy()
-        out_shape = (src.height, src.width)
-        transform = src.transform
-
-    if geometries:
-        burned = rasterio_rasterize(
-            geometries,
-            out_shape=out_shape,
-            transform=transform,
-            fill=0,
-            dtype="uint8",
-        )
-    else:
-        burned = np.zeros(out_shape, dtype=np.uint8)
-
-    meta.update({"dtype": "uint8", "count": 1, "nodata": None, "driver": "GTiff"})
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(output_path, "w", **meta) as dst:
-        dst.write(burned, 1)
-
-    logger.info("rasterize_drainage: wrote %s from %s", output_path, geojson_path)
-    return output_path
-
-
-# ---------------------------------------------------------------------------
-# Default weights (Pampas-calibrated)
-# ---------------------------------------------------------------------------
-
-DEFAULT_FLOOD_WEIGHTS: dict[str, float] = {
-    "twi": 0.30,  # Wetness index
-    "hand": 0.30,  # Height above drainage
-    "profile_curvature": 0.25,  # Concavities trap water (INVERTED: negative = high risk)
-    "tpi": 0.15,  # Depressions (INVERTED: negative = high risk)
-}
-
-DEFAULT_DRAINAGE_WEIGHTS: dict[str, float] = {
-    "dist_drainage": 0.30,  # Distance to existing drainage
-    "flow_acc": 0.25,  # Water accumulation volume
-    "hand": 0.20,  # Low-lying areas
-    "tpi": 0.25,  # Depressions need drainage (INVERTED)
-}
+    return rasterize_drainage_impl(geojson_path, reference_tif, output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -310,27 +168,6 @@ def normalize_percentile(
 # ---------------------------------------------------------------------------
 
 
-def _load_layer(path: str) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Load a single-band raster, returning (data, nodata_mask, meta).
-
-    Args:
-        path: Path to the GeoTIFF file.
-
-    Returns:
-        Tuple of (data as float64, boolean nodata mask, rasterio meta dict).
-    """
-    with rasterio.open(path) as src:
-        data = src.read(1).astype(np.float64)
-        nodata = src.nodata
-        meta = src.meta.copy()
-
-    nodata_mask = np.zeros(data.shape, dtype=bool)
-    if nodata is not None:
-        nodata_mask = data == nodata
-
-    return data, nodata_mask, meta
-
-
 def compute_flood_risk(
     area_dir: str,
     output_path: str,
@@ -358,54 +195,12 @@ def compute_flood_risk(
     Returns:
         output_path on success.
     """
-    w = weights or DEFAULT_FLOOD_WEIGHTS.copy()
-
-    # Load input layers
-    area = Path(area_dir)
-    hand_data, hand_nd, meta = _load_layer(str(area / "hand.tif"))
-    twi_data, twi_nd, _ = _load_layer(str(area / "twi.tif"))
-    curv_data, curv_nd, _ = _load_layer(str(area / "profile_curvature.tif"))
-    tpi_data, tpi_nd, _ = _load_layer(str(area / "tpi.tif"))
-
-    # Combined nodata mask (union of all layers)
-    nodata_mask = hand_nd | twi_nd | curv_nd | tpi_nd
-
-    # Invert HAND: lower raw value = higher risk
-    hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
-
-    # Invert curvature and TPI: negative values = concavities/depressions = HIGH risk
-    # Multiply by -1 so that concavities become positive (high risk)
-    curv_inv = np.where(nodata_mask, 0.0, -curv_data)
-    tpi_inv = np.where(nodata_mask, 0.0, -tpi_data)
-
-    # Normalize each component
-    hand_norm = normalize_percentile(hand_inv, nodata_mask)
-    twi_norm = normalize_percentile(twi_data, nodata_mask)
-    curv_norm = normalize_percentile(curv_inv, nodata_mask)
-    tpi_norm = normalize_percentile(tpi_inv, nodata_mask)
-
-    # Weighted sum → scale to 0-100
-    composite = (
-        w["twi"] * twi_norm
-        + w["hand"] * hand_norm
-        + w["profile_curvature"] * curv_norm
-        + w["tpi"] * tpi_norm
-    ).astype(np.float32) * np.float32(100.0)
-
-    # Apply combined nodata mask
-    out_nodata = np.float32(-9999.0)
-    composite[nodata_mask] = out_nodata
-
-    # Write output GeoTIFF preserving CRS/transform from input
-    meta.update(
-        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    return compute_flood_risk_impl(
+        area_dir,
+        output_path,
+        normalize_percentile,
+        weights=weights,
     )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(output_path, "w", **meta) as dst:
-        dst.write(composite, 1)
-
-    logger.info("compute_flood_risk: wrote %s (weights=%s)", output_path, w)
-    return output_path
 
 
 # ---------------------------------------------------------------------------
@@ -445,87 +240,14 @@ def compute_drainage_need(
     Raises:
         FileNotFoundError: If drainage.tif is missing from area_dir.
     """
-    w = weights or DEFAULT_DRAINAGE_WEIGHTS.copy()
-
-    area = Path(area_dir)
-
-    # Validate drainage raster exists — auto-rasterize from GeoJSON if needed
-    drainage_path = area / "drainage.tif"
-    if not drainage_path.exists():
-        # Prefer combined drainage (real + auto) over plain auto-generated
-        combined_path = area / "drainage_combined.geojson"
-        geojson_path = area / "drainage.geojson"
-        source_geojson = combined_path if combined_path.exists() else geojson_path
-        if source_geojson.exists():
-            # Find a reference raster for CRS/transform/shape
-            reference = area / "flow_acc.tif"
-            if not reference.exists():
-                reference = area / "hand.tif"
-            rasterize_drainage(str(source_geojson), str(reference), str(drainage_path))
-            logger.info(
-                "compute_drainage_need: auto-rasterized %s → drainage.tif",
-                source_geojson.name,
-            )
-        else:
-            raise FileNotFoundError(
-                f"drainage.tif not found in {area_dir}. "
-                "Run the DEM pipeline first to generate the drainage network."
-            )
-
-    # Load input layers
-    facc_data, facc_nd, meta = _load_layer(str(area / "flow_acc.tif"))
-    hand_data, hand_nd, _ = _load_layer(str(area / "hand.tif"))
-    tpi_data, tpi_nd, _ = _load_layer(str(area / "tpi.tif"))
-
-    # Compute distance-to-drainage using WhiteboxTools
-    with tempfile.TemporaryDirectory() as tmpdir:
-        dist_output = str(Path(tmpdir) / "dist_drainage.tif")
-        wbt = _get_wbt()
-        wbt.euclidean_distance(str(drainage_path), dist_output)
-
-        dist_data, dist_nd, _ = _load_layer(dist_output)
-
-    # Combined nodata mask (union of all layers)
-    nodata_mask = facc_nd | hand_nd | dist_nd | tpi_nd
-
-    # Invert HAND: lower raw value = higher drainage need
-    hand_inv = np.where(nodata_mask, 0.0, np.max(hand_data[~nodata_mask]) - hand_data)
-
-    # Invert TPI: negative values = depressions = HIGH drainage need
-    tpi_inv = np.where(nodata_mask, 0.0, -tpi_data)
-
-    # Log-scale flow accumulation
-    with np.errstate(invalid="ignore"):
-        facc_log = np.where(facc_data > 0, np.log1p(facc_data), 0.0)
-
-    # Normalize each component
-    facc_norm = normalize_percentile(facc_log, nodata_mask)
-    hand_norm = normalize_percentile(hand_inv, nodata_mask)
-    dist_norm = normalize_percentile(dist_data, nodata_mask)
-    tpi_norm = normalize_percentile(tpi_inv, nodata_mask)
-
-    # Weighted sum → scale to 0-100
-    composite = (
-        w["flow_acc"] * facc_norm
-        + w["hand"] * hand_norm
-        + w["dist_drainage"] * dist_norm
-        + w["tpi"] * tpi_norm
-    ).astype(np.float32) * np.float32(100.0)
-
-    # Apply combined nodata mask
-    out_nodata = np.float32(-9999.0)
-    composite[nodata_mask] = out_nodata
-
-    # Write output GeoTIFF preserving CRS/transform from input
-    meta.update(
-        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
+    return compute_drainage_need_impl(
+        area_dir,
+        output_path,
+        weights=weights,
+        get_wbt_fn=_get_wbt,
+        rasterize_drainage_fn=rasterize_drainage,
+        normalize_percentile_fn=normalize_percentile,
     )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(output_path, "w", **meta) as dst:
-        dst.write(composite, 1)
-
-    logger.info("compute_drainage_need: wrote %s (weights=%s)", output_path, w)
-    return output_path
 
 
 # ---------------------------------------------------------------------------

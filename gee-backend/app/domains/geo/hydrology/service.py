@@ -68,6 +68,14 @@ from app.domains.geo.hydrology.schemas import (
     FloodFlowResponse,
     ZonaFloodFlowResult,
 )
+from app.domains.geo.hydrology.service_support import (
+    finalize_flood_flow_impl,
+    get_canal_length_for_zona_impl,
+    get_rainfall_intensity_impl,
+    get_zona_geojson_impl,
+    preload_zona_db_data_impl,
+    run_gee_for_zonas_impl,
+)
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.models import RainfallRecord
 
@@ -154,37 +162,14 @@ class FloodFlowService:
         Returns:
             Longest canal length in meters (float, always > 0).
         """
-        fallback_m = math.sqrt(superficie_ha * 10_000)
-
-        try:
-            geojson_str = json.dumps(zona_geometria)
-            row = db.execute(
-                text(
-                    "SELECT MAX(ST_Length(ST_Transform(geom, 32721))) "
-                    "FROM waterways "
-                    "WHERE ST_Within(geom, ST_GeomFromGeoJSON(:zona_geojson))"
-                ),
-                {"zona_geojson": geojson_str},
-            ).scalar()
-
-            if row is None:
-                logger.debug(
-                    "No waterways found in zona %s — using sqrt fallback %.1f m",
-                    zona_id,
-                    fallback_m,
-                )
-                return fallback_m
-
-            return float(row)
-
-        except Exception as exc:
-            logger.debug(
-                "waterways query failed for zona %s (%s) — using sqrt fallback %.1f m",
-                zona_id,
-                exc,
-                fallback_m,
-            )
-            return fallback_m
+        return get_canal_length_for_zona_impl(
+            db=db,
+            text_fn=text,
+            logger=logger,
+            zona_id=zona_id,
+            zona_geometria=zona_geometria,
+            superficie_ha=superficie_ha,
+        )
 
     def get_ndvi_and_c(
         self,
@@ -273,25 +258,14 @@ class FloodFlowService:
 
         Returns 20.0 mm/h as a safe fallback when no data is found.
         """
-        stmt = (
-            select(RainfallRecord)
-            .where(
-                RainfallRecord.zona_operativa_id == zona_id,
-                RainfallRecord.date == fecha_lluvia,
-            )
-            .limit(1)
+        return get_rainfall_intensity_impl(
+            db=db,
+            select_fn=select,
+            rainfall_model=RainfallRecord,
+            logger=logger,
+            zona_id=zona_id,
+            fecha_lluvia=fecha_lluvia,
         )
-        record = db.execute(stmt).scalar_one_or_none()
-
-        if record is None:
-            logger.debug(
-                "No CHIRPS record for zona %s on %s — using fallback 20 mm/h",
-                zona_id,
-                fecha_lluvia,
-            )
-            return 20.0
-
-        return record.precipitation_mm / 6.0
 
     # ── Zone geometry fetch ──────────────────────────────────────────────────
 
@@ -299,15 +273,14 @@ class FloodFlowService:
         self, db: Session, zona_id: uuid.UUID
     ) -> Optional[dict[str, Any]]:
         """Fetch the PostGIS geometry of a ZonaOperativa as a GeoJSON dict."""
-        geojson_str = db.execute(
-            select(ST_AsGeoJSON(ZonaOperativa.geometria)).where(
-                ZonaOperativa.id == zona_id
-            )
-        ).scalar()
-
-        if geojson_str is None:
-            return None
-        return json.loads(geojson_str)
+        return get_zona_geojson_impl(
+            db=db,
+            select_fn=select,
+            st_as_geojson=ST_AsGeoJSON,
+            zona_model=ZonaOperativa,
+            json_module=json,
+            zona_id=zona_id,
+        )
 
     # ── Core orchestration ───────────────────────────────────────────────────
 
@@ -339,58 +312,51 @@ class FloodFlowService:
                 9. classify_hydraulic_risk(Q, capacidad_m3s) → nivel_riesgo
                 10. Upsert result to DB
         """
-        results: list[ZonaFloodFlowResult] = []
-        errors: list[dict[str, Any]] = []
-
-        # ── Phase A: all DB reads in the main thread ─────────────────────────
-        # Pre-load zones
-        stmt = select(ZonaOperativa).where(ZonaOperativa.id.in_(zona_ids))
-        zona_map: dict[uuid.UUID, ZonaOperativa] = {
-            z.id: z for z in db.execute(stmt).scalars().all()
-        }
-
-        # Per-zone DB data needed for Phase B/C
-        zona_db_data: dict[uuid.UUID, dict[str, Any]] = {}
-        for zona_id in zona_ids:
-            zona = zona_map.get(zona_id)
-            if zona is None:
-                errors.append(
-                    {"zona_id": str(zona_id), "error": "Zona operativa no encontrada"}
-                )
-                continue
-
-            geometria = self._get_zona_geojson(db, zona_id)
-            if geometria is None:
-                errors.append(
-                    {
-                        "zona_id": str(zona_id),
-                        "error": "La zona no tiene geometría cargada",
-                    }
-                )
-                continue
-
-            superficie_ha = zona.superficie_ha or 1.0
-            L_m = self.get_canal_length_for_zona(db, zona_id, geometria, superficie_ha)
-            # Rollback after canal length query in case waterways table doesn't exist
-            # (PostgreSQL aborts the transaction on table-not-found errors)
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            intensidad_mm_h = self._get_rainfall_intensity(db, zona_id, fecha_lluvia)
-
-            zona_db_data[zona_id] = {
-                "zona": zona,
-                "geometria": geometria,
-                "superficie_ha": superficie_ha,
-                "L_m": L_m,
-                "intensidad_mm_h": intensidad_mm_h,
-                "capacidad_m3s": getattr(zona, "capacidad_m3s", None),
-            }
+        _, zona_db_data, errors = preload_zona_db_data_impl(
+            db=db,
+            zona_ids=zona_ids,
+            select_fn=select,
+            zona_model=ZonaOperativa,
+            get_zona_geojson=self._get_zona_geojson,
+            get_canal_length_for_zona=self.get_canal_length_for_zona,
+            get_rainfall_intensity=self._get_rainfall_intensity,
+            fecha_lluvia=fecha_lluvia,
+        )
 
         if not zona_db_data:
             db.rollback()
             return FloodFlowResponse(
+                total_zonas=len(zona_ids),
+                fecha_lluvia=fecha_lluvia,
+                results=[],
+                errors=errors,
+            )
+
+        gee_results = run_gee_for_zonas_impl(
+            zona_db_data=zona_db_data,
+            fecha_lluvia=fecha_lluvia,
+            get_slope_from_gee=self.get_slope_from_gee,
+            get_ndvi_and_c=self.get_ndvi_and_c,
+            logger=logger,
+        )
+
+        today = date.today()
+        results, compute_errors = finalize_flood_flow_impl(
+            db=db,
+            zona_db_data=zona_db_data,
+            gee_results=gee_results,
+            fecha_lluvia=fecha_lluvia,
+            today=today,
+            repository=self.repository,
+            kirpich_tc=kirpich_tc,
+            rational_method_q=rational_method_q,
+            classify_hydraulic_risk=classify_hydraulic_risk,
+            result_schema=ZonaFloodFlowResult,
+            logger=logger,
+        )
+        errors.extend(compute_errors)
+
+        return FloodFlowResponse(
                 total_zonas=len(zona_ids),
                 fecha_lluvia=fecha_lluvia,
                 results=[],

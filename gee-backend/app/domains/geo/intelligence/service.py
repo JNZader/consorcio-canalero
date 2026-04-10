@@ -471,47 +471,8 @@ def get_dashboard(db: Session) -> dict[str, Any]:
     return intel_repo.get_dashboard_inteligente(db)
 
 
-# ---------------------------------------------------------------------------
-# Catastro / Afectados
-# ---------------------------------------------------------------------------
-
-from fastapi import HTTPException  # noqa: E402
-
-from app.domains.geo.intelligence.repository import (  # noqa: E402
-    bulk_upsert_parcelas,
-    get_afectados_by_flood_event,
-    get_afectados_by_zona,
+from app.domains.geo.intelligence.service_catastro_support import (  # noqa: E402
+    get_afectados_evento,
+    get_afectados_zona,
+    import_catastro_geojson,
 )
-from app.domains.geo.schemas import (  # noqa: E402
-    AfectadosResponse,
-    EventoAfectadosResponse,
-    ParcelaImportResult,
-)
-
-
-def import_catastro_geojson(db: Session, geojson_data: dict) -> ParcelaImportResult:
-    if geojson_data.get("type") != "FeatureCollection":
-        raise HTTPException(
-            status_code=400, detail="Se esperaba un GeoJSON de tipo FeatureCollection"
-        )
-    features = geojson_data.get("features") or []
-    if not features:
-        raise HTTPException(status_code=400, detail="El GeoJSON no contiene features")
-    imported, skipped = bulk_upsert_parcelas(db, features)
-    return ParcelaImportResult(imported=imported, skipped=skipped, total=len(features))
-
-
-def get_afectados_zona(db: Session, zona_id: str) -> AfectadosResponse:
-    data = get_afectados_by_zona(db, zona_id)
-    if data is None:
-        raise HTTPException(status_code=404, detail="Zona operativa no encontrada")
-    return AfectadosResponse(**data)
-
-
-def get_afectados_evento(db: Session, event_id: str) -> EventoAfectadosResponse:
-    data = get_afectados_by_flood_event(db, event_id)
-    if data is None:
-        raise HTTPException(
-            status_code=404, detail="Evento de inundación no encontrado"
-        )
-    return EventoAfectadosResponse(**data)
