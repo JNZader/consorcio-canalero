@@ -51,7 +51,22 @@ db.close()
 print('Settings seeded successfully')
 "
 
-# 6. Note about terrain data (DEM pipeline)
+# 6. Sync territorial geodata (suelos, canales, caminos from existing GeoJSON files)
+echo "Syncing territorial geodata..."
+docker compose run --rm backend python -c "
+from app.db.session import SessionLocal
+from app.domains.territorial.repository import TerritorialRepository
+from app.domains.territorial.service import TerritorialService
+db = SessionLocal()
+svc = TerritorialService(TerritorialRepository())
+result = svc.sync_geodata(db)
+db.close()
+print(result.message)
+for k, v in result.details.items():
+    print(f'  {k}: {v}')
+"
+
+# 7. Note about terrain data (DEM pipeline)
 echo ""
 echo "--- Terrain Data ---"
 echo "The DEM and terrain derivatives (flow_dir, flow_acc, slope) are generated"
@@ -63,7 +78,7 @@ echo "  POST /api/v2/geo/jobs  { \"tipo\": \"dem_pipeline\", \"area_id\": \"<you
 echo "Layers are stored in the geo_layers table and referenced automatically"
 echo "by the 3D visualization endpoints."
 
-# 7. Start all services
+# 8. Start all services
 echo ""
 echo "Starting all services..."
 docker compose up -d

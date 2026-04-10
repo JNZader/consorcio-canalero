@@ -18,6 +18,11 @@ class ImportResponse(BaseModel):
     message: str
 
 
+class SyncResponse(BaseModel):
+    message: str
+    details: dict[str, str]
+
+
 class SueloBreakdown(BaseModel):
     """Soil type entry within a territorial report."""
 
@@ -29,6 +34,17 @@ class SueloBreakdown(BaseModel):
     pct: float  # percentage of total analysed area
 
 
+class CaminoConsorcioBreakdown(BaseModel):
+    """Road km entry per consorcio caminero within a territorial report."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    consorcio_codigo: str
+    consorcio_nombre: str
+    km: float
+    pct: float  # percentage of total km within scope
+
+
 class TerritorialReportResponse(BaseModel):
     """Aggregated territorial report for a given scope."""
 
@@ -37,6 +53,8 @@ class TerritorialReportResponse(BaseModel):
     km_canales: float
     suelos: list[SueloBreakdown]
     total_ha_analizada: float
+    caminos_por_consorcio: list[CaminoConsorcioBreakdown] = []
+    total_km_caminos: float = 0.0
 
 
 class CuencaListResponse(BaseModel):

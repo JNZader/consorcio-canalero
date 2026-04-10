@@ -39,6 +39,8 @@ services:
       - ./gee-backend/app:/app/app:ro
       - ./gee-backend/data/waterways:/app/data/waterways
       - ./consorcio-web/public/waterways:/app/public/waterways
+      - ./consorcio-web/public/capas:/app/public/capas:ro
+      - ./consorcio-web/public/data:/app/public/data:ro
       - ./gee-backend/credentials:/app/credentials:ro
       - backend-cache:/app/.cache
       - geo-data:/data/geo

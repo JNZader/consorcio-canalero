@@ -98,8 +98,8 @@ def upgrade() -> None:
     op.execute("""
         CREATE MATERIALIZED VIEW mv_suelos_por_zona AS
         SELECT
-            z.id                       AS zona_id,
-            z.nombre                   AS zona_nombre,
+            z.id           AS zona_id,
+            z.nombre       AS zona_nombre,
             z.cuenca,
             s.cap,
             s.simbolo,
@@ -107,7 +107,7 @@ def upgrade() -> None:
             ST_Area(ST_Transform(
                 ST_CollectionExtract(ST_Intersection(s.geometria, z.geometria), 3),
                 32720
-            )) / 10000.0               AS ha_suelo
+            )) / 10000.0   AS ha_suelo
         FROM zonas_operativas z
         JOIN suelos_catastro s ON ST_Intersects(s.geometria, z.geometria)
         WHERE NOT ST_IsEmpty(
@@ -115,10 +115,8 @@ def upgrade() -> None:
         )
         WITH DATA
     """)
-    op.execute(
-        "CREATE UNIQUE INDEX uix_mv_suelos_zona_simbolo ON mv_suelos_por_zona (zona_id, simbolo)"
-    )
     op.execute("CREATE INDEX ix_mv_suelos_cuenca ON mv_suelos_por_zona (cuenca)")
+    op.execute("CREATE INDEX ix_mv_suelos_zona ON mv_suelos_por_zona (zona_id)")
 
     # ── materialized view: canales por zona ──────────────────────────────────
     # ST_Length on ST_Transform(..., 32720) gives length in metres; / 1000 → km.
@@ -139,10 +137,8 @@ def upgrade() -> None:
         GROUP BY z.id, z.nombre, z.cuenca
         WITH DATA
     """)
-    op.execute(
-        "CREATE UNIQUE INDEX uix_mv_canales_zona ON mv_canales_por_zona (zona_id)"
-    )
     op.execute("CREATE INDEX ix_mv_canales_cuenca ON mv_canales_por_zona (cuenca)")
+    op.execute("CREATE INDEX ix_mv_canales_zona ON mv_canales_por_zona (zona_id)")
 
 
 def downgrade() -> None:

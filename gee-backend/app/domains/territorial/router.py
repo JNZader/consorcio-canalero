@@ -1,7 +1,7 @@
 """FastAPI router for the territorial domain.
 
 Endpoints are under /territorial and require admin or operator role.
-Import endpoints require admin role.
+Import/sync endpoints require admin role.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from app.domains.territorial.schemas import (
     CuencaListResponse,
     GeoJSONImportRequest,
     ImportResponse,
+    SyncResponse,
     TerritorialReportResponse,
 )
 from app.domains.territorial.service import TerritorialService
@@ -40,7 +41,28 @@ def _get_service() -> TerritorialService:
     return TerritorialService(TerritorialRepository())
 
 
-# ── Import endpoints (admin only) ────────────────────────────────────────────
+# ── Sync (reads from local GeoJSON files already in the system) ─────────────
+
+
+@router.post("/sync", response_model=SyncResponse)
+def sync_geodata(
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+    service: TerritorialService = Depends(_get_service),
+):
+    """Sync suelos, canales and caminos from GeoJSON files already in the system.
+
+    Reads from known paths (mounted volumes in Docker):
+    - /app/public/data/suelos_cu.geojson
+    - /app/public/waterways/canales_existentes.geojson
+    - /app/public/capas/caminos.geojson
+
+    Truncates + re-inserts all data and refreshes materialized views.
+    """
+    return service.sync_geodata(db)
+
+
+# ── Manual import endpoints (admin only, kept for API compatibility) ────────
 
 
 @router.post("/import/suelos", response_model=ImportResponse)
@@ -65,6 +87,17 @@ def import_canales(
     return service.import_canales(db, body.geojson)
 
 
+@router.post("/import/caminos", response_model=ImportResponse)
+def import_caminos(
+    body: GeoJSONImportRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(_require_admin()),
+    service: TerritorialService = Depends(_get_service),
+):
+    """Replace caminos_geo with features from the uploaded GeoJSON and refresh views."""
+    return service.import_caminos(db, body.geojson)
+
+
 # ── Report endpoints (operator+) ─────────────────────────────────────────────
 
 
@@ -76,7 +109,7 @@ def get_territorial_report(
     _user=Depends(_require_operator()),
     service: TerritorialService = Depends(_get_service),
 ):
-    """Return km de canales + ha/% de suelos for the requested scope."""
+    """Return km de canales + caminos + ha/% de suelos for the requested scope."""
     return service.get_report(db, scope, value)
 
 
@@ -96,5 +129,5 @@ def get_status(
     _user=Depends(_require_operator()),
     service: TerritorialService = Depends(_get_service),
 ):
-    """Return whether suelos and canales data have been imported."""
+    """Return whether suelos, canales and caminos data have been imported."""
     return service.get_status(db)
