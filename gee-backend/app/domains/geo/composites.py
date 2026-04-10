@@ -8,7 +8,6 @@ Each function takes file paths and returns file paths — no Celery, no DB.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -18,12 +17,9 @@ from rasterio.mask import mask as rasterio_mask
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
 from app.domains.geo.composites_support import (
-    DEFAULT_DRAINAGE_WEIGHTS,
-    DEFAULT_FLOOD_WEIGHTS,
     DEFAULT_WATERWAYS_DIR as _DEFAULT_WATERWAYS_DIR,
     compute_drainage_need_impl,
     compute_flood_risk_impl,
-    load_layer as _load_layer,
     merge_drainage_networks_impl,
     rasterize_drainage_impl,
 )

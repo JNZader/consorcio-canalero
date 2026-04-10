@@ -1,44 +1,22 @@
 """Core geo router endpoints for jobs, layers, bundles and approved basins."""
 
-import asyncio
-import io
-import json
-import shutil
 import uuid
-import zipfile
 from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
-    ApprovedZonesBuildRequest,
-    ApprovedZonesMapPdfRequest,
-    ApprovedZonesResponse,
-    ApprovedZonesSaveRequest,
-    GeoBundleImportResponse,
-    GeoJsonImportResponse,
-    _build_approved_zoning_export,
-    _build_zonas_operativas_export,
-    _extract_source_properties,
-    _get_geo_bundle_storage_dir,
     _get_repo,
     _get_tile_client,
-    _get_user_display_name,
-    _import_approved_zoning_payload,
-    _import_zonas_operativas_payload,
-    _read_geojson_upload,
     _require_admin,
     _require_authenticated,
     _require_operator,
-    _serialize_approved_zoning,
-    _upsert_bundle_layer,
-    _validate_geojson_filename,
 )
 from app.domains.geo.schemas import (
     DemPipelineRequest,

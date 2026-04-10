@@ -25,8 +25,6 @@ from app.domains.geo.tile_service_support import (
     ELEVATION_TYPES,
     LOG_SCALE_TYPES,
     RANGE_CONFIGS,
-    bounds_intersect as _bounds_intersect,
-    encode_terrain_rgb as _encode_terrain_rgb,
     get_elevation_baseline as _get_elevation_baseline,
     read_categorical_tile as _read_categorical_tile,
     read_elevation_tile as _read_elevation_tile,
@@ -34,7 +32,6 @@ from app.domains.geo.tile_service_support import (
     render_continuous_with_ranges as _render_continuous_with_ranges,
     render_flat_terrain_rgb_png as _render_flat_terrain_rgb_png,
     render_terrain_rgb_png as _render_terrain_rgb_png,
-    tile_bounds_3857 as _tile_bounds_3857,
 )
 
 logger = logging.getLogger(__name__)

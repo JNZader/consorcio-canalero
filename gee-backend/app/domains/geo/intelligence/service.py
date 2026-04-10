@@ -471,8 +471,3 @@ def get_dashboard(db: Session) -> dict[str, Any]:
     return intel_repo.get_dashboard_inteligente(db)
 
 
-from app.domains.geo.intelligence.service_catastro_support import (  # noqa: E402
-    get_afectados_evento,
-    get_afectados_zona,
-    import_catastro_geojson,
-)

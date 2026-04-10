@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +10,6 @@ import rasterio
 from rasterio.features import shapes
 from rasterio.mask import mask as rasterio_mask
 from rasterio.warp import Resampling, calculate_default_transform, reproject
-from shapely.geometry import box, mapping, shape
 
 from app.domains.geo.processing_support import (
     classify_terrain_arrays,

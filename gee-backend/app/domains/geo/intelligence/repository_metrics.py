@@ -7,7 +7,7 @@ from typing import Any, Optional
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.domains.geo.intelligence.models import AlertaGeo, CompositeZonalStats, IndiceHidrico, PuntoConflicto, ZonaOperativa
+from app.domains.geo.intelligence.models import AlertaGeo, IndiceHidrico, PuntoConflicto, ZonaOperativa
 
 
 class IntelligenceRepositoryMetricsMixin:

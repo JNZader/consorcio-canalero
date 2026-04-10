@@ -15,7 +15,6 @@ Each task:
 
 from __future__ import annotations
 
-import math
 import traceback
 import uuid
 from typing import Any
@@ -28,7 +27,6 @@ from app.domains.geo.gee_tasks_support import (
     build_flood_analysis_result,
     build_sar_temporal_result,
     detect_vv_anomalies_impl,
-    failure_error_message,
     update_status_if_needed,
 )
 

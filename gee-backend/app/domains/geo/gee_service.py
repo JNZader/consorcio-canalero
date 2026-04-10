@@ -1,10 +1,9 @@
 """Google Earth Engine service entrypoints and compatibility wrappers."""
 
-import calendar
 import ee
 import json
 import logging as _logging
-from datetime import date, datetime as _datetime, timedelta
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List

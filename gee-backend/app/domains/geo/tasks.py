@@ -473,10 +473,6 @@ def composite_analysis_task(
         estado_geo_job=EstadoGeoJob,
     )
 
-from app.domains.geo.tasks_hydromet import (
-    compute_ndwi_baselines_task,
-    rainfall_backfill,
-)
 @celery_app.task(queue="geo", name="geo.rainfall_daily_sync")
 def rainfall_daily_sync() -> dict:
     from datetime import date as date_type, timedelta as td

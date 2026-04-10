@@ -28,7 +28,6 @@ from app.domains.geo.rainfall_service_support import (
     detect_rainfall_events_impl,
     load_zone_geometries_impl,
     postgis_to_ee_geometry_impl,
-    run_backfill_impl,
 )
 from app.domains.geo.repository import GeoRepository
 

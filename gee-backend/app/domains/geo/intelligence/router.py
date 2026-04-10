@@ -27,11 +27,8 @@ from app.domains.geo.intelligence.router_support import (
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
     BasinRiskRankingResponse,
-    CanalSuggestionResponse,
-    CompositeComparisonItemResponse,
     CompositeComparisonResponse,
     CompositeAnalysisRequest,
-    CompositeZonalStatsResponse,
     CriticidadRequest,
     CriticidadResponse,
     DashboardInteligente,

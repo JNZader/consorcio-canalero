@@ -32,12 +32,6 @@ def _fmt_money(amount: Any) -> str:
     return fmt_money(amount)
 
 
-from app.shared.pdf.builders_common import (
-    build_color_legend_table as _build_color_legend_table,
-)
-from app.shared.pdf.builders_common import (
-    decode_data_url_image as _decode_data_url_image,
-)
 
 
 # ── Tramite PDF ───────────────────────────────────────────
@@ -287,7 +281,3 @@ def build_finanzas_pdf(
 
 # ── Zonificacion aprobada PDF ────────────────────────────
 
-from app.shared.pdf.builders_zoning import (
-    build_approved_zoning_map_pdf,
-    build_approved_zoning_pdf,
-)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import traceback
-from datetime import timedelta
 from typing import Any
 
 
