@@ -25,7 +25,7 @@ export interface WaterwayLayer {
 }
 
 /** Waterway definitions with display name and styling */
-const WATERWAY_DEFS = [
+export const WATERWAY_DEFS = [
   {
     id: 'rio_tercero',
     file: 'rio_tercero.geojson',

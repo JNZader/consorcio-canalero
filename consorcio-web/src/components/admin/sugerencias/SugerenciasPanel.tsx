@@ -1,326 +1,39 @@
 import {
-  ActionIcon,
-  Badge,
   Box,
   Button,
-  Card,
-  Center,
-  Collapse,
   Container,
-  Divider,
   Group,
-  Loader,
-  Modal,
-  Pagination,
   Paper,
-  Select,
   SimpleGrid,
-  Stack,
-  Table,
   Text,
-  Textarea,
-  TextInput,
-  ThemeIcon,
-  Timeline,
   Title,
-  Tooltip,
 } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type Sugerencia, type SugerenciasStats, sugerenciasApi, apiFetch } from '../../../lib/api';
 import { useWaterways } from '../../../hooks/useWaterways';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
-import { EmptyState } from '../../ui';
 import {
   IconCheck,
-  IconInfoCircle,
-  IconHistory,
   IconPlus,
-  IconArrowRight,
   IconCalendar,
-  IconCircleCheck,
   IconTrash,
   IconClock,
   IconUsers,
   IconBuilding,
 } from '../../ui/icons';
-import { MAP_CENTER } from '../../../constants';
-
-interface SeguimientoEntry {
-  id: string;
-  estado_anterior: string;
-  estado_nuevo: string;
-  comentario_publico: string;
-  comentario_interno: string;
-  fecha: string;
-}
-
-const ITEMS_PER_PAGE = 10;
-
-const ESTADO_OPTIONS = [
-  { value: 'pendiente', label: 'Pendiente', color: 'yellow' },
-  { value: 'en_agenda', label: 'En Agenda', color: 'blue' },
-  { value: 'tratado', label: 'Tratado', color: 'green' },
-  { value: 'descartado', label: 'Descartado', color: 'gray' },
-];
-
-const CATEGORIA_OPTIONS = [
-  { value: 'infraestructura', label: 'Infraestructura' },
-  { value: 'servicios', label: 'Servicios' },
-  { value: 'administrativo', label: 'Administrativo' },
-  { value: 'ambiental', label: 'Ambiental' },
-  { value: 'otro', label: 'Otro' },
-];
-
-const PRIORIDAD_OPTIONS = [
-  { value: 'baja', label: 'Baja', color: 'gray' },
-  { value: 'normal', label: 'Normal', color: 'blue' },
-  { value: 'alta', label: 'Alta', color: 'orange' },
-  { value: 'urgente', label: 'Urgente', color: 'red' },
-];
-
-interface SugerenciasTableContentProps {
-  readonly loading: boolean;
-  readonly sugerencias: Sugerencia[];
-  readonly totalPages: number;
-  readonly page: number;
-  readonly onPageChange: (page: number) => void;
-  readonly onViewDetail: (sugerencia: Sugerencia) => void;
-  readonly getStatusBadge: (status: string) => React.ReactNode;
-}
-
-function SugerenciasTableContent({
-  loading,
-  sugerencias,
-  totalPages,
-  page,
-  onPageChange,
-  onViewDetail,
-  getStatusBadge,
-}: SugerenciasTableContentProps) {
-  if (loading) {
-    return (
-      <Center py="xl">
-        <Stack align="center" gap="md">
-          <Loader />
-          <Text size="sm" c="gray.6">
-            Cargando sugerencias...
-          </Text>
-        </Stack>
-      </Center>
-    );
-  }
-
-  if (sugerencias.length === 0) {
-    return (
-      <EmptyState
-        title="No hay sugerencias"
-        description="No se encontraron sugerencias con los filtros aplicados"
-      />
-    );
-  }
-
-  return (
-    <>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Fecha</Table.Th>
-            <Table.Th>Titulo</Table.Th>
-            <Table.Th>Categoria</Table.Th>
-            <Table.Th>Tipo</Table.Th>
-            <Table.Th>Estado</Table.Th>
-            <Table.Th>Acciones</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {sugerencias.map((sug) => (
-            <Table.Tr key={sug.id}>
-              <Table.Td>
-                <Text size="sm">{formatDate(sug.created_at)}</Text>
-              </Table.Td>
-              <Table.Td>
-                <Text size="sm" lineClamp={1} style={{ maxWidth: 250 }}>
-                  {sug.titulo}
-                </Text>
-                {sug.geometry?.features?.length ? (
-                  <Badge size="xs" color="blue" variant="light" mt={4}>
-                    Con línea
-                  </Badge>
-                ) : null}
-              </Table.Td>
-              <Table.Td>
-                <Badge variant="outline" size="sm">
-                  {CATEGORIA_OPTIONS.find((c) => c.value === sug.categoria)?.label ||
-                    sug.categoria ||
-                    'Sin categoria'}
-                </Badge>
-              </Table.Td>
-              <Table.Td>
-                <Badge
-                  color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'}
-                  size="sm"
-                  variant="light"
-                >
-                  {sug.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
-                </Badge>
-              </Table.Td>
-              <Table.Td>{getStatusBadge(sug.estado)}</Table.Td>
-              <Table.Td>
-                <Tooltip label="Ver detalle">
-                  <ActionIcon variant="light" onClick={() => onViewDetail(sug)}>
-                    <IconInfoCircle size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-
-      {totalPages > 1 && (
-        <Group justify="center" mt="md">
-          <Pagination total={totalPages} value={page} onChange={onPageChange} />
-        </Group>
-      )}
-    </>
-  );
-}
-
-// Stats Card Component
-function StatsCard({
-  label,
-  value,
-  color,
-  icon: Icon,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  icon: React.ComponentType<{ size?: number }>;
-}) {
-  return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder>
-      <Group justify="space-between">
-        <div>
-          <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-            {label}
-          </Text>
-          <Text size="xl" fw={700}>
-            {value}
-          </Text>
-        </div>
-        <ThemeIcon color={color} size="lg" radius="md" variant="light">
-          <Icon size={20} />
-        </ThemeIcon>
-      </Group>
-    </Card>
-  );
-}
-
-// ─── Mini-map for suggestion geometry preview ─────────────────────────────────
-
-interface SugerenciaGeometryMapProps {
-  readonly geometry: Sugerencia['geometry'];
-  readonly canales: Array<{ id: string; data: import('geojson').FeatureCollection; style: { color?: string; weight?: number; opacity?: number } }>;
-}
-
-function SugerenciaGeometryMap({ geometry, canales }: SugerenciaGeometryMapProps) {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
-
-  useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
-
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '&copy; OpenStreetMap',
-          },
-        },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-      },
-      center: [MAP_CENTER[1], MAP_CENTER[0]],
-      zoom: 12,
-    });
-
-    map.on('load', () => {
-      // Canales existentes as reference
-      for (const canal of canales) {
-        const sourceId = `canal-${canal.id}`;
-        const layerId = `canal-${canal.id}-line`;
-        if (!map.getSource(sourceId)) {
-          map.addSource(sourceId, { type: 'geojson', data: canal.data });
-          map.addLayer({
-            id: layerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': canal.style.color ?? '#0B3D91',
-              'line-width': canal.style.weight ?? 2,
-              'line-opacity': canal.style.opacity ?? 0.8,
-            },
-          });
-        }
-      }
-
-      // Suggested geometry in violet
-      if (geometry) {
-        map.addSource('sugerencia-geom', { type: 'geojson', data: geometry as import('geojson').FeatureCollection });
-        map.addLayer({
-          id: 'sugerencia-geom-line',
-          type: 'line',
-          source: 'sugerencia-geom',
-          paint: { 'line-color': '#7B1FA2', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [8, 6] },
-        });
-
-        // Auto-fit to suggestion
-        const coords: [number, number][] = [];
-        for (const f of (geometry as import('geojson').FeatureCollection).features) {
-          if (f.geometry.type === 'LineString') {
-            for (const c of f.geometry.coordinates) {
-              coords.push([c[0] as number, c[1] as number]);
-            }
-          }
-        }
-        if (coords.length > 0) {
-          const lngs = coords.map(([lng]) => lng);
-          const lats = coords.map(([, lat]) => lat);
-          try {
-            map.fitBounds(
-              [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-              { padding: 40, maxZoom: 14 }
-            );
-          } catch {
-            // ignore
-          }
-        }
-      }
-    });
-
-    mapInstanceRef.current = map;
-
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />;
-}
+import { ITEMS_PER_PAGE } from './constants';
+import type { SeguimientoEntry } from './sugerenciasPanelTypes';
+import { filterSugerenciasByQuery, getStatusBadge } from './sugerenciasPanelUtils';
+import { StatsCard } from './components/StatsCard';
+import { SugerenciasTableContent } from './components/SugerenciasTableContent';
+import { CreateInternalModal } from './components/CreateInternalModal';
+import { SuggestionDetailModal } from './components/SuggestionDetailModal';
+import { ProximaReunionSection } from './components/ProximaReunionSection';
+import { SugerenciasFilters } from './components/SugerenciasFilters';
 
 export default function SugerenciasPanel() {
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
@@ -376,9 +89,7 @@ export default function SugerenciasPanel() {
   const [showHistorial, setShowHistorial] = useState(false);
   const { waterways } = useWaterways();
 
-  const { announce } = useLiveRegion();
-  const announceRef = useRef(announce);
-  announceRef.current = announce;
+  useLiveRegion();
 
   // Load stats
   const loadStats = useCallback(async () => {
@@ -641,64 +352,9 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const option = ESTADO_OPTIONS.find((o) => o.value === status);
-    return (
-      <Badge color={option?.color || 'gray'} variant="light">
-        {option?.label || status}
-      </Badge>
-    );
-  };
-
-  const _getHistorialIcon = (_accion: string) => {
-    switch (_accion) {
-      case 'creado':
-        return <IconPlus size={14} />;
-      case 'agendado':
-        return <IconCalendar size={14} />;
-      case 'resuelto':
-        return <IconCircleCheck size={14} />;
-      default:
-        return <IconArrowRight size={14} />;
-    }
-  };
-
-  const _getHistorialColor = (_accion: string): string => {
-    switch (_accion) {
-      case 'creado':
-        return 'blue';
-      case 'agendado':
-        return 'violet';
-      case 'resuelto':
-        return 'green';
-      default:
-        return 'gray';
-    }
-  };
-
-  const _getAccionLabel = (_accion: string): string => {
-    switch (_accion) {
-      case 'creado':
-        return 'Sugerencia creada';
-      case 'agendado':
-        return 'Agendada para reunion';
-      case 'resuelto':
-        return 'Marcada como resuelta';
-      case 'estado_cambiado':
-        return 'Estado actualizado';
-      default:
-        return _accion;
-    }
-  };
-
   // Filter sugerencias by search query
   const filteredSugerencias = useMemo(() => {
-    if (!searchQuery) return sugerencias;
-    const query = searchQuery.toLowerCase();
-    return sugerencias.filter(
-      (sug) =>
-        sug.titulo.toLowerCase().includes(query) || sug.descripcion.toLowerCase().includes(query)
-    );
+    return filterSugerenciasByQuery(sugerencias, searchQuery);
   }, [sugerencias, searchQuery]);
 
   return (
@@ -742,118 +398,23 @@ export default function SugerenciasPanel() {
           />
         </SimpleGrid>
 
-        {/* Proxima Reunion Section */}
-        {proximaReunion.length > 0 && (
-          <Paper
-            shadow="sm"
-            p="lg"
-            radius="md"
-            mb="xl"
-            withBorder
-            style={{ borderColor: 'var(--mantine-color-blue-3)' }}
-          >
-            <Group gap="xs" mb="md">
-              <ThemeIcon color="blue" size="md" variant="light">
-                <IconCalendar size={16} />
-              </ThemeIcon>
-              <Title order={4}>Temas para Proxima Reunion</Title>
-              <Badge color="blue" variant="light">
-                {proximaReunion.length} temas
-              </Badge>
-            </Group>
-            <Stack gap="xs">
-              {proximaReunion.map((sug) => (
-                <Paper
-                  key={sug.id}
-                  p="sm"
-                  radius="sm"
-                  style={{
-                    background:
-                      'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => handleViewDetail(sug)}
-                >
-                  <Group justify="space-between">
-                    <div style={{ flex: 1 }}>
-                      <Group gap="xs">
-                        <Text size="sm" fw={500}>
-                          {sug.titulo}
-                        </Text>
-                        <Badge
-                          size="xs"
-                          color={sug.tipo === 'ciudadana' ? 'blue' : 'violet'}
-                          variant="light"
-                        >
-                          {sug.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
-                        </Badge>
-                        {sug.prioridad !== 'normal' && (
-                          <Badge
-                            size="xs"
-                            color={
-                              PRIORIDAD_OPTIONS.find((p) => p.value === sug.prioridad)?.color ||
-                              'gray'
-                            }
-                            variant="dot"
-                          >
-                            {PRIORIDAD_OPTIONS.find((p) => p.value === sug.prioridad)?.label ||
-                              sug.prioridad}
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed" lineClamp={1}>
-                        {sug.descripcion}
-                      </Text>
-                    </div>
-                    {sug.fecha_reunion && (
-                      <Badge color="blue" variant="outline" size="sm">
-                        {formatDate(sug.fecha_reunion)}
-                      </Badge>
-                    )}
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
-          </Paper>
-        )}
+        <ProximaReunionSection
+          proximaReunion={proximaReunion}
+          onViewDetail={handleViewDetail}
+        />
 
-        {/* Filters */}
-        <Paper shadow="sm" p="md" radius="md" mb="md">
-          <Group>
-            <TextInput
-              placeholder="Buscar..."
-              value={searchInputValue}
-              onChange={(e) => {
-                setSearchInputValue(e.target.value);
-                debouncedSetSearch(e.target.value);
-              }}
-              style={{ flex: 1 }}
-            />
-            <Select
-              placeholder="Estado"
-              data={[{ value: '', label: 'Todos' }, ...ESTADO_OPTIONS]}
-              value={filterEstado}
-              onChange={setFilterEstado}
-              clearable
-              w={150}
-            />
-            <Select
-              placeholder="Tipo"
-              data={[
-                { value: '', label: 'Todos' },
-                { value: 'ciudadana', label: 'Ciudadana' },
-                { value: 'interna', label: 'Interna' },
-              ]}
-              value={filterTipo}
-              onChange={setFilterTipo}
-              clearable
-              w={150}
-            />
-            <Button variant="light" onClick={refreshAll}>
-              Actualizar
-            </Button>
-          </Group>
-        </Paper>
+        <SugerenciasFilters
+          searchInputValue={searchInputValue}
+          onSearchInputChange={(value) => {
+            setSearchInputValue(value);
+            debouncedSetSearch(value);
+          }}
+          filterEstado={filterEstado}
+          setFilterEstado={setFilterEstado}
+          filterTipo={filterTipo}
+          setFilterTipo={setFilterTipo}
+          onRefresh={refreshAll}
+        />
 
         {/* Table */}
         <Paper shadow="sm" p="lg" radius="md">
@@ -868,316 +429,47 @@ export default function SugerenciasPanel() {
           />
         </Paper>
 
-        {/* Detail Modal */}
-        <Modal opened={detailOpened} onClose={closeDetail} title="Detalle de Sugerencia" size="lg">
-          {selectedSugerencia && (
-            <Stack gap="md">
-              <div>
-                <Text size="sm" fw={500}>
-                  Titulo
-                </Text>
-                <Text>{selectedSugerencia.titulo}</Text>
-              </div>
+        <SuggestionDetailModal
+          opened={detailOpened}
+          onClose={closeDetail}
+          selectedSugerencia={selectedSugerencia}
+          waterways={waterways}
+          historial={historial}
+          loadingHistorial={loadingHistorial}
+          showHistorial={showHistorial}
+          setShowHistorial={setShowHistorial}
+          newEstado={newEstado}
+          setNewEstado={setNewEstado}
+          publicComment={publicComment}
+          setPublicComment={setPublicComment}
+          adminNotes={adminNotes}
+          setAdminNotes={setAdminNotes}
+          agendarFecha={agendarFecha}
+          setAgendarFecha={setAgendarFecha}
+          onAgendar={handleAgendar}
+          agendando={agendando}
+          onIncorporateChannel={handleIncorporateChannel}
+          incorporating={incorporating}
+          onDelete={handleDelete}
+          deleting={deleting}
+          onUpdate={handleUpdate}
+          updating={updating}
+        />
 
-              <div>
-                <Text size="sm" fw={500}>
-                  Descripcion
-                </Text>
-                <Paper
-                  p="sm"
-                  style={{
-                    background:
-                      'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))',
-                  }}
-                  radius="sm"
-                >
-                  <Text size="sm">{selectedSugerencia.descripcion}</Text>
-                </Paper>
-              </div>
-
-              <Group>
-                <div>
-                  <Text size="sm" fw={500}>
-                    Categoria
-                  </Text>
-                  <Badge variant="outline">
-                    {CATEGORIA_OPTIONS.find((c) => c.value === selectedSugerencia.categoria)
-                      ?.label || 'Sin categoria'}
-                  </Badge>
-                </div>
-                <div>
-                  <Text size="sm" fw={500}>
-                    Tipo
-                  </Text>
-                  <Badge
-                    color={selectedSugerencia.tipo === 'ciudadana' ? 'blue' : 'violet'}
-                    variant="light"
-                  >
-                    {selectedSugerencia.tipo === 'ciudadana' ? 'Ciudadana' : 'Interna'}
-                  </Badge>
-                </div>
-                <div>
-                  <Text size="sm" fw={500}>
-                    Fecha
-                  </Text>
-                  <Text size="sm" c="gray.6">
-                    {formatDate(selectedSugerencia.created_at)}
-                  </Text>
-                </div>
-              </Group>
-
-              {selectedSugerencia.contacto_nombre && (
-                <div>
-                  <Text size="sm" fw={500}>
-                    Contacto
-                  </Text>
-                  <Text size="sm" c="gray.6">
-                    {selectedSugerencia.contacto_nombre}
-                    {selectedSugerencia.contacto_email && ` - ${selectedSugerencia.contacto_email}`}
-                    {selectedSugerencia.contacto_telefono &&
-                      ` - ${selectedSugerencia.contacto_telefono}`}
-                  </Text>
-                </div>
-              )}
-
-              {selectedSugerencia.geometry?.features?.length ? (
-                <div>
-                  <Group justify="space-between" align="center" mb="xs">
-                    <Text size="sm" fw={500}>
-                      Geometría sugerida
-                    </Text>
-                    <Badge color="blue" variant="light">
-                      Propuesta no oficial
-                    </Badge>
-                  </Group>
-                  <Box style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
-                    <SugerenciaGeometryMap
-                      geometry={selectedSugerencia.geometry}
-                      canales={waterways.filter((l) => l.id === 'canales_existentes')}
-                    />
-                  </Box>
-                  <Text size="xs" c="dimmed" mt={6}>
-                    Línea sugerida en violeta. `Canales existentes` se muestran como referencia en azul oscuro.
-                  </Text>
-                  <Group mt="sm">
-                    <Button
-                      size="xs"
-                      color="teal"
-                      onClick={handleIncorporateChannel}
-                      loading={incorporating}
-                      disabled={String(selectedSugerencia.estado) === 'implementada'}
-                    >
-                      {String(selectedSugerencia.estado) === 'implementada'
-                        ? 'Ya incorporada a Canales existentes'
-                        : 'Incorporar a Canales existentes'}
-                    </Button>
-                  </Group>
-                </div>
-              ) : null}
-
-              {/* Historial section */}
-              <Paper
-                p="md"
-                style={{
-                  background:
-                    'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
-                }}
-                radius="md"
-              >
-                <Group justify="space-between" mb="sm">
-                  <Group gap="xs">
-                    <IconHistory size={18} />
-                    <Text size="sm" fw={600}>
-                      Historial de Gestión
-                    </Text>
-                  </Group>
-                  <Button
-                    variant="subtle"
-                    size="xs"
-                    onClick={() => setShowHistorial(!showHistorial)}
-                    loading={loadingHistorial}
-                  >
-                    {showHistorial ? 'Ocultar' : 'Mostrar'} ({historial.length})
-                  </Button>
-                </Group>
-
-                <Collapse in={showHistorial}>
-                  {historial.length === 0 ? (
-                    <Text size="sm" c="dimmed" ta="center" py="md">
-                      {loadingHistorial ? 'Cargando historial...' : 'Sin historial disponible'}
-                    </Text>
-                  ) : (
-                    <Timeline active={0} lineWidth={2}>
-                      {historial.map((entry) => (
-                        <Timeline.Item
-                          key={entry.id}
-                          title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
-                        >
-                          <Text size="xs" fw={500}>
-                            {entry.comentario_publico}
-                          </Text>
-                          {entry.comentario_interno && (
-                            <Text size="xs" c="blue" fs="italic">
-                              Interno: {entry.comentario_interno}
-                            </Text>
-                          )}
-                          <Text size="xs" c="dimmed" mt={2}>
-                            {formatDate(entry.fecha)}
-                          </Text>
-                        </Timeline.Item>
-                      ))}
-                      <Timeline.Item title="Sugerencia Creada">
-                        <Text size="xs" mt={2}>
-                          Ingresada al sistema
-                        </Text>
-                      </Timeline.Item>
-                    </Timeline>
-                  )}
-                </Collapse>
-              </Paper>
-
-              {/* Agendar section */}
-              {selectedSugerencia.estado === 'pendiente' && (
-                <Paper
-                  p="md"
-                  style={{
-                    background:
-                      'light-dark(var(--mantine-color-violet-0), var(--mantine-color-dark-5))',
-                  }}
-                  radius="md"
-                >
-                  <Text size="sm" fw={600} mb="md">
-                    Agendar para Reunion
-                  </Text>
-                  <Group>
-                    <DatePickerInput
-                      label="Fecha de reunion"
-                      placeholder="Seleccionar fecha"
-                      value={agendarFecha}
-                      onChange={setAgendarFecha}
-                      minDate={new Date()}
-                      style={{ flex: 1 }}
-                    />
-                    <Button
-                      color="violet"
-                      onClick={handleAgendar}
-                      loading={agendando}
-                      disabled={!agendarFecha}
-                      mt={24}
-                    >
-                      Agendar
-                    </Button>
-                  </Group>
-                </Paper>
-              )}
-
-              {/* Admin section */}
-              <Paper
-                p="md"
-                style={{
-                  background:
-                    'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
-                }}
-                radius="md"
-              >
-                <Title order={6} size="sm" fw={600} mb="md">
-                  Gestión de la sugerencia
-                </Title>
-                <Stack gap="sm">
-                  <Select
-                    label="Cambiar Estado"
-                    data={ESTADO_OPTIONS}
-                    value={newEstado}
-                    onChange={(v) => setNewEstado(v || 'pendiente')}
-                  />
-
-                  <Textarea
-                    label="Comentario Público"
-                    placeholder="Lo que el vecino verá en su seguimiento..."
-                    value={publicComment}
-                    onChange={(e) => setPublicComment(e.target.value)}
-                    minRows={2}
-                  />
-
-                  <Textarea
-                    label="Notas Internas (Consorcio)"
-                    placeholder="Detalles de la discusión en comisión, presupuesto, etc..."
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                    minRows={2}
-                  />
-                </Stack>
-              </Paper>
-
-              <Divider />
-
-              <Group justify="space-between">
-                <Button
-                  variant="light"
-                  color="red"
-                  leftSection={<IconTrash size={16} />}
-                  onClick={handleDelete}
-                  loading={deleting}
-                >
-                  Eliminar
-                </Button>
-                <Group>
-                  <Button variant="light" onClick={closeDetail}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleUpdate} loading={updating}>
-                    Registrar Gestión
-                  </Button>
-                </Group>
-              </Group>
-            </Stack>
-          )}
-        </Modal>
-
-        {/* Create Internal Modal */}
-        <Modal opened={createOpened} onClose={closeCreate} title="Nuevo Tema Interno" size="md">
-          <Stack gap="md">
-            <TextInput
-              label="Titulo"
-              placeholder="Titulo del tema"
-              value={newTitulo}
-              onChange={(e) => setNewTitulo(e.target.value)}
-              required
-            />
-            <Textarea
-              label="Descripcion"
-              placeholder="Describe el tema a tratar..."
-              value={newDescripcion}
-              onChange={(e) => setNewDescripcion(e.target.value)}
-              minRows={4}
-              required
-            />
-            <Group grow>
-              <Select
-                label="Categoria"
-                placeholder="Seleccionar"
-                data={CATEGORIA_OPTIONS}
-                value={newCategoria}
-                onChange={setNewCategoria}
-                clearable
-              />
-              <Select
-                label="Prioridad"
-                data={PRIORIDAD_OPTIONS}
-                value={newPrioridad}
-                onChange={(v) => setNewPrioridad(v || 'normal')}
-              />
-            </Group>
-            <Group justify="flex-end" mt="md">
-              <Button variant="light" onClick={closeCreate}>
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateInternal} loading={creating}>
-                Crear Tema
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
+        <CreateInternalModal
+          opened={createOpened}
+          onClose={closeCreate}
+          newTitulo={newTitulo}
+          setNewTitulo={setNewTitulo}
+          newDescripcion={newDescripcion}
+          setNewDescripcion={setNewDescripcion}
+          newCategoria={newCategoria}
+          setNewCategoria={setNewCategoria}
+          newPrioridad={newPrioridad}
+          setNewPrioridad={setNewPrioridad}
+          creating={creating}
+          onCreate={handleCreateInternal}
+        />
       </Container>
     </LiveRegionProvider>
   );

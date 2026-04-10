@@ -1,0 +1,62 @@
+import { renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import { useMapInitialization } from '../../src/components/map2d/useMapInitialization';
+
+describe('useMapInitialization', () => {
+  it('creates a map, registers controls and disposes on unmount', () => {
+    const mockMap = {
+      addControl: vi.fn(),
+      on: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const mapConstructor = vi.fn(function MockMap() {
+      return mockMap;
+    });
+    const navigationControl = vi.fn(function NavigationControl() {
+      return { nav: true };
+    });
+    const scaleControl = vi.fn(function ScaleControl() {
+      return { scale: true };
+    });
+
+    const maplibre = {
+      Map: mapConstructor,
+      NavigationControl: navigationControl,
+      ScaleControl: scaleControl,
+    } as any;
+
+    const containerRef = { current: document.createElement('div') };
+    const mapRef = { current: null };
+    const setMapReady = vi.fn();
+
+    const { unmount } = renderHook(() =>
+      useMapInitialization({
+        maplibre,
+        containerRef: containerRef as any,
+        center: [-62.68, -32.62],
+        zoom: 10,
+        mapRef: mapRef as any,
+        setMapReady,
+      }),
+    );
+
+    expect(mapConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        container: containerRef.current,
+        center: [-62.68, -32.62],
+        zoom: 10,
+      }),
+    );
+    expect(mockMap.addControl).toHaveBeenCalledTimes(2);
+    expect(mockMap.on).toHaveBeenCalledWith('load', expect.any(Function));
+    expect(mockMap.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(mapRef.current).toBe(mockMap);
+
+    unmount();
+
+    expect(mockMap.remove).toHaveBeenCalledTimes(1);
+    expect(setMapReady).toHaveBeenCalledWith(false);
+  });
+});

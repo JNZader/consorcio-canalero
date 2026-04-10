@@ -30,3 +30,10 @@
   overflow: hidden;
   border: 1px solid var(--mantine-color-default-border);
 }
+
+.mapContainerLarge {
+  height: 400px;
+  max-height: 400px;
+  min-height: 400px;
+  aspect-ratio: auto;
+}

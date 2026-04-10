@@ -14,6 +14,8 @@
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type maplibregl from 'maplibre-gl';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
+import { removeMapboxDrawArtifacts } from './mapboxDrawShared';
 
 // ─── Public types (same as before) ───────────────────────────────────────────
 
@@ -58,6 +60,8 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
     }));
 
     useEffect(() => {
+      ensureMapboxDrawCompatibility(map);
+
       const draw = new MapboxDraw({
         displayControlsDefault: false,
         controls: showControls
@@ -94,17 +98,7 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
       // Before adding the control, remove any stale Draw sources/layers that may
       // linger after WebGL context loss+restore (MapboxDraw re-fires its setup on
       // every map 'load' event, causing "source already exists" on context restore).
-      const existingStyle = map.getStyle();
-      if (existingStyle && map.getSource('mapbox-gl-draw-cold')) {
-        for (const layer of existingStyle.layers ?? []) {
-          if (layer.id.startsWith('gl-draw-') || layer.id.includes('mapbox-gl-draw')) {
-            try { map.removeLayer(layer.id); } catch { /* ignore */ }
-          }
-        }
-        for (const id of ['mapbox-gl-draw-cold', 'mapbox-gl-draw-hot']) {
-          try { map.removeSource(id); } catch { /* ignore */ }
-        }
-      }
+      removeMapboxDrawArtifacts(map);
 
       // MapboxDraw is compatible with maplibre-gl maps — it targets the same GL API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,17 +133,24 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
         });
       };
 
+      const handleContextLost = () => {
+        removeMapboxDrawArtifacts(map);
+      };
+
       map.on('draw.create', handleCreate);
       map.on('draw.delete', handleDelete);
       map.on('draw.update', handleUpdate);
+      map.on('webglcontextlost', handleContextLost);
 
       return () => {
         map.off('draw.create', handleCreate);
         map.off('draw.delete', handleDelete);
         map.off('draw.update', handleUpdate);
+        map.off('webglcontextlost', handleContextLost);
         if (map.hasControl(draw as unknown as maplibregl.IControl)) {
           map.removeControl(draw as unknown as maplibregl.IControl);
         }
+        removeMapboxDrawArtifacts(map);
         drawRef.current = null;
       };
     }, [map, showControls]);

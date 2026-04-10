@@ -14,7 +14,6 @@ import {
   Button,
   Card,
   Divider,
-  FileButton,
   Group,
   Paper,
   Progress,
@@ -31,14 +30,13 @@ import { notifications } from '@mantine/notifications';
 import {
   getTerritorialReport,
   getTerritorialStatus,
-  importCanales,
-  importSuelos,
   listCuencas,
+  syncGeodata,
   type TerritorialReportResponse,
   type TerritorialStatus,
 } from '../../lib/api/territorial';
 import { listZonasOperativas, type ZonaOperativaItem } from '../../lib/api/floodFlow';
-import { IconAlertTriangle, IconInfoCircle, IconLeaf, IconMap, IconUpload } from '../ui/icons';
+import { IconAlertTriangle, IconInfoCircle, IconLeaf, IconMap } from '../ui/icons';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,8 +59,12 @@ function ReportView({ report }: { report: TerritorialReportResponse }) {
     <Stack gap="md">
       <Group gap="xl">
         <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-          <Text size="xs" c="dimmed" mb={4}>Canales</Text>
+          <Text size="xs" c="dimmed" mb={4}>Canales de riego</Text>
           <Text fw={700} size="xl">{fmtNum(report.km_canales, 2)} km</Text>
+        </Paper>
+        <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
+          <Text size="xs" c="dimmed" mb={4}>Caminos</Text>
+          <Text fw={700} size="xl">{fmtNum(report.total_km_caminos, 2)} km</Text>
         </Paper>
         <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
           <Text size="xs" c="dimmed" mb={4}>Área analizada</Text>
@@ -73,6 +75,36 @@ function ReportView({ report }: { report: TerritorialReportResponse }) {
           <Text fw={700} size="xl">{report.suelos.length}</Text>
         </Paper>
       </Group>
+
+      {report.caminos_por_consorcio.length > 0 && (
+        <>
+          <Divider label="Caminos por consorcio caminero" labelPosition="left" />
+          <Table striped withTableBorder withColumnBorders>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Consorcio Caminero</Table.Th>
+                <Table.Th ta="right">km</Table.Th>
+                <Table.Th ta="right">%</Table.Th>
+                <Table.Th>Distribución</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {report.caminos_por_consorcio.map((c) => (
+                <Table.Tr key={c.consorcio_codigo}>
+                  <Table.Td>
+                    <Text fw={600} size="sm">{c.consorcio_nombre}</Text>
+                  </Table.Td>
+                  <Table.Td ta="right">{fmtNum(c.km, 2)}</Table.Td>
+                  <Table.Td ta="right">{fmtNum(c.pct)}%</Table.Td>
+                  <Table.Td style={{ minWidth: 120 }}>
+                    <Progress value={c.pct} color="orange" size="sm" radius="xl" />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </>
+      )}
 
       <Divider label="Distribución de suelos" labelPosition="left" />
 
@@ -116,109 +148,75 @@ function ReportView({ report }: { report: TerritorialReportResponse }) {
 
 // ─── ImportSection ────────────────────────────────────────────────────────────
 
-function ImportSection({
+function SyncSection({
   status,
-  onImported,
+  onSynced,
 }: {
   status: TerritorialStatus;
-  onImported: () => void;
+  onSynced: () => void;
 }) {
-  const [loadingSuelos, setLoadingSuelos] = useState(false);
-  const [loadingCanales, setLoadingCanales] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  async function handleImport(
-    file: File | null,
-    type: 'suelos' | 'canales',
-    setLoading: (v: boolean) => void
-  ) {
-    if (!file) return;
-    setLoading(true);
+  async function handleSync() {
+    setSyncing(true);
     try {
-      const text = await file.text();
-      const geojson = JSON.parse(text);
-      const fn = type === 'suelos' ? importSuelos : importCanales;
-      const res = await fn(geojson);
+      const res = await syncGeodata();
       notifications.show({
-        title: 'Importación exitosa',
+        title: 'Sincronización exitosa',
         message: res.message,
         color: 'green',
       });
-      onImported();
+      onSynced();
     } catch (err) {
       notifications.show({
-        title: 'Error al importar',
+        title: 'Error al sincronizar',
         message: err instanceof Error ? err.message : 'Error desconocido',
         color: 'red',
       });
     } finally {
-      setLoading(false);
+      setSyncing(false);
     }
   }
 
   return (
     <Card withBorder radius="md" p="md">
-      <Group mb="sm">
-        <ThemeIcon color="teal" variant="light" size="lg">
-          <IconUpload size={18} />
-        </ThemeIcon>
-        <div>
-          <Text fw={600}>Importar geodatos</Text>
-          <Text size="xs" c="dimmed">Reemplaza los datos existentes en PostGIS y recalcula las vistas</Text>
-        </div>
-      </Group>
+      <Group justify="space-between">
+        <Group>
+          <ThemeIcon color="teal" variant="light" size="lg">
+            <IconMap size={18} />
+          </ThemeIcon>
+          <div>
+            <Text fw={600}>Geodatos territoriales</Text>
+            <Text size="xs" c="dimmed">
+              Suelos, canales y caminos — sincroniza desde las capas del sistema
+            </Text>
+          </div>
+        </Group>
 
-      <Group gap="md">
-        <div>
-          <Group gap={6} mb={4}>
-            <Text size="sm" fw={500}>Suelos</Text>
+        <Group gap="md">
+          <Group gap={6}>
             <Badge size="xs" color={status.has_suelos ? 'green' : 'gray'} variant="dot">
-              {status.has_suelos ? 'Importado' : 'Sin datos'}
+              Suelos
             </Badge>
-          </Group>
-          <FileButton
-            onChange={(f) => handleImport(f, 'suelos', setLoadingSuelos)}
-            accept=".geojson,.json"
-          >
-            {(props) => (
-              <Button
-                {...props}
-                size="xs"
-                variant="light"
-                color="teal"
-                loading={loadingSuelos}
-                leftSection={<IconUpload size={14} />}
-              >
-                suelos_cu.geojson
-              </Button>
-            )}
-          </FileButton>
-        </div>
-
-        <div>
-          <Group gap={6} mb={4}>
-            <Text size="sm" fw={500}>Canales</Text>
             <Badge size="xs" color={status.has_canales ? 'green' : 'gray'} variant="dot">
-              {status.has_canales ? 'Importado' : 'Sin datos'}
+              Canales
+            </Badge>
+            <Badge size="xs" color={status.has_caminos ? 'green' : 'gray'} variant="dot">
+              Caminos
             </Badge>
           </Group>
-          <FileButton
-            onChange={(f) => handleImport(f, 'canales', setLoadingCanales)}
-            accept=".geojson,.json"
+
+          <Button
+            size="xs"
+            variant="light"
+            color="teal"
+            loading={syncing}
+            onClick={handleSync}
+            leftSection={<IconLeaf size={14} />}
           >
-            {(props) => (
-              <Button
-                {...props}
-                size="xs"
-                variant="light"
-                color="blue"
-                loading={loadingCanales}
-                leftSection={<IconUpload size={14} />}
-              >
-                canales_existentes.geojson
-              </Button>
-            )}
-          </FileButton>
-        </div>
+            Sincronizar geodatos
+          </Button>
+        </Group>
       </Group>
     </Card>
   );
@@ -227,7 +225,7 @@ function ImportSection({
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function InformesTerritorialesPanel() {
-  const [status, setStatus] = useState<TerritorialStatus>({ has_suelos: false, has_canales: false });
+  const [status, setStatus] = useState<TerritorialStatus>({ has_suelos: false, has_canales: false, has_caminos: false });
   const [cuencas, setCuencas] = useState<string[]>([]);
   const [zonas, setZonas] = useState<ZonaOperativaItem[]>([]);
 
@@ -249,7 +247,7 @@ export default function InformesTerritorialesPanel() {
       const [st, zs] = await Promise.all([getTerritorialStatus(), listZonasOperativas()]);
       setStatus(st);
       setZonas(zs);
-      if (!st.has_suelos && !st.has_canales) {
+      if (!st.has_suelos && !st.has_canales && !st.has_caminos) {
         setNoData(true);
         return;
       }
@@ -297,7 +295,7 @@ export default function InformesTerritorialesPanel() {
     }
   }
 
-  const hasData = status.has_suelos || status.has_canales;
+  const hasData = status.has_suelos || status.has_canales || status.has_caminos;
 
   return (
     <Stack gap="lg">
@@ -314,7 +312,7 @@ export default function InformesTerritorialesPanel() {
         </div>
       </Group>
 
-      <ImportSection status={status} onImported={loadInitialData} />
+      <SyncSection status={status} onSynced={loadInitialData} />
 
       {noData && !hasData && (
         <Alert icon={<IconAlertTriangle size={16} />} color="yellow" title="Sin datos importados">

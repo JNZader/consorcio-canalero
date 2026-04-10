@@ -182,7 +182,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
 
       {/* Sidebar */}
       <AppShell.Navbar p="md">
-        <AppShell.Section grow mt="xs">
+        <AppShell.Section grow mt="xs" style={{ overflowY: 'auto' }}>
           {NAV_SECTIONS.map((section, sectionIdx) => (
             <Box key={section.label}>
               {sectionIdx > 0 && <Divider my="sm" />}

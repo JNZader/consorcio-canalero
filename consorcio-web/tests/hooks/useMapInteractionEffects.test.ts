@@ -1,0 +1,106 @@
+import type { Feature } from 'geojson';
+import { renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import { useMapInteractionEffects } from '../../src/components/map2d/useMapInteractionEffects';
+
+function createMapMock() {
+  const handlers = new Map<string, Array<(event: any) => void>>();
+
+  return {
+    handlers,
+    map: {
+      on: vi.fn((event: string, handler: (payload: any) => void) => {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      }),
+      off: vi.fn((event: string, handler: (payload: any) => void) => {
+        handlers.set(
+          event,
+          (handlers.get(event) ?? []).filter((candidate) => candidate !== handler),
+        );
+      }),
+      getLayer: vi.fn(() => ({ id: 'layer' })),
+      queryRenderedFeatures: vi.fn(() => []),
+    },
+  };
+}
+
+describe('useMapInteractionEffects', () => {
+  it('registers click handler and selects a rendered feature', () => {
+    const { map, handlers } = createMapMock();
+    const setNewPoint = vi.fn();
+    const setSelectedFeature = vi.fn();
+    const setSelectedDraftBasinId = vi.fn();
+    const selectedFeature: Feature = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-62.68, -32.62] },
+      properties: { id: 'feat-1' },
+    };
+    map.queryRenderedFeatures.mockReturnValue([selectedFeature]);
+
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        markingMode: false,
+        setNewPoint,
+        setSelectedFeature,
+        showSuggestedZonesPanel: false,
+        setSelectedDraftBasinId,
+      }),
+    );
+
+    const clickHandler = handlers.get('click')?.[0];
+    expect(clickHandler).toBeTruthy();
+
+    clickHandler?.({
+      point: { x: 10, y: 10 },
+      lngLat: { lat: -32.6, lng: -62.6 },
+    });
+
+    expect(setSelectedFeature).toHaveBeenCalledWith(selectedFeature);
+    expect(setNewPoint).not.toHaveBeenCalled();
+  });
+
+  it('creates a new point in marking mode and captures basin id in zoning mode', () => {
+    const { map, handlers } = createMapMock();
+    const setNewPoint = vi.fn();
+    const setSelectedFeature = vi.fn();
+    const setSelectedDraftBasinId = vi.fn();
+
+    map.queryRenderedFeatures.mockReturnValue([{ properties: { id: 'basin-1' } }]);
+
+    const { rerender } = renderHook(
+      (props: { markingMode: boolean; showSuggestedZonesPanel: boolean }) =>
+        useMapInteractionEffects({
+          mapRef: { current: map } as any,
+          mapReady: true,
+          markingMode: props.markingMode,
+          setNewPoint,
+          setSelectedFeature,
+          showSuggestedZonesPanel: props.showSuggestedZonesPanel,
+          setSelectedDraftBasinId,
+        }),
+      { initialProps: { markingMode: true, showSuggestedZonesPanel: false } },
+    );
+
+    const firstClickHandler = handlers.get('click')?.[0];
+    firstClickHandler?.({
+      point: { x: 10, y: 10 },
+      lngLat: { lat: -32.61, lng: -62.61 },
+    });
+    expect(setNewPoint).toHaveBeenCalledWith({ lat: -32.61, lng: -62.61 });
+
+    rerender({ markingMode: false, showSuggestedZonesPanel: true });
+
+    const clickHandlers = handlers.get('click') ?? [];
+    const basinClickHandler = clickHandlers.at(-1);
+    basinClickHandler?.({
+      point: { x: 11, y: 11 },
+      lngLat: { lat: -32.62, lng: -62.62 },
+    });
+
+    expect(setSelectedDraftBasinId).toHaveBeenCalledWith('basin-1');
+    expect(setSelectedFeature).not.toHaveBeenCalled();
+  });
+});

@@ -1,19 +1,4 @@
-/**
- * FloodCalibrationPanel - Main page for flood model calibration.
- *
- * 3-panel layout:
- * - Left: Timeline/date picker + events list
- * - Right: Leaflet map with GEE tile overlay + zone labeling
- *
- * Allows users to:
- * 1. Select a date and view satellite imagery
- * 2. Click zones to label them as flooded/not-flooded
- * 3. Save labeled events
- * 4. Train the flood prediction model
- */
-
 import {
-  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -25,1031 +10,71 @@ import {
   Paper,
   Progress,
   SegmentedControl,
-  Skeleton,
   Stack,
-  Table,
   Text,
   TextInput,
   Title,
-  Tooltip,
 } from '@mantine/core';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Feature, FeatureCollection } from 'geojson';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { notifications } from '@mantine/notifications';
-import { useMediaQuery, useDisclosure } from '@mantine/hooks';
 
-import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../constants';
-import { useConfigStore } from '../../stores/configStore';
-import {
-  useFloodCalibrationStore,
-  selectLabeledCount,
-  selectCanSave,
-  selectSuggestionsCount,
-} from '../../stores/floodCalibrationStore';
-import { floodCalibrationApi } from '../../lib/api/floodCalibration';
-import type {
-  RainfallSuggestion,
-  BackfillStatusResponse,
-  NdwiBaselineResponse,
-  FloodEventDetailResponse,
-} from '../../lib/api/floodCalibration';
-import { API_URL } from '../../lib/api';
-import { logger } from '../../lib/logger';
+import { CalendarGrid } from './floodCalibration/CalendarGrid';
+import { FloodEventsPanel } from './floodCalibration/FloodEventsPanel';
+import { FloodSuggestionsPanel } from './floodCalibration/FloodSuggestionsPanel';
+import { FloodTrainingPanel } from './floodCalibration/FloodTrainingPanel';
+import { useFloodCalibrationController } from './floodCalibration/useFloodCalibrationController';
 import {
   IconAlertTriangle,
-  IconArrowLeft,
-  IconArrowRight,
   IconCalendar,
   IconCheck,
-  IconChevronDown,
-  IconChevronUp,
   IconCloudRain,
   IconDroplet,
-  IconEye,
   IconPlayerPlay,
-  IconRefresh,
   IconSatellite,
-  IconTrash,
-  IconWaveSine,
 } from '../ui/icons';
 
-// ─── Constants ────────────────────────────────────────────────────────
-
-const API_BASE = `${API_URL}/api/v2/geo/gee/images`;
-const BASINS_URL = `${API_URL}/api/v2/geo/basins`;
-
-const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-];
-
-const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
-
-/** Zone paint properties by label state */
-interface ZonePaint {
-  color: string;
-  fillColor: string;
-  fillOpacity: number;
-}
-
-function getZonePaint(zonaId: string, labeledZones: Record<string, boolean>): ZonePaint {
-  const label = labeledZones[zonaId];
-  if (label === true) {
-    // Flooded - red
-    return { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.4 };
-  }
-  if (label === false) {
-    // Not flooded - green
-    return { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.4 };
-  }
-  // Unlabeled - default
-  return { color: '#6b7280', fillColor: '#9ca3af', fillOpacity: 0.1 };
-}
-
-function getLabelBadge(zonaId: string, labeledZones: Record<string, boolean>) {
-  const label = labeledZones[zonaId];
-  if (label === true) return <Badge color="red" size="xs">Inundado</Badge>;
-  if (label === false) return <Badge color="green" size="xs">No inundado</Badge>;
-  return <Badge color="gray" size="xs">Sin etiquetar</Badge>;
-}
-
-// ─── Rainfall color helpers ──────────────────────────────────────────
-
-/**
- * Returns a background color based on rainfall intensity (mm).
- * - No data: transparent
- * - 0-10mm: light blue
- * - 10-30mm: medium blue
- * - 30-50mm: dark blue
- * - >50mm: red/dark red
- */
-function getRainfallColor(mm: number | undefined): string | undefined {
-  if (mm == null || mm <= 0) return undefined;
-  if (mm <= 10) return 'rgba(147, 197, 253, 0.5)'; // light blue
-  if (mm <= 30) return 'rgba(59, 130, 246, 0.5)'; // medium blue
-  if (mm <= 50) return 'rgba(29, 78, 216, 0.5)'; // dark blue
-  return 'rgba(220, 38, 38, 0.55)'; // red for >50mm
-}
-
-function getRainfallLabel(mm: number): string {
-  if (mm <= 10) return 'Lluvia leve';
-  if (mm <= 30) return 'Lluvia moderada';
-  if (mm <= 50) return 'Lluvia intensa';
-  return 'Lluvia muy intensa';
-}
-
-// ─── NDWI z-score helpers ────────────────────────────────────
-
-function formatZScore(z: number): string {
-  const sign = z >= 0 ? '+' : '';
-  return `${sign}${z.toFixed(1)}σ`;
-}
-
-function getZScoreColor(z: number): string {
-  const abs = Math.abs(z);
-  if (abs > 2) return 'red';
-  if (abs > 1) return 'orange';
-  return 'green';
-}
-
-// ─── Calendar Grid (reused from ImageExplorerPanel pattern) ────────
-
-interface CalendarGridProps {
-  year: number;
-  month: number;
-  availableDates: Set<string>;
-  selectedDay: string | null;
-  loadingDates: boolean;
-  onSelectDay: (dateStr: string) => void;
-  onPrevMonth: () => void;
-  onNextMonth: () => void;
-  /** Map of date (YYYY-MM-DD) to rainfall mm for overlay coloring */
-  rainfallByDate?: Record<string, number>;
-}
-
-function CalendarGrid({
-  year,
-  month,
-  availableDates,
-  selectedDay,
-  loadingDates,
-  onSelectDay,
-  onPrevMonth,
-  onNextMonth,
-  rainfallByDate = {},
-}: CalendarGridProps) {
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-  const firstDay = new Date(year, month, 1);
-  let startDow = firstDay.getDay() - 1;
-  if (startDow < 0) startDow = 6;
-
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: Array<{ day: number; dateStr: string } | null> = [];
-
-  for (let i = 0; i < startDow; i++) {
-    cells.push(null);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    cells.push({ day: d, dateStr });
-  }
-
-  const canGoNext = year < today.getFullYear() || (year === today.getFullYear() && month < today.getMonth());
-
-  return (
-    <Paper p="md" withBorder radius="md">
-      <Group justify="space-between" mb="sm">
-        <ActionIcon variant="subtle" onClick={onPrevMonth} aria-label="Mes anterior">
-          <IconArrowLeft size={18} />
-        </ActionIcon>
-        <Text fw={600} size="lg">
-          {MONTH_NAMES[month]} {year}
-        </Text>
-        <ActionIcon
-          variant="subtle"
-          onClick={onNextMonth}
-          disabled={!canGoNext}
-          aria-label="Mes siguiente"
-        >
-          <IconArrowRight size={18} />
-        </ActionIcon>
-      </Group>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
-        {DAY_NAMES.map((name) => (
-          <Text key={name} ta="center" size="xs" fw={600} c="dimmed">
-            {name}
-          </Text>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, position: 'relative' }}>
-        {loadingDates && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(255,255,255,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-              borderRadius: 'var(--mantine-radius-sm)',
-            }}
-          >
-            <Loader size="sm" />
-          </div>
-        )}
-
-        {cells.map((cell, idx) => {
-          if (!cell) {
-            return <div key={`empty-${idx}`} />;
-          }
-
-          const isAvailable = availableDates.has(cell.dateStr);
-          const isSelected = selectedDay === cell.dateStr;
-          const isFuture = cell.dateStr > todayStr;
-          const rainfallMm = rainfallByDate[cell.dateStr];
-          const rainfallBg = getRainfallColor(rainfallMm);
-
-          const cellButton = (
-            <button
-              type="button"
-              key={cell.dateStr}
-              disabled={!isAvailable || isFuture}
-              onClick={() => isAvailable && !isFuture && onSelectDay(cell.dateStr)}
-              style={{
-                aspectRatio: '1',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 'var(--mantine-radius-sm)',
-                border: isSelected
-                  ? '2px solid var(--mantine-color-blue-6)'
-                  : '1px solid transparent',
-                background: isSelected
-                  ? 'var(--mantine-color-blue-0)'
-                  : rainfallBg
-                    ? rainfallBg
-                    : isAvailable && !isFuture
-                      ? 'var(--mantine-color-green-0)'
-                      : 'transparent',
-                opacity: isFuture ? 0.3 : isAvailable ? 1 : 0.5,
-                cursor: isAvailable && !isFuture ? 'pointer' : 'default',
-                transition: 'all 150ms ease',
-                position: 'relative',
-              }}
-            >
-              <Text
-                size="sm"
-                fw={isSelected ? 700 : isAvailable ? 500 : 400}
-                c={isSelected ? 'blue.7' : rainfallMm != null && rainfallMm > 30 ? 'white' : isAvailable ? 'dark' : 'dimmed'}
-              >
-                {cell.day}
-              </Text>
-              {isAvailable && !isFuture && (
-                <div
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: isSelected
-                      ? 'var(--mantine-color-blue-6)'
-                      : 'var(--mantine-color-green-6)',
-                    position: 'absolute',
-                    bottom: 3,
-                  }}
-                />
-              )}
-            </button>
-          );
-
-          // Wrap with Tooltip if there is rainfall data
-          if (rainfallMm != null && rainfallMm > 0) {
-            return (
-              <Tooltip
-                key={cell.dateStr}
-                label={`${rainfallMm.toFixed(1)} mm — ${getRainfallLabel(rainfallMm)}`}
-                position="top"
-                withArrow
-              >
-                {cellButton}
-              </Tooltip>
-            );
-          }
-
-          return cellButton;
-        })}
-      </div>
-
-      <Group gap="lg" mt="sm" wrap="wrap">
-        <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--mantine-color-green-6)' }} />
-          <Text size="xs" c="dimmed">Con imagenes ({availableDates.size})</Text>
-        </Group>
-        <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(147, 197, 253, 0.7)' }} />
-          <Text size="xs" c="dimmed">0-10mm</Text>
-        </Group>
-        <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(59, 130, 246, 0.7)' }} />
-          <Text size="xs" c="dimmed">10-30mm</Text>
-        </Group>
-        <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(29, 78, 216, 0.7)' }} />
-          <Text size="xs" c="dimmed">30-50mm</Text>
-        </Group>
-        <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(220, 38, 38, 0.7)' }} />
-          <Text size="xs" c="dimmed">&gt;50mm</Text>
-        </Group>
-      </Group>
-    </Paper>
-  );
-}
-
-// ─── Main Component ────────────────────────────────────────────────────
-
 export default function FloodCalibrationPanel() {
-  const config = useConfigStore((state) => state.config);
-  const isMobile = useMediaQuery('(max-width: 768px)');
-
-  // Store
-  const selectedDate = useFloodCalibrationStore((s) => s.selectedDate);
-  const labeledZones = useFloodCalibrationStore((s) => s.labeledZones);
-  const events = useFloodCalibrationStore((s) => s.events);
-  const eventsLoading = useFloodCalibrationStore((s) => s.eventsLoading);
-  const trainingResult = useFloodCalibrationStore((s) => s.trainingResult);
-  const trainingLoading = useFloodCalibrationStore((s) => s.trainingLoading);
-  const savingEvent = useFloodCalibrationStore((s) => s.savingEvent);
-  const eventDescription = useFloodCalibrationStore((s) => s.eventDescription);
-  const labeledCount = useFloodCalibrationStore(selectLabeledCount);
-  const canSave = useFloodCalibrationStore(selectCanSave);
-  const suggestionsCount = useFloodCalibrationStore(selectSuggestionsCount);
-
-  // Rainfall state
-  const rainfallByDate = useFloodCalibrationStore((s) => s.rainfallByDate);
-  const rainfallLoading = useFloodCalibrationStore((s) => s.rainfallLoading);
-  const suggestions = useFloodCalibrationStore((s) => s.suggestions);
-  const suggestionsLoading = useFloodCalibrationStore((s) => s.suggestionsLoading);
-
-  const {
-    setSelectedDate,
-    toggleZoneLabel,
-    clearLabels,
-    setEvents,
-    setEventsLoading,
-    removeEvent,
-    setTrainingResult,
-    setTrainingLoading,
-    setSavingEvent,
-    setEventDescription,
-    setRainfallByDate,
-    setRainfallLoading,
-    setSuggestions,
-    setSuggestionsLoading,
-  } = useFloodCalibrationStore.getState();
-
-  // NDWI baseline state
-  const [ndwiBaselines, setNdwiBaselines] = useState<NdwiBaselineResponse[]>([]);
-  const [baselineLoading, setBaselineLoading] = useState(false);
-
-  // Event expand state (for NDWI z-score display)
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
-  const [expandedEventDetail, setExpandedEventDetail] = useState<FloodEventDetailResponse | null>(null);
-  const [expandedEventLoading, setExpandedEventLoading] = useState(false);
-
-  // Backfill state
-  const [backfillLoading, setBackfillLoading] = useState(false);
-  const [backfillSource, setBackfillSource] = useState<'CHIRPS' | 'IMERG'>('CHIRPS');
-  const [backfillStatus, setBackfillStatus] = useState<BackfillStatusResponse | null>(null);
-  const backfillPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (backfillPollRef.current) {
-      clearInterval(backfillPollRef.current);
-      backfillPollRef.current = null;
-    }
-  }, []);
-
-  const handleBackfill = useCallback(async () => {
-    setBackfillLoading(true);
-    setBackfillStatus(null);
-    try {
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
-      const { job_id } = await floodCalibrationApi.triggerBackfill(startDate, endDate, backfillSource);
-
-      // Start polling every 4 seconds
-      backfillPollRef.current = setInterval(async () => {
-        try {
-          const status = await floodCalibrationApi.getBackfillStatus(job_id);
-          setBackfillStatus(status);
-
-          if (status.state === 'SUCCESS' || status.state === 'FAILURE') {
-            stopPolling();
-            setBackfillLoading(false);
-            if (status.state === 'SUCCESS') {
-              notifications.show({
-                title: 'Carga completada',
-                message: `${status.records.toLocaleString()} registros guardados en ${status.current} batches.`,
-                color: 'green',
-                icon: <IconCloudRain size={16} />,
-              });
-            } else {
-              notifications.show({
-                title: 'Error en backfill',
-                message: status.error ?? 'El proceso falló',
-                color: 'red',
-              });
-            }
-          }
-        } catch {
-          // polling errors are silent — network hiccup, retry next interval
-        }
-      }, 4000);
-    } catch (err) {
-      setBackfillLoading(false);
-      notifications.show({
-        title: 'Error',
-        message: err instanceof Error ? err.message : 'No se pudo iniciar la carga de datos',
-        color: 'red',
-      });
-    }
-  }, [backfillSource, stopPolling]);
-
-  // Cleanup polling on unmount
-  useEffect(() => stopPolling, [stopPolling]);
-
-  // Map refs
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
-  const tileLayerIdRef = useRef<string | null>(null);
-  const zonasDataRef = useRef<FeatureCollection | null>(null);
-
-  // Calendar state
-  const now = new Date();
-  const [calendarYear, setCalendarYear] = useState(now.getFullYear());
-  const [calendarMonth, setCalendarMonth] = useState(now.getMonth());
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [loadingDates, setLoadingDates] = useState(false);
-  const [loadingImage, setLoadingImage] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Confirmation dialogs
-  const [deleteConfirmOpened, { open: openDeleteConfirm, close: closeDeleteConfirm }] = useDisclosure(false);
-  const [trainConfirmOpened, { open: openTrainConfirm, close: closeTrainConfirm }] = useDisclosure(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-
-  const availableDatesSet = useMemo(() => new Set(availableDates), [availableDates]);
-
-  // Suggestions panel collapse state
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(true);
-
-  // ─── Source filter for rainfall display ──────────────────────
-  const [rainfallSource, setRainfallSource] = useState<'CHIRPS' | 'IMERG' | 'best'>('best');
-
-  // ─── Fetch rainfall data for visible month ────────────────────
-
-  useEffect(() => {
-    setRainfallLoading(true);
-    const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-01`;
-    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-    const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-    const sourceParam = rainfallSource === 'best' ? undefined : rainfallSource;
-
-    floodCalibrationApi
-      .getRainfallDaily(startDate, endDate, sourceParam)
-      .then((records) => {
-        const byDate: Record<string, number> = {};
-        for (const r of records) {
-          byDate[r.date] = r.precipitation_mm;
-        }
-        setRainfallByDate(byDate);
-      })
-      .catch((err) => {
-        // Rainfall data is optional — degrade gracefully
-        logger.warn('Error cargando datos de lluvia:', err);
-        setRainfallByDate({});
-      })
-      .finally(() => setRainfallLoading(false));
-  }, [calendarYear, calendarMonth, rainfallSource, setRainfallByDate, setRainfallLoading]);
-
-  // ─── Fetch rainfall suggestions ─────────────────────────────
-
-  const fetchSuggestions = useCallback(async () => {
-    setSuggestionsLoading(true);
-    try {
-      const data = await floodCalibrationApi.getRainfallSuggestions({
-        threshold_mm: 20,  // 20mm/3-day — ajustado a la zona
-        window_days: 3,
-      });
-      setSuggestions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      logger.warn('Error cargando sugerencias de lluvia:', err);
-      setSuggestions([]);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }, [setSuggestions, setSuggestionsLoading]);
-
-  useEffect(() => {
-    fetchSuggestions();
-  }, [fetchSuggestions]);
-
-  // ─── Load NDWI baselines ─────────────────────────────────────
-
-  useEffect(() => {
-    floodCalibrationApi.getNdwiBaselines()
-      .then(setNdwiBaselines)
-      .catch((err) => logger.warn('Error cargando baselines NDWI:', err));
-  }, []);
-
-  const handleComputeBaseline = useCallback(async () => {
-    setBaselineLoading(true);
-    try {
-      await floodCalibrationApi.computeNdwiBaseline();
-      notifications.show({
-        title: 'Baseline NDWI',
-        message: 'Cálculo iniciado. Los resultados estarán disponibles en unos minutos.',
-        color: 'blue',
-        icon: <IconDroplet size={16} />,
-      });
-    } catch (err) {
-      notifications.show({
-        title: 'Error',
-        message: err instanceof Error ? err.message : 'No se pudo iniciar el cálculo',
-        color: 'red',
-      });
-    } finally {
-      setBaselineLoading(false);
-    }
-  }, []);
-
-  // ─── Toggle event expansion with detail fetch ────────────────
-
-  const handleToggleEvent = useCallback(async (eventId: string) => {
-    if (expandedEventId === eventId) {
-      setExpandedEventId(null);
-      setExpandedEventDetail(null);
-      return;
-    }
-    setExpandedEventId(eventId);
-    setExpandedEventDetail(null);
-    setExpandedEventLoading(true);
-    try {
-      const detail = await floodCalibrationApi.getEvent(eventId);
-      setExpandedEventDetail(detail);
-    } catch (err) {
-      logger.warn('Error cargando detalle del evento:', err);
-    } finally {
-      setExpandedEventLoading(false);
-    }
-  }, [expandedEventId]);
-
-  // ─── Initialize map ─────────────────────────────────────────
-
-  useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
-
-    const lat = config?.map.center?.lat ?? MAP_CENTER[0];
-    const lng = config?.map.center?.lng ?? MAP_CENTER[1];
-    const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
-
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: {
-        version: 8,
-        sources: {
-          satellite: {
-            type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ],
-            tileSize: 256,
-            attribution: 'Tiles &copy; Esri',
-          },
-          labels: {
-            type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-            ],
-            tileSize: 256,
-          },
-        },
-        layers: [
-          { id: 'satellite', type: 'raster', source: 'satellite' },
-          { id: 'labels', type: 'raster', source: 'labels' },
-        ],
-      },
-      center: [lng, lat],
-      zoom,
-    });
-
-    mapInstanceRef.current = map;
-
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-    };
-  }, [config?.map.center, config?.map.zoom]);
-
-  // ─── Load zonas_operativas (after map init) ────────────────
-
-  const [mapReady, setMapReady] = useState(false);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    if (map.isStyleLoaded()) {
-      setMapReady(true);
-    } else {
-      map.once('load', () => setMapReady(true));
-    }
-  });
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapReady) return;
-
-    fetch(BASINS_URL)
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error('No se pudieron cargar las zonas operativas');
-      })
-      .then((geojson: FeatureCollection) => {
-        zonasDataRef.current = geojson;
-        renderZonas(map, geojson);
-      })
-      .catch((err) => logger.warn('Error cargando zonas operativas:', err));
-
-    return () => {
-      const m = mapInstanceRef.current;
-      if (m) {
-        ['zonas-fill', 'zonas-line'].forEach((id) => {
-          if (m.getLayer(id)) m.removeLayer(id);
-        });
-        if (m.getSource('zonas')) m.removeSource('zonas');
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady]);
-
-  // ─── Render / update zone styles ───────────────────────────
-
-  const renderZonas = useCallback((map: maplibregl.Map, geojson: FeatureCollection) => {
-    const currentLabels = useFloodCalibrationStore.getState().labeledZones;
-
-    // Build a colored FeatureCollection where each feature gets a color property
-    const colored: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: geojson.features.map((f) => {
-        const zonaId = String(f.properties?.id || f.id);
-        const paint = getZonePaint(zonaId, currentLabels);
-        return {
-          ...f,
-          properties: { ...f.properties, _fillColor: paint.fillColor, _color: paint.color, _fillOpacity: paint.fillOpacity },
-        };
-      }),
-    };
-
-    const SOURCE_ID = 'zonas';
-    const FILL_LAYER = 'zonas-fill';
-    const LINE_LAYER = 'zonas-line';
-
-    if (map.getSource(SOURCE_ID)) {
-      (map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource).setData(colored);
-    } else {
-      map.addSource(SOURCE_ID, { type: 'geojson', data: colored });
-
-      map.addLayer({
-        id: FILL_LAYER,
-        type: 'fill',
-        source: SOURCE_ID,
-        paint: {
-          'fill-color': ['get', '_fillColor'],
-          'fill-opacity': ['get', '_fillOpacity'],
-        },
-      });
-
-      map.addLayer({
-        id: LINE_LAYER,
-        type: 'line',
-        source: SOURCE_ID,
-        paint: {
-          'line-color': ['get', '_color'],
-          'line-width': 2,
-        },
-      });
-
-      // Click handler
-      map.on('click', FILL_LAYER, (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const zonaId = String(feature.properties?.id || feature.id);
-        toggleZoneLabel(zonaId);
-      });
-
-      map.on('mouseenter', FILL_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', FILL_LAYER, () => { map.getCanvas().style.cursor = ''; });
-    }
-  }, [toggleZoneLabel]);
-
-  // Re-render zone styles when labels change
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const geojson = zonasDataRef.current;
-    if (!map || !geojson || !mapReady) return;
-
-    renderZonas(map, geojson);
-  }, [labeledZones, renderZonas, mapReady]);
-
-  // ─── Fetch available dates ──────────────────────────────────
-
-  useEffect(() => {
-    setLoadingDates(true);
-    setAvailableDates([]);
-
-    const params = new URLSearchParams({
-      year: String(calendarYear),
-      month: String(calendarMonth + 1),
-      sensor: 'sentinel2',
-      max_cloud: '40',
-    });
-
-    fetch(`${API_BASE}/available-dates?${params}`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Error al obtener fechas disponibles');
-        return res.json();
-      })
-      .then((data: { dates: string[] }) => {
-        setAvailableDates(data.dates);
-      })
-      .catch((err) => {
-        logger.error('Error fetching available dates:', err);
-        setAvailableDates([]);
-      })
-      .finally(() => setLoadingDates(false));
-  }, [calendarYear, calendarMonth]);
-
-  // ─── Fetch satellite image for a date ───────────────────────
-
-  const fetchImageForDate = useCallback(
-    async (dateStr: string) => {
-      setLoadingImage(true);
-      setError(null);
-
-      try {
-        const params = new URLSearchParams({
-          target_date: dateStr,
-          days_buffer: '1',
-          visualization: 'rgb',
-          max_cloud: '40',
-        });
-
-        const response = await fetch(`${API_BASE}/sentinel2?${params}`);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Error al obtener imagen');
-        }
-
-        const data = await response.json();
-        updateTileLayer(data.tile_url);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error desconocido');
-      } finally {
-        setLoadingImage(false);
-      }
-    },
-    [],
-  );
-
-  const updateTileLayer = useCallback((tileUrl: string) => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    const SOURCE_ID = 'gee-cal';
-    const LAYER_ID = 'gee-cal-layer';
-
-    const apply = () => {
-      if (tileLayerIdRef.current) {
-        if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
-        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
-      }
-      map.addSource(SOURCE_ID, {
-        type: 'raster',
-        tiles: [tileUrl],
-        tileSize: 256,
-        attribution: 'Imagery &copy; Google Earth Engine',
-      });
-      // Insert below zonas layer so zones remain clickable on top
-      const beforeLayer = map.getLayer('zonas-fill') ? 'zonas-fill' : undefined;
-      map.addLayer(
-        { id: LAYER_ID, type: 'raster', source: SOURCE_ID, paint: { 'raster-opacity': 0.85 } },
-        beforeLayer,
-      );
-      tileLayerIdRef.current = LAYER_ID;
-    };
-
-    if (map.isStyleLoaded()) {
-      apply();
-    } else {
-      map.once('load', apply);
-    }
-  }, []);
-
-  // ─── Calendar navigation ───────────────────────────────────
-
-  const handleSelectDay = useCallback(
-    (dateStr: string) => {
-      setSelectedDate(dateStr);
-      clearLabels();
-      fetchImageForDate(dateStr);
-    },
-    [fetchImageForDate, setSelectedDate, clearLabels],
-  );
-
-  const handlePrevMonth = useCallback(() => {
-    if (calendarMonth === 0) {
-      setCalendarYear((y) => y - 1);
-      setCalendarMonth(11);
-    } else {
-      setCalendarMonth((m) => m - 1);
-    }
-  }, [calendarMonth]);
-
-  const handleNextMonth = useCallback(() => {
-    const today = new Date();
-    const nextMonth = calendarMonth === 11 ? 0 : calendarMonth + 1;
-    const nextYear = calendarMonth === 11 ? calendarYear + 1 : calendarYear;
-
-    if (nextYear > today.getFullYear() || (nextYear === today.getFullYear() && nextMonth > today.getMonth())) {
-      return;
-    }
-
-    setCalendarYear(nextYear);
-    setCalendarMonth(nextMonth);
-  }, [calendarMonth, calendarYear]);
-
-  // ─── Handle suggestion click: navigate calendar to suggested date ──
-
-  const handleSuggestionClick = useCallback(
-    (suggestion: RainfallSuggestion) => {
-      const suggestedDate = suggestion.suggested_image_date;
-      const [yearStr, monthStr] = suggestedDate.split('-');
-      const targetYear = parseInt(yearStr, 10);
-      const targetMonth = parseInt(monthStr, 10) - 1; // 0-indexed
-
-      // Navigate calendar to the target month
-      setCalendarYear(targetYear);
-      setCalendarMonth(targetMonth);
-
-      // Select the suggested date and fetch its satellite image
-      setSelectedDate(suggestedDate);
-      clearLabels();
-      fetchImageForDate(suggestedDate);
-    },
-    [setSelectedDate, clearLabels, fetchImageForDate],
-  );
-
-  // ─── Events CRUD ───────────────────────────────────────────
-
-  const fetchEvents = useCallback(async () => {
-    setEventsLoading(true);
-    try {
-      const data = await floodCalibrationApi.listEvents();
-      setEvents(Array.isArray(data) ? data : []);
-    } catch (err) {
-      logger.error('Error fetching flood events:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudieron cargar los eventos',
-        color: 'red',
-      });
-    } finally {
-      setEventsLoading(false);
-    }
-  }, [setEvents, setEventsLoading]);
-
-  // Fetch events on mount
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  const handleSaveEvent = useCallback(async () => {
-    if (!selectedDate || Object.keys(labeledZones).length === 0) return;
-
-    setSavingEvent(true);
-    try {
-      await floodCalibrationApi.createEvent({
-        event_date: selectedDate,
-        description: eventDescription || null,
-        labeled_zones: labeledZones,
-      });
-      notifications.show({
-        title: 'Evento guardado',
-        message: `Evento del ${selectedDate} guardado con ${Object.keys(labeledZones).length} zonas`,
-        color: 'green',
-      });
-      clearLabels();
-      fetchEvents();
-    } catch (err) {
-      notifications.show({
-        title: 'Error al guardar',
-        message: err instanceof Error ? err.message : 'Error desconocido',
-        color: 'red',
-      });
-    } finally {
-      setSavingEvent(false);
-    }
-  }, [selectedDate, labeledZones, eventDescription, clearLabels, fetchEvents, setSavingEvent]);
-
-  const handleRequestDelete = useCallback((id: string) => {
-    setPendingDeleteId(id);
-    openDeleteConfirm();
-  }, [openDeleteConfirm]);
-
-  const handleConfirmDelete = useCallback(async () => {
-    if (!pendingDeleteId) return;
-    closeDeleteConfirm();
-    try {
-      await floodCalibrationApi.deleteEvent(pendingDeleteId);
-      removeEvent(pendingDeleteId);
-      notifications.show({
-        title: 'Evento eliminado',
-        message: 'El evento fue eliminado correctamente',
-        color: 'green',
-      });
-    } catch (err) {
-      notifications.show({
-        title: 'Error al eliminar',
-        message: err instanceof Error ? err.message : 'Error desconocido',
-        color: 'red',
-      });
-    } finally {
-      setPendingDeleteId(null);
-    }
-  }, [pendingDeleteId, removeEvent, closeDeleteConfirm]);
-
-  const handleRequestTrain = useCallback(() => {
-    openTrainConfirm();
-  }, [openTrainConfirm]);
-
-  const handleConfirmTrain = useCallback(async () => {
-    closeTrainConfirm();
-    setTrainingLoading(true);
-    setTrainingResult(null);
-    try {
-      const result = await floodCalibrationApi.trainModel();
-      setTrainingResult(result);
-      notifications.show({
-        title: 'Entrenamiento completado',
-        message: `Modelo entrenado con ${result.events_used} eventos. Loss: ${result.initial_loss.toFixed(4)} -> ${result.final_loss.toFixed(4)}`,
-        color: 'green',
-      });
-    } catch (err) {
-      notifications.show({
-        title: 'Error al entrenar',
-        message: err instanceof Error ? err.message : 'Error desconocido',
-        color: 'red',
-      });
-    } finally {
-      setTrainingLoading(false);
-    }
-  }, [setTrainingLoading, setTrainingResult, closeTrainConfirm]);
-
-  // ─── Render ────────────────────────────────────────────────
+  const controller = useFloodCalibrationController();
 
   return (
     <Stack gap="md">
-      {/* Header */}
       <Group justify="space-between">
         <Group gap="xs">
           <IconDroplet size={24} />
           <Title order={3}>Calibracion de Modelo de Inundacion</Title>
         </Group>
         <Badge variant="light" color="blue" size="lg">
-          {events.length} eventos guardados
+          {controller.events.length} eventos guardados
         </Badge>
       </Group>
 
-      {error && (
+      {controller.error && (
         <Alert color="red" icon={<IconAlertTriangle />} title="Error">
-          {error}
+          {controller.error}
         </Alert>
       )}
 
-      {/* Rainfall backfill controls */}
-      {!rainfallLoading && Object.keys(rainfallByDate).length === 0 && (
+      {!controller.rainfallLoading && Object.keys(controller.rainfallByDate).length === 0 && (
         <Alert color="blue" icon={<IconCloudRain size={18} />} title="Sin datos de lluvia">
           <Stack gap="xs">
             <Text size="sm">
               No hay datos de precipitacion cargados. Cargalos para ver la lluvia en el calendario y recibir sugerencias de eventos.
             </Text>
-            {backfillLoading && backfillStatus ? (
+            {controller.backfillLoading && controller.backfillStatus ? (
               <Stack gap={4}>
                 <Group justify="space-between">
                   <Text size="xs" c="dimmed">
-                    {backfillStatus.state === 'PENDING'
+                    {controller.backfillStatus.state === 'PENDING'
                       ? 'Esperando worker...'
-                      : `Batch ${backfillStatus.current ?? 0} / ${backfillStatus.total ?? 0} — ${(backfillStatus.records ?? 0).toLocaleString()} registros`}
+                      : `Batch ${controller.backfillStatus.current ?? 0} / ${controller.backfillStatus.total ?? 0} — ${(controller.backfillStatus.records ?? 0).toLocaleString()} registros`}
                   </Text>
                   <Text size="xs" c="dimmed">
-                    {backfillStatus.total > 0
-                      ? `${Math.round((backfillStatus.current / backfillStatus.total) * 100)}%`
+                    {controller.backfillStatus.total > 0
+                      ? `${Math.round((controller.backfillStatus.current / controller.backfillStatus.total) * 100)}%`
                       : ''}
                   </Text>
                 </Group>
                 <Progress
-                  value={(backfillStatus.total ?? 0) > 0 ? ((backfillStatus.current ?? 0) / (backfillStatus.total ?? 1)) * 100 : 0}
-                  animated={backfillStatus.state === 'PROGRESS' || backfillStatus.state === 'PENDING'}
+                  value={(controller.backfillStatus.total ?? 0) > 0 ? ((controller.backfillStatus.current ?? 0) / (controller.backfillStatus.total ?? 1)) * 100 : 0}
+                  animated={controller.backfillStatus.state === 'PROGRESS' || controller.backfillStatus.state === 'PENDING'}
                   color="blue"
                   size="sm"
                 />
@@ -1058,19 +83,14 @@ export default function FloodCalibrationPanel() {
               <Group align="center">
                 <SegmentedControl
                   size="xs"
-                  value={backfillSource}
-                  onChange={(v) => setBackfillSource(v as 'CHIRPS' | 'IMERG')}
+                  value={controller.backfillSource}
+                  onChange={(v) => controller.setBackfillSource(v as 'CHIRPS' | 'IMERG')}
                   data={[
                     { label: 'CHIRPS (histórico)', value: 'CHIRPS' },
                     { label: 'IMERG (eventos extremos)', value: 'IMERG' },
                   ]}
                 />
-                <Button
-                  size="xs"
-                  variant="filled"
-                  loading={backfillLoading}
-                  onClick={handleBackfill}
-                >
+                <Button size="xs" variant="filled" loading={controller.backfillLoading} onClick={controller.handleBackfill}>
                   Cargar datos
                 </Button>
               </Group>
@@ -1079,21 +99,13 @@ export default function FloodCalibrationPanel() {
         </Alert>
       )}
 
-      {/* Main layout */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'minmax(280px, 340px) 1fr',
-          gap: 16,
-        }}
-      >
-        {/* Left column: Calendar + Save controls */}
+      <div style={{ display: 'grid', gridTemplateColumns: controller.isMobile ? '1fr' : 'minmax(280px, 340px) 1fr', gap: 16 }}>
         <Stack gap="md">
           <Group justify="flex-end">
             <SegmentedControl
               size="xs"
-              value={rainfallSource}
-              onChange={(v) => setRainfallSource(v as 'CHIRPS' | 'IMERG' | 'best')}
+              value={controller.rainfallSource}
+              onChange={(v) => controller.setRainfallSource(v as 'CHIRPS' | 'IMERG' | 'best')}
               data={[
                 { label: 'Mejor', value: 'best' },
                 { label: 'CHIRPS', value: 'CHIRPS' },
@@ -1101,508 +113,138 @@ export default function FloodCalibrationPanel() {
               ]}
             />
           </Group>
+
           <CalendarGrid
-            year={calendarYear}
-            month={calendarMonth}
-            availableDates={availableDatesSet}
-            selectedDay={selectedDate}
-            loadingDates={loadingDates || rainfallLoading}
-            onSelectDay={handleSelectDay}
-            onPrevMonth={handlePrevMonth}
-            onNextMonth={handleNextMonth}
-            rainfallByDate={rainfallByDate}
+            year={controller.calendarYear}
+            month={controller.calendarMonth}
+            availableDates={controller.availableDatesSet}
+            selectedDay={controller.selectedDate}
+            loadingDates={controller.loadingDates || controller.rainfallLoading}
+            onSelectDay={controller.handleSelectDay}
+            onPrevMonth={controller.handlePrevMonth}
+            onNextMonth={controller.handleNextMonth}
+            rainfallByDate={controller.rainfallByDate}
           />
 
-          {/* Labeling controls */}
-          {selectedDate && (
+          {controller.selectedDate && (
             <Paper p="md" withBorder radius="md">
               <Stack gap="sm">
                 <Group justify="space-between">
                   <Text fw={600} size="sm">
                     <IconCalendar size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                    {selectedDate}
+                    {controller.selectedDate}
                   </Text>
-                  <Badge color={labeledCount > 0 ? 'blue' : 'gray'}>
-                    {labeledCount} zona{labeledCount !== 1 ? 's' : ''} etiquetada{labeledCount !== 1 ? 's' : ''}
+                  <Badge color={controller.labeledCount > 0 ? 'blue' : 'gray'}>
+                    {controller.labeledCount} zona{controller.labeledCount !== 1 ? 's' : ''} etiquetada{controller.labeledCount !== 1 ? 's' : ''}
                   </Badge>
                 </Group>
 
                 <TextInput
                   label="Descripcion (opcional)"
                   placeholder="Ej: Inundacion post-tormenta"
-                  value={eventDescription}
-                  onChange={(e) => setEventDescription(e.currentTarget.value)}
+                  value={controller.eventDescription}
+                  onChange={(e) => controller.setEventDescription(e.currentTarget.value)}
                   size="sm"
                 />
 
                 <Group gap="sm">
                   <Button
                     fullWidth
-                    onClick={handleSaveEvent}
-                    disabled={!canSave}
-                    loading={savingEvent}
+                    onClick={controller.handleSaveEvent}
+                    disabled={!controller.canSave}
+                    loading={controller.savingEvent}
                     leftSection={<IconCheck size={16} />}
                     color="green"
                   >
                     Guardar Evento
                   </Button>
-                  <Button
-                    fullWidth
-                    variant="light"
-                    color="gray"
-                    onClick={clearLabels}
-                    disabled={labeledCount === 0}
-                  >
+                  <Button fullWidth variant="light" color="gray" onClick={controller.clearLabels} disabled={controller.labeledCount === 0}>
                     Limpiar Etiquetas
                   </Button>
                 </Group>
 
-                {/* Legend */}
                 <Divider />
                 <Text size="xs" c="dimmed" fw={500}>Leyenda (click en zona para alternar):</Text>
                 <Group gap="md">
-                  <Group gap={4}>
-                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#ef4444' }} />
-                    <Text size="xs">Inundado</Text>
-                  </Group>
-                  <Group gap={4}>
-                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#22c55e' }} />
-                    <Text size="xs">No inundado</Text>
-                  </Group>
-                  <Group gap={4}>
-                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#9ca3af' }} />
-                    <Text size="xs">Sin etiquetar</Text>
-                  </Group>
+                  <Group gap={4}><div style={{ width: 12, height: 12, borderRadius: 2, background: '#ef4444' }} /><Text size="xs">Inundado</Text></Group>
+                  <Group gap={4}><div style={{ width: 12, height: 12, borderRadius: 2, background: '#22c55e' }} /><Text size="xs">No inundado</Text></Group>
+                  <Group gap={4}><div style={{ width: 12, height: 12, borderRadius: 2, background: '#9ca3af' }} /><Text size="xs">Sin etiquetar</Text></Group>
                 </Group>
               </Stack>
             </Paper>
           )}
         </Stack>
 
-        {/* Right column: Map */}
-        <Card
-          padding={0}
-          radius="md"
-          withBorder
-          style={{ minHeight: 500, position: 'relative' }}
-        >
-          <div
-            ref={mapRef}
-            style={{ width: '100%', height: 500, borderRadius: 'var(--mantine-radius-md)' }}
-          />
-
-          {loadingImage && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(255,255,255,0.8)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 'var(--mantine-radius-md)',
-              }}
-            >
-              <Stack align="center">
-                <Loader size="lg" />
-                <Text>Cargando imagen satelital...</Text>
-              </Stack>
+        <Card padding={0} radius="md" withBorder style={{ minHeight: 500, position: 'relative' }}>
+          <div ref={controller.mapRef} style={{ width: '100%', height: 500, borderRadius: 'var(--mantine-radius-md)' }} />
+          {controller.loadingImage && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--mantine-radius-md)' }}>
+              <Stack align="center"><Loader size="lg" /><Text>Cargando imagen satelital...</Text></Stack>
             </div>
           )}
-
-          {!selectedDate && !loadingImage && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-              }}
-            >
+          {!controller.selectedDate && !controller.loadingImage && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               <Paper p="lg" radius="md" shadow="sm" style={{ pointerEvents: 'auto', textAlign: 'center' }}>
                 <IconSatellite size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
-                <Text c="dimmed" size="sm">
-                  Selecciona un dia del calendario
-                </Text>
-                <Text c="dimmed" size="xs">
-                  para ver la imagen satelital y etiquetar zonas
-                </Text>
+                <Text c="dimmed" size="sm">Selecciona un dia del calendario</Text>
+                <Text c="dimmed" size="xs">para ver la imagen satelital y etiquetar zonas</Text>
               </Paper>
             </div>
           )}
         </Card>
       </div>
 
-      {/* Eventos Sugeridos panel */}
-      <Paper p="md" withBorder radius="md">
-        <Group justify="space-between" mb={suggestionsExpanded ? 'md' : 0}>
-          <Group gap="xs">
-            <IconCloudRain size={18} />
-            <Title order={5}>Eventos Sugeridos</Title>
-            {suggestionsCount > 0 && (
-              <Badge color="blue" variant="filled" size="sm">
-                {suggestionsCount}
-              </Badge>
-            )}
-          </Group>
-          <Group gap="xs">
-            <ActionIcon variant="subtle" onClick={fetchSuggestions} loading={suggestionsLoading}>
-              <IconRefresh size={18} />
-            </ActionIcon>
-            <ActionIcon
-              variant="subtle"
-              onClick={() => setSuggestionsExpanded((prev) => !prev)}
-              aria-label={suggestionsExpanded ? 'Colapsar' : 'Expandir'}
-            >
-              {suggestionsExpanded ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
-            </ActionIcon>
-          </Group>
-        </Group>
+      <FloodSuggestionsPanel
+        suggestionsExpanded={controller.suggestionsExpanded}
+        onToggleExpanded={() => controller.setSuggestionsExpanded((prev) => !prev)}
+        suggestionsCount={controller.suggestionsCount}
+        suggestionsLoading={controller.suggestionsLoading}
+        onRefresh={controller.fetchSuggestions}
+        suggestions={controller.suggestions}
+        onSuggestionClick={controller.handleSuggestionClick}
+      />
 
-        {suggestionsExpanded && (
-          <>
-            {suggestionsLoading && (
-              <Stack gap="xs">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} height={56} radius="sm" />
-                ))}
-              </Stack>
-            )}
+      <div style={{ display: 'grid', gridTemplateColumns: controller.isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+        <FloodEventsPanel
+          eventsLoading={controller.eventsLoading}
+          events={controller.events}
+          onRefresh={controller.fetchEvents}
+          expandedEventId={controller.expandedEventId}
+          onToggleEvent={controller.handleToggleEvent}
+          expandedEventLoading={controller.expandedEventLoading}
+          expandedEventDetail={controller.expandedEventDetail}
+          ndwiBaselines={controller.ndwiBaselines}
+          onRequestDelete={(id) => {
+            controller.setPendingDeleteId(id);
+            controller.openDeleteConfirm();
+          }}
+        />
 
-            {!suggestionsLoading && suggestions.length === 0 && (
-              <Text c="dimmed" size="sm" ta="center" py="lg">
-                No hay eventos de lluvia detectados para sugerir imagenes.
-              </Text>
-            )}
-
-            {!suggestionsLoading && suggestions.length > 0 && (
-              <Stack gap="xs">
-                {suggestions.map((suggestion, idx) => (
-                  <Paper key={`${suggestion.event_date}-${idx}`} p="sm" withBorder radius="sm">
-                    <Group justify="space-between" wrap="nowrap">
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Group gap="xs" wrap="wrap">
-                          <IconCloudRain size={14} />
-                          <Text size="sm" fw={500}>
-                            Evento: {suggestion.event_date}
-                          </Text>
-                          <Badge size="xs" color="blue" variant="light">
-                            {suggestion.accumulated_mm.toFixed(1)} mm
-                          </Badge>
-                          <Badge size="xs" color="gray" variant="light">
-                            {suggestion.cloud_cover.toFixed(0)}% nubes
-                          </Badge>
-                        </Group>
-                        <Text size="xs" c="dimmed" mt={2}>
-                          Zonas: {suggestion.zone_names.join(', ')}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          Imagen sugerida: {suggestion.suggested_image_date}
-                        </Text>
-                      </div>
-                      <Tooltip label="Ver imagen en el calendario">
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="blue"
-                          leftSection={<IconEye size={14} />}
-                          onClick={() => handleSuggestionClick(suggestion)}
-                        >
-                          Ver imagen
-                        </Button>
-                      </Tooltip>
-                    </Group>
-                  </Paper>
-                ))}
-              </Stack>
-            )}
-          </>
-        )}
-      </Paper>
-
-      {/* Bottom section: Events list + Training controls */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-          gap: 16,
-        }}
-      >
-        {/* Events list */}
-        <Paper p="md" withBorder radius="md">
-          <Group justify="space-between" mb="md">
-            <Title order={5}>
-              <Group gap="xs">
-                <IconWaveSine size={18} />
-                Eventos Guardados
-              </Group>
-            </Title>
-            <ActionIcon variant="subtle" onClick={fetchEvents} loading={eventsLoading}>
-              <IconRefresh size={18} />
-            </ActionIcon>
-          </Group>
-
-          {eventsLoading && (
-            <Stack gap="xs">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} height={56} radius="sm" />
-              ))}
-            </Stack>
-          )}
-
-          {!eventsLoading && events.length === 0 && (
-            <Text c="dimmed" size="sm" ta="center" py="xl">
-              No hay eventos guardados. Selecciona una fecha, etiqueta zonas y guarda un evento.
-            </Text>
-          )}
-
-          {!eventsLoading && events.length > 0 && (
-            <Stack gap="xs">
-              {events.map((event) => {
-                const isExpanded = expandedEventId === event.id;
-                return (
-                  <Paper key={event.id} p="sm" withBorder radius="sm">
-                    <Group justify="space-between" wrap="nowrap">
-                      <div
-                        style={{ cursor: 'pointer', flex: 1 }}
-                        onClick={() => handleToggleEvent(event.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => e.key === 'Enter' && handleToggleEvent(event.id)}
-                      >
-                        <Group gap="xs">
-                          <IconCalendar size={14} />
-                          <Text size="sm" fw={500}>{event.event_date}</Text>
-                          <Badge size="xs" variant="light">
-                            {event.label_count} zona{event.label_count !== 1 ? 's' : ''}
-                          </Badge>
-                          {isExpanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-                        </Group>
-                        {event.description && (
-                          <Text size="xs" c="dimmed" mt={2}>{event.description}</Text>
-                        )}
-                      </div>
-                      <Tooltip label="Eliminar evento">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="sm"
-                          onClick={() => handleRequestDelete(event.id)}
-                        >
-                          <IconTrash size={14} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-
-                    {/* Expanded detail: labels with NDWI z-scores */}
-                    {isExpanded && (
-                      <div style={{ marginTop: 8 }}>
-                        {expandedEventLoading && <Loader size="xs" />}
-                        {!expandedEventLoading && expandedEventDetail && (
-                          <Table fz="xs" withRowBorders={false} verticalSpacing={2}>
-                            <Table.Thead>
-                              <Table.Tr>
-                                <Table.Th>Zona</Table.Th>
-                                <Table.Th>Label</Table.Th>
-                                <Table.Th>NDWI</Table.Th>
-                              </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                              {expandedEventDetail.labels.map((lbl) => {
-                                const baseline = ndwiBaselines.find(
-                                  (b) => b.zona_operativa_id === lbl.zona_id,
-                                );
-                                const z =
-                                  lbl.ndwi_value != null && baseline
-                                    ? (lbl.ndwi_value - baseline.ndwi_mean) / baseline.ndwi_std
-                                    : null;
-                                return (
-                                  <Table.Tr key={lbl.id}>
-                                    <Table.Td>
-                                      <Text size="xs" c="dimmed" style={{ fontFamily: 'monospace' }}>
-                                        {lbl.zona_id.slice(0, 8)}…
-                                      </Text>
-                                    </Table.Td>
-                                    <Table.Td>
-                                      {lbl.is_flooded
-                                        ? <Badge size="xs" color="red">Inundado</Badge>
-                                        : <Badge size="xs" color="green">No inundado</Badge>}
-                                    </Table.Td>
-                                    <Table.Td>
-                                      {lbl.ndwi_value != null ? (
-                                        <Group gap={4} wrap="nowrap">
-                                          <Text size="xs">{lbl.ndwi_value.toFixed(3)}</Text>
-                                          {z != null && (
-                                            <Text size="xs" fw={600} c={getZScoreColor(z)}>
-                                              ({formatZScore(z)})
-                                            </Text>
-                                          )}
-                                        </Group>
-                                      ) : (
-                                        <Text size="xs" c="dimmed">—</Text>
-                                      )}
-                                    </Table.Td>
-                                  </Table.Tr>
-                                );
-                              })}
-                            </Table.Tbody>
-                          </Table>
-                        )}
-                      </div>
-                    )}
-                  </Paper>
-                );
-              })}
-            </Stack>
-          )}
-        </Paper>
-
-        {/* Training controls */}
-        <Paper p="md" withBorder radius="md">
-          <Title order={5} mb="md">
-            <Group gap="xs">
-              <IconPlayerPlay size={18} />
-              Entrenamiento del Modelo
-            </Group>
-          </Title>
-
-          <Stack gap="md">
-            <Group gap="lg">
-              <div>
-                <Text size="xs" c="dimmed">Eventos totales</Text>
-                <Text size="lg" fw={700}>{events.length}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">Baselines NDWI</Text>
-                <Text size="lg" fw={700}>{ndwiBaselines.length}</Text>
-              </div>
-            </Group>
-
-            <Tooltip
-              label={events.length < 5 ? `Se necesitan al menos 5 eventos (actual: ${events.length})` : 'Entrenar modelo con los eventos guardados'}
-            >
-              <Button
-                fullWidth
-                onClick={handleRequestTrain}
-                disabled={events.length < 5}
-                loading={trainingLoading}
-                leftSection={<IconPlayerPlay size={16} />}
-                color="blue"
-              >
-                Entrenar Modelo
-              </Button>
-            </Tooltip>
-
-            <Tooltip label="Recalcula el baseline NDWI de estación seca para todas las zonas (tarda unos minutos)">
-              <Button
-                fullWidth
-                variant="light"
-                color="teal"
-                leftSection={<IconDroplet size={16} />}
-                loading={baselineLoading}
-                onClick={handleComputeBaseline}
-              >
-                Recalcular Baseline NDWI
-              </Button>
-            </Tooltip>
-
-            {/* Training results */}
-            {trainingResult && (
-              <Paper p="sm" withBorder radius="sm" bg="green.0">
-                <Stack gap="sm">
-                  <Group gap="xs">
-                    <IconCheck size={16} color="var(--mantine-color-green-7)" />
-                    <Text size="sm" fw={600} c="green.7">Entrenamiento completado</Text>
-                  </Group>
-
-                  <Group gap="lg">
-                    <div>
-                      <Text size="xs" c="dimmed">Eventos usados</Text>
-                      <Text fw={600}>{trainingResult.events_used}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Epocas</Text>
-                      <Text fw={600}>{trainingResult.epochs}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Loss inicial</Text>
-                      <Text fw={600}>{trainingResult.initial_loss.toFixed(4)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Loss final</Text>
-                      <Text fw={600} c="green.7">{trainingResult.final_loss.toFixed(4)}</Text>
-                    </div>
-                  </Group>
-
-                  <Divider />
-                  <Text size="xs" fw={500}>Pesos del modelo:</Text>
-                  <Table striped>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Feature</Table.Th>
-                        <Table.Th>Peso</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {Object.entries(trainingResult.weights).map(([key, value]) => (
-                        <Table.Tr key={key}>
-                          <Table.Td>{key}</Table.Td>
-                          <Table.Td>{value.toFixed(4)}</Table.Td>
-                        </Table.Tr>
-                      ))}
-                      <Table.Tr>
-                        <Table.Td fw={600}>Bias</Table.Td>
-                        <Table.Td>{trainingResult.bias.toFixed(4)}</Table.Td>
-                      </Table.Tr>
-                    </Table.Tbody>
-                  </Table>
-                </Stack>
-              </Paper>
-            )}
-          </Stack>
-        </Paper>
+        <FloodTrainingPanel
+          eventsLength={controller.events.length}
+          ndwiBaselinesLength={controller.ndwiBaselines.length}
+          onRequestTrain={controller.openTrainConfirm}
+          trainingLoading={controller.trainingLoading}
+          baselineLoading={controller.baselineLoading}
+          onComputeBaseline={controller.handleComputeBaseline}
+          trainingResult={controller.trainingResult}
+        />
       </div>
 
-      {/* Confirmation: Delete event */}
-      <Modal
-        opened={deleteConfirmOpened}
-        onClose={closeDeleteConfirm}
-        title="Confirmar eliminacion"
-        centered
-        size="sm"
-      >
+      <Modal opened={controller.deleteConfirmOpened} onClose={controller.closeDeleteConfirm} title="Confirmar eliminacion" centered size="sm">
         <Stack gap="md">
           <Text size="sm">
             ¿Estas seguro de que queres eliminar este evento? Esta accion no se puede deshacer.
             Las etiquetas y features asociadas tambien seran eliminadas.
           </Text>
           <Group justify="flex-end" gap="sm">
-            <Button variant="default" onClick={closeDeleteConfirm}>
-              Cancelar
-            </Button>
-            <Button color="red" onClick={handleConfirmDelete}>
-              Eliminar
-            </Button>
+            <Button variant="default" onClick={controller.closeDeleteConfirm}>Cancelar</Button>
+            <Button color="red" onClick={controller.handleConfirmDelete}>Eliminar</Button>
           </Group>
         </Stack>
       </Modal>
 
-      {/* Confirmation: Train model */}
-      <Modal
-        opened={trainConfirmOpened}
-        onClose={closeTrainConfirm}
-        title="Confirmar entrenamiento"
-        centered
-        size="sm"
-      >
+      <Modal opened={controller.trainConfirmOpened} onClose={controller.closeTrainConfirm} title="Confirmar entrenamiento" centered size="sm">
         <Stack gap="md">
           <Text size="sm">
             Se creara un backup del modelo actual antes de entrenar.
@@ -1611,16 +253,12 @@ export default function FloodCalibrationPanel() {
           <Group gap="lg">
             <div>
               <Text size="xs" c="dimmed">Eventos disponibles</Text>
-              <Text fw={600}>{events.length}</Text>
+              <Text fw={600}>{controller.events.length}</Text>
             </div>
           </Group>
           <Group justify="flex-end" gap="sm">
-            <Button variant="default" onClick={closeTrainConfirm}>
-              Cancelar
-            </Button>
-            <Button color="blue" onClick={handleConfirmTrain} leftSection={<IconPlayerPlay size={16} />}>
-              Entrenar
-            </Button>
+            <Button variant="default" onClick={controller.closeTrainConfirm}>Cancelar</Button>
+            <Button color="blue" onClick={controller.handleConfirmTrain} leftSection={<IconPlayerPlay size={16} />}>Entrenar</Button>
           </Group>
         </Stack>
       </Modal>

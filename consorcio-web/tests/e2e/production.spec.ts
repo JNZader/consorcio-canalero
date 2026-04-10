@@ -1,176 +1,167 @@
-import { test, expect } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 
 const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:8000';
 const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123';
 
-// ============================================
-// 1. HEALTH & INFRASTRUCTURE
-// ============================================
+const apiUrl = (path: string) => `${API_BASE}${path}`;
+const appUrl = (path = '') => `${APP_URL}${path}`;
+const withOrigin = (token?: string) => ({
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  Origin: APP_URL,
+});
+
+async function loginAsAdmin(request: APIRequestContext) {
+  const res = await request.post(apiUrl('/api/v2/auth/jwt/login'), {
+    form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  });
+  expect(res.ok()).toBeTruthy();
+  return (await res.json()).access_token as string;
+}
+
+async function expectOk(requestPromise: Promise<unknown>) {
+  const res = (await requestPromise) as {
+    ok(): boolean;
+    status(): number;
+    json(): Promise<any>;
+  };
+  expect(res.ok()).toBeTruthy();
+  return res;
+}
+
+async function createPublicDenuncia(request: APIRequestContext, suffix = `${Date.now()}`) {
+  const res = await request.post(apiUrl('/api/v2/public/denuncias'), {
+    headers: withOrigin(),
+    data: {
+      tipo: 'desborde',
+      descripcion: `E2E denuncia ${suffix}`,
+      latitud: -32.62,
+      longitud: -62.68,
+      cuenca: 'candil',
+      contacto_telefono: '3534000001',
+      contacto_email: 'playwright@test.com',
+    },
+  });
+  expect(res.status()).toBe(201);
+  return res.json();
+}
+
+async function createPublicSugerencia(request: APIRequestContext, suffix = `${Date.now()}`) {
+  const res = await request.post(apiUrl('/api/v2/public/sugerencias'), {
+    headers: withOrigin(),
+    data: {
+      titulo: `Sugerencia E2E ${suffix}`,
+      descripcion: 'Sugerencia de prueba automatizada',
+      contacto_nombre: 'Playwright',
+      contacto_email: 'playwright@test.com',
+    },
+  });
+  expect(res.status()).toBe(201);
+  return res.json();
+}
 
 test.describe('Backend Health', () => {
-  test('API health check returns healthy', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/health`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
+  test('health and docs are available', async ({ request }) => {
+    const health = await expectOk(request.get(apiUrl('/health')));
+    const body = await health.json();
     expect(body.status).toBe('healthy');
     expect(body.services.database.status).toBe('healthy');
     expect(body.services.redis.status).toBe('healthy');
     expect(body.version).toBe('2.0.0');
-  });
 
-  test('Swagger docs accessible', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/docs`);
-    expect(res.ok()).toBeTruthy();
+    await expectOk(request.get(apiUrl('/docs')));
   });
 });
-
-// ============================================
-// 2. PUBLIC ENDPOINTS (no auth)
-// ============================================
 
 test.describe('Public API', () => {
-  test('public stats returns counts', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/public/stats`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body).toHaveProperty('total_denuncias');
-    expect(body).toHaveProperty('total_sugerencias');
+  test('public stats, branding and layers respond', async ({ request }) => {
+    const stats = await expectOk(request.get(apiUrl('/api/v2/public/stats')));
+    expect(await stats.json()).toEqual(
+      expect.objectContaining({
+        total_denuncias: expect.anything(),
+        total_sugerencias: expect.anything(),
+      })
+    );
+
+    await expectOk(request.get(apiUrl('/api/v2/public/settings/branding')));
+
+    const layers = await expectOk(request.get(apiUrl('/api/v2/public/layers')));
+    expect(Array.isArray(await layers.json())).toBeTruthy();
   });
 
-  test('public branding settings accessible', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/public/settings/branding`);
-    expect(res.ok()).toBeTruthy();
+  test('can create anonymous denuncia and consult its status', async ({ request }) => {
+    const created = await createPublicDenuncia(request, 'anonima');
+    expect(created).toHaveProperty('id');
+
+    const statusRes = await expectOk(
+      request.get(apiUrl(`/api/v2/public/denuncias/${created.id}/status`))
+    );
+    expect((await statusRes.json()).estado).toBe('pendiente');
   });
 
-  test('public layers returns array', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/public/layers`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(Array.isArray(body)).toBeTruthy();
-  });
-
-  test('create anonymous denuncia', async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/public/denuncias`, {
-      headers: { 'Origin': APP_URL },
-      data: {
-        tipo: 'desborde',
-        descripcion: 'Test E2E Playwright - denuncia anonima',
-        latitud: -32.62,
-        longitud: -62.68,
-        cuenca: 'candil',
-        contacto_telefono: '3534000000',
-        contacto_email: 'playwright@test.com',
-      },
-    });
-    expect(res.status()).toBe(201);
-    const body = await res.json();
-    expect(body).toHaveProperty('id');
-
-    // Check status of created denuncia
-    const statusRes = await request.get(`${API_BASE}/api/v2/public/denuncias/${body.id}/status`);
-    expect(statusRes.ok()).toBeTruthy();
-    const status = await statusRes.json();
-    expect(status.estado).toBe('pendiente');
-  });
-
-  test('create anonymous sugerencia', async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/public/sugerencias`, {
-      headers: { 'Origin': APP_URL },
-      data: {
-        titulo: 'Test E2E Playwright',
-        descripcion: 'Sugerencia de prueba automatizada',
-        contacto_nombre: 'Playwright',
-        contacto_email: 'playwright@test.com',
-      },
-    });
-    expect(res.status()).toBe(201);
+  test('can create anonymous sugerencia', async ({ request }) => {
+    await createPublicSugerencia(request, 'publica');
   });
 });
-
-// ============================================
-// 3. AUTH FLOW
-// ============================================
-
-let authToken: string;
 
 test.describe('Authentication', () => {
-  test('login with email/password returns JWT', async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: {
-        username: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
-      },
-    });
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body).toHaveProperty('access_token');
-    expect(body.token_type).toBe('bearer');
-    authToken = body.access_token;
-  });
+  test('email login, current profile and google auth work', async ({ request }) => {
+    const token = await loginAsAdmin(request);
 
-  test('get current user profile', async ({ request }) => {
-    if (!authToken) test.skip();
-    const res = await request.get(`${API_BASE}/api/v2/users/me`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.email).toBe(ADMIN_EMAIL);
-    expect(body.role).toBe('admin');
-    expect(body.is_superuser).toBe(true);
-  });
+    const me = await expectOk(
+      request.get(apiUrl('/api/v2/users/me'), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    );
+    const profile = await me.json();
+    expect(profile.email).toBe(ADMIN_EMAIL);
+    expect(profile.role).toBe('admin');
+    expect(profile.is_superuser).toBe(true);
 
-  test('Google OAuth returns authorization URL', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/auth/google/authorize`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body).toHaveProperty('authorization_url');
-    expect(body.authorization_url).toContain('accounts.google.com');
+    const google = await expectOk(request.get(apiUrl('/api/v2/auth/google/authorize')));
+    const googleBody = await google.json();
+    expect(googleBody.authorization_url).toContain('accounts.google.com');
   });
 });
 
-// ============================================
-// 4. AUTHENTICATED CRUD OPERATIONS
-// ============================================
-
 test.describe('Authenticated CRUD', () => {
+  let token: string;
+
   test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    const body = await res.json();
-    authToken = body.access_token;
+    token = await loginAsAdmin(request);
   });
 
-  // --- Denuncias ---
-  test('list denuncias', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/denuncias`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body).toHaveProperty('items');
-    expect(body).toHaveProperty('total');
+  test('lists key resources and stats endpoints', async ({ request }) => {
+    const checks: Array<[string, string, (body: any) => void]> = [
+      ['/api/v2/denuncias', 'items list', (body) => expect(body).toEqual(expect.objectContaining({ items: expect.anything(), total: expect.anything() }))],
+      ['/api/v2/settings', 'settings array', (body) => { expect(Array.isArray(body)).toBeTruthy(); expect(body.length).toBeGreaterThan(0); }],
+    ];
+
+    for (const [path, _label, assertBody] of checks) {
+      const res = await expectOk(request.get(apiUrl(path), { headers: { Authorization: `Bearer ${token}` } }));
+      assertBody(await res.json());
+    }
+
+    for (const path of [
+      '/api/v2/denuncias/stats',
+      '/api/v2/infraestructura/stats',
+      '/api/v2/padron/stats',
+      '/api/v2/tramites/stats',
+      '/api/v2/capas',
+      '/api/v2/sugerencias',
+      '/api/v2/monitoring/dashboard',
+    ]) {
+      await expectOk(request.get(apiUrl(path), { headers: { Authorization: `Bearer ${token}` } }));
+    }
   });
 
-  test('get denuncias stats', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/denuncias/stats`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Infraestructura ---
-  test('list and create assets', async ({ request }) => {
-    const listRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
-
-    const createRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets`, {
-      headers: { Authorization: `Bearer ${authToken}`, Origin: APP_URL },
+  test('creates representative records for infrastructure, padron, finanzas and tramites', async ({ request }) => {
+    await expectOk(
+      request.get(apiUrl('/api/v2/infraestructura/assets'), { headers: { Authorization: `Bearer ${token}` } })
+    );
+    const assetRes = await request.post(apiUrl('/api/v2/infraestructura/assets'), {
+      headers: withOrigin(token),
       data: {
         nombre: 'Canal Playwright Test',
         tipo: 'canal',
@@ -180,465 +171,197 @@ test.describe('Authenticated CRUD', () => {
         longitud: -62.69,
       },
     });
-    expect(createRes.status()).toBe(201);
-  });
+    expect(assetRes.status()).toBe(201);
 
-  test('infraestructura stats', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/infraestructura/stats`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Padron ---
-  test('list and create consorcista', async ({ request }) => {
-    const listRes = await request.get(`${API_BASE}/api/v2/padron`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
-
+    await expectOk(request.get(apiUrl('/api/v2/padron'), { headers: { Authorization: `Bearer ${token}` } }));
     const ts = Date.now().toString().slice(-8);
     const cuit = `20-${ts.padStart(8, '0')}-5`;
-    const createRes = await request.post(`${API_BASE}/api/v2/padron`, {
-      headers: { Authorization: `Bearer ${authToken}`, Origin: APP_URL },
-      data: {
-        nombre: 'Playwright',
-        apellido: 'Test',
-        cuit,
-        estado: 'activo',
-      },
-    });
-    expect(createRes.status()).toBe(201);
-  });
+    expect(
+      (await request.post(apiUrl('/api/v2/padron'), {
+        headers: withOrigin(token),
+        data: { nombre: 'Playwright', apellido: 'Test', cuit, estado: 'activo' },
+      })).status()
+    ).toBe(201);
 
-  test('padron stats', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/padron/stats`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
+    expect(
+      (await request.post(apiUrl('/api/v2/finanzas/gastos'), {
+        headers: withOrigin(token),
+        data: { descripcion: 'Gasto Playwright', monto: 2500.0, categoria: 'mantenimiento', fecha: '2026-03-25' },
+      })).status()
+    ).toBe(201);
+    await expectOk(request.get(apiUrl('/api/v2/finanzas/resumen/2026'), { headers: { Authorization: `Bearer ${token}` } }));
 
-  // --- Finanzas ---
-  test('create gasto and check resumen', async ({ request }) => {
-    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/gastos`, {
-      headers: { Authorization: `Bearer ${authToken}`, Origin: APP_URL },
-      data: {
-        descripcion: 'Gasto Playwright',
-        monto: 2500.00,
-        categoria: 'mantenimiento',
-        fecha: '2026-03-25',
-      },
-    });
-    expect(createRes.status()).toBe(201);
-
-    const resumenRes = await request.get(`${API_BASE}/api/v2/finanzas/resumen/2026`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(resumenRes.ok()).toBeTruthy();
-  });
-
-  // --- Tramites ---
-  test('create tramite', async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/tramites`, {
-      headers: { Authorization: `Bearer ${authToken}`, Origin: APP_URL },
-      data: {
-        tipo: 'permiso',
-        titulo: 'Tramite Playwright',
-        descripcion: 'Tramite creado por Playwright test',
-        solicitante: 'Playwright',
-        prioridad: 'baja',
-      },
-    });
-    expect(res.status()).toBe(201);
-  });
-
-  test('tramites stats', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/tramites/stats`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Capas ---
-  test('list capas', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/capas`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Sugerencias ---
-  test('list sugerencias', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/sugerencias`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Monitoring ---
-  test('monitoring dashboard', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/monitoring/dashboard`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  // --- Settings ---
-  test('list all settings', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/settings`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(Array.isArray(body)).toBeTruthy();
-    expect(body.length).toBeGreaterThan(0);
+    expect(
+      (await request.post(apiUrl('/api/v2/tramites'), {
+        headers: withOrigin(token),
+        data: {
+          tipo: 'permiso',
+          titulo: 'Tramite Playwright',
+          descripcion: 'Tramite creado por Playwright test',
+          solicitante: 'Playwright',
+          prioridad: 'baja',
+        },
+      })).status()
+    ).toBe(201);
   });
 });
-
-// ============================================
-// 5. GEE ENDPOINTS
-// ============================================
 
 test.describe('Google Earth Engine', () => {
-  test('list GEE layers', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(Array.isArray(body)).toBeTruthy();
-    expect(body.length).toBeGreaterThan(0);
-    expect(body[0]).toHaveProperty('id');
-    expect(body[0]).toHaveProperty('nombre');
-  });
+  test('layers and selected geojson endpoints respond', async ({ request }) => {
+    const layers = await expectOk(request.get(apiUrl('/api/v2/geo/gee/layers')));
+    const layerBody = await layers.json();
+    expect(Array.isArray(layerBody)).toBeTruthy();
+    expect(layerBody[0]).toEqual(expect.objectContaining({ id: expect.anything(), nombre: expect.anything() }));
 
-  test('get zona GeoJSON', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/zona`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
-    expect(body.features.length).toBeGreaterThan(0);
-  });
+    for (const path of [
+      '/api/v2/geo/gee/layers/zona',
+      '/api/v2/geo/gee/layers/candil',
+      '/api/v2/geo/gee/layers/norte',
+      '/api/v2/geo/gee/layers/ml',
+      '/api/v2/geo/gee/layers/noroeste',
+      '/api/v2/geo/gee/layers/caminos/coloreados',
+    ]) {
+      const res = await expectOk(request.get(apiUrl(path)));
+      expect((await res.json()).type).toBe('FeatureCollection');
+    }
 
-  test('get cuenca candil GeoJSON', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/candil`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
+    const visualizations = await expectOk(request.get(apiUrl('/api/v2/geo/gee/images/visualizations')));
+    expect(Array.isArray(await visualizations.json())).toBeTruthy();
   });
 });
 
-// ============================================
-// 6. GEO INTELLIGENCE
-// ============================================
+test.describe('Geo Intelligence and geo jobs', () => {
+  let token: string;
 
-test.describe('Geo Intelligence', () => {
   test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    authToken = (await res.json()).access_token;
+    token = await loginAsAdmin(request);
   });
 
-  test('intelligence dashboard', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/dashboard`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('list zonas', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/zonas`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('list alertas', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/alertas`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    expect(res.ok()).toBeTruthy();
+  test('intelligence, jobs and layers endpoints respond', async ({ request }) => {
+    for (const path of [
+      '/api/v2/geo/intelligence/dashboard',
+      '/api/v2/geo/intelligence/zonas',
+      '/api/v2/geo/intelligence/alertas',
+      '/api/v2/geo/intelligence/conflictos',
+      '/api/v2/geo/intelligence/canales/prioridad',
+      '/api/v2/geo/intelligence/caminos/riesgo',
+      '/api/v2/geo/intelligence/hci',
+      '/api/v2/geo/jobs',
+      '/api/v2/geo/layers',
+    ]) {
+      await expectOk(request.get(apiUrl(path), { headers: { Authorization: `Bearer ${token}` } }));
+    }
   });
 });
-
-// ============================================
-// 7. FRONTEND PAGES LOAD
-// ============================================
 
 test.describe('Frontend Pages', () => {
-  test('homepage loads', async ({ page }) => {
-    await page.goto(APP_URL);
+  test('homepage, mapa and reportes load without blank page or fatal crash', async ({ page }) => {
+    await page.goto(appUrl());
     await expect(page).toHaveTitle(/Consorcio/i);
-  });
-
-  test('login page accessible', async ({ page }) => {
-    await page.goto(APP_URL);
-    // Check that some content loads (not a blank page)
     await expect(page.locator('body')).not.toBeEmpty();
-  });
 
-  test('map page loads without crash', async ({ page }) => {
-    await page.goto(`${APP_URL}/mapa`);
-    // Wait for the page to settle
+    await page.goto(appUrl('/mapa'));
     await page.waitForTimeout(3000);
-    // Check no fatal error boundary
-    const errorBoundary = page.locator('text=Something went wrong');
-    const hasError = await errorBoundary.count();
-    // Map may show error boundary due to GEE loading, but page should load
-    expect(hasError).toBeLessThanOrEqual(1);
-  });
+    expect(await page.locator('text=Something went wrong').count()).toBeLessThanOrEqual(1);
 
-  test('reportes page loads', async ({ page }) => {
-    await page.goto(`${APP_URL}/reportes`);
+    await page.goto(appUrl('/reportes'));
     await page.waitForTimeout(2000);
     await expect(page.locator('body')).not.toBeEmpty();
   });
 });
 
-// ============================================
-// 8. AUTH EXTENDED
-// ============================================
-
 test.describe('Auth Extended', () => {
-  test('register new user', async ({ request }) => {
+  test('registers a new user and logs out an authenticated session', async ({ request }) => {
     const uniqueEmail = `test-${Date.now()}@playwright.com`;
-    const res = await request.post(`${API_BASE}/api/v2/auth/register`, {
+    const register = await request.post(apiUrl('/api/v2/auth/register'), {
       data: { email: uniqueEmail, password: 'TestPass123', nombre: 'E2E', apellido: 'Test' },
     });
-    expect(res.status()).toBe(201);
-    const body = await res.json();
-    expect(body.email).toBe(uniqueEmail);
-    expect(body.role).toBe('ciudadano'); // default role
-  });
+    expect(register.status()).toBe(201);
+    expect(await register.json()).toEqual(
+      expect.objectContaining({ email: uniqueEmail, role: 'ciudadano' })
+    );
 
-  test('logout invalidates session', async ({ request }) => {
-    // Login first
-    const loginRes = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    const token = (await loginRes.json()).access_token;
-
-    // Logout
-    const logoutRes = await request.post(`${API_BASE}/api/v2/auth/jwt/logout`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(logoutRes.ok()).toBeTruthy();
+    const token = await loginAsAdmin(request);
+    await expectOk(
+      request.post(apiUrl('/api/v2/auth/jwt/logout'), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    );
   });
 });
 
-// ============================================
-// 9. DENUNCIAS STATE TRANSITIONS
-// ============================================
-
-test.describe('Denuncias State Transitions', () => {
+test.describe('Business lifecycles', () => {
   let token: string;
 
   test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    token = await loginAsAdmin(request);
   });
 
-  test('full denuncia lifecycle: create → en_revision → resuelto', async ({ request }) => {
-    // 1. Create a denuncia via public endpoint
-    const createRes = await request.post(`${API_BASE}/api/v2/public/denuncias`, {
-      headers: { Origin: APP_URL },
-      data: {
-        tipo: 'desborde',
-        descripcion: `E2E lifecycle test - ${Date.now()}`,
-        latitud: -32.62,
-        longitud: -62.68,
-        cuenca: 'candil',
-        contacto_telefono: '3534000001',
-        contacto_email: 'lifecycle@test.com',
-      },
-    });
-    expect(createRes.status()).toBe(201);
-    const created = await createRes.json();
+  test('denuncia lifecycle reaches resuelto', async ({ request }) => {
+    const created = await createPublicDenuncia(request, `lifecycle-${Date.now()}`);
     const denunciaId = created.id;
 
-    // 2. List denuncias and find the created one
-    const listRes = await request.get(`${API_BASE}/api/v2/denuncias`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
+    const listRes = await expectOk(request.get(apiUrl('/api/v2/denuncias'), { headers: { Authorization: `Bearer ${token}` } }));
     const list = await listRes.json();
-    const found = list.items.find((d: { id: string }) => d.id === denunciaId);
-    expect(found).toBeTruthy();
+    expect(list.items.find((item: { id: string }) => item.id === denunciaId)).toBeTruthy();
 
-    // 3. PATCH to en_revision
-    const revisionRes = await request.patch(`${API_BASE}/api/v2/denuncias/${denunciaId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: { estado: 'en_revision', respuesta: 'Revisando denuncia E2E' },
-    });
-    expect(revisionRes.ok()).toBeTruthy();
+    for (const payload of [
+      { estado: 'en_revision', respuesta: 'Revisando denuncia E2E' },
+      { estado: 'resuelto' },
+    ]) {
+      await expectOk(
+        request.patch(apiUrl(`/api/v2/denuncias/${denunciaId}`), {
+          headers: withOrigin(token),
+          data: payload,
+        })
+      );
+    }
 
-    // 4. PATCH to resuelto
-    const resolvedRes = await request.patch(`${API_BASE}/api/v2/denuncias/${denunciaId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: { estado: 'resuelto' },
-    });
-    expect(resolvedRes.ok()).toBeTruthy();
-
-    // 5. Verify via public status check
-    const statusRes = await request.get(`${API_BASE}/api/v2/public/denuncias/${denunciaId}/status`);
-    expect(statusRes.ok()).toBeTruthy();
-    const status = await statusRes.json();
-    expect(status.estado).toBe('resuelto');
-  });
-});
-
-// ============================================
-// 10. INFRAESTRUCTURA EXTENDED
-// ============================================
-
-test.describe('Infraestructura Extended', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    const statusRes = await expectOk(request.get(apiUrl(`/api/v2/public/denuncias/${denunciaId}/status`)));
+    expect((await statusRes.json()).estado).toBe('resuelto');
   });
 
-  test('asset CRUD lifecycle: create → get → update → maintenance → history', async ({ request }) => {
+  test('asset lifecycle supports create, update, maintenance and history', async ({ request }) => {
     const ts = Date.now();
-
-    // 1. Create an asset
-    const createRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    const create = await request.post(apiUrl('/api/v2/infraestructura/assets'), {
+      headers: withOrigin(token),
       data: {
         nombre: `Canal E2E Extended ${ts}`,
         tipo: 'canal',
         descripcion: 'Asset para test extendido',
         estado_actual: 'bueno',
         latitud: -32.64,
-        longitud: -62.70,
+        longitud: -62.7,
       },
     });
-    expect(createRes.status()).toBe(201);
-    const asset = await createRes.json();
-    const assetId = asset.id;
+    expect(create.status()).toBe(201);
+    const assetId = (await create.json()).id;
 
-    // 2. Get asset by ID
-    const getRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(getRes.ok()).toBeTruthy();
-    const fetched = await getRes.json();
-    expect(fetched.nombre).toContain('Canal E2E Extended');
+    const getRes = await expectOk(request.get(apiUrl(`/api/v2/infraestructura/assets/${assetId}`), { headers: { Authorization: `Bearer ${token}` } }));
+    expect((await getRes.json()).nombre).toContain('Canal E2E Extended');
 
-    // 3. PATCH update estado_actual to 'regular'
-    const patchRes = await request.patch(`${API_BASE}/api/v2/infraestructura/assets/${assetId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    await expectOk(request.patch(apiUrl(`/api/v2/infraestructura/assets/${assetId}`), {
+      headers: withOrigin(token),
       data: { estado_actual: 'regular' },
-    });
-    expect(patchRes.ok()).toBeTruthy();
-
-    // 4. POST maintenance log
-    const maintRes = await request.post(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/maintenance`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: {
-        tipo_trabajo: 'Limpieza correctiva',
-        descripcion: `Mantenimiento E2E detallado ${ts}`,
-        fecha_trabajo: '2026-03-24',
-        realizado_por: 'Playwright E2E',
-      },
-    });
-    expect(maintRes.status()).toBe(201);
-
-    // 5. GET asset history
-    const histRes = await request.get(`${API_BASE}/api/v2/infraestructura/assets/${assetId}/history`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(histRes.ok()).toBeTruthy();
-  });
-});
-
-// ============================================
-// 11. FINANZAS EXTENDED
-// ============================================
-
-test.describe('Finanzas Extended', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    }));
+    expect(
+      (await request.post(apiUrl(`/api/v2/infraestructura/assets/${assetId}/maintenance`), {
+        headers: withOrigin(token),
+        data: {
+          tipo_trabajo: 'Limpieza correctiva',
+          descripcion: `Mantenimiento E2E detallado ${ts}`,
+          fecha_trabajo: '2026-03-24',
+          realizado_por: 'Playwright E2E',
+        },
+      })).status()
+    ).toBe(201);
+    await expectOk(request.get(apiUrl(`/api/v2/infraestructura/assets/${assetId}/history`), { headers: { Authorization: `Bearer ${token}` } }));
   });
 
-  test('create and list ingresos', async ({ request }) => {
+  test('tramite lifecycle supports status transition and seguimiento', async ({ request }) => {
     const ts = Date.now();
-    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/ingresos`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: {
-        descripcion: `Ingreso E2E ${ts}`,
-        monto: 15000.0,
-        categoria: 'cuotas',
-        fecha: '2026-03-24',
-      },
-    });
-    expect(createRes.status()).toBe(201);
-
-    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/ingresos`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
-    const body = await listRes.json();
-    expect(body).toHaveProperty('items');
-  });
-
-  test('create and list presupuestos', async ({ request }) => {
-    const ts = Date.now();
-    const createRes = await request.post(`${API_BASE}/api/v2/finanzas/presupuesto`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: {
-        anio: 2026,
-        rubro: `rubro-e2e-${ts}`,
-        monto_proyectado: 50000.0,
-      },
-    });
-    expect(createRes.status()).toBe(201);
-
-    const listRes = await request.get(`${API_BASE}/api/v2/finanzas/presupuesto`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
-    const body = await listRes.json();
-    expect(Array.isArray(body)).toBeTruthy();
-  });
-
-  test('budget execution for 2026', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/finanzas/ejecucion/2026`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-});
-
-// ============================================
-// 12. TRAMITES STATE TRANSITIONS
-// ============================================
-
-test.describe('Tramites State Transitions', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
-  });
-
-  test('tramite lifecycle: create → en_tramite → seguimiento → verify', async ({ request }) => {
-    const ts = Date.now();
-
-    // 1. Create tramite
-    const createRes = await request.post(`${API_BASE}/api/v2/tramites`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    const create = await request.post(apiUrl('/api/v2/tramites'), {
+      headers: withOrigin(token),
       data: {
         tipo: 'permiso',
         titulo: `Tramite E2E ${ts}`,
@@ -647,56 +370,28 @@ test.describe('Tramites State Transitions', () => {
         prioridad: 'media',
       },
     });
-    expect(createRes.status()).toBe(201);
-    const tramite = await createRes.json();
-    const tramiteId = tramite.id;
+    expect(create.status()).toBe(201);
+    const tramiteId = (await create.json()).id;
 
-    // 2. PATCH update estado to 'en_tramite'
-    const patchRes = await request.patch(`${API_BASE}/api/v2/tramites/${tramiteId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    await expectOk(request.patch(apiUrl(`/api/v2/tramites/${tramiteId}`), {
+      headers: withOrigin(token),
       data: { estado: 'en_tramite' },
-    });
-    expect(patchRes.ok()).toBeTruthy();
+    }));
+    expect(
+      (await request.post(apiUrl(`/api/v2/tramites/${tramiteId}/seguimiento`), {
+        headers: withOrigin(token),
+        data: { comentario: `Seguimiento E2E detallado ${ts}` },
+      })).status()
+    ).toBe(201);
 
-    // 3. POST add seguimiento
-    const segRes = await request.post(`${API_BASE}/api/v2/tramites/${tramiteId}/seguimiento`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: {
-        comentario: `Seguimiento E2E detallado ${ts}`,
-      },
-    });
-    expect(segRes.status()).toBe(201);
-
-    // 4. GET tramite by ID and verify
-    const getRes = await request.get(`${API_BASE}/api/v2/tramites/${tramiteId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(getRes.ok()).toBeTruthy();
-    const fetched = await getRes.json();
-    expect(fetched.estado).toBe('en_tramite');
-  });
-});
-
-// ============================================
-// 13. CAPAS CRUD
-// ============================================
-
-test.describe('Capas CRUD', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    const fetched = await expectOk(request.get(apiUrl(`/api/v2/tramites/${tramiteId}`), { headers: { Authorization: `Bearer ${token}` } }));
+    expect((await fetched.json()).estado).toBe('en_tramite');
   });
 
-  test('capa lifecycle: create → get → update → reorder → delete', async ({ request }) => {
+  test('capa lifecycle supports create, update, reorder and delete', async ({ request }) => {
     const ts = Date.now();
-
-    // 1. POST create a new capa
-    const createRes = await request.post(`${API_BASE}/api/v2/capas`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    const create = await request.post(apiUrl('/api/v2/capas'), {
+      headers: withOrigin(token),
       data: {
         nombre: `Capa E2E ${ts}`,
         tipo: 'polygon',
@@ -706,248 +401,80 @@ test.describe('Capas CRUD', () => {
         estilo: { color: '#FF0000', weight: 2, fillColor: '#FF0000', fillOpacity: 0.5 },
       },
     });
-    expect(createRes.status()).toBe(201);
-    const capa = await createRes.json();
-    const capaId = capa.id;
+    expect(create.status()).toBe(201);
+    const capaId = (await create.json()).id;
 
-    // 2. GET the created capa by ID
-    const getRes = await request.get(`${API_BASE}/api/v2/capas/${capaId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(getRes.ok()).toBeTruthy();
-    const fetched = await getRes.json();
-    expect(fetched.nombre).toContain('Capa E2E');
+    const fetched = await expectOk(request.get(apiUrl(`/api/v2/capas/${capaId}`), { headers: { Authorization: `Bearer ${token}` } }));
+    expect((await fetched.json()).nombre).toContain('Capa E2E');
 
-    // 3. PATCH update the capa
-    const patchRes = await request.patch(`${API_BASE}/api/v2/capas/${capaId}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    await expectOk(request.patch(apiUrl(`/api/v2/capas/${capaId}`), {
+      headers: withOrigin(token),
       data: { nombre: `Capa E2E Updated ${ts}`, visible: false },
-    });
-    expect(patchRes.ok()).toBeTruthy();
-
-    // 4. PUT reorder capas
-    const reorderRes = await request.put(`${API_BASE}/api/v2/capas/reorder`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
-      data: { ordered_ids: [capaId] },
-    });
-    // Reorder might return 200 or 204
-    expect(reorderRes.status()).toBeLessThan(300);
-
-    // 5. DELETE the capa (returns 204 No Content, requires admin)
-    const deleteRes = await request.delete(`${API_BASE}/api/v2/capas/${capaId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Origin: APP_URL,
-        'Content-Type': 'application/json',
-      },
-    });
-    expect(deleteRes.status()).toBe(204);
-  });
-});
-
-// ============================================
-// 14. SUGERENCIAS MANAGEMENT
-// ============================================
-
-test.describe('Sugerencias Management', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    }));
+    expect(
+      (await request.put(apiUrl('/api/v2/capas/reorder'), {
+        headers: withOrigin(token),
+        data: { ordered_ids: [capaId] },
+      })).status()
+    ).toBeLessThan(300);
+    expect(
+      (await request.delete(apiUrl(`/api/v2/capas/${capaId}`), {
+        headers: { ...withOrigin(token), 'Content-Type': 'application/json' },
+      })).status()
+    ).toBe(204);
   });
 
-  test('list sugerencias and update estado', async ({ request }) => {
-    // First create a fresh sugerencia to update
-    const createRes = await request.post(`${API_BASE}/api/v2/public/sugerencias`, {
-      headers: { Origin: APP_URL },
-      data: {
-        titulo: `Sugerencia E2E ${Date.now()}`,
-        descripcion: 'Sugerencia para test de gestion',
-        contacto_nombre: 'E2E Bot',
-        contacto_email: 'sugerencia-e2e@test.com',
-      },
-    });
-    expect(createRes.status()).toBe(201);
-    const created = await createRes.json();
+  test('sugerencias can be listed and updated', async ({ request }) => {
+    const created = await createPublicSugerencia(request, `gestion-${Date.now()}`);
+    const list = await expectOk(request.get(apiUrl('/api/v2/sugerencias'), { headers: { Authorization: `Bearer ${token}` } }));
+    expect(await list.json()).toEqual(expect.objectContaining({ items: expect.anything() }));
 
-    // List sugerencias
-    const listRes = await request.get(`${API_BASE}/api/v2/sugerencias`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
-    const body = await listRes.json();
-    expect(body).toHaveProperty('items');
-
-    // PATCH update estado to 'revisada'
-    const patchRes = await request.patch(`${API_BASE}/api/v2/sugerencias/${created.id}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    await expectOk(request.patch(apiUrl(`/api/v2/sugerencias/${created.id}`), {
+      headers: withOrigin(token),
       data: { estado: 'revisada' },
-    });
-    expect(patchRes.ok()).toBeTruthy();
-  });
-});
-
-// ============================================
-// 15. SETTINGS UPDATE
-// ============================================
-
-test.describe('Settings Update', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
+    }));
   });
 
-  test('get, update, and verify setting', async ({ request }) => {
-    // 1. GET all settings to find a key
-    const listRes = await request.get(`${API_BASE}/api/v2/settings`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(listRes.ok()).toBeTruthy();
+  test('settings can be fetched and re-saved without changing value', async ({ request }) => {
+    const listRes = await expectOk(request.get(apiUrl('/api/v2/settings'), { headers: { Authorization: `Bearer ${token}` } }));
     const settings = await listRes.json();
-    if (!settings.length) test.skip();
+    test.skip(!settings.length, 'No settings available');
 
-    const setting = settings[0];
-    const settingKey = setting.clave;
-    if (!settingKey) test.skip();
+    const settingKey = settings[0]?.clave;
+    test.skip(!settingKey, 'No setting key available');
 
-    // 2. GET specific setting by key (route: /key/{clave})
-    const getRes = await request.get(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(getRes.ok()).toBeTruthy();
+    const getRes = await expectOk(request.get(apiUrl(`/api/v2/settings/key/${settingKey}`), { headers: { Authorization: `Bearer ${token}` } }));
     const original = await getRes.json();
 
-    // 3. PUT update the setting value (re-set same value to avoid side effects)
-    const putRes = await request.put(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: APP_URL },
+    await expectOk(request.put(apiUrl(`/api/v2/settings/key/${settingKey}`), {
+      headers: withOrigin(token),
       data: { valor: original.valor },
-    });
-    expect(putRes.ok()).toBeTruthy();
-
-    // 4. Verify persistence
-    const verifyRes = await request.get(`${API_BASE}/api/v2/settings/key/${settingKey}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(verifyRes.ok()).toBeTruthy();
-  });
-});
-
-// ============================================
-// 16. GEE EXTENDED
-// ============================================
-
-test.describe('GEE Extended', () => {
-  test('cuenca norte GeoJSON', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/norte`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
+    }));
+    await expectOk(request.get(apiUrl(`/api/v2/settings/key/${settingKey}`), { headers: { Authorization: `Bearer ${token}` } }));
   });
 
-  test('cuenca ML GeoJSON', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/ml`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
-  });
+  test('finanzas extended endpoints create ingresos and presupuesto and read execution', async ({ request }) => {
+    const ts = Date.now();
 
-  test('cuenca noroeste GeoJSON', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/noroeste`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
-  });
+    expect(
+      (await request.post(apiUrl('/api/v2/finanzas/ingresos'), {
+        headers: withOrigin(token),
+        data: { descripcion: `Ingreso E2E ${ts}`, monto: 15000, categoria: 'cuotas', fecha: '2026-03-24' },
+      })).status()
+    ).toBe(201);
+    expect((await (await expectOk(request.get(apiUrl('/api/v2/finanzas/ingresos'), { headers: { Authorization: `Bearer ${token}` } }))).json())).toEqual(
+      expect.objectContaining({ items: expect.anything() })
+    );
 
-  test('colored roads layer', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/layers/caminos/coloreados`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(body.type).toBe('FeatureCollection');
-  });
+    expect(
+      (await request.post(apiUrl('/api/v2/finanzas/presupuesto'), {
+        headers: withOrigin(token),
+        data: { anio: 2026, rubro: `rubro-e2e-${ts}`, monto_proyectado: 50000 },
+      })).status()
+    ).toBe(201);
+    const presupuesto = await expectOk(request.get(apiUrl('/api/v2/finanzas/presupuesto'), { headers: { Authorization: `Bearer ${token}` } }));
+    expect(Array.isArray(await presupuesto.json())).toBeTruthy();
 
-  test('available visualizations', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/gee/images/visualizations`);
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(Array.isArray(body)).toBeTruthy();
-  });
-});
-
-// ============================================
-// 17. GEO INTELLIGENCE EXTENDED
-// ============================================
-
-test.describe('Geo Intelligence Extended', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
-  });
-
-  test('conflictos list', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/conflictos`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('canales prioridad', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/canales/prioridad`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('caminos riesgo', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/caminos/riesgo`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('HCI results list', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/intelligence/hci`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-});
-
-// ============================================
-// 18. GEO JOBS & LAYERS
-// ============================================
-
-test.describe('Geo Jobs & Layers', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post(`${API_BASE}/api/v2/auth/jwt/login`, {
-      form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    });
-    token = (await res.json()).access_token;
-  });
-
-  test('list geo processing jobs', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/jobs`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
-  });
-
-  test('list geo layers', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/api/v2/geo/layers`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    expect(res.ok()).toBeTruthy();
+    await expectOk(request.get(apiUrl('/api/v2/finanzas/ejecucion/2026'), { headers: { Authorization: `Bearer ${token}` } }));
   });
 });

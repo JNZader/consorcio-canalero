@@ -44,7 +44,9 @@ export interface SugerenciaCreate {
     type: 'FeatureCollection';
     features: Array<{
       type: 'Feature';
-      geometry: { type: 'LineString'; coordinates: number[][] };
+      geometry:
+        | { type: 'LineString'; coordinates: number[][] }
+        | { type: 'Point'; coordinates: number[] };
       properties?: Record<string, unknown>;
     }>;
   } | null;
@@ -110,13 +112,8 @@ export const sugerenciasApi = {
    * Verificar limite de sugerencias para un contacto.
    * TODO: v2 does not have a dedicated rate limit check endpoint yet.
    */
-  checkLimit: (email?: string, telefono?: string): Promise<RateLimitInfo> => {
-    const params = new URLSearchParams();
-    if (email) params.set('email', email);
-    if (telefono) params.set('telefono', telefono);
-    // TODO: Replace with v2 rate limit endpoint when available
-    return apiFetch(`/public/sugerencias/limit?${params.toString()}`, { skipAuth: true });
-  },
+  checkLimit: async (_email?: string, _telefono?: string): Promise<RateLimitInfo> =>
+    ({ remaining: 3, limit: 3, reset_hours: 24 }),
 
   /**
    * Listar sugerencias (requiere auth).

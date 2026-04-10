@@ -17,12 +17,21 @@ export interface SueloBreakdown {
   pct: number;
 }
 
+export interface CaminoConsorcioBreakdown {
+  consorcio_codigo: string;
+  consorcio_nombre: string;
+  km: number;
+  pct: number;
+}
+
 export interface TerritorialReportResponse {
   scope: 'consorcio' | 'cuenca' | 'zona';
   scope_name: string;
   km_canales: number;
   suelos: SueloBreakdown[];
   total_ha_analizada: number;
+  caminos_por_consorcio: CaminoConsorcioBreakdown[];
+  total_km_caminos: number;
 }
 
 export interface ImportResponse {
@@ -33,6 +42,7 @@ export interface ImportResponse {
 export interface TerritorialStatus {
   has_suelos: boolean;
   has_canales: boolean;
+  has_caminos: boolean;
 }
 
 // ===========================================
@@ -57,6 +67,15 @@ export async function getTerritorialStatus(): Promise<TerritorialStatus> {
   return apiFetch<TerritorialStatus>('/territorial/status');
 }
 
+export interface SyncResponse {
+  message: string;
+  details: Record<string, string>;
+}
+
+export async function syncGeodata(): Promise<SyncResponse> {
+  return apiFetch<SyncResponse>('/territorial/sync', { method: 'POST' });
+}
+
 export async function importSuelos(geojson: object): Promise<ImportResponse> {
   return apiFetch<ImportResponse>('/territorial/import/suelos', {
     method: 'POST',
@@ -66,6 +85,13 @@ export async function importSuelos(geojson: object): Promise<ImportResponse> {
 
 export async function importCanales(geojson: object): Promise<ImportResponse> {
   return apiFetch<ImportResponse>('/territorial/import/canales', {
+    method: 'POST',
+    body: JSON.stringify({ geojson }),
+  });
+}
+
+export async function importCaminos(geojson: object): Promise<ImportResponse> {
+  return apiFetch<ImportResponse>('/territorial/import/caminos', {
     method: 'POST',
     body: JSON.stringify({ geojson }),
   });

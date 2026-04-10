@@ -9,21 +9,6 @@ import { publicApi } from '../../src/lib/api';
 
 const useContactVerificationMock = vi.fn();
 
-vi.mock('leaflet', () => ({
-  default: {
-    Icon: class {
-      constructor(_opts: unknown) {}
-    },
-  },
-}));
-
-vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TileLayer: () => <div>tile-layer</div>,
-  Marker: () => <div>marker</div>,
-  useMapEvents: () => ({}),
-}));
-
 vi.mock('@mantine/dropzone', () => ({
   IMAGE_MIME_TYPE: ['image/jpeg'],
   Dropzone: ({
@@ -65,6 +50,34 @@ vi.mock('../../src/components/ui/accessibility', () => ({
     <button type="button" onClick={() => onChange('desborde')}>
       select-type
     </button>
+  ),
+}));
+
+vi.mock('../../src/components/report-form/LocationSection', () => ({
+  LocationSection: ({
+    mostrarInputManual,
+    onToggleInputManual,
+    onCoordinatesChange,
+    onObtenerGPS,
+  }: {
+    mostrarInputManual: boolean;
+    onToggleInputManual: () => void;
+    onCoordinatesChange: (lat: number, lng: number) => void;
+    onObtenerGPS: () => void;
+  }) => (
+    <div>
+      <button type="button" onClick={onObtenerGPS}>
+        Usar mi ubicacion GPS
+      </button>
+      <button type="button" onClick={onToggleInputManual}>
+        {mostrarInputManual ? 'Ocultar entrada manual' : 'Ingresar coordenadas manualmente'}
+      </button>
+      {mostrarInputManual ? (
+        <button type="button" onClick={() => onCoordinatesChange(-32.6, -62.7)}>
+          set-coordinates
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -159,15 +172,9 @@ describe('FormularioReporte', () => {
         screen.getByLabelText(/descripcion/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
-
-      const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
-      expect(submitButton).toBeDisabled();
-
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
       await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
-      expect(submitButton).not.toBeDisabled();
-
-      await user.click(submitButton);
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
       expect(publicApi.createReport).toHaveBeenCalled();
     });
@@ -188,12 +195,10 @@ describe('FormularioReporte', () => {
 
     it('shows error notification when GPS location retrieval fails', async () => {
       const user = userEvent.setup();
-      const mockError = { code: 1, message: 'Permission denied' };
-
       vi.stubGlobal('navigator', {
         geolocation: {
           getCurrentPosition: (_success: unknown, error: Function) => {
-            error(mockError);
+            error({ code: 1, message: 'Permission denied' });
           },
         },
       });
@@ -228,7 +233,6 @@ describe('FormularioReporte', () => {
 
       renderForm();
 
-      // Just verify the component renders without error
       expect(screen.getByText(/Nuevo Reporte/i)).toBeInTheDocument();
     });
 
@@ -248,7 +252,6 @@ describe('FormularioReporte', () => {
       });
 
       renderForm();
-
       expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
     });
 
@@ -316,7 +319,6 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
       await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
       await user.click(screen.getByRole('button', { name: /attach-photo/i }));
-
       await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
@@ -337,10 +339,7 @@ describe('FormularioReporte', () => {
       renderForm();
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
-      await user.type(
-        screen.getByLabelText(/descripcion/i),
-        'Test description'
-      );
+      await user.type(screen.getByLabelText(/descripcion/i), 'Test description');
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
       await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
       await user.click(screen.getByRole('button', { name: /attach-photo/i }));

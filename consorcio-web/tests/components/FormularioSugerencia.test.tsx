@@ -31,6 +31,10 @@ vi.mock('../../src/hooks/useWaterways', () => ({
   useWaterways: vi.fn(() => ({ waterways: [], isLoading: false, error: null })),
 }));
 
+vi.mock('../../src/components/suggestion-form/SuggestionGeometrySection', () => ({
+  SuggestionGeometrySection: () => <div>geometry-section</div>,
+}));
+
 vi.mock('@mantine/notifications', () => ({
   notifications: {
     show: vi.fn(),

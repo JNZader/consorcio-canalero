@@ -8,16 +8,27 @@
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
+export interface DrawnLineFeature {
+  type: 'Feature';
+  geometry: {
+    type: 'LineString';
+    coordinates: number[][];
+  };
+  properties: Record<string, never>;
+}
+
+export interface DrawnPointFeature {
+  type: 'Feature';
+  geometry: {
+    type: 'Point';
+    coordinates: number[];
+  };
+  properties: Record<string, never>;
+}
+
 export interface DrawnLineFeatureCollection {
   type: 'FeatureCollection';
-  features: Array<{
-    type: 'Feature';
-    geometry: {
-      type: 'LineString';
-      coordinates: number[][];
-    };
-    properties: Record<string, never>;
-  }>;
+  features: Array<DrawnLineFeature | DrawnPointFeature>;
 }
 
 interface LineDrawControlProps {
@@ -30,7 +41,10 @@ interface LineDrawControlProps {
 // ─── MapLibre implementation ──────────────────────────────────────────────────
 
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { useEffect, useRef } from 'react';
+import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
+import { MAPBOX_DRAW_LINE_STYLES, removeMapboxDrawArtifacts } from './mapboxDrawShared';
 
 export default function LineDrawControl({ map, value, onChange }: LineDrawControlProps) {
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -38,41 +52,20 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
   onChangeRef.current = onChange;
 
   useEffect(() => {
+    ensureMapboxDrawCompatibility(map);
+
     const draw = new MapboxDraw({
       displayControlsDefault: false,
-      controls: { line_string: true, trash: true },
+      controls: { point: true, line_string: true, trash: true },
       defaultMode: 'simple_select',
-      styles: [
-        {
-          id: 'gl-draw-line-active',
-          type: 'line',
-          filter: ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
-          paint: { 'line-color': '#0B3D91', 'line-width': 4, 'line-opacity': 0.95 },
-        },
-        {
-          id: 'gl-draw-line-vertex',
-          type: 'circle',
-          filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
-          paint: { 'circle-radius': 4, 'circle-color': '#0B3D91' },
-        },
-      ],
+      styles: [...MAPBOX_DRAW_LINE_STYLES],
     });
 
     drawRef.current = draw;
 
     // Clean stale Draw sources/layers before adding — prevents "source already exists"
     // crash after WebGL context loss+restore (same fix as DrawControl.tsx).
-    const existingStyle = map.getStyle();
-    if (existingStyle && map.getSource('mapbox-gl-draw-cold')) {
-      for (const layer of existingStyle.layers ?? []) {
-        if (layer.id.startsWith('gl-draw-') || layer.id.includes('mapbox-gl-draw')) {
-          try { map.removeLayer(layer.id); } catch { /* ignore */ }
-        }
-      }
-      for (const id of ['mapbox-gl-draw-cold', 'mapbox-gl-draw-hot']) {
-        try { map.removeSource(id); } catch { /* ignore */ }
-      }
-    }
+    removeMapboxDrawArtifacts(map);
 
     // MapboxDraw targets the same GL API as maplibre-gl
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,35 +73,56 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
 
     const emitCurrent = () => {
       const all = draw.getAll();
-      const lines = all.features.filter((f) => f.geometry.type === 'LineString');
-      if (lines.length === 0) {
+      const accepted = all.features.filter(
+        (f) => f.geometry.type === 'LineString' || f.geometry.type === 'Point',
+      );
+      if (accepted.length === 0) {
         onChangeRef.current(null);
         return;
       }
       onChangeRef.current({
         type: 'FeatureCollection',
-        features: lines.map((f) => ({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'LineString' as const,
-            coordinates: (f.geometry as GeoJSON.LineString).coordinates as number[][],
-          },
-          properties: {} as Record<string, never>,
-        })),
+        features: accepted.map((f) => {
+          if (f.geometry.type === 'Point') {
+            return {
+              type: 'Feature' as const,
+              geometry: {
+                type: 'Point' as const,
+                coordinates: (f.geometry as GeoJSON.Point).coordinates as number[],
+              },
+              properties: {} as Record<string, never>,
+            };
+          }
+          return {
+            type: 'Feature' as const,
+            geometry: {
+              type: 'LineString' as const,
+              coordinates: (f.geometry as GeoJSON.LineString).coordinates as number[][],
+            },
+            properties: {} as Record<string, never>,
+          };
+        }),
       });
+    };
+
+    const handleContextLost = () => {
+      removeMapboxDrawArtifacts(map);
     };
 
     map.on('draw.create', emitCurrent);
     map.on('draw.update', emitCurrent);
     map.on('draw.delete', emitCurrent);
+    map.on('webglcontextlost', handleContextLost);
 
     return () => {
       map.off('draw.create', emitCurrent);
       map.off('draw.update', emitCurrent);
       map.off('draw.delete', emitCurrent);
+      map.off('webglcontextlost', handleContextLost);
       if (map.hasControl(draw as unknown as import('maplibre-gl').IControl)) {
         map.removeControl(draw as unknown as import('maplibre-gl').IControl);
       }
+      removeMapboxDrawArtifacts(map);
       drawRef.current = null;
     };
   }, [map]);
@@ -119,12 +133,19 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
     if (!draw) return;
     draw.deleteAll();
     for (const feature of value?.features ?? []) {
-      if (feature.geometry.type !== 'LineString') continue;
-      draw.add({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: feature.geometry.coordinates },
-        properties: {},
-      });
+      if (feature.geometry.type === 'LineString') {
+        draw.add({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: feature.geometry.coordinates },
+          properties: {},
+        });
+      } else if (feature.geometry.type === 'Point') {
+        draw.add({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: feature.geometry.coordinates },
+          properties: {},
+        });
+      }
     }
   }, [value]);
 
