@@ -41,6 +41,7 @@ Funcionalidades transversales: exportación PDF (5 tipos de documento), invitaci
 
 ```
 consorcio-canalero/
+├── .codex/skills/              # Skills locales versionadas para asistentes
 ├── consorcio-web/              # React frontend (Vite)
 ├── gee-backend/                # FastAPI backend
 │   ├── app/
@@ -56,6 +57,16 @@ consorcio-canalero/
 ├── setup.sh                    # Clone-and-deploy setup script
 └── openspec/                   # SDD specs
 ```
+
+## AI / Codex Skills del Proyecto
+
+Este repo versiona skills locales en `.codex/skills/` para que el contexto del proyecto sea portable entre máquinas y reutilizable por futuros asistentes/agentes.
+
+Actualmente incluye:
+
+- `maplibre-tile-sources`
+- `maplibre-pmtiles-patterns`
+- `maplibre-mapbox-migration`
 
 ## Inicio Rápido
 
