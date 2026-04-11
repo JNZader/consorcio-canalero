@@ -23,8 +23,6 @@ interface GeoLayer {
 export function useMapDerivedState(params: {
   capas: Record<string, FeatureCollection | undefined>;
   caminos: FeatureCollection | null | undefined;
-  assets: Array<{ tipo: string; longitud: number; latitud: number } & object>;
-  publicLayers: Array<{ id: string; data?: FeatureCollection | null }>;
   soilMap: FeatureCollection | null | undefined;
   basins: FeatureCollection | null | undefined;
   suggestedZones: FeatureCollection | null | undefined;
@@ -47,8 +45,6 @@ export function useMapDerivedState(params: {
   const {
     capas,
     caminos,
-    assets,
-    publicLayers,
     soilMap,
     basins,
     suggestedZones,
@@ -89,22 +85,6 @@ export function useMapDerivedState(params: {
       ),
     );
   }, [soilMap]);
-
-  const infrastructureCollection = useMemo((): FeatureCollection | null => {
-    const features = assets.map((asset) => {
-      const color =
-        asset.tipo === 'puente' ? '#f03e3e'
-          : asset.tipo === 'alcantarilla' ? '#1971c2'
-            : asset.tipo === 'canal' ? '#2f9e44'
-              : '#fd7e14';
-      return {
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [asset.longitud, asset.latitud] },
-        properties: { ...asset, __color: color },
-      };
-    });
-    return features.length > 0 ? asFeatureCollection(features) : null;
-  }, [assets]);
 
   const approvedZonesCollection = approvedZones;
   const suggestedZonesDisplay = useMemo(
@@ -159,9 +139,8 @@ export function useMapDerivedState(params: {
         approvedZones,
         basins,
         soilMap,
-        infrastructureCollection,
       }),
-    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap, infrastructureCollection],
+    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap],
   );
 
   const hasSingleImage = !!selectedImage;
@@ -185,12 +164,10 @@ export function useMapDerivedState(params: {
         basins,
         approvedZonesCollection,
         roadsCollection,
-        infrastructureCollection,
-        publicLayersLength: publicLayers.length,
         intersectionsLength,
         isAdmin,
       }),
-    [approvedZonesCollection, basins, infrastructureCollection, intersectionsLength, isAdmin, publicLayers.length, roadsCollection],
+    [approvedZonesCollection, basins, intersectionsLength, isAdmin, roadsCollection],
   );
 
   const demLayerOptions = useMemo(() => buildDemLayerOptions(demLayers, GEO_LAYER_LABELS), [demLayers]);
@@ -200,7 +177,6 @@ export function useMapDerivedState(params: {
     roadsCollection,
     waterwaysCollection,
     soilCollection,
-    infrastructureCollection,
     approvedZonesCollection,
     suggestedZonesDisplay,
     demTileUrl,

@@ -8,8 +8,6 @@ import {
   syncApprovedZoneLayers,
   syncBaseTileVisibility,
   syncBasinLayers,
-  syncInfrastructureLayer,
-  syncPublicLayers,
   syncRoadLayers,
   syncSoilLayers,
   syncSuggestedZoneLayers,
@@ -31,10 +29,6 @@ interface LayerLike {
   tipo: string;
 }
 
-interface PublicLayerLike extends LayerLike {
-  data?: FeatureCollection | null;
-}
-
 interface UseMapLayerEffectsParams {
   mapRef: RefObject<maplibregl.Map | null>;
   mapReady: boolean;
@@ -49,8 +43,6 @@ interface UseMapLayerEffectsParams {
   suggestedZonesDisplay: FeatureCollection | null;
   showSuggestedZonesPanel: boolean;
   hasApprovedZones: boolean;
-  infrastructureCollection: FeatureCollection | null;
-  publicLayers: PublicLayerLike[];
   activeDemLayerId: string | null;
   showDemOverlay: boolean;
   demTileUrl: string | null;
@@ -80,8 +72,6 @@ export function useMapLayerEffects({
   suggestedZonesDisplay,
   showSuggestedZonesPanel,
   hasApprovedZones,
-  infrastructureCollection,
-  publicLayers,
   activeDemLayerId,
   showDemOverlay,
   demTileUrl,
@@ -161,22 +151,6 @@ export function useMapLayerEffects({
       }),
     );
   }, [hasApprovedZones, mapReady, mapRef, showSuggestedZonesPanel, suggestedZonesDisplay]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncInfrastructureLayer(
-      map,
-      infrastructureCollection,
-      !!vectorVisibility.infrastructure,
-    );
-  }, [infrastructureCollection, mapReady, mapRef, vectorVisibility.infrastructure]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncPublicLayers(map, publicLayers, !!vectorVisibility.public_layers);
-  }, [mapReady, mapRef, publicLayers, vectorVisibility.public_layers]);
 
   useEffect(() => {
     const map = mapRef.current;

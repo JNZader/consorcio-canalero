@@ -28,7 +28,6 @@ import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
-import { usePublicLayers } from '../hooks/usePublicLayers';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
@@ -147,8 +146,7 @@ export default function MapaMapLibre() {
   // ── Data hooks ────────────────────────────────────────────────────────────
   const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
   const { caminos, consorcios } = useCaminosColoreados();
-  const { assets, intersections, createAsset } = useInfrastructure();
-  const { layers: publicLayers } = usePublicLayers();
+  const { intersections, createAsset } = useInfrastructure();
   const { soilMap } = useSoilMap();
   const { basins } = useBasins();
   const { suggestedZones } = useSuggestedZones();
@@ -172,7 +170,6 @@ export default function MapaMapLibre() {
     zonaCollection,
     roadsCollection,
     soilCollection,
-    infrastructureCollection,
     approvedZonesCollection,
     suggestedZonesDisplay,
     demTileUrl,
@@ -191,8 +188,6 @@ export default function MapaMapLibre() {
   } = useMapDerivedState({
     capas,
     caminos,
-    assets,
-    publicLayers,
     soilMap,
     basins,
     suggestedZones,
@@ -247,8 +242,6 @@ export default function MapaMapLibre() {
     suggestedZonesDisplay,
     showSuggestedZonesPanel,
     hasApprovedZones,
-    infrastructureCollection,
-    publicLayers,
     activeDemLayerId,
     showDemOverlay,
     demTileUrl,

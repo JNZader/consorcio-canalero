@@ -36,8 +36,6 @@ export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },
   { id: 'soil', label: 'Suelos IDECOR 1:50.000', status: 'supported' },
   { id: 'catastro', label: 'Catastro rural IDECOR', status: 'supported' },
-  { id: 'public_layers', label: 'Capas Públicas', status: 'planned' },
-  { id: 'infrastructure', label: 'Infraestructura', status: 'supported' },
 ];
 
 const supportedRasterTypeSet = new Set(

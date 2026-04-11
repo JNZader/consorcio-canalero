@@ -39,7 +39,6 @@ export function useMapInteractionEffects({
       `${SOURCE_IDS.BASINS}-fill`,
       `${SOURCE_IDS.APPROVED_ZONES}-fill`,
       `${SOURCE_IDS.SUGGESTED_ZONES}-fill`,
-      `${SOURCE_IDS.INFRASTRUCTURE}-circle`,
       `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
     ];
 

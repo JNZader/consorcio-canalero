@@ -32,8 +32,6 @@ const defaultVisibleVectors: Record<string, boolean> = {
   ign_historico: false,
   soil: false,
   catastro: false,
-  public_layers: false,
-  infrastructure: false,
   hydraulic_risk: false,
   puntos_conflicto: false,
 };

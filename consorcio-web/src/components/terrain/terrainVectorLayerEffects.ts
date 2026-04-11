@@ -15,7 +15,6 @@ export const TERRAIN_SOURCE_IDS = {
   waterways: 'terrain-vector-waterways',
   soil: 'terrain-vector-soil',
   catastro: 'terrain-vector-catastro',
-  infrastructure: 'terrain-vector-infrastructure',
 } as const;
 
 interface TerrainVectorCollections {
@@ -27,7 +26,6 @@ interface TerrainVectorCollections {
   waterwaysCollection: FeatureCollection | null;
   soilCollection: FeatureCollection | null;
   catastroCollection: FeatureCollection | null | undefined;
-  infrastructureCollection: FeatureCollection | null;
 }
 
 function ensureGeoJsonSource(
@@ -204,25 +202,6 @@ function ensureTerrainVectorLayers(
     });
   }
 
-  ensureGeoJsonSource(
-    map,
-    TERRAIN_SOURCE_IDS.infrastructure,
-    collections.infrastructureCollection,
-  );
-  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.infrastructure}-circle`)) {
-    map.addLayer({
-      id: `${TERRAIN_SOURCE_IDS.infrastructure}-circle`,
-      type: 'circle',
-      source: TERRAIN_SOURCE_IDS.infrastructure,
-      paint: {
-        'circle-color': ['coalesce', ['get', '__color'], '#fd7e14'],
-        'circle-radius': 6,
-        'circle-opacity': 0.95,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
-      },
-    });
-  }
 }
 
 export function syncTerrainVectorLayers(
@@ -283,10 +262,5 @@ export function syncTerrainVectorLayers(
     map,
     `${TERRAIN_SOURCE_IDS.catastro}-line`,
     visibility.catastro && !!collections.catastroCollection,
-  );
-  ensureLayerVisibility(
-    map,
-    `${TERRAIN_SOURCE_IDS.infrastructure}-circle`,
-    visibility.infrastructure && !!collections.infrastructureCollection,
   );
 }

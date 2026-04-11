@@ -50,6 +50,8 @@ export const queryKeys = {
   compositeComparison: (areaId: string, tipo: 'flood_risk' | 'drainage_need') =>
     ['composite-comparison', areaId, tipo] as const,
   caminosColoreados: () => ['caminos-coloreados'] as const,
+  // Generic public-data cache key prefix used by useCatastroMap / useSoilMap
+  // (the standalone usePublicLayers hook was removed in the cleanup pass).
   publicLayers: () => ['public-layers'] as const,
   infrastructure: () => ['infrastructure'] as const,
   martinCatalog: () => ['martin-catalog'] as const,

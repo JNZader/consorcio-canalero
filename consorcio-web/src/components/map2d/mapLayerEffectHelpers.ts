@@ -6,16 +6,6 @@ import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 
-interface LayerLike {
-  id: string;
-  nombre: string;
-  tipo: string;
-}
-
-interface PublicLayerLike extends LayerLike {
-  data?: FeatureCollection | null;
-}
-
 export function syncBaseTileVisibility(
   map: maplibregl.Map,
   baseLayer: 'osm' | 'satellite',
@@ -287,69 +277,3 @@ export function syncSuggestedZoneLayers(
   setLayerVisibility(map, `${SOURCE_IDS.SUGGESTED_ZONES}-line`, isVisible);
 }
 
-export function syncInfrastructureLayer(
-  map: maplibregl.Map,
-  infrastructureCollection: FeatureCollection | null,
-  isVisible: boolean,
-) {
-  ensureGeoJsonSource(
-    map,
-    SOURCE_IDS.INFRASTRUCTURE,
-    infrastructureCollection ?? asFeatureCollection([]),
-  );
-
-  if (!map.getLayer(`${SOURCE_IDS.INFRASTRUCTURE}-circle`)) {
-    map.addLayer({
-      id: `${SOURCE_IDS.INFRASTRUCTURE}-circle`,
-      type: 'circle',
-      source: SOURCE_IDS.INFRASTRUCTURE,
-      paint: {
-        'circle-color': ['coalesce', ['get', '__color'], '#fd7e14'],
-        'circle-radius': 6,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
-      },
-    });
-  }
-
-  setLayerVisibility(
-    map,
-    `${SOURCE_IDS.INFRASTRUCTURE}-circle`,
-    isVisible && !!infrastructureCollection,
-  );
-}
-
-export function syncPublicLayers(
-  map: maplibregl.Map,
-  publicLayers: PublicLayerLike[],
-  isVisible: boolean,
-) {
-  for (const layer of publicLayers) {
-    const sourceId = `${SOURCE_IDS.PUBLIC_LAYERS_PREFIX}${layer.id}`;
-    const fillLayerId = `${sourceId}-fill`;
-    const lineLayerId = `${sourceId}-line`;
-
-    ensureGeoJsonSource(map, sourceId, layer.data ?? asFeatureCollection([]));
-
-    if (!map.getLayer(fillLayerId)) {
-      map.addLayer({
-        id: fillLayerId,
-        type: 'fill',
-        source: sourceId,
-        paint: { 'fill-color': '#4dabf7', 'fill-opacity': 0.18 },
-      });
-    }
-
-    if (!map.getLayer(lineLayerId)) {
-      map.addLayer({
-        id: lineLayerId,
-        type: 'line',
-        source: sourceId,
-        paint: { 'line-color': '#228be6', 'line-width': 1.5, 'line-opacity': 0.95 },
-      });
-    }
-
-    setLayerVisibility(map, fillLayerId, isVisible);
-    setLayerVisibility(map, lineLayerId, isVisible);
-  }
-}

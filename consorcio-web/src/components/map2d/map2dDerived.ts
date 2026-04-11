@@ -145,10 +145,8 @@ export function buildActiveLegendItems(params: {
   approvedZones: FeatureCollection | null | undefined;
   basins: FeatureCollection | null | undefined;
   soilMap: FeatureCollection | null | undefined;
-  infrastructureCollection: FeatureCollection | null;
 }) {
-  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap, infrastructureCollection } =
-    params;
+  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap } = params;
 
   const items: Array<{ color: string; label: string; type: string }> = [];
 
@@ -172,10 +170,6 @@ export function buildActiveLegendItems(params: {
     pushWaterwayLegendItems(items);
   }
 
-  if (vectorVisibility.infrastructure && infrastructureCollection && infrastructureCollection.features.length > 0) {
-    items.push({ color: '#fd7e14', label: 'Infraestructura', type: 'fill' });
-  }
-
   return items;
 }
 
@@ -183,8 +177,6 @@ export function buildVectorLayerItems(params: {
   basins: FeatureCollection | null | undefined;
   approvedZonesCollection: FeatureCollection | null | undefined;
   roadsCollection: FeatureCollection | null | undefined;
-  infrastructureCollection: FeatureCollection | null;
-  publicLayersLength: number;
   intersectionsLength: number;
   isAdmin: boolean;
 }) {
@@ -192,8 +184,6 @@ export function buildVectorLayerItems(params: {
     basins,
     approvedZonesCollection,
     roadsCollection,
-    infrastructureCollection,
-    publicLayersLength,
     intersectionsLength,
     isAdmin,
   } = params;
@@ -209,8 +199,6 @@ export function buildVectorLayerItems(params: {
     { id: 'roads', label: 'Red vial', show: !!roadsCollection && roadsCollection.features.length > 0 },
     { id: 'soil', label: 'Suelos IDECOR', show: true },
     { id: 'catastro', label: 'Catastro rural', show: true },
-    { id: 'infrastructure', label: 'Infraestructura', show: !!infrastructureCollection },
-    { id: 'public_layers', label: 'Capas públicas', show: publicLayersLength > 0 },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
   ]
     .filter(({ show }) => show)

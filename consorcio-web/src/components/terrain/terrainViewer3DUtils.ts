@@ -12,8 +12,6 @@ export const TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY = {
   waterways: false,
   soil: false,
   catastro: false,
-  public_layers: false,
-  infrastructure: false,
 } as const;
 
 export type TerrainVectorLayerVisibility = Record<
@@ -37,12 +35,6 @@ interface WaterwayLike {
   nombre: string;
   style: { color?: string | null };
   data: FeatureCollection;
-}
-
-interface AssetLike {
-  tipo: string;
-  latitud: number;
-  longitud: number;
 }
 
 export function asFeatureCollection(features: Feature[]): FeatureCollection {
@@ -113,27 +105,3 @@ export function buildWaterwaysCollection(
   return features.length > 0 ? asFeatureCollection(features) : null;
 }
 
-export function getInfrastructureColor(tipo: string): string {
-  if (tipo === 'puente') return '#f03e3e';
-  if (tipo === 'alcantarilla') return '#1971c2';
-  if (tipo === 'canal') return '#2f9e44';
-  return '#fd7e14';
-}
-
-export function buildInfrastructureCollection(
-  assets: AssetLike[],
-): FeatureCollection | null {
-  const features = assets.map((asset) => ({
-    type: 'Feature' as const,
-    geometry: {
-      type: 'Point' as const,
-      coordinates: [asset.longitud, asset.latitud],
-    },
-    properties: {
-      ...asset,
-      __color: getInfrastructureColor(asset.tipo),
-    },
-  }));
-
-  return features.length > 0 ? asFeatureCollection(features) : null;
-}

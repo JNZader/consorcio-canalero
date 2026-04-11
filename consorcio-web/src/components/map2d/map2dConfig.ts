@@ -11,8 +11,6 @@ export const SOURCE_IDS = {
   APPROVED_ZONES: 'map2d-approved-zones',
   SUGGESTED_ZONES: 'map2d-suggested-zones',
   ZONA: 'map2d-zona',
-  INFRASTRUCTURE: 'map2d-infrastructure',
-  PUBLIC_LAYERS_PREFIX: 'map2d-public-',
   IGN: 'map2d-ign-overlay',
   SATELLITE_IMAGE: 'map2d-selected-image',
   COMPARISON_LEFT: 'map2d-comparison-left',

@@ -21,7 +21,6 @@ import { useGEELayers } from '../../hooks/useGEELayers';
 import { useBasins } from '../../hooks/useBasins';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
-import { useInfrastructure } from '../../hooks/useInfrastructure';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
 import { useSoilMap } from '../../hooks/useSoilMap';
 import { useSelectedImageListener } from '../../hooks/useSelectedImage';
@@ -30,7 +29,6 @@ import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
 import {
   buildCuencasCollection,
-  buildInfrastructureCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
   TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
@@ -100,7 +98,6 @@ export default function TerrainViewer3D({
   const { approvedZones } = useApprovedZones();
   const { caminos } = useCaminosColoreados();
   const { waterways } = useWaterways();
-  const { assets } = useInfrastructure();
   const { catastroMap } = useCatastroMap();
   const { soilMap } = useSoilMap();
   const selectedImage = useSelectedImageListener();
@@ -210,7 +207,6 @@ export default function TerrainViewer3D({
   const soilCollection = buildSoilCollection(soilMap);
   const waterwaysCollection = buildWaterwaysCollection(waterways);
   const catastroCollection = catastroMap;
-  const infrastructureCollection = buildInfrastructureCollection(assets);
 
   const handleClassToggle = (layerType: string, classIndex: number, visible: boolean) => {
     setHiddenClasses((prev) => {
@@ -384,7 +380,6 @@ export default function TerrainViewer3D({
         waterwaysCollection,
         soilCollection,
         catastroCollection,
-        infrastructureCollection,
       },
       vectorLayerVisibility as typeof TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
     );
@@ -393,7 +388,6 @@ export default function TerrainViewer3D({
     basins,
     catastroCollection,
     cuencasCollection,
-    infrastructureCollection,
     roadsCollection,
     ready,
     soilCollection,
