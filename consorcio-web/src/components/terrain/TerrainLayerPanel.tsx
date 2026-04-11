@@ -75,7 +75,7 @@ export function TerrainLayerPanel({
               </Text>
               <Text size="xs" c="dimmed">
                 {hasApprovedZones
-                  ? 'La zonificación aprobada tiene prioridad visual. Podés combinarla con subcuencas y overlays raster sobre el relieve.'
+                  ? 'Las cuencas tienen prioridad visual. Podés combinarlas con subcuencas y overlays raster sobre el relieve.'
                   : 'La vista 2D y la vista 3D se mantienen por separado. Esta vista muestra overlays drapeados sobre el DEM.'}
               </Text>
             </Box>
