@@ -42,6 +42,7 @@ export function useMapDerivedState(params: {
   vectorVisibility: Record<string, boolean>;
   hasApprovedZones: boolean;
   intersectionsLength: number;
+  isAdmin: boolean;
 }) {
   const {
     capas,
@@ -65,6 +66,7 @@ export function useMapDerivedState(params: {
     vectorVisibility,
     hasApprovedZones,
     intersectionsLength,
+    isAdmin,
   } = params;
 
   const zonaCollection = capas.zona ?? null;
@@ -186,8 +188,9 @@ export function useMapDerivedState(params: {
         infrastructureCollection,
         publicLayersLength: publicLayers.length,
         intersectionsLength,
+        isAdmin,
       }),
-    [approvedZonesCollection, basins, infrastructureCollection, intersectionsLength, publicLayers.length, roadsCollection],
+    [approvedZonesCollection, basins, infrastructureCollection, intersectionsLength, isAdmin, publicLayers.length, roadsCollection],
   );
 
   const demLayerOptions = useMemo(() => buildDemLayerOptions(demLayers, GEO_LAYER_LABELS), [demLayers]);

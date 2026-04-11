@@ -70,6 +70,7 @@ export default function MapaMapLibre() {
   const config = useConfigStore((state) => state.config);
   const isOperator = useCanAccess(['admin', 'operador']);
   const canManageZoning = useCanAccess(['admin', 'operador']);
+  const isAdmin = useCanAccess(['admin']);
   const _mapInstanceId = useId();
 
   const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
@@ -209,6 +210,7 @@ export default function MapaMapLibre() {
     vectorVisibility,
     hasApprovedZones,
     intersectionsLength: intersections?.features?.length ?? 0,
+    isAdmin,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -235,6 +237,7 @@ export default function MapaMapLibre() {
     mapRef,
     mapReady,
     baseLayer,
+    isAdmin,
     vectorVisibility,
     soilCollection,
     roadsCollection,

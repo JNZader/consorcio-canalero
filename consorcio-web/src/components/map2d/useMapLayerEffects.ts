@@ -39,6 +39,7 @@ interface UseMapLayerEffectsParams {
   mapRef: RefObject<maplibregl.Map | null>;
   mapReady: boolean;
   baseLayer: 'osm' | 'satellite';
+  isAdmin: boolean;
   vectorVisibility: Record<string, boolean>;
   soilCollection: FeatureCollection | null;
   roadsCollection: FeatureCollection | null | undefined;
@@ -69,6 +70,7 @@ export function useMapLayerEffects({
   mapRef,
   mapReady,
   baseLayer,
+  isAdmin,
   vectorVisibility,
   soilCollection,
   roadsCollection,
@@ -124,8 +126,11 @@ export function useMapLayerEffects({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncBasinLayers(map, basins, !!vectorVisibility.basins);
-  }, [basins, mapReady, mapRef, vectorVisibility.basins]);
+    // Subcuencas (basins) is admin-only — gate the rendering as well as the
+    // toggle so a non-admin with a stale persisted vectorVisibility cannot
+    // see the layer.
+    syncBasinLayers(map, basins, isAdmin && !!vectorVisibility.basins);
+  }, [basins, isAdmin, mapReady, mapRef, vectorVisibility.basins]);
 
   useEffect(() => {
     const map = mapRef.current;

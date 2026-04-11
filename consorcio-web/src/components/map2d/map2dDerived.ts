@@ -186,12 +186,24 @@ export function buildVectorLayerItems(params: {
   infrastructureCollection: FeatureCollection | null;
   publicLayersLength: number;
   intersectionsLength: number;
+  isAdmin: boolean;
 }) {
-  const { basins, approvedZonesCollection, roadsCollection, infrastructureCollection, publicLayersLength, intersectionsLength } =
-    params;
+  const {
+    basins,
+    approvedZonesCollection,
+    roadsCollection,
+    infrastructureCollection,
+    publicLayersLength,
+    intersectionsLength,
+    isAdmin,
+  } = params;
 
   return [
-    { id: 'basins', label: 'Subcuencas', show: !!basins && basins.features.length > 0 },
+    {
+      id: 'basins',
+      label: 'Subcuencas',
+      show: isAdmin && !!basins && basins.features.length > 0,
+    },
     { id: 'approved_zones', label: 'Cuencas', show: !!approvedZonesCollection },
     { id: 'waterways', label: 'Hidrografía', show: true },
     { id: 'roads', label: 'Red vial', show: !!roadsCollection && roadsCollection.features.length > 0 },
