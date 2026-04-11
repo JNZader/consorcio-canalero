@@ -215,14 +215,16 @@ export const MapUiPanels = memo(function MapUiPanels({
           baseLayer={baseLayer}
           onBaseLayerChange={onBaseLayerChange}
           viewModePanel={
-            <ViewModePanel
-              viewMode={viewMode}
-              onViewModeChange={onViewModeChange}
-              hasSingleImage={hasSingleImage}
-              hasComparison={hasComparison}
-              singleImageInfo={singleImageInfo}
-              comparisonInfo={comparisonInfo}
-            />
+            baseLayer === 'satellite' ? (
+              <ViewModePanel
+                viewMode={viewMode}
+                onViewModeChange={onViewModeChange}
+                hasSingleImage={hasSingleImage}
+                hasComparison={hasComparison}
+                singleImageInfo={singleImageInfo}
+                comparisonInfo={comparisonInfo}
+              />
+            ) : null
           }
           layerItems={layerItems}
           vectorVisibility={vectorVisibility}
