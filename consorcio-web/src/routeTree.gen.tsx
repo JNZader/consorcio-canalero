@@ -46,15 +46,7 @@ const TramitesPanel = lazy(() => import('./components/admin/management/TramitesP
 const ReunionesPanel = lazy(() => import('./components/admin/management/ReunionesPanel'));
 const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel'));
 const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasPanel'));
-const SarTemporalPanel = lazy(() => import('./components/admin/SarTemporalPanel'));
 const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'));
-const FloodCalibrationPanel = lazy(() => import('./components/admin/FloodCalibrationPanel'));
-const CanalSuggestionsPanel = lazy(() => import('./components/admin/CanalSuggestionsPanel'));
-const FloodFlowPanel = lazy(() => import('./components/admin/FloodFlowPanel'));
-const AfectadosPanel = lazy(() => import('./components/admin/AfectadosPanel'));
-const ManningPanel = lazy(() => import('./components/admin/ManningPanel'));
-const ReturnPeriodsPanel = lazy(() => import('./components/admin/ReturnPeriodsPanel'));
-const InformesTerritorialesPanel = lazy(() => import('./components/admin/InformesTerritorialesPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -503,58 +495,10 @@ const adminFinanzasRoute = createRoute({
   component: () => <FinanzasPanel />,
 });
 
-const adminSarTemporalRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/sar-temporal',
-  component: () => <SarTemporalPanel />,
-});
-
 const adminDemPipelineRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/dem-pipeline',
   component: () => <DemPipelinePanel />,
-});
-
-const adminFloodCalibrationRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/flood-calibration',
-  component: () => <FloodCalibrationPanel />,
-});
-
-const adminCanalSuggestionsRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/canal-suggestions',
-  component: () => <CanalSuggestionsPanel />,
-});
-
-const adminFloodFlowRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/flood-flow',
-  component: () => <FloodFlowPanel />,
-});
-
-const adminAfectadosRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/afectados',
-  component: () => <AfectadosPanel />,
-});
-
-const adminManningRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/manning',
-  component: () => <ManningPanel />,
-});
-
-const adminReturnPeriodsRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/return-periods',
-  component: () => <ReturnPeriodsPanel />,
-});
-
-const adminInformesTerritorialesRoute = createRoute({
-  getParentRoute: () => adminLayoutRoute,
-  path: '/informe-territorial',
-  component: () => <InformesTerritorialesPanel />,
 });
 
 // ============================================
@@ -565,15 +509,7 @@ const adminInformesTerritorialesRoute = createRoute({
 const adminRouteTree = adminLayoutRoute.addChildren([
   adminIndexRoute,
   adminImagesRoute,
-  adminSarTemporalRoute,
   adminDemPipelineRoute,
-  adminFloodCalibrationRoute,
-  adminCanalSuggestionsRoute,
-  adminFloodFlowRoute,
-  adminAfectadosRoute,
-  adminManningRoute,
-  adminReturnPeriodsRoute,
-  adminInformesTerritorialesRoute,
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,

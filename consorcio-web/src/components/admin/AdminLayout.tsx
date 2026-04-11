@@ -45,15 +45,7 @@ const NAV_SECTIONS = [
     items: [
       { label: 'Dashboard', to: '/admin', icon: IconChartBar },
       { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
-      { label: 'Monitoreo SAR', to: '/admin/sar-temporal', icon: IconSatellite },
       { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
-      { label: 'Calibracion Inundacion', to: '/admin/flood-calibration', icon: IconDroplet },
-      { label: 'Sugerencias de Red', to: '/admin/canal-suggestions', icon: IconNetwork },
-      { label: 'Caudal Estimado', to: '/admin/flood-flow', icon: IconWaveSine },
-      { label: 'Afectados por Zona', to: '/admin/afectados', icon: IconUsers },
-      { label: 'Manning (Capacidad)', to: '/admin/manning', icon: IconCalculator },
-      { label: 'Períodos de Retorno', to: '/admin/return-periods', icon: IconChartHistogram },
-      { label: 'Informe Territorial', to: '/admin/informe-territorial', icon: IconLeaf },
     ],
   },
   {

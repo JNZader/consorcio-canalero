@@ -9,14 +9,11 @@ export default {
   mutate: [
     // Core API logic
     'src/lib/api/core.ts',
-    'src/lib/api/floodCalibration.ts',
-    'src/lib/api/canalSuggestions.ts',
     // Auth
     'src/lib/auth.ts',
     // Stores (business state)
     'src/stores/authStore.ts',
     'src/stores/configStore.ts',
-    'src/stores/floodCalibrationStore.ts',
     // Utilities with logic
     'src/lib/validators.ts',
     'src/lib/formatters.ts',
