@@ -29,9 +29,9 @@ export const SUPPORTED_3D_RASTER_TYPES: Terrain3DRasterLayerConfig[] = [
 ];
 
 export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
-  { id: 'approved_zones', label: 'Zonificación Consorcio aprobada', status: 'supported' },
+  { id: 'approved_zones', label: 'Cuencas', status: 'supported' },
   { id: 'zona', label: 'Zona Consorcio', status: 'supported' },
-  { id: 'basins', label: 'Subcuencas Operativas', status: 'supported' },
+  { id: 'basins', label: 'Subcuencas', status: 'supported' },
   { id: 'roads', label: 'Red Vial', status: 'supported' },
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },
   { id: 'soil', label: 'Suelos IDECOR 1:50.000', status: 'supported' },
