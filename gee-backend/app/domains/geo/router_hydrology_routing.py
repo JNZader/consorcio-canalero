@@ -176,6 +176,7 @@ class CorridorRoutingRequest(BaseModel):
     weight_slope: float | None = Field(default=None, ge=0.0)
     weight_hydric: float | None = Field(default=None, ge=0.0)
     weight_property: float | None = Field(default=None, ge=0.0)
+    weight_landcover: float | None = Field(default=None, ge=0.0)
 
 
 @router.post("/routing/import")
@@ -221,7 +222,11 @@ def find_shortest_path(
     Snaps input coordinates to the nearest network vertices, then
     runs Dijkstra's algorithm via pgRouting.
     """
-    from app.domains.geo.routing import find_nearest_vertex, shortest_path
+    from app.domains.geo.routing import (
+        assert_vertices_connected,
+        find_nearest_vertex,
+        shortest_path,
+    )
 
     source = find_nearest_vertex(db, body.from_lon, body.from_lat)
     target = find_nearest_vertex(db, body.to_lon, body.to_lat)
@@ -229,7 +234,16 @@ def find_shortest_path(
     if not source or not target:
         raise NotFoundError("No vertices found near the given coordinates")
 
+    assert_vertices_connected(db, source, target)
+
     path = shortest_path(db, source["id"], target["id"])
+
+    if not path and source["id"] != target["id"]:
+        raise NotFoundError(
+            "Routing produced no path between source and target vertices. "
+            "This usually indicates the canal_network has stale topology — "
+            "rebuild it with pgr_createTopology and try again."
+        )
 
     # Build GeoJSON FeatureCollection for the path
     features = []
@@ -287,6 +301,7 @@ def calculate_corridor_route(
             "slope": body.weight_slope,
             "hydric": body.weight_hydric,
             "property": body.weight_property,
+            "landcover": body.weight_landcover,
         },
     )
 

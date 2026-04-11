@@ -1,9 +1,4 @@
-"""
-pgRouting service for canal network analysis.
-
-Provides shortest path, betweenness centrality, and flood propagation
-analysis on the canal network graph stored in PostGIS.
-"""
+"""pgRouting service for canal network analysis."""
 
 from __future__ import annotations
 
@@ -34,9 +29,7 @@ from app.domains.geo.routing_support import (
 logger = logging.getLogger(__name__)
 
 
-def build_corridor_export_feature_collection(
-    result_payload: dict[str, Any],
-) -> dict[str, Any]:
+def build_corridor_export_feature_collection(result_payload: dict[str, Any]) -> dict[str, Any]:
     return _build_corridor_export_feature_collection(result_payload)
 
 
@@ -89,22 +82,76 @@ def import_canals_from_geojson(
     return count
 
 
-def build_topology(db: Session, tolerance: float = 0.0001) -> dict[str, Any]:
-    """Build pgRouting topology from canal_network edges.
+def build_topology(db: Session, tolerance: float = 0.00005) -> dict[str, Any]:
+    """Build pgRouting topology from canal_network edges with intersection noding.
 
-    Must be called after importing canals. Creates the vertices table
-    and populates source/target columns.
+    Splits all canal LineStrings at their intersections (ST_Node) before
+    building topology. Without this step, two canals that cross in the middle
+    do not share a vertex and pgr_dijkstra cannot route between them, leaving
+    the network fragmented into many disconnected components.
+
+    Original LineStrings are replaced with their noded sub-segments. Each
+    sub-segment inherits ``nombre``/``tipo`` from the original canal whose
+    geometry has the largest overlap with it.
 
     Args:
         db: Database session.
-        tolerance: Snapping tolerance for connecting edges.
+        tolerance: Snapping tolerance for pgr_createTopology (degrees, ≈5m).
 
     Returns:
         Dict with vertex_count and edge_count.
     """
-    # pgr_createTopology requires the_geom column name
-    # We need to copy geom to the_geom or use geom directly
     db.execute(text("UPDATE canal_network SET the_geom = geom WHERE the_geom IS NULL;"))
+    db.commit()
+
+    # Snapshot originals so we can backfill nombre/tipo onto noded segments.
+    db.execute(text("DROP TABLE IF EXISTS canal_originals_backup;"))
+    db.execute(text("""
+        CREATE TEMP TABLE canal_originals_backup AS
+        SELECT id, nombre, tipo, geom FROM canal_network;
+    """))
+    db.execute(text("CREATE INDEX ON canal_originals_backup USING gist (geom);"))
+
+    # Build noded sub-segments from the union of all originals.
+    db.execute(text("DROP TABLE IF EXISTS canal_noded_staging;"))
+    db.execute(text("""
+        CREATE TEMP TABLE canal_noded_staging AS
+        WITH unioned AS (SELECT ST_Node(ST_Union(geom)) AS g FROM canal_originals_backup),
+             dumped AS (SELECT (ST_Dump(g)).geom AS geom FROM unioned WHERE g IS NOT NULL)
+        SELECT row_number() OVER () AS staging_id, geom
+        FROM dumped
+        WHERE ST_GeometryType(geom) = 'ST_LineString';
+    """))
+    db.execute(text("CREATE INDEX ON canal_noded_staging USING gist (geom);"))
+    db.execute(text("ALTER TABLE canal_noded_staging ADD COLUMN nombre VARCHAR(255);"))
+    db.execute(text("ALTER TABLE canal_noded_staging ADD COLUMN tipo VARCHAR(100);"))
+
+    db.execute(text("""
+        UPDATE canal_noded_staging s
+        SET
+          nombre = (
+            SELECT o.nombre FROM canal_originals_backup o
+            WHERE ST_Intersects(o.geom, s.geom)
+            ORDER BY ST_Length(ST_Intersection(o.geom, s.geom)) DESC
+            LIMIT 1
+          ),
+          tipo = (
+            SELECT o.tipo FROM canal_originals_backup o
+            WHERE ST_Intersects(o.geom, s.geom)
+            ORDER BY ST_Length(ST_Intersection(o.geom, s.geom)) DESC
+            LIMIT 1
+          );
+    """))
+
+    db.execute(text("DROP TABLE IF EXISTS canal_network_vertices_pgr;"))
+    db.execute(text("TRUNCATE canal_network RESTART IDENTITY;"))
+    db.execute(text("""
+        INSERT INTO canal_network (nombre, tipo, geom, the_geom, cost, reverse_cost)
+        SELECT nombre, tipo, geom, geom,
+               ST_Length(ST_Transform(geom, 32720)),
+               ST_Length(ST_Transform(geom, 32720))
+        FROM canal_noded_staging;
+    """))
     db.commit()
 
     db.execute(
@@ -203,8 +250,8 @@ def shortest_path_with_penalties(
                     id,
                     source,
                     target,
-                    cost * COALESCE(:penalties ->> id::text, '1')::double precision AS cost,
-                    reverse_cost * COALESCE(:penalties ->> id::text, '1')::double precision AS reverse_cost
+                    cost * COALESCE((:penalties)::jsonb ->> id::text, '1')::double precision AS cost,
+                    reverse_cost * COALESCE((:penalties)::jsonb ->> id::text, '1')::double precision AS reverse_cost
                 FROM canal_network
                 $$,
                 :source,
@@ -414,6 +461,8 @@ def corridor_routing(
     if not source or not target:
         raise NotFoundError("No vertices found near the given coordinates")
 
+    assert_vertices_connected(db, source, target)
+
     profile_factors, profile_meta = resolve_profile_edge_factors(db, profile)
     base_route = shortest_path_with_penalties(
         db,
@@ -421,6 +470,12 @@ def corridor_routing(
         target["id"],
         edge_penalties=profile_factors,
     )
+    if not base_route and source["id"] != target["id"]:
+        raise NotFoundError(
+            "Routing produced no path between source and target vertices. "
+            "This usually indicates the canal_network has stale topology — "
+            "rebuild it with pgr_createTopology and try again."
+        )
     centerline = build_route_feature_collection(base_route)
     corridor = build_corridor_polygon(base_route, float(resolved["corridor_width_m"]))
     summary = summarize_route(base_route) | {
@@ -463,6 +518,99 @@ def corridor_routing(
         "corridor": corridor,
         "alternatives": alternatives,
     }
+
+
+def get_network_stats(db: Session) -> dict[str, Any]:
+    """Return health stats for the canal_network routing graph.
+
+    Reports total edges, vertices, and connectivity (component count and the
+    size of the largest connected subgraph). Useful for diagnosing whether
+    routing failures are caused by a fragmented topology.
+    """
+    edge_count = db.execute(
+        text("SELECT count(*) FROM canal_network WHERE source IS NOT NULL;")
+    ).scalar() or 0
+    vertex_count = db.execute(
+        text("SELECT count(*) FROM canal_network_vertices_pgr;")
+    ).scalar() or 0
+
+    if edge_count == 0:
+        return {
+            "edge_count": 0,
+            "vertex_count": 0,
+            "component_count": 0,
+            "largest_component_nodes": 0,
+            "largest_component_ratio": 0.0,
+        }
+
+    components_row = db.execute(
+        text("""
+            SELECT COUNT(*) AS components, COALESCE(MAX(n), 0) AS biggest, COALESCE(SUM(n), 0) AS total
+            FROM (
+                SELECT component, COUNT(*) AS n
+                FROM pgr_connectedComponents(
+                    'SELECT id, source, target, cost, reverse_cost FROM canal_network'
+                )
+                GROUP BY component
+            ) c;
+        """)
+    ).first()
+
+    biggest = int(components_row.biggest) if components_row else 0
+    total = int(components_row.total) if components_row else 0
+    return {
+        "edge_count": int(edge_count),
+        "vertex_count": int(vertex_count),
+        "component_count": int(components_row.components) if components_row else 0,
+        "largest_component_nodes": biggest,
+        "largest_component_ratio": round(biggest / total, 4) if total else 0.0,
+    }
+
+
+def find_vertex_component(db: Session, vertex_id: int) -> int | None:
+    """Return the connected-component id for a vertex in canal_network.
+
+    Uses pgr_connectedComponents to determine which subgraph the vertex
+    belongs to. Returns None if the vertex is not part of any component.
+    """
+    row = db.execute(
+        text("""
+            SELECT component
+            FROM pgr_connectedComponents(
+                'SELECT id, source, target, cost, reverse_cost FROM canal_network'
+            )
+            WHERE node = :vertex_id
+            LIMIT 1;
+        """),
+        {"vertex_id": vertex_id},
+    ).first()
+    return int(row.component) if row else None
+
+
+def assert_vertices_connected(
+    db: Session, source: dict[str, Any], target: dict[str, Any]
+) -> None:
+    """Raise NotFoundError if source and target are in disconnected subgraphs.
+
+    The canal_network can have multiple disconnected components when imported
+    canals do not share endpoints within the topology tolerance. pgr_dijkstra
+    silently returns an empty result in that case, which the API would otherwise
+    surface as a successful empty response.
+    """
+    if source["id"] == target["id"]:
+        return
+    source_component = find_vertex_component(db, source["id"])
+    target_component = find_vertex_component(db, target["id"])
+    if (
+        source_component is not None
+        and target_component is not None
+        and source_component != target_component
+    ):
+        raise NotFoundError(
+            "Source and target are in disconnected canal network branches "
+            f"(source component={source_component}, target component={target_component}). "
+            "Try points within the same canal branch, or use mode='raster' for off-network routing."
+        )
 
 
 def find_nearest_vertex(db: Session, lon: float, lat: float) -> dict[str, Any] | None:

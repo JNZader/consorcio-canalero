@@ -334,9 +334,13 @@ def prepare_full_pipeline_dem_impl(
     get_processing,
     register_raster_layer,
     tipo_geo_layer,
+    geometry_override: dict | None = None,
 ) -> tuple[str, str]:
     gee_svc = get_gee_service()
-    zona_geojson = gee_svc.zona.geometry().getInfo()
+    if geometry_override is not None:
+        zona_geojson = geometry_override
+    else:
+        zona_geojson = gee_svc.zona.geometry().getInfo()
 
     output_dir = Path(f"/data/geo/{area_id}")
     output_dir.mkdir(parents=True, exist_ok=True)
