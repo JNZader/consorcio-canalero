@@ -114,6 +114,15 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
   setLayerVisibility(map, `${SOURCE_IDS.CATASTRO}-line`, isVisible);
 }
 
+/** Find the first waterway *-line layer currently mounted on the map, if any. */
+function findFirstWaterwayLayerId(map: maplibregl.Map): string | undefined {
+  const style = map.getStyle();
+  return style?.layers?.find(
+    (layer) =>
+      layer.id.startsWith(`${SOURCE_IDS.WATERWAYS}-`) && layer.id.endsWith('-line'),
+  )?.id;
+}
+
 export function syncRoadLayers(
   map: maplibregl.Map,
   roadsCollection: FeatureCollection | null | undefined,
@@ -121,9 +130,10 @@ export function syncRoadLayers(
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.ROADS, roadsCollection ?? asFeatureCollection([]));
 
-  if (!map.getLayer(`${SOURCE_IDS.ROADS}-line`)) {
+  const roadLayerId = `${SOURCE_IDS.ROADS}-line`;
+  if (!map.getLayer(roadLayerId)) {
     map.addLayer({
-      id: `${SOURCE_IDS.ROADS}-line`,
+      id: roadLayerId,
       type: 'line',
       source: SOURCE_IDS.ROADS,
       paint: {
@@ -134,7 +144,19 @@ export function syncRoadLayers(
     });
   }
 
-  setLayerVisibility(map, `${SOURCE_IDS.ROADS}-line`, isVisible && !!roadsCollection);
+  // Ensure roads are drawn UNDER any existing waterway lines so the
+  // hidrografía layer visually overlaps the red vial layer.
+  const firstWaterwayLayerId = findFirstWaterwayLayerId(map);
+  if (firstWaterwayLayerId && map.getLayer(roadLayerId)) {
+    try {
+      map.moveLayer(roadLayerId, firstWaterwayLayerId);
+    } catch {
+      // moveLayer can throw if the target id no longer exists between calls;
+      // safe to ignore — next sync pass will retry.
+    }
+  }
+
+  setLayerVisibility(map, roadLayerId, isVisible && !!roadsCollection);
 }
 
 export function syncBasinLayers(
