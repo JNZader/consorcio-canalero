@@ -202,8 +202,8 @@ export function useMapLayerEffects({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncImageOverlays(map, { viewMode, selectedImage, comparison });
-  }, [comparison, mapReady, mapRef, selectedImage, viewMode]);
+    syncImageOverlays(map, { baseLayer, viewMode, selectedImage, comparison });
+  }, [baseLayer, comparison, mapReady, mapRef, selectedImage, viewMode]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -128,6 +128,7 @@ export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
 export function syncImageOverlays(
   map: maplibregl.Map,
   params: {
+    baseLayer: 'osm' | 'satellite';
     viewMode: 'base' | 'single' | 'comparison';
     selectedImage: { tile_url: string } | null;
     comparison: {
@@ -136,8 +137,15 @@ export function syncImageOverlays(
     } | null;
   },
 ) {
-  const showSingle = params.viewMode === 'single' && !!params.selectedImage;
+  // Image overlays only apply when the user is actively showing satellite
+  // imagery as the base layer; in OSM mode they are always hidden so the
+  // user gets the plain street map even if a previously selected image is
+  // still persisted in the imagery store.
+  const showImagery = params.baseLayer === 'satellite';
+  const showSingle =
+    showImagery && params.viewMode === 'single' && !!params.selectedImage;
   const showComparison =
+    showImagery &&
     params.viewMode === 'comparison' &&
     !!params.comparison?.left &&
     !!params.comparison?.right;
