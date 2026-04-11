@@ -71,8 +71,10 @@ export const mapImageApi = {
       visualization: params.visualization,
     });
 
-    if (params.sensor === 'Sentinel-2' && params.max_cloud != null) {
-      queryParams.append('max_cloud', String(params.max_cloud));
+    if (params.sensor === 'Sentinel-2') {
+      // Backend requires max_cloud as a query param; default to 20% cloud cover
+      // when the saved tile params do not have one persisted.
+      queryParams.append('max_cloud', String(params.max_cloud ?? 20));
     }
 
     return apiFetch<{

@@ -36,7 +36,6 @@ const defaultVisibleVectors: Record<string, boolean> = {
   infrastructure: false,
   hydraulic_risk: false,
   puntos_conflicto: false,
-  canal_suggestions: false,
 };
 
 const inMemoryStorage = {
@@ -121,7 +120,6 @@ export const useMapLayerSyncStore = create<MapLayerSyncStoreState & SharedMapLay
             basins: false,
             hydraulic_risk: false,
             puntos_conflicto: false,
-            canal_suggestions: false,
           },
         },
         map3d: {
@@ -131,7 +129,6 @@ export const useMapLayerSyncStore = create<MapLayerSyncStoreState & SharedMapLay
             basins: false,
             hydraulic_risk: false,
             puntos_conflicto: false,
-            canal_suggestions: false,
           },
         },
         initializedViews: state.initializedViews,

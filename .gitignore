@@ -118,7 +118,7 @@ tmpclaude-*
 RETOMA_PROYECTO.md
 
 # Build artifacts - mutation testing & coverage reports
-reports/
+/reports/
 consorcio-web/reports/
 .coverage/
 coverage/

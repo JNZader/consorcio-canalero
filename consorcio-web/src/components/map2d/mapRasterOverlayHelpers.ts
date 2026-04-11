@@ -161,11 +161,9 @@ export function syncMartinSuggestionLayers(
   map: maplibregl.Map,
   params: {
     showConflictPoints: boolean;
-    showCanalSuggestions: boolean;
   },
 ) {
   const puntosStyle = MARTIN_SOURCES.puntos_conflicto.style;
-  const canalesStyle = MARTIN_SOURCES.canal_suggestions.style;
 
   if (!map.getSource(SOURCE_IDS.MARTIN_PUNTOS)) {
     map.addSource(SOURCE_IDS.MARTIN_PUNTOS, {
@@ -195,33 +193,5 @@ export function syncMartinSuggestionLayers(
     map,
     `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
     params.showConflictPoints,
-  );
-
-  if (!map.getSource(SOURCE_IDS.MARTIN_CANALES)) {
-    map.addSource(SOURCE_IDS.MARTIN_CANALES, {
-      type: 'vector',
-      tiles: [getMartinTileUrl('canal_suggestions')],
-      minzoom: 0,
-      maxzoom: 22,
-    });
-  }
-
-  if (!map.getLayer(`${SOURCE_IDS.MARTIN_CANALES}-line`)) {
-    map.addLayer({
-      id: `${SOURCE_IDS.MARTIN_CANALES}-line`,
-      type: 'line',
-      source: SOURCE_IDS.MARTIN_CANALES,
-      'source-layer': 'canal_suggestions',
-      paint: {
-        'line-color': canalesStyle.fillColor,
-        'line-opacity': canalesStyle.opacity,
-        'line-width': canalesStyle.weight,
-      },
-    });
-  }
-  setLayerVisibility(
-    map,
-    `${SOURCE_IDS.MARTIN_CANALES}-line`,
-    params.showCanalSuggestions,
   );
 }

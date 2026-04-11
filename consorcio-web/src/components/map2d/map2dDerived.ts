@@ -200,7 +200,6 @@ export function buildVectorLayerItems(params: {
     { id: 'infrastructure', label: 'Infraestructura', show: !!infrastructureCollection },
     { id: 'public_layers', label: 'Capas públicas', show: publicLayersLength > 0 },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
-    { id: 'canal_suggestions', label: 'Sugerencias canal', show: true },
   ]
     .filter(({ show }) => show)
     .map(({ id, label }) => ({ id, label }));

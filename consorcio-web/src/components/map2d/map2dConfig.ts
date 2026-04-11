@@ -19,7 +19,6 @@ export const SOURCE_IDS = {
   COMPARISON_RIGHT: 'map2d-comparison-right',
   DEM_RASTER: 'map2d-dem-raster',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
-  MARTIN_CANALES: 'map2d-martin-canales',
 } as const;
 
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];

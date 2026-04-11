@@ -210,7 +210,6 @@ export function useMapLayerEffects({
     if (!map || !mapReady) return;
     syncMartinSuggestionLayers(map, {
       showConflictPoints: !!vectorVisibility.puntos_conflicto,
-      showCanalSuggestions: !!vectorVisibility.canal_suggestions,
     });
-  }, [mapReady, mapRef, vectorVisibility.canal_suggestions, vectorVisibility.puntos_conflicto]);
+  }, [mapReady, mapRef, vectorVisibility.puntos_conflicto]);
 }
