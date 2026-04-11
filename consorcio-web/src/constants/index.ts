@@ -281,6 +281,24 @@ export const MAP_BOUNDS = {
   west: -63.1,
 } as const;
 
+/**
+ * MapLibre `maxBounds` value for the consorcio area, expressed as
+ * `[[west, south], [east, north]]`. With a small geographic padding so the
+ * user can pan slightly beyond the strict consorcio bbox without feeling
+ * trapped against the edge.
+ */
+export const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [
+  [MAP_BOUNDS.west - 0.2, MAP_BOUNDS.south - 0.2],
+  [MAP_BOUNDS.east + 0.2, MAP_BOUNDS.north + 0.2],
+];
+
+/**
+ * Minimum zoom level — at this zoom the entire consorcio bbox should fit on
+ * a typical desktop viewport. Below this the map starts zooming out into
+ * areas that are not relevant.
+ */
+export const MAP_MIN_ZOOM = 9;
+
 // ===========================================
 // ANALYSIS DEFAULTS
 // ===========================================

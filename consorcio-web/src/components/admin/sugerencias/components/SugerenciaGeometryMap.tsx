@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Sugerencia } from '../../../../lib/api';
-import { MAP_CENTER } from '../../../../constants';
+import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../../constants';
 
 function addCanalLayers(
   map: maplibregl.Map,
@@ -95,6 +95,8 @@ export function SugerenciaGeometryMap({
       },
       center: [MAP_CENTER[1], MAP_CENTER[0]],
       zoom: 12,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
     });
 
     map.on('load', () => {

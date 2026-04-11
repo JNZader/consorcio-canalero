@@ -2,7 +2,7 @@ import { Box, Group, Stack, Text } from '@mantine/core';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
-import { MAP_CENTER } from '../../constants';
+import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
@@ -42,6 +42,8 @@ export function SuggestionGeometrySection({
       },
       center: [MAP_CENTER[1], MAP_CENTER[0]],
       zoom: 12,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
     });
 
     map.on('load', () => {

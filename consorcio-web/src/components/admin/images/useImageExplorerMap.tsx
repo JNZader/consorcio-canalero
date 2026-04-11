@@ -1,7 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
+import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../constants';
 import { useConfigStore } from '../../../stores/configStore';
 import { API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
@@ -42,6 +42,8 @@ export function useImageExplorerMap() {
       },
       center: [centerLng, centerLat],
       zoom,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
     });
     mapInstanceRef.current = map;
     return () => {

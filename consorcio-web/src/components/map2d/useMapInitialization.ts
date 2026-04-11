@@ -1,5 +1,6 @@
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
+import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
@@ -66,6 +67,8 @@ export function useMapInitialization({
       },
       center: [centerLng, centerLat],
       zoom,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
     });
 
     map.addControl(new maplibre.NavigationControl(), 'top-right');

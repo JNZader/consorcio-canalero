@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle } from '../ui/icons';
 import { API_URL } from '../../lib/api';
-import { MAP_CENTER } from '../../constants';
+import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { buildTileUrl, type GeoLayerInfo, useGeoLayers } from '../../hooks/useGeoLayers';
 import { useGEELayers } from '../../hooks/useGEELayers';
 import { useBasins } from '../../hooks/useBasins';
@@ -289,6 +289,8 @@ export default function TerrainViewer3D({
       },
       center: center,
       zoom: zoom,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
       pitch: 60,
       bearing: -20,
       maxPitch: 85,

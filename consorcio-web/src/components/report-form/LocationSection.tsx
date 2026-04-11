@@ -3,7 +3,7 @@ import { notifications } from '@mantine/notifications';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
-import { MAP_CENTER } from '../../constants';
+import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import { CoordinatesInput } from '../ui/accessibility';
 import formStyles from '../../styles/components/form.module.css';
@@ -63,6 +63,8 @@ export function LocationSection({
       },
       center: [defaultCenter[1], defaultCenter[0]],
       zoom: defaultZoom,
+      minZoom: MAP_MIN_ZOOM,
+      maxBounds: MAP_MAX_BOUNDS,
     });
 
     map.on('click', (e) => {
