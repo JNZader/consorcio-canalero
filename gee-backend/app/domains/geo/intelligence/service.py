@@ -17,8 +17,6 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.intelligence.calculations import (
     calcular_indice_criticidad_hidrica,
-    calcular_prioridad_canal,
-    calcular_riesgo_camino,
     clasificar_nivel_riesgo,
     detectar_puntos_conflicto,
     generar_zonificacion,
@@ -304,107 +302,6 @@ def generate_zones(
     logger.info("zones.generated", count=len(zonas), cuenca=cuenca)
 
     return {"zonas_creadas": len(zonas), "zonas": zonas}
-
-
-# ---------------------------------------------------------------------------
-# Canal Priorities
-# ---------------------------------------------------------------------------
-
-
-def calculate_canal_priorities(
-    db: Session,
-    canales_gdf: "gpd.GeoDataFrame",
-    flow_acc_path: str,
-    slope_path: str,
-) -> list[dict[str, Any]]:
-    """Score all canals by priority and return ranked list.
-
-    Args:
-        db: Database session.
-        canales_gdf: Canal geometries with at least 'id' and 'nombre' columns.
-        flow_acc_path: Path to flow accumulation raster.
-        slope_path: Path to slope raster.
-
-    Returns:
-        List of canal priority dicts, sorted by priority descending.
-    """
-    import geopandas as gpd
-    from geoalchemy2.shape import to_shape
-
-    zonas_criticas_gdf = None
-    try:
-        zonas_criticas = intel_repo.get_zonas_criticas(db, "alto")
-        if zonas_criticas:
-            geometries = [to_shape(z.geometria) for z in zonas_criticas]
-            zonas_criticas_gdf = gpd.GeoDataFrame(geometry=geometries, crs="EPSG:4326")
-    except Exception:
-        pass
-
-    results: list[dict[str, Any]] = []
-    for _, row in canales_gdf.iterrows():
-        score = calcular_prioridad_canal(
-            canal_geom=row.geometry,
-            flow_acc_path=flow_acc_path,
-            slope_path=slope_path,
-            zonas_criticas_gdf=zonas_criticas_gdf,
-        )
-        results.append(
-            {
-                "canal_id": str(row.get("id", "")),
-                "nombre": str(row.get("nombre", "")),
-                "prioridad": score,
-            }
-        )
-
-    results.sort(key=lambda x: x["prioridad"], reverse=True)
-    return results
-
-
-# ---------------------------------------------------------------------------
-# Road Risks
-# ---------------------------------------------------------------------------
-
-
-def calculate_road_risks(
-    db: Session,
-    caminos_gdf: "gpd.GeoDataFrame",
-    flow_acc_path: str,
-    slope_path: str,
-    twi_path: str,
-    drainage_gdf: Optional["gpd.GeoDataFrame"] = None,
-) -> list[dict[str, Any]]:
-    """Score all roads by flooding risk and return ranked list.
-
-    Args:
-        db: Database session.
-        caminos_gdf: Road geometries with at least 'id' and 'nombre' columns.
-        flow_acc_path: Path to flow accumulation raster.
-        slope_path: Path to slope raster.
-        twi_path: Path to TWI raster.
-        drainage_gdf: Optional drainage network geometries.
-
-    Returns:
-        List of road risk dicts, sorted by risk descending.
-    """
-    results: list[dict[str, Any]] = []
-    for _, row in caminos_gdf.iterrows():
-        score = calcular_riesgo_camino(
-            camino_geom=row.geometry,
-            flow_acc_path=flow_acc_path,
-            slope_path=slope_path,
-            twi_path=twi_path,
-            drainage_gdf=drainage_gdf,
-        )
-        results.append(
-            {
-                "camino_id": str(row.get("id", "")),
-                "nombre": str(row.get("nombre", "")),
-                "riesgo": score,
-            }
-        )
-
-    results.sort(key=lambda x: x["riesgo"], reverse=True)
-    return results
 
 
 # ---------------------------------------------------------------------------

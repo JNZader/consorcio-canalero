@@ -20,19 +20,7 @@ from app.domains.geo.intelligence.calculations_hydrology_support import (
     simular_escorrentia_impl,
 )
 from app.domains.geo.intelligence.calculations_network_support import (
-    calcular_prioridad_canal_impl,
-    calcular_riesgo_camino_impl,
     clasificar_terreno_dinamico_impl,
-    compute_maintenance_priority_impl,
-    detect_coverage_gaps_impl,
-    rank_canal_hotspots_impl,
-)
-from app.domains.geo.intelligence.calculations_routing_support import (
-    cost_distance_impl,
-    generate_cost_surface_impl,
-    least_cost_path_impl,
-    sample_raster_along_line_impl,
-    suggest_canal_routes_impl,
 )
 
 _wbt = None
@@ -202,152 +190,9 @@ def generar_zonificacion(
     )
 
 
-def calcular_prioridad_canal(
-    canal_geom: Any,
-    flow_acc_path: str,
-    slope_path: str,
-    zonas_criticas_gdf: Optional["gpd.GeoDataFrame"] = None,
-) -> float:
-    return calcular_prioridad_canal_impl(
-        canal_geom,
-        flow_acc_path,
-        slope_path,
-        sample_raster=_sample_raster_along_line,
-        round_score=_round_score,
-        zonas_criticas_gdf=zonas_criticas_gdf,
-    )
-
-
-def calcular_riesgo_camino(
-    camino_geom: Any,
-    flow_acc_path: str,
-    slope_path: str,
-    twi_path: str,
-    drainage_gdf: Optional["gpd.GeoDataFrame"] = None,
-) -> float:
-    return calcular_riesgo_camino_impl(
-        camino_geom,
-        flow_acc_path,
-        slope_path,
-        twi_path,
-        sample_raster=_sample_raster_along_line,
-        round_score=_round_score,
-        drainage_gdf=drainage_gdf,
-    )
-
-
 def clasificar_terreno_dinamico(
     sar_data: np.ndarray | None,
     sentinel2_data: np.ndarray | None,
     dem_data: np.ndarray | None,
 ) -> dict[str, Any]:
     return clasificar_terreno_dinamico_impl(sar_data, sentinel2_data, dem_data)
-
-
-def rank_canal_hotspots(
-    canal_geometries: list[dict], flow_acc_raster_path: str, num_points: int = 20
-) -> list[dict]:
-    return rank_canal_hotspots_impl(
-        canal_geometries,
-        flow_acc_raster_path,
-        num_points=num_points,
-        sample_raster=_sample_raster_along_line,
-    )
-
-
-def detect_coverage_gaps(
-    zones: list[dict],
-    hci_scores: dict[str, float],
-    canal_geometries: list[dict],
-    threshold_km: float = 2.0,
-    hci_threshold: float = 50.0,
-) -> list[dict]:
-    return detect_coverage_gaps_impl(
-        zones,
-        hci_scores,
-        canal_geometries,
-        threshold_km=threshold_km,
-        hci_threshold=hci_threshold,
-        extract_geometries=_extract_geometries,
-        normalize_shape=_normalize_shape,
-    )
-
-
-def compute_maintenance_priority(
-    centrality_scores: dict[int, float],
-    flow_acc_scores: dict[int, float],
-    hci_scores: dict[str, float],
-    conflict_counts: dict[int, int],
-) -> list[dict]:
-    return compute_maintenance_priority_impl(
-        centrality_scores,
-        flow_acc_scores,
-        hci_scores,
-        conflict_counts,
-        min_max=_min_max,
-        normalize_score=_normalize_score,
-    )
-
-
-def generate_cost_surface(slope_raster_path: str, output_path: str) -> str:
-    return generate_cost_surface_impl(
-        slope_raster_path, output_path, rasterio_module=_rasterio_module()
-    )
-
-
-def cost_distance(
-    cost_surface_path: str,
-    source_points: list[tuple[float, float]],
-    output_accum_path: str,
-    output_backlink_path: str,
-) -> tuple[str, str]:
-    return cost_distance_impl(
-        cost_surface_path,
-        source_points,
-        output_accum_path,
-        output_backlink_path,
-        rasterio_module=_rasterio_module(),
-        get_wbt=_get_wbt,
-    )
-
-
-def least_cost_path(
-    cost_distance_path: str, backlink_path: str, target_point: tuple[float, float]
-) -> Optional[LineString]:
-    return least_cost_path_impl(
-        cost_distance_path,
-        backlink_path,
-        target_point,
-        rasterio_module=_rasterio_module(),
-        get_wbt=_get_wbt,
-    )
-
-
-def suggest_canal_routes(
-    gap_centroids: list[dict],
-    canal_geometries: list[dict],
-    slope_raster_path: str,
-    output_dir: str | None = None,
-) -> list[dict]:
-    return suggest_canal_routes_impl(
-        gap_centroids,
-        canal_geometries,
-        slope_raster_path,
-        output_dir=output_dir,
-        normalize_shape=_normalize_shape,
-        extract_geometries=_extract_geometries,
-        generate_cost_surface=generate_cost_surface,
-        cost_distance=cost_distance,
-        least_cost_path=least_cost_path,
-    )
-
-
-def _sample_raster_along_line(
-    line_geom: Any, raster_path: str, num_points: int = 20
-) -> list[float]:
-    return sample_raster_along_line_impl(
-        line_geom,
-        raster_path,
-        num_points=num_points,
-        rasterio_module=_rasterio_module(),
-    )

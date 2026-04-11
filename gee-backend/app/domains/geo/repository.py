@@ -1,21 +1,7 @@
 """Repository layer for the geo domain."""
 
-from app.domains.geo.geo_repository_events_rainfall import (
-    GeoRepositoryEventsRainfallMixin,
-)
 from app.domains.geo.geo_repository_jobs_layers import GeoRepositoryJobsLayersMixin
-from app.domains.geo.geo_repository_routing_scenarios import (
-    GeoRepositoryRoutingScenariosMixin,
-)
-from app.domains.geo.geo_repository_zoning_analysis import (
-    GeoRepositoryZoningAnalysisMixin,
-)
 
 
-class GeoRepository(
-    GeoRepositoryJobsLayersMixin,
-    GeoRepositoryZoningAnalysisMixin,
-    GeoRepositoryEventsRainfallMixin,
-    GeoRepositoryRoutingScenariosMixin,
-):
-    """Data-access layer for geo jobs, layers, events, and rainfall."""
+class GeoRepository(GeoRepositoryJobsLayersMixin):
+    """Data-access layer for geo jobs and layers."""

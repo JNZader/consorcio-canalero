@@ -75,25 +75,13 @@ def get_basins(
             )
 
     intel_repo = IntelligenceRepository()
-    feature_collection = intel_repo.get_zonas_as_geojson(
+    return intel_repo.get_zonas_as_geojson(
         db,
         bbox=parsed_bbox,
         tolerance=tolerance,
         limit=limit,
         cuenca_filter=cuenca,
     )
-    if not adjusted:
-        return feature_collection
-
-    from app.domains.geo.intelligence.zoning_suggestions import split_basins_for_display
-
-    adjusted_features = split_basins_for_display(feature_collection["features"])
-    feature_collection["features"] = adjusted_features
-    feature_collection["metadata"] = {
-        **feature_collection.get("metadata", {}),
-        "adjusted": True,
-    }
-    return feature_collection
 
 
 @router.post("/basins/import", response_model=GeoJsonImportResponse)
@@ -116,55 +104,6 @@ async def import_basins_geojson(
             "filename": file.filename,
             "cuencas": result["cuencas"],
         },
-    )
-
-
-@router.get("/basins/suggested-zones", response_model=dict)
-def get_suggested_basin_zones(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
-    db: Session = Depends(get_db),
-):
-    """Generate a draft territorial proposal from existing operational basins.
-
-    This does not modify any persisted zoning. It returns a draft suggestion
-    FeatureCollection so the frontend can review it separately from the
-    current/manual zoning.
-
-    Current strategy:
-    - Norte = norte + noroeste
-    - Monte Leña = ml
-    - Candil = candil
-    - southern/eastern `sin_asignar` basins are absorbed by Monte Leña or Candil
-    """
-    from app.domains.geo.intelligence.repository import IntelligenceRepository
-    from app.domains.geo.intelligence.zoning_suggestions import (
-        suggest_grouped_zones,
-    )
-
-    intel_repo = IntelligenceRepository()
-    basin_features = intel_repo.get_zonas_for_grouping(db, cuenca_filter=cuenca)
-    return suggest_grouped_zones(basin_features)
-
-
-@router.post("/basins/approved-zones/build", response_model=dict)
-def build_approved_basin_zones(
-    payload: ApprovedZonesBuildRequest,
-    db: Session = Depends(get_db),
-):
-    """Build an approved zoning preview from the current draft assignments."""
-    from app.domains.geo.intelligence.repository import IntelligenceRepository
-    from app.domains.geo.intelligence.zoning_suggestions import (
-        build_zones_from_assignments,
-    )
-
-    intel_repo = IntelligenceRepository()
-    basin_features = intel_repo.get_zonas_for_grouping(db, cuenca_filter=payload.cuenca)
-    return build_zones_from_assignments(
-        basin_features,
-        basin_zone_assignments=payload.assignments,
-        zone_names=payload.zone_names,
     )
 
 

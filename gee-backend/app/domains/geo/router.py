@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
-import shutil
 import uuid
-from datetime import date
+from datetime import date  # noqa: F401 — needed for ForwardRef resolution in gee_router endpoints
 from typing import Optional
 
 import httpx
@@ -16,28 +14,13 @@ from app.auth.models import User
 from app.core.exceptions import AppException
 from app.core.logging import get_logger
 from app.db.session import get_db
-from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.intelligence.router import router as intel_router
-from app.domains.geo.intelligence.service import (
-    get_afectados_evento,
-    get_afectados_zona,
-    import_catastro_geojson,
-)
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_analysis import router as analysis_router
-from app.domains.geo.router_auto_analysis import (
-    calculate_auto_corridor_analysis as _calculate_auto_corridor_analysis,
-    router as auto_analysis_router,
-)
 from app.domains.geo.router_basins_bundle import (
     router as basins_bundle_router,
 )
 from app.domains.geo.router_bundle_io import router as bundle_io_router
-from app.domains.geo.router_catastro_support import (
-    afectados_por_evento_impl,
-    afectados_por_zona_impl,
-    import_catastro_impl,
-)
 from app.domains.geo.router_common import (
     ApprovedZonesMapPdfRequest,
     ApprovedZonesSaveRequest,
@@ -53,11 +36,6 @@ from app.domains.geo.router_common import (
 )
 from app.domains.geo.router_core import (
     router as core_router,
-)
-from app.domains.geo.router_flood_support import (
-    create_flood_event_impl,
-    run_feature_extraction_impl,
-    train_flood_model_impl,
 )
 from app.domains.geo.router_gee_support import (
     compare_flood_dates_impl,
@@ -77,69 +55,33 @@ from app.domains.geo.router_gee_support import (
     list_consorcios_camineros_impl,
     list_gee_layers_impl,
 )
-from app.domains.geo.router_hydrology_routing import (
-    CorridorRoutingRequest as _CorridorRoutingRequest,
-    ImportCanalsRequest,
-    calculate_corridor_route as _calculate_corridor_route,
-    router as hydrology_routing_router,
-)
-from app.domains.geo.routing_schemas import (
-    AutoCorridorAnalysisRequest as _AutoCorridorAnalysisRequest,
-)
-from app.domains.geo.router_hydromet import (
-    router as hydromet_router,
-)
 from app.domains.geo.router_misc_support import (
     export_current_approved_basin_zones_pdf_impl,
     export_current_map_approved_basin_zones_pdf_impl,
     export_geo_bundle_impl,
     get_gee_analysis_impl,
-    import_canal_network_impl,
     list_gee_analyses_impl,
     submit_gee_analysis_impl,
 )
-from app.domains.geo.router_ml_water import router as ml_water_router
-from app.domains.geo.router_stac_temporal import router as stac_temporal_router
 from app.domains.geo.visualization.router import router as visualization_router
-from app.domains.geo.hydrology.router import router as hydrology_router
 from app.domains.geo.schemas import (
-    AfectadosResponse,
     AnalisisGeoCreate,
     AnalisisGeoResponse,
     DemPipelineRequest,
     DemPipelineResponse,
-    EventoAfectadosResponse,
-    FloodEventCreate,
     GeoJobCreate,
-    ParcelaImportResult,
-    TrainingResultResponse,
 )
 from app.domains.geo.service import dispatch_job
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
-CorridorRoutingRequest = _CorridorRoutingRequest
-AutoCorridorAnalysisRequest = _AutoCorridorAnalysisRequest
-
-
-def calculate_corridor_route(*args, **kwargs):
-    return _calculate_corridor_route(*args, **kwargs)
-
-
-def calculate_auto_corridor_analysis(*args, **kwargs):
-    return _calculate_auto_corridor_analysis(*args, **kwargs)
 
 
 for subrouter in (
     core_router,
     basins_bundle_router,
     bundle_io_router,
-    hydromet_router,
     analysis_router,
-    auto_analysis_router,
-    ml_water_router,
-    stac_temporal_router,
-    hydrology_routing_router,
 ):
     router.include_router(subrouter)
 
@@ -218,14 +160,6 @@ def export_current_map_approved_basin_zones_pdf(
     payload: ApprovedZonesMapPdfRequest, db: Session = Depends(get_db)
 ):
     return export_current_map_approved_basin_zones_pdf_impl(payload, db)
-
-
-def import_canal_network(
-    body: ImportCanalsRequest,
-    db: Session = Depends(get_db),
-    _user: User = Depends(_require_operator),
-):
-    return import_canal_network_impl(body, db)
 
 
 async def proxy_tile(
@@ -410,99 +344,8 @@ def get_gee_analysis(
 router.include_router(gee_router)
 
 
-def _run_feature_extraction(
-    event_id: uuid.UUID, event_date: date, label_ids_and_zonas: list[tuple[str, str]]
-) -> None:
-    from app.db.session import SessionLocal
-
-    run_feature_extraction_impl(
-        event_id=event_id,
-        event_date=event_date,
-        label_ids_and_zonas=label_ids_and_zonas,
-        session_local=SessionLocal,
-        geo_repository_cls=GeoRepository,
-        logger=logger,
-    )
-
-
-@router.post("/flood-events", status_code=201)
-async def create_flood_event(
-    payload: FloodEventCreate,
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    from app.domains.geo.models import FloodEvent as FloodEventModel
-
-    return create_flood_event_impl(
-        payload=payload,
-        db=db,
-        repo=repo,
-        zona_operativa_model=ZonaOperativa,
-        flood_event_model=FloodEventModel,
-        run_feature_extraction=_run_feature_extraction,
-        asyncio_module=asyncio,
-    )
-
-
-@router.post("/ml/flood-prediction/train", response_model=TrainingResultResponse)
-def train_flood_model(
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    from app.domains.geo.ml.flood_prediction import FloodModel, MODEL_PATH
-
-    return train_flood_model_impl(
-        db=db,
-        repo=repo,
-        flood_model_cls=FloodModel,
-        model_path=MODEL_PATH,
-        shutil_module=shutil,
-        response_cls=TrainingResultResponse,
-    )
-
-
 router.include_router(intel_router, prefix="/intelligence")
-router.include_router(hydrology_router, prefix="/hydrology", tags=["Hydrology"])
 router.include_router(visualization_router, prefix="/render", tags=["Visualization"])
-
-
-@router.post("/catastro/import", response_model=ParcelaImportResult, tags=["Catastro"])
-async def import_catastro(
-    geojson_data: dict,
-    db: Session = Depends(get_db),
-    _: User = Depends(_require_admin()),
-):
-    return await import_catastro_impl(
-        geojson_data=geojson_data,
-        db=db,
-        import_catastro_geojson=import_catastro_geojson,
-    )
-
-
-@router.get(
-    "/zonas/{zona_id}/afectados", response_model=AfectadosResponse, tags=["Catastro"]
-)
-async def afectados_por_zona(
-    zona_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())
-):
-    return await afectados_por_zona_impl(
-        zona_id=zona_id, db=db, get_afectados_zona=get_afectados_zona
-    )
-
-
-@router.get(
-    "/flood-events/{event_id}/afectados",
-    response_model=EventoAfectadosResponse,
-    tags=["Catastro"],
-)
-async def afectados_por_evento(
-    event_id: str, db: Session = Depends(get_db), _: User = Depends(_require_operator())
-):
-    return await afectados_por_evento_impl(
-        event_id=event_id, db=db, get_afectados_evento=get_afectados_evento
-    )
 
 
 @router.get("/export/qgis", tags=["Export"])

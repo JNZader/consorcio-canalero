@@ -119,28 +119,6 @@ def export_current_map_approved_basin_zones_pdf_impl(payload, db: Session):
     )
 
 
-def import_canal_network_impl(body, db: Session):
-    from app.domains.geo.routing import (
-        build_topology,
-        get_network_stats,
-        import_canals_from_geojson,
-    )
-
-    total_imported = 0
-    for path in body.geojson_paths:
-        total_imported += import_canals_from_geojson(db, path, tipo=Path(path).stem)
-    topology = (
-        build_topology(db, tolerance=body.tolerance)
-        if body.rebuild_topology and total_imported > 0
-        else None
-    )
-    return {
-        "imported": total_imported,
-        "topology": topology,
-        "network": get_network_stats(db),
-    }
-
-
 def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
     from datetime import date as _date
 

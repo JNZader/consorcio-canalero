@@ -13,14 +13,11 @@ from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.router_support import (
     build_baseline_by_zona,
     build_dashboard_response,
-    build_suggestion_summary_payload,
     get_latest_runoff_layers,
-    list_suggestions_for_batch,
     load_zona_payloads,
     paginated_response,
     serialize_comparison_items,
     serialize_composite_stats,
-    serialize_suggestion_page,
     task_response,
 )
 from app.domains.geo.intelligence.schemas import (
@@ -402,134 +399,3 @@ def compare_composite_stats(
     )
 
 
-# CANAL SUGGESTIONS
-
-suggestions_router = APIRouter(prefix="/suggestions", tags=["Canal Suggestions"])
-
-
-@suggestions_router.post("/analyze", status_code=202, response_model=dict)
-def trigger_canal_analysis(
-    _user=Depends(_require_operator()),
-):
-    from app.domains.geo.intelligence.tasks import run_canal_analysis
-
-    task = run_canal_analysis.delay()
-    return task_response(task)
-
-
-@suggestions_router.get("/analyze/status/{task_id}", response_model=dict)
-def get_canal_analysis_status(
-    task_id: str,
-    _user=Depends(_require_operator()),
-):
-    from app.core.celery_app import celery_app as _celery
-
-    result = _celery.AsyncResult(task_id)
-    payload = {
-        "task_id": task_id,
-        "status": result.status.lower(),
-    }
-    if result.ready():
-        if result.successful():
-            task_result = result.result if isinstance(result.result, dict) else {}
-            payload.update(task_result)
-        else:
-            payload["error"] = str(result.result)
-    return payload
-
-
-@suggestions_router.get("/results", response_model=dict)
-def get_suggestion_results(
-    tipo: Optional[str] = Query(
-        default=None,
-        description="Filter by tipo: hotspot, gap, route, maintenance, bottleneck",
-    ),
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    repo: IntelligenceRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    latest_batch = repo.get_latest_batch(db)
-    if latest_batch is None:
-        return serialize_suggestion_page(
-            items=[], total=0, page=page, limit=limit, batch_id=None
-        )
-
-    items, total = list_suggestions_for_batch(
-        db=db,
-        repo=repo,
-        batch_id=latest_batch,
-        tipo=tipo,
-        page=page,
-        limit=limit,
-    )
-    return serialize_suggestion_page(
-        items=items,
-        total=total,
-        page=page,
-        limit=limit,
-        batch_id=latest_batch,
-    )
-
-
-@suggestions_router.get("/results/{batch_id}", response_model=dict)
-def get_suggestion_results_by_batch(
-    batch_id: uuid.UUID,
-    tipo: Optional[str] = Query(
-        default=None,
-        description="Filter by tipo: hotspot, gap, route, maintenance, bottleneck",
-    ),
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    repo: IntelligenceRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    items, total = list_suggestions_for_batch(
-        db=db,
-        repo=repo,
-        batch_id=batch_id,
-        tipo=tipo,
-        page=page,
-        limit=limit,
-    )
-
-    if total == 0:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No results found for batch {batch_id}",
-        )
-
-    return serialize_suggestion_page(
-        items=items,
-        total=total,
-        page=page,
-        limit=limit,
-        batch_id=batch_id,
-    )
-
-
-@suggestions_router.get("/summary", response_model=dict)
-def get_suggestion_summary(
-    batch_id: Optional[uuid.UUID] = Query(
-        default=None,
-        description="Specific batch to summarize. Defaults to latest.",
-    ),
-    db: Session = Depends(get_db),
-    repo: IntelligenceRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    summary = repo.get_summary(db, batch_id=batch_id)
-    if summary is None:
-        return {
-            "batch_id": None,
-            "total_suggestions": 0,
-            "by_tipo": {},
-            "top_per_tipo": {},
-        }
-
-    return build_suggestion_summary_payload(summary, repo, db)
-
-
-router.include_router(suggestions_router)
