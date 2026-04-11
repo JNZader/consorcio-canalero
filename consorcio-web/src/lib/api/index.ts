@@ -103,6 +103,10 @@ export type {
 // ===========================================
 export { routingApi } from './routing';
 export type {
+  AutoAnalysisScopeType,
+  AutoCorridorAnalysisCandidate,
+  AutoCorridorAnalysisRequest,
+  AutoCorridorAnalysisResponse,
   RoutingMode,
   RoutingProfile,
   CorridorRoutingRequest,

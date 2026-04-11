@@ -32,10 +32,14 @@ export interface VisualizationOption {
 
 export function buildVisualizationOptions(
   sensor: 'sentinel2' | 'sentinel1',
-  visualizations: VisualizationOption[],
+  visualizations: VisualizationOption[] | null | undefined,
 ) {
   if (sensor === 'sentinel2') {
-    return visualizations.map((v) => ({ value: v.id, label: v.description }));
+    const safeVisualizations = Array.isArray(visualizations) ? visualizations : [];
+    return safeVisualizations.map((v, index) => ({
+      value: v.id || `visualization-${index}`,
+      label: v.description || v.id || `Visualizacion ${index + 1}`,
+    }));
   }
   return [
     { value: 'vv', label: 'Radar SAR (VV)' },

@@ -29,6 +29,7 @@ scipy>=1.11.0
 xarray>=2024.1.0
 rioxarray>=0.15.0
 xee>=0.0.16
+whitebox>=2.3.5
 
 # 3D Visualization
 pyvista>=0.43.0

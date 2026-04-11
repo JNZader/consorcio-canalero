@@ -10,7 +10,10 @@ export function SuggestionsMapCard({
   corridorResult,
   corridorForm,
   corridorPickTarget,
+  autoAnalysisPoint,
+  autoAnalysisPointPickActive,
   onPickCoordinate,
+  onPickAutoAnalysisPoint,
 }: Readonly<{
   suggestions: CanalSuggestion[];
   visibleTypes: Set<SuggestionTipo>;
@@ -23,7 +26,10 @@ export function SuggestionsMapCard({
     toLat: number | '';
   };
   corridorPickTarget: 'from' | 'to' | null;
+  autoAnalysisPoint: { lon: number; lat: number } | null;
+  autoAnalysisPointPickActive: boolean;
   onPickCoordinate: (coords: { lon: number; lat: number }) => void;
+  onPickAutoAnalysisPoint: (coords: { lon: number; lat: number }) => void;
 }>) {
   return (
     <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
@@ -34,7 +40,10 @@ export function SuggestionsMapCard({
           corridorResult={corridorResult}
           corridorForm={corridorForm}
           corridorPickTarget={corridorPickTarget}
+          autoAnalysisPoint={autoAnalysisPoint}
+          autoAnalysisPointPickActive={autoAnalysisPointPickActive}
           onPickCoordinate={onPickCoordinate}
+          onPickAutoAnalysisPoint={onPickAutoAnalysisPoint}
         />
       </div>
 

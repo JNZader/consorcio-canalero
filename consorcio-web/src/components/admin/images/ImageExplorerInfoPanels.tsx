@@ -64,7 +64,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           <Title order={5} mb="sm"><Group gap="xs"><IconPhoto size={20} />Escenas Historicas</Group></Title>
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {historicFloods.map((flood) => (
-              <Card key={flood.id} padding="sm" radius="md" withBorder style={{ cursor: 'pointer' }} onClick={() => onLoadHistoricFlood(flood.id)}>
+              <Card key={`${flood.id}-${flood.date}`} padding="sm" radius="md" withBorder style={{ cursor: 'pointer' }} onClick={() => onLoadHistoricFlood(flood.id)}>
                 <Group justify="space-between" mb="xs">
                   <Text fw={500}>{flood.name}</Text>
                   <Badge color={flood.severity === 'alta' ? 'red' : flood.severity === 'media' ? 'orange' : 'yellow'} size="sm">{flood.severity}</Badge>

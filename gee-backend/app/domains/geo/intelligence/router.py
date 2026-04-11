@@ -417,6 +417,27 @@ def trigger_canal_analysis(
     return task_response(task)
 
 
+@suggestions_router.get("/analyze/status/{task_id}", response_model=dict)
+def get_canal_analysis_status(
+    task_id: str,
+    _user=Depends(_require_operator()),
+):
+    from app.core.celery_app import celery_app as _celery
+
+    result = _celery.AsyncResult(task_id)
+    payload = {
+        "task_id": task_id,
+        "status": result.status.lower(),
+    }
+    if result.ready():
+        if result.successful():
+            task_result = result.result if isinstance(result.result, dict) else {}
+            payload.update(task_result)
+        else:
+            payload["error"] = str(result.result)
+    return payload
+
+
 @suggestions_router.get("/results", response_model=dict)
 def get_suggestion_results(
     tipo: Optional[str] = Query(

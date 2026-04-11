@@ -1,7 +1,9 @@
+import { notifications } from '@mantine/notifications';
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../../constants';
+import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../../../hooks/useFormMapLayers';
 import type { CanalSuggestion, CorridorRoutingResponse, SuggestionTipo } from '../../../../lib/api';
 import { buildMapCollections, collectBoundsCoordinates } from '../canalSuggestionsUtils';
 import {
@@ -21,7 +23,10 @@ interface SuggestionsMapProps {
     toLat: number | '';
   };
   readonly corridorPickTarget: 'from' | 'to' | null;
+  readonly autoAnalysisPoint: { lon: number; lat: number } | null;
+  readonly autoAnalysisPointPickActive: boolean;
   readonly onPickCoordinate: (coords: { lon: number; lat: number }) => void;
+  readonly onPickAutoAnalysisPoint: (coords: { lon: number; lat: number }) => void;
 }
 
 export function SuggestionsMap({
@@ -30,8 +35,12 @@ export function SuggestionsMap({
   corridorResult,
   corridorForm,
   corridorPickTarget,
+  autoAnalysisPoint,
+  autoAnalysisPointPickActive,
   onPickCoordinate,
+  onPickAutoAnalysisPoint,
 }: SuggestionsMapProps) {
+  const { zonaGeoJson, caminosGeoJson, waterways } = useFormMapLayers();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -45,20 +54,23 @@ export function SuggestionsMap({
       style: {
         version: 8,
         sources: {
-          osm: {
+          basemap: {
             type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
             tileSize: 256,
-            attribution: '&copy; OpenStreetMap',
+            attribution: 'Tiles &copy; Esri',
           },
         },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
       },
       center: [MAP_CENTER[1], MAP_CENTER[0]],
-      zoom: MAP_DEFAULT_ZOOM ?? 11,
+      zoom: MAP_DEFAULT_ZOOM ?? 12,
     });
 
     map.on('load', () => {
+      addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
       mapInstanceRef.current = map;
       setMapReady(true);
     });
@@ -72,23 +84,51 @@ export function SuggestionsMap({
 
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !mapReady || !corridorPickTarget) return;
+    if (!map || !mapReady) return;
+    addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
+  }, [caminosGeoJson, mapReady, waterways, zonaGeoJson]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady || (!corridorPickTarget && !autoAnalysisPointPickActive)) return;
 
     const handleMapClick = (event: maplibregl.MapMouseEvent) => {
-      onPickCoordinate({ lon: event.lngLat.lng, lat: event.lngLat.lat });
+      const lngLat: [number, number] = [event.lngLat.lng, event.lngLat.lat];
+      if (!isInsideZona(zonaGeoJson, lngLat)) {
+        notifications.show({
+          title: 'Fuera del área',
+          message: 'Selecciona origen y destino dentro del área del consorcio.',
+          color: 'red',
+        });
+        return;
+      }
+      if (corridorPickTarget) {
+        onPickCoordinate({ lon: lngLat[0], lat: lngLat[1] });
+        return;
+      }
+      if (autoAnalysisPointPickActive) {
+        onPickAutoAnalysisPoint({ lon: lngLat[0], lat: lngLat[1] });
+      }
     };
 
     map.on('click', handleMapClick);
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [corridorPickTarget, mapReady, onPickCoordinate]);
+  }, [
+    autoAnalysisPointPickActive,
+    corridorPickTarget,
+    mapReady,
+    onPickAutoAnalysisPoint,
+    onPickCoordinate,
+    zonaGeoJson,
+  ]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
-    map.getCanvas().style.cursor = corridorPickTarget ? 'crosshair' : '';
-  }, [corridorPickTarget, mapReady]);
+    map.getCanvas().style.cursor = corridorPickTarget || autoAnalysisPointPickActive ? 'crosshair' : '';
+  }, [autoAnalysisPointPickActive, corridorPickTarget, mapReady]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -301,7 +341,7 @@ export function SuggestionsMap({
 
     const sourceId = 'corridor-anchors';
     const layerId = 'corridor-anchors';
-    const anchorCollection = buildCorridorAnchorCollection(corridorForm);
+    const anchorCollection = buildCorridorAnchorCollection(corridorForm, autoAnalysisPoint);
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
 
     if (source) {
@@ -323,7 +363,7 @@ export function SuggestionsMap({
         },
       });
     }
-  }, [corridorForm, mapReady]);
+  }, [autoAnalysisPoint, corridorForm, mapReady]);
 
   return <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />;
 }

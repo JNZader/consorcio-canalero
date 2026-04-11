@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import shutil
 import uuid
 from datetime import date
@@ -24,6 +25,10 @@ from app.domains.geo.intelligence.service import (
 )
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_analysis import router as analysis_router
+from app.domains.geo.router_auto_analysis import (
+    calculate_auto_corridor_analysis as _calculate_auto_corridor_analysis,
+    router as auto_analysis_router,
+)
 from app.domains.geo.router_basins_bundle import (
     router as basins_bundle_router,
 )
@@ -78,6 +83,9 @@ from app.domains.geo.router_hydrology_routing import (
     calculate_corridor_route as _calculate_corridor_route,
     router as hydrology_routing_router,
 )
+from app.domains.geo.routing_schemas import (
+    AutoCorridorAnalysisRequest as _AutoCorridorAnalysisRequest,
+)
 from app.domains.geo.router_hydromet import (
     router as hydromet_router,
 )
@@ -111,10 +119,15 @@ from app.domains.geo.service import dispatch_job
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
 CorridorRoutingRequest = _CorridorRoutingRequest
+AutoCorridorAnalysisRequest = _AutoCorridorAnalysisRequest
 
 
 def calculate_corridor_route(*args, **kwargs):
     return _calculate_corridor_route(*args, **kwargs)
+
+
+def calculate_auto_corridor_analysis(*args, **kwargs):
+    return _calculate_auto_corridor_analysis(*args, **kwargs)
 
 
 for subrouter in (
@@ -123,6 +136,7 @@ for subrouter in (
     bundle_io_router,
     hydromet_router,
     analysis_router,
+    auto_analysis_router,
     ml_water_router,
     stac_temporal_router,
     hydrology_routing_router,
@@ -306,6 +320,14 @@ def _gee_async(handler):
     async def endpoint(*args, **kwargs):
         return await handler(*args, **kwargs, ensure_gee=_ensure_gee)
 
+    endpoint.__name__ = getattr(handler, "__name__", "gee_endpoint")
+    endpoint.__signature__ = inspect.Signature(
+        parameters=[
+            parameter
+            for name, parameter in inspect.signature(handler).parameters.items()
+            if name != "ensure_gee"
+        ]
+    )
     return endpoint
 
 
@@ -313,6 +335,8 @@ def _gee_simple(handler):
     async def endpoint(*args, **kwargs):
         return await handler(*args, **kwargs)
 
+    endpoint.__name__ = getattr(handler, "__name__", "gee_simple_endpoint")
+    endpoint.__signature__ = inspect.signature(handler)
     return endpoint
 
 

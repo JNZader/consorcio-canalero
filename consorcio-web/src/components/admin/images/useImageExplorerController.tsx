@@ -26,6 +26,22 @@ interface AvailableDatesResponse {
   dates: string[];
 }
 
+function isVisualization(value: unknown): value is Visualization {
+  return !!value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string' && typeof (value as { description?: unknown }).description === 'string';
+}
+
+function isHistoricFlood(value: unknown): value is HistoricFlood {
+  return !!value && typeof value === 'object'
+    && typeof (value as { id?: unknown }).id === 'string'
+    && typeof (value as { name?: unknown }).name === 'string'
+    && typeof (value as { date?: unknown }).date === 'string';
+}
+
+function normalizeUniqueDates(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.filter((value): value is string => typeof value === 'string'))].sort();
+}
+
 const API_BASE = `${API_URL}/api/v2/geo/gee/images`;
 
 export function useImageExplorerController() {
@@ -119,8 +135,7 @@ export function useImageExplorerController() {
 
   const handleSelectDay = useCallback((dateStr: string) => {
     setSelectedDay(dateStr);
-    fetchImageForDate(dateStr);
-  }, [fetchImageForDate]);
+  }, []);
 
   const handlePrevMonth = useCallback(() => {
     setCalendarMonth((prev) => {
@@ -147,13 +162,33 @@ export function useImageExplorerController() {
 
   useEffect(() => {
     fetch(`${API_BASE}/visualizations`)
-      .then((res) => res.json())
-      .then((data: Visualization[]) => setVisualizations(data))
-      .catch((err) => logger.error('Error fetching visualizations:', err));
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Error fetching visualizations (${res.status})`);
+        return res.json();
+      })
+      .then((data: unknown) => {
+        const items = Array.isArray(data) ? data.filter(isVisualization) : [];
+        setVisualizations(items);
+      })
+      .catch((err) => {
+        logger.error('Error fetching visualizations:', err);
+        setVisualizations([]);
+      });
     fetch(`${API_BASE}/historic-floods`)
-      .then((res) => res.json())
-      .then((data: { floods: HistoricFlood[] }) => setHistoricFloods(data.floods))
-      .catch((err) => logger.error('Error fetching historic floods:', err));
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Error fetching historic floods (${res.status})`);
+        return res.json();
+      })
+      .then((data: unknown) => {
+        const floods = data && typeof data === 'object' && Array.isArray((data as { floods?: unknown[] }).floods)
+          ? (data as { floods: unknown[] }).floods.filter(isHistoricFlood)
+          : [];
+        setHistoricFloods(floods);
+      })
+      .catch((err) => {
+        logger.error('Error fetching historic floods:', err);
+        setHistoricFloods([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -166,7 +201,7 @@ export function useImageExplorerController() {
         if (!res.ok) throw new Error('Error fetching available dates');
         return res.json();
       })
-      .then((data: AvailableDatesResponse) => setAvailableDates(data.dates))
+      .then((data: AvailableDatesResponse) => setAvailableDates(normalizeUniqueDates(data.dates)))
       .catch((err) => {
         logger.error('Error fetching available dates:', err);
         setAvailableDates([]);
@@ -175,10 +210,10 @@ export function useImageExplorerController() {
   }, [calendarMonth, calendarYear, sensor, maxCloud]);
 
   useEffect(() => {
-    if (selectedDay && result) {
+    if (selectedDay) {
       fetchImageForDate(selectedDay);
     }
-  }, [fetchImageForDate, result, selectedDay]);
+  }, [fetchImageForDate, selectedDay]);
 
   return {
     isMobile,

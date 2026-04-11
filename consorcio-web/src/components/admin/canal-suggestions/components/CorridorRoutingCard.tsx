@@ -14,6 +14,7 @@ interface CorridorFormState {
   weightSlope: number;
   weightHydric: number;
   weightProperty: number;
+  weightLandcover: number;
 }
 
 export function CorridorRoutingCard({
@@ -139,6 +140,15 @@ export function CorridorRoutingCard({
               step={0.05}
               decimalScale={2}
             />
+            <NumberInput
+              label="Peso aptitud territorial"
+              value={form.weightLandcover}
+              onChange={(value) => onChange('weightLandcover', Number(value) || 0)}
+              min={0}
+              max={1}
+              step={0.05}
+              decimalScale={2}
+            />
           </SimpleGrid>
         )}
 
@@ -230,11 +240,15 @@ export function CorridorRoutingCard({
               <SimpleGrid cols={{ base: 2, md: 4 }}>
                 <Paper withBorder p="sm">
                   <Text size="xs" c="dimmed">Factor promedio</Text>
-                  <Text fw={700}>{summary.costBreakdown.avg_profile_factor.toFixed(2)}</Text>
+                  <Text fw={700}>
+                    {summary.costBreakdown.avg_profile_factor?.toFixed(2) ?? '-'}
+                  </Text>
                 </Paper>
                 <Paper withBorder p="sm">
                   <Text size="xs" c="dimmed">Edges afectados</Text>
-                  <Text fw={700}>{summary.costBreakdown.edge_count_with_profile_factor}</Text>
+                  <Text fw={700}>
+                    {summary.costBreakdown.edge_count_with_profile_factor ?? '-'}
+                  </Text>
                 </Paper>
                 <Paper withBorder p="sm">
                   <Text size="xs" c="dimmed">Índice hídrico medio</Text>

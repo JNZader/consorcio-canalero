@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
   containerRef: React.RefObject<HTMLDivElement | null>;
-  center: [number, number];
+  centerLat: number;
+  centerLng: number;
   zoom: number;
   mapRef: React.RefObject<maplibregl.Map | null>;
   setMapReady: (ready: boolean) => void;
@@ -13,7 +14,8 @@ interface UseMapInitializationParams {
 export function useMapInitialization({
   maplibre,
   containerRef,
-  center,
+  centerLat,
+  centerLng,
   zoom,
   mapRef,
   setMapReady,
@@ -62,7 +64,7 @@ export function useMapInitialization({
           },
         ],
       },
-      center,
+      center: [centerLng, centerLat],
       zoom,
     });
 
@@ -96,5 +98,5 @@ export function useMapInitialization({
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [center, containerRef, mapRef, maplibre, setMapReady, zoom]);
+  }, [centerLat, centerLng, containerRef, mapRef, maplibre, setMapReady, zoom]);
 }

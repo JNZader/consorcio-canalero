@@ -38,12 +38,11 @@ import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import styles from '../styles/components/map.module.css';
-import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { GEE_LAYER_NAMES } from './map2d/map2dConfig';
-import { leafletCenterToMapLibre } from './map2d/map2dUtils';
+import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
 import {
   useAssetCreationHandler,
   useMapExportHandlers,
@@ -73,23 +72,22 @@ export default function MapaMapLibre() {
   const canManageZoning = useCanAccess(['admin', 'operador']);
   const _mapInstanceId = useId();
 
-  const center: [number, number] = config?.map.center
-    ? leafletCenterToMapLibre([config.map.center.lat, config.map.center.lng])
-    : leafletCenterToMapLibre(MAP_CENTER);
+  const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
+  const centerLat = mapCenter.lat;
+  const centerLng = mapCenter.lng;
   const zoom = config?.map.zoom ?? DEFAULT_ZOOM;
 
   // ── Map refs ──────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const comparisonContainerRef = useRef<HTMLDivElement>(null);
+  const comparisonMapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   // Comparison slider
   const sliderContainerRef = useRef<HTMLDivElement>(null);
   const [sliderPosition, setSliderPosition] = useState(50);
   const isDraggingSlider = useRef(false);
-
-  // Draw control refs
-  const drawControlRef = useRef<DrawControlHandle | null>(null);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
@@ -257,7 +255,8 @@ export default function MapaMapLibre() {
   useMapInitialization({
     maplibre: maplibregl,
     containerRef,
-    center,
+    centerLat,
+    centerLng,
     zoom,
     mapRef,
     setMapReady,
@@ -272,6 +271,114 @@ export default function MapaMapLibre() {
     showSuggestedZonesPanel,
     setSelectedDraftBasinId,
   });
+
+  useEffect(() => {
+    const baseMap = mapRef.current;
+    const comparisonContainer = comparisonContainerRef.current;
+    const leftTileUrl = comparison?.left?.tile_url;
+    const rightTileUrl = comparison?.right?.tile_url;
+    const shouldShowComparisonMap =
+      mapReady &&
+      viewMode === 'comparison' &&
+      !!baseMap &&
+      !!comparisonContainer &&
+      !!leftTileUrl &&
+      !!rightTileUrl;
+
+    if (!shouldShowComparisonMap) {
+      comparisonMapRef.current?.remove();
+      comparisonMapRef.current = null;
+      return;
+    }
+
+    const overlayMap = new maplibregl.Map({
+      container: comparisonContainer,
+      interactive: false,
+      attributionControl: false,
+      style: {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: 'comparison-transparent-background',
+            type: 'background',
+            paint: { 'background-color': 'rgba(0,0,0,0)', 'background-opacity': 0 },
+          },
+        ],
+      },
+      center: baseMap.getCenter().toArray(),
+      zoom: baseMap.getZoom(),
+      bearing: baseMap.getBearing(),
+      pitch: baseMap.getPitch(),
+    });
+
+    comparisonMapRef.current = overlayMap;
+
+    const syncLeftLayer = () => {
+      if (overlayMap.getLayer('comparison-left-layer')) {
+        overlayMap.removeLayer('comparison-left-layer');
+      }
+      if (overlayMap.getSource('comparison-left')) {
+        overlayMap.removeSource('comparison-left');
+      }
+      overlayMap.addSource('comparison-left', {
+        type: 'raster',
+        tiles: [leftTileUrl],
+        tileSize: 256,
+      });
+      overlayMap.addLayer({
+        id: 'comparison-left-layer',
+        type: 'raster',
+        source: 'comparison-left',
+        paint: { 'raster-opacity': 1 },
+      });
+    };
+
+    const syncOverlayVectors = () => {
+      syncWaterwayLayers(overlayMap, WATERWAY_DEFS, !!vectorVisibility.waterways);
+      syncRoadLayers(overlayMap, roadsCollection, !!vectorVisibility.roads);
+    };
+
+    const syncView = () => {
+      overlayMap.jumpTo({
+        center: baseMap.getCenter(),
+        zoom: baseMap.getZoom(),
+        bearing: baseMap.getBearing(),
+        pitch: baseMap.getPitch(),
+      });
+    };
+
+    const handleResize = () => {
+      overlayMap.resize();
+      syncView();
+    };
+
+    overlayMap.once('load', () => {
+      syncLeftLayer();
+      syncOverlayVectors();
+      syncView();
+    });
+
+    baseMap.on('move', syncView);
+    baseMap.on('resize', handleResize);
+
+    return () => {
+      baseMap.off('move', syncView);
+      baseMap.off('resize', handleResize);
+      overlayMap.remove();
+      if (comparisonMapRef.current === overlayMap) {
+        comparisonMapRef.current = null;
+      }
+    };
+  }, [
+    comparison?.left?.tile_url,
+    comparison?.right?.tile_url,
+    mapReady,
+    roadsCollection,
+    vectorVisibility.roads,
+    vectorVisibility.waterways,
+    viewMode,
+  ]);
 
   /* ---------------------------------------------------------------------- */
   /*  Comparison slider — Task 2.11 (CSS clip-path on right image layer)    */
@@ -336,6 +443,18 @@ export default function MapaMapLibre() {
       {/* Map container */}
       <div ref={sliderContainerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        {viewMode === 'comparison' && comparison?.left && comparison.right && (
+          <div
+            ref={comparisonContainerRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              zIndex: 10,
+              clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
+            }}
+          />
+        )}
         <MapViewportOverlay
           viewMode={viewMode}
           sliderPosition={sliderPosition}
@@ -346,20 +465,7 @@ export default function MapaMapLibre() {
 
       {/* Draw controls (attached to map after load) */}
       {mapReady && mapRef.current && isOperator && (
-        <>
-          <DrawControl
-            ref={drawControlRef}
-            map={mapRef.current}
-            onPolygonCreated={() => {}}
-            onPolygonDeleted={() => {}}
-            showControls={isOperator}
-          />
-          <LineDrawControl
-            map={mapRef.current}
-            value={drawnLine}
-            onChange={setDrawnLine}
-          />
-        </>
+        <LineDrawControl map={mapRef.current} value={drawnLine} onChange={setDrawnLine} />
       )}
 
       <MapUiPanels

@@ -125,4 +125,28 @@ describe('mapLayerEffectHelpers', () => {
     expect(map.removeSource).toHaveBeenCalledWith(SOURCE_IDS.COMPARISON_LEFT);
     expect(map.removeSource).toHaveBeenCalledWith(SOURCE_IDS.COMPARISON_RIGHT);
   });
+
+  it('keeps only the right raster overlay on the base map during comparison mode', () => {
+    const map = createMapMock({
+      layers: [`${SOURCE_IDS.COMPARISON_LEFT}-layer`],
+      sources: [SOURCE_IDS.COMPARISON_LEFT],
+    });
+
+    syncImageOverlays(map as never, {
+      viewMode: 'comparison',
+      selectedImage: null,
+      comparison: {
+        left: { tile_url: 'https://tiles.example.com/left/{z}/{x}/{y}.png' },
+        right: { tile_url: 'https://tiles.example.com/right/{z}/{x}/{y}.png' },
+      },
+    });
+
+    expect(map.removeLayer).toHaveBeenCalledWith(`${SOURCE_IDS.COMPARISON_LEFT}-layer`);
+    expect(map.removeSource).toHaveBeenCalledWith(SOURCE_IDS.COMPARISON_LEFT);
+    expect(map.addSource).toHaveBeenCalledWith(SOURCE_IDS.COMPARISON_RIGHT, {
+      type: 'raster',
+      tiles: ['https://tiles.example.com/right/{z}/{x}/{y}.png'],
+      tileSize: 256,
+    });
+  });
 });

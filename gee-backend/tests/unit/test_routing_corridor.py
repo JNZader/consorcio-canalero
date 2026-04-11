@@ -191,9 +191,10 @@ class TestCorridorRouting:
                 "total_distance_m": 1520.5,
                 "cost_meta": {
                     "mode": "raster",
-                    "weights": {"slope": 0.35, "hydric": 0.55, "property": 0.1},
+                    "weights": {"slope": 0.3, "hydric": 0.45, "property": 0.1, "landcover": 0.15},
                     "property_features": 3,
                     "hydric_features": 4,
+                    "landcover_features": 12,
                 },
                 "raster_source": "/tmp/slope.tif",
             },
@@ -207,14 +208,56 @@ class TestCorridorRouting:
                 mode="raster",
                 profile="hidraulico",
                 corridor_width_m=80,
-                weight_overrides={"slope": 0.2, "hydric": 0.6, "property": 0.2},
+                weight_overrides={"slope": 0.2, "hydric": 0.5, "property": 0.15, "landcover": 0.15},
             )
 
         assert result["summary"]["mode"] == "raster"
         assert result["summary"]["total_distance_m"] == 1520.5
-        assert result["summary"]["cost_breakdown"]["weights"]["hydric"] == 0.55
+        assert result["summary"]["cost_breakdown"]["weights"]["hydric"] == 0.45
+        assert result["summary"]["cost_breakdown"]["weights"]["landcover"] == 0.15
         assert result["alternatives"] == []
         assert result["centerline"]["features"][0]["geometry"]["type"] == "LineString"
+
+    def test_raster_mode_projects_points_to_raster_crs(self):
+        from app.domains.geo.routing_raster_support import raster_corridor_routing
+
+        db = MagicMock()
+        fake_src = MagicMock()
+        fake_src.__enter__.return_value = fake_src
+        fake_src.__exit__.return_value = None
+        fake_src.crs.to_epsg.return_value = 32720
+
+        with (
+            patch(
+                "app.domains.geo.routing_raster_support.get_latest_slope_raster_path",
+                return_value="/tmp/slope.tif",
+            ),
+            patch(
+                "app.domains.geo.routing_raster_support.build_multicriteria_cost_surface",
+                return_value=("/tmp/cost.tif", {"mode": "raster", "weights": {}}),
+            ),
+            patch("rasterio.open", return_value=fake_src),
+            patch(
+                "app.domains.geo.routing_raster_support.cost_distance",
+            ) as cost_distance_mock,
+            patch(
+                "app.domains.geo.routing_raster_support.least_cost_path",
+                return_value=LineString([(500000, 6400000), (500100, 6400100)]),
+            ),
+        ):
+            raster_corridor_routing(
+                db,
+                from_lon=-63.0,
+                from_lat=-32.0,
+                to_lon=-63.01,
+                to_lat=-32.01,
+                profile="balanceado",
+                corridor_width_m=50,
+            )
+
+        source_point = cost_distance_mock.call_args.args[1][0]
+        assert source_point[0] > 1000
+        assert source_point[1] > 1000
 
 
 class TestCorridorEndpoint:
@@ -443,3 +486,708 @@ class TestCorridorEndpoint:
 
         assert response.media_type == "application/pdf"
         assert "attachment; filename=" in response.headers["content-disposition"]
+
+
+class TestAutoCorridorAnalysis:
+    def test_generates_unique_candidates_from_prioritized_zones(self):
+        from app.domains.geo.routing_auto_analysis import (
+            generate_auto_corridor_candidates,
+        )
+
+        zones = [
+            {
+                "id": "z1",
+                "nombre": "Zona 1",
+                "cuenca": "A",
+                "priority_score": 91.0,
+                "hydric_score": 90.0,
+                "flood_score": 80.0,
+                "risk_level": "critico",
+                "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                "nearest_network_point": {"type": "Point", "coordinates": [-63.005, -32.002]},
+                "distance_to_network_m": 240.0,
+            },
+            {
+                "id": "z2",
+                "nombre": "Zona 2",
+                "cuenca": "A",
+                "priority_score": 80.0,
+                "hydric_score": 75.0,
+                "flood_score": 62.0,
+                "risk_level": "alto",
+                "point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                "nearest_network_point": {"type": "Point", "coordinates": [-63.012, -32.011]},
+                "distance_to_network_m": 180.0,
+            },
+            {
+                "id": "z3",
+                "nombre": "Zona 3",
+                "cuenca": "A",
+                "priority_score": 0.0,
+                "hydric_score": 0.0,
+                "flood_score": 0.0,
+                "risk_level": "desconocido",
+                "point": {"type": "Point", "coordinates": [-63.05, -32.04]},
+                "nearest_network_point": {"type": "Point", "coordinates": [-63.051, -32.041]},
+                "distance_to_network_m": 100.0,
+            },
+        ]
+
+        candidates = generate_auto_corridor_candidates(zones, max_candidates=2)
+
+        assert len(candidates) == 2
+        assert candidates[0]["candidate_type"] == "zone_to_network"
+        assert candidates[0]["source_zone_id"] == "z1"
+        assert candidates[0]["target_zone_id"] == "network"
+        assert len({item["candidate_id"] for item in candidates}) == len(candidates)
+
+    def test_auto_analysis_marks_unroutable_candidates_explicitly(self):
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+        routed_payload = {
+            "summary": {
+                "edges": 2,
+                "total_distance_m": 1200.0,
+                "cost_breakdown": {
+                    "avg_profile_factor": 1.1,
+                    "avg_hydric_index": 75.0,
+                    "parcel_intersections": 1,
+                    "near_parcels": 4,
+                },
+            },
+            "centerline": {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature"}],
+            },
+            "corridor": {"type": "Feature", "geometry": {"type": "Polygon"}},
+            "alternatives": [],
+        }
+        unroutable_payload = {
+            "summary": {
+                "edges": 0,
+                "total_distance_m": 0.0,
+                "cost_breakdown": {"avg_profile_factor": 1.0},
+            },
+            "centerline": {"type": "FeatureCollection", "features": []},
+            "corridor": None,
+            "alternatives": [],
+        }
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 90.0,
+                        "hydric_score": 90.0,
+                        "flood_score": 80.0,
+                        "risk_level": "critico",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.005, -32.002]},
+                        "distance_to_network_m": 200.0,
+                    },
+                    {
+                        "id": "z2",
+                        "nombre": "Zona 2",
+                        "cuenca": "A",
+                        "priority_score": 80.0,
+                        "hydric_score": 75.0,
+                        "flood_score": 70.0,
+                        "risk_level": "alto",
+                        "point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.012, -32.011]},
+                        "distance_to_network_m": 300.0,
+                    },
+                    {
+                        "id": "z3",
+                        "nombre": "Zona 3",
+                        "cuenca": "A",
+                        "priority_score": 70.0,
+                        "hydric_score": 50.0,
+                        "flood_score": 55.0,
+                        "risk_level": "medio",
+                        "point": {"type": "Point", "coordinates": [-63.03, -32.03]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.031, -32.032]},
+                        "distance_to_network_m": 400.0,
+                    },
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                side_effect=[routed_payload, unroutable_payload, unroutable_payload],
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="network",
+                profile="balanceado",
+                max_candidates=2,
+            )
+
+        assert result["summary"]["generated_candidates"] >= 2
+        assert result["summary"]["routed_candidates"] == 1
+        assert result["summary"]["unroutable_candidates"] >= 1
+        assert result["candidates"][0]["status"] == "routed"
+        assert result["candidates"][0]["score"] > 0
+        assert result["candidates"][1]["status"] == "unroutable"
+        assert (
+            result["candidates"][1]["ranking_breakdown"]["explanation"]
+            == "No se encontró una ruta útil sobre el ámbito seleccionado."
+        )
+
+    def test_auto_analysis_falls_back_to_gap_seed_candidates(self):
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+        routed_payload = {
+            "summary": {
+                "mode": "raster",
+                "profile": "balanceado",
+                "total_distance_m": 950.0,
+                "edges": 1,
+                "corridor_width_m": 50,
+                "cost_breakdown": {"avg_profile_factor": 1.1},
+            },
+            "centerline": {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-63.0, -32.0], [-63.01, -32.01]]}, "properties": {}}],
+            },
+            "corridor": None,
+            "alternatives": [],
+        }
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 0.0,
+                        "hydric_score": 0.0,
+                        "flood_score": 0.0,
+                        "risk_level": "desconocido",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "geometry": {"type": "Polygon", "coordinates": []},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                        "distance_to_network_m": 250.0,
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.generate_auto_corridor_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_suggestion_seed_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_gap_seed_candidates",
+                return_value=[
+                    {
+                        "candidate_id": "z1::gapcalc::network",
+                        "candidate_type": "gap_to_network",
+                        "source_zone_id": "z1",
+                        "source_zone_name": "Zona 1",
+                        "target_zone_id": "network",
+                        "target_zone_name": "Red existente",
+                        "from_lon": -63.0,
+                        "from_lat": -32.0,
+                        "to_lon": -63.01,
+                        "to_lat": -32.01,
+                        "zone_pair_distance_deg": 0.01,
+                        "network_distance_m": 250.0,
+                        "priority_score": 62.0,
+                        "reason": "Descargar gap alto detectado en Zona 1 hacia la red existente más cercana en A",
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                return_value=routed_payload,
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._centerline_overlap_metrics",
+                return_value={"existing_network_overlap_m": 20.0, "overlap_ratio": 0.1},
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="raster",
+                profile="balanceado",
+                max_candidates=3,
+            )
+
+        assert result["summary"]["returned_candidates"] >= 1
+        assert any(candidate["candidate_type"] == "gap_to_network" for candidate in result["candidates"])
+        gap_candidate = next(candidate for candidate in result["candidates"] if candidate["candidate_type"] == "gap_to_network")
+        assert gap_candidate["status"] == "routed"
+        assert gap_candidate["score"] > 0
+
+    def test_gap_seed_candidates_use_proxy_signal_when_real_scores_are_empty(self):
+        from app.domains.geo.routing_auto_analysis import _build_gap_seed_candidates
+
+        db = MagicMock()
+        zones = [
+            {
+                "id": "z1",
+                "nombre": "Zona 1",
+                "cuenca": "A",
+                "priority_score": 0.0,
+                "hydric_score": 0.0,
+                "flood_score": 0.0,
+                "risk_level": "desconocido",
+                "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                "geometry": {"type": "Polygon", "coordinates": []},
+                "nearest_network_point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                "distance_to_network_m": 240.0,
+            }
+        ]
+
+        with (
+            patch(
+                "app.domains.geo.intelligence.suggestions._load_canal_geometries",
+                return_value=[{"id": 1, "geometry": {"type": "LineString", "coordinates": [[-63.02, -32.02], [-63.01, -32.01]]}}],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._load_proxy_hydric_scores",
+                return_value={"z1": 58.0},
+            ) as proxy_mock,
+            patch(
+                "app.domains.geo.intelligence.calculations.detect_coverage_gaps",
+                return_value=[
+                    {
+                        "zone_id": "z1",
+                        "geometry": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "severity": "alto",
+                        "hci_score": 58.0,
+                    }
+                ],
+            ),
+        ):
+            seeds = _build_gap_seed_candidates(db, zones, max_candidates=3)
+
+        proxy_mock.assert_called_once()
+        assert len(seeds) == 1
+        assert seeds[0]["candidate_type"] == "gap_to_network"
+        assert seeds[0]["priority_score"] == 58.0
+        assert "gap alto" in seeds[0]["reason"]
+
+    def test_auto_analysis_falls_back_to_flow_acc_hotspots_before_distance_only(self):
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+        routed_payload = {
+            "summary": {
+                "mode": "raster",
+                "profile": "hidraulico",
+                "total_distance_m": 880.0,
+                "edges": 1,
+                "corridor_width_m": 50,
+                "cost_breakdown": {"avg_profile_factor": 1.0},
+            },
+            "centerline": {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-63.0, -32.0], [-63.01, -32.01]]}, "properties": {}}],
+            },
+            "corridor": None,
+            "alternatives": [],
+        }
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 0.0,
+                        "hydric_score": 0.0,
+                        "flood_score": 0.0,
+                        "risk_level": "desconocido",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "geometry": {"type": "Polygon", "coordinates": []},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                        "distance_to_network_m": 500.0,
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.generate_auto_corridor_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_suggestion_seed_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_gap_seed_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_flow_acc_hotspot_candidates",
+                return_value=[
+                    {
+                        "candidate_id": "z1::flowacc::network",
+                        "candidate_type": "flowacc_hotspot_to_network",
+                        "source_zone_id": "z1",
+                        "source_zone_name": "Zona 1",
+                        "target_zone_id": "network",
+                        "target_zone_name": "Red existente",
+                        "from_lon": -63.0,
+                        "from_lat": -32.0,
+                        "to_lon": -63.01,
+                        "to_lat": -32.01,
+                        "zone_pair_distance_deg": 0.01,
+                        "network_distance_m": 500.0,
+                        "priority_score": 71.0,
+                        "reason": "Descargar hotspot de escorrentía en Zona 1 hacia la red existente más cercana (flow_acc=8200)",
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                return_value=routed_payload,
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._centerline_overlap_metrics",
+                return_value={"existing_network_overlap_m": 10.0, "overlap_ratio": 0.05},
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="raster",
+                profile="hidraulico",
+                max_candidates=3,
+            )
+
+        assert result["summary"]["returned_candidates"] >= 1
+        assert result["candidates"][0]["candidate_type"] == "flowacc_hotspot_to_network"
+        assert "hotspot de escorrentía" in result["candidates"][0]["ranking_breakdown"]["explanation"]
+
+    def test_auto_analysis_does_not_mix_distance_fillers_when_hydraulic_candidates_exist(self):
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+        routed_payload = {
+            "summary": {
+                "mode": "raster",
+                "profile": "hidraulico",
+                "total_distance_m": 700.0,
+                "edges": 1,
+                "corridor_width_m": 50,
+                "cost_breakdown": {"avg_profile_factor": 1.0},
+            },
+            "centerline": {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[-63.0, -32.0], [-63.01, -32.01]]}, "properties": {}}],
+            },
+            "corridor": None,
+            "alternatives": [],
+        }
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 0.0,
+                        "hydric_score": 0.0,
+                        "flood_score": 0.0,
+                        "risk_level": "desconocido",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "geometry": {"type": "Polygon", "coordinates": []},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                        "distance_to_network_m": 500.0,
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.generate_auto_corridor_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_suggestion_seed_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_gap_seed_candidates",
+                return_value=[],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_flow_acc_hotspot_candidates",
+                return_value=[
+                    {
+                        "candidate_id": "z1::flowacc::network",
+                        "candidate_type": "flowacc_hotspot_to_network",
+                        "source_zone_id": "z1",
+                        "source_zone_name": "Zona 1",
+                        "target_zone_id": "network",
+                        "target_zone_name": "Red existente",
+                        "from_lon": -63.0,
+                        "from_lat": -32.0,
+                        "to_lon": -63.01,
+                        "to_lat": -32.01,
+                        "zone_pair_distance_deg": 0.01,
+                        "network_distance_m": 500.0,
+                        "priority_score": 71.0,
+                        "reason": "Descargar hotspot de escorrentía en Zona 1 hacia la red existente más cercana (flow_acc=8200)",
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._build_distance_fallback_candidates",
+                return_value=[
+                    {
+                        "candidate_id": "z1::distance::network",
+                        "candidate_type": "distance_to_network",
+                        "source_zone_id": "z1",
+                        "source_zone_name": "Zona 1",
+                        "target_zone_id": "network",
+                        "target_zone_name": "Red existente",
+                        "from_lon": -63.0,
+                        "from_lat": -32.0,
+                        "to_lon": -63.01,
+                        "to_lat": -32.01,
+                        "zone_pair_distance_deg": 0.01,
+                        "network_distance_m": 500.0,
+                        "priority_score": 60.0,
+                        "reason": "Descargar Zona 1 hacia la red existente más cercana por aislamiento territorial (500 m)",
+                    }
+                ],
+            ) as distance_mock,
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                return_value=routed_payload,
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._centerline_overlap_metrics",
+                return_value={"existing_network_overlap_m": 10.0, "overlap_ratio": 0.05},
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="raster",
+                profile="hidraulico",
+                max_candidates=5,
+            )
+
+        distance_mock.assert_not_called()
+        assert all(candidate["candidate_type"] != "distance_to_network" for candidate in result["candidates"])
+
+    def test_auto_analysis_excludes_routes_that_overlap_existing_network_too_much(self):
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+        routed_payload = {
+            "summary": {
+                "mode": "raster",
+                "profile": "balanceado",
+                "total_distance_m": 1200.0,
+                "edges": 1,
+                "corridor_width_m": 50,
+                "cost_breakdown": {},
+            },
+            "centerline": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [[-63.0, -32.0], [-63.02, -32.02]],
+                        },
+                        "properties": {},
+                    }
+                ],
+            },
+            "corridor": None,
+            "alternatives": [],
+        }
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 90.0,
+                        "hydric_score": 90.0,
+                        "flood_score": 80.0,
+                        "risk_level": "critico",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.005, -32.002]},
+                        "distance_to_network_m": 220.0,
+                    },
+                    {
+                        "id": "z2",
+                        "nombre": "Zona 2",
+                        "cuenca": "A",
+                        "priority_score": 80.0,
+                        "hydric_score": 75.0,
+                        "flood_score": 70.0,
+                        "risk_level": "alto",
+                        "point": {"type": "Point", "coordinates": [-63.02, -32.02]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.021, -32.021]},
+                        "distance_to_network_m": 260.0,
+                    },
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                return_value=routed_payload,
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis._centerline_overlap_metrics",
+                return_value={"existing_network_overlap_m": 1000.0, "overlap_ratio": 0.92},
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="raster",
+                profile="balanceado",
+                max_candidates=5,
+            )
+
+        assert result["summary"]["generated_candidates"] >= 1
+        assert result["summary"]["returned_candidates"] == 0
+        assert result["candidates"] == []
+
+    def test_auto_analysis_downgrades_not_found_raster_candidates_to_unroutable(self):
+        from app.core.exceptions import NotFoundError
+        from app.domains.geo.routing_auto_analysis import auto_analyze_corridors
+
+        db = MagicMock()
+
+        with (
+            patch(
+                "app.domains.geo.routing_auto_analysis.load_auto_analysis_zones",
+                return_value=[
+                    {
+                        "id": "z1",
+                        "nombre": "Zona 1",
+                        "cuenca": "A",
+                        "priority_score": 55.0,
+                        "hydric_score": 55.0,
+                        "flood_score": 40.0,
+                        "risk_level": "alto",
+                        "point": {"type": "Point", "coordinates": [-63.0, -32.0]},
+                        "nearest_network_point": {"type": "Point", "coordinates": [-63.01, -32.01]},
+                        "distance_to_network_m": 300.0,
+                    }
+                ],
+            ),
+            patch(
+                "app.domains.geo.routing_auto_analysis.corridor_routing",
+                side_effect=NotFoundError("No raster corridor path could be traced between the selected points"),
+            ),
+        ):
+            result = auto_analyze_corridors(
+                db,
+                scope_type="consorcio",
+                scope_id=None,
+                mode="raster",
+                profile="hidraulico",
+                max_candidates=3,
+            )
+
+        assert result["summary"]["generated_candidates"] >= 1
+        assert result["summary"]["returned_candidates"] >= 1
+        assert result["summary"]["routed_candidates"] == 0
+        assert result["summary"]["unroutable_candidates"] >= 1
+        assert result["candidates"][0]["status"] == "unroutable"
+        assert result["candidates"][0]["ranking_breakdown"]["explanation"] == (
+            "No se encontró una ruta útil sobre el ámbito seleccionado."
+        )
+
+    def test_endpoint_delegates_to_auto_analysis_service(self):
+        from app.domains.geo.router import (
+            AutoCorridorAnalysisRequest,
+            calculate_auto_corridor_analysis,
+        )
+
+        body = AutoCorridorAnalysisRequest(
+            scope_type="cuenca",
+            scope_id="Cuenca Norte",
+            mode="raster",
+            profile="hidraulico",
+            max_candidates=4,
+            weight_slope=0.2,
+            weight_hydric=0.6,
+            weight_property=0.2,
+            weight_landcover=0.1,
+        )
+
+        expected = {
+            "analysis_id": str(uuid.uuid4()),
+            "summary": {"returned_candidates": 2},
+            "candidates": [],
+        }
+
+        with patch(
+            "app.domains.geo.router_auto_analysis.auto_analyze_corridors",
+            return_value=expected,
+        ) as analysis_mock:
+            result = calculate_auto_corridor_analysis(
+                body,
+                MagicMock(),
+                _user=MagicMock(),
+            )
+
+        assert result == expected
+        analysis_mock.assert_called_once()
+        assert analysis_mock.call_args.kwargs["scope_type"] == "cuenca"
+        assert analysis_mock.call_args.kwargs["mode"] == "raster"
+        assert analysis_mock.call_args.kwargs["weight_overrides"]["hydric"] == 0.6
+        assert analysis_mock.call_args.kwargs["weight_overrides"]["landcover"] == 0.1
+
+    def test_point_scope_passes_coordinates_to_auto_analysis_service(self):
+        from app.domains.geo.router import (
+            AutoCorridorAnalysisRequest,
+            calculate_auto_corridor_analysis,
+        )
+
+        body = AutoCorridorAnalysisRequest(
+            scope_type="punto",
+            point_lon=-63.12,
+            point_lat=-32.18,
+            mode="raster",
+            profile="balanceado",
+            max_candidates=3,
+        )
+
+        with patch(
+            "app.domains.geo.router_auto_analysis.auto_analyze_corridors",
+            return_value={"analysis_id": "x", "summary": {}, "candidates": []},
+        ) as analysis_mock:
+            calculate_auto_corridor_analysis(
+                body,
+                MagicMock(),
+                _user=MagicMock(),
+            )
+
+        assert analysis_mock.call_args.kwargs["scope_type"] == "punto"
+        assert analysis_mock.call_args.kwargs["point_lon"] == -63.12
+        assert analysis_mock.call_args.kwargs["point_lat"] == -32.18

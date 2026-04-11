@@ -1,6 +1,10 @@
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useBasins } from '../../../hooks/useBasins';
 import {
+  type AutoAnalysisScopeType,
+  type AutoCorridorAnalysisCandidate,
+  type AutoCorridorAnalysisResponse,
   canalSuggestionsApi,
   routingApi,
   type CanalSuggestion,
@@ -14,7 +18,12 @@ import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { IconCheck } from '../../ui/icons';
 import { buildSuggestionStats, createVisibleTypesSet, sortSuggestions } from './canalSuggestionsUtils';
-import { RASTER_WEIGHT_PRESETS, ROUTING_PROFILE_PRESETS } from './corridorRoutingUtils';
+import {
+  buildCuencaOptions,
+  buildSubcuencaOptions,
+  RASTER_WEIGHT_PRESETS,
+  ROUTING_PROFILE_PRESETS,
+} from './corridorRoutingUtils';
 
 export function useCanalSuggestionsController() {
   const [suggestions, setSuggestions] = useState<CanalSuggestion[]>([]);
@@ -28,7 +37,7 @@ export function useCanalSuggestionsController() {
   const [visibleTypes, setVisibleTypes] = useState<Set<SuggestionTipo>>(createVisibleTypesSet);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [corridorForm, setCorridorForm] = useState({
-    mode: 'network' as RoutingMode,
+    mode: 'raster' as RoutingMode,
     profile: 'balanceado' as RoutingProfile,
     fromLon: '' as number | '',
     fromLat: '' as number | '',
@@ -39,7 +48,28 @@ export function useCanalSuggestionsController() {
     weightSlope: RASTER_WEIGHT_PRESETS.balanceado.slope,
     weightHydric: RASTER_WEIGHT_PRESETS.balanceado.hydric,
     weightProperty: RASTER_WEIGHT_PRESETS.balanceado.property,
+    weightLandcover: RASTER_WEIGHT_PRESETS.balanceado.landcover,
   });
+  const [autoAnalysisForm, setAutoAnalysisForm] = useState({
+    scopeType: 'consorcio' as AutoAnalysisScopeType,
+    scopeId: '',
+    scopeParentCuenca: '',
+    pointLon: '' as number | '',
+    pointLat: '' as number | '',
+    mode: 'raster' as RoutingMode,
+    profile: 'balanceado' as RoutingProfile,
+    maxCandidates: 5,
+    weightSlope: RASTER_WEIGHT_PRESETS.balanceado.slope,
+    weightHydric: RASTER_WEIGHT_PRESETS.balanceado.hydric,
+    weightProperty: RASTER_WEIGHT_PRESETS.balanceado.property,
+    weightLandcover: RASTER_WEIGHT_PRESETS.balanceado.landcover,
+    includeUnroutable: true,
+  });
+  const [autoAnalysisLoading, setAutoAnalysisLoading] = useState(false);
+  const [autoAnalysisError, setAutoAnalysisError] = useState<string | null>(null);
+  const [autoAnalysisResult, setAutoAnalysisResult] = useState<AutoCorridorAnalysisResponse | null>(null);
+  const [selectedAutoCandidateId, setSelectedAutoCandidateId] = useState<string | null>(null);
+  const [autoAnalysisPointPickActive, setAutoAnalysisPointPickActive] = useState(false);
   const [corridorLoading, setCorridorLoading] = useState(false);
   const [corridorError, setCorridorError] = useState<string | null>(null);
   const [corridorResult, setCorridorResult] = useState<CorridorRoutingResponse | null>(null);
@@ -49,6 +79,17 @@ export function useCanalSuggestionsController() {
   const [currentScenarioId, setCurrentScenarioId] = useState<string | null>(null);
   const [corridorScenarios, setCorridorScenarios] = useState<CorridorScenarioListItem[]>([]);
   const [corridorScenarioLoading, setCorridorScenarioLoading] = useState(false);
+  const { basins } = useBasins({ limit: 500 });
+
+  const basinFeatures = useMemo(
+    () => (Array.isArray(basins?.features) ? basins.features : []),
+    [basins],
+  );
+  const cuencaOptions = useMemo(() => buildCuencaOptions(basinFeatures), [basinFeatures]);
+  const subcuencaOptions = useMemo(
+    () => buildSubcuencaOptions(basinFeatures, autoAnalysisForm.scopeParentCuenca),
+    [autoAnalysisForm.scopeParentCuenca, basinFeatures],
+  );
 
   const fetchResults = useCallback(async (tipo?: string) => {
     setLoading(true);
@@ -125,15 +166,34 @@ export function useCanalSuggestionsController() {
       for (const delay of pollIntervals) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         try {
-          const data = await canalSuggestionsApi.getResults({ limit: 1 });
-          if (data.batch_id && data.batch_id !== batchId) {
-            notifications.show({
-              title: 'Analisis completado',
-              message: 'Los resultados se han actualizado.',
-              color: 'green',
-              icon: <IconCheck size={16} />,
-            });
+          const status = await canalSuggestionsApi.getAnalyzeStatus(res.task_id);
+          if (status.status === 'completed') {
             fetchResults(filterTipo || undefined);
+            if ((status.total_suggestions ?? 0) > 0) {
+              notifications.show({
+                title: 'Analisis completado',
+                message: `Se generaron ${status.total_suggestions} sugerencias nuevas.`,
+                color: 'green',
+                icon: <IconCheck size={16} />,
+              });
+            } else {
+              notifications.show({
+                title: 'Analisis completado',
+                message:
+                  'El análisis terminó, pero no encontró sugerencias nuevas con los datos actuales.',
+                color: 'yellow',
+              });
+            }
+            setAnalyzing(false);
+            return;
+          }
+
+          if (status.status === 'failure') {
+            notifications.show({
+              title: 'Error',
+              message: status.error || 'La tarea de análisis falló en segundo plano.',
+              color: 'red',
+            });
             setAnalyzing(false);
             return;
           }
@@ -144,7 +204,8 @@ export function useCanalSuggestionsController() {
 
       notifications.show({
         title: 'Analisis en progreso',
-        message: 'El analisis continua en segundo plano. Recarga manualmente para ver resultados.',
+        message:
+          'El análisis sigue en segundo plano. Si tarda demasiado, revisamos el worker o el estado de la tarea.',
         color: 'yellow',
       });
     } catch (err) {
@@ -158,7 +219,7 @@ export function useCanalSuggestionsController() {
     } finally {
       setAnalyzing(false);
     }
-  }, [batchId, fetchResults, filterTipo]);
+  }, [fetchResults, filterTipo]);
 
   const sortedSuggestions = useMemo(() => sortSuggestions(suggestions, sortDir), [suggestions, sortDir]);
   const stats = useMemo(() => buildSuggestionStats(suggestions), [suggestions]);
@@ -201,6 +262,7 @@ export function useCanalSuggestionsController() {
         weight_slope: corridorForm.weightSlope,
         weight_hydric: corridorForm.weightHydric,
         weight_property: corridorForm.weightProperty,
+        weight_landcover: corridorForm.weightLandcover,
       });
       setCorridorResult(result);
       setCurrentScenarioId(null);
@@ -251,12 +313,160 @@ export function useCanalSuggestionsController() {
       weightSlope: weightPreset.slope,
       weightHydric: weightPreset.hydric,
       weightProperty: weightPreset.property,
+      weightLandcover: weightPreset.landcover,
     }));
     setCorridorError(null);
   }, []);
 
   const handleCorridorModeChange = useCallback((mode: RoutingMode) => {
     setCorridorForm((prev) => ({ ...prev, mode }));
+    setCorridorError(null);
+  }, []);
+
+  const updateAutoAnalysisField = useCallback(
+    <K extends keyof typeof autoAnalysisForm>(field: K, value: (typeof autoAnalysisForm)[K]) => {
+      setAutoAnalysisForm((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
+
+  const handleAutoAnalysisScopeChange = useCallback((scopeType: AutoAnalysisScopeType) => {
+    setAutoAnalysisForm((prev) => ({
+      ...prev,
+      scopeType,
+      scopeId: '',
+      scopeParentCuenca: '',
+      pointLon: '',
+      pointLat: '',
+    }));
+    setAutoAnalysisPointPickActive(false);
+    setAutoAnalysisError(null);
+  }, []);
+
+  const handleAutoAnalysisProfileChange = useCallback((profile: RoutingProfile) => {
+    const weightPreset = RASTER_WEIGHT_PRESETS[profile];
+    setAutoAnalysisForm((prev) => ({
+      ...prev,
+      profile,
+      weightSlope: weightPreset.slope,
+      weightHydric: weightPreset.hydric,
+      weightProperty: weightPreset.property,
+      weightLandcover: weightPreset.landcover,
+    }));
+    setAutoAnalysisError(null);
+  }, []);
+
+  const handleAutoAnalysisModeChange = useCallback((mode: RoutingMode) => {
+    setAutoAnalysisForm((prev) => ({ ...prev, mode }));
+    setAutoAnalysisError(null);
+  }, []);
+
+  const beginAutoAnalysisPointPick = useCallback(() => {
+    setAutoAnalysisForm((prev) => ({ ...prev, scopeType: 'punto' }));
+    setAutoAnalysisPointPickActive(true);
+    setAutoAnalysisError(null);
+  }, []);
+
+  const cancelAutoAnalysisPointPick = useCallback(() => {
+    setAutoAnalysisPointPickActive(false);
+  }, []);
+
+  const handleAutoAnalysisPointPick = useCallback((coords: { lon: number; lat: number }) => {
+    setAutoAnalysisForm((prev) => ({
+      ...prev,
+      scopeType: 'punto',
+      pointLon: coords.lon,
+      pointLat: coords.lat,
+    }));
+    setAutoAnalysisPointPickActive(false);
+    setAutoAnalysisError(null);
+  }, []);
+
+  const handleRunAutoAnalysis = useCallback(async () => {
+    if (
+      (autoAnalysisForm.scopeType === 'cuenca' || autoAnalysisForm.scopeType === 'subcuenca') &&
+      !autoAnalysisForm.scopeId.trim()
+    ) {
+      setAutoAnalysisError('Selecciona el ámbito para ejecutar el análisis.');
+      return;
+    }
+
+    if (
+      autoAnalysisForm.scopeType === 'punto' &&
+      (autoAnalysisForm.pointLon === '' || autoAnalysisForm.pointLat === '')
+    ) {
+      setAutoAnalysisError('Marca un punto dentro del consorcio para ejecutar el análisis.');
+      return;
+    }
+
+    setAutoAnalysisLoading(true);
+    setAutoAnalysisError(null);
+
+    try {
+      const result = await routingApi.getAutoAnalysis({
+        scope_type: autoAnalysisForm.scopeType,
+        scope_id:
+          autoAnalysisForm.scopeType === 'consorcio' || autoAnalysisForm.scopeType === 'punto'
+            ? null
+            : autoAnalysisForm.scopeId.trim(),
+        point_lon:
+          autoAnalysisForm.scopeType === 'punto' && autoAnalysisForm.pointLon !== ''
+            ? autoAnalysisForm.pointLon
+            : null,
+        point_lat:
+          autoAnalysisForm.scopeType === 'punto' && autoAnalysisForm.pointLat !== ''
+            ? autoAnalysisForm.pointLat
+            : null,
+        mode: autoAnalysisForm.mode,
+        profile: autoAnalysisForm.profile,
+        max_candidates: autoAnalysisForm.maxCandidates,
+        weight_slope: autoAnalysisForm.weightSlope,
+        weight_hydric: autoAnalysisForm.weightHydric,
+        weight_property: autoAnalysisForm.weightProperty,
+        weight_landcover: autoAnalysisForm.weightLandcover,
+        include_unroutable: autoAnalysisForm.includeUnroutable,
+      });
+      setAutoAnalysisResult(result);
+      const firstRouted = result.candidates.find((candidate) => candidate.status === 'routed');
+      if (firstRouted) {
+        setSelectedAutoCandidateId(firstRouted.candidate_id);
+        setCorridorResult(firstRouted.routing_result);
+        setCorridorForm((prev) => ({
+          ...prev,
+          mode: result.summary.mode,
+          profile: result.summary.profile,
+          fromLon: firstRouted.from_lon,
+          fromLat: firstRouted.from_lat,
+          toLon: firstRouted.to_lon,
+          toLat: firstRouted.to_lat,
+        }));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al ejecutar el análisis automático';
+      setAutoAnalysisError(message);
+      logger.error('[CanalSuggestions] Error running auto analysis:', err);
+    } finally {
+      setAutoAnalysisLoading(false);
+    }
+  }, [autoAnalysisForm]);
+
+  const handleOpenAutoCandidate = useCallback((candidate: AutoCorridorAnalysisCandidate) => {
+    setSelectedAutoCandidateId(candidate.candidate_id);
+    setCorridorResult(candidate.routing_result);
+    setCorridorForm((prev) => ({
+      ...prev,
+      mode: candidate.routing_result.summary.mode ?? prev.mode,
+      profile: candidate.routing_result.summary.profile ?? prev.profile,
+      fromLon: candidate.from_lon,
+      fromLat: candidate.from_lat,
+      toLon: candidate.to_lon,
+      toLat: candidate.to_lat,
+      corridorWidthM: candidate.routing_result.summary.corridor_width_m ?? prev.corridorWidthM,
+    }));
+    setCorridorScenarioName(
+      `Auto ${candidate.source_zone_name} - ${candidate.target_zone_name}`,
+    );
+    setCorridorScenarioNotes(candidate.ranking_breakdown.explanation);
     setCorridorError(null);
   }, []);
 
@@ -282,6 +492,7 @@ export function useCanalSuggestionsController() {
           weight_slope: corridorForm.weightSlope,
           weight_hydric: corridorForm.weightHydric,
           weight_property: corridorForm.weightProperty,
+          weight_landcover: corridorForm.weightLandcover,
         },
         result_payload: corridorResult,
         notes: corridorScenarioNotes.trim() || undefined,
@@ -329,6 +540,9 @@ export function useCanalSuggestionsController() {
         weightSlope: scenario.request_payload.weight_slope ?? RASTER_WEIGHT_PRESETS[scenario.profile].slope,
         weightHydric: scenario.request_payload.weight_hydric ?? RASTER_WEIGHT_PRESETS[scenario.profile].hydric,
         weightProperty: scenario.request_payload.weight_property ?? RASTER_WEIGHT_PRESETS[scenario.profile].property,
+        weightLandcover:
+          scenario.request_payload.weight_landcover ??
+          RASTER_WEIGHT_PRESETS[scenario.profile].landcover,
       });
       setCurrentScenarioId(scenario.id);
       setCorridorScenarioName(scenario.name);
@@ -447,6 +661,14 @@ export function useCanalSuggestionsController() {
     sortedSuggestions,
     stats,
     formattedLastAnalysis,
+    autoAnalysisForm,
+    autoAnalysisLoading,
+    autoAnalysisError,
+    autoAnalysisResult,
+    selectedAutoCandidateId,
+    autoAnalysisPointPickActive,
+    cuencaOptions,
+    subcuencaOptions,
     corridorForm,
     corridorLoading,
     corridorError,
@@ -457,6 +679,15 @@ export function useCanalSuggestionsController() {
     currentScenarioId,
     corridorScenarios,
     corridorScenarioLoading,
+    updateAutoAnalysisField,
+    handleAutoAnalysisScopeChange,
+    handleAutoAnalysisModeChange,
+    handleAutoAnalysisProfileChange,
+    handleRunAutoAnalysis,
+    handleOpenAutoCandidate,
+    beginAutoAnalysisPointPick,
+    handleAutoAnalysisPointPick,
+    cancelAutoAnalysisPointPick,
     updateCorridorField,
     handleCorridorModeChange,
     handleExportCorridorScenarioPdf,

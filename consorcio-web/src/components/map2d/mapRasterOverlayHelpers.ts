@@ -148,8 +148,8 @@ export function syncImageOverlays(
     removeRasterOverlay(map, SOURCE_IDS.SATELLITE_IMAGE);
   }
 
-  if (showComparison && params.comparison?.left && params.comparison?.right) {
-    addRasterOverlay(map, SOURCE_IDS.COMPARISON_LEFT, params.comparison.left.tile_url);
+  if (showComparison && params.comparison?.right) {
+    removeRasterOverlay(map, SOURCE_IDS.COMPARISON_LEFT);
     addRasterOverlay(map, SOURCE_IDS.COMPARISON_RIGHT, params.comparison.right.tile_url);
   } else {
     removeRasterOverlay(map, SOURCE_IDS.COMPARISON_LEFT);

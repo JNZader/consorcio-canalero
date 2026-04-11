@@ -12,12 +12,12 @@ export function useImageExplorerMap() {
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const tileLayerIdRef = useRef<string | null>(null);
   const zonaLayerIdRef = useRef<string | null>(null);
+  const centerLat = config?.map.center?.lat ?? MAP_CENTER[0];
+  const centerLng = config?.map.center?.lng ?? MAP_CENTER[1];
+  const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
-    const lat = config?.map.center?.lat ?? MAP_CENTER[0];
-    const lng = config?.map.center?.lng ?? MAP_CENTER[1];
-    const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
     const map = new maplibregl.Map({
       container: mapRef.current,
       style: {
@@ -40,7 +40,7 @@ export function useImageExplorerMap() {
           { id: 'labels', type: 'raster', source: 'labels' },
         ],
       },
-      center: [lng, lat],
+      center: [centerLng, centerLat],
       zoom,
     });
     mapInstanceRef.current = map;
@@ -48,7 +48,7 @@ export function useImageExplorerMap() {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [config?.map.center, config?.map.zoom]);
+  }, [centerLat, centerLng, zoom]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -94,10 +94,8 @@ export function useImageExplorerMap() {
     const map = mapInstanceRef.current;
     if (!map) return;
     const apply = () => {
-      if (tileLayerIdRef.current) {
-        if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
-        if (map.getSource('gee-image')) map.removeSource('gee-image');
-      }
+      if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
+      if (map.getSource('gee-image')) map.removeSource('gee-image');
       map.addSource('gee-image', {
         type: 'raster',
         tiles: [tileUrl],

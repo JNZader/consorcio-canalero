@@ -58,6 +58,7 @@ describe('routingApi', () => {
       weight_slope: 0.35,
       weight_hydric: 0.55,
       weight_property: 0.1,
+      weight_landcover: 0.15,
     });
 
     expect(result.summary.total_distance_m).toBe(1234);
@@ -77,8 +78,92 @@ describe('routingApi', () => {
           weight_slope: 0.35,
           weight_hydric: 0.55,
           weight_property: 0.1,
+          weight_landcover: 0.15,
         }),
       }),
+    );
+  });
+
+  it('posts automatic corridor analysis payload', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          analysis_id: 'analysis-1',
+          scope: { type: 'consorcio', id: null, zone_count: 12 },
+          summary: {
+            mode: 'raster',
+            profile: 'hidraulico',
+            generated_candidates: 8,
+            returned_candidates: 5,
+            routed_candidates: 4,
+            unroutable_candidates: 1,
+            avg_score: 71.2,
+            max_score: 83.4,
+          },
+          candidates: [],
+          ranking: [],
+          stats: {
+            critical_zones: 3,
+            scope_zone_names: ['Zona 1'],
+          },
+        }),
+    });
+
+    const { routingApi } = await import('../../src/lib/api/routing');
+    const result = await routingApi.getAutoAnalysis({
+      scope_type: 'cuenca',
+      scope_id: 'Cuenca Norte',
+      mode: 'raster',
+      profile: 'hidraulico',
+      max_candidates: 6,
+      weight_slope: 0.2,
+      weight_hydric: 0.6,
+      weight_property: 0.2,
+      weight_landcover: 0.1,
+      include_unroutable: true,
+    });
+
+    expect(result.analysis_id).toBe('analysis-1');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:8000/api/v2/geo/routing/auto-analysis',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          scope_type: 'cuenca',
+          scope_id: 'Cuenca Norte',
+          mode: 'raster',
+          profile: 'hidraulico',
+          max_candidates: 6,
+          weight_slope: 0.2,
+          weight_hydric: 0.6,
+          weight_property: 0.2,
+          weight_landcover: 0.1,
+          include_unroutable: true,
+        }),
+      }),
+    );
+  });
+
+  it('polls canal analysis task status', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          task_id: 'task-1',
+          status: 'completed',
+          total_suggestions: 0,
+          batch_id: 'batch-1',
+        }),
+    });
+
+    const { canalSuggestionsApi } = await import('../../src/lib/api');
+    const result = await canalSuggestionsApi.getAnalyzeStatus('task-1');
+
+    expect(result.status).toBe('completed');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:8000/api/v2/geo/intelligence/suggestions/analyze/status/task-1',
+      expect.any(Object),
     );
   });
 

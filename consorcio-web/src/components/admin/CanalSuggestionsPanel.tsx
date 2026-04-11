@@ -1,5 +1,6 @@
 import { Alert, Container, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '../ui/icons';
+import { AutoCorridorAnalysisCard } from './canal-suggestions/components/AutoCorridorAnalysisCard';
 import { SuggestionsHeader } from './canal-suggestions/components/SuggestionsHeader';
 import { CorridorRoutingCard } from './canal-suggestions/components/CorridorRoutingCard';
 import { CorridorScenarioHistory } from './canal-suggestions/components/CorridorScenarioHistory';
@@ -41,6 +42,30 @@ export default function CanalSuggestionsPanel() {
 
         {controller.suggestions.length > 0 && <SuggestionsSummary stats={controller.stats} />}
 
+        <AutoCorridorAnalysisCard
+          form={controller.autoAnalysisForm}
+          cuencaOptions={controller.cuencaOptions}
+          subcuencaOptions={controller.subcuencaOptions}
+          loading={controller.autoAnalysisLoading}
+          error={controller.autoAnalysisError}
+          result={controller.autoAnalysisResult}
+          selectedCandidateId={controller.selectedAutoCandidateId}
+          onChange={controller.updateAutoAnalysisField}
+          onScopeChange={controller.handleAutoAnalysisScopeChange}
+          onModeChange={controller.handleAutoAnalysisModeChange}
+          onProfileChange={controller.handleAutoAnalysisProfileChange}
+          onSubmit={controller.handleRunAutoAnalysis}
+          onOpenCandidate={controller.handleOpenAutoCandidate}
+          pointPickActive={controller.autoAnalysisPointPickActive}
+          onStartPointPick={controller.beginAutoAnalysisPointPick}
+          onCancelPointPick={controller.cancelAutoAnalysisPointPick}
+        />
+
+        <Text size="sm" c="dimmed">
+          Routing manual avanzado: úsalo solo si necesitas ajustar un corredor puntual con
+          origen/destino específicos.
+        </Text>
+
         <CorridorRoutingCard
           form={controller.corridorForm}
           loading={controller.corridorLoading}
@@ -79,7 +104,12 @@ export default function CanalSuggestionsPanel() {
           corridorResult={controller.corridorResult}
           corridorForm={controller.corridorForm}
           corridorPickTarget={controller.corridorPickTarget}
+          autoAnalysisPoint={controller.autoAnalysisForm.pointLon !== '' && controller.autoAnalysisForm.pointLat !== ''
+            ? { lon: controller.autoAnalysisForm.pointLon, lat: controller.autoAnalysisForm.pointLat }
+            : null}
+          autoAnalysisPointPickActive={controller.autoAnalysisPointPickActive}
           onPickCoordinate={controller.handleCorridorMapPick}
+          onPickAutoAnalysisPoint={controller.handleAutoAnalysisPointPick}
         />
 
         <SuggestionsTable
