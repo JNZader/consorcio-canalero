@@ -218,12 +218,18 @@ export default function MapaMapLibre() {
     }
   }, [comparison]);
 
-  // Auto-activate single image view when image loads
+  // Auto-activate single image view ONLY when an image transitions from
+  // null → truthy (i.e. the user just selected one). Without the ref the
+  // effect would re-fire whenever viewMode flips back to 'base', creating
+  // an infinite loop where the user can never escape 'single' as long as
+  // there is a selectedImage in the store.
+  const prevSelectedImageRef = useRef(selectedImage);
   useEffect(() => {
-    if (selectedImage && viewMode === 'base') {
+    if (selectedImage && !prevSelectedImageRef.current) {
       setViewMode('single');
     }
-  }, [selectedImage, viewMode]);
+    prevSelectedImageRef.current = selectedImage;
+  }, [selectedImage]);
 
   useMapLayerEffects({
     mapRef,
