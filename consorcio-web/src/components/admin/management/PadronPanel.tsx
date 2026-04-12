@@ -26,7 +26,7 @@ import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
 import { IconPlus, IconSearch, IconUser, IconCreditCard } from '../../ui/icons';
-import { LoadingState } from '../../ui';
+import { LoadingState } from '../../ui/LoadingState';
 
 // Types for this panel
 interface Consorcista {

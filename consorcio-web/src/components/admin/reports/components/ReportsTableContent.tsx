@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Box, Center, Group, Loader, Pagination, Table, Text, Tooltip } from '@mantine/core';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { EmptyState } from '../../../ui';
+import { EmptyState } from '../../../ui/EmptyState';
 import { IconInfoCircle, IconMap } from '../../../ui/icons';
 import { getCategoryLabel } from '../reportsPanelUtils';
 

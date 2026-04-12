@@ -1,5 +1,5 @@
 import { Button, Container, Group, Text, Title } from '@mantine/core';
-import { LoadingState } from '../../ui';
+import { LoadingState } from '../../ui/LoadingState';
 import { IconCalendar } from '../../ui/icons';
 import { AgendaModal } from './reuniones/components/AgendaModal';
 import { ReunionCreateModal } from './reuniones/components/ReunionCreateModal';

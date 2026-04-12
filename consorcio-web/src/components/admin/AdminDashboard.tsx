@@ -22,7 +22,7 @@ import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
 import { useConfigStore } from '../../stores/configStore';
-import { LoadingState } from '../ui';
+import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { IconDownload } from '../ui/icons';
 import { DashboardEstadisticas } from './management/DashboardEstadisticas';

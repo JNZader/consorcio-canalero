@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Center, Group, Loader, Pagination, Table, Text, Tooltip } from '@mantine/core';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { EmptyState } from '../../../ui';
+import { EmptyState } from '../../../ui/EmptyState';
 import { IconInfoCircle } from '../../../ui/icons';
 import { getCategoriaLabel } from '../sugerenciasPanelUtils';
 

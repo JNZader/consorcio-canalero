@@ -24,7 +24,7 @@ import { logger } from '../../../lib/logger';
 import { formatTramiteEstado, type TramiteEstadoCanonico } from '../../../constants/tramites';
 import { filterCanonicalTramites, type RawTramiteItem } from './tramitesCanonical';
 import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
-import { LoadingState } from '../../ui';
+import { LoadingState } from '../../ui/LoadingState';
 
 interface Tramite {
   id: string;

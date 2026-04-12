@@ -1,5 +1,5 @@
 import { Button, Container, Group, Tabs, Title, Text } from '@mantine/core';
-import { LoadingState } from '../../ui';
+import { LoadingState } from '../../ui/LoadingState';
 import {
   IconArrowUpRight,
   IconCoin,
