@@ -17,11 +17,12 @@ import type { ReactNode } from 'react';
 import { withBasePath } from '../lib/basePath';
 import { IconInfoCircle } from './ui/icons';
 import styles from '../styles/components/home.module.css';
-import { IconChartBar, IconClipboardList, IconMap, IconSatellite } from './ui/icons';
+import { IconChartBar, IconClipboardList, IconLightbulb, IconMap } from './ui/icons';
 
 const STATS = [
   { value: '88,277', label: 'Hectareas', sublabel: 'Area total del consorcio' },
   { value: '749', label: 'Kilometros', sublabel: 'Red de caminos rurales', hasTooltip: true },
+  { value: '15', label: 'Subcuencas', sublabel: 'Zonas operativas activas' },
 ];
 
 // Desglose de km por consorcio caminero (actualizado desde API)
@@ -58,27 +59,29 @@ const FEATURES: Array<{ icon: ReactNode; title: string; description: string; hre
     icon: <IconMap size={28} />,
     title: 'Mapa Interactivo',
     description:
-      'Visualiza las cuencas, caminos y zonas inundadas con capas satelitales actualizadas.',
+      'Visualiza cuencas, hidrografia, caminos rurales y suelos en un mapa interactivo con imagenes satelitales.',
     href: '/mapa',
-  },
-  {
-    icon: <IconChartBar size={28} />,
-    title: 'Panel de Control',
-    description:
-      'Accede a estadisticas en tiempo real sobre el estado de las cuencas e infraestructura.',
-    href: '/admin',
   },
   {
     icon: <IconClipboardList size={28} />,
-    title: 'Sistema de Reportes',
-    description: 'Reporta problemas en caminos, canales o alcantarillas con ubicacion GPS y fotos.',
+    title: 'Reportar un Problema',
+    description:
+      'Reporta problemas en caminos, canales o alcantarillas con ubicacion GPS y fotos desde tu celular.',
     href: '/reportes',
   },
   {
-    icon: <IconSatellite size={28} />,
-    title: 'Analisis Satelital',
-    description: 'Deteccion automatica de inundaciones usando imagenes Sentinel-1 y Sentinel-2.',
-    href: '/mapa',
+    icon: <IconLightbulb size={28} />,
+    title: 'Sugerencias',
+    description:
+      'Propone mejoras o reporta necesidades del consorcio. Podes marcar la ubicacion exacta en el mapa.',
+    href: '/sugerencias',
+  },
+  {
+    icon: <IconChartBar size={28} />,
+    title: 'Panel de Gestion',
+    description:
+      'Operadores del consorcio acceden a tramites, reuniones, finanzas y padron de consorcistas.',
+    href: '/admin',
   },
 ];
 
@@ -101,8 +104,8 @@ export const HomeContent = memo(function HomeContent() {
               Consorcio Canalero 10 de Mayo
             </Title>
             <Text size="xl" ta="center" c="white" maw={600}>
-              Sistema de gestion y monitoreo de cuencas hidricas con tecnologia satelital para la
-              prevencion de inundaciones
+              Sistema colaborativo de gestion territorial para el monitoreo de cuencas, caminos
+              rurales e infraestructura hidrica
             </Text>
             <Group mt="md">
               <Button
@@ -199,7 +202,7 @@ export const HomeContent = memo(function HomeContent() {
               Funcionalidades
             </Title>
             <Text size="lg" c="gray.6" ta="center" maw={600}>
-              Herramientas avanzadas para el monitoreo y gestion de cuencas hidricas
+              Herramientas para la gestion territorial y la participacion ciudadana
             </Text>
           </Stack>
 
