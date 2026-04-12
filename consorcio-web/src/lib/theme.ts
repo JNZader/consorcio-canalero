@@ -14,6 +14,11 @@ import { createTheme } from '@mantine/core';
  * de la pampa cordobesa.
  */
 export const mantineTheme = createTheme({
+  // Respect user's OS-level reduced motion preference for all Mantine
+  // transitions, modals, and popovers (our custom CSS already handles
+  // this via @media prefers-reduced-motion, this covers Mantine internals).
+  respectReducedMotion: true,
+
   // Usar paleta institucional como primaria
   primaryColor: 'institucional',
 
