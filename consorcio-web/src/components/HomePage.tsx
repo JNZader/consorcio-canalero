@@ -22,7 +22,6 @@ import { IconChartBar, IconClipboardList, IconLightbulb, IconMap } from './ui/ic
 const STATS = [
   { value: '88,277', label: 'Hectareas', sublabel: 'Area total del consorcio' },
   { value: '749', label: 'Kilometros', sublabel: 'Red de caminos rurales', hasTooltip: true },
-  { value: '15', label: 'Subcuencas', sublabel: 'Zonas operativas activas' },
 ];
 
 // Desglose de km por consorcio caminero (actualizado desde API)
@@ -137,7 +136,7 @@ export const HomeContent = memo(function HomeContent() {
 
       {/* Stats Section */}
       <Container size="lg" className={styles.statsSection}>
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl" style={{ maxWidth: 600, margin: '0 auto' }}>
           {STATS.map((stat) => {
             const cardContent = (
               <Card
