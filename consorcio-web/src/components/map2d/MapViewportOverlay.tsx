@@ -66,13 +66,16 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(0,0,0,0.4)',
+            background:
+              'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
             zIndex: 20,
           }}
         >
           <Stack align="center" gap="md">
-            <Loader size="lg" color="white" />
-            <Text c="white">Cargando mapa...</Text>
+            <Loader size="lg" color="institucional" type="dots" />
+            <Text size="sm" c="dimmed" fw={500}>
+              Cargando mapa interactivo...
+            </Text>
           </Stack>
         </Box>
       )}

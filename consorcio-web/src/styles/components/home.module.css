@@ -45,8 +45,17 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
+[data-mantine-color-scheme="dark"] .featureCard:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
 .featureCard:focus-visible {
   outline: 2px solid var(--mantine-color-institucional-5);
   outline-offset: 2px;
   transform: translateY(-2px);
+}
+
+/* Dark mode: CTA section uses a deeper, richer gradient */
+[data-mantine-color-scheme="dark"] .ctaSection {
+  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, #071f18 100%);
 }

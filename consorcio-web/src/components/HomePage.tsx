@@ -143,9 +143,10 @@ export const HomeContent = memo(function HomeContent() {
                 key={stat.label}
                 padding="lg"
                 radius="md"
-                withBorder
+                shadow="sm"
                 style={{
                   background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
+                  borderLeft: '4px solid var(--mantine-color-institucional-6)',
                   cursor: 'hasTooltip' in stat && stat.hasTooltip ? 'help' : 'default',
                 }}
               >
@@ -217,6 +218,7 @@ export const HomeContent = memo(function HomeContent() {
                 className={styles.featureCard}
                 style={{
                   background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
+                  borderLeft: '4px solid var(--mantine-color-acento-5)',
                 }}
               >
                 <ThemeIcon size="xl" radius="md" variant="light" color="institucional" mb="md">

@@ -39,8 +39,8 @@ export const mantineTheme = createTheme({
     xl: '1.65',
   },
   headings: {
-    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-    fontWeight: '600',
+    fontFamily: '"DM Serif Display", Georgia, "Times New Roman", serif',
+    fontWeight: '400',
     sizes: {
       h1: { fontSize: '2.25rem', lineHeight: '1.2' },
       h2: { fontSize: '1.75rem', lineHeight: '1.25' },
@@ -143,13 +143,14 @@ export const mantineTheme = createTheme({
     dimmedColorDark: '#a3a3a3', // neutral-400 - ratio 5.5:1 sobre #242424
   },
 
-  // Sombras personalizadas
+  // Sombras personalizadas — dark mode gets stronger shadows since
+  // dark surfaces need more contrast to show depth.
   shadows: {
-    xs: '0 1px 2px rgba(0, 0, 0, 0.05)',
-    sm: '0 1px 3px rgba(0, 0, 0, 0.1)',
-    md: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    lg: '0 10px 15px rgba(0, 0, 0, 0.1)',
-    xl: '0 20px 25px rgba(0, 0, 0, 0.15)',
+    xs: '0 1px 2px light-dark(rgba(0,0,0,0.05), rgba(0,0,0,0.2))',
+    sm: '0 1px 3px light-dark(rgba(0,0,0,0.1), rgba(0,0,0,0.3))',
+    md: '0 4px 6px light-dark(rgba(0,0,0,0.1), rgba(0,0,0,0.35))',
+    lg: '0 10px 15px light-dark(rgba(0,0,0,0.1), rgba(0,0,0,0.4))',
+    xl: '0 20px 25px light-dark(rgba(0,0,0,0.15), rgba(0,0,0,0.5))',
   },
 
   // Componentes personalizados
