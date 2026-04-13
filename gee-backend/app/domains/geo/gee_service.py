@@ -103,8 +103,25 @@ def _ensure_initialized() -> None:
 
         # Option 2: JSON string in env var
         if settings.gee_service_account_key:
-            key_json = settings.gee_service_account_key
-            key_data = json.loads(key_json)
+            key_json = settings.gee_service_account_key.strip()
+            try:
+                key_data = json.loads(key_json)
+            except json.JSONDecodeError:
+                # .env files often mangle JSON — double quotes get stripped
+                # by shell expansion or dotenv parsers. Fix unquoted keys/values:
+                import re
+                fixed = re.sub(
+                    r'(?<=\{|,)\s*(\w+)\s*:',
+                    r' "\1":',
+                    key_json,
+                )
+                fixed = re.sub(
+                    r':\s*([^",\{\}\[\]\d][^,\}\]]*?)(?=[,\}])',
+                    lambda m: f': "{m.group(1).strip()}"',
+                    fixed,
+                )
+                key_data = json.loads(fixed)
+                key_json = fixed
             credentials = ee.ServiceAccountCredentials(
                 email=key_data["client_email"],
                 key_data=key_json,
