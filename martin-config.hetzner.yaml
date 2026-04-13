@@ -1,0 +1,12 @@
+# Martin Vector Tile Server — Hetzner production
+# Copied to ~/stacks/consorcio/martin-config.yaml on deploy
+
+listen_addresses: '0.0.0.0:3000'
+
+postgres:
+  connection_string: ${DATABASE_URL}
+
+  auto_publish:
+    tables:
+      from: public
+    functions: false
