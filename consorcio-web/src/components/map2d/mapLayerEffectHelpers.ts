@@ -23,7 +23,7 @@ export function syncWaterwayLayers(
 
   for (const waterwayFile of waterwayFiles) {
     if (!map.getSource(waterwayFile.id)) {
-      map.addSource(waterwayFile.id, { type: 'vector', url: waterwayFile.url });
+      map.addSource(waterwayFile.id, { type: 'geojson', data: waterwayFile.url });
     }
 
     const lineLayerId = `${waterwayFile.id}-line`;
@@ -32,7 +32,6 @@ export function syncWaterwayLayers(
         id: lineLayerId,
         type: 'line',
         source: waterwayFile.id,
-        'source-layer': waterwayFile.layer,
         paint: {
           'line-color': waterwayFile.color,
           'line-width': waterwayFile.layer === 'canales_existentes' ? 4 : 3,
