@@ -2,6 +2,7 @@ import { Box, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/c
 import { memo, useState, type CSSProperties } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 
 interface LegendItem {
@@ -165,10 +166,8 @@ export const LeyendaPanel = memo(function LeyendaPanel({
       data-testid={dataTestId}
       style={{ ...baseStyle, ...(styleOverride ?? {}) }}
     >
-      <Text fw={600} size="sm" mb="xs">
-        Leyenda
-      </Text>
-      <Stack gap={4}>
+      <CollapsibleSection title="Leyenda" testId="leyenda" titleSize="sm" titleWeight={600}>
+        <Stack gap={4}>
         {legendItems.map((item) => (
           <Group key={item.label} gap="xs">
             <LegendItemIndicator item={item} />
@@ -310,7 +309,8 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             />
           </Stack>
         )}
-      </Stack>
+        </Stack>
+      </CollapsibleSection>
     </Paper>
   );
 });

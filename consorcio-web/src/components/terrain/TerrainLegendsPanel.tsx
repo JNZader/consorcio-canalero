@@ -16,6 +16,7 @@
 import { Box, Paper, Stack, Text } from '@mantine/core';
 
 import { RasterLegend } from '../RasterLegend';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
   SOIL_CAPABILITY_COLORS,
   SOIL_CAPABILITY_LABELS,
@@ -62,24 +63,27 @@ export function TerrainLegendsPanel({
         backdropFilter: 'blur(6px)',
       }}
     >
-      <Stack gap="sm">
-        <Text size="sm" fw={600}>
-          Leyendas
-        </Text>
+      <CollapsibleSection
+        title="Leyendas"
+        testId="terrain-3d-legends"
+        titleSize="sm"
+        titleWeight={600}
+      >
+        <Stack gap="sm">
+          {hasRasterLegend && (
+            <RasterLegend
+              layers={[{ tipo: activeRasterType as string }]}
+              hiddenClasses={hiddenClasses}
+              onClassToggle={onClassToggle}
+              hiddenRanges={hiddenRanges}
+              onRangeToggle={onRangeToggle}
+              floating={false}
+            />
+          )}
 
-        {hasRasterLegend && (
-          <RasterLegend
-            layers={[{ tipo: activeRasterType as string }]}
-            hiddenClasses={hiddenClasses}
-            onClassToggle={onClassToggle}
-            hiddenRanges={hiddenRanges}
-            onRangeToggle={onRangeToggle}
-            floating={false}
-          />
-        )}
-
-        {hasSoilLegend && <SoilLegend />}
-      </Stack>
+          {hasSoilLegend && <SoilLegend />}
+        </Stack>
+      </CollapsibleSection>
     </Paper>
   );
 }

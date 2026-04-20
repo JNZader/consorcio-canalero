@@ -1,6 +1,7 @@
 import { Box, Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { getActiveAttributions } from './layerAttributions';
 
 interface LayerItem {
@@ -107,56 +108,60 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
           backdropFilter: 'blur(6px)',
         }}
       >
-        <Text size="xs" fw={600} c="dimmed" mb={6}>
-          Capas
-        </Text>
-        <Stack gap={4}>
-          {layerItems.map(({ id, label }) => (
-            <Checkbox
-              key={id}
-              size="xs"
-              label={label}
-              checked={!!vectorVisibility[id]}
-              onChange={(event) => onLayerVisibilityChange(id, event.currentTarget.checked)}
-            />
-          ))}
-          <Divider my={4} />
-          <Checkbox
-            size="xs"
-            label="IGN Altimetría"
-            checked={showIGNOverlay}
-            onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
-          />
-          {demEnabled && (
-            <>
+        <CollapsibleSection
+          title="Capas"
+          testId="layer-controls-capas"
+          titleSize="xs"
+          titleWeight={600}
+        >
+          <Stack gap={4}>
+            {layerItems.map(({ id, label }) => (
               <Checkbox
+                key={id}
                 size="xs"
-                label="Capa DEM"
-                checked={showDemOverlay}
-                onChange={(event) => onShowDemOverlayChange(event.currentTarget.checked)}
+                label={label}
+                checked={!!vectorVisibility[id]}
+                onChange={(event) => onLayerVisibilityChange(id, event.currentTarget.checked)}
               />
-              {showDemOverlay && (
-                <Select
+            ))}
+            <Divider my={4} />
+            <Checkbox
+              size="xs"
+              label="IGN Altimetría"
+              checked={showIGNOverlay}
+              onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
+            />
+            {demEnabled && (
+              <>
+                <Checkbox
                   size="xs"
-                  placeholder="Tipo de capa"
-                  value={activeDemLayerId}
-                  onChange={onActiveDemLayerIdChange}
-                  data={demOptions}
+                  label="Capa DEM"
+                  checked={showDemOverlay}
+                  onChange={(event) => onShowDemOverlayChange(event.currentTarget.checked)}
                 />
-              )}
-            </>
-          )}
-          {activeAttributions.length > 0 && (
-            <>
-              <Divider my={4} />
-              {activeAttributions.map((text) => (
-                <Text key={text} size="xs" c="dimmed">
-                  {text}
-                </Text>
-              ))}
-            </>
-          )}
-        </Stack>
+                {showDemOverlay && (
+                  <Select
+                    size="xs"
+                    placeholder="Tipo de capa"
+                    value={activeDemLayerId}
+                    onChange={onActiveDemLayerIdChange}
+                    data={demOptions}
+                  />
+                )}
+              </>
+            )}
+            {activeAttributions.length > 0 && (
+              <>
+                <Divider my={4} />
+                {activeAttributions.map((text) => (
+                  <Text key={text} size="xs" c="dimmed">
+                    {text}
+                  </Text>
+                ))}
+              </>
+            )}
+          </Stack>
+        </CollapsibleSection>
       </Paper>
     </Box>
   );
