@@ -158,3 +158,15 @@ Structured `logging` stdlib (no structlog). Una línea por fetch con `{layer, fe
   …
 wall_time: 47.3s schema_version: 1.0
 ```
+
+---
+
+## Backlog / Mejoras futuras
+
+### Mini-chart de evolución BPA histórica
+- **Qué**: Pasar la línea histórica del widget AdminDashboard a un mini-chart (área o barras) mostrando `evolucion_anual` 2019-2025.
+- **Por qué**: El dato ya está en `aggregates.bpa.evolucion_anual` (schema 1.1). La tendencia visual (caída 2024→2025 de -34%) se pierde en el one-liner actual.
+- **Cómo**: `@mantine/charts` ya disponible. Componente colapsable debajo de la línea actual.
+- **Esfuerzo**: 1-2 hs.
+- **Cuándo**: Después de archivar el SDD `pilar-verde-bpa-agroforestal`. Puede ser un nuevo `/sdd-new pilar-verde-historico-chart` o parte de Pilar Verde v2.
+- **Memoria engram**: topic_key `sdd/pilar-verde-bpa-agroforestal/backlog/historical-chart`
