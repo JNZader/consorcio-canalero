@@ -2,8 +2,17 @@ import type { FeatureCollection } from 'geojson';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
-import { shouldShowSuggestedZones, syncBaseTileVisibility } from '../../src/components/map2d/mapLayerEffectHelpers';
-import { getVisibleRasterLayersForDem, syncImageOverlays } from '../../src/components/map2d/mapRasterOverlayHelpers';
+import {
+  shouldShowSuggestedZones,
+  syncBaseTileVisibility,
+  syncCatastroLayers,
+  syncSoilLayers,
+} from '../../src/components/map2d/mapLayerEffectHelpers';
+import {
+  getVisibleRasterLayersForDem,
+  syncDemRasterLayer,
+  syncImageOverlays,
+} from '../../src/components/map2d/mapRasterOverlayHelpers';
 
 function emptyCollection(): FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
@@ -147,6 +156,72 @@ describe('mapLayerEffectHelpers', () => {
       type: 'raster',
       tiles: ['https://tiles.example.com/right/{z}/{x}/{y}.png'],
       tileSize: 256,
+    });
+  });
+
+  // ── Layer-visibility audit (paint constants) ────────────────────────────
+  // Lock the high-contrast paint values against accidental regression. These
+  // values were chosen so cadastral and soil detail stay readable on BOTH
+  // satellite and OSM base layers.
+  it('renders the catastro line with a white high-contrast outline on first mount', () => {
+    const map = createMapMock();
+
+    syncCatastroLayers(map as never, true);
+
+    const catastroLineCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${SOURCE_IDS.CATASTRO}-line`,
+    );
+    expect(catastroLineCall).toBeDefined();
+    const [catastroLineLayer] = catastroLineCall ?? [];
+    expect(catastroLineLayer?.paint).toMatchObject({
+      'line-color': '#FFFFFF',
+      'line-width': 1.5,
+      'line-opacity': 0.85,
+    });
+  });
+
+  it('renders the soil fill and line with the audited visibility-boost paint', () => {
+    const map = createMapMock();
+
+    syncSoilLayers(map as never, emptyCollection(), true);
+
+    const fillCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-fill`,
+    );
+    expect(fillCall).toBeDefined();
+    const [fillLayer] = fillCall ?? [];
+    expect(fillLayer?.paint).toMatchObject({
+      'fill-opacity': 0.3,
+    });
+
+    const lineCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-line`,
+    );
+    expect(lineCall).toBeDefined();
+    const [lineLayer] = lineCall ?? [];
+    expect(lineLayer?.paint).toMatchObject({
+      'line-color': '#6d4c41',
+      'line-width': 1.2,
+      'line-opacity': 0.85,
+    });
+  });
+
+  it('mounts the DEM raster layer with the audited 0.6 opacity', () => {
+    const map = createMapMock();
+
+    syncDemRasterLayer(map as never, {
+      showDemOverlay: true,
+      activeDemLayerId: 'dem-1',
+      demTileUrl: 'https://tiles.example.com/dem/{z}/{x}/{y}.png',
+    });
+
+    const demCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${SOURCE_IDS.DEM_RASTER}-layer`,
+    );
+    expect(demCall).toBeDefined();
+    const [demLayer] = demCall ?? [];
+    expect(demLayer?.paint).toMatchObject({
+      'raster-opacity': 0.6,
     });
   });
 });

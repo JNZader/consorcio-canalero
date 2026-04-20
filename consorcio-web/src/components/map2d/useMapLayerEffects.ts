@@ -22,6 +22,7 @@ import {
 } from './mapLayerEffectHelpers';
 import {
   getVisibleRasterLayersForDem,
+  moveDemAboveContextualVectors,
   syncDemRasterLayer,
   syncIgnLayer,
   syncImageOverlays,
@@ -341,6 +342,36 @@ export function useMapLayerEffects({
     canales?.relevados,
     canales?.propuestas,
     vectorVisibility,
+    propuestasEtapasVisibility,
+  ]);
+
+  // ── DEM z-order hoist ───────────────────────────────────────────────────
+  // Keep the DEM raster just below the user-authored stack (Pilar Verde +
+  // Canales) so contextual vectors (soil / catastro / basins / roads /
+  // waterways) are NOT dimmed by the 0.6 raster-opacity overlay. This effect
+  // runs after all Pilar Verde + Canales sync effects — the deps cover every
+  // signal that can mount/unmount one of the reference layers.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (!showDemOverlay || !activeDemLayerId) return;
+    moveDemAboveContextualVectors(map);
+  }, [
+    mapReady,
+    mapRef,
+    showDemOverlay,
+    activeDemLayerId,
+    demTileUrl,
+    vectorVisibility,
+    canales,
+    canales?.index,
+    canales?.relevados,
+    canales?.propuestas,
+    pilarVerde?.bpaHistorico,
+    pilarVerde?.agroAceptada,
+    pilarVerde?.agroPresentada,
+    pilarVerde?.agroZonas,
+    pilarVerde?.porcentajeForestacion,
     propuestasEtapasVisibility,
   ]);
 }

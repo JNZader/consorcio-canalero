@@ -77,7 +77,7 @@ export function syncSoilLayers(
       source: SOURCE_IDS.SOIL,
       paint: {
         'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
-        'fill-opacity': 0.22,
+        'fill-opacity': 0.3,
       },
     });
   }
@@ -87,7 +87,7 @@ export function syncSoilLayers(
       id: `${SOURCE_IDS.SOIL}-line`,
       type: 'line',
       source: SOURCE_IDS.SOIL,
-      paint: { 'line-color': '#6d4c41', 'line-width': 0.8, 'line-opacity': 0.55 },
+      paint: { 'line-color': '#6d4c41', 'line-width': 1.2, 'line-opacity': 0.85 },
     });
   }
 
@@ -121,7 +121,7 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
       type: 'line',
       source: SOURCE_IDS.CATASTRO,
       'source-layer': 'parcelas_catastro',
-      paint: { 'line-color': '#6d4c41', 'line-width': 0.8, 'line-opacity': 0.5 },
+      paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-opacity': 0.85 },
     });
   }
 

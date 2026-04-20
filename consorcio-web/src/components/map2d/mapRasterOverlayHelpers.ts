@@ -3,6 +3,7 @@ import type maplibregl from 'maplibre-gl';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
+import { PILAR_VERDE_Z_ORDER } from './pilarVerdeLayers';
 
 interface LayerLike {
   id: string;
@@ -79,12 +80,79 @@ export function syncDemRasterLayer(
         id: `${SOURCE_IDS.DEM_RASTER}-layer`,
         type: 'raster',
         source: SOURCE_IDS.DEM_RASTER,
-        paint: { 'raster-opacity': 0.8 },
+        paint: { 'raster-opacity': 0.6 },
       },
       'vector-layers-start',
     );
   } else {
     setLayerVisibility(map, `${SOURCE_IDS.DEM_RASTER}-layer`, true);
+  }
+}
+
+/**
+ * Hoist the DEM raster ABOVE contextual context vectors (soil / catastro /
+ * basins / roads / waterways) while keeping it BELOW the user-authored stack
+ * (Pilar Verde fills + Canales lines + zonas). Prevents the translucent DEM
+ * overlay from dimming cadastral and soil detail, which is the primary reason
+ * the user requested the layer-visibility audit.
+ *
+ * No-op when the DEM layer is absent (DEM toggled off) — next sync pass will
+ * call this again once the layer is re-added.
+ *
+ * The "before" target is resolved in priority order:
+ *   1. The lowest-in-stack Pilar Verde layer currently mounted
+ *      (zonas < forestación < presentada < aceptada < bpa).
+ *   2. Otherwise, the Canales relevados line layer (the lowest canal layer).
+ *   3. Otherwise, `moveLayer` without a `beforeId` — places DEM on top, which
+ *      is fine in this fallback because no user layer is mounted yet.
+ *
+ * MapLibre's `moveLayer(id, beforeId)` signature means the moved layer lands
+ * JUST BELOW `beforeId` in the style order (= renders UNDER it). That's
+ * exactly the relationship we want.
+ */
+export function moveDemAboveContextualVectors(map: maplibregl.Map) {
+  const demLayerId = `${SOURCE_IDS.DEM_RASTER}-layer`;
+  if (!map.getLayer(demLayerId)) return;
+
+  let beforeId: string | undefined;
+
+  // 1. Prefer the lowest Pilar Verde fill layer (first mounted in z-order).
+  for (const pvId of PILAR_VERDE_Z_ORDER) {
+    const candidate = `${pvId}-fill`;
+    if (map.getLayer(candidate)) {
+      beforeId = candidate;
+      break;
+    }
+  }
+
+  // 2. Fallback to the canales relevados line.
+  if (!beforeId) {
+    const canalesRelevadosLine = `${SOURCE_IDS.CANALES_RELEVADOS}-line`;
+    if (map.getLayer(canalesRelevadosLine)) {
+      beforeId = canalesRelevadosLine;
+    }
+  }
+
+  // 3. Fallback to the canales propuestos line.
+  if (!beforeId) {
+    const canalesPropuestosLine = `${SOURCE_IDS.CANALES_PROPUESTOS}-line`;
+    if (map.getLayer(canalesPropuestosLine)) {
+      beforeId = canalesPropuestosLine;
+    }
+  }
+
+  try {
+    // `moveLayer(id)` (no beforeId) hoists to the top; that's fine in the
+    // no-user-layers-mounted case. Otherwise place DEM just below the lowest
+    // user layer so it still covers the contextual vectors.
+    if (beforeId) {
+      map.moveLayer(demLayerId, beforeId);
+    } else {
+      map.moveLayer(demLayerId);
+    }
+  } catch {
+    // moveLayer can race with concurrent style edits — safe to ignore. Next
+    // sync pass will retry.
   }
 }
 

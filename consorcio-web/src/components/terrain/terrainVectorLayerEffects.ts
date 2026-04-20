@@ -179,7 +179,7 @@ function ensureTerrainVectorLayers(
       source: TERRAIN_SOURCE_IDS.soil,
       paint: {
         'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
-        'fill-opacity': 0.22,
+        'fill-opacity': 0.3,
       },
     });
   }
@@ -188,17 +188,22 @@ function ensureTerrainVectorLayers(
       id: `${TERRAIN_SOURCE_IDS.soil}-line`,
       type: 'line',
       source: TERRAIN_SOURCE_IDS.soil,
-      paint: { 'line-color': '#6d4c41', 'line-width': 0.8, 'line-opacity': 0.55 },
+      paint: { 'line-color': '#6d4c41', 'line-width': 1.2, 'line-opacity': 0.85 },
     });
   }
 
+  // NOTE (layer-visibility audit): catastro is declared AFTER soil on purpose.
+  // MapLibre renders layers in declaration order — the last-declared paints on
+  // top. Keeping catastro as the final vector layer guarantees parcela outlines
+  // are never obscured by the soil fill, without needing an explicit moveLayer
+  // pass on every sync.
   ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.catastro, collections.catastroCollection);
   if (!map.getLayer(`${TERRAIN_SOURCE_IDS.catastro}-line`)) {
     map.addLayer({
       id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
       type: 'line',
       source: TERRAIN_SOURCE_IDS.catastro,
-      paint: { 'line-color': '#f8f9fa', 'line-width': 0.7, 'line-opacity': 0.7 },
+      paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-opacity': 0.85 },
     });
   }
 
