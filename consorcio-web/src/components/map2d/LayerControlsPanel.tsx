@@ -1,4 +1,4 @@
-import { Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
 import { getActiveAttributions } from './layerAttributions';
@@ -55,7 +55,22 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
   }, [vectorVisibility]);
 
   return (
-    <>
+    // Bounded outer scroll container: when many layer toggles, DEM options
+    // and attributions are active, the stack used to grow past the viewport
+    // and collide with the bottom-left `LeyendaPanel`. We cap the whole
+    // top-left stack at `calc(100vh - 180px)` (≈ leaves room for bottom-left
+    // legend + padding) and let it scroll internally instead.
+    <Box
+      data-testid="layer-controls-panel-scroll"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        maxHeight: 'calc(100vh - 180px)',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+      }}
+    >
       <Paper
         shadow="md"
         p="xs"
@@ -90,8 +105,6 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
         style={{
           background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
           backdropFilter: 'blur(6px)',
-          maxHeight: '60vh',
-          overflowY: 'auto',
         }}
       >
         <Text size="xs" fw={600} c="dimmed" mb={6}>
@@ -145,6 +158,6 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
           )}
         </Stack>
       </Paper>
-    </>
+    </Box>
   );
 });
