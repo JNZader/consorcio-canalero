@@ -26,6 +26,7 @@ import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { IconDownload } from '../ui/icons';
 import { DashboardEstadisticas } from './management/DashboardEstadisticas';
+import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
 
 // Nombres legibles de cuencas (fallback)
 const DEFAULT_CUENCA_NAMES: Record<string, string> = {
@@ -406,6 +407,11 @@ export default function AdminDashboard() {
           </Group>
         </Stack>
       </Paper>
+
+      <SimpleGrid cols={{ base: 1, lg: 2 }} mb="xl">
+        {/* Pilar Verde — BPA + Plan Provincial Agroforestal */}
+        <PilarVerdeWidgetConnected />
+      </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} mb="xl">
         {/* Inundacion por Cuenca - Datos reales del API */}

@@ -21,6 +21,9 @@ export default {
     'src/lib/typeGuards.ts',
     // Pilar Verde pure helpers (Phase 3 — ≥85% target)
     'src/components/map2d/bpaPracticas.ts',
+    // Pilar Verde widget pure helpers (Phase 4 — ≥85% target)
+    'src/components/admin/pilarVerdeWidget/computeKpis.ts',
+    'src/components/admin/pilarVerdeWidget/fmt.ts',
   ],
   thresholds: {
     high: 85,
