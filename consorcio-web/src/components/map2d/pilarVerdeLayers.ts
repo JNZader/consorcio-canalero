@@ -63,41 +63,55 @@ export type PilarVerdeLayerId = (typeof PILAR_VERDE_Z_ORDER)[number];
 export const PILAR_VERDE_COLORS = {
   /**
    * Historical BPA gradient stops (by años_bpa 1..7).
-   * Pale green (sporadic) → dark green (fully committed).
+   * Pale green (sporadic) → dark green (fully committed). Each PV layer now
+   * lives in its OWN hue family after the holistic palette redesign — the
+   * gradient is stretched across the Tailwind green scale (100 → 900) so all
+   * four stops read as distinct tiers even when overlaid on the basemap.
    * Kept as individual keys so the legend can render matching color chips.
    */
-  bpaHistoricoStop1: '#BBF7D0', // 1 año — sporadic
-  bpaHistoricoStop3: '#4ADE80', // 3 años
-  bpaHistoricoStop5: '#22C55E', // 5 años
-  bpaHistoricoStop7: '#15803D', // 7 años — full commitment
-  /** Outline for the historical BPA layer (thin dark-green line). */
-  bpaHistoricoLine: '#166534',
-  /** Agro-aceptada (compliant). Green @ 0.30 opacity. */
-  agroAceptadaFill: '#22C55E',
-  /** Agro-presentada (non-compliant). Red @ 0.30 opacity. */
-  agroPresentadaFill: '#EF4444',
+  bpaHistoricoStop1: '#DCFCE7', // 1 año — sporadic (green-100)
+  bpaHistoricoStop3: '#86EFAC', // 3 años (green-300)
+  bpaHistoricoStop5: '#16A34A', // 5 años (green-600)
+  bpaHistoricoStop7: '#14532D', // 7 años — full commitment (green-900)
+  /** Outline for the historical BPA layer (thin green-900 line). */
+  bpaHistoricoLine: '#14532D',
   /**
-   * Agroforestal zonas (context). Cyan @ 0.20 opacity — subtle. Used as the
-   * FALLBACK color inside the per-zone `match` expression for any zone whose
-   * `leyenda` doesn't match one of the 3 known systems below. Keeping it as
-   * cyan preserves backward compatibility with the original single-color look.
+   * Agro-aceptada (compliant). Solid blue-600 @ 0.30 opacity. Was green but
+   * collided with the BPA green gradient when both layers were on → moved to
+   * blue so each layer family is unique.
    */
-  agroZonasFill: '#06B6D4',
+  agroAceptadaFill: '#2563EB',
+  /** Agro-aceptada outline — blue-800, darker than the fill for separation. */
+  agroAceptadaLine: '#1E40AF',
+  /** Agro-presentada (non-compliant). Solid red-600 @ 0.30 opacity. */
+  agroPresentadaFill: '#DC2626',
+  /** Agro-presentada outline — red-800. */
+  agroPresentadaLine: '#991B1B',
+  /**
+   * Agroforestal zonas — FALLBACK color for zones whose `leyenda` doesn't
+   * match one of the 3 known systems. Uses the same warm anchor as the
+   * Río Tercero zone so the fallback still reads as part of the zonas block.
+   */
+  agroZonasFill: '#FCD34D',
   /**
    * Per-zone agroforestal colors. The consorcio zone has EXACTLY 3 systems,
-   * each identified by a distinct `leyenda` property. Using one color per
-   * system lets the user read the map + legend without clicking each polygon.
+   * each identified by a distinct `leyenda` property. Palette redesign moved
+   * these from cool cyan/teal/sky (indistinguishable from each other) to 3
+   * warm hues with strong visual separation:
    *
-   *   - Río Tercero Este   → cyan-500  (same as the legacy cyan — keeps visual continuity)
-   *   - Río Carcarañá      → teal-500
-   *   - Arroyo Tortugas    → sky-500
+   *   - Río Tercero Este   → amber-300   (#FCD34D — pale warm yellow)
+   *   - Río Carcarañá      → orange-500  (#F97316 — punchy orange)
+   *   - Arroyo Tortugas    → amber-700   (#B45309 — deep amber/brown)
    *
-   * All three sit in the same cool-blue family so the layer still reads as a
-   * cohesive "agroforestal zonas" block but the 3 systems are distinguishable.
+   * All three sit in the warm family so the layer still reads as a cohesive
+   * "zonas agroforestales" block but the 3 systems are now distinguishable
+   * at a glance without clicking each polygon.
    */
-  agroZonaRioTercero: '#06B6D4',
-  agroZonaCarcarana: '#14B8A6',
-  agroZonaTortugas: '#0EA5E9',
+  agroZonaRioTercero: '#FCD34D',
+  agroZonaCarcarana: '#F97316',
+  agroZonaTortugas: '#B45309',
+  /** Shared outline for all 3 zonas — amber-700, darker than any of the fills. */
+  agroZonasLine: '#B45309',
   /**
    * Porcentaje forestación obligatoria — categorized into 3 tiers by
    * `forest_obligatoria` (%). Real zone data ranges 2.1–2.88%, not the
@@ -105,16 +119,20 @@ export const PILAR_VERDE_COLORS = {
    * buckets track the two dominant peaks (2.10 and 2.60) observed on the
    * 1,222 features of the layer.
    *
-   *   - Baja  (≤ 2.30%)  — violet-300
-   *   - Media (2.31–2.60%) — violet-400 (historical default)
-   *   - Alta  (≥ 2.61%)  — violet-600
+   *   - Baja  (≤ 2.30%)   — violet-100  (#EDE9FE)
+   *   - Media (2.31–2.60%) — violet-500 (#8B5CF6)
+   *   - Alta  (≥ 2.61%)   — violet-900  (#4C1D95)
+   *
+   * Stops jump 100 → 500 → 900 (not 300/400/600) so the 3 tiers have MUCH
+   * stronger contrast inside the gradient — the old violet-300/400/600 set
+   * collapsed into a single tone on real zone data.
    *
    * Keys map 1:1 to the legend chips in `LeyendaPanel` — single source of
    * truth for the MapLibre `step` paint expression.
    */
-  porcentajeForestacionBaja: '#C4B5FD',
-  porcentajeForestacionMedia: '#A78BFA',
-  porcentajeForestacionAlta: '#7C3AED',
+  porcentajeForestacionBaja: '#EDE9FE',
+  porcentajeForestacionMedia: '#8B5CF6',
+  porcentajeForestacionAlta: '#4C1D95',
   // ── Eje palette (mirrored by InfoPanel in Phase 3) ──
   /** Persona — blue-500. */
   ejePersona: '#3B82F6',
@@ -177,10 +195,10 @@ export function buildAgroAceptadaFillPaint(): FillPaint {
   };
 }
 
-/** Agro-aceptada line — green outline. */
+/** Agro-aceptada line — blue-800 outline (darker than the blue-600 fill). */
 export function buildAgroAceptadaLinePaint(): LinePaint {
   return {
-    'line-color': PILAR_VERDE_COLORS.agroAceptadaFill,
+    'line-color': PILAR_VERDE_COLORS.agroAceptadaLine,
     'line-width': 1,
     'line-opacity': 0.85,
   };
@@ -194,10 +212,10 @@ export function buildAgroPresentadaFillPaint(): FillPaint {
   };
 }
 
-/** Agro-presentada line — red outline. */
+/** Agro-presentada line — red-800 outline (darker than the red-600 fill). */
 export function buildAgroPresentadaLinePaint(): LinePaint {
   return {
-    'line-color': PILAR_VERDE_COLORS.agroPresentadaFill,
+    'line-color': PILAR_VERDE_COLORS.agroPresentadaLine,
     'line-width': 1,
     'line-opacity': 0.85,
   };
@@ -226,14 +244,17 @@ export function buildAgroZonasFillPaint(): FillPaint {
       PILAR_VERDE_COLORS.agroZonaTortugas,
       PILAR_VERDE_COLORS.agroZonaRioTercero,
     ],
-    'fill-opacity': 0.2,
+    // Opacity raised 0.20 → 0.30 after the cool→warm palette swap: pale warm
+    // hues (amber-300) looked washed out at 0.20 and the 3 systems need to
+    // stay distinguishable when layered over soil/catastro.
+    'fill-opacity': 0.3,
   };
 }
 
-/** Agro zonas line — thin cyan outline. */
+/** Agro zonas line — thin amber-700 outline, darker than any of the 3 fills. */
 export function buildAgroZonasLinePaint(): LinePaint {
   return {
-    'line-color': PILAR_VERDE_COLORS.agroZonasFill,
+    'line-color': PILAR_VERDE_COLORS.agroZonasLine,
     'line-width': 1,
     'line-opacity': 0.75,
   };

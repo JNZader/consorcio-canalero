@@ -23,36 +23,47 @@ import {
 } from '../../src/components/map2d/pilarVerdeLayers';
 
 describe('pilarVerdeLayers · colors', () => {
-  it('exports the historical-gradient stop palette (Phase 7)', () => {
-    expect(PILAR_VERDE_COLORS.bpaHistoricoStop1).toBe('#BBF7D0');
-    expect(PILAR_VERDE_COLORS.bpaHistoricoStop3).toBe('#4ADE80');
-    expect(PILAR_VERDE_COLORS.bpaHistoricoStop5).toBe('#22C55E');
-    expect(PILAR_VERDE_COLORS.bpaHistoricoStop7).toBe('#15803D');
-    expect(PILAR_VERDE_COLORS.bpaHistoricoLine).toBe('#166534');
+  it('exports the historical-gradient stop palette stretched across green 100→900', () => {
+    // Palette redesign: stretched from greens 200/400/500/800 to 100/300/600/900
+    // so each tier reads as a clearly distinct step over the basemap.
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop1).toBe('#DCFCE7'); // green-100
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop3).toBe('#86EFAC'); // green-300
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop5).toBe('#16A34A'); // green-600
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop7).toBe('#14532D'); // green-900
+    expect(PILAR_VERDE_COLORS.bpaHistoricoLine).toBe('#14532D');
   });
 
-  it('exports the semantic DEFAULT agro palette per spec', () => {
-    expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#22C55E');
-    expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#EF4444');
-    expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#06B6D4');
+  it('exports the semantic DEFAULT agro palette — each layer in its own hue family', () => {
+    // Aceptada moved from green (conflicted with BPA gradient) to blue-600.
+    expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#2563EB');
+    expect(PILAR_VERDE_COLORS.agroAceptadaLine).toBe('#1E40AF');
+    // Presentada bumped from red-500 to red-600 for a stronger contrast with
+    // the red-800 outline.
+    expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#DC2626');
+    expect(PILAR_VERDE_COLORS.agroPresentadaLine).toBe('#991B1B');
+    // Zonas fallback now matches the Río Tercero anchor color (warm palette).
+    expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#FCD34D');
+    expect(PILAR_VERDE_COLORS.agroZonasLine).toBe('#B45309');
   });
 
-  it('exports the 3 per-zone agroforestal colors (Río Tercero / Carcarañá / Tortugas)', () => {
+  it('exports the 3 per-zone agroforestal colors as warm hues (amber / orange / deep-amber)', () => {
     // The consorcio zone has EXACTLY 3 agroforestal systems identified by the
-    // `leyenda` property. Each gets its own color so the legend + map are
-    // self-explanatory without clicking each polygon.
-    expect(PILAR_VERDE_COLORS.agroZonaRioTercero).toBe('#06B6D4');
-    expect(PILAR_VERDE_COLORS.agroZonaCarcarana).toBe('#14B8A6');
-    expect(PILAR_VERDE_COLORS.agroZonaTortugas).toBe('#0EA5E9');
+    // `leyenda` property. Palette redesign moved these from cool cyan/teal/sky
+    // (which read as identical tones) to 3 warm hues with strong separation.
+    expect(PILAR_VERDE_COLORS.agroZonaRioTercero).toBe('#FCD34D'); // amber-300
+    expect(PILAR_VERDE_COLORS.agroZonaCarcarana).toBe('#F97316'); // orange-500
+    expect(PILAR_VERDE_COLORS.agroZonaTortugas).toBe('#B45309'); // amber-700
   });
 
-  it('exports the 3-tier porcentaje forestación palette (baja/media/alta)', () => {
-    expect(PILAR_VERDE_COLORS.porcentajeForestacionBaja).toBe('#C4B5FD');
-    expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#A78BFA');
-    expect(PILAR_VERDE_COLORS.porcentajeForestacionAlta).toBe('#7C3AED');
+  it('exports the 3-tier porcentaje forestación palette — violet 100/500/900 for max contrast', () => {
+    // Stops jump 100 → 500 → 900 (not 300/400/600) so the 3 tiers stay
+    // visually distinct when rendered over the basemap.
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionBaja).toBe('#EDE9FE'); // violet-100
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#8B5CF6'); // violet-500
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionAlta).toBe('#4C1D95'); // violet-900
   });
 
-  it('exports the eje palette used by InfoPanel (phase 3) — kept in sync here', () => {
+  it('exports the eje palette used by InfoPanel (phase 3) — UNCHANGED by palette redesign', () => {
     expect(PILAR_VERDE_COLORS.ejePersona).toBe('#3B82F6');
     expect(PILAR_VERDE_COLORS.ejePlaneta).toBe('#10B981');
     expect(PILAR_VERDE_COLORS.ejeProsperidad).toBe('#F59E0B');
@@ -89,51 +100,54 @@ describe('pilarVerdeLayers · paint factories', () => {
     expect(fillColor[0]).toBe('interpolate');
     expect(fillColor[1]).toEqual(['linear']);
     expect(fillColor[2]).toEqual(['get', 'años_bpa']);
-    // Stops 1, 3, 5, 7 with their matching colors.
+    // Stops 1, 3, 5, 7 must pull from PILAR_VERDE_COLORS (single source of
+    // truth) — never hardcode hex here. The palette redesign proved this
+    // matters: changing a stop used to require two edits that could drift.
     expect(fillColor[3]).toBe(1);
-    expect(fillColor[4]).toBe('#BBF7D0');
+    expect(fillColor[4]).toBe(PILAR_VERDE_COLORS.bpaHistoricoStop1);
     expect(fillColor[5]).toBe(3);
-    expect(fillColor[6]).toBe('#4ADE80');
+    expect(fillColor[6]).toBe(PILAR_VERDE_COLORS.bpaHistoricoStop3);
     expect(fillColor[7]).toBe(5);
-    expect(fillColor[8]).toBe('#22C55E');
+    expect(fillColor[8]).toBe(PILAR_VERDE_COLORS.bpaHistoricoStop5);
     expect(fillColor[9]).toBe(7);
-    expect(fillColor[10]).toBe('#15803D');
+    expect(fillColor[10]).toBe(PILAR_VERDE_COLORS.bpaHistoricoStop7);
   });
 
-  it('bpa_historico line: thin dark-green outline', () => {
+  it('bpa_historico line: thin green-900 outline', () => {
     const paint = buildBpaHistoricoLinePaint();
-    expect(paint['line-color']).toBe('#166534');
+    expect(paint['line-color']).toBe(PILAR_VERDE_COLORS.bpaHistoricoLine);
     expect(paint['line-width']).toBe(0.5);
   });
 
-  it('agro aceptada fill: green @ 0.30 opacity', () => {
+  it('agro aceptada fill: blue-600 @ 0.30 opacity', () => {
     const paint = buildAgroAceptadaFillPaint();
-    expect(paint['fill-color']).toBe('#22C55E');
+    expect(paint['fill-color']).toBe(PILAR_VERDE_COLORS.agroAceptadaFill);
     expect(paint['fill-opacity']).toBe(0.3);
   });
 
-  it('agro aceptada line: green outline', () => {
+  it('agro aceptada line: blue-800 outline (darker than the blue-600 fill)', () => {
     const paint = buildAgroAceptadaLinePaint();
-    expect(paint['line-color']).toBe('#22C55E');
+    expect(paint['line-color']).toBe(PILAR_VERDE_COLORS.agroAceptadaLine);
     expect(paint['line-width']).toBe(1);
   });
 
-  it('agro presentada fill: red @ 0.30 opacity', () => {
+  it('agro presentada fill: red-600 @ 0.30 opacity', () => {
     const paint = buildAgroPresentadaFillPaint();
-    expect(paint['fill-color']).toBe('#EF4444');
+    expect(paint['fill-color']).toBe(PILAR_VERDE_COLORS.agroPresentadaFill);
     expect(paint['fill-opacity']).toBe(0.3);
   });
 
-  it('agro presentada line: red outline', () => {
+  it('agro presentada line: red-800 outline (darker than the red-600 fill)', () => {
     const paint = buildAgroPresentadaLinePaint();
-    expect(paint['line-color']).toBe('#EF4444');
+    expect(paint['line-color']).toBe(PILAR_VERDE_COLORS.agroPresentadaLine);
     expect(paint['line-width']).toBe(1);
   });
 
-  it('agro zonas fill: match expression on `leyenda` with 3 per-zone colors @ 0.20 opacity', () => {
+  it('agro zonas fill: match expression on `leyenda` with 3 per-zone colors @ 0.30 opacity', () => {
     const paint = buildAgroZonasFillPaint();
-    // Opacity stays subtle — this is still a context layer.
-    expect(paint['fill-opacity']).toBe(0.2);
+    // Opacity raised 0.20 → 0.30 after the cool→warm palette swap: pale warm
+    // hues (amber-300) looked washed out at 0.20.
+    expect(paint['fill-opacity']).toBe(0.3);
 
     const fillColor = paint['fill-color'] as unknown as unknown[];
     expect(Array.isArray(fillColor)).toBe(true);
@@ -156,9 +170,9 @@ describe('pilarVerdeLayers · paint factories', () => {
     expect(fillColor.length).toBe(9);
   });
 
-  it('agro zonas line: thin cyan outline', () => {
+  it('agro zonas line: thin amber-700 outline (darker than any of the 3 fills)', () => {
     const paint = buildAgroZonasLinePaint();
-    expect(paint['line-color']).toBe('#06B6D4');
+    expect(paint['line-color']).toBe(PILAR_VERDE_COLORS.agroZonasLine);
     expect(paint['line-width']).toBe(1);
   });
 
