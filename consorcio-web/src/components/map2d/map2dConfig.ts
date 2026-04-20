@@ -17,6 +17,14 @@ export const SOURCE_IDS = {
   COMPARISON_RIGHT: 'map2d-comparison-right',
   DEM_RASTER: 'map2d-dem-raster',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
+  // ── Pilar Verde (Phase 2) ──
+  // Values match the `PilarVerdeLayerId` tuple in `stores/mapLayerSyncStore.ts`
+  // so the source id == the visibility-toggle id (no translation table).
+  PILAR_VERDE_BPA: 'pilar_verde_bpa',
+  PILAR_VERDE_AGRO_ACEPTADA: 'pilar_verde_agro_aceptada',
+  PILAR_VERDE_AGRO_PRESENTADA: 'pilar_verde_agro_presentada',
+  PILAR_VERDE_AGRO_ZONAS: 'pilar_verde_agro_zonas',
+  PILAR_VERDE_PORCENTAJE_FORESTACION: 'pilar_verde_porcentaje_forestacion',
 } as const;
 
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];

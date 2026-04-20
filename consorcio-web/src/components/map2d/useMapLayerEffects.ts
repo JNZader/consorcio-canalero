@@ -5,9 +5,14 @@ import { useEffect } from 'react';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import {
   shouldShowSuggestedZones,
+  syncAgroAceptadaLayer,
+  syncAgroPresentadaLayer,
+  syncAgroZonasLayer,
   syncApprovedZoneLayers,
   syncBaseTileVisibility,
   syncBasinLayers,
+  syncBpaLayer,
+  syncPorcentajeForestacionLayer,
   syncRoadLayers,
   syncSoilLayers,
   syncSuggestedZoneLayers,
@@ -22,6 +27,7 @@ import {
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
+import type { PilarVerdeData } from '../../types/pilarVerde';
 
 interface LayerLike {
   id: string;
@@ -56,6 +62,12 @@ interface UseMapLayerEffectsParams {
     right?: { tile_url: string } | null;
   } | null;
   waterwaysDefs: readonly (typeof WATERWAY_DEFS)[number][];
+  /**
+   * Pilar Verde static data. `undefined` means the parent has not wired the
+   * hook yet; `null` slots are tolerated (graceful degradation — sync helpers
+   * fall back to an empty FeatureCollection and stay hidden).
+   */
+  pilarVerde?: PilarVerdeData | null;
 }
 
 export function useMapLayerEffects({
@@ -82,6 +94,7 @@ export function useMapLayerEffects({
   selectedImage,
   comparison,
   waterwaysDefs,
+  pilarVerde,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -191,4 +204,64 @@ export function useMapLayerEffects({
       showConflictPoints: !!vectorVisibility.puntos_conflicto,
     });
   }, [mapReady, mapRef, vectorVisibility.puntos_conflicto]);
+
+  // ── Pilar Verde (Phase 2) ───────────────────────────────────────────────
+  // Each layer has a dedicated effect so a change to one collection doesn't
+  // cause all five to rerun. The helpers are idempotent, so re-running on
+  // visibility changes is safe.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const data = pilarVerde?.bpa2025 ?? null;
+    syncBpaLayer(map, data as FeatureCollection | null, !!vectorVisibility.pilar_verde_bpa);
+  }, [mapReady, mapRef, pilarVerde?.bpa2025, vectorVisibility.pilar_verde_bpa]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const data = pilarVerde?.agroAceptada ?? null;
+    syncAgroAceptadaLayer(
+      map,
+      data as FeatureCollection | null,
+      !!vectorVisibility.pilar_verde_agro_aceptada,
+    );
+  }, [mapReady, mapRef, pilarVerde?.agroAceptada, vectorVisibility.pilar_verde_agro_aceptada]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const data = pilarVerde?.agroPresentada ?? null;
+    syncAgroPresentadaLayer(
+      map,
+      data as FeatureCollection | null,
+      !!vectorVisibility.pilar_verde_agro_presentada,
+    );
+  }, [mapReady, mapRef, pilarVerde?.agroPresentada, vectorVisibility.pilar_verde_agro_presentada]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const data = pilarVerde?.agroZonas ?? null;
+    syncAgroZonasLayer(
+      map,
+      data as FeatureCollection | null,
+      !!vectorVisibility.pilar_verde_agro_zonas,
+    );
+  }, [mapReady, mapRef, pilarVerde?.agroZonas, vectorVisibility.pilar_verde_agro_zonas]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const data = pilarVerde?.porcentajeForestacion ?? null;
+    syncPorcentajeForestacionLayer(
+      map,
+      data as FeatureCollection | null,
+      !!vectorVisibility.pilar_verde_porcentaje_forestacion,
+    );
+  }, [
+    mapReady,
+    mapRef,
+    pilarVerde?.porcentajeForestacion,
+    vectorVisibility.pilar_verde_porcentaje_forestacion,
+  ]);
 }

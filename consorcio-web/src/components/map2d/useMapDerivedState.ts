@@ -2,6 +2,7 @@ import type { FeatureCollection } from 'geojson';
 import { useMemo } from 'react';
 import { GEO_LAYER_LABELS, buildTileUrl } from '../../hooks/useGeoLayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
+import type { PilarVerdeData } from '../../types/pilarVerde';
 import { decorateFeature, asFeatureCollection } from './map2dUtils';
 import {
   buildActiveLegendItems,
@@ -41,6 +42,14 @@ export function useMapDerivedState(params: {
   hasApprovedZones: boolean;
   intersectionsLength: number;
   isAdmin: boolean;
+  /**
+   * Pilar Verde static data, loaded upstream by `usePilarVerde()`. Pass-through:
+   * this hook does not decorate the features (the paint factories in
+   * `pilarVerdeLayers.ts` use solid colors, not data-driven expressions), so we
+   * simply re-expose the slot for `useMapLayerEffects` to consume. `null` is
+   * the graceful-degradation fallback — see spec "missing files" scenario.
+   */
+  pilarVerde?: PilarVerdeData | null;
 }) {
   const {
     capas,
@@ -63,6 +72,7 @@ export function useMapDerivedState(params: {
     hasApprovedZones,
     intersectionsLength,
     isAdmin,
+    pilarVerde = null,
   } = params;
 
   const zonaCollection = capas.zona ?? null;
@@ -158,6 +168,11 @@ export function useMapDerivedState(params: {
     [comparison],
   );
 
+  // Pilar Verde is considered "available" once at least one slot has resolved.
+  // `aggregates` is the canonical gating slot because every downstream UI
+  // (widget, legend, toggles) relies on it.
+  const showPilarVerde = !!pilarVerde?.aggregates;
+
   const vectorLayerItems = useMemo(
     () =>
       buildVectorLayerItems({
@@ -166,8 +181,16 @@ export function useMapDerivedState(params: {
         roadsCollection,
         intersectionsLength,
         isAdmin,
+        showPilarVerde,
       }),
-    [approvedZonesCollection, basins, intersectionsLength, isAdmin, roadsCollection],
+    [
+      approvedZonesCollection,
+      basins,
+      intersectionsLength,
+      isAdmin,
+      roadsCollection,
+      showPilarVerde,
+    ],
   );
 
   const demLayerOptions = useMemo(() => buildDemLayerOptions(demLayers, GEO_LAYER_LABELS), [demLayers]);
@@ -192,5 +215,6 @@ export function useMapDerivedState(params: {
     comparisonInfo,
     vectorLayerItems,
     demLayerOptions,
+    pilarVerde,
   };
 }

@@ -179,6 +179,14 @@ export function buildVectorLayerItems(params: {
   roadsCollection: FeatureCollection | null | undefined;
   intersectionsLength: number;
   isAdmin: boolean;
+  /**
+   * Whether the Pilar Verde static data has loaded (at least one slot non-null).
+   * Callers can simply pass `!!pilarVerde?.aggregates` or similar — the flag
+   * decides whether the 5 Pilar Verde toggles render in the layer control.
+   * Defaults to `false` for backwards compatibility (no behavior change for
+   * existing callers that haven't wired Pilar Verde yet).
+   */
+  showPilarVerde?: boolean;
 }) {
   const {
     basins,
@@ -186,6 +194,7 @@ export function buildVectorLayerItems(params: {
     roadsCollection,
     intersectionsLength,
     isAdmin,
+    showPilarVerde = false,
   } = params;
 
   return [
@@ -200,6 +209,16 @@ export function buildVectorLayerItems(params: {
     { id: 'soil', label: 'Suelos IDECOR', show: true },
     { id: 'catastro', label: 'Catastro rural', show: true },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
+    // ── Pilar Verde (Phase 2) — Spanish (Rioplatense) labels per spec ──
+    { id: 'pilar_verde_bpa', label: 'BPA 2025', show: showPilarVerde },
+    { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen', show: showPilarVerde },
+    { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron', show: showPilarVerde },
+    { id: 'pilar_verde_agro_zonas', label: 'Zonas Agroforestales', show: showPilarVerde },
+    {
+      id: 'pilar_verde_porcentaje_forestacion',
+      label: '% Forestación obligatoria',
+      show: showPilarVerde,
+    },
   ]
     .filter(({ show }) => show)
     .map(({ id, label }) => ({ id, label }));

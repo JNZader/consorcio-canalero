@@ -5,6 +5,18 @@ import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
+import {
+  PILAR_VERDE_Z_ORDER,
+  buildAgroAceptadaFillPaint,
+  buildAgroAceptadaLinePaint,
+  buildAgroPresentadaFillPaint,
+  buildAgroPresentadaLinePaint,
+  buildAgroZonasFillPaint,
+  buildAgroZonasLinePaint,
+  buildBpaFillPaint,
+  buildBpaLinePaint,
+  buildPorcentajeForestacionFillPaint,
+} from './pilarVerdeLayers';
 
 export function syncBaseTileVisibility(
   map: maplibregl.Map,
@@ -296,5 +308,190 @@ export function syncSuggestedZoneLayers(
 
   setLayerVisibility(map, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`, isVisible);
   setLayerVisibility(map, `${SOURCE_IDS.SUGGESTED_ZONES}-line`, isVisible);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Pilar Verde sync helpers (Phase 2)                                         */
+/*  Each helper is idempotent: addSource/addLayer are guarded by getSource/    */
+/*  getLayer checks. After mount, layers are hoisted to match                  */
+/*  `PILAR_VERDE_Z_ORDER` — iterating that tuple in order with                 */
+/*  `map.moveLayer(id)` (no beforeId) raises each to the top, producing the    */
+/*  documented stacking: zonas < forestación < presentada < aceptada < bpa.    */
+/* -------------------------------------------------------------------------- */
+
+/** Raise the mounted Pilar Verde fill+line layers to the top of the style
+ * in the canonical z-order. Called at the tail of every Pilar Verde sync so
+ * that re-renders keep the stack consistent even if other helpers ran in
+ * between. Safe no-op when a layer is not yet mounted (catches the possible
+ * race during first-mount). */
+function raisePilarVerdeStack(map: maplibregl.Map) {
+  for (const id of PILAR_VERDE_Z_ORDER) {
+    const fillId = `${id}-fill`;
+    const lineId = `${id}-line`;
+    if (map.getLayer(fillId)) {
+      try {
+        map.moveLayer(fillId);
+      } catch {
+        // moveLayer can throw during concurrent style edits — ignore, next
+        // sync pass will retry. The z-order constant is the single source
+        // of truth for the intended stacking.
+      }
+    }
+    if (map.getLayer(lineId)) {
+      try {
+        map.moveLayer(lineId);
+      } catch {
+        // see above
+      }
+    }
+  }
+}
+
+export function syncBpaLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection | null,
+  isVisible: boolean,
+) {
+  const id = SOURCE_IDS.PILAR_VERDE_BPA;
+  ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
+
+  if (!map.getLayer(`${id}-fill`)) {
+    map.addLayer({
+      id: `${id}-fill`,
+      type: 'fill',
+      source: id,
+      paint: buildBpaFillPaint(),
+    });
+  }
+
+  if (!map.getLayer(`${id}-line`)) {
+    map.addLayer({
+      id: `${id}-line`,
+      type: 'line',
+      source: id,
+      paint: buildBpaLinePaint(),
+    });
+  }
+
+  setLayerVisibility(map, `${id}-fill`, isVisible);
+  setLayerVisibility(map, `${id}-line`, isVisible);
+
+  // BPA is topmost → hoist the full Pilar Verde stack in z-order.
+  raisePilarVerdeStack(map);
+}
+
+export function syncAgroAceptadaLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection | null,
+  isVisible: boolean,
+) {
+  const id = SOURCE_IDS.PILAR_VERDE_AGRO_ACEPTADA;
+  ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
+
+  if (!map.getLayer(`${id}-fill`)) {
+    map.addLayer({
+      id: `${id}-fill`,
+      type: 'fill',
+      source: id,
+      paint: buildAgroAceptadaFillPaint(),
+    });
+  }
+
+  if (!map.getLayer(`${id}-line`)) {
+    map.addLayer({
+      id: `${id}-line`,
+      type: 'line',
+      source: id,
+      paint: buildAgroAceptadaLinePaint(),
+    });
+  }
+
+  setLayerVisibility(map, `${id}-fill`, isVisible);
+  setLayerVisibility(map, `${id}-line`, isVisible);
+  raisePilarVerdeStack(map);
+}
+
+export function syncAgroPresentadaLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection | null,
+  isVisible: boolean,
+) {
+  const id = SOURCE_IDS.PILAR_VERDE_AGRO_PRESENTADA;
+  ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
+
+  if (!map.getLayer(`${id}-fill`)) {
+    map.addLayer({
+      id: `${id}-fill`,
+      type: 'fill',
+      source: id,
+      paint: buildAgroPresentadaFillPaint(),
+    });
+  }
+
+  if (!map.getLayer(`${id}-line`)) {
+    map.addLayer({
+      id: `${id}-line`,
+      type: 'line',
+      source: id,
+      paint: buildAgroPresentadaLinePaint(),
+    });
+  }
+
+  setLayerVisibility(map, `${id}-fill`, isVisible);
+  setLayerVisibility(map, `${id}-line`, isVisible);
+  raisePilarVerdeStack(map);
+}
+
+export function syncAgroZonasLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection | null,
+  isVisible: boolean,
+) {
+  const id = SOURCE_IDS.PILAR_VERDE_AGRO_ZONAS;
+  ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
+
+  if (!map.getLayer(`${id}-fill`)) {
+    map.addLayer({
+      id: `${id}-fill`,
+      type: 'fill',
+      source: id,
+      paint: buildAgroZonasFillPaint(),
+    });
+  }
+
+  if (!map.getLayer(`${id}-line`)) {
+    map.addLayer({
+      id: `${id}-line`,
+      type: 'line',
+      source: id,
+      paint: buildAgroZonasLinePaint(),
+    });
+  }
+
+  setLayerVisibility(map, `${id}-fill`, isVisible);
+  setLayerVisibility(map, `${id}-line`, isVisible);
+  raisePilarVerdeStack(map);
+}
+
+export function syncPorcentajeForestacionLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection | null,
+  isVisible: boolean,
+) {
+  const id = SOURCE_IDS.PILAR_VERDE_PORCENTAJE_FORESTACION;
+  ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
+
+  // No line layer — this is a low-contrast background context fill only.
+  if (!map.getLayer(`${id}-fill`)) {
+    map.addLayer({
+      id: `${id}-fill`,
+      type: 'fill',
+      source: id,
+      paint: buildPorcentajeForestacionFillPaint(),
+    });
+  }
+
+  setLayerVisibility(map, `${id}-fill`, isVisible);
+  raisePilarVerdeStack(map);
 }
 

@@ -16,6 +16,30 @@ interface SharedMapLayerActions {
   markViewInitialized: (view: MapViewKey) => void;
 }
 
+/**
+ * Pilar Verde layer IDs registered with the visible-vectors slice.
+ * These are wired into the map layer registry by Phase 2 (`map2dConfig.ts`).
+ * Default visibility: all OFF — user toggles them on; the `?pv=1` URL param
+ * flips all five on at mount time (handled by `useMapLayerEffects`).
+ */
+export const PILAR_VERDE_LAYER_IDS = [
+  'pilar_verde_bpa',
+  'pilar_verde_agro_aceptada',
+  'pilar_verde_agro_presentada',
+  'pilar_verde_agro_zonas',
+  'pilar_verde_porcentaje_forestacion',
+] as const;
+
+export type PilarVerdeLayerId = (typeof PILAR_VERDE_LAYER_IDS)[number];
+
+export const PILAR_VERDE_DEFAULT_VISIBILITY: Record<PilarVerdeLayerId, boolean> = {
+  pilar_verde_bpa: false,
+  pilar_verde_agro_aceptada: false,
+  pilar_verde_agro_presentada: false,
+  pilar_verde_agro_zonas: false,
+  pilar_verde_porcentaje_forestacion: false,
+};
+
 const defaultVisibleVectors: Record<string, boolean> = {
   approved_zones: false,
   zona: false,
@@ -34,6 +58,7 @@ const defaultVisibleVectors: Record<string, boolean> = {
   catastro: false,
   hydraulic_risk: false,
   puntos_conflicto: false,
+  ...PILAR_VERDE_DEFAULT_VISIBILITY,
 };
 
 const inMemoryStorage = {
