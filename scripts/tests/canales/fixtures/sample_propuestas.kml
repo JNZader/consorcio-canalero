@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Propuestas sample.kmz</name>
+  <Style id="prio_Alta"><LineStyle><color>ff2626dc</color><width>4</width></LineStyle></Style>
+  <Style id="prio_Media_Alta"><LineStyle><color>ffd326c0</color><width>3.5</width></LineStyle></Style>
+  <Folder>
+    <name>Propuestas</name>
+    <Folder>
+      <name>Norte</name>
+      <Placemark>
+        <name>N3 · Tramo faltante · 685 m · ALTA ★</name>
+        <styleUrl>#prio_Alta</styleUrl>
+        <LineString>
+          <coordinates>-62.40,-32.47,0 -62.41,-32.48,0</coordinates>
+        </LineString>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Candil</name>
+      <Placemark>
+        <name>S5 · Conexión cantera · 468 m · MEDIA-ALTA ★ alto ROI</name>
+        <styleUrl>#prio_Media_Alta</styleUrl>
+        <LineString>
+          <coordinates>-62.49,-32.55,0 -62.50,-32.56,0</coordinates>
+        </LineString>
+      </Placemark>
+    </Folder>
+  </Folder>
+</Document>
+</kml>

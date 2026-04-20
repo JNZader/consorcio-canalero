@@ -1,0 +1,377 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-04-20T20:18:51Z",
+  "counts": {
+    "relevados": 23,
+    "propuestas": 20,
+    "total": 43
+  },
+  "relevados": [
+    {
+      "id": "canal-ne-sin-intervencion",
+      "nombre": "Canal NE (sin intervención)",
+      "codigo": null,
+      "longitud_m": 8218.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-legua-monte-lena-sin-intervencion",
+      "nombre": "Canal Legua Monte Leña (sin intervención)",
+      "codigo": null,
+      "longitud_m": 8627.8,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-viejo-sin-intervencion",
+      "nombre": "Canal Viejo (sin intervención)",
+      "codigo": null,
+      "longitud_m": 16051.3,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "candil-tramo-se-no-sin-intervencion",
+      "nombre": "Candil tramo SE→NO (sin intervención)",
+      "codigo": null,
+      "longitud_m": 1899.7,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "s1-canal-chico-este-san-marcos-sud-readecuacion",
+      "nombre": "Canal chico este San Marcos Sud · readecuación",
+      "codigo": "S1",
+      "longitud_m": 6054.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-operativo-sin-intervencion",
+      "nombre": "Canal existente operativo (sin intervención)",
+      "codigo": null,
+      "longitud_m": 1001.3,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-sin-intervencion",
+      "nombre": "Canal existente (sin intervención)",
+      "codigo": null,
+      "longitud_m": 3006.5,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-operativo-sin-intervencion-canales-existentes-canal-este-san-marcos-sud-0",
+      "nombre": "Canal existente operativo (sin intervención)",
+      "codigo": null,
+      "longitud_m": 3176.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-sin-intervencion-canales-existentes-canal-norte-canal-norte-sms-0",
+      "nombre": "Canal existente (sin intervención)",
+      "codigo": null,
+      "longitud_m": 3555.4,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "n4-readecuacion-tramo-inicial-colector-norte",
+      "nombre": "Readecuación tramo inicial colector norte",
+      "codigo": "N4",
+      "longitud_m": 1351.6,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "e9-colector-norte-sin-intervencion-en-esta-etapa",
+      "nombre": "Colector norte (sin intervención en esta etapa)",
+      "codigo": "E9",
+      "longitud_m": 19418.9,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-sin-intervencion-canales-existentes-canal-norte-400ha-bb-1",
+      "nombre": "Canal existente (sin intervención)",
+      "codigo": null,
+      "longitud_m": 3512.0,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-sin-intervencion-canales-existentes-canal-norte-400ha-bb-2",
+      "nombre": "Canal existente (sin intervención)",
+      "codigo": null,
+      "longitud_m": 2469.0,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "red-receptora-habilitada-por-n4-tramo-1-de-3",
+      "nombre": "Red receptora habilitada por N4 (tramo 1 de 3)",
+      "codigo": null,
+      "longitud_m": 1348.6,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "red-receptora-habilitada-por-n4-tramo-2-de-3",
+      "nombre": "Red receptora habilitada por N4 (tramo 2 de 3)",
+      "codigo": null,
+      "longitud_m": 8140.7,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "red-receptora-habilitada-por-n4-tramo-3-de-3",
+      "nombre": "Red receptora habilitada por N4 (tramo 3 de 3)",
+      "codigo": null,
+      "longitud_m": 1040.4,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "n1-incorporacion-de-e15-al-sistema-oficial-via-alternativa-de-descarga-al-litin-tortugas",
+      "nombre": "Incorporación de E15 al sistema oficial · vía alternativa de descarga al Litín-Tortugas",
+      "codigo": "N1",
+      "longitud_m": 2017.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-sin-control-caso-a-normalizar",
+      "nombre": "Canal sin control · caso a normalizar",
+      "codigo": null,
+      "longitud_m": 4285.6,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-sin-control-caso-a-normalizar-canales-existentes-canal-norte-revisar-0",
+      "nombre": "Canal sin control · caso a normalizar",
+      "codigo": null,
+      "longitud_m": 1316.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "canal-existente-sin-intervencion-canales-existentes-canal-monte-lena-3",
+      "nombre": "Canal existente (sin intervención)",
+      "codigo": null,
+      "longitud_m": 6720.7,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "continuacion-canal-san-marcos-monte-lena-sin-intervencion",
+      "nombre": "Continuación canal San Marcos–Monte Leña (sin intervención)",
+      "codigo": null,
+      "longitud_m": 13270.5,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "e21-canal-monte-lena-tramo-sin-intervencion",
+      "nombre": "Canal Monte Leña (tramo) · sin intervención",
+      "codigo": "E21",
+      "longitud_m": 3894.7,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "s2-nucleo-candil-tramo-no-so-readecuacion",
+      "nombre": "S2 núcleo · Candil tramo NO→SO · readecuación",
+      "codigo": null,
+      "longitud_m": 3258.8,
+      "featured": false,
+      "estado": "relevado"
+    }
+  ],
+  "propuestas": [
+    {
+      "id": "n3-tramo-faltante-de-interconexion",
+      "nombre": "Tramo faltante de interconexión",
+      "codigo": "N3",
+      "prioridad": "Alta",
+      "longitud_m": 685.5,
+      "featured": true,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n2-canal-interno-achalay-tramo-1-de-2",
+      "nombre": "Canal interno Achalay (tramo 1 de 2)",
+      "codigo": "N2",
+      "prioridad": "Alta",
+      "longitud_m": 3142.5,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n2-canal-interno-achalay-tramo-2-de-2",
+      "nombre": "Canal interno Achalay (tramo 2 de 2)",
+      "codigo": "N2",
+      "prioridad": "Alta",
+      "longitud_m": 3210.4,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n5-extension-zona-noroeste-primer-ramal",
+      "nombre": "Extensión zona Noroeste primer ramal",
+      "codigo": "N5",
+      "prioridad": "Media-Alta",
+      "longitud_m": 2511.7,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n8-alternativa-zona-noroeste-depende-de-n1-ejecutada",
+      "nombre": "Alternativa zona Noroeste (depende de N1 ejecutada)",
+      "codigo": "N8",
+      "prioridad": "Opcional",
+      "longitud_m": 8399.6,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n9-alternativa-zona-noroeste-depende-de-n8-ejecutada",
+      "nombre": "Alternativa zona Noroeste (depende de N8 ejecutada)",
+      "codigo": "N9",
+      "prioridad": "Opcional",
+      "longitud_m": 6555.3,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n6-extension-zona-noroeste-ramal-norte",
+      "nombre": "Extensión zona Noroeste ramal norte",
+      "codigo": "N6",
+      "prioridad": "Media",
+      "longitud_m": 3204.7,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n7-extension-zona-noroeste-ramal-sur",
+      "nombre": "Extensión zona Noroeste ramal sur",
+      "codigo": "N7",
+      "prioridad": "Media",
+      "longitud_m": 2879.7,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s3-control-derrames-monte-lena-colector-p8",
+      "nombre": "Control derrames Monte Leña (colector P8)",
+      "codigo": "S3",
+      "prioridad": "Media",
+      "longitud_m": 2407.6,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s3-control-derrames-monte-lena-colector-p9",
+      "nombre": "Control derrames Monte Leña (colector P9)",
+      "codigo": "S3",
+      "prioridad": "Media",
+      "longitud_m": 1935.4,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s4-conector-centro-oeste",
+      "nombre": "Conector centro-oeste",
+      "codigo": "S4",
+      "prioridad": "Media",
+      "longitud_m": 11561.8,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s7-extension-monte-lena-oeste",
+      "nombre": "Extensión Monte Leña oeste",
+      "codigo": "S7",
+      "prioridad": "Largo plazo",
+      "longitud_m": 6283.5,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-complemento-opcional-p12-sujeto-a-presupuesto",
+      "nombre": "S2 complemento opcional (P12) · sujeto a presupuesto",
+      "codigo": null,
+      "prioridad": null,
+      "longitud_m": 5914.8,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-alternativa-b-o-c-p13",
+      "nombre": "S2 alternativa b o c (P13)",
+      "codigo": null,
+      "prioridad": "Media-Alta",
+      "longitud_m": 5359.9,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-alternativa-a-o-c-p14a-norte",
+      "nombre": "S2 alternativa a o c (P14a norte)",
+      "codigo": null,
+      "prioridad": "Media-Alta",
+      "longitud_m": 3109.7,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-alternativa-c-p15",
+      "nombre": "S2 alternativa c (P15)",
+      "codigo": null,
+      "prioridad": "Media-Alta",
+      "longitud_m": 2357.1,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s6-vision-integral-largo-plazo",
+      "nombre": "Visión integral largo plazo",
+      "codigo": "S6",
+      "prioridad": "Largo plazo",
+      "longitud_m": 7013.0,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s5-conexion-cantera-vaso-retencion",
+      "nombre": "Conexión cantera (vaso retención)",
+      "codigo": "S5",
+      "prioridad": "Media-Alta",
+      "longitud_m": 469.3,
+      "featured": true,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-nucleo-tramo-norte-centro-este",
+      "nombre": "S2 núcleo · Tramo norte centro-este",
+      "codigo": null,
+      "prioridad": "Media-Alta",
+      "longitud_m": 1065.2,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-alternativa-a-solamente-p14b-sur",
+      "nombre": "S2 alternativa a solamente (P14b sur)",
+      "codigo": null,
+      "prioridad": "Media-Alta",
+      "longitud_m": 2027.1,
+      "featured": false,
+      "estado": "propuesto"
+    }
+  ]
+}

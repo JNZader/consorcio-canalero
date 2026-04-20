@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Canales existentes sample.kmz</name>
+  <Style id="sin_obra">
+    <LineStyle><color>ffb39373</color><width>2.5</width></LineStyle>
+  </Style>
+  <Style id="readec">
+    <LineStyle><color>ff0077e6</color><width>2.5</width></LineStyle>
+  </Style>
+  <Style id="asociada">
+    <LineStyle><color>ff669305</color><width>2.5</width></LineStyle>
+  </Style>
+  <Style id="poligono_traslucido">
+    <LineStyle><color>885a6474</color><width>1.5</width></LineStyle>
+    <PolyStyle><color>335a6474</color><fill>1</fill><outline>1</outline></PolyStyle>
+  </Style>
+  <Folder>
+    <name>Canales existentes</name>
+    <!-- Plain "sin intervención" — no structured metadata.  Counts as
+         a parse-failure for the threshold gate.  -->
+    <Placemark>
+      <name>Canal NE (sin intervención)</name>
+      <styleUrl>#sin_obra</styleUrl>
+      <LineString>
+        <coordinates>-62.45,-32.58,0 -62.44,-32.57,0 -62.43,-32.57,0</coordinates>
+      </LineString>
+    </Placemark>
+    <Folder>
+      <name>Canal Norte</name>
+      <!-- Full strict metadata — parser extracts everything.  -->
+      <Placemark>
+        <name>N4 · Readecuación tramo inicial · 1.355 m · ALTA</name>
+        <styleUrl>#readec</styleUrl>
+        <LineString>
+          <coordinates>-62.392,-32.448,0 -62.393,-32.449,0</coordinates>
+        </LineString>
+      </Placemark>
+      <!-- Code + longitud, no priority.  Still recovers 2 structured fields. -->
+      <Placemark>
+        <name>E9 · Colector norte · 19.413 m</name>
+        <styleUrl>#sin_obra</styleUrl>
+        <LineString>
+          <coordinates>-62.396,-32.460,0 -62.400,-32.461,0</coordinates>
+        </LineString>
+      </Placemark>
+      <!-- No styleUrl — the writer must still cope.  Code extracted. -->
+      <Placemark>
+        <name>E21 · Canal Monte Leña (tramo) · 3.887 m</name>
+        <LineString>
+          <coordinates>-62.60,-32.56,0 -62.59,-32.56,0</coordinates>
+        </LineString>
+      </Placemark>
+      <!-- Code-only, no longitud — still recovers structured metadata. -->
+      <Placemark>
+        <name>S1 · Canal chico este San Marcos Sud · readecuación</name>
+        <styleUrl>#readec</styleUrl>
+        <LineString>
+          <coordinates>-62.461,-32.683,0 -62.470,-32.682,0</coordinates>
+        </LineString>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Revisar</name>
+      <!-- Polygon — MUST be skipped by the orchestrator with an INFO log. -->
+      <Placemark>
+        <name>Las Tres del Norte</name>
+        <styleUrl>#poligono_traslucido</styleUrl>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-62.55,-32.42,0 -62.55,-32.44,0 -62.46,-32.46,0 -62.55,-32.42,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+  </Folder>
+</Document>
+</kml>
