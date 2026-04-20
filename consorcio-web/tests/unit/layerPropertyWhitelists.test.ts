@@ -38,8 +38,13 @@ describe('resolveLayerWhitelistKey', () => {
     expect(resolveLayerWhitelistKey(`${SOURCE_IDS.ROADS}-line`)).toBe('caminos');
   });
 
+  it('returns catastro for CATASTRO fill/line layer ids', () => {
+    expect(resolveLayerWhitelistKey(`${SOURCE_IDS.CATASTRO}-fill`)).toBe('catastro');
+    expect(resolveLayerWhitelistKey(`${SOURCE_IDS.CATASTRO}-line`)).toBe('catastro');
+  });
+
   it('returns null for a layer without a whitelist', () => {
-    expect(resolveLayerWhitelistKey(`${SOURCE_IDS.CATASTRO}-fill`)).toBeNull();
+    expect(resolveLayerWhitelistKey('some-unknown-layer-id')).toBeNull();
   });
 
   it('returns null for undefined / empty input', () => {
@@ -110,7 +115,7 @@ describe('getDisplayableProperties', () => {
 
   it('falls back to ALL non-__ properties (label === key) when layer has no whitelist', () => {
     const props = { nombre: 'Canal Este', estado: 'activo', __internal: 'hidden' };
-    const rows = getDisplayableProperties(`${SOURCE_IDS.CATASTRO}-fill`, props);
+    const rows = getDisplayableProperties('some-unknown-layer-id', props);
     const keys = rows.map((r) => r.key);
     expect(keys).toEqual(['nombre', 'estado']);
     const labels = rows.map((r) => r.label);

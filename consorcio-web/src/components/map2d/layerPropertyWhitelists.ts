@@ -40,6 +40,20 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
    * tessellate, etc.) are plumbing and intentionally hidden.
    */
   caminos: ['ccn', 'fna', 'gna', 'hct', 'red', 'rst', 'rtn'],
+
+  /**
+   * Catastro rural — IDECor. Hides internal DB plumbing (created_at, id,
+   * par_idparcela) and keeps only fields useful to the user.
+   */
+  catastro: [
+    'nro_cuenta',
+    'desig_oficial',
+    'superficie_ha',
+    'departamento',
+    'pedania',
+    'nomenclatura',
+    'tipo_parcela',
+  ],
 } as const;
 
 /**
@@ -56,6 +70,15 @@ export const LAYER_PROPERTY_LABELS: Record<string, Record<string, string>> = {
     rst: 'Superficie',
     rtn: 'Ruta',
   },
+  catastro: {
+    nro_cuenta: 'Cuenta catastral',
+    desig_oficial: 'Designación',
+    superficie_ha: 'Superficie (ha)',
+    departamento: 'Departamento',
+    pedania: 'Pedanía',
+    nomenclatura: 'Nomenclatura',
+    tipo_parcela: 'Tipo',
+  },
 } as const;
 
 /**
@@ -69,6 +92,8 @@ export const LAYER_PROPERTY_LABELS: Record<string, Record<string, string>> = {
 export function resolveLayerWhitelistKey(layerId: string | undefined | null): string | null {
   if (!layerId) return null;
   if (layerId === `${SOURCE_IDS.ROADS}-line`) return 'caminos';
+  if (layerId === `${SOURCE_IDS.CATASTRO}-fill` || layerId === `${SOURCE_IDS.CATASTRO}-line`)
+    return 'catastro';
   return null;
 }
 
