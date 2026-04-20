@@ -236,11 +236,26 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           />
         )}
         {pilarVerdeAgroZonasVisible && (
-          <SimpleColorLegendChip
-            color={PILAR_VERDE_COLORS.agroZonasFill}
-            label="Zonas agroforestales"
-            testId="pilar-verde-agro-zonas-legend"
-          />
+          <Stack gap={2} data-testid="pilar-verde-agro-zonas-legend">
+            <Text fw={500} size="xs">
+              Zonas agroforestales
+            </Text>
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.agroZonaRioTercero}
+              label="Río Tercero Este"
+              testId="pilar-verde-agro-zonas-legend-rio-tercero"
+            />
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.agroZonaCarcarana}
+              label="Río Carcarañá"
+              testId="pilar-verde-agro-zonas-legend-carcarana"
+            />
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.agroZonaTortugas}
+              label="Arroyo Tortugas Este"
+              testId="pilar-verde-agro-zonas-legend-tortugas"
+            />
+          </Stack>
         )}
         {pilarVerdePorcentajeForestacionVisible && (
           <Stack gap={2} data-testid="pilar-verde-porcentaje-forestacion-legend">

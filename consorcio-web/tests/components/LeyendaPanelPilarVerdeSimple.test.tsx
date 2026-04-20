@@ -8,7 +8,7 @@
  * corresponding visibility prop is `true`:
  *   1. pilar_verde_agro_aceptada       → green  "Cumplen ley forestal"
  *   2. pilar_verde_agro_presentada     → red    "No cumplen ley forestal"
- *   3. pilar_verde_agro_zonas          → cyan   "Zonas agroforestales"
+ *   3. pilar_verde_agro_zonas          → 3 per-zone chips (Río Tercero / Carcarañá / Tortugas)
  *   4. pilar_verde_porcentaje_forestacion → violet "Forestación obligatoria (2-5%)"
  *
  * Colors MUST come from `PILAR_VERDE_COLORS` (single source of truth) so the
@@ -29,7 +29,10 @@ function renderWithMantine(ui: ReactNode) {
 
 const LABEL_ACEPTADA = 'Cumplen ley forestal';
 const LABEL_PRESENTADA = 'No cumplen ley forestal';
-const LABEL_ZONAS = 'Zonas agroforestales';
+const TITLE_ZONAS = 'Zonas agroforestales';
+const LABEL_ZONA_RIO_TERCERO = 'Río Tercero Este';
+const LABEL_ZONA_CARCARANA = 'Río Carcarañá';
+const LABEL_ZONA_TORTUGAS = 'Arroyo Tortugas Este';
 const TITLE_PORCENTAJE = 'Forestación obligatoria';
 // Spanish comma decimal separator (NOT dot). Tier buckets match the
 // categorized `step` paint expression in `buildPorcentajeForestacionFillPaint`.
@@ -40,6 +43,9 @@ const LABEL_PORCENTAJE_ALTA = 'Alta (≥ 2,7%)';
 const TESTID_ACEPTADA = 'pilar-verde-agro-aceptada-legend';
 const TESTID_PRESENTADA = 'pilar-verde-agro-presentada-legend';
 const TESTID_ZONAS = 'pilar-verde-agro-zonas-legend';
+const TESTID_ZONA_RIO_TERCERO = 'pilar-verde-agro-zonas-legend-rio-tercero';
+const TESTID_ZONA_CARCARANA = 'pilar-verde-agro-zonas-legend-carcarana';
+const TESTID_ZONA_TORTUGAS = 'pilar-verde-agro-zonas-legend-tortugas';
 const TESTID_PORCENTAJE = 'pilar-verde-porcentaje-forestacion-legend';
 const TESTID_PORCENTAJE_BAJA = 'pilar-verde-porcentaje-forestacion-baja';
 const TESTID_PORCENTAJE_MEDIA = 'pilar-verde-porcentaje-forestacion-media';
@@ -51,7 +57,10 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
       renderWithMantine(<LeyendaPanel />);
       expect(screen.queryByText(LABEL_ACEPTADA)).not.toBeInTheDocument();
       expect(screen.queryByText(LABEL_PRESENTADA)).not.toBeInTheDocument();
-      expect(screen.queryByText(LABEL_ZONAS)).not.toBeInTheDocument();
+      expect(screen.queryByText(TITLE_ZONAS)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_ZONA_RIO_TERCERO)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_ZONA_CARCARANA)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_ZONA_TORTUGAS)).not.toBeInTheDocument();
       expect(screen.queryByText(TITLE_PORCENTAJE)).not.toBeInTheDocument();
       expect(screen.queryByText(LABEL_PORCENTAJE_BAJA)).not.toBeInTheDocument();
       expect(screen.queryByText(LABEL_PORCENTAJE_MEDIA)).not.toBeInTheDocument();
@@ -112,22 +121,48 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
     });
   });
 
-  describe('agro_zonas (cian — zonas agroforestales)', () => {
-    it('renders when its flag is true with exact Spanish label', () => {
+  describe('agro_zonas (3 per-zone chips — Río Tercero / Carcarañá / Tortugas)', () => {
+    it('renders the titled container with all three zone chips when the flag is true', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroZonasVisible />);
       expect(screen.getByTestId(TESTID_ZONAS)).toBeInTheDocument();
-      expect(screen.getByText(LABEL_ZONAS)).toBeInTheDocument();
+      // The container title reads "Zonas agroforestales" — the 3 zones live
+      // inside as individual chips with their own labels.
+      expect(screen.getByText(TITLE_ZONAS)).toBeInTheDocument();
+      // Exactly 3 zone rows (not a single chip anymore).
+      expect(screen.getByTestId(TESTID_ZONA_RIO_TERCERO)).toBeInTheDocument();
+      expect(screen.getByTestId(TESTID_ZONA_CARCARANA)).toBeInTheDocument();
+      expect(screen.getByTestId(TESTID_ZONA_TORTUGAS)).toBeInTheDocument();
     });
 
-    it('chip color matches PILAR_VERDE_COLORS.agroZonasFill (single source of truth)', () => {
+    it('labels each zone with its short Spanish name — Río Tercero Este / Río Carcarañá / Arroyo Tortugas Este', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroZonasVisible />);
-      const chip = screen.getByLabelText(LABEL_ZONAS);
-      expect(chip).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroZonasFill);
+      expect(screen.getByText(LABEL_ZONA_RIO_TERCERO)).toBeInTheDocument();
+      expect(screen.getByText(LABEL_ZONA_CARCARANA)).toBeInTheDocument();
+      expect(screen.getByText(LABEL_ZONA_TORTUGAS)).toBeInTheDocument();
+    });
+
+    it('each chip color comes from PILAR_VERDE_COLORS (single source of truth — no hardcoded hex)', () => {
+      renderWithMantine(<LeyendaPanel pilarVerdeAgroZonasVisible />);
+      expect(screen.getByLabelText(LABEL_ZONA_RIO_TERCERO)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.agroZonaRioTercero,
+      );
+      expect(screen.getByLabelText(LABEL_ZONA_CARCARANA)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.agroZonaCarcarana,
+      );
+      expect(screen.getByLabelText(LABEL_ZONA_TORTUGAS)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.agroZonaTortugas,
+      );
     });
 
     it('is hidden when only other flags are on', () => {
       renderWithMantine(<LeyendaPanel pilarVerdePorcentajeForestacionVisible />);
       expect(screen.queryByTestId(TESTID_ZONAS)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_ZONA_RIO_TERCERO)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_ZONA_CARCARANA)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_ZONA_TORTUGAS)).not.toBeInTheDocument();
     });
   });
 

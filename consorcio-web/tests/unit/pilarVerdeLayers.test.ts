@@ -37,6 +37,15 @@ describe('pilarVerdeLayers · colors', () => {
     expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#06B6D4');
   });
 
+  it('exports the 3 per-zone agroforestal colors (Río Tercero / Carcarañá / Tortugas)', () => {
+    // The consorcio zone has EXACTLY 3 agroforestal systems identified by the
+    // `leyenda` property. Each gets its own color so the legend + map are
+    // self-explanatory without clicking each polygon.
+    expect(PILAR_VERDE_COLORS.agroZonaRioTercero).toBe('#06B6D4');
+    expect(PILAR_VERDE_COLORS.agroZonaCarcarana).toBe('#14B8A6');
+    expect(PILAR_VERDE_COLORS.agroZonaTortugas).toBe('#0EA5E9');
+  });
+
   it('exports the 3-tier porcentaje forestación palette (baja/media/alta)', () => {
     expect(PILAR_VERDE_COLORS.porcentajeForestacionBaja).toBe('#C4B5FD');
     expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#A78BFA');
@@ -121,10 +130,30 @@ describe('pilarVerdeLayers · paint factories', () => {
     expect(paint['line-width']).toBe(1);
   });
 
-  it('agro zonas fill: cyan @ 0.20 opacity — context layer, subtle', () => {
+  it('agro zonas fill: match expression on `leyenda` with 3 per-zone colors @ 0.20 opacity', () => {
     const paint = buildAgroZonasFillPaint();
-    expect(paint['fill-color']).toBe('#06B6D4');
+    // Opacity stays subtle — this is still a context layer.
     expect(paint['fill-opacity']).toBe(0.2);
+
+    const fillColor = paint['fill-color'] as unknown as unknown[];
+    expect(Array.isArray(fillColor)).toBe(true);
+    // MapLibre match shape:
+    //   ['match', input, label1, out1, label2, out2, label3, out3, fallback]
+    expect(fillColor[0]).toBe('match');
+    expect(fillColor[1]).toEqual(['get', 'leyenda']);
+
+    expect(fillColor[2]).toBe('11 - Sist Rio Tercero - Este');
+    expect(fillColor[3]).toBe(PILAR_VERDE_COLORS.agroZonaRioTercero);
+
+    expect(fillColor[4]).toBe('50 - Sist. Rio Carcarañá');
+    expect(fillColor[5]).toBe(PILAR_VERDE_COLORS.agroZonaCarcarana);
+
+    expect(fillColor[6]).toBe('48 - Sist Arroyo Tortugas - Este');
+    expect(fillColor[7]).toBe(PILAR_VERDE_COLORS.agroZonaTortugas);
+
+    // Fallback — used if a future zone is added without updating the match.
+    expect(fillColor[8]).toBe(PILAR_VERDE_COLORS.agroZonaRioTercero);
+    expect(fillColor.length).toBe(9);
   });
 
   it('agro zonas line: thin cyan outline', () => {

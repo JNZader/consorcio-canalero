@@ -76,8 +76,28 @@ export const PILAR_VERDE_COLORS = {
   agroAceptadaFill: '#22C55E',
   /** Agro-presentada (non-compliant). Red @ 0.30 opacity. */
   agroPresentadaFill: '#EF4444',
-  /** Agroforestal zonas (context). Cyan @ 0.20 opacity — subtle. */
+  /**
+   * Agroforestal zonas (context). Cyan @ 0.20 opacity — subtle. Used as the
+   * FALLBACK color inside the per-zone `match` expression for any zone whose
+   * `leyenda` doesn't match one of the 3 known systems below. Keeping it as
+   * cyan preserves backward compatibility with the original single-color look.
+   */
   agroZonasFill: '#06B6D4',
+  /**
+   * Per-zone agroforestal colors. The consorcio zone has EXACTLY 3 systems,
+   * each identified by a distinct `leyenda` property. Using one color per
+   * system lets the user read the map + legend without clicking each polygon.
+   *
+   *   - Río Tercero Este   → cyan-500  (same as the legacy cyan — keeps visual continuity)
+   *   - Río Carcarañá      → teal-500
+   *   - Arroyo Tortugas    → sky-500
+   *
+   * All three sit in the same cool-blue family so the layer still reads as a
+   * cohesive "agroforestal zonas" block but the 3 systems are distinguishable.
+   */
+  agroZonaRioTercero: '#06B6D4',
+  agroZonaCarcarana: '#14B8A6',
+  agroZonaTortugas: '#0EA5E9',
   /**
    * Porcentaje forestación obligatoria — categorized into 3 tiers by
    * `forest_obligatoria` (%). Real zone data ranges 2.1–2.88%, not the
@@ -183,10 +203,29 @@ export function buildAgroPresentadaLinePaint(): LinePaint {
   };
 }
 
-/** Agro zonas fill — cyan, subtle context layer. */
+/**
+ * Agro zonas fill — per-zone colors via a MapLibre `match` expression on the
+ * `leyenda` property. The consorcio has exactly 3 agroforestal systems, each
+ * with its own color so the legend and map read consistently without needing
+ * to click each polygon.
+ *
+ * TODO: if a future `agro_zonas.geojson` adds a new system beyond these 3,
+ * the FALLBACK (`agroZonasFill`) will be used — extend the match expression
+ * AND add the new color to `PILAR_VERDE_COLORS` before that ships.
+ */
 export function buildAgroZonasFillPaint(): FillPaint {
   return {
-    'fill-color': PILAR_VERDE_COLORS.agroZonasFill,
+    'fill-color': [
+      'match',
+      ['get', 'leyenda'],
+      '11 - Sist Rio Tercero - Este',
+      PILAR_VERDE_COLORS.agroZonaRioTercero,
+      '50 - Sist. Rio Carcarañá',
+      PILAR_VERDE_COLORS.agroZonaCarcarana,
+      '48 - Sist Arroyo Tortugas - Este',
+      PILAR_VERDE_COLORS.agroZonaTortugas,
+      PILAR_VERDE_COLORS.agroZonaRioTercero,
+    ],
     'fill-opacity': 0.2,
   };
 }
