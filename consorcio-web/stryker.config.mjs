@@ -19,9 +19,11 @@ export default {
     'src/lib/formatters.ts',
     'src/lib/errorHandler.ts',
     'src/lib/typeGuards.ts',
+    // Pilar Verde pure helpers (Phase 3 — ≥85% target)
+    'src/components/map2d/bpaPracticas.ts',
   ],
   thresholds: {
-    high: 80,
+    high: 85,
     low: 60,
     break: 50,
   },

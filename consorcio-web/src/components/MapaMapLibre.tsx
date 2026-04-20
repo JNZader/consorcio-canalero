@@ -555,6 +555,8 @@ export default function MapaMapLibre() {
         onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
         selectedFeature={selectedFeature}
         onCloseInfoPanel={() => setSelectedFeature(null)}
+        bpaEnriched={pilarVerde?.bpaEnriched}
+        bpaHistory={pilarVerde?.bpaHistory}
         newPoint={newPoint}
         onCloseAssetPointModal={() => {
           setNewPoint(null);

@@ -11,6 +11,7 @@ import { ViewModePanel, type ViewMode } from './ViewModePanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { RasterLegend } from '../RasterLegend';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
+import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
 interface LayerItem {
   id: string;
@@ -104,6 +105,14 @@ export interface MapUiPanelsProps {
   readonly onExportApprovedZonesGeoJSON: () => void;
   readonly selectedFeature: Feature | null;
   readonly onCloseInfoPanel: () => void;
+  /**
+   * Optional Pilar Verde enriched catastro data — when present, InfoPanel
+   * will render `<BpaCard>` for any feature whose `nro_cuenta` matches a
+   * parcel with a non-null `bpa_2025` record.
+   */
+  readonly bpaEnriched?: BpaEnrichedFile | null;
+  /** Optional Pilar Verde historical BPA lookup — powers the BpaCard histórico footer. */
+  readonly bpaHistory?: BpaHistoryFile | null;
   readonly newPoint: { lat: number; lng: number } | null;
   readonly onCloseAssetPointModal: () => void;
   readonly onSubmitAssetPointModal: (event?: FormEvent<HTMLFormElement>) => void;
@@ -181,6 +190,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportApprovedZonesGeoJSON,
   selectedFeature,
   onCloseInfoPanel,
+  bpaEnriched,
+  bpaHistory,
   newPoint,
   onCloseAssetPointModal,
   onSubmitAssetPointModal,
@@ -293,7 +304,14 @@ export const MapUiPanels = memo(function MapUiPanels({
         />
       )}
 
-      {selectedFeature && <InfoPanel feature={selectedFeature} onClose={onCloseInfoPanel} />}
+      {selectedFeature && (
+        <InfoPanel
+          feature={selectedFeature}
+          onClose={onCloseInfoPanel}
+          bpaEnriched={bpaEnriched}
+          bpaHistory={bpaHistory}
+        />
+      )}
 
       <AssetPointModal
         opened={!!newPoint}
