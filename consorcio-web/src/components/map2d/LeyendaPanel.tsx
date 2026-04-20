@@ -1,5 +1,5 @@
 import { Box, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
-import { memo, useState } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
@@ -76,6 +76,25 @@ interface LeyendaPanelProps {
   readonly customItems?: LegendItem[];
   readonly floating?: boolean;
   /**
+   * When `true`, the panel renders WITHOUT the `.legendPanel` absolute-
+   * positioning class and WITHOUT the `floating` inline background — the
+   * parent container owns layout and positioning.
+   *
+   * Use this when composing the panel inside another flex container
+   * (e.g. the side-by-side top-left stack in `MapUiPanels`). This flag
+   * overrides `floating` — if `embedded={true}`, `floating` has no effect.
+   *
+   * Default: `false` (backwards compatible — the existing `floating` logic
+   * continues to apply).
+   */
+  readonly embedded?: boolean;
+  /** Optional fixed width in pixels for embedded mode. */
+  readonly width?: number;
+  /** Optional extra inline style overrides (merged last). */
+  readonly style?: CSSProperties;
+  /** Optional `data-testid` forwarded to the root Paper element. */
+  readonly 'data-testid'?: string;
+  /**
    * Render the "Años en BPA" color-scale section. Enable when the
    * `pilar_verde_bpa_historico` layer is visible so the map gradient has a
    * matching legend.
@@ -100,6 +119,10 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   consorcios = [],
   customItems = [],
   floating = true,
+  embedded = false,
+  width,
+  style: styleOverride,
+  'data-testid': dataTestId,
   pilarVerdeBpaHistoricoVisible = false,
   pilarVerdeAgroAceptadaVisible = false,
   pilarVerdeAgroPresentadaVisible = false,
@@ -117,22 +140,30 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     pilarVerdeAgroZonasVisible ||
     pilarVerdePorcentajeForestacionVisible;
 
+  // `embedded` wins over `floating`: when the panel is composed inside an
+  // external layout container (e.g. the side-by-side top-left stack in 2D),
+  // we must NOT apply the `.legendPanel` absolute-positioning class — it
+  // would fight the parent's flex layout.
+  const useLegendPanelClass = floating && !embedded;
+
+  const baseStyle: CSSProperties = useLegendPanelClass
+    ? { maxHeight: '80vh', overflowY: 'auto' }
+    : {
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
+        backdropFilter: 'blur(6px)',
+        ...(width !== undefined ? { width } : {}),
+      };
+
   return (
     <Paper
       shadow="md"
       p="sm"
       radius="md"
-      className={floating ? styles.legendPanel : undefined}
-      style={
-        floating
-          ? { maxHeight: '80vh', overflowY: 'auto' }
-          : {
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-              backdropFilter: 'blur(6px)',
-            }
-      }
+      className={useLegendPanelClass ? styles.legendPanel : undefined}
+      data-testid={dataTestId}
+      style={{ ...baseStyle, ...(styleOverride ?? {}) }}
     >
       <Text fw={600} size="sm" mb="xs">
         Leyenda

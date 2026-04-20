@@ -216,17 +216,61 @@ export const MapUiPanels = memo(function MapUiPanels({
 }: MapUiPanelsProps) {
   return (
     <>
+      {/*
+        Side-by-side top-left stack (mirrors the 3D `TerrainLayerTogglesPanel`
+        + `TerrainLegendsPanel` split):
+
+          [LeyendaPanel] [LayerControlsPanel]
+
+        Previously `LayerControlsPanel` lived at top-left and `LeyendaPanel`
+        floated at bottom-left via the `.legendPanel` CSS class. When the
+        layer list grew tall (many BPA toggles + DEM + attributions) the two
+        panels visually collided. Bounding `LayerControlsPanel` with
+        `maxHeight + overflow-y: auto` was not enough — the two panels still
+        shared the same vertical column.
+
+        The new layout owns positioning from this outer flex-row container
+        (LeyendaPanel is rendered in `embedded` mode so its
+        `.legendPanel` absolute-positioning class is NOT applied). Each
+        panel keeps its own bounded `maxHeight` so neither overflows the
+        viewport.
+
+        RasterLegend (bottom-right) and InfoPanel (top-right) remain
+        unchanged.
+      */}
       <Box
+        data-testid="map-2d-top-left-panels"
         style={{
           position: 'absolute',
           top: 12,
           left: 12,
           zIndex: 16,
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'row',
+          alignItems: 'flex-start',
           gap: 8,
+          maxHeight: 'calc(100vh - 180px)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
+        {showLegend && (
+          <LeyendaPanel
+            consorcios={consorcios}
+            customItems={activeLegendItems}
+            embedded
+            width={260}
+            data-testid="map-2d-leyenda-panel"
+            style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
+            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+            pilarVerdePorcentajeForestacionVisible={
+              !!vectorVisibility.pilar_verde_porcentaje_forestacion
+            }
+          />
+        )}
         <LayerControlsPanel
           baseLayer={baseLayer}
           onBaseLayerChange={onBaseLayerChange}
@@ -267,30 +311,6 @@ export const MapUiPanels = memo(function MapUiPanels({
         onOpenExportPng={onOpenExportPng}
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
       />
-
-      {/*
-        Phase 8 Fix 3/4 — decouple legends from the top-right action bar so
-        they stop colliding with the InfoPanel (also top-right).
-          · LeyendaPanel   → bottom-LEFT  (via `floating={true}`)
-          · RasterLegend   → bottom-RIGHT (via its own `.rasterLegendPanel`)
-          · InfoPanel      → top-RIGHT    (via `.infoPanel`)
-        Each legend has its own bounded max-height + internal scroll so tall
-        DEM / BPA gradients don't push the layout.
-      */}
-      {showLegend && (
-        <LeyendaPanel
-          consorcios={consorcios}
-          customItems={activeLegendItems}
-          floating
-          pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-          pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-          pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-          pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-          pilarVerdePorcentajeForestacionVisible={
-            !!vectorVisibility.pilar_verde_porcentaje_forestacion
-          }
-        />
-      )}
 
       {visibleRasterLayers.length > 0 && (
         <RasterLegend
