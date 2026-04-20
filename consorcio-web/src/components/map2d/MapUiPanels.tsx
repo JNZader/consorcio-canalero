@@ -220,7 +220,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         Side-by-side top-left stack (mirrors the 3D `TerrainLayerTogglesPanel`
         + `TerrainLegendsPanel` split):
 
-          [LeyendaPanel] [LayerControlsPanel]
+          [LayerControlsPanel] [LeyendaPanel]
 
         Previously `LayerControlsPanel` lived at top-left and `LeyendaPanel`
         floated at bottom-left via the `.legendPanel` CSS class. When the
@@ -254,23 +254,6 @@ export const MapUiPanels = memo(function MapUiPanels({
           overflowX: 'hidden',
         }}
       >
-        {showLegend && (
-          <LeyendaPanel
-            consorcios={consorcios}
-            customItems={activeLegendItems}
-            embedded
-            width={260}
-            data-testid="map-2d-leyenda-panel"
-            style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
-            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-            pilarVerdePorcentajeForestacionVisible={
-              !!vectorVisibility.pilar_verde_porcentaje_forestacion
-            }
-          />
-        )}
         <LayerControlsPanel
           baseLayer={baseLayer}
           onBaseLayerChange={onBaseLayerChange}
@@ -298,6 +281,23 @@ export const MapUiPanels = memo(function MapUiPanels({
           onActiveDemLayerIdChange={onActiveDemLayerIdChange}
           demOptions={demOptions}
         />
+        {showLegend && (
+          <LeyendaPanel
+            consorcios={consorcios}
+            customItems={activeLegendItems}
+            embedded
+            width={260}
+            data-testid="map-2d-leyenda-panel"
+            style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
+            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+            pilarVerdePorcentajeForestacionVisible={
+              !!vectorVisibility.pilar_verde_porcentaje_forestacion
+            }
+          />
+        )}
       </Box>
 
       <MapActionsPanel

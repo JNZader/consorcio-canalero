@@ -133,7 +133,7 @@ describe('<MapUiPanels /> — side-by-side top-left layout (2D)', () => {
     expect(style).toMatch(/flex-direction:\s*row/i);
   });
 
-  it('renders LeyendaPanel FIRST (visually leftmost) and LayerControlsPanel SECOND inside the top-left container', () => {
+  it('renders LayerControlsPanel FIRST (visually leftmost) and LeyendaPanel SECOND inside the top-left container', () => {
     const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
 
     const wrapper = container.querySelector<HTMLElement>(
@@ -141,16 +141,16 @@ describe('<MapUiPanels /> — side-by-side top-left layout (2D)', () => {
     );
     expect(wrapper).not.toBeNull();
 
-    // Legend witness: "Leyenda" heading.
     // Layer controls witness: "Capa base" heading.
+    // Legend witness: "Leyenda" heading.
     const legendText = wrapper!.querySelector('*:nodeName')?.textContent;
     // Use getByText within the wrapper — order-sensitive.
     const allText = wrapper!.textContent ?? '';
-    const legendIdx = allText.indexOf('Leyenda');
     const capasIdx = allText.indexOf('Capa base');
-    expect(legendIdx).toBeGreaterThanOrEqual(0);
+    const legendIdx = allText.indexOf('Leyenda');
     expect(capasIdx).toBeGreaterThanOrEqual(0);
-    expect(legendIdx).toBeLessThan(capasIdx);
+    expect(legendIdx).toBeGreaterThanOrEqual(0);
+    expect(capasIdx).toBeLessThan(legendIdx);
     // Silence unused — keep a structural witness that DOM was read.
     void legendText;
   });
