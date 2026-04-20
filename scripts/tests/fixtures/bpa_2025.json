@@ -1,0 +1,227 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 5,
+  "numberReturned": 5,
+  "features": [
+    {
+      "type": "Feature",
+      "id": "bpa_2025.1",
+      "properties": {
+        "cuenta": "150115736126",
+        "n_explotacion": "La Sentina",
+        "id_explotacion": "1010",
+        "activa": true,
+        "superficie": 245.7,
+        "superficie_bpa": 245.7,
+        "bpa_total": 8,
+        "eje_persona": "Si",
+        "eje_planeta": "Si",
+        "eje_prosperidad": "No",
+        "eje_alianza": "Si",
+        "capacitacion": "Si",
+        "tranqueras_abiertas": "No",
+        "polinizacion": "Si",
+        "integ_comunidad": "No",
+        "nutricion_suelo": "Si",
+        "rotacion_gramineas": "Si",
+        "pasturas_implantadas": "No",
+        "sistema_terraza": "No",
+        "bioinsumos": "No",
+        "manejo_de_cultivo_int": "Si",
+        "trazabilidad": "No",
+        "tecn_pecuaria": "No",
+        "agricultura_de_precision": "Si",
+        "economia_circular": "No",
+        "participacion_grup_asociativo": "No",
+        "indiacagro": "No",
+        "caminos_rurales": "No",
+        "ag_tech": "No",
+        "bpa_tutor": "No",
+        "corredores_bio": "No",
+        "riego_precision": "Si"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.55, -32.55], [-62.50, -32.55], [-62.50, -32.50], [-62.55, -32.50], [-62.55, -32.55]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "bpa_2025.2",
+      "properties": {
+        "cuenta": "150115736200",
+        "n_explotacion": "El Rosario",
+        "id_explotacion": "1011",
+        "activa": true,
+        "superficie": 120.3,
+        "superficie_bpa": 120.3,
+        "bpa_total": 4,
+        "eje_persona": "No",
+        "eje_planeta": "Si",
+        "eje_prosperidad": "Si",
+        "eje_alianza": "No",
+        "capacitacion": "No",
+        "tranqueras_abiertas": "Si",
+        "polinizacion": "No",
+        "integ_comunidad": "Si",
+        "nutricion_suelo": "No",
+        "rotacion_gramineas": "Si",
+        "pasturas_implantadas": "Si",
+        "sistema_terraza": "No",
+        "bioinsumos": "Si",
+        "manejo_de_cultivo_int": "No",
+        "trazabilidad": "Si",
+        "tecn_pecuaria": "No",
+        "agricultura_de_precision": "No",
+        "economia_circular": "No",
+        "participacion_grup_asociativo": "Si",
+        "indiacagro": "No",
+        "caminos_rurales": "No",
+        "ag_tech": "No",
+        "bpa_tutor": "No",
+        "corredores_bio": "No",
+        "riego_precision": "No"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.48, -32.48], [-62.44, -32.48], [-62.44, -32.45], [-62.48, -32.45], [-62.48, -32.48]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "bpa_2025.3",
+      "properties": {
+        "cuenta": "150115736300",
+        "n_explotacion": "Los Olivos",
+        "id_explotacion": "1012",
+        "activa": false,
+        "superficie": 80.0,
+        "superficie_bpa": 80.0,
+        "bpa_total": 2,
+        "eje_persona": "No",
+        "eje_planeta": "No",
+        "eje_prosperidad": "No",
+        "eje_alianza": "No",
+        "capacitacion": "No",
+        "tranqueras_abiertas": "No",
+        "polinizacion": "No",
+        "integ_comunidad": "No",
+        "nutricion_suelo": "No",
+        "rotacion_gramineas": "Si",
+        "pasturas_implantadas": "Si",
+        "sistema_terraza": "No",
+        "bioinsumos": "No",
+        "manejo_de_cultivo_int": "No",
+        "trazabilidad": "No",
+        "tecn_pecuaria": "No",
+        "agricultura_de_precision": "No",
+        "economia_circular": "No",
+        "participacion_grup_asociativo": "No",
+        "indiacagro": "No",
+        "caminos_rurales": "No",
+        "ag_tech": "No",
+        "bpa_tutor": "No",
+        "corredores_bio": "No",
+        "riego_precision": "No"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.60, -32.58], [-62.58, -32.58], [-62.58, -32.56], [-62.60, -32.56], [-62.60, -32.58]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "bpa_2025.4",
+      "properties": {
+        "cuenta": "150115736400",
+        "n_explotacion": "San Antonio",
+        "id_explotacion": "1013",
+        "activa": true,
+        "superficie": 300.5,
+        "superficie_bpa": 300.5,
+        "bpa_total": 12,
+        "eje_persona": "Si",
+        "eje_planeta": "Si",
+        "eje_prosperidad": "Si",
+        "eje_alianza": "Si",
+        "capacitacion": "Si",
+        "tranqueras_abiertas": "Si",
+        "polinizacion": "Si",
+        "integ_comunidad": "Si",
+        "nutricion_suelo": "Si",
+        "rotacion_gramineas": "Si",
+        "pasturas_implantadas": "Si",
+        "sistema_terraza": "Si",
+        "bioinsumos": "Si",
+        "manejo_de_cultivo_int": "Si",
+        "trazabilidad": "Si",
+        "tecn_pecuaria": "Si",
+        "agricultura_de_precision": "No",
+        "economia_circular": "No",
+        "participacion_grup_asociativo": "No",
+        "indiacagro": "No",
+        "caminos_rurales": "No",
+        "ag_tech": "No",
+        "bpa_tutor": "No",
+        "corredores_bio": "No",
+        "riego_precision": "No"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.40, -32.52], [-62.35, -32.52], [-62.35, -32.48], [-62.40, -32.48], [-62.40, -32.52]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "bpa_2025.5",
+      "properties": {
+        "cuenta": "150115736500",
+        "n_explotacion": "Feature outside zona",
+        "id_explotacion": "1014",
+        "activa": true,
+        "superficie": 50.0,
+        "superficie_bpa": 50.0,
+        "bpa_total": 1,
+        "eje_persona": "No",
+        "eje_planeta": "No",
+        "eje_prosperidad": "No",
+        "eje_alianza": "No",
+        "capacitacion": "Si",
+        "tranqueras_abiertas": "No",
+        "polinizacion": "No",
+        "integ_comunidad": "No",
+        "nutricion_suelo": "No",
+        "rotacion_gramineas": "No",
+        "pasturas_implantadas": "No",
+        "sistema_terraza": "No",
+        "bioinsumos": "No",
+        "manejo_de_cultivo_int": "No",
+        "trazabilidad": "No",
+        "tecn_pecuaria": "No",
+        "agricultura_de_precision": "No",
+        "economia_circular": "No",
+        "participacion_grup_asociativo": "No",
+        "indiacagro": "No",
+        "caminos_rurales": "No",
+        "ag_tech": "No",
+        "bpa_tutor": "No",
+        "corredores_bio": "No",
+        "riego_precision": "No"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-63.10, -33.10], [-63.00, -33.10], [-63.00, -33.00], [-63.10, -33.00], [-63.10, -33.10]
+        ]]
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+	<name>zona_ampliada_tiny.kml</name>
+	<Placemark>
+		<name>CC 10 de Mayo (tiny test polygon)</name>
+		<Polygon>
+			<outerBoundaryIs>
+				<LinearRing>
+					<coordinates>
+						-62.7,-32.6,0 -62.3,-32.6,0 -62.3,-32.4,0 -62.7,-32.4,0 -62.7,-32.6,0
+					</coordinates>
+				</LinearRing>
+			</outerBoundaryIs>
+		</Polygon>
+	</Placemark>
+</Document>
+</kml>

@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 3,
+  "numberReturned": 3,
+  "features": [
+    {
+      "type": "Feature",
+      "id": "agro_presentada.1",
+      "properties": {
+        "estado": "presentada",
+        "lista_cuenta": "150115736126"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.55, -32.55], [-62.50, -32.55], [-62.50, -32.50], [-62.55, -32.50], [-62.55, -32.55]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "agro_presentada.2",
+      "properties": {
+        "estado": "presentada",
+        "lista_cuenta": "150115736300"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.60, -32.58], [-62.58, -32.58], [-62.58, -32.56], [-62.60, -32.56], [-62.60, -32.58]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "agro_presentada.3",
+      "properties": {
+        "estado": "presentada",
+        "lista_cuenta": "150115736999"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.45, -32.42], [-62.42, -32.42], [-62.42, -32.40], [-62.45, -32.40], [-62.45, -32.42]
+        ]]
+      }
+    }
+  ]
+}

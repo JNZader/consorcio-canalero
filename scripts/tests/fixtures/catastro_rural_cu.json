@@ -1,0 +1,119 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000001",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736126",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 245.7,
+        "Valuacion_Tierra_Rural": 50000000,
+        "desig_oficial": "La Sentina"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.55, -32.55], [-62.50, -32.55], [-62.50, -32.50], [-62.55, -32.50], [-62.55, -32.55]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000002",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736200",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 120.3,
+        "Valuacion_Tierra_Rural": 22000000,
+        "desig_oficial": "El Rosario"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.48, -32.48], [-62.44, -32.48], [-62.44, -32.45], [-62.48, -32.45], [-62.48, -32.48]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000003",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736300",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 80.0,
+        "Valuacion_Tierra_Rural": 12000000,
+        "desig_oficial": "Los Olivos"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.60, -32.58], [-62.58, -32.58], [-62.58, -32.56], [-62.60, -32.56], [-62.60, -32.58]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000004",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736400",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 300.5,
+        "Valuacion_Tierra_Rural": 60000000,
+        "desig_oficial": "San Antonio"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.40, -32.52], [-62.35, -32.52], [-62.35, -32.48], [-62.40, -32.48], [-62.40, -32.52]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000005",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736999",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 60.0,
+        "Valuacion_Tierra_Rural": 10000000,
+        "desig_oficial": "Parcela Presentada"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.45, -32.42], [-62.42, -32.42], [-62.42, -32.40], [-62.45, -32.40], [-62.45, -32.42]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "Nomenclatura": "15-01-01-01-000006",
+        "Tipo_Parcela": "RURAL",
+        "Nro_Cuenta": "150115736700",
+        "departamento": "MARCOS JUAREZ",
+        "pedania": "Colonia Caroya",
+        "Superficie_Tierra_Rural": 100.0,
+        "Valuacion_Tierra_Rural": 18000000,
+        "desig_oficial": "Sin inscripcion"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.52, -32.46], [-62.50, -32.46], [-62.50, -32.44], [-62.52, -32.44], [-62.52, -32.46]
+        ]]
+      }
+    }
+  ]
+}
