@@ -1,6 +1,7 @@
 import { Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
+import { getActiveAttributions } from './layerAttributions';
 
 interface LayerItem {
   id: string;
@@ -45,6 +46,14 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
   onActiveDemLayerIdChange,
   demOptions,
 }: LayerControlsPanelProps) {
+  const activeAttributions = useMemo(() => {
+    const visibleSet = new Set<string>();
+    for (const [id, visible] of Object.entries(vectorVisibility)) {
+      if (visible) visibleSet.add(id);
+    }
+    return getActiveAttributions(visibleSet);
+  }, [vectorVisibility]);
+
   return (
     <>
       <Paper
@@ -122,6 +131,16 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                   data={demOptions}
                 />
               )}
+            </>
+          )}
+          {activeAttributions.length > 0 && (
+            <>
+              <Divider my={4} />
+              {activeAttributions.map((text) => (
+                <Text key={text} size="xs" c="dimmed">
+                  {text}
+                </Text>
+              ))}
             </>
           )}
         </Stack>
