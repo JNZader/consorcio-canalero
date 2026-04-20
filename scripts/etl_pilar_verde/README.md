@@ -170,3 +170,15 @@ wall_time: 47.3s schema_version: 1.0
 - **Esfuerzo**: 1-2 hs.
 - **Cuándo**: Después de archivar el SDD `pilar-verde-bpa-agroforestal`. Puede ser un nuevo `/sdd-new pilar-verde-historico-chart` o parte de Pilar Verde v2.
 - **Memoria engram**: topic_key `sdd/pilar-verde-bpa-agroforestal/backlog/historical-chart`
+
+### Pilar Azul — canales relevados + propuestas (reemplazo)
+- **Qué**: Reemplazar la capa actual `canales_existentes` (data de baja calidad) con dos capas KMZ: canales relevados + canales propuestos.
+- **Por qué**: El usuario tiene data mejor relevada + un set de canales propuestos que merecen visualización propia para decisiones de planificación.
+- **Cómo**:
+  - 2 KMZ a procesar (aún no subidos por el usuario): `canales_relevados.kmz`, `canales_propuestos.kmz`
+  - Cada canal como capa/toggle individual (NO grupo único), especialmente para las propuestas
+  - Click en canal muestra info técnica (longitud, nombre, estado, etc.)
+  - Nuevo ETL `scripts/etl_canales.py` siguiendo el patrón de `etl_pilar_verde/`
+- **Esfuerzo estimado**: 8-12 hs
+- **Cuándo**: Después de archivar el SDD actual. Arrancar como `/sdd-new canales-relevados-y-propuestas` cuando el usuario suba los 2 KMZ.
+- **Memoria engram**: topic_key `backlog/pilar-azul/canales-relevados-propuestas`
