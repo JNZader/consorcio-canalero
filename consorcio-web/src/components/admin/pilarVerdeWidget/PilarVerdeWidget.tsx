@@ -15,10 +15,10 @@
  *   KPI 3         BPA activos: explotaciones + superficie
  *   Histórico     ONE-LINER — "Histórico BPA: N (pct) · Abandonaron: M · Nunca: K"
  *   Footer        "Datos: IDECor 2025"
- *   CTA           <Anchor href="/mapa?pilarVerde=1">Ver mapa Pilar Verde →</Anchor>
+ *   CTA           <Anchor href="/mapa">Ver mapa Pilar Verde →</Anchor>
  *
- * `?pilarVerde=1` is read ONCE at mount by `MapaMapLibre.tsx` which flips the
- * 5 Pilar Verde layers to visible via the `useMapLayerSyncStore`.
+ * The CTA navigates to the map; the user decides which layers to toggle on
+ * manually — no auto-activation of Pilar Verde layers.
  *
  * Loading / error branches:
  *   isLoading && !aggregates → <Loader /> (skeleton-equivalent)
@@ -121,7 +121,7 @@ export const PilarVerdeWidget = memo(function PilarVerdeWidget({
           Datos: IDECor 2025
         </Text>
 
-        <Anchor href="/mapa?pilarVerde=1" size="sm">
+        <Anchor href="/mapa" size="sm">
           Ver mapa Pilar Verde →
         </Anchor>
       </Stack>

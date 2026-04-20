@@ -49,7 +49,6 @@ import {
   useZoningHandlers,
 } from './map2d/useMapActionHandlers';
 import { useComparisonSlider } from './map2d/useComparisonSlider';
-import { useApplyPilarVerdeUrlParam } from './map2d/useApplyPilarVerdeUrlParam';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
@@ -172,10 +171,6 @@ export default function MapaMapLibre() {
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
   const { data: pilarVerde } = usePilarVerde();
-
-  // One-shot: `?pilarVerde=1` in the URL flips all 5 Pilar Verde layers visible
-  // via the shared store at mount time. Subsequent user toggles stick.
-  useApplyPilarVerdeUrlParam();
 
   const {
     zonaCollection,

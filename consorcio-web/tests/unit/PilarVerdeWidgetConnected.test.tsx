@@ -94,6 +94,6 @@ describe('<PilarVerdeWidgetConnected />', () => {
     expect(screen.getByTestId('kpi-historico')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /Ver mapa Pilar Verde/i }),
-    ).toHaveAttribute('href', '/mapa?pilarVerde=1');
+    ).toHaveAttribute('href', '/mapa');
   });
 });

@@ -13,7 +13,7 @@
  *   5. Top práctica NO adoptada → humanized Spanish label + %
  *   6. Historical one-liner: histórico count/pct · abandonaron · nunca
  *   7. Footer attribution "Datos: IDECor 2025"
- *   8. CTA <Anchor> has href `/mapa?pilarVerde=1`
+ *   8. CTA <Anchor> has href `/mapa`
  *   9. Loader branch when `isLoading` and no data
  *  10. Alert branch when `isError` or aggregates missing
  */
@@ -85,10 +85,10 @@ describe('<PilarVerdeWidget />', () => {
     expect(screen.getByText(/Datos: IDECor 2025/i)).toBeInTheDocument();
   });
 
-  it('renders a CTA anchor pointing to /mapa?pilarVerde=1', () => {
+  it('renders a CTA anchor pointing to /mapa (no query param — user toggles layers manually)', () => {
     renderWithMantine(<PilarVerdeWidget aggregates={AGG} />);
     const cta = screen.getByRole('link', { name: /Ver mapa Pilar Verde/i });
-    expect(cta).toHaveAttribute('href', '/mapa?pilarVerde=1');
+    expect(cta).toHaveAttribute('href', '/mapa');
   });
 
   it('shows a loader when isLoading and no aggregates are provided', () => {
