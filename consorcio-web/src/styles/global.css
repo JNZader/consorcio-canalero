@@ -10,6 +10,26 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ================================
+   MapLibre: prevent native image drag
+   ================================
+   Fixes a browser quirk where raster tiles (especially satellite imagery)
+   trigger the browser's native image-drag behavior instead of MapLibre's
+   pan gesture. Without this, clicking-and-dragging on the map produces a
+   ghost image of the entire map area instead of panning the view. */
+.maplibregl-map,
+.maplibregl-canvas,
+.maplibregl-canvas-container,
+.maplibregl-map img,
+.maplibregl-map canvas {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+}
+
 /* Respetar preferencia de movimiento reducido */
 @media (prefers-reduced-motion: reduce) {
   html {
