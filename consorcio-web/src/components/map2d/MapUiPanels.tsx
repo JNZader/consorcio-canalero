@@ -263,7 +263,12 @@ export const MapUiPanels = memo(function MapUiPanels({
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
       >
         {showLegend && (
-          <LeyendaPanel consorcios={consorcios} customItems={activeLegendItems} floating={false} />
+          <LeyendaPanel
+            consorcios={consorcios}
+            customItems={activeLegendItems}
+            floating={false}
+            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+          />
         )}
 
         {visibleRasterLayers.length > 0 && (

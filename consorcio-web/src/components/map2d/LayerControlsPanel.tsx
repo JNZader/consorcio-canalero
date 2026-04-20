@@ -1,8 +1,7 @@
-import { Checkbox, Divider, Group, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
+import { Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
 import { getActiveAttributions } from './layerAttributions';
-import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 
 interface LayerItem {
   id: string;
@@ -132,38 +131,6 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                   data={demOptions}
                 />
               )}
-            </>
-          )}
-          {vectorVisibility.pilar_verde_bpa_historico && (
-            <>
-              <Divider my={4} />
-              <Text size="xs" c="dimmed" fw={500}>
-                Años en BPA:
-              </Text>
-              <Group gap="xs" wrap="nowrap" data-testid="bpa-historico-legend">
-                {[
-                  { label: '1', color: PILAR_VERDE_COLORS.bpaHistoricoStop1 },
-                  { label: '3', color: PILAR_VERDE_COLORS.bpaHistoricoStop3 },
-                  { label: '5', color: PILAR_VERDE_COLORS.bpaHistoricoStop5 },
-                  { label: '7', color: PILAR_VERDE_COLORS.bpaHistoricoStop7 },
-                ].map((chip) => (
-                  <Group key={chip.label} gap={4} wrap="nowrap">
-                    <span
-                      data-color={chip.color}
-                      aria-label={`${chip.label} años`}
-                      style={{
-                        display: 'inline-block',
-                        width: 12,
-                        height: 12,
-                        backgroundColor: chip.color,
-                        border: '1px solid #166534',
-                        borderRadius: 2,
-                      }}
-                    />
-                    <Text size="xs">{chip.label}</Text>
-                  </Group>
-                ))}
-              </Group>
             </>
           )}
           {activeAttributions.length > 0 && (
