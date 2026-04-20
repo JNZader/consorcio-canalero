@@ -160,7 +160,7 @@ def compute_bpa_kpis(
     else:
         cobertura_pct = 0
 
-    return {
+    block: dict[str, Any] = {
         "explotaciones_activas": len(active),
         "superficie_total_ha": superficie_total,
         "cobertura_pct_zona": cobertura_pct,
@@ -169,6 +169,10 @@ def compute_bpa_kpis(
         "practicas_ranking": ranking,
         "ejes_distribucion": compute_ejes_distribucion(parcels),
     }
+    # Phase 0 addendum — schema v1.1 (additive): historical-coverage KPIs.
+    block.update(compute_cobertura_historica(parcels))
+    block["evolucion_anual"] = compute_evolucion_anual(parcels)
+    return block
 
 
 def _metric_transformer() -> pyproj.Transformer:
@@ -209,6 +213,81 @@ def compute_zonas_agroforestales_intersect(
             }
         )
     return out
+
+
+#: Years covered by the BPA historical-coverage KPIs.  Keep this tuple
+#: explicit — consumers (frontend charts, AI sessions) want a stable year
+#: axis even when a year has zero participants.
+HISTORICAL_YEARS: tuple[str, ...] = ("2019", "2020", "2021", "2022", "2023", "2024", "2025")
+
+
+def _was_in_bpa(parcel: dict[str, Any]) -> bool:
+    """True iff the parcel was in BPA at any point (history OR 2025)."""
+    if parcel.get("bpa_2025") is not None:
+        return True
+    historico = parcel.get("bpa_historico") or {}
+    return bool(historico)
+
+
+def compute_cobertura_historica(parcels: list[dict[str, Any]]) -> dict[str, Any]:
+    """Historical coverage KPIs — exposed under ``aggregates.bpa``.
+
+    Emits 6 fields that slice the parcel population three ways:
+    - ``cobertura_historica_*``: was in BPA at any point (2019-2025).
+    - ``abandonaron_*``: was in before but NOT in 2025 (dropped out).
+    - ``nunca_*``: never in BPA.
+
+    All percentages are over the total parcel count and rounded 1dp.
+    """
+    total = len(parcels)
+    if total == 0:
+        return {
+            "cobertura_historica_count": 0,
+            "cobertura_historica_pct": 0,
+            "abandonaron_count": 0,
+            "abandonaron_pct": 0,
+            "nunca_count": 0,
+            "nunca_pct": 0,
+        }
+
+    cobertura = 0
+    abandonaron = 0
+    for parcel in parcels:
+        historico = parcel.get("bpa_historico") or {}
+        has_history = bool(historico)
+        has_2025 = parcel.get("bpa_2025") is not None
+        if has_history or has_2025:
+            cobertura += 1
+        if has_history and not has_2025:
+            abandonaron += 1
+    nunca = total - cobertura
+
+    return {
+        "cobertura_historica_count": cobertura,
+        "cobertura_historica_pct": _round1(cobertura / total * 100),
+        "abandonaron_count": abandonaron,
+        "abandonaron_pct": _round1(abandonaron / total * 100),
+        "nunca_count": nunca,
+        "nunca_pct": _round1(nunca / total * 100),
+    }
+
+
+def compute_evolucion_anual(parcels: list[dict[str, Any]]) -> dict[str, int]:
+    """Per-year participant count across the full historical series.
+
+    Every year in :data:`HISTORICAL_YEARS` MUST appear — even at 0 — so
+    downstream chart consumers don't have to defensive-default missing keys.
+    """
+    counts: dict[str, int] = {year: 0 for year in HISTORICAL_YEARS}
+    for parcel in parcels:
+        historico = parcel.get("bpa_historico") or {}
+        for year in historico:
+            year_key = str(year)
+            if year_key in counts:
+                counts[year_key] += 1
+        if parcel.get("bpa_2025") is not None:
+            counts["2025"] += 1
+    return counts
 
 
 def compute_grilla_aggregates(

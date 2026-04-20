@@ -55,6 +55,7 @@ BPA_LAYERS: Final[dict[int, str]] = {
 AGRO_ACEPTADA: Final[str] = "idecor:agricultura_v_agro_aceptada_cuentas"
 AGRO_PRESENTADA: Final[str] = "idecor:agricultura_v_agro_presentada_cuentas"
 AGRO_ZONAS: Final[str] = "idecor:agricultura_agro_zonas"
+AGRO_GRILLA: Final[str] = "idecor:agro_grilla_dist5"
 FORESTACION: Final[str] = "idecor:agricultura_agro_porcentaje_forestacion"
 
 REQUIRED_LAYERS: Final[tuple[str, ...]] = (
@@ -114,7 +115,13 @@ FORESTACION_KEEP_PROPS: Final[frozenset[str]] = frozenset(
 # Schema version / metadata
 # ---------------------------------------------------------------------------
 
+# Generic (per-file default) schema version — GeoJSON outputs, bpa_enriched,
+# bpa_history still live at 1.0 (no field changes).
 SCHEMA_VERSION: Final[str] = "1.0"
+
+# aggregates.json bumped to 1.1 for the Phase 0 addendum (additive, backward-
+# compatible): 6 new historical-coverage KPIs + evolucion_anual under ``bpa``.
+AGGREGATES_SCHEMA_VERSION: Final[str] = "1.1"
 
 # ---------------------------------------------------------------------------
 # Coordinate reference systems

@@ -16,6 +16,29 @@ from scripts.etl_pilar_verde.constants import BPA_EJES, BPA_PRACTICAS
 logger = logging.getLogger(__name__)
 
 
+#: IDECor's catastro rural publishes ``Superficie_Tierra_Rural`` in SQUARE METRES
+#: despite the naming suggesting hectares.  This factor converts m² → ha so
+#: downstream consumers (aggregates, enriched JSON, widget, AI sessions) see
+#: realistic values.  See Phase 0 addendum (anomaly #1) for the discovery trail.
+M2_TO_HA: float = 1.0 / 10_000.0
+
+
+def _m2_to_ha(raw: Any) -> float | None:
+    """Convert raw IDECor m² to hectares.  Returns ``None`` when input is null.
+
+    Keeps ``None`` as ``None`` (never 0.0) so downstream aggregators can
+    distinguish "missing superficie" from "zero superficie" — the
+    ``_safe_float`` helper in ``aggregates.py`` treats ``None`` as 0 anyway,
+    but join-level consumers may care.
+    """
+    if raw is None:
+        return None
+    try:
+        return round(float(raw) * M2_TO_HA, 1)
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_cuenta(raw: Any) -> str | None:
     """Canonicalise a cuenta value so join keys match across IDECor layers.
 
@@ -127,7 +150,8 @@ def join_bpa(
                 "nomenclatura": props.get("Nomenclatura"),
                 "departamento": props.get("departamento"),
                 "pedania": props.get("pedania"),
-                "superficie_ha": props.get("Superficie_Tierra_Rural"),
+                # IDECor publishes this field in m² despite the name — convert.
+                "superficie_ha": _m2_to_ha(props.get("Superficie_Tierra_Rural")),
                 "valuacion": props.get("Valuacion_Tierra_Rural"),
                 "ley_forestal": ley_forestal,
                 "bpa_2025": bpa_block,

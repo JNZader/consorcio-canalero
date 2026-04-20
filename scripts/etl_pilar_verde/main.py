@@ -34,7 +34,9 @@ from scripts.etl_pilar_verde.aggregates import (
 )
 from scripts.etl_pilar_verde.clip import clip_to_zona
 from scripts.etl_pilar_verde.constants import (
+    AGGREGATES_SCHEMA_VERSION,
     AGRO_ACEPTADA,
+    AGRO_GRILLA,
     AGRO_PRESENTADA,
     AGRO_ZONAS,
     AGRO_ZONAS_SIMPLIFY_TOLERANCE,
@@ -116,7 +118,10 @@ def run_etl(
     fetch_historical_bpa: bool = True,
     fetch_zonas_agroforestales: bool = True,
     fetch_forestacion: bool = True,
-    fetch_grilla: bool = False,  # per spec out-of-scope — False by default
+    # Phase 0 addendum (anomaly #2): grilla is Tier-2 contextual, fetch by
+    # default so grilla_aggregates gets populated.  Disable in fast/partial
+    # runs (e.g. some test fixtures) via ``fetch_grilla=False``.
+    fetch_grilla: bool = True,
     generated_at: str | None = None,
 ) -> int:
     """Run the full ETL.  Returns an exit code (0 success, >0 failure).
@@ -159,6 +164,13 @@ def run_etl(
             )
         else:
             staging["porcentaje_forestacion"] = []
+
+        if fetch_grilla:
+            # Tier-2 contextual — we ship aggregates (mean altura/pendiente, dist),
+            # not the 6k+ cell geometry.  Keep the same clip gate semantics.
+            staging["agro_grilla"] = _fetch_and_clip(AGRO_GRILLA, bbox_22174, zona)
+        else:
+            staging["agro_grilla"] = []
 
         historical: dict[int, list[dict[str, Any]]] = {}
         if fetch_historical_bpa:
@@ -212,7 +224,8 @@ def run_etl(
 
     ley_forestal_block = compute_ley_forestal(enriched_parcels)
     bpa_block = compute_bpa_kpis(enriched_parcels, zona_superficie_ha=zona_ha)
-    grilla_block = compute_grilla_aggregates(None)  # per spec: aggregates only if we fetched
+    # Use whatever the fetch phase staged (may be [] if fetch_grilla=False).
+    grilla_block = compute_grilla_aggregates(staging.get("agro_grilla") or None)
     zonas_block = compute_zonas_agroforestales_intersect(
         staging["agro_zonas"], zona
     )
@@ -287,6 +300,7 @@ def run_etl(
     write_json(
         outputs["aggregates"],
         aggregates_payload,
+        schema_version=AGGREGATES_SCHEMA_VERSION,
         generated_at=generated_at,
     )
 
@@ -299,7 +313,10 @@ def run_etl(
             continue
         size_kb = path.stat().st_size / 1024
         print(f"  {key:24s} {size_kb:>10.1f} KB  {path.relative_to(path.parents[3])}")
-    print(f"wall_time: {elapsed:.1f}s schema_version: {SCHEMA_VERSION}\n")
+    print(
+        f"wall_time: {elapsed:.1f}s schema_version(generic)={SCHEMA_VERSION} "
+        f"aggregates_schema_version={AGGREGATES_SCHEMA_VERSION}\n"
+    )
 
     return EXIT_OK
 
@@ -325,6 +342,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Do not fetch idecor:agricultura_agro_porcentaje_forestacion (file will be empty).",
     )
     parser.add_argument(
+        "--skip-grilla",
+        action="store_true",
+        help="Do not fetch idecor:agro_grilla_dist5 (grilla_aggregates will be all zeros).",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -341,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         fetch_historical_bpa=not args.skip_historical_bpa,
         fetch_zonas_agroforestales=not args.skip_zonas_agroforestales,
         fetch_forestacion=not args.skip_forestacion,
+        fetch_grilla=not args.skip_grilla,
         generated_at=generated_at,
     )
 

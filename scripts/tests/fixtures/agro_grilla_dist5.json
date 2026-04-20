@@ -1,0 +1,58 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 3,
+  "numberReturned": 3,
+  "features": [
+    {
+      "type": "Feature",
+      "id": "agro_grilla_dist5.1",
+      "properties": {
+        "altura_med": 200,
+        "pend_media": 3,
+        "forest_mean": 2.5,
+        "categoria": "II",
+        "drenaje": "bueno"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.55, -32.55], [-62.54, -32.55], [-62.54, -32.54], [-62.55, -32.54], [-62.55, -32.55]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "agro_grilla_dist5.2",
+      "properties": {
+        "altura_med": 210,
+        "pend_media": 4,
+        "forest_mean": 3.5,
+        "categoria": "II",
+        "drenaje": "regular"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.53, -32.53], [-62.52, -32.53], [-62.52, -32.52], [-62.53, -32.52], [-62.53, -32.53]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "agro_grilla_dist5.3",
+      "properties": {
+        "altura_med": 190,
+        "pend_media": 2,
+        "forest_mean": 4.0,
+        "categoria": "III",
+        "drenaje": "bueno"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-62.51, -32.51], [-62.50, -32.51], [-62.50, -32.50], [-62.51, -32.50], [-62.51, -32.51]
+        ]]
+      }
+    }
+  ]
+}

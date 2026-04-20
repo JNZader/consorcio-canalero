@@ -12,7 +12,9 @@ import pytest
 
 from scripts.etl_pilar_verde.aggregates import (
     compute_bpa_kpis,
+    compute_cobertura_historica,
     compute_ejes_distribucion,
+    compute_evolucion_anual,
     compute_grilla_aggregates,
     compute_practicas_ranking,
     compute_zonas_agroforestales_intersect,
@@ -236,4 +238,133 @@ class TestComputeGrillaAggregates:
             "forest_mean_pct": 0,
             "categoria_distribution": {},
             "drenaje_distribution": {},
+        }
+
+
+def _make_parcel(
+    *,
+    cuenta: str,
+    bpa_2025: dict | None,
+    historico: dict[str, str] | None = None,
+) -> dict:
+    """Minimal parcel shape used by cobertura/evolucion tests."""
+    return {
+        "nro_cuenta": cuenta,
+        "bpa_2025": bpa_2025,
+        "bpa_historico": historico or {},
+    }
+
+
+class TestComputeCoberturaHistorica:
+    """Phase 0 addendum: 6 new KPIs exposing BPA historical coverage.
+
+    Definitions (per user request on Batch 3):
+    - ``cobertura_historica``: parcels with at least ONE year in bpa_historico
+      OR with a non-null bpa_2025 (i.e. ever in the BPA registry).
+    - ``abandonaron``: parcels with bpa_historico non-empty AND bpa_2025 is None
+      (were in before, dropped out).
+    - ``nunca``: parcels never in BPA (historico empty AND bpa_2025 None).
+    """
+
+    def test_all_four_buckets_counted(self):
+        parcels = [
+            # Case A — only 2025: in BPA this year, no history.
+            _make_parcel(cuenta="A", bpa_2025={"activa": True}, historico={}),
+            # Case B — only history: was in, dropped out (abandonaron).
+            _make_parcel(cuenta="B", bpa_2025=None, historico={"2022": "x"}),
+            # Case C — both: in 2025 AND has history.
+            _make_parcel(
+                cuenta="C",
+                bpa_2025={"activa": True},
+                historico={"2021": "x", "2023": "x"},
+            ),
+            # Case D — neither (nunca).
+            _make_parcel(cuenta="D", bpa_2025=None, historico={}),
+            # Extra nunca to make pcts non-trivial.
+            _make_parcel(cuenta="E", bpa_2025=None, historico={}),
+        ]
+        out = compute_cobertura_historica(parcels)
+        # cobertura_historica = A + B + C = 3 (out of 5)
+        assert out["cobertura_historica_count"] == 3
+        assert out["cobertura_historica_pct"] == 60.0
+        # abandonaron = B = 1
+        assert out["abandonaron_count"] == 1
+        assert out["abandonaron_pct"] == 20.0
+        # nunca = D + E = 2
+        assert out["nunca_count"] == 2
+        assert out["nunca_pct"] == 40.0
+
+    def test_empty_parcels_returns_zeroes(self):
+        out = compute_cobertura_historica([])
+        assert out == {
+            "cobertura_historica_count": 0,
+            "cobertura_historica_pct": 0,
+            "abandonaron_count": 0,
+            "abandonaron_pct": 0,
+            "nunca_count": 0,
+            "nunca_pct": 0,
+        }
+
+    def test_only_2025_is_not_abandonaron(self):
+        # Parcel in 2025 but no history → not abandonaron, not nunca.
+        parcels = [_make_parcel(cuenta="X", bpa_2025={"activa": True}, historico={})]
+        out = compute_cobertura_historica(parcels)
+        assert out["cobertura_historica_count"] == 1
+        assert out["abandonaron_count"] == 0
+        assert out["nunca_count"] == 0
+
+
+class TestComputeEvolucionAnual:
+    """``evolucion_anual`` = per-year count of parcels that had a BPA record.
+
+    Years 2019-2025 MUST always appear (even if value is 0), so the frontend
+    can render a stable chart without defensive missing-year handling.
+    """
+
+    def test_all_years_always_present(self):
+        parcels = [
+            _make_parcel(cuenta="A", bpa_2025=None, historico={"2019": "x"}),
+            _make_parcel(cuenta="B", bpa_2025=None, historico={"2024": "x"}),
+        ]
+        out = compute_evolucion_anual(parcels)
+        # 2019-2025 MUST all be keys.
+        assert set(out.keys()) == {"2019", "2020", "2021", "2022", "2023", "2024", "2025"}
+        assert out["2019"] == 1
+        assert out["2024"] == 1
+        # Every other year SHALL appear as 0 (not missing).
+        assert out["2020"] == 0
+        assert out["2021"] == 0
+        assert out["2022"] == 0
+        assert out["2023"] == 0
+        assert out["2025"] == 0
+
+    def test_2025_counts_bpa_2025_non_null(self):
+        parcels = [
+            _make_parcel(cuenta="A", bpa_2025={"activa": True}, historico={}),
+            _make_parcel(cuenta="B", bpa_2025={"activa": True}, historico={}),
+            _make_parcel(cuenta="C", bpa_2025=None, historico={"2024": "x"}),
+        ]
+        out = compute_evolucion_anual(parcels)
+        assert out["2025"] == 2
+        assert out["2024"] == 1
+
+    def test_parcel_with_multiple_years_counted_once_per_year(self):
+        parcels = [
+            _make_parcel(
+                cuenta="A",
+                bpa_2025={"activa": True},
+                historico={"2019": "x", "2024": "x"},
+            )
+        ]
+        out = compute_evolucion_anual(parcels)
+        assert out["2019"] == 1
+        assert out["2024"] == 1
+        assert out["2025"] == 1
+        assert out["2020"] == 0
+
+    def test_empty_parcels_all_zero(self):
+        out = compute_evolucion_anual([])
+        assert out == {
+            "2019": 0, "2020": 0, "2021": 0, "2022": 0,
+            "2023": 0, "2024": 0, "2025": 0,
         }

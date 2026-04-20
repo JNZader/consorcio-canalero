@@ -114,6 +114,43 @@ class TestJoinBpa:
         la_sentina = next(p for p in parcels if p["nro_cuenta"] == "150115736126")
         assert la_sentina["bpa_2025"] is not None
 
+    def test_superficie_is_converted_from_m2_to_ha(
+        self, catastro, bpa_2025, aceptada, presentada
+    ):
+        """Anomaly #1 fix — IDECor catastro publishes Superficie_Tierra_Rural
+        in m², despite the naming suggesting ha. The join MUST divide by
+        10 000 so downstream consumers (aggregates, enriched JSON) see
+        correct hectare values.
+
+        Fixture parcel La Sentina has Superficie_Tierra_Rural=2_457_000 (m²),
+        which is 245.7 ha.  The join must emit ``superficie_ha == 245.7``,
+        NOT 2_457_000.
+        """
+        # Build a synthetic catastro row with an unambiguous m² value — larger
+        # than any plausible ha figure, so the division is provable.
+        synthetic = {
+            "type": "Feature",
+            "properties": {
+                "Nomenclatura": "15-01-01-01-999999",
+                "Tipo_Parcela": "RURAL",
+                "Nro_Cuenta": "999999999999",
+                "departamento": "MARCOS JUAREZ",
+                "pedania": "Test Pedania",
+                # 2 457 000 m² = 245.7 ha — the same hectares as La Sentina.
+                "Superficie_Tierra_Rural": 2_457_000,
+                "Valuacion_Tierra_Rural": 0,
+                "desig_oficial": "Synthetic M2 Parcel",
+            },
+            "geometry": catastro[0]["geometry"],
+        }
+        parcels = join_bpa(
+            [synthetic], bpa_2025, aceptada, presentada
+        )
+        assert len(parcels) == 1
+        row = parcels[0]
+        # Load-bearing assertion — this is the anomaly we are fixing.
+        assert row["superficie_ha"] == 245.7
+
 
 class TestBuildBpaHistory:
     def test_flattens_by_cuenta_across_years(self):

@@ -15,6 +15,7 @@ import pytest
 from scripts.etl_pilar_verde import main as main_mod
 from scripts.etl_pilar_verde.constants import (
     AGRO_ACEPTADA,
+    AGRO_GRILLA,
     AGRO_PRESENTADA,
     BPA_LAYERS,
     EXIT_OK,
@@ -54,6 +55,7 @@ def fetcher_factory():
             BPA_LAYERS[2025]: _load_fixture("bpa_2025.json"),
             AGRO_ACEPTADA: _load_fixture("agro_aceptada.json"),
             AGRO_PRESENTADA: _load_fixture("agro_presentada.json"),
+            AGRO_GRILLA: _load_fixture("agro_grilla_dist5.json"),
         }
 
         def _fake(type_names: str, bbox_22174, **kwargs):
@@ -198,15 +200,95 @@ class TestRequiredLayerEmpty:
         assert "parcels" in enriched
 
         aggregates = json.loads(outputs["aggregates"].read_text())
-        assert aggregates["schema_version"] == "1.0"
+        # Phase 0 addendum bumped aggregates.json to 1.1 (additive — 6 new
+        # historical KPIs + evolucion_anual under bpa). Other files stay at 1.0.
+        assert aggregates["schema_version"] == "1.1"
         assert "ley_forestal" in aggregates
         assert "bpa" in aggregates
+        # Historical KPIs must exist under bpa in v1.1 — even if empty.
+        bpa = aggregates["bpa"]
+        assert "cobertura_historica_count" in bpa
+        assert "cobertura_historica_pct" in bpa
+        assert "abandonaron_count" in bpa
+        assert "abandonaron_pct" in bpa
+        assert "nunca_count" in bpa
+        assert "nunca_pct" in bpa
+        assert "evolucion_anual" in bpa
+        # evolucion_anual must cover 2019-2025.
+        assert set(bpa["evolucion_anual"].keys()) == {
+            "2019", "2020", "2021", "2022", "2023", "2024", "2025",
+        }
 
         # GeoJSON outputs have metadata nested.
         bpa_geo = json.loads(outputs["bpa_2025"].read_text())
         assert bpa_geo["type"] == "FeatureCollection"
         assert bpa_geo["metadata"]["schema_version"] == "1.0"
         assert len(bpa_geo["features"]) >= 1
+
+
+class TestGrillaAggregatesWiring:
+    """Anomaly #2 fix — agro_grilla_dist5 must be fetched and its aggregates
+    populated.  Previously the orchestrator called ``compute_grilla_aggregates(None)``
+    unconditionally, so the grilla block in ``aggregates.json`` was all zeros.
+    """
+
+    def test_grilla_aggregates_populated_when_fetch_enabled(
+        self, tmp_path, monkeypatch, fetcher_factory
+    ):
+        outputs = _build_outputs(tmp_path)
+        monkeypatch.setattr(
+            main_mod,
+            "_fetch_and_clip",
+            _wrap_fetch_and_clip(fetcher_factory(set())),
+        )
+
+        code = main_mod.run_etl(
+            kml_path=FIXTURES / "zona_ampliada_tiny.kml",
+            catastro_path=FIXTURES / "catastro_rural_cu.json",
+            output_files=outputs,
+            fetch_historical_bpa=False,
+            fetch_zonas_agroforestales=False,
+            fetch_forestacion=False,
+            fetch_grilla=True,
+            generated_at="2026-04-20T00:00:00Z",
+        )
+        assert code == EXIT_OK
+        aggregates = json.loads(outputs["aggregates"].read_text())
+        grilla = aggregates["grilla_aggregates"]
+        # Sentinel from the 3-feature fixture: altura_med_mean = (200+210+190)/3 = 200.0
+        assert grilla["altura_med_mean"] == 200.0
+        # pend_media_mean = (3+4+2)/3 = 3.0
+        assert grilla["pend_media_mean"] == 3.0
+        # forest_mean_pct = (2.5+3.5+4.0)/3 = 3.333 → 3.3 rounded 1dp
+        assert grilla["forest_mean_pct"] == 3.3
+        assert grilla["categoria_distribution"] == {"II": 2, "III": 1}
+        assert grilla["drenaje_distribution"] == {"bueno": 2, "regular": 1}
+
+    def test_grilla_aggregates_empty_when_fetch_disabled(
+        self, tmp_path, monkeypatch, fetcher_factory
+    ):
+        outputs = _build_outputs(tmp_path)
+        monkeypatch.setattr(
+            main_mod,
+            "_fetch_and_clip",
+            _wrap_fetch_and_clip(fetcher_factory(set())),
+        )
+        code = main_mod.run_etl(
+            kml_path=FIXTURES / "zona_ampliada_tiny.kml",
+            catastro_path=FIXTURES / "catastro_rural_cu.json",
+            output_files=outputs,
+            fetch_historical_bpa=False,
+            fetch_zonas_agroforestales=False,
+            fetch_forestacion=False,
+            fetch_grilla=False,
+            generated_at="2026-04-20T00:00:00Z",
+        )
+        assert code == EXIT_OK
+        aggregates = json.loads(outputs["aggregates"].read_text())
+        grilla = aggregates["grilla_aggregates"]
+        # Default "disabled" semantic — all zeros, empty distributions.
+        assert grilla["altura_med_mean"] == 0
+        assert grilla["categoria_distribution"] == {}
 
 
 def _wrap_fetch_and_clip(fetcher):
