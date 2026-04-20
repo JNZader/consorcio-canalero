@@ -22,9 +22,18 @@ vi.mock('../../src/lib/api', () => ({
   API_URL: 'http://localhost:8000',
 }));
 
-// Mock useWaterways to avoid real query
-vi.mock('../../src/hooks/useWaterways', () => ({
-  useWaterways: vi.fn(() => ({ waterways: [], isLoading: false, error: null })),
+// Batch 5 (2026-04-20): swapped `useWaterways` mock for `useCanales` mock —
+// `SugerenciasPanel` migrated to `useCanales().relevados` for the admin
+// reference-map backdrop. Return `relevados: null` so the panel's `useMemo`
+// emits an empty canales array (no-op reference layer — test-friendly).
+vi.mock('../../src/hooks/useCanales', () => ({
+  useCanales: vi.fn(() => ({
+    relevados: null,
+    propuestas: null,
+    index: null,
+    isLoading: false,
+    isError: false,
+  })),
 }));
 
 vi.mock('../../src/components/ui/accessibility', () => ({

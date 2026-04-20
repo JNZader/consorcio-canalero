@@ -11,7 +11,7 @@ export function SuggestionDetailModal({
   opened,
   onClose,
   selectedSugerencia,
-  waterways,
+  canales,
   historial,
   loadingHistorial,
   showHistorial,
@@ -36,7 +36,15 @@ export function SuggestionDetailModal({
   opened: boolean;
   onClose: () => void;
   selectedSugerencia: Sugerencia | null;
-  waterways: Array<{ id: string; data: import('geojson').FeatureCollection; style: { color?: string; weight?: number; opacity?: number } }>;
+  /**
+   * Batch 5 (2026-04-20): migrated from `waterways` (legacy Hidrografía mix)
+   * to `canales` — the authoritative Pilar Azul reference-map backdrop.
+   * Parents should wire this from `useCanales().relevados` wrapped in the
+   * `{id, data, style}` shape expected by `SugerenciaGeometryMap`. Pass an
+   * empty array when Pilar Azul data is not yet available; the modal still
+   * mounts and the reference backdrop simply stays empty.
+   */
+  canales: Array<{ id: string; data: import('geojson').FeatureCollection; style: { color?: string; weight?: number; opacity?: number } }>;
   historial: SeguimientoEntry[];
   loadingHistorial: boolean;
   showHistorial: boolean;
@@ -113,11 +121,11 @@ export function SuggestionDetailModal({
               <Box style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
                 <SugerenciaGeometryMap
                   geometry={selectedSugerencia.geometry}
-                  canales={waterways.filter((l) => l.id === 'canales_existentes')}
+                  canales={canales}
                 />
               </Box>
               <Text size="xs" c="dimmed" mt={6}>
-                Línea sugerida en violeta. `Canales existentes` se muestran como referencia en azul oscuro.
+                Línea sugerida en violeta. Los canales relevados se muestran como referencia en azul oscuro.
               </Text>
               <Group mt="sm">
                 <Button

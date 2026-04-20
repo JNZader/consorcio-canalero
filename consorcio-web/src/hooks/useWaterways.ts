@@ -1,11 +1,17 @@
 /**
  * Hook for loading waterway GeoJSON layers from static files.
  * No auth required — files served from public/waterways/.
+ *
+ * Batch 5 (2026-04-20): legacy `canales_existentes` layer retired — the 43
+ * canals (23 relevados + 20 propuestas) now live in the Pilar Azul slice
+ * (`useCanales`). Accordingly, this hook no longer fetches the old geojson
+ * file, and the `/api/v2/public/sugerencias/canales-existentes` merge was
+ * removed. The 5 remaining waterways (Río Tercero + arroyos + canal
+ * desviador + canal Litín-Tortugas) continue to load from this hook.
  */
 
 import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
-import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 
@@ -56,30 +62,12 @@ export const WATERWAY_DEFS = [
     nombre: 'A. Las Saladas / de las Mojarras',
     style: { color: '#64B5F6', weight: 2, opacity: 0.85 } satisfies WaterwayStyle,
   },
-  {
-    id: 'canales_existentes',
-    file: 'canales_existentes.geojson',
-    nombre: 'Canales existentes',
-    style: { color: '#0B3D91', weight: 4, opacity: 0.95, dashArray: '6 4' } satisfies WaterwayStyle,
-  },
 ] as const;
 
 export function useWaterways() {
   const query = useQuery({
     queryKey: queryKeys.waterways(),
     queryFn: async () => {
-      let incorporatedSuggestions: FeatureCollection | null = null;
-      try {
-        const response = await fetch(
-          `${API_URL}/api/v2/public/sugerencias/canales-existentes`,
-        );
-        if (response.ok) {
-          incorporatedSuggestions = (await response.json()) as FeatureCollection;
-        }
-      } catch (err) {
-        logger.warn('Error loading incorporated suggestion channels', err);
-      }
-
       const results = await Promise.all(
         WATERWAY_DEFS.map(async (def) => {
           try {
@@ -89,20 +77,10 @@ export function useWaterways() {
               return null;
             }
             const data = (await response.json()) as FeatureCollection;
-            const mergedData =
-              def.id === 'canales_existentes' && incorporatedSuggestions
-                ? ({
-                    type: 'FeatureCollection',
-                    features: [
-                      ...(data.features ?? []),
-                      ...(incorporatedSuggestions.features ?? []),
-                    ],
-                  } satisfies FeatureCollection)
-                : data;
             return {
               id: def.id,
               nombre: def.nombre,
-              data: mergedData,
+              data,
               style: def.style as WaterwayStyle,
             } satisfies WaterwayLayer;
           } catch (err) {

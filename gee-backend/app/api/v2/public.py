@@ -253,15 +253,6 @@ def create_anonymous_sugerencia(
     return service.create_sugerencia(db, payload)
 
 
-@public_router.get("/sugerencias/canales-existentes", response_model=dict)
-def list_incorporated_suggestion_channels(
-    db: Session = Depends(get_db),
-    service: MonitoringService = Depends(_get_monitoring_service),
-):
-    """Return incorporated suggestion lines as a public FeatureCollection."""
-    return service.get_incorporated_channel_feature_collection(db)
-
-
 @public_router.get(
     "/denuncias/{denuncia_id}/status",
     response_model=PublicDenunciaStatusResponse,

@@ -54,7 +54,7 @@ const FORM_CAMINOS_SOURCE = 'form-caminos';
 
 /**
  * Add reference layers to a MapLibre map matching the style from MapaMapLibre.tsx.
- * Order (bottom to top): caminos → waterways (canales_existentes last) → zona boundary.
+ * Order (bottom to top): caminos → waterways → zona boundary.
  *
  * Layers are inserted BEFORE any draw control layers (gl-draw-*) so they don't
  * block draw interaction or cover drawn geometry.
@@ -89,11 +89,10 @@ export function addReferenceLayers(
     }
   }
 
-  // 2) Waterways — canales_existentes added LAST so it renders on top of caminos
-  const canalesExistentes = waterways.filter((ww) => ww.id === 'canales_existentes');
-  const otherWaterways = waterways.filter((ww) => ww.id !== 'canales_existentes');
-
-  for (const ww of [...otherWaterways, ...canalesExistentes]) {
+  // 2) Waterways — rendered in the order declared in WATERWAY_DEFS.
+  // Batch 5: the legacy `canales_existentes` last-draw special case was
+  // retired along with the layer itself (Pilar Azul `useCanales` replaced it).
+  for (const ww of waterways) {
     const srcId = `form-ww-${ww.id}`;
     const layerId = `${srcId}-line`;
     if (!map.getSource(srcId)) {

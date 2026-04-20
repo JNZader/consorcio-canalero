@@ -84,15 +84,6 @@ class MonitoringRepository:
         db.flush()
         return sugerencia
 
-    def get_incorporated_channel_suggestions(self, db: Session) -> list[Sugerencia]:
-        stmt = (
-            select(Sugerencia)
-            .where(Sugerencia.estado == EstadoSugerencia.IMPLEMENTADA)
-            .where(Sugerencia.geometry.is_not(None))
-            .order_by(Sugerencia.created_at.desc())
-        )
-        return list(db.execute(stmt).scalars().all())
-
     def get_sugerencias_stats(self, db: Session) -> dict[str, Any]:
         """Aggregate counts of sugerencias by estado and tipo."""
         estado_rows = db.execute(

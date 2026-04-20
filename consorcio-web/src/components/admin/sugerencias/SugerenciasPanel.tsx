@@ -11,7 +11,7 @@ import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type Sugerencia, type SugerenciasStats, sugerenciasApi, apiFetch } from '../../../lib/api';
-import { useWaterways } from '../../../hooks/useWaterways';
+import { useCanales } from '../../../hooks/useCanales';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
@@ -86,7 +86,28 @@ export default function SugerenciasPanel() {
   const [historial, setHistorial] = useState<SeguimientoEntry[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
-  const { waterways } = useWaterways();
+  // Batch 5 (2026-04-20): migrated from `useWaterways` to `useCanales`. The
+  // reference-map backdrop in `SuggestionDetailModal` now renders the 23
+  // relevados from the Pilar Azul static dataset instead of the retired
+  // `canales_existentes` waterway. When the relevados FeatureCollection is
+  // absent (first deploy before ETL runs), we pass an empty array — the
+  // modal still mounts gracefully.
+  const { relevados: relevadosFC } = useCanales();
+  const canales = useMemo(
+    () =>
+      relevadosFC
+        ? [
+            {
+              id: 'canales_relevados',
+              data: relevadosFC as import('geojson').FeatureCollection,
+              // Match the default relevados palette used by Pilar Azul's map
+              // paint factory (see `canalesLayers.ts::CANALES_COLORS`).
+              style: { color: '#1D4ED8', weight: 3, opacity: 0.9 },
+            },
+          ]
+        : [],
+    [relevadosFC],
+  );
 
   useLiveRegion();
 
@@ -432,7 +453,7 @@ export default function SugerenciasPanel() {
           opened={detailOpened}
           onClose={closeDetail}
           selectedSugerencia={selectedSugerencia}
-          waterways={waterways}
+          canales={canales}
           historial={historial}
           loadingHistorial={loadingHistorial}
           showHistorial={showHistorial}

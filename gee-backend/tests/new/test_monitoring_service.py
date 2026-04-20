@@ -297,48 +297,12 @@ class TestIncorporateSugerencia:
         db.commit.assert_called_once()
 
 
-class TestGetIncorporatedChannelFeatureCollection:
-    def test_returns_unpersisted_features(self, service, mock_repo):
-        sug = SimpleNamespace(
-            id=uuid.uuid4(),
-            titulo="Canal 1",
-            geometry={
-                "features": [
-                    {
-                        "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
-                        "properties": {},
-                    }
-                ]
-            },
-        )
-        mock_repo.get_incorporated_channel_suggestions.return_value = [sug]
-        with patch.object(service, "_get_persisted_sugerencia_ids", return_value=set()):
-            result = service.get_incorporated_channel_feature_collection(MagicMock())
-        assert result["type"] == "FeatureCollection"
-        assert len(result["features"]) == 1
-
-    def test_skips_already_persisted(self, service, mock_repo):
-        sug_id = uuid.uuid4()
-        sug = SimpleNamespace(
-            id=sug_id,
-            titulo="Canal",
-            geometry={
-                "features": [
-                    {
-                        "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
-                        "properties": {},
-                    }
-                ]
-            },
-        )
-        mock_repo.get_incorporated_channel_suggestions.return_value = [sug]
-        with patch.object(
-            service,
-            "_get_persisted_sugerencia_ids",
-            return_value={str(sug_id)},
-        ):
-            result = service.get_incorporated_channel_feature_collection(MagicMock())
-        assert len(result["features"]) == 0
+# Batch 5 (2026-04-20): `TestGetIncorporatedChannelFeatureCollection` was
+# retired along with the `get_incorporated_channel_feature_collection` service
+# method and the `get_incorporated_channel_suggestions` repository method —
+# Pilar Azul (`useCanales`) replaced the public-feature-collection endpoint
+# that consumed them. `incorporate_sugerencia_as_channel` still exists and
+# its tests live in `TestIncorporateSugerencia` above.
 
 
 # ---------------------------------------------------------------------------

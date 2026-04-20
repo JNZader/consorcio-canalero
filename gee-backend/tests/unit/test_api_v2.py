@@ -204,18 +204,10 @@ class TestPublicSugerencias:
         assert result == mock_result
 
 
-class TestPublicIncorporatedChannels:
-    def test_returns_feature_collection(self, mock_db):
-        from app.api.v2.public import list_incorporated_suggestion_channels
-        from app.domains.monitoring.service import MonitoringService
-
-        service = MagicMock(spec=MonitoringService)
-        service.get_incorporated_channel_feature_collection.return_value = {
-            "type": "FeatureCollection", "features": [],
-        }
-
-        result = list_incorporated_suggestion_channels(mock_db, service)
-        assert result["type"] == "FeatureCollection"
+# Batch 5 (2026-04-20): `TestPublicIncorporatedChannels` was retired along
+# with the `GET /api/v2/public/sugerencias/canales-existentes` endpoint and
+# the `get_incorporated_channel_feature_collection` service method. Pilar Azul
+# (`useCanales` in the frontend) replaced this path entirely.
 
 
 # ══════════════════════════════════════════════

@@ -17,15 +17,19 @@ from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaUpdate
 class MonitoringService:
     """Orchestrates repository calls with business rules."""
 
+    # Batch 5 (2026-04-20): the frontend `public/waterways/canales_existentes.geojson`
+    # was retired along with the `waterways_canales_existentes` layer slot —
+    # Pilar Azul's `useCanales` now serves all 43 canales from the static
+    # `public/capas/canales/*` assets. The `incorporar-canal` POST endpoint
+    # still persists to the BACKEND dataset (kept as the authoritative store of
+    # admin-incorporated sugerencias). The frontend-side mirror file is NO
+    # LONGER WRITTEN — the modal's "Incorporar a Canales existentes" UI still
+    # works, but the reference map now reads from `useCanales().relevados`
+    # (see `SuggestionDetailModal.tsx`).
     _BACKEND_WATERWAYS_CANDIDATES = (
         Path("/app/data/waterways/canales_existentes.geojson"),
         Path(__file__).resolve().parents[4]
         / "gee-backend/data/waterways/canales_existentes.geojson",
-    )
-    _FRONTEND_WATERWAYS_CANDIDATES = (
-        Path("/app/public/waterways/canales_existentes.geojson"),
-        Path(__file__).resolve().parents[4]
-        / "consorcio-web/public/waterways/canales_existentes.geojson",
     )
 
     def __init__(self, repository: MonitoringRepository | None = None) -> None:
@@ -115,12 +119,6 @@ class MonitoringService:
             payload["features"] = existing_features
             self._write_feature_collection(backend_path, payload)
 
-            frontend_path = self._resolve_existing_path(
-                self._FRONTEND_WATERWAYS_CANDIDATES
-            )
-            if frontend_path is not None:
-                self._write_feature_collection(frontend_path, payload)
-
     def _get_persisted_sugerencia_ids(self) -> set[str]:
         backend_path = self._resolve_existing_path(self._BACKEND_WATERWAYS_CANDIDATES)
         if backend_path is None:
@@ -202,39 +200,6 @@ class MonitoringService:
         db.commit()
         db.refresh(sugerencia)
         return sugerencia
-
-    def get_incorporated_channel_feature_collection(
-        self, db: Session
-    ) -> dict[str, Any]:
-        sugerencias = self.repo.get_incorporated_channel_suggestions(db)
-        persisted_ids = self._get_persisted_sugerencia_ids()
-        features: list[dict[str, Any]] = []
-
-        for sugerencia in sugerencias:
-            if str(sugerencia.id) in persisted_ids:
-                continue
-            geometry = sugerencia.geometry or {}
-            for index, feature in enumerate(geometry.get("features", []), start=1):
-                if feature.get("geometry", {}).get("type") != "LineString":
-                    continue
-                properties = dict(feature.get("properties") or {})
-                properties.update(
-                    {
-                        "id": f"sugerencia-incorporada-{sugerencia.id}-{index}",
-                        "name": sugerencia.titulo,
-                        "source": "sugerencia_incorporada",
-                        "sugerencia_id": str(sugerencia.id),
-                    }
-                )
-                features.append(
-                    {
-                        "type": "Feature",
-                        "geometry": feature.get("geometry"),
-                        "properties": properties,
-                    }
-                )
-
-        return {"type": "FeatureCollection", "features": features}
 
     # ── ANALYSES ───────────────────────────────
 
