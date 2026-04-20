@@ -13,8 +13,8 @@ import {
   buildAgroPresentadaLinePaint,
   buildAgroZonasFillPaint,
   buildAgroZonasLinePaint,
-  buildBpaFillPaint,
-  buildBpaLinePaint,
+  buildBpaHistoricoFillPaint,
+  buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
 
@@ -347,12 +347,20 @@ function raisePilarVerdeStack(map: maplibregl.Map) {
   }
 }
 
-export function syncBpaLayer(
+/**
+ * Sync the unified historical BPA layer (Phase 7).
+ *
+ * Replaces the old single-year `syncBpaLayer`. Source data comes from
+ * `bpa_historico.geojson` (one feature per parcel with `años_bpa >= 1`);
+ * fill uses a gradient expression on `años_bpa` so the user can read
+ * commitment depth at a glance.
+ */
+export function syncBpaHistoricoLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
   isVisible: boolean,
 ) {
-  const id = SOURCE_IDS.PILAR_VERDE_BPA;
+  const id = SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
 
   if (!map.getLayer(`${id}-fill`)) {
@@ -360,7 +368,7 @@ export function syncBpaLayer(
       id: `${id}-fill`,
       type: 'fill',
       source: id,
-      paint: buildBpaFillPaint(),
+      paint: buildBpaHistoricoFillPaint(),
     });
   }
 
@@ -369,14 +377,14 @@ export function syncBpaLayer(
       id: `${id}-line`,
       type: 'line',
       source: id,
-      paint: buildBpaLinePaint(),
+      paint: buildBpaHistoricoLinePaint(),
     });
   }
 
   setLayerVisibility(map, `${id}-fill`, isVisible);
   setLayerVisibility(map, `${id}-line`, isVisible);
 
-  // BPA is topmost → hoist the full Pilar Verde stack in z-order.
+  // BPA historical is topmost → hoist the full Pilar Verde stack in z-order.
   raisePilarVerdeStack(map);
 }
 

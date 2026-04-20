@@ -150,23 +150,19 @@ def compute_bpa_kpis(
             superficie_total += sup_catastro
     superficie_total = _round1(superficie_total)
 
-    ranking = compute_practicas_ranking(parcels)
-    # Top adoptada / no adoptada: ranking is sorted desc → first / last.
-    top_adoptada = ranking[0] if ranking else {"nombre": "", "adopcion_pct": 0}
-    top_no_adoptada = ranking[-1] if ranking else {"nombre": "", "adopcion_pct": 0}
-
     if zona_superficie_ha > 0:
         cobertura_pct = _round1(superficie_total / zona_superficie_ha * 100)
     else:
         cobertura_pct = 0
 
+    # Phase 7 refinement (schema 1.2) — ``practica_top_adoptada``,
+    # ``practica_top_no_adoptada`` and ``practicas_ranking`` dropped per user
+    # feedback (not actionable for the widget). ``compute_practicas_ranking``
+    # stays exported for downstream consumers / future rehydration.
     block: dict[str, Any] = {
         "explotaciones_activas": len(active),
         "superficie_total_ha": superficie_total,
         "cobertura_pct_zona": cobertura_pct,
-        "practica_top_adoptada": top_adoptada,
-        "practica_top_no_adoptada": top_no_adoptada,
-        "practicas_ranking": ranking,
         "ejes_distribucion": compute_ejes_distribucion(parcels),
     }
     # Phase 0 addendum — schema v1.1 (additive): historical-coverage KPIs.

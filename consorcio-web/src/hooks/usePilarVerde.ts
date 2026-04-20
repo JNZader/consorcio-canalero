@@ -26,6 +26,7 @@ import type {
   AggregatesFile,
   Bpa2025FeatureCollection,
   BpaEnrichedFile,
+  BpaHistoricoFeatureCollection,
   BpaHistoryFile,
   PilarVerdeData,
   PorcentajeForestacionFeatureCollection,
@@ -36,6 +37,7 @@ import type {
 export const PILAR_VERDE_PUBLIC_PATHS = {
   zonaAmpliada: '/capas/pilar-verde/zona_ampliada.geojson',
   bpa2025: '/capas/pilar-verde/bpa_2025.geojson',
+  bpaHistorico: '/capas/pilar-verde/bpa_historico.geojson',
   agroAceptada: '/capas/pilar-verde/agro_aceptada.geojson',
   agroPresentada: '/capas/pilar-verde/agro_presentada.geojson',
   agroZonas: '/capas/pilar-verde/agro_zonas.geojson',
@@ -64,6 +66,7 @@ async function loadAllPilarVerde(): Promise<PilarVerdeData> {
   const out: PilarVerdeData = {
     zonaAmpliada: null,
     bpa2025: null,
+    bpaHistorico: null,
     agroAceptada: null,
     agroPresentada: null,
     agroZonas: null,
@@ -97,6 +100,9 @@ function assignSlot(
       return;
     case 'bpa2025':
       data.bpa2025 = value as Bpa2025FeatureCollection;
+      return;
+    case 'bpaHistorico':
+      data.bpaHistorico = value as BpaHistoricoFeatureCollection;
       return;
     case 'agroAceptada':
       data.agroAceptada = value as AgroAceptadaFeatureCollection;

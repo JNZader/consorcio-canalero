@@ -96,7 +96,7 @@ function buildCatastroFeatureWithCuenta(cuenta: string): Feature {
 /** A fully populated enriched record — `bpa_2025` non-null. */
 function buildBpaEnriched(cuenta: string, name: string): BpaEnrichedFile {
   return {
-    schema_version: '1.0',
+    schema_version: '1.2',
     generated_at: '2026-04-20T05:37:59Z',
     source: 'IDECor',
     parcels: [
@@ -140,6 +140,8 @@ function buildBpaEnriched(cuenta: string, name: string): BpaEnrichedFile {
           },
         },
         bpa_historico: {},
+        años_bpa: 1,
+        años_lista: ['2025'],
       },
     ],
   };
@@ -153,6 +155,23 @@ function buildBpaHistory(cuenta: string, years: string[]): BpaHistoryFile {
     generated_at: '2026-04-20T05:37:59Z',
     history: { [cuenta]: entry },
   };
+}
+
+function buildBpaEnrichedWithHistory(
+  cuenta: string,
+  name: string,
+  historyYears: string[],
+): BpaEnrichedFile {
+  const enriched = buildBpaEnriched(cuenta, name);
+  const historico: Record<string, string> = {};
+  for (const y of historyYears) historico[y] = name;
+  enriched.parcels[0] = {
+    ...enriched.parcels[0],
+    bpa_historico: historico,
+    años_bpa: historyYears.length + 1, // +1 for the 2025 record
+    años_lista: [...historyYears, '2025'].sort(),
+  };
+  return enriched;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,21 +208,26 @@ describe('<InfoPanel /> BPA branch', () => {
     expect(screen.getByText('La Sentina')).toBeInTheDocument();
   });
 
-  it('wires histórico years into BpaCard when bpaHistory has an entry for the cuenta', () => {
+  it('wires histórico years into BpaCard when enriched parcel has años_lista (Phase 7)', () => {
     const feature = buildCatastroFeatureWithCuenta('150115736126');
-    const bpaEnriched = buildBpaEnriched('150115736126', 'La Sentina');
-    const bpaHistory = buildBpaHistory('150115736126', ['2019', '2020', '2024']);
+    // Enriched parcel with historical years + 2025 active.
+    const bpaEnriched = buildBpaEnrichedWithHistory('150115736126', 'La Sentina', [
+      '2019',
+      '2020',
+      '2024',
+    ]);
 
     renderWithMantine(
       <InfoPanel
         feature={feature}
         onClose={() => {}}
         bpaEnriched={bpaEnriched}
-        bpaHistory={bpaHistory}
       />,
     );
-    const footer = screen.getByText(/En BPA:/i);
-    expect(footer.textContent).toMatch(/2019.*2020.*2024/);
+    const line = screen.getByTestId('bpa-card-anios');
+    // Phase 7 label: "Hizo BPA: 2019, 2020, 2024, 2025 (4 años)"
+    expect(line.textContent).toContain('2019, 2020, 2024, 2025');
+    expect(line.textContent).toContain('(4 años)');
   });
 
   it('falls back to the generic property-dump branch when no BPA match exists', () => {
@@ -222,10 +246,10 @@ describe('<InfoPanel /> BPA branch', () => {
     expect(screen.getByText('Canal Este')).toBeInTheDocument();
   });
 
-  it('falls back to the generic branch when cuenta exists but enriched parcel has bpa_2025 === null', () => {
+  it('falls back to the generic branch when cuenta exists but años_bpa === 0', () => {
     const feature = buildCatastroFeatureWithCuenta('999999999999');
     const bpaEnriched: BpaEnrichedFile = {
-      schema_version: '1.0',
+      schema_version: '1.2',
       generated_at: '2026-04-20T05:37:59Z',
       source: 'IDECor',
       parcels: [
@@ -239,6 +263,8 @@ describe('<InfoPanel /> BPA branch', () => {
           ley_forestal: 'no_inscripta',
           bpa_2025: null,
           bpa_historico: {},
+          años_bpa: 0,
+          años_lista: [],
         },
       ],
     };

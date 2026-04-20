@@ -2,52 +2,45 @@
  * BpaCard.tsx
  *
  * Pilar Verde BPA info card — rendered inside `<InfoPanel>` when the selected
- * map feature is a 2025 BPA record (either directly, via `bpa_total` on the
- * feature, or indirectly via `nro_cuenta` matching the enriched catastro join).
+ * map feature belongs to the historical BPA series (Phase 7 refinement).
  *
- * Layout (per spec § "InfoPanel BPA Branch" — option B, flat, no eje grouping):
- *   Header        n_explotacion + cuenta + superficie (ha)
- *   EjeBadges     4 colored axis badges (Persona / Planeta / Prosperidad / Alianza)
- *   PracticaChips single flat list of 21 chips sorted ALPHABETICALLY
- *                 green filled when "Si", gray outlined when "No"
- *   Histórico     optional single row: "En BPA: 2019, 2020, 2024"
- *   Attribution   "Datos: IDECor — Gobierno de Córdoba"
+ * Simplified layout per user feedback (post Phase 6 verification):
+ *   Header   n_explotacion + "Cuenta {nro_cuenta} · {superficie} ha · Activa 2025"
+ *   History  "Hizo BPA: 2019, 2020, 2025 (3 años)"
+ *   Pilares  4 colored axis badges (Persona / Planeta / Prosperidad / Alianza)
+ *            (only rendered when `bpa` is provided — historical-only parcels
+ *             don't carry ejes/practicas data)
+ *   Prácticas  Compact list of ADOPTED practices only ("Si" flag), "·"-joined.
+ *              Falls back to "No adoptó prácticas" when the parcel has none
+ *              (or when `bpa` is null).
+ *   Footer    "Datos: IDECor — Gobierno de Córdoba"
  *
- * Data flow: the component is PROP-DRIVEN — it does NOT call `usePilarVerde()`.
- * The caller (InfoPanel) gathers all data and passes it down. This keeps
- * `<BpaCard>` reusable in stories / snapshots and trivial to unit-test.
+ * Why simplified: the previous 21-chip flat list was noisy and the "No" chips
+ * added no information users cared about. Folded into a single "Prácticas que
+ * cumple" line.
  *
- * Data attributes for testability:
- *   - `data-eje={key}`   + `data-eje-color={hex}` on each axis badge
- *   - `data-practica-chip` + `data-practica-key={key}` + `data-adopted={true|false}`
- *     on every chip
- *
- * Spanish (Rioplatense) strings ONLY — no i18n system in v1 per spec.
+ * Prop contract:
+ *   - `nombre`        : string shown as the title
+ *   - `cuenta`        : parcel ID for the header line
+ *   - `superficie_ha` : optional — falls back to `bpa.superficie_bpa` when bpa is set
+ *   - `años_bpa` / `años_lista` : optional — from bpa_historico feature or enriched parcel
+ *   - `bpa_activa_2025`         : optional — whether the parcel is in the 2025 series
+ *   - `bpa`           : optional Bpa2025EnrichedRecord — when present, ejes + practicas
+ *                        render
  */
 
-import { Badge, Chip, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import { Badge, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
 
-import {
-  humanizePractica,
-  PRACTICAS_SORTED,
-  sortPracticasByAdopcion as _unused_sortPracticasByAdopcion,
-} from './bpaPracticas';
+import { humanizePractica } from './bpaPracticas';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import type {
   Bpa2025EnrichedRecord,
   BpaEjeKey,
+  PilarVerdePracticaKey,
 } from '../../types/pilarVerde';
+import { PILAR_VERDE_PRACTICA_KEYS } from '../../types/pilarVerde';
 
-// `sortPracticasByAdopcion` stays imported so the refactor path remains obvious
-// and Stryker still targets it. Keeping it referenced here (as `_unused_*`)
-// would trip biome's `noUnusedImports` — we explicitly re-export instead.
-export { _unused_sortPracticasByAdopcion as sortPracticasByAdopcion };
-
-/**
- * Ordered list of the 4 ejes rendered in the top band. Fixed order — the badge
- * row is not sortable. Matches the spec screenshots.
- */
 const EJES_ORDERED: readonly BpaEjeKey[] = ['persona', 'planeta', 'prosperidad', 'alianza'] as const;
 
 const EJE_COLOR_BY_KEY: Record<BpaEjeKey, string> = {
@@ -65,19 +58,23 @@ const EJE_LABEL_BY_KEY: Record<BpaEjeKey, string> = {
 };
 
 export interface BpaCardProps {
-  readonly bpa: Bpa2025EnrichedRecord;
-  /** Cuenta (id parcelario) — displayed in the header next to superficie. */
+  /** Display name — either 2025 `n_explotacion` or historical fallback. */
+  readonly nombre: string;
   readonly cuenta: string;
-  /** Optional map of year → n_explotacion. When present, a histórico row renders. */
-  readonly historico?: Record<string, string>;
-  /** Optional superficie (ha) — if absent, falls back to `bpa.superficie_bpa`. */
-  readonly superficie_ha?: number;
+  readonly superficie_ha?: number | null;
+  /** Commitment depth (0..7) — rendered as "(N años)". */
+  readonly años_bpa?: number;
+  /** Sorted year list — rendered comma-joined. */
+  readonly años_lista?: readonly string[];
+  /** True iff the parcel appears in bpa_2025. */
+  readonly bpa_activa_2025?: boolean;
+  /**
+   * Full 2025 BPA record. When present, ejes badges + adopted-practicas list
+   * render. When absent (historical-only parcels), those sections collapse.
+   */
+  readonly bpa?: Bpa2025EnrichedRecord | null;
 }
 
-/**
- * Internal — renders the 4 axis badges. Extracted as per Task 3.2 REFACTOR
- * note so `<BpaCard>` body stays readable.
- */
 function EjeBadges({ bpa }: { bpa: Bpa2025EnrichedRecord }) {
   return (
     <Group gap="xs" wrap="wrap" aria-label="Ejes de la BPA">
@@ -108,67 +105,81 @@ function EjeBadges({ bpa }: { bpa: Bpa2025EnrichedRecord }) {
 }
 
 /**
- * Format the histórico map as a single Spanish row:
- *   "En BPA: 2019, 2020, 2024"
- * Years are sorted ASCENDING. Returns `null` if the map is empty / absent.
+ * Extract the adopted practicas from a 2025 record, keeping the keys that
+ * flag as "Si". Returns an empty array when `bpa` is null.
  */
-function formatHistoricoYears(historico: Record<string, string> | undefined): string | null {
-  if (!historico) return null;
-  const years = Object.keys(historico).sort((a, b) => a.localeCompare(b));
-  if (years.length === 0) return null;
-  return years.join(', ');
+function adoptedPracticas(
+  bpa: Bpa2025EnrichedRecord | null | undefined,
+): PilarVerdePracticaKey[] {
+  if (!bpa) return [];
+  return PILAR_VERDE_PRACTICA_KEYS.filter((key) => bpa.practicas[key] === 'Si');
 }
 
 export const BpaCard = memo(function BpaCard({
-  bpa,
+  nombre,
   cuenta,
-  historico,
   superficie_ha,
+  años_bpa,
+  años_lista,
+  bpa_activa_2025,
+  bpa,
 }: BpaCardProps) {
-  const superficie = typeof superficie_ha === 'number' ? superficie_ha : bpa.superficie_bpa;
-  const historicoYears = formatHistoricoYears(historico);
+  const superficie =
+    typeof superficie_ha === 'number'
+      ? superficie_ha
+      : typeof bpa?.superficie_bpa === 'number'
+        ? bpa.superficie_bpa
+        : null;
+  // Phase 7 prefers the explicit `bpa_activa_2025` flag; otherwise infer from
+  // the presence of a 2025 record.
+  const isActiva2025 = typeof bpa_activa_2025 === 'boolean' ? bpa_activa_2025 : bpa !== null && bpa !== undefined;
+  const adoptadas = adoptedPracticas(bpa);
+  const anioslistStr = (años_lista ?? []).join(', ');
+  const totalPracticas = PILAR_VERDE_PRACTICA_KEYS.length;
 
   return (
     <Stack gap="xs" data-testid="bpa-card">
       <Stack gap={2}>
-        <Title order={5}>{bpa.n_explotacion}</Title>
+        <Title order={5}>{nombre || `Cuenta ${cuenta}`}</Title>
         <Text size="xs" c="dimmed">
-          Cuenta {cuenta} · {superficie.toFixed(1)} ha
+          Cuenta {cuenta}
+          {superficie !== null && ` · ${superficie.toFixed(1)} ha`}
+          {` · ${isActiva2025 ? 'Activa 2025' : 'Sin actividad 2025'}`}
         </Text>
       </Stack>
 
-      <EjeBadges bpa={bpa} />
-
-      <Divider />
-
-      <Text size="sm" fw={500}>
-        Prácticas
-      </Text>
-      <Group gap={4} wrap="wrap" aria-label="Prácticas BPA">
-        {PRACTICAS_SORTED.map((key) => {
-          const adopted = bpa.practicas[key] === 'Si';
-          return (
-            <Chip
-              key={key}
-              size="xs"
-              checked={adopted}
-              readOnly
-              color={adopted ? 'teal' : 'gray'}
-              variant={adopted ? 'filled' : 'outline'}
-              data-practica-chip
-              data-practica-key={key}
-              data-adopted={adopted ? 'true' : 'false'}
-            >
-              {humanizePractica(key)}
-            </Chip>
-          );
-        })}
-      </Group>
-
-      {historicoYears && (
-        <Text size="xs" c="dimmed">
-          En BPA: {historicoYears}
+      {anioslistStr && (
+        <Text size="sm" data-testid="bpa-card-anios">
+          <Text component="span" fw={500}>
+            Hizo BPA:
+          </Text>{' '}
+          {anioslistStr}
+          {typeof años_bpa === 'number' ? ` (${años_bpa} ${años_bpa === 1 ? 'año' : 'años'})` : ''}
         </Text>
+      )}
+
+      {bpa && (
+        <>
+          <Divider />
+          <Text size="sm" fw={500}>
+            Pilares
+          </Text>
+          <EjeBadges bpa={bpa} />
+
+          <Divider />
+          <Text size="sm" fw={500}>
+            Prácticas que cumple
+          </Text>
+          {adoptadas.length === 0 ? (
+            <Text size="sm" c="dimmed" data-testid="bpa-card-sin-practicas">
+              No adoptó prácticas
+            </Text>
+          ) : (
+            <Text size="sm" data-testid="bpa-card-practicas-adoptadas">
+              {adoptadas.map(humanizePractica).join(' · ')} ({adoptadas.length}/{totalPracticas})
+            </Text>
+          )}
+        </>
       )}
 
       <Text size="xs" c="dimmed">

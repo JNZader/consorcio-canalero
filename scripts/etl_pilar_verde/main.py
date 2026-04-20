@@ -40,6 +40,7 @@ from scripts.etl_pilar_verde.constants import (
     AGRO_PRESENTADA,
     AGRO_ZONAS,
     AGRO_ZONAS_SIMPLIFY_TOLERANCE,
+    BPA_ENRICHED_SCHEMA_VERSION,
     BPA_LAYERS,
     CATASTRO_SOURCE,
     CRS_IDECOR,
@@ -59,6 +60,7 @@ from scripts.etl_pilar_verde.join import build_bpa_history, join_bpa
 from scripts.etl_pilar_verde.kml import kml_to_geojson
 from scripts.etl_pilar_verde.wfs import fetch_layer
 from scripts.etl_pilar_verde.writers import (
+    build_bpa_historico_features,
     geojson_bbox,
     simplify_features,
     thin_properties,
@@ -290,6 +292,7 @@ def run_etl(
             ),
             "parcels": enriched_parcels,
         },
+        schema_version=BPA_ENRICHED_SCHEMA_VERSION,
         generated_at=generated_at,
     )
     write_json(
@@ -301,6 +304,18 @@ def run_etl(
         outputs["aggregates"],
         aggregates_payload,
         schema_version=AGGREGATES_SCHEMA_VERSION,
+        generated_at=generated_at,
+    )
+
+    # Phase 7 — unified historical BPA layer (one feature per parcel with
+    # años_bpa >= 1, colored by commitment depth on the map).
+    bpa_historico = build_bpa_historico_features(enriched_parcels, catastro_features)
+    write_geojson(
+        outputs["bpa_historico"],
+        bpa_historico.get("features") or [],
+        source=(
+            "Catastro rural + bpa_2025 + bpa historical series (2019-2024) — joined"
+        ),
         generated_at=generated_at,
     )
 

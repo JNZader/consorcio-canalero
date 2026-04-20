@@ -112,15 +112,17 @@ class TestComputeBpaKpis:
         kpis = compute_bpa_kpis(enriched_parcels, zona_superficie_ha=0)
         assert kpis["cobertura_pct_zona"] == 0
 
-    def test_practica_top_adoptada_matches_ranking_first(self, enriched_parcels):
-        kpis = compute_bpa_kpis(enriched_parcels, zona_superficie_ha=88307.3)
-        first = kpis["practicas_ranking"][0]
-        assert kpis["practica_top_adoptada"] == first
+    def test_deprecated_fields_are_dropped(self, enriched_parcels):
+        """Phase 7 refinement — the 3 ranking-driven fields leave schema 1.2.
 
-    def test_practica_top_no_adoptada_matches_ranking_last(self, enriched_parcels):
+        User feedback: "top practica adoptada / no adoptada" and the full
+        ranking are not actionable for the widget consumers. Drop them from
+        aggregates.json entirely (schema 1.1 → 1.2).
+        """
         kpis = compute_bpa_kpis(enriched_parcels, zona_superficie_ha=88307.3)
-        last = kpis["practicas_ranking"][-1]
-        assert kpis["practica_top_no_adoptada"] == last
+        assert "practica_top_adoptada" not in kpis
+        assert "practica_top_no_adoptada" not in kpis
+        assert "practicas_ranking" not in kpis
 
 
 class TestComputeZonasAgroforestalesIntersect:

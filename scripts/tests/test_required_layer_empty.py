@@ -40,6 +40,7 @@ def _build_outputs(tmp_path: Path) -> dict[str, Path]:
         "agro_presentada": base_capas / "agro_presentada.geojson",
         "agro_zonas": base_capas / "agro_zonas.geojson",
         "porcentaje_forestacion": base_capas / "porcentaje_forestacion.geojson",
+        "bpa_historico": base_capas / "bpa_historico.geojson",
         "bpa_enriched": base_data / "bpa_enriched.json",
         "bpa_history": base_data / "bpa_history.json",
         "aggregates": base_data / "aggregates.json",
@@ -194,19 +195,23 @@ class TestRequiredLayerEmpty:
         )
 
         # bpa_enriched.json is a plain dict with schema_version at top level.
+        # Phase 7 bumped bpa_enriched 1.0 → 1.2 (added años_bpa + años_lista).
         enriched = json.loads(outputs["bpa_enriched"].read_text())
-        assert enriched["schema_version"] == "1.0"
+        assert enriched["schema_version"] == "1.2"
         assert enriched["generated_at"] == "2026-04-20T00:00:00Z"
         assert "parcels" in enriched
+        # Each parcel carries the new commitment-depth fields (v1.2).
+        for parcel in enriched["parcels"]:
+            assert "años_bpa" in parcel
+            assert "años_lista" in parcel
 
         aggregates = json.loads(outputs["aggregates"].read_text())
-        # Phase 0 addendum bumped aggregates.json to 1.1 (additive — 6 new
-        # historical KPIs + evolucion_anual under bpa). Other files stay at 1.0.
-        assert aggregates["schema_version"] == "1.1"
+        # Phase 7 bumped aggregates 1.1 → 1.2 (removed 3 ranking fields).
+        assert aggregates["schema_version"] == "1.2"
         assert "ley_forestal" in aggregates
         assert "bpa" in aggregates
-        # Historical KPIs must exist under bpa in v1.1 — even if empty.
         bpa = aggregates["bpa"]
+        # Historical KPIs (carried over from 1.1) must still exist.
         assert "cobertura_historica_count" in bpa
         assert "cobertura_historica_pct" in bpa
         assert "abandonaron_count" in bpa
@@ -218,12 +223,24 @@ class TestRequiredLayerEmpty:
         assert set(bpa["evolucion_anual"].keys()) == {
             "2019", "2020", "2021", "2022", "2023", "2024", "2025",
         }
+        # The 3 deprecated fields MUST be gone from schema 1.2.
+        assert "practica_top_adoptada" not in bpa
+        assert "practica_top_no_adoptada" not in bpa
+        assert "practicas_ranking" not in bpa
 
         # GeoJSON outputs have metadata nested.
         bpa_geo = json.loads(outputs["bpa_2025"].read_text())
         assert bpa_geo["type"] == "FeatureCollection"
         assert bpa_geo["metadata"]["schema_version"] == "1.0"
         assert len(bpa_geo["features"]) >= 1
+
+        # Phase 7 — unified historical BPA layer ships alongside bpa_2025.
+        bpa_hist_geo = json.loads(outputs["bpa_historico"].read_text())
+        assert bpa_hist_geo["type"] == "FeatureCollection"
+        assert bpa_hist_geo["metadata"]["schema_version"] == "1.0"
+        # In this test the fetcher returns the bpa_2025 fixture + no history,
+        # so every parcel with bpa_2025 → años_bpa=1 → one feature each.
+        assert isinstance(bpa_hist_geo["features"], list)
 
 
 class TestGrillaAggregatesWiring:

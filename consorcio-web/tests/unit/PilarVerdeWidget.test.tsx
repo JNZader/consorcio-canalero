@@ -61,18 +61,14 @@ describe('<PilarVerdeWidget />', () => {
     expect(row.textContent).toContain('6.097,3');
   });
 
-  it('renders the top adopted practice with humanized Spanish label', () => {
+  it('does NOT render the "top práctica adoptada" KPI (removed in Phase 7)', () => {
     renderWithMantine(<PilarVerdeWidget aggregates={AGG} />);
-    const row = screen.getByTestId('kpi-top-adoptada');
-    expect(row.textContent).toContain('Rotación de gramíneas');
-    expect(row.textContent).toContain('92,9%');
+    expect(screen.queryByTestId('kpi-top-adoptada')).not.toBeInTheDocument();
   });
 
-  it('renders the top NOT adopted practice with humanized Spanish label', () => {
+  it('does NOT render the "top práctica NO adoptada" KPI (removed in Phase 7)', () => {
     renderWithMantine(<PilarVerdeWidget aggregates={AGG} />);
-    const row = screen.getByTestId('kpi-top-no-adoptada');
-    expect(row.textContent).toContain('Sistema de terrazas');
-    expect(row.textContent).toContain('0,0%');
+    expect(screen.queryByTestId('kpi-top-no-adoptada')).not.toBeInTheDocument();
   });
 
   it('renders the historical one-liner with histórico + abandonaron + nunca', () => {

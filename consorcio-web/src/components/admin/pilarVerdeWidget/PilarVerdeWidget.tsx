@@ -9,12 +9,10 @@
  * and threads the slice into `<PilarVerdeWidget />`. AdminDashboard imports the
  * connected variant; tests import the raw one with inline props.
  *
- * Layout (per spec § "AdminDashboard Pilar Verde Widget"):
+ * Layout (Phase 7 refinement — dropped non-actionable ranking rows):
  *   Title         "Pilar Verde · Suelo y Agroforestal"
  *   KPI 1 & 2     Ley Forestal two-track: cumplen / no cumplen (parcelas + ha)
  *   KPI 3         BPA activos: explotaciones + superficie
- *   KPI 4         Top práctica adoptada (humanized ES label + %)
- *   KPI 5         Top práctica NO adoptada
  *   Histórico     ONE-LINER — "Histórico BPA: N (pct) · Abandonaron: M · Nunca: K"
  *   Footer        "Datos: IDECor 2025"
  *   CTA           <Anchor href="/mapa?pilarVerde=1">Ver mapa Pilar Verde →</Anchor>
@@ -36,7 +34,6 @@ import {
   computeBpaKpis,
   computeHistoricalKpis,
   computeLeyForestalKpis,
-  humanizePracticaLabel,
 } from './computeKpis';
 import { fmt } from './fmt';
 
@@ -85,10 +82,6 @@ export const PilarVerdeWidget = memo(function PilarVerdeWidget({
   const ley = computeLeyForestalKpis(aggregates.ley_forestal);
   const bpa = computeBpaKpis(aggregates.bpa);
   const hist = computeHistoricalKpis(aggregates.bpa);
-  const topAdoptadaLabel = humanizePracticaLabel(bpa.topAdoptada?.nombre);
-  const topNoAdoptadaLabel = humanizePracticaLabel(bpa.topNoAdoptada?.nombre);
-  const topAdoptadaPct = bpa.topAdoptada ? bpa.topAdoptada.pct : null;
-  const topNoAdoptadaPct = bpa.topNoAdoptada ? bpa.topNoAdoptada.pct : null;
 
   return (
     <Paper withBorder p="md" radius="md" data-testid="pilar-verde-widget">
@@ -114,20 +107,6 @@ export const PilarVerdeWidget = memo(function PilarVerdeWidget({
             BPA activos:
           </Text>{' '}
           {fmt(bpa.activas, 'explotaciones')} ({fmt(bpa.superficieHa, 'ha')})
-        </Text>
-
-        <Text size="sm" data-testid="kpi-top-adoptada">
-          <Text component="span" fw={600}>
-            Top práctica adoptada:
-          </Text>{' '}
-          {topAdoptadaLabel} ({fmt(topAdoptadaPct, '%')})
-        </Text>
-
-        <Text size="sm" data-testid="kpi-top-no-adoptada">
-          <Text component="span" fw={600}>
-            Top práctica NO adoptada:
-          </Text>{' '}
-          {topNoAdoptadaLabel} ({fmt(topNoAdoptadaPct, '%')})
         </Text>
 
         <Text size="sm" data-testid="kpi-historico">

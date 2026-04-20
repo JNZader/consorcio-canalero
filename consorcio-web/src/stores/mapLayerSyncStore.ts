@@ -21,9 +21,14 @@ interface SharedMapLayerActions {
  * These are wired into the map layer registry by Phase 2 (`map2dConfig.ts`).
  * Default visibility: all OFF — user toggles them on; the `?pv=1` URL param
  * flips all five on at mount time (handled by `useMapLayerEffects`).
+ *
+ * Phase 7: `pilar_verde_bpa` renamed to `pilar_verde_bpa_historico` — the
+ * single-year 2025 fill was replaced by a gradient on the full historical
+ * series (228 parcels instead of 70). The old `bpa_2025.geojson` file still
+ * ships for backwards compat but is no longer consumed by the map.
  */
 export const PILAR_VERDE_LAYER_IDS = [
-  'pilar_verde_bpa',
+  'pilar_verde_bpa_historico',
   'pilar_verde_agro_aceptada',
   'pilar_verde_agro_presentada',
   'pilar_verde_agro_zonas',
@@ -33,7 +38,7 @@ export const PILAR_VERDE_LAYER_IDS = [
 export type PilarVerdeLayerId = (typeof PILAR_VERDE_LAYER_IDS)[number];
 
 export const PILAR_VERDE_DEFAULT_VISIBILITY: Record<PilarVerdeLayerId, boolean> = {
-  pilar_verde_bpa: false,
+  pilar_verde_bpa_historico: false,
   pilar_verde_agro_aceptada: false,
   pilar_verde_agro_presentada: false,
   pilar_verde_agro_zonas: false,

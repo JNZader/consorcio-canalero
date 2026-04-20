@@ -49,7 +49,7 @@ describe('mapLayerSyncStore — Pilar Verde slots', () => {
 
   it('exposes the 5 expected Pilar Verde layer IDs', () => {
     expect(PILAR_VERDE_LAYER_IDS).toEqual([
-      'pilar_verde_bpa',
+      'pilar_verde_bpa_historico',
       'pilar_verde_agro_aceptada',
       'pilar_verde_agro_presentada',
       'pilar_verde_agro_zonas',
@@ -72,8 +72,8 @@ describe('mapLayerSyncStore — Pilar Verde slots', () => {
 
   it('setVectorVisibility flips a Pilar Verde layer ON for map2d', () => {
     const { setVectorVisibility } = useMapLayerSyncStore.getState();
-    setVectorVisibility('map2d', 'pilar_verde_bpa', true);
-    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.pilar_verde_bpa).toBe(true);
+    setVectorVisibility('map2d', 'pilar_verde_bpa_historico', true);
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.pilar_verde_bpa_historico).toBe(true);
     // Other Pilar Verde layers unchanged.
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.pilar_verde_agro_aceptada).toBe(false);
   });

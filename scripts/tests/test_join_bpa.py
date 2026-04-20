@@ -12,7 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.etl_pilar_verde.join import build_bpa_history, join_bpa
+from scripts.etl_pilar_verde.join import (
+    build_bpa_history,
+    compute_anios_bpa,
+    compute_anios_lista,
+    join_bpa,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -203,3 +208,104 @@ class TestBuildBpaHistory:
         # The spec says missing years MUST NOT appear as null.
         assert history["150115736126"] == {"2024": "La Sentina"}
         assert "2023" not in history["150115736126"]
+
+
+class TestComputeAniosBpa:
+    """Phase 7 refinement — commitment-depth KPIs per parcel.
+
+    ``años_bpa`` is the count of historical BPA years in which a parcel
+    appears (2019-2025 inclusive). Used by the frontend gradient fill to
+    visualize commitment depth at a glance.
+    """
+
+    def test_empty_historico_and_no_2025_is_zero(self):
+        assert compute_anios_bpa({}, has_2025=False) == 0
+
+    def test_only_2025_is_one(self):
+        assert compute_anios_bpa({}, has_2025=True) == 1
+
+    def test_three_years_including_2025(self):
+        # 2019, 2020 in historico + 2025 participation
+        historico = {"2019": "La Sentina", "2020": "La Sentina"}
+        assert compute_anios_bpa(historico, has_2025=True) == 3
+
+    def test_seven_years_max(self):
+        historico = {
+            "2019": "x",
+            "2020": "x",
+            "2021": "x",
+            "2022": "x",
+            "2023": "x",
+            "2024": "x",
+        }
+        assert compute_anios_bpa(historico, has_2025=True) == 7
+
+    def test_years_outside_range_ignored(self):
+        # Defensive: a stray year like "2018" should not inflate the count.
+        historico = {"2018": "x", "2019": "x"}
+        assert compute_anios_bpa(historico, has_2025=False) == 1
+
+
+class TestComputeAniosLista:
+    """``años_lista`` is the sorted ASCENDING list of year strings."""
+
+    def test_empty_historico_and_no_2025_returns_empty(self):
+        assert compute_anios_lista({}, has_2025=False) == []
+
+    def test_only_2025(self):
+        assert compute_anios_lista({}, has_2025=True) == ["2025"]
+
+    def test_sorted_ascending(self):
+        historico = {"2024": "x", "2019": "x", "2020": "x"}
+        assert compute_anios_lista(historico, has_2025=True) == [
+            "2019",
+            "2020",
+            "2024",
+            "2025",
+        ]
+
+    def test_no_duplicate_2025_when_present_in_historico(self):
+        # 2025 normally lives in bpa_2025 branch. If someone passes it in
+        # historico too, the helper must NOT emit it twice.
+        historico = {"2024": "x", "2025": "x"}
+        assert compute_anios_lista(historico, has_2025=True) == ["2024", "2025"]
+
+
+class TestJoinBpaEnrichedParcelShape:
+    """Phase 7 addendum — ensure ``años_bpa`` and ``años_lista`` live on each parcel."""
+
+    def test_enriched_parcel_has_anios_fields(self, catastro, bpa_2025, aceptada, presentada):
+        # Fabricate a tiny historical layer for one parcel to prove the wiring.
+        historical = {
+            2019: [
+                {
+                    "properties": {
+                        "cuenta": "150115736126",
+                        "n_explotacion": "La Sentina",
+                    }
+                }
+            ],
+            2020: [
+                {
+                    "properties": {
+                        "cuenta": "150115736126",
+                        "n_explotacion": "La Sentina",
+                    }
+                }
+            ],
+        }
+        parcels = join_bpa(
+            catastro, bpa_2025, aceptada, presentada, history_by_year=historical
+        )
+        la_sentina = next(p for p in parcels if p["nro_cuenta"] == "150115736126")
+        # bpa_2025 present in fixture → has_2025=True → 2019, 2020, 2025 → 3
+        assert la_sentina["años_bpa"] == 3
+        assert la_sentina["años_lista"] == ["2019", "2020", "2025"]
+
+    def test_parcel_without_any_bpa_has_zero_anios(
+        self, catastro, bpa_2025, aceptada, presentada
+    ):
+        parcels = join_bpa(catastro, bpa_2025, aceptada, presentada)
+        sin_bpa = next(p for p in parcels if p["nro_cuenta"] == "150115736700")
+        assert sin_bpa["años_bpa"] == 0
+        assert sin_bpa["años_lista"] == []

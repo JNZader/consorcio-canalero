@@ -16,7 +16,7 @@ import { usePilarVerde, PILAR_VERDE_PUBLIC_PATHS } from '../../src/hooks/usePila
 
 const minimalFC = { type: 'FeatureCollection', features: [] };
 const aggregatesSample = {
-  schema_version: '1.1',
+  schema_version: '1.2',
   generated_at: '2026-04-20T05:37:59Z',
   zona: { nombre: 'Z', superficie_ha: 1 },
   ley_forestal: {
@@ -39,9 +39,6 @@ const aggregatesSample = {
     nunca_count: 0,
     nunca_pct: 0,
     evolucion_anual: { '2019': 0, '2020': 0, '2021': 0, '2022': 0, '2023': 0, '2024': 0, '2025': 0 },
-    practica_top_adoptada: { nombre: 'rotacion_gramineas', adopcion_pct: 0 },
-    practica_top_no_adoptada: { nombre: 'sistema_terraza', adopcion_pct: 0 },
-    practicas_ranking: [],
     ejes_distribucion: { persona: 0, planeta: 0, prosperidad: 0, alianza: 0 },
   },
   grilla_aggregates: {
@@ -54,7 +51,7 @@ const aggregatesSample = {
   zonas_agroforestales: [],
 };
 const bpaEnrichedSample = {
-  schema_version: '1.0',
+  schema_version: '1.2',
   generated_at: '2026-04-20T05:37:59Z',
   source: 's',
   parcels: [],
@@ -94,11 +91,12 @@ function setHappyPath() {
 }
 
 describe('usePilarVerde', () => {
-  it('exposes the 9 expected public asset paths in PILAR_VERDE_PUBLIC_PATHS', () => {
+  it('exposes the 10 expected public asset paths in PILAR_VERDE_PUBLIC_PATHS (incl. bpa_historico)', () => {
     expect(Object.keys(PILAR_VERDE_PUBLIC_PATHS)).toEqual(
       expect.arrayContaining([
         'zonaAmpliada',
         'bpa2025',
+        'bpaHistorico',
         'agroAceptada',
         'agroPresentada',
         'agroZonas',
@@ -108,7 +106,7 @@ describe('usePilarVerde', () => {
         'aggregates',
       ]),
     );
-    expect(Object.keys(PILAR_VERDE_PUBLIC_PATHS)).toHaveLength(9);
+    expect(Object.keys(PILAR_VERDE_PUBLIC_PATHS)).toHaveLength(10);
     // All paths point under the static public folder
     for (const p of Object.values(PILAR_VERDE_PUBLIC_PATHS)) {
       expect(p.startsWith('/capas/pilar-verde/') || p.startsWith('/data/pilar-verde/')).toBe(true);
@@ -124,12 +122,12 @@ describe('usePilarVerde', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('fires 9 parallel fetches against the expected paths', async () => {
+  it('fires 10 parallel fetches against the expected paths', async () => {
     setHappyPath();
     const wrapper = createQueryWrapper();
     const { result } = renderHook(() => usePilarVerde(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(mockFetch).toHaveBeenCalledTimes(9);
+    expect(mockFetch).toHaveBeenCalledTimes(10);
     const calledUrls = mockFetch.mock.calls.map((c) => c[0]);
     for (const expected of Object.values(PILAR_VERDE_PUBLIC_PATHS)) {
       expect(calledUrls).toContain(expected);
@@ -142,8 +140,8 @@ describe('usePilarVerde', () => {
     const { result } = renderHook(() => usePilarVerde(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).not.toBeNull();
-    expect(result.current.data?.aggregates?.schema_version).toBe('1.1');
-    expect(result.current.data?.bpaEnriched?.schema_version).toBe('1.0');
+    expect(result.current.data?.aggregates?.schema_version).toBe('1.2');
+    expect(result.current.data?.bpaEnriched?.schema_version).toBe('1.2');
     expect(result.current.data?.bpaHistory?.schema_version).toBe('1.0');
     expect(result.current.data?.bpa2025).toEqual(minimalFC);
     expect(result.current.error).toBeNull();

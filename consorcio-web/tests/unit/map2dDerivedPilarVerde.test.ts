@@ -22,14 +22,14 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
     });
 
     const ids = items.map((item) => item.id);
-    expect(ids).toContain('pilar_verde_bpa');
+    expect(ids).toContain('pilar_verde_bpa_historico');
     expect(ids).toContain('pilar_verde_agro_aceptada');
     expect(ids).toContain('pilar_verde_agro_presentada');
     expect(ids).toContain('pilar_verde_agro_zonas');
     expect(ids).toContain('pilar_verde_porcentaje_forestacion');
 
     const labelFor = (id: string) => items.find((item) => item.id === id)?.label;
-    expect(labelFor('pilar_verde_bpa')).toBe('BPA 2025');
+    expect(labelFor('pilar_verde_bpa_historico')).toBe('BPA histórico (por años)');
     expect(labelFor('pilar_verde_agro_aceptada')).toBe('Agroforestal: Cumplen');
     expect(labelFor('pilar_verde_agro_presentada')).toBe('Agroforestal: Presentaron');
     expect(labelFor('pilar_verde_agro_zonas')).toBe('Zonas Agroforestales');
@@ -47,7 +47,7 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
     });
 
     const ids = items.map((item) => item.id);
-    expect(ids).not.toContain('pilar_verde_bpa');
+    expect(ids).not.toContain('pilar_verde_bpa_historico');
     expect(ids).not.toContain('pilar_verde_agro_aceptada');
     expect(ids).not.toContain('pilar_verde_agro_presentada');
     expect(ids).not.toContain('pilar_verde_agro_zonas');
@@ -63,6 +63,6 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
       isAdmin: false,
     });
     const ids = items.map((item) => item.id);
-    expect(ids).not.toContain('pilar_verde_bpa');
+    expect(ids).not.toContain('pilar_verde_bpa_historico');
   });
 });

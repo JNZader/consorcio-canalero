@@ -115,13 +115,21 @@ FORESTACION_KEEP_PROPS: Final[frozenset[str]] = frozenset(
 # Schema version / metadata
 # ---------------------------------------------------------------------------
 
-# Generic (per-file default) schema version — GeoJSON outputs, bpa_enriched,
-# bpa_history still live at 1.0 (no field changes).
+# Generic (per-file default) schema version — GeoJSON outputs still live at 1.0
+# (no property shape changes). ``bpa_enriched`` and ``aggregates`` each carry
+# their own version constant below because Phase 7 bumped both to 1.2.
 SCHEMA_VERSION: Final[str] = "1.0"
 
-# aggregates.json bumped to 1.1 for the Phase 0 addendum (additive, backward-
-# compatible): 6 new historical-coverage KPIs + evolucion_anual under ``bpa``.
-AGGREGATES_SCHEMA_VERSION: Final[str] = "1.1"
+# Phase 7 refinement — aggregates.json schema 1.1 → 1.2:
+#   - REMOVED: practica_top_adoptada, practica_top_no_adoptada, practicas_ranking
+#   - Rest of the 1.1 contract unchanged (historical KPIs + evolucion_anual stay).
+AGGREGATES_SCHEMA_VERSION: Final[str] = "1.2"
+
+# Phase 7 refinement — bpa_enriched.json schema 1.0 → 1.2:
+#   - ADDED: años_bpa (int, commitment depth 0..7)
+#   - ADDED: años_lista (list[str], sorted ASC)
+#   - No removals, no renames.
+BPA_ENRICHED_SCHEMA_VERSION: Final[str] = "1.2"
 
 # ---------------------------------------------------------------------------
 # Coordinate reference systems
@@ -161,6 +169,9 @@ OUTPUT_FILES: Final[dict[str, Path]] = {
     "agro_presentada": OUT_CAPAS_DIR / "agro_presentada.geojson",
     "agro_zonas": OUT_CAPAS_DIR / "agro_zonas.geojson",
     "porcentaje_forestacion": OUT_CAPAS_DIR / "porcentaje_forestacion.geojson",
+    # Phase 7 — unified historical BPA layer (one feature per parcel with
+    # años_bpa >= 1, colored by commitment depth on the map).
+    "bpa_historico": OUT_CAPAS_DIR / "bpa_historico.geojson",
     "bpa_enriched": OUT_DATA_DIR / "bpa_enriched.json",
     "bpa_history": OUT_DATA_DIR / "bpa_history.json",
     "aggregates": OUT_DATA_DIR / "aggregates.json",

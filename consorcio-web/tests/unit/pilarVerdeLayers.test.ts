@@ -2,30 +2,36 @@
  * Unit tests for `pilarVerdeLayers` — the colocated registry of Pilar Verde
  * colors, z-order and MapLibre paint factories.
  *
- * These tests pin the public surface that Phase 2 sync helpers, map derived
- * state, and Phase 6 e2e will rely on. DEFAULT color choices are documented
- * in the module JSDoc — tests assert those defaults explicitly so a silent
- * change in palette breaks CI.
+ * Phase 7 refinement — the single-color BPA 2025 fill was replaced by a
+ * gradient driven by `años_bpa`. Colors are asserted as 4 explicit stop hex
+ * values, and the fill paint uses a MapLibre `interpolate` expression.
  */
 import { describe, expect, it } from 'vitest';
 
 import {
   PILAR_VERDE_COLORS,
   PILAR_VERDE_Z_ORDER,
-  buildBpaFillPaint,
-  buildBpaLinePaint,
   buildAgroAceptadaFillPaint,
   buildAgroAceptadaLinePaint,
   buildAgroPresentadaFillPaint,
   buildAgroPresentadaLinePaint,
   buildAgroZonasFillPaint,
   buildAgroZonasLinePaint,
+  buildBpaHistoricoFillPaint,
+  buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
 } from '../../src/components/map2d/pilarVerdeLayers';
 
 describe('pilarVerdeLayers · colors', () => {
-  it('exports the semantic DEFAULT color palette per spec', () => {
-    expect(PILAR_VERDE_COLORS.bpaFill).toBe('#FACC15');
+  it('exports the historical-gradient stop palette (Phase 7)', () => {
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop1).toBe('#BBF7D0');
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop3).toBe('#4ADE80');
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop5).toBe('#22C55E');
+    expect(PILAR_VERDE_COLORS.bpaHistoricoStop7).toBe('#15803D');
+    expect(PILAR_VERDE_COLORS.bpaHistoricoLine).toBe('#166534');
+  });
+
+  it('exports the semantic DEFAULT agro palette per spec', () => {
     expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#22C55E');
     expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#EF4444');
     expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#06B6D4');
@@ -47,12 +53,12 @@ describe('pilarVerdeLayers · z-order', () => {
       'pilar_verde_porcentaje_forestacion',
       'pilar_verde_agro_presentada',
       'pilar_verde_agro_aceptada',
-      'pilar_verde_bpa',
+      'pilar_verde_bpa_historico',
     ]);
   });
 
-  it('places bpa at the top so it wins click precedence over catastro', () => {
-    expect(PILAR_VERDE_Z_ORDER[PILAR_VERDE_Z_ORDER.length - 1]).toBe('pilar_verde_bpa');
+  it('places bpa_historico at the top so it wins click precedence over catastro', () => {
+    expect(PILAR_VERDE_Z_ORDER[PILAR_VERDE_Z_ORDER.length - 1]).toBe('pilar_verde_bpa_historico');
   });
 
   it('is a readonly tuple — length matches the 5 Pilar Verde layers', () => {
@@ -61,16 +67,29 @@ describe('pilarVerdeLayers · z-order', () => {
 });
 
 describe('pilarVerdeLayers · paint factories', () => {
-  it('bpa fill: amber/yellow @ 0.40 opacity', () => {
-    const paint = buildBpaFillPaint();
-    expect(paint['fill-color']).toBe('#FACC15');
-    expect(paint['fill-opacity']).toBe(0.4);
+  it('bpa_historico fill uses an interpolate expression on años_bpa', () => {
+    const paint = buildBpaHistoricoFillPaint();
+    expect(paint['fill-opacity']).toBe(0.45);
+    const fillColor = paint['fill-color'] as unknown as unknown[];
+    expect(Array.isArray(fillColor)).toBe(true);
+    expect(fillColor[0]).toBe('interpolate');
+    expect(fillColor[1]).toEqual(['linear']);
+    expect(fillColor[2]).toEqual(['get', 'años_bpa']);
+    // Stops 1, 3, 5, 7 with their matching colors.
+    expect(fillColor[3]).toBe(1);
+    expect(fillColor[4]).toBe('#BBF7D0');
+    expect(fillColor[5]).toBe(3);
+    expect(fillColor[6]).toBe('#4ADE80');
+    expect(fillColor[7]).toBe(5);
+    expect(fillColor[8]).toBe('#22C55E');
+    expect(fillColor[9]).toBe(7);
+    expect(fillColor[10]).toBe('#15803D');
   });
 
-  it('bpa line: amber 1.5 px', () => {
-    const paint = buildBpaLinePaint();
-    expect(paint['line-color']).toBe('#FACC15');
-    expect(paint['line-width']).toBe(1.5);
+  it('bpa_historico line: thin dark-green outline', () => {
+    const paint = buildBpaHistoricoLinePaint();
+    expect(paint['line-color']).toBe('#166534');
+    expect(paint['line-width']).toBe(0.5);
   });
 
   it('agro aceptada fill: green @ 0.30 opacity', () => {

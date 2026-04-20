@@ -20,12 +20,9 @@
 
 import type {
   AggregatesBpa,
-  AggregatesBpaPracticaRanking,
   AggregatesLeyForestal,
   BpaYear,
-  PilarVerdePracticaKey,
 } from '../../../types/pilarVerde';
-import { humanizePractica } from '../../map2d/bpaPracticas';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -35,12 +32,6 @@ import { humanizePractica } from '../../map2d/bpaPracticas';
 export interface KpiPair {
   readonly parcelas: number | null;
   readonly superficie_ha: number | null;
-}
-
-/** Null-safe mirror of `AggregatesBpaPracticaRanking` — `nombre` stays typed. */
-export interface TopPractica {
-  readonly nombre: PilarVerdePracticaKey;
-  readonly pct: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,29 +79,18 @@ export function computeLeyForestalKpis(
 export interface BpaKpis {
   readonly activas: number | null;
   readonly superficieHa: number | null;
-  readonly topAdoptada: TopPractica | null;
-  readonly topNoAdoptada: TopPractica | null;
 }
 
 const EMPTY_BPA: BpaKpis = {
   activas: null,
   superficieHa: null,
-  topAdoptada: null,
-  topNoAdoptada: null,
 };
-
-function projectTop(ranking: AggregatesBpaPracticaRanking | null | undefined): TopPractica | null {
-  if (!ranking) return null;
-  return { nombre: ranking.nombre, pct: ranking.adopcion_pct };
-}
 
 export function computeBpaKpis(slice: AggregatesBpa | null | undefined): BpaKpis {
   if (!slice) return EMPTY_BPA;
   return {
     activas: slice.explotaciones_activas,
     superficieHa: slice.superficie_total_ha,
-    topAdoptada: projectTop(slice.practica_top_adoptada),
-    topNoAdoptada: projectTop(slice.practica_top_no_adoptada),
   };
 }
 
@@ -168,16 +148,3 @@ export function computeHistoricalKpis(slice: AggregatesBpa | null | undefined): 
   };
 }
 
-// ---------------------------------------------------------------------------
-// humanizePracticaLabel
-// ---------------------------------------------------------------------------
-
-/**
- * Safe wrapper around `humanizePractica` for widget consumers. Returns the em
- * dash sentinel when the practice name slot is null/undefined (e.g. a bogus
- * aggregates.json with a missing `practica_top_adoptada.nombre`).
- */
-export function humanizePracticaLabel(key: PilarVerdePracticaKey | null | undefined): string {
-  if (!key) return '—';
-  return humanizePractica(key);
-}

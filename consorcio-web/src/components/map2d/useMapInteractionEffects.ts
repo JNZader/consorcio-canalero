@@ -31,7 +31,7 @@ interface UseMapInteractionEffectsParams {
 export function buildClickableLayers(): string[] {
   return [
     // ── Pilar Verde (top-most — wins click precedence on overlap) ──
-    `${SOURCE_IDS.PILAR_VERDE_BPA}-fill`,
+    `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`,
     `${SOURCE_IDS.PILAR_VERDE_AGRO_ACEPTADA}-fill`,
     `${SOURCE_IDS.PILAR_VERDE_AGRO_PRESENTADA}-fill`,
     // ── Existing clickable layers ──

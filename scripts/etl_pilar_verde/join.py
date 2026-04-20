@@ -23,6 +23,45 @@ logger = logging.getLogger(__name__)
 M2_TO_HA: float = 1.0 / 10_000.0
 
 
+#: Historical BPA year window — 2019..2025 inclusive.  Used by the commitment-
+#: depth helpers (``compute_anios_bpa`` / ``compute_anios_lista``) so a stray
+#: year outside this range (bad IDECor row) never inflates the count.
+BPA_HISTORICAL_YEARS: tuple[str, ...] = (
+    "2019",
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2024",
+    "2025",
+)
+
+
+def compute_anios_bpa(historico: dict[str, str], has_2025: bool) -> int:
+    """Count the years (2019..2025) in which a parcel participated in BPA.
+
+    ``historico`` is the parcel's ``bpa_historico`` map (year → n_explotacion).
+    ``has_2025`` flips in the 2025 participation tick — which lives in
+    ``bpa_2025`` on the enriched parcel, NOT in ``bpa_historico``.
+    """
+    years: set[str] = {y for y in (historico or {}) if y in BPA_HISTORICAL_YEARS}
+    if has_2025:
+        years.add("2025")
+    return len(years)
+
+
+def compute_anios_lista(historico: dict[str, str], has_2025: bool) -> list[str]:
+    """Return the sorted ascending list of year strings (2019..2025).
+
+    Used by the BPA info card to render the literal "Hizo BPA: 2019, 2020,
+    2025" line without client-side sorting / dedupe.
+    """
+    years: set[str] = {y for y in (historico or {}) if y in BPA_HISTORICAL_YEARS}
+    if has_2025:
+        years.add("2025")
+    return sorted(years)
+
+
 def _m2_to_ha(raw: Any) -> float | None:
     """Convert raw IDECor m² to hectares.  Returns ``None`` when input is null.
 
@@ -143,6 +182,8 @@ def join_bpa(
             ley_forestal = "no_inscripta"
 
         bpa_block = _extract_bpa_block(bpa_index[cuenta]) if cuenta in bpa_index else None
+        historico = historico_index.get(cuenta, {})
+        has_2025 = bpa_block is not None
 
         parcels.append(
             {
@@ -155,7 +196,11 @@ def join_bpa(
                 "valuacion": props.get("Valuacion_Tierra_Rural"),
                 "ley_forestal": ley_forestal,
                 "bpa_2025": bpa_block,
-                "bpa_historico": historico_index.get(cuenta, {}),
+                "bpa_historico": historico,
+                # Phase 7 — commitment-depth fields for the unified historical
+                # map layer + simplified BpaCard.
+                "años_bpa": compute_anios_bpa(historico, has_2025),
+                "años_lista": compute_anios_lista(historico, has_2025),
             }
         )
 

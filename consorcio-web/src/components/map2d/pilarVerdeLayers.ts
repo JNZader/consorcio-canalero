@@ -46,7 +46,7 @@ export const PILAR_VERDE_Z_ORDER = [
   'pilar_verde_porcentaje_forestacion',
   'pilar_verde_agro_presentada',
   'pilar_verde_agro_aceptada',
-  'pilar_verde_bpa',
+  'pilar_verde_bpa_historico',
 ] as const satisfies readonly (typeof PILAR_VERDE_LAYER_IDS)[number][];
 
 export type PilarVerdeLayerId = (typeof PILAR_VERDE_Z_ORDER)[number];
@@ -61,8 +61,17 @@ export type PilarVerdeLayerId = (typeof PILAR_VERDE_Z_ORDER)[number];
  * live here so the whole Pilar Verde visual system is one import away.
  */
 export const PILAR_VERDE_COLORS = {
-  /** Top layer — BPA 2025 fill. Amber/yellow @ 0.40 opacity. */
-  bpaFill: '#FACC15',
+  /**
+   * Historical BPA gradient stops (by años_bpa 1..7).
+   * Pale green (sporadic) → dark green (fully committed).
+   * Kept as individual keys so the legend can render matching color chips.
+   */
+  bpaHistoricoStop1: '#BBF7D0', // 1 año — sporadic
+  bpaHistoricoStop3: '#4ADE80', // 3 años
+  bpaHistoricoStop5: '#22C55E', // 5 años
+  bpaHistoricoStop7: '#15803D', // 7 años — full commitment
+  /** Outline for the historical BPA layer (thin dark-green line). */
+  bpaHistoricoLine: '#166534',
   /** Agro-aceptada (compliant). Green @ 0.30 opacity. */
   agroAceptadaFill: '#22C55E',
   /** Agro-presentada (non-compliant). Red @ 0.30 opacity. */
@@ -92,20 +101,36 @@ export const PILAR_VERDE_COLORS = {
 type FillPaint = NonNullable<FillLayerSpecification['paint']>;
 type LinePaint = NonNullable<LineLayerSpecification['paint']>;
 
-/** BPA 2025 fill — topmost, most specific, amber/yellow. */
-export function buildBpaFillPaint(): FillPaint {
+/**
+ * BPA historical gradient fill — colored by ``años_bpa`` (1..7) using a
+ * MapLibre ``interpolate`` expression. Phase 7 replaces the single-color
+ * BPA 2025 fill.
+ */
+export function buildBpaHistoricoFillPaint(): FillPaint {
   return {
-    'fill-color': PILAR_VERDE_COLORS.bpaFill,
-    'fill-opacity': 0.4,
+    'fill-color': [
+      'interpolate',
+      ['linear'],
+      ['get', 'años_bpa'],
+      1,
+      PILAR_VERDE_COLORS.bpaHistoricoStop1,
+      3,
+      PILAR_VERDE_COLORS.bpaHistoricoStop3,
+      5,
+      PILAR_VERDE_COLORS.bpaHistoricoStop5,
+      7,
+      PILAR_VERDE_COLORS.bpaHistoricoStop7,
+    ],
+    'fill-opacity': 0.45,
   };
 }
 
-/** BPA 2025 line — amber outline. Matches fill color for visual cohesion. */
-export function buildBpaLinePaint(): LinePaint {
+/** BPA historical outline — thin dark-green stroke. */
+export function buildBpaHistoricoLinePaint(): LinePaint {
   return {
-    'line-color': PILAR_VERDE_COLORS.bpaFill,
-    'line-width': 1.5,
-    'line-opacity': 0.9,
+    'line-color': PILAR_VERDE_COLORS.bpaHistoricoLine,
+    'line-width': 0.5,
+    'line-opacity': 0.8,
   };
 }
 

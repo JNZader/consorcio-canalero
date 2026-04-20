@@ -209,8 +209,12 @@ export function buildVectorLayerItems(params: {
     { id: 'soil', label: 'Suelos IDECOR', show: true },
     { id: 'catastro', label: 'Catastro rural', show: true },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
-    // ── Pilar Verde (Phase 2) — Spanish (Rioplatense) labels per spec ──
-    { id: 'pilar_verde_bpa', label: 'BPA 2025', show: showPilarVerde },
+    // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
+    {
+      id: 'pilar_verde_bpa_historico',
+      label: 'BPA histórico (por años)',
+      show: showPilarVerde,
+    },
     { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen', show: showPilarVerde },
     { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron', show: showPilarVerde },
     { id: 'pilar_verde_agro_zonas', label: 'Zonas Agroforestales', show: showPilarVerde },

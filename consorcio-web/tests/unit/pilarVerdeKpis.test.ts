@@ -23,7 +23,6 @@ import {
   computeBpaKpis,
   computeHistoricalKpis,
   computeLeyForestalKpis,
-  humanizePracticaLabel,
 } from '../../src/components/admin/pilarVerdeWidget/computeKpis';
 import type { AggregatesBpa, AggregatesLeyForestal } from '../../src/types/pilarVerde';
 import pilarVerdeAggregatesFixture from '../fixtures/pilarVerdeAggregates';
@@ -83,20 +82,16 @@ describe('computeLeyForestalKpis()', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeBpaKpis()', () => {
-  it('returns explotaciones_activas, superficie, top adoptada/no-adoptada from the fixture', () => {
+  it('returns explotaciones_activas + superficie from the fixture (Phase 7 — ranking dropped)', () => {
     const kpis = computeBpaKpis(FIXTURE.bpa);
     expect(kpis.activas).toBe(70);
     expect(kpis.superficieHa).toBe(6097.3);
-    expect(kpis.topAdoptada).toEqual({ nombre: 'rotacion_gramineas', pct: 92.9 });
-    expect(kpis.topNoAdoptada).toEqual({ nombre: 'sistema_terraza', pct: 0.0 });
   });
 
   it('returns the sentinel shape when input is null', () => {
     const kpis = computeBpaKpis(null);
     expect(kpis.activas).toBeNull();
     expect(kpis.superficieHa).toBeNull();
-    expect(kpis.topAdoptada).toBeNull();
-    expect(kpis.topNoAdoptada).toBeNull();
   });
 
   it('returns the sentinel shape when input is undefined', () => {
@@ -171,21 +166,5 @@ describe('computeHistoricalKpis()', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// humanizePracticaLabel
-// ---------------------------------------------------------------------------
-
-describe('humanizePracticaLabel()', () => {
-  it('delegates to bpaPracticas.humanizePractica for known keys', () => {
-    expect(humanizePracticaLabel('rotacion_gramineas')).toBe('Rotación de gramíneas');
-    expect(humanizePracticaLabel('sistema_terraza')).toBe('Sistema de terrazas');
-  });
-
-  it('returns the em dash sentinel for null practice names', () => {
-    expect(humanizePracticaLabel(null)).toBe('—');
-  });
-
-  it('returns the em dash sentinel for undefined practice names', () => {
-    expect(humanizePracticaLabel(undefined)).toBe('—');
-  });
-});
+// Phase 7: `humanizePracticaLabel` was removed (widget no longer renders
+// per-practica labels). Kept tests intentionally dropped.

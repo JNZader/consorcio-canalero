@@ -1,15 +1,16 @@
 /**
  * BpaCard.test.tsx
  *
- * Component tests for the Pilar Verde BPA card rendered inside InfoPanel
- * when the selected feature represents a 2025 BPA record.
+ * Component tests for the Pilar Verde BPA card rendered inside InfoPanel.
  *
- * Spec reference: `sdd/pilar-verde-bpa-agroforestal/spec` § "InfoPanel BPA Branch"
- * (flat layout, no eje grouping, 4 axis badges + 21 chip single flat list).
+ * Phase 7 refinement — the card no longer renders 21 chips. Instead it shows:
+ *   - A header line with nombre + cuenta + "Activa 2025" / "Sin actividad 2025"
+ *   - A "Hizo BPA" line with the year list + total años count
+ *   - When a 2025 BPA record is present: 4 axis badges + a compact "Prácticas
+ *     que cumple" line listing only the adopted practicas (Si)
+ *   - IDECor attribution footer
  *
- * The card is rendered WITHOUT any context (no usePilarVerde, no route). All
- * data enters via props — this keeps testing straightforward and makes the
- * component reusable in stories / Playwright snapshots later.
+ * The card is prop-driven — all data enters through props, no context or hooks.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -78,9 +79,13 @@ describe('<BpaCard />', () => {
   it('renders the explotación name, cuenta and superficie in the header', () => {
     renderWithMantine(
       <BpaCard
-        bpa={buildBpa()}
+        nombre="La Sentina"
         cuenta="150115736126"
         superficie_ha={245.7}
+        años_bpa={3}
+        años_lista={['2019', '2020', '2025']}
+        bpa_activa_2025
+        bpa={buildBpa()}
       />,
     );
 
@@ -89,10 +94,62 @@ describe('<BpaCard />', () => {
     expect(screen.getByText(/245\.7/)).toBeInTheDocument();
   });
 
-  it('renders 4 axis badges with Persona / Planeta / Prosperidad / Alianza labels', () => {
-    renderWithMantine(<BpaCard bpa={buildBpa()} cuenta="150115736126" />);
+  it('renders "Activa 2025" marker in the header when bpa_activa_2025 is true', () => {
+    renderWithMantine(
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        superficie_ha={245.7}
+        años_bpa={1}
+        años_lista={['2025']}
+        bpa_activa_2025
+        bpa={buildBpa()}
+      />,
+    );
+    expect(screen.getByText(/Activa 2025/i)).toBeInTheDocument();
+  });
 
-    // Each badge has "Persona: Si" / "Planeta: Si" / "Prosperidad: No" / "Alianza: No"
+  it('renders "Sin actividad 2025" marker when bpa_activa_2025 is false', () => {
+    renderWithMantine(
+      <BpaCard
+        nombre="Los Olivos"
+        cuenta="900000000000"
+        años_bpa={2}
+        años_lista={['2019', '2020']}
+        bpa_activa_2025={false}
+      />,
+    );
+    expect(screen.getByText(/Sin actividad 2025/i)).toBeInTheDocument();
+  });
+
+  it('renders the "Hizo BPA" line with sorted years and total count', () => {
+    renderWithMantine(
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        años_bpa={3}
+        años_lista={['2019', '2020', '2025']}
+        bpa_activa_2025
+        bpa={buildBpa()}
+      />,
+    );
+    const line = screen.getByTestId('bpa-card-anios');
+    expect(line.textContent).toContain('2019, 2020, 2025');
+    expect(line.textContent).toContain('(3 años)');
+  });
+
+  it('renders 4 axis badges with Persona / Planeta / Prosperidad / Alianza labels when bpa is provided', () => {
+    renderWithMantine(
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        años_bpa={1}
+        años_lista={['2025']}
+        bpa_activa_2025
+        bpa={buildBpa()}
+      />,
+    );
+
     expect(screen.getByText(/Persona:\s*Si/i)).toBeInTheDocument();
     expect(screen.getByText(/Planeta:\s*Si/i)).toBeInTheDocument();
     expect(screen.getByText(/Prosperidad:\s*No/i)).toBeInTheDocument();
@@ -101,11 +158,13 @@ describe('<BpaCard />', () => {
 
   it('tags each axis badge with the spec color palette', () => {
     const { container } = renderWithMantine(
-      <BpaCard bpa={buildBpa()} cuenta="150115736126" />,
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        bpa={buildBpa()}
+      />,
     );
 
-    // We render axis badges with a deterministic `data-eje-color` attribute so
-    // CSS-in-JS inline styles remain testable without brittle style strings.
     const persona = container.querySelector('[data-eje="persona"]');
     const planeta = container.querySelector('[data-eje="planeta"]');
     const prosperidad = container.querySelector('[data-eje="prosperidad"]');
@@ -121,76 +180,59 @@ describe('<BpaCard />', () => {
     expect(alianza?.getAttribute('data-eje-color')).toBe(PILAR_VERDE_COLORS.ejeAlianza);
   });
 
-  it('renders all 21 practice chips in a single flat list (no eje grouping)', () => {
-    const { container } = renderWithMantine(
-      <BpaCard bpa={buildBpa()} cuenta="150115736126" />,
-    );
-
-    const chips = container.querySelectorAll('[data-practica-chip]');
-    expect(chips).toHaveLength(21);
-  });
-
-  it('renders practice chips sorted alphabetically — ag_tech first, trazabilidad last', () => {
-    const { container } = renderWithMantine(
-      <BpaCard bpa={buildBpa()} cuenta="150115736126" />,
-    );
-
-    const chips = container.querySelectorAll('[data-practica-chip]');
-    const firstKey = chips[0]?.getAttribute('data-practica-key');
-    const lastKey = chips[chips.length - 1]?.getAttribute('data-practica-key');
-    expect(firstKey).toBe('ag_tech');
-    expect(lastKey).toBe('trazabilidad');
-  });
-
-  it('marks adopted chips with data-adopted="true" and non-adopted with "false"', () => {
-    const { container } = renderWithMantine(
-      <BpaCard bpa={buildBpa()} cuenta="150115736126" />,
-    );
-
-    const adopted = container.querySelectorAll('[data-practica-chip][data-adopted="true"]');
-    const notAdopted = container.querySelectorAll(
-      '[data-practica-chip][data-adopted="false"]',
-    );
-    // fixture has 3 Si: capacitacion, rotacion_gramineas, nutricion_suelo
-    expect(adopted).toHaveLength(3);
-    expect(notAdopted).toHaveLength(18);
-  });
-
-  it('renders chip labels in Rioplatense Spanish (humanized)', () => {
-    renderWithMantine(<BpaCard bpa={buildBpa()} cuenta="150115736126" />);
-    expect(screen.getByText('Capacitación')).toBeInTheDocument();
-    expect(screen.getByText('Rotación de gramíneas')).toBeInTheDocument();
-    expect(screen.getByText('AgTech')).toBeInTheDocument();
-    expect(screen.getByText('Trazabilidad')).toBeInTheDocument();
-  });
-
-  it('renders the histórico footer with years sorted ascending when present', () => {
+  it('renders only ADOPTED practicas in the compact list', () => {
     renderWithMantine(
       <BpaCard
-        bpa={buildBpa()}
+        nombre="La Sentina"
         cuenta="150115736126"
-        historico={{ '2024': 'La Sentina', '2019': 'La Sentina', '2020': 'La Sentina' }}
+        bpa={buildBpa()}
       />,
     );
-    const footer = screen.getByText(/En BPA:/i);
-    expect(footer).toBeInTheDocument();
-    expect(footer.textContent).toMatch(/2019.*2020.*2024/);
+    const line = screen.getByTestId('bpa-card-practicas-adoptadas');
+    // 3 adopted: capacitacion, rotacion_gramineas, nutricion_suelo.
+    expect(line.textContent).toContain('Capacitación');
+    expect(line.textContent).toContain('Rotación de gramíneas');
+    expect(line.textContent).toContain('Nutrición del suelo');
+    expect(line.textContent).toContain('(3/21)');
+    // NOT adopted practices must not appear in the compact list.
+    expect(line.textContent).not.toContain('Trazabilidad');
+    expect(line.textContent).not.toContain('AgTech');
   });
 
-  it('HIDES the histórico footer when no historico prop is given', () => {
-    renderWithMantine(<BpaCard bpa={buildBpa()} cuenta="150115736126" />);
-    expect(screen.queryByText(/En BPA:/i)).not.toBeInTheDocument();
-  });
-
-  it('HIDES the histórico footer when historico is an empty object', () => {
+  it('shows "No adoptó prácticas" when all practicas are "No"', () => {
     renderWithMantine(
-      <BpaCard bpa={buildBpa()} cuenta="150115736126" historico={{}} />,
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        bpa={buildBpa({ practicas: buildPractices() })}
+      />,
     );
-    expect(screen.queryByText(/En BPA:/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('bpa-card-sin-practicas')).toBeInTheDocument();
+  });
+
+  it('HIDES ejes badges + practicas list when bpa prop is null (historical-only parcel)', () => {
+    renderWithMantine(
+      <BpaCard
+        nombre="Los Olivos"
+        cuenta="900000000000"
+        años_bpa={2}
+        años_lista={['2019', '2020']}
+        bpa_activa_2025={false}
+        bpa={null}
+      />,
+    );
+    expect(screen.queryByText(/Persona:/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bpa-card-practicas-adoptadas')).not.toBeInTheDocument();
   });
 
   it('renders IDECor attribution footer', () => {
-    renderWithMantine(<BpaCard bpa={buildBpa()} cuenta="150115736126" />);
+    renderWithMantine(
+      <BpaCard
+        nombre="La Sentina"
+        cuenta="150115736126"
+        bpa={buildBpa()}
+      />,
+    );
     expect(
       screen.getByText(/Datos:\s*IDECor.*Gobierno de Córdoba/i),
     ).toBeInTheDocument();

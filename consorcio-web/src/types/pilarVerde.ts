@@ -6,9 +6,11 @@
  *   - consorcio-web/public/data/pilar-verde/*.json      (three flat JSON files)
  *
  * Schemas (verified against real ETL outputs on 2026-04-20):
- *   - bpa_enriched.json  : schema_version "1.0"
- *   - bpa_history.json   : schema_version "1.0"
- *   - aggregates.json    : schema_version "1.1"  (+6 historical KPIs + evolucion_anual)
+ *   - bpa_enriched.json     : schema_version "1.2"  (+años_bpa + años_lista)
+ *   - bpa_history.json      : schema_version "1.0"
+ *   - aggregates.json       : schema_version "1.2"  (−3 ranking fields)
+ *   - bpa_historico.geojson : Phase 7 unified historical BPA layer
+ *                              (feature per parcel with años_bpa >= 1)
  *
  * Real-data quirks documented inline:
  *   - `bpa_2025.bpa_total` is emitted as a STRING (e.g. "2") in bpa_enriched.json,
@@ -161,10 +163,15 @@ export interface ParcelEnriched {
   bpa_2025: Bpa2025EnrichedRecord | null;
   /** Map of year → `n_explotacion`. Empty object if no historical record exists. */
   bpa_historico: Record<string, string>;
+  // ── Phase 7 — commitment-depth (schema 1.2) ──
+  /** Count of BPA years (2019..2025) the parcel participated in. 0..7. */
+  años_bpa: number;
+  /** Sorted ASC list of BPA year strings present for this parcel. */
+  años_lista: string[];
 }
 
 export interface BpaEnrichedFile {
-  schema_version: '1.0';
+  schema_version: '1.2';
   generated_at: string;
   source: string;
   parcels: ParcelEnriched[];
@@ -182,7 +189,13 @@ export interface BpaHistoryFile {
 }
 
 // ---------------------------------------------------------------------------
-// `aggregates.json` (schema 1.1 — additive over 1.0)
+// `aggregates.json` (schema 1.2 — subtractive over 1.1)
+//
+// Phase 7 dropped the 3 ranking-driven fields (not actionable for the widget).
+// `AggregatesBpaPracticaRanking` stays exported — it may still show up in
+// legacy v1.1 payloads during a transition and downstream consumers (AI
+// sessions, PDF exports) can keep using it if they compute rankings client-
+// side.
 // ---------------------------------------------------------------------------
 
 export interface AggregatesLeyForestal {
@@ -204,7 +217,7 @@ export interface AggregatesBpa {
   explotaciones_activas: number;
   superficie_total_ha: number;
   cobertura_pct_zona: number;
-  // ── NEW in 1.1 — historical-coverage KPIs ──
+  // ── Historical-coverage KPIs (carried over from 1.1) ──
   cobertura_historica_count: number;
   cobertura_historica_pct: number;
   abandonaron_count: number;
@@ -213,9 +226,6 @@ export interface AggregatesBpa {
   nunca_pct: number;
   /** Always contains all 7 keys 2019..2025 (zero-filled if no records). */
   evolucion_anual: Record<BpaYear, number>;
-  practica_top_adoptada: AggregatesBpaPracticaRanking;
-  practica_top_no_adoptada: AggregatesBpaPracticaRanking;
-  practicas_ranking: AggregatesBpaPracticaRanking[];
   ejes_distribucion: Record<BpaEjeKey, number>;
 }
 
@@ -233,7 +243,7 @@ export interface AggregatesZonaAgroforestal {
 }
 
 export interface AggregatesFile {
-  schema_version: '1.1';
+  schema_version: '1.2';
   generated_at: string;
   zona: { nombre: string; superficie_ha: number };
   ley_forestal: AggregatesLeyForestal;
@@ -316,6 +326,34 @@ export type PorcentajeForestacionFeatureCollection = FeatureCollection<
   PorcentajeForestacionFeatureProperties
 >;
 
+/**
+ * `bpa_historico.geojson` (Phase 7 — unified historical BPA layer).
+ *
+ * One feature per parcel that has EVER been in the BPA program
+ * (`años_bpa >= 1`). The map colors the fill by `años_bpa` using a MapLibre
+ * `interpolate` expression — gradient from pale green (1 año) to dark green
+ * (7 años) signaling commitment depth at a glance.
+ */
+export interface BpaHistoricoFeatureProperties {
+  nro_cuenta: string;
+  /** Count of BPA years (2019..2025) the parcel participated in. 1..7. */
+  años_bpa: number;
+  /** Sorted ASC list of BPA year strings present for this parcel. */
+  años_lista: string[];
+  /** Most recent ``n_explotacion`` (2025 name if active, else last historical). */
+  n_explotacion_ultima: string;
+  /** True iff the parcel appears in `bpa_2025`. */
+  bpa_activa_2025: boolean;
+}
+export type BpaHistoricoFeature = Feature<
+  MultiPolygon | Polygon,
+  BpaHistoricoFeatureProperties
+>;
+export type BpaHistoricoFeatureCollection = FeatureCollection<
+  MultiPolygon | Polygon,
+  BpaHistoricoFeatureProperties
+>;
+
 // ---------------------------------------------------------------------------
 // Composite shape returned by the `usePilarVerde()` hook.
 // Each slot is `null` when the corresponding fetch failed (graceful degradation
@@ -325,6 +363,8 @@ export type PorcentajeForestacionFeatureCollection = FeatureCollection<
 export interface PilarVerdeData {
   zonaAmpliada: ZonaAmpliadaFeatureCollection | null;
   bpa2025: Bpa2025FeatureCollection | null;
+  /** Phase 7 — unified historical BPA layer (replaces bpa_2025 on the map). */
+  bpaHistorico: BpaHistoricoFeatureCollection | null;
   agroAceptada: AgroAceptadaFeatureCollection | null;
   agroPresentada: AgroPresentadaFeatureCollection | null;
   agroZonas: AgroZonasFeatureCollection | null;

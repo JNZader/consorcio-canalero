@@ -32,7 +32,7 @@ vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
   syncWaterwayLayers: vi.fn(),
   syncZonaLayer: vi.fn(),
   // ── Pilar Verde ──
-  syncBpaLayer: vi.fn(),
+  syncBpaHistoricoLayer: vi.fn(),
   syncAgroAceptadaLayer: vi.fn(),
   syncAgroPresentadaLayer: vi.fn(),
   syncAgroZonasLayer: vi.fn(),
@@ -57,6 +57,7 @@ function emptyPilarVerde(): PilarVerdeData {
   return {
     zonaAmpliada: null,
     bpa2025: null,
+    bpaHistorico: null,
     agroAceptada: null,
     agroPresentada: null,
     agroZonas: null,
@@ -109,7 +110,7 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
   });
 
   it('dispatches the 5 Pilar Verde sync calls with their matching data slots and visibility flags', () => {
-    const bpa = fc();
+    const bpaHistorico = fc();
     const aceptada = fc();
     const presentada = fc();
     const zonas = fc();
@@ -117,7 +118,7 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
 
     renderWithParams({
       vectorVisibility: {
-        pilar_verde_bpa: true,
+        pilar_verde_bpa_historico: true,
         pilar_verde_agro_aceptada: true,
         pilar_verde_agro_presentada: false,
         pilar_verde_agro_zonas: true,
@@ -125,7 +126,7 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
       },
       pilarVerde: {
         ...emptyPilarVerde(),
-        bpa2025: bpa as never,
+        bpaHistorico: bpaHistorico as never,
         agroAceptada: aceptada as never,
         agroPresentada: presentada as never,
         agroZonas: zonas as never,
@@ -133,7 +134,7 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
       },
     });
 
-    expect(helpers.syncBpaLayer).toHaveBeenCalledWith(expect.anything(), bpa, true);
+    expect(helpers.syncBpaHistoricoLayer).toHaveBeenCalledWith(expect.anything(), bpaHistorico, true);
     expect(helpers.syncAgroAceptadaLayer).toHaveBeenCalledWith(expect.anything(), aceptada, true);
     expect(helpers.syncAgroPresentadaLayer).toHaveBeenCalledWith(
       expect.anything(),
@@ -150,11 +151,11 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
 
   it('passes null slots through to sync helpers when pilar verde data is absent', () => {
     renderWithParams({
-      vectorVisibility: { pilar_verde_bpa: true },
+      vectorVisibility: { pilar_verde_bpa_historico: true },
       pilarVerde: emptyPilarVerde(),
     });
 
-    expect(helpers.syncBpaLayer).toHaveBeenCalledWith(expect.anything(), null, true);
+    expect(helpers.syncBpaHistoricoLayer).toHaveBeenCalledWith(expect.anything(), null, true);
     expect(helpers.syncAgroAceptadaLayer).toHaveBeenCalledWith(expect.anything(), null, false);
   });
 
@@ -164,7 +165,7 @@ describe('useMapLayerEffects · Pilar Verde wiring', () => {
       vectorVisibility: {},
     });
 
-    expect(helpers.syncBpaLayer).toHaveBeenCalledWith(expect.anything(), null, false);
+    expect(helpers.syncBpaHistoricoLayer).toHaveBeenCalledWith(expect.anything(), null, false);
     expect(helpers.syncPorcentajeForestacionLayer).toHaveBeenCalledWith(
       expect.anything(),
       null,

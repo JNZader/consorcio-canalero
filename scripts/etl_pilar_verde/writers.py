@@ -125,6 +125,77 @@ def write_json(
     logger.info("write_json path=%s keys=%s", path, sorted(merged.keys()))
 
 
+def build_bpa_historico_features(
+    enriched_parcels: list[dict[str, Any]],
+    catastro_features: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the ``bpa_historico.geojson`` FeatureCollection.
+
+    One feature per parcel with ``años_bpa >= 1``:
+    - Geometry is pulled from the matching catastro feature (by ``Nro_Cuenta``
+      normalised through :func:`normalize_cuenta`). Parcels without a catastro
+      match are silently dropped — the map wouldn't have anywhere to draw them.
+    - Properties carry the commitment depth (``años_bpa``), the sorted year
+      list (``años_lista``), the most recent ``n_explotacion``, and the
+      ``bpa_activa_2025`` flag.
+
+    ``n_explotacion_ultima`` resolves to the 2025 name when the parcel is
+    still active; otherwise to the name from the most recent historical
+    year. Returns ``""`` when no name can be resolved (defensive default so
+    the frontend never renders ``undefined``).
+    """
+    from scripts.etl_pilar_verde.join import normalize_cuenta
+
+    # Index catastro by normalised cuenta so lookup is O(1).
+    cuenta_to_geom: dict[str, Any] = {}
+    for feature in catastro_features:
+        props = feature.get("properties") or {}
+        cuenta = normalize_cuenta(props.get("Nro_Cuenta"))
+        if cuenta is None:
+            continue
+        if feature.get("geometry") is None:
+            continue
+        cuenta_to_geom[cuenta] = feature["geometry"]
+
+    features: list[dict[str, Any]] = []
+    for parcel in enriched_parcels:
+        anios = int(parcel.get("años_bpa") or 0)
+        if anios < 1:
+            continue
+        cuenta = parcel.get("nro_cuenta")
+        if cuenta is None or cuenta not in cuenta_to_geom:
+            continue
+
+        bpa_2025 = parcel.get("bpa_2025") or None
+        historico = parcel.get("bpa_historico") or {}
+        lista: list[str] = list(parcel.get("años_lista") or [])
+
+        if bpa_2025 is not None:
+            n_explotacion = str(bpa_2025.get("n_explotacion") or "")
+        elif historico:
+            # Most recent historical year — sort keys ASC and pick the last.
+            last_year = sorted(historico.keys())[-1]
+            n_explotacion = str(historico[last_year])
+        else:
+            n_explotacion = ""
+
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "nro_cuenta": cuenta,
+                    "años_bpa": anios,
+                    "años_lista": lista,
+                    "n_explotacion_ultima": n_explotacion,
+                    "bpa_activa_2025": bpa_2025 is not None,
+                },
+                "geometry": cuenta_to_geom[cuenta],
+            }
+        )
+
+    return {"type": "FeatureCollection", "features": features}
+
+
 def geojson_bbox(feature_or_collection: dict[str, Any]) -> tuple[float, float, float, float]:
     """Compute ``(minx, miny, maxx, maxy)`` in the source CRS."""
     if feature_or_collection.get("type") == "FeatureCollection":

@@ -5,8 +5,9 @@
  *   - First call: addSource + addLayer(fill) + addLayer(line) + setLayoutProperty(visible)
  *   - Second call with same args: only setLayoutProperty (no duplicate source/layer)
  *
- * BPA is the topmost Pilar Verde layer — after mount, `moveLayer(bpaFillId)` must be
- * called (no beforeId) so click precedence lands on BPA over catastro.
+ * Phase 7 — `syncBpaLayer` (single-year) was replaced by `syncBpaHistoricoLayer`
+ * (unified historical series). After mount, `moveLayer(bpaHistoricoFillId)`
+ * must be called (no beforeId) so click precedence lands on BPA over catastro.
  */
 
 import type { FeatureCollection } from 'geojson';
@@ -17,7 +18,7 @@ import {
   syncAgroAceptadaLayer,
   syncAgroPresentadaLayer,
   syncAgroZonasLayer,
-  syncBpaLayer,
+  syncBpaHistoricoLayer,
   syncPorcentajeForestacionLayer,
 } from '../../src/components/map2d/mapLayerEffectHelpers';
 
@@ -49,16 +50,16 @@ function createMapMock(options?: { layers?: string[]; sources?: string[] }) {
   };
 }
 
-describe('syncBpaLayer', () => {
-  const bpaFill = `${SOURCE_IDS.PILAR_VERDE_BPA}-fill`;
-  const bpaLine = `${SOURCE_IDS.PILAR_VERDE_BPA}-line`;
+describe('syncBpaHistoricoLayer', () => {
+  const bpaFill = `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`;
+  const bpaLine = `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-line`;
 
   it('mounts source + fill + line on first call, sets visible', () => {
     const { map } = createMapMock();
-    syncBpaLayer(map as never, emptyCollection(), true);
+    syncBpaHistoricoLayer(map as never, emptyCollection(), true);
 
     expect(map.addSource).toHaveBeenCalledTimes(1);
-    expect(map.addSource).toHaveBeenCalledWith(SOURCE_IDS.PILAR_VERDE_BPA, expect.any(Object));
+    expect(map.addSource).toHaveBeenCalledWith(SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO, expect.any(Object));
 
     const addLayerIds = map.addLayer.mock.calls.map((call) => (call[0] as { id: string }).id);
     expect(addLayerIds).toContain(bpaFill);
@@ -70,11 +71,11 @@ describe('syncBpaLayer', () => {
 
   it('is idempotent — second call with same inputs does not duplicate source/layer', () => {
     const { map } = createMapMock();
-    syncBpaLayer(map as never, emptyCollection(), true);
+    syncBpaHistoricoLayer(map as never, emptyCollection(), true);
     map.addSource.mockClear();
     map.addLayer.mockClear();
 
-    syncBpaLayer(map as never, emptyCollection(), false);
+    syncBpaHistoricoLayer(map as never, emptyCollection(), false);
 
     expect(map.addSource).not.toHaveBeenCalled();
     expect(map.addLayer).not.toHaveBeenCalled();
@@ -82,11 +83,10 @@ describe('syncBpaLayer', () => {
     expect(map.setLayoutProperty).toHaveBeenCalledWith(bpaLine, 'visibility', 'none');
   });
 
-  it('raises bpa-fill to the top (moveLayer with no beforeId) so clicks resolve BPA over catastro', () => {
+  it('raises bpa_historico-fill to the top (moveLayer with no beforeId) so clicks resolve BPA over catastro', () => {
     const { map } = createMapMock();
-    syncBpaLayer(map as never, emptyCollection(), true);
+    syncBpaHistoricoLayer(map as never, emptyCollection(), true);
 
-    // moveLayer is called at least once for the fill layer with no beforeId.
     const moveCalls = map.moveLayer.mock.calls;
     const fillMove = moveCalls.find((call) => call[0] === bpaFill);
     expect(fillMove).toBeTruthy();
@@ -95,13 +95,13 @@ describe('syncBpaLayer', () => {
 
   it('hidden state on first mount — sets visibility none instead of visible', () => {
     const { map } = createMapMock();
-    syncBpaLayer(map as never, emptyCollection(), false);
+    syncBpaHistoricoLayer(map as never, emptyCollection(), false);
     expect(map.setLayoutProperty).toHaveBeenCalledWith(bpaFill, 'visibility', 'none');
   });
 
   it('accepts null collection — renders empty source rather than crashing', () => {
     const { map } = createMapMock();
-    expect(() => syncBpaLayer(map as never, null, true)).not.toThrow();
+    expect(() => syncBpaHistoricoLayer(map as never, null, true)).not.toThrow();
     expect(map.addSource).toHaveBeenCalled();
   });
 });

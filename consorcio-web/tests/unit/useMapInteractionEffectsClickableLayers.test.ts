@@ -19,7 +19,7 @@ import { buildClickableLayers } from '../../src/components/map2d/useMapInteracti
 describe('buildClickableLayers · z-order click precedence', () => {
   it('lists BPA-fill BEFORE catastro-fill so BPA wins on overlap clicks', () => {
     const layers = buildClickableLayers();
-    const bpaIdx = layers.indexOf(`${SOURCE_IDS.PILAR_VERDE_BPA}-fill`);
+    const bpaIdx = layers.indexOf(`${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`);
     const catastroIdx = layers.indexOf(`${SOURCE_IDS.CATASTRO}-fill`);
 
     expect(bpaIdx).toBeGreaterThanOrEqual(0);
@@ -29,7 +29,7 @@ describe('buildClickableLayers · z-order click precedence', () => {
 
   it('includes the three Pilar Verde agro fill layers alongside BPA', () => {
     const layers = buildClickableLayers();
-    expect(layers).toContain(`${SOURCE_IDS.PILAR_VERDE_BPA}-fill`);
+    expect(layers).toContain(`${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`);
     expect(layers).toContain(`${SOURCE_IDS.PILAR_VERDE_AGRO_ACEPTADA}-fill`);
     expect(layers).toContain(`${SOURCE_IDS.PILAR_VERDE_AGRO_PRESENTADA}-fill`);
   });

@@ -11,7 +11,7 @@ import {
   syncApprovedZoneLayers,
   syncBaseTileVisibility,
   syncBasinLayers,
-  syncBpaLayer,
+  syncBpaHistoricoLayer,
   syncPorcentajeForestacionLayer,
   syncRoadLayers,
   syncSoilLayers,
@@ -212,9 +212,13 @@ export function useMapLayerEffects({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const data = pilarVerde?.bpa2025 ?? null;
-    syncBpaLayer(map, data as FeatureCollection | null, !!vectorVisibility.pilar_verde_bpa);
-  }, [mapReady, mapRef, pilarVerde?.bpa2025, vectorVisibility.pilar_verde_bpa]);
+    const data = pilarVerde?.bpaHistorico ?? null;
+    syncBpaHistoricoLayer(
+      map,
+      data as FeatureCollection | null,
+      !!vectorVisibility.pilar_verde_bpa_historico,
+    );
+  }, [mapReady, mapRef, pilarVerde?.bpaHistorico, vectorVisibility.pilar_verde_bpa_historico]);
 
   useEffect(() => {
     const map = mapRef.current;
