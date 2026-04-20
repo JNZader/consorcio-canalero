@@ -30,12 +30,20 @@ function renderWithMantine(ui: ReactNode) {
 const LABEL_ACEPTADA = 'Cumplen ley forestal';
 const LABEL_PRESENTADA = 'No cumplen ley forestal';
 const LABEL_ZONAS = 'Zonas agroforestales';
-const LABEL_PORCENTAJE = 'Forestación obligatoria (2-5%)';
+const TITLE_PORCENTAJE = 'Forestación obligatoria';
+// Spanish comma decimal separator (NOT dot). Tier buckets match the
+// categorized `step` paint expression in `buildPorcentajeForestacionFillPaint`.
+const LABEL_PORCENTAJE_BAJA = 'Baja (≤ 2,3%)';
+const LABEL_PORCENTAJE_MEDIA = 'Media (2,4 – 2,6%)';
+const LABEL_PORCENTAJE_ALTA = 'Alta (≥ 2,7%)';
 
 const TESTID_ACEPTADA = 'pilar-verde-agro-aceptada-legend';
 const TESTID_PRESENTADA = 'pilar-verde-agro-presentada-legend';
 const TESTID_ZONAS = 'pilar-verde-agro-zonas-legend';
 const TESTID_PORCENTAJE = 'pilar-verde-porcentaje-forestacion-legend';
+const TESTID_PORCENTAJE_BAJA = 'pilar-verde-porcentaje-forestacion-baja';
+const TESTID_PORCENTAJE_MEDIA = 'pilar-verde-porcentaje-forestacion-media';
+const TESTID_PORCENTAJE_ALTA = 'pilar-verde-porcentaje-forestacion-alta';
 
 describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', () => {
   describe('defaults', () => {
@@ -44,7 +52,10 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
       expect(screen.queryByText(LABEL_ACEPTADA)).not.toBeInTheDocument();
       expect(screen.queryByText(LABEL_PRESENTADA)).not.toBeInTheDocument();
       expect(screen.queryByText(LABEL_ZONAS)).not.toBeInTheDocument();
-      expect(screen.queryByText(LABEL_PORCENTAJE)).not.toBeInTheDocument();
+      expect(screen.queryByText(TITLE_PORCENTAJE)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_PORCENTAJE_BAJA)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_PORCENTAJE_MEDIA)).not.toBeInTheDocument();
+      expect(screen.queryByText(LABEL_PORCENTAJE_ALTA)).not.toBeInTheDocument();
     });
 
     it('does NOT render any of the 4 simple legends when flags are explicitly false', () => {
@@ -120,22 +131,48 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
     });
   });
 
-  describe('porcentaje_forestacion (violeta — forestación obligatoria 2-5%)', () => {
-    it('renders when its flag is true with exact Spanish label', () => {
+  describe('porcentaje_forestacion (violeta — 3 tiers baja/media/alta)', () => {
+    it('renders the titled container with all three tier chips when the flag is true', () => {
       renderWithMantine(<LeyendaPanel pilarVerdePorcentajeForestacionVisible />);
       expect(screen.getByTestId(TESTID_PORCENTAJE)).toBeInTheDocument();
-      expect(screen.getByText(LABEL_PORCENTAJE)).toBeInTheDocument();
+      // The container title reads "Forestación obligatoria" (no % range —
+      // that lives on each tier chip).
+      expect(screen.getByText(TITLE_PORCENTAJE)).toBeInTheDocument();
+      // Exactly 3 tier rows (not a single chip anymore).
+      expect(screen.getByTestId(TESTID_PORCENTAJE_BAJA)).toBeInTheDocument();
+      expect(screen.getByTestId(TESTID_PORCENTAJE_MEDIA)).toBeInTheDocument();
+      expect(screen.getByTestId(TESTID_PORCENTAJE_ALTA)).toBeInTheDocument();
     });
 
-    it('chip color matches PILAR_VERDE_COLORS.porcentajeForestacionFill (single source of truth)', () => {
+    it('labels each tier with Spanish comma decimals — Baja ≤ 2,3% / Media 2,4–2,6% / Alta ≥ 2,7%', () => {
       renderWithMantine(<LeyendaPanel pilarVerdePorcentajeForestacionVisible />);
-      const chip = screen.getByLabelText(LABEL_PORCENTAJE);
-      expect(chip).toHaveAttribute('data-color', PILAR_VERDE_COLORS.porcentajeForestacionFill);
+      expect(screen.getByText(LABEL_PORCENTAJE_BAJA)).toBeInTheDocument();
+      expect(screen.getByText(LABEL_PORCENTAJE_MEDIA)).toBeInTheDocument();
+      expect(screen.getByText(LABEL_PORCENTAJE_ALTA)).toBeInTheDocument();
+    });
+
+    it('each chip color comes from PILAR_VERDE_COLORS (single source of truth — no hardcoded hex)', () => {
+      renderWithMantine(<LeyendaPanel pilarVerdePorcentajeForestacionVisible />);
+      expect(screen.getByLabelText(LABEL_PORCENTAJE_BAJA)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.porcentajeForestacionBaja,
+      );
+      expect(screen.getByLabelText(LABEL_PORCENTAJE_MEDIA)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.porcentajeForestacionMedia,
+      );
+      expect(screen.getByLabelText(LABEL_PORCENTAJE_ALTA)).toHaveAttribute(
+        'data-color',
+        PILAR_VERDE_COLORS.porcentajeForestacionAlta,
+      );
     });
 
     it('is hidden when only other flags are on', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroAceptadaVisible />);
       expect(screen.queryByTestId(TESTID_PORCENTAJE)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_PORCENTAJE_BAJA)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_PORCENTAJE_MEDIA)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TESTID_PORCENTAJE_ALTA)).not.toBeInTheDocument();
     });
   });
 

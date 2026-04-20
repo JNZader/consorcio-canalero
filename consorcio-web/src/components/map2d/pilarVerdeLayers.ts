@@ -78,8 +78,23 @@ export const PILAR_VERDE_COLORS = {
   agroPresentadaFill: '#EF4444',
   /** Agroforestal zonas (context). Cyan @ 0.20 opacity — subtle. */
   agroZonasFill: '#06B6D4',
-  /** Porcentaje forestación obligatoria (background context). Violet @ 0.15 opacity. */
-  porcentajeForestacionFill: '#A78BFA',
+  /**
+   * Porcentaje forestación obligatoria — categorized into 3 tiers by
+   * `forest_obligatoria` (%). Real zone data ranges 2.1–2.88%, not the
+   * provincial 2–5% band, so a linear gradient is indistinguishable. The
+   * buckets track the two dominant peaks (2.10 and 2.60) observed on the
+   * 1,222 features of the layer.
+   *
+   *   - Baja  (≤ 2.30%)  — violet-300
+   *   - Media (2.31–2.60%) — violet-400 (historical default)
+   *   - Alta  (≥ 2.61%)  — violet-600
+   *
+   * Keys map 1:1 to the legend chips in `LeyendaPanel` — single source of
+   * truth for the MapLibre `step` paint expression.
+   */
+  porcentajeForestacionBaja: '#C4B5FD',
+  porcentajeForestacionMedia: '#A78BFA',
+  porcentajeForestacionAlta: '#7C3AED',
   // ── Eje palette (mirrored by InfoPanel in Phase 3) ──
   /** Persona — blue-500. */
   ejePersona: '#3B82F6',
@@ -186,13 +201,30 @@ export function buildAgroZonasLinePaint(): LinePaint {
 }
 
 /**
- * Porcentaje-forestación fill — violet, very transparent background context.
- * Intentionally no line layer: this is a low-contrast raster-like context fill
- * so it does not dominate the map even when toggled on.
+ * Porcentaje-forestación fill — violet, categorized into 3 tiers by
+ * `forest_obligatoria`. The raw data for the zone spans 2.10–2.88%, so the
+ * MapLibre `step` expression discretizes it into 3 visually distinguishable
+ * buckets instead of a gradient that would collapse into a single tone.
+ *
+ * Tier breakpoints:
+ *   - < 2.31          → Baja  (violet-300)
+ *   - [2.31, 2.61)    → Media (violet-400)
+ *   - ≥ 2.61          → Alta  (violet-600)
+ *
+ * Opacity raised from 0.15 → 0.30 so the three tiers stay distinguishable
+ * on top of the basemap. No line layer by design: low-contrast context fill.
  */
 export function buildPorcentajeForestacionFillPaint(): FillPaint {
   return {
-    'fill-color': PILAR_VERDE_COLORS.porcentajeForestacionFill,
-    'fill-opacity': 0.15,
+    'fill-color': [
+      'step',
+      ['get', 'forest_obligatoria'],
+      PILAR_VERDE_COLORS.porcentajeForestacionBaja,
+      2.31,
+      PILAR_VERDE_COLORS.porcentajeForestacionMedia,
+      2.61,
+      PILAR_VERDE_COLORS.porcentajeForestacionAlta,
+    ],
+    'fill-opacity': 0.3,
   };
 }

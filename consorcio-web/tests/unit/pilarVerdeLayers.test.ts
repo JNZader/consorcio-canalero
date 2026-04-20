@@ -35,7 +35,12 @@ describe('pilarVerdeLayers · colors', () => {
     expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#22C55E');
     expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#EF4444');
     expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#06B6D4');
-    expect(PILAR_VERDE_COLORS.porcentajeForestacionFill).toBe('#A78BFA');
+  });
+
+  it('exports the 3-tier porcentaje forestación palette (baja/media/alta)', () => {
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionBaja).toBe('#C4B5FD');
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#A78BFA');
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionAlta).toBe('#7C3AED');
   });
 
   it('exports the eje palette used by InfoPanel (phase 3) — kept in sync here', () => {
@@ -128,9 +133,24 @@ describe('pilarVerdeLayers · paint factories', () => {
     expect(paint['line-width']).toBe(1);
   });
 
-  it('porcentaje forestacion fill: violet @ 0.15 opacity — lowest, background context', () => {
+  it('porcentaje forestacion fill: `step` expression over forest_obligatoria with 3 violet tiers @ 0.30 opacity', () => {
     const paint = buildPorcentajeForestacionFillPaint();
-    expect(paint['fill-color']).toBe('#A78BFA');
-    expect(paint['fill-opacity']).toBe(0.15);
+    // Opacity raised from 0.15 → 0.30 so the 3 tiers stay distinguishable.
+    expect(paint['fill-opacity']).toBe(0.3);
+
+    const fillColor = paint['fill-color'] as unknown as unknown[];
+    expect(Array.isArray(fillColor)).toBe(true);
+    // MapLibre step shape: ['step', input, baseOutput, stop, out, stop, out, ...]
+    expect(fillColor[0]).toBe('step');
+    expect(fillColor[1]).toEqual(['get', 'forest_obligatoria']);
+    // Base (< 2.31) → Baja
+    expect(fillColor[2]).toBe(PILAR_VERDE_COLORS.porcentajeForestacionBaja);
+    // [2.31, 2.61) → Media
+    expect(fillColor[3]).toBe(2.31);
+    expect(fillColor[4]).toBe(PILAR_VERDE_COLORS.porcentajeForestacionMedia);
+    // ≥ 2.61 → Alta
+    expect(fillColor[5]).toBe(2.61);
+    expect(fillColor[6]).toBe(PILAR_VERDE_COLORS.porcentajeForestacionAlta);
+    expect(fillColor.length).toBe(7);
   });
 });

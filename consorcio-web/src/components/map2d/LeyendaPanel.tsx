@@ -87,7 +87,12 @@ interface LeyendaPanelProps {
   readonly pilarVerdeAgroPresentadaVisible?: boolean;
   /** Render the agroforestal zonas (cyan / context) single-chip legend. */
   readonly pilarVerdeAgroZonasVisible?: boolean;
-  /** Render the porcentaje forestación (violet / mandatory 2-5%) single-chip legend. */
+  /**
+   * Render the porcentaje forestación legend. Three violet chips correspond
+   * to the categorized `step` paint expression (Baja / Media / Alta) — the
+   * zone data only spans 2.1–2.88% so the buckets match the real
+   * distribution, not the provincial 2–5% range.
+   */
   readonly pilarVerdePorcentajeForestacionVisible?: boolean;
 }
 
@@ -238,11 +243,26 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           />
         )}
         {pilarVerdePorcentajeForestacionVisible && (
-          <SimpleColorLegendChip
-            color={PILAR_VERDE_COLORS.porcentajeForestacionFill}
-            label="Forestación obligatoria (2-5%)"
-            testId="pilar-verde-porcentaje-forestacion-legend"
-          />
+          <Stack gap={2} data-testid="pilar-verde-porcentaje-forestacion-legend">
+            <Text fw={500} size="xs">
+              Forestación obligatoria
+            </Text>
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.porcentajeForestacionBaja}
+              label="Baja (≤ 2,3%)"
+              testId="pilar-verde-porcentaje-forestacion-baja"
+            />
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.porcentajeForestacionMedia}
+              label="Media (2,4 – 2,6%)"
+              testId="pilar-verde-porcentaje-forestacion-media"
+            />
+            <SimpleColorLegendChip
+              color={PILAR_VERDE_COLORS.porcentajeForestacionAlta}
+              label="Alta (≥ 2,7%)"
+              testId="pilar-verde-porcentaje-forestacion-alta"
+            />
+          </Stack>
         )}
       </Stack>
     </Paper>
