@@ -40,13 +40,19 @@ export function buildClickableLayers(): string[] {
     `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`,
     `${SOURCE_IDS.PILAR_VERDE_AGRO_ACEPTADA}-fill`,
     `${SOURCE_IDS.PILAR_VERDE_AGRO_PRESENTADA}-fill`,
-    // ── Existing clickable layers ──
+    // ── Waterways + Canales (Phase 2 Pilar Azul) ──
+    // Existing waterways come FIRST so `rio_tercero` + arroyos still surface
+    // on their own overlay clicks. Canales line layers are inserted BEFORE
+    // catastro-fill — overlapping clicks on a river that has a canal
+    // crossing resolve to the canal (user feedback: canales are the more
+    // specific context for hydraulic decisions).
     `${SOURCE_IDS.WATERWAYS}-rio-tercero-line`,
     `${SOURCE_IDS.WATERWAYS}-arroyo-algodon-line`,
     `${SOURCE_IDS.WATERWAYS}-canal-desviador-line`,
     `${SOURCE_IDS.WATERWAYS}-canal-litin-line`,
-    `${SOURCE_IDS.WATERWAYS}-canales-existentes-line`,
     `${SOURCE_IDS.WATERWAYS}-arroyo-mojarras-line`,
+    `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+    `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
     `${SOURCE_IDS.SOIL}-fill`,
     `${SOURCE_IDS.CATASTRO}-fill`,
     `${SOURCE_IDS.ROADS}-line`,

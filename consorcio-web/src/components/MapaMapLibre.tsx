@@ -29,6 +29,7 @@ import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePilarVerde } from '../hooks/usePilarVerde';
+import { useCanales } from '../hooks/useCanales';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
@@ -171,6 +172,13 @@ export default function MapaMapLibre() {
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
   const { data: pilarVerde } = usePilarVerde();
+  const { relevados: canalesRelevados, propuestas: canalesPropuestas, index: canalesIndex } =
+    useCanales();
+  const canalesData = {
+    relevados: canalesRelevados,
+    propuestas: canalesPropuestas,
+    index: canalesIndex,
+  };
 
   const {
     zonaCollection,
@@ -213,6 +221,7 @@ export default function MapaMapLibre() {
     intersectionsLength: intersections?.features?.length ?? 0,
     isAdmin,
     pilarVerde,
+    canales: canalesData,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -260,6 +269,7 @@ export default function MapaMapLibre() {
     comparison,
     waterwaysDefs: WATERWAY_DEFS,
     pilarVerde,
+    canales: canalesData,
   });
 
   useMapInitialization({

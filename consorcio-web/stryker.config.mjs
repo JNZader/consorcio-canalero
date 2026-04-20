@@ -24,6 +24,10 @@ export default {
     // Pilar Verde widget pure helpers (Phase 4 — ≥85% target)
     'src/components/admin/pilarVerdeWidget/computeKpis.ts',
     'src/components/admin/pilarVerdeWidget/fmt.ts',
+    // Pilar Azul pure formatter (Phase 3 — ≥85% target).
+    // `formatLongitud` + `formatLongitudMeters` drive the longitud row of
+    // `<CanalCard>` — tests pin all 4 branches (null/equal/different/default).
+    'src/components/map2d/canalesFormat.ts',
   ],
   thresholds: {
     high: 85,

@@ -35,12 +35,14 @@ import type { Feature } from 'geojson';
 import { memo, useMemo } from 'react';
 
 import styles from '../../styles/components/map.module.css';
+import type { CanalFeatureProperties } from '../../types/canales';
 import type {
   BpaEnrichedFile,
   BpaHistoryFile,
   ParcelEnriched,
 } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
+import { CanalCard } from './CanalCard';
 import { normalizeBpaFlat } from './bpaPracticas';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
 
@@ -206,6 +208,20 @@ function FeatureSection({
           bpa_activa_2025={detection.activa2025}
           bpa={detection.bpa}
         />
+      </div>
+    );
+  }
+
+  // Pilar Azul — Canal branch. Activates when the feature's `estado` property
+  // matches one of the two canal discriminants. Sits BETWEEN the BPA branch
+  // (which wins for parcels that appear in both layers — a canal that crosses
+  // a BPA parcel never happens, but the order is deterministic just in case)
+  // and the generic whitelist dump.
+  const canalEstado = properties.estado;
+  if (canalEstado === 'relevado' || canalEstado === 'propuesto') {
+    return (
+      <div data-testid="info-panel-feature-section">
+        <CanalCard properties={properties as unknown as CanalFeatureProperties} />
       </div>
     );
   }

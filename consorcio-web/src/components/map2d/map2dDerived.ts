@@ -123,16 +123,10 @@ function pushSoilLegendItems(
 }
 
 function pushWaterwayLegendItems(items: Array<{ color: string; label: string; type: string }>) {
-  const waterwayEntries = [...WATERWAY_DEFS]
-    .sort((a, b) => {
-      if (a.id === 'canales_existentes') return 1;
-      if (b.id === 'canales_existentes') return -1;
-      return 0;
-    })
-    .map((waterway) => ({
-      color: waterway.style.color,
-      label: waterway.nombre,
-    }));
+  const waterwayEntries = WATERWAY_DEFS.map((waterway) => ({
+    color: waterway.style.color,
+    label: waterway.nombre,
+  }));
   for (const entry of waterwayEntries) {
     items.push({ ...entry, type: 'line' });
   }
@@ -187,6 +181,12 @@ export function buildVectorLayerItems(params: {
    * existing callers that haven't wired Pilar Verde yet).
    */
   showPilarVerde?: boolean;
+  /**
+   * Whether the Pilar Azul (Canales) static data has loaded (at least
+   * `index.json` non-null). When true, the 2 master toggles render in the
+   * layer control. Per-canal sub-toggles are rendered by Phase 4.
+   */
+  showPilarAzul?: boolean;
 }) {
   const {
     basins,
@@ -195,6 +195,7 @@ export function buildVectorLayerItems(params: {
     intersectionsLength,
     isAdmin,
     showPilarVerde = false,
+    showPilarAzul = false,
   } = params;
 
   return [
@@ -223,6 +224,11 @@ export function buildVectorLayerItems(params: {
       label: '% Forestación obligatoria',
       show: showPilarVerde,
     },
+    // ── Pilar Azul (Canales) — master toggles per spec ──
+    // Per-canal sub-toggles + the "Etapas propuestas" filter subsection are
+    // rendered by Phase 4's `LayerControlsPanel` Canales section.
+    { id: 'canales_relevados', label: 'Canales relevados', show: showPilarAzul },
+    { id: 'canales_propuestos', label: 'Canales propuestos', show: showPilarAzul },
   ]
     .filter(({ show }) => show)
     .map(({ id, label }) => ({ id, label }));

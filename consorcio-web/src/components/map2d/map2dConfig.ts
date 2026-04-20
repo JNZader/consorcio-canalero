@@ -38,6 +38,11 @@ export const SOURCE_IDS = {
   PILAR_VERDE_AGRO_PRESENTADA: 'pilar_verde_agro_presentada',
   PILAR_VERDE_AGRO_ZONAS: 'pilar_verde_agro_zonas',
   PILAR_VERDE_PORCENTAJE_FORESTACION: 'pilar_verde_porcentaje_forestacion',
+  // ── Pilar Azul (Canales) ──
+  // Values match the `PILAR_AZUL_LAYER_IDS` tuple in `stores/mapLayerSyncStore.ts`
+  // so the source id == the master-toggle id (no translation table).
+  CANALES_RELEVADOS: 'canales_relevados',
+  CANALES_PROPUESTOS: 'canales_propuestos',
 } as const;
 
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];
@@ -77,13 +82,6 @@ const WATERWAY_FILE_SPECS = [
     layer: 'arroyo_las_mojarras',
     waterwayId: 'arroyo_las_mojarras',
     fallbackColor: '#64B5F6',
-  },
-  {
-    suffix: 'canales-existentes',
-    url: '/waterways/canales_existentes.geojson',
-    layer: 'canales_existentes',
-    waterwayId: 'canales_existentes',
-    fallbackColor: '#0B3D91',
   },
 ];
 

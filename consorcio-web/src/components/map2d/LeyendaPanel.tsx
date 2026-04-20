@@ -3,7 +3,9 @@ import { memo, useState, type CSSProperties } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { CANALES_COLORS } from './canalesLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
+import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 
 interface LegendItem {
   color: string;
@@ -72,6 +74,101 @@ function SimpleColorLegendChip({
   );
 }
 
+/**
+ * Single-row chip used by the Canales Relevados legend — solid line
+ * (12×2 colored bar) + label. Visually hints at the MapLibre line layer.
+ */
+function CanalSolidLineChip({
+  color,
+  label,
+  testId,
+}: {
+  readonly color: string;
+  readonly label: string;
+  readonly testId: string;
+}) {
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid={testId} data-color={color}>
+      <span
+        aria-label={label}
+        style={{
+          display: 'inline-block',
+          width: 18,
+          height: 3,
+          backgroundColor: color,
+          borderRadius: 1,
+        }}
+      />
+      <Text size="xs">{label}</Text>
+    </Group>
+  );
+}
+
+/**
+ * Single-row chip used by the Canales Propuestos legend — DASHED line
+ * (rendered as an inline SVG with `strokeDasharray` so the dashed pattern
+ * is visually unambiguous AND structurally testable via the DOM). The
+ * wrapper carries `data-dashed="true"` for deterministic DOM assertions.
+ */
+function CanalDashedLineChip({
+  color,
+  label,
+  testId,
+}: {
+  readonly color: string;
+  readonly label: string;
+  readonly testId: string;
+}) {
+  return (
+    <Group
+      gap="xs"
+      wrap="nowrap"
+      data-testid={testId}
+      data-color={color}
+      data-dashed="true"
+    >
+      <svg
+        width={18}
+        height={3}
+        role="img"
+        aria-label={label}
+        style={{ display: 'inline-block' }}
+      >
+        <line
+          x1={0}
+          y1={1.5}
+          x2={18}
+          y2={1.5}
+          stroke={color}
+          strokeWidth={2}
+          strokeDasharray="4,2"
+        />
+      </svg>
+      <Text size="xs">{label}</Text>
+    </Group>
+  );
+}
+
+/**
+ * Color + label pairs for the propuestos legend — ordered by priority
+ * (Alta → Largo plazo) to match the map paint and the filter UI.
+ */
+const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> =
+  ALL_ETAPAS.map((etapa) => {
+    switch (etapa) {
+      case 'Alta':
+        return { etapa, color: CANALES_COLORS.propuestoAlta };
+      case 'Media-Alta':
+        return { etapa, color: CANALES_COLORS.propuestoMediaAlta };
+      case 'Media':
+        return { etapa, color: CANALES_COLORS.propuestoMedia };
+      case 'Opcional':
+        return { etapa, color: CANALES_COLORS.propuestoOpcional };
+      case 'Largo plazo':
+        return { etapa, color: CANALES_COLORS.propuestoLargoPlazo };
+    }
+  });
+
 interface LeyendaPanelProps {
   readonly consorcios?: ConsorcioInfo[];
   readonly customItems?: LegendItem[];
@@ -114,6 +211,17 @@ interface LeyendaPanelProps {
    * distribution, not the provincial 2–5% range.
    */
   readonly pilarVerdePorcentajeForestacionVisible?: boolean;
+  /**
+   * Render the "Canales Relevados" block (3 solid blue chips). Enable when
+   * the `canales_relevados` master toggle is ON so the legend mirrors what
+   * the map actually paints.
+   */
+  readonly pilarAzulCanalesRelevadosVisible?: boolean;
+  /**
+   * Render the "Canales Propuestos" block (5 dashed chips, one per etapa).
+   * Enable when the `canales_propuestos` master toggle is ON.
+   */
+  readonly pilarAzulCanalesPropuestosVisible?: boolean;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -129,6 +237,8 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarVerdeAgroPresentadaVisible = false,
   pilarVerdeAgroZonasVisible = false,
   pilarVerdePorcentajeForestacionVisible = false,
+  pilarAzulCanalesRelevadosVisible = false,
+  pilarAzulCanalesPropuestosVisible = false,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
 
@@ -307,6 +417,46 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               label="Alta (≥ 2,7%)"
               testId="pilar-verde-porcentaje-forestacion-alta"
             />
+          </Stack>
+        )}
+        {(pilarAzulCanalesRelevadosVisible || pilarAzulCanalesPropuestosVisible) && (
+          <Divider my={4} />
+        )}
+        {pilarAzulCanalesRelevadosVisible && (
+          <Stack gap={2} data-testid="canales-relevados-legend">
+            <Text fw={500} size="xs">
+              Canales Relevados
+            </Text>
+            <CanalSolidLineChip
+              color={CANALES_COLORS.relevadoSinObra}
+              label="Sin obra"
+              testId="canal-relevado-chip-sin-obra"
+            />
+            <CanalSolidLineChip
+              color={CANALES_COLORS.relevadoReadec}
+              label="Readecuación"
+              testId="canal-relevado-chip-readec"
+            />
+            <CanalSolidLineChip
+              color={CANALES_COLORS.relevadoAsociada}
+              label="Asociada"
+              testId="canal-relevado-chip-asociada"
+            />
+          </Stack>
+        )}
+        {pilarAzulCanalesPropuestosVisible && (
+          <Stack gap={2} data-testid="canales-propuestos-legend">
+            <Text fw={500} size="xs">
+              Canales Propuestos
+            </Text>
+            {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) => (
+              <CanalDashedLineChip
+                key={etapa}
+                color={color}
+                label={etapa}
+                testId={`canal-propuesto-chip-${etapa}`}
+              />
+            ))}
           </Stack>
         )}
         </Stack>

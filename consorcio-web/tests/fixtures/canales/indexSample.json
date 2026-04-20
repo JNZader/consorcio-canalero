@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-04-20T20:18:51Z",
+  "counts": {
+    "relevados": 2,
+    "propuestas": 3,
+    "total": 5
+  },
+  "relevados": [
+    {
+      "id": "canal-ne-sin-intervencion",
+      "nombre": "Canal NE (sin intervención)",
+      "codigo": null,
+      "longitud_m": 8218.1,
+      "featured": false,
+      "estado": "relevado"
+    },
+    {
+      "id": "s1-canal-chico-este-san-marcos-sud-readecuacion",
+      "nombre": "Canal chico este San Marcos Sud · readecuación",
+      "codigo": "S1",
+      "longitud_m": 6054.1,
+      "featured": false,
+      "estado": "relevado"
+    }
+  ],
+  "propuestas": [
+    {
+      "id": "n3-tramo-faltante-de-interconexion",
+      "nombre": "Tramo faltante de interconexión",
+      "codigo": "N3",
+      "prioridad": "Alta",
+      "longitud_m": 685.5,
+      "featured": true,
+      "estado": "propuesto"
+    },
+    {
+      "id": "n5-extension-zona-noroeste-primer-ramal",
+      "nombre": "Extensión zona Noroeste primer ramal",
+      "codigo": "N5",
+      "prioridad": "Media-Alta",
+      "longitud_m": 2511.7,
+      "featured": false,
+      "estado": "propuesto"
+    },
+    {
+      "id": "s2-complemento-opcional-p12-sujeto-a-presupuesto",
+      "nombre": "S2 complemento opcional (P12) · sujeto a presupuesto",
+      "codigo": null,
+      "prioridad": null,
+      "longitud_m": 5914.8,
+      "featured": false,
+      "estado": "propuesto"
+    }
+  ]
+}

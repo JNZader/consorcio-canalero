@@ -12,6 +12,7 @@ import {
   syncBaseTileVisibility,
   syncBasinLayers,
   syncBpaHistoricoLayer,
+  syncCanalesLayers,
   syncPorcentajeForestacionLayer,
   syncRoadLayers,
   syncSoilLayers,
@@ -28,6 +29,9 @@ import {
 } from './mapRasterOverlayHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
 import type { PilarVerdeData } from '../../types/pilarVerde';
+import type { CanalesData, Etapa } from '../../types/canales';
+import { ALL_ETAPAS } from '../../types/canales';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 
 interface LayerLike {
   id: string;
@@ -68,6 +72,11 @@ interface UseMapLayerEffectsParams {
    * fall back to an empty FeatureCollection and stay hidden).
    */
   pilarVerde?: PilarVerdeData | null;
+  /**
+   * Pilar Azul (Canales) static data. Same graceful-degradation contract as
+   * Pilar Verde — `undefined` means not-wired-yet, `null` slots stay hidden.
+   */
+  canales?: Partial<CanalesData> | null;
 }
 
 export function useMapLayerEffects({
@@ -95,6 +104,7 @@ export function useMapLayerEffects({
   comparison,
   waterwaysDefs,
   pilarVerde,
+  canales,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -267,5 +277,70 @@ export function useMapLayerEffects({
     mapRef,
     pilarVerde?.porcentajeForestacion,
     vectorVisibility.pilar_verde_porcentaje_forestacion,
+  ]);
+
+  // ── Pilar Azul (Canales — Phase 2) ─────────────────────────────────────
+  // Bootstrap: when `index.json` resolves, register the dynamic per-canal
+  // ids into the store. Idempotent — re-running preserves user-flipped
+  // values via the persist middleware.
+  const registerPilarAzul = useMapLayerSyncStore((s) => s.registerPilarAzul);
+  useEffect(() => {
+    if (!canales?.index) return;
+    registerPilarAzul(canales.index);
+  }, [canales?.index, registerPilarAzul]);
+
+  // Subscribe to the propuestas-etapas slice so the layer filter re-runs
+  // whenever the user toggles an etapa.
+  const propuestasEtapasVisibility = useMapLayerSyncStore(
+    (s) => s.propuestasEtapasVisibility,
+  );
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (!canales) return;
+
+    // Compute per-canal visible id lists from the store state.
+    // For relevados: include every registered canal whose per-canal flag is
+    // not false. The master toggle gates the whole layer via visibility.
+    const state = useMapLayerSyncStore.getState();
+    const allRelevadoSlugs = (canales.index?.relevados ?? []).map((r) => r.id);
+    const visibleRelevadoIds = allRelevadoSlugs.filter((slug) => {
+      const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
+      return state.map2d.visibleVectors[key] !== false;
+    });
+
+    // Propuestas uses the store selector — it combines per-canal + etapa.
+    const visiblePropuestaIds = state.getVisiblePropuestaIds('map2d');
+
+    // Active etapas = keys with value `true`.
+    const activeEtapas = (Object.entries(state.propuestasEtapasVisibility) as [Etapa, boolean][])
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+
+    syncCanalesLayers(map, {
+      relevados: (canales.relevados ?? null) as FeatureCollection<
+        GeoJSON.LineString,
+        import('../../types/canales').CanalFeatureProperties
+      > | null,
+      propuestas: (canales.propuestas ?? null) as FeatureCollection<
+        GeoJSON.LineString,
+        import('../../types/canales').CanalFeatureProperties
+      > | null,
+      relevadosVisible: !!vectorVisibility.canales_relevados,
+      propuestasVisible: !!vectorVisibility.canales_propuestos,
+      visibleRelevadoIds,
+      visiblePropuestaIds,
+      activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
+    });
+  }, [
+    mapReady,
+    mapRef,
+    canales,
+    canales?.index,
+    canales?.relevados,
+    canales?.propuestas,
+    vectorVisibility,
+    propuestasEtapasVisibility,
   ]);
 }

@@ -1,8 +1,10 @@
-import { Box, Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text, Tooltip } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { getActiveAttributions } from './layerAttributions';
+import { PropuestasEtapasFilter } from './PropuestasEtapasFilter';
+import type { Etapa } from '../../types/canales';
 
 interface LayerItem {
   id: string;
@@ -29,6 +31,25 @@ interface LayerControlsPanelProps {
   readonly activeDemLayerId: string | null;
   readonly onActiveDemLayerIdChange: (value: string | null) => void;
   readonly demOptions: SelectItem[];
+  /**
+   * Pilar Azul — per-canal relevado items. When provided (along with the
+   * propuestos array), the "Canales" CollapsibleSection renders AFTER the
+   * "Capas" section. Leaving both arrays unset keeps the panel identical to
+   * its pre-Pilar-Azul behavior for tests/pages that don't care.
+   */
+  readonly canalesRelevadosItems?: readonly LayerItem[];
+  readonly canalesPropuestosItems?: readonly LayerItem[];
+  /**
+   * 5-key record sourced from `mapLayerSyncStore.propuestasEtapasVisibility`.
+   * Required only when the Canales section is active AND the propuestos
+   * master is ON — the filter subsection reads it directly.
+   */
+  readonly propuestasEtapasVisibility?: Readonly<Record<Etapa, boolean>>;
+  /**
+   * Parent-owned setter for a single etapa. Typically delegates to
+   * `mapLayerSyncStore.setEtapaVisible`.
+   */
+  readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
 }
 
 export const LayerControlsPanel = memo(function LayerControlsPanel({
@@ -46,7 +67,15 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
   activeDemLayerId,
   onActiveDemLayerIdChange,
   demOptions,
+  canalesRelevadosItems,
+  canalesPropuestosItems,
+  propuestasEtapasVisibility,
+  onSetEtapaVisible,
 }: LayerControlsPanelProps) {
+  const showCanalesSection =
+    (canalesRelevadosItems?.length ?? 0) > 0 || (canalesPropuestosItems?.length ?? 0) > 0;
+  const relevadosMaster = !!vectorVisibility.canales_relevados;
+  const propuestosMaster = !!vectorVisibility.canales_propuestos;
   const activeAttributions = useMemo(() => {
     const visibleSet = new Set<string>();
     for (const [id, visible] of Object.entries(vectorVisibility)) {
@@ -163,6 +192,124 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
           </Stack>
         </CollapsibleSection>
       </Paper>
+
+      {showCanalesSection && (
+        <Paper
+          shadow="md"
+          p="xs"
+          radius="md"
+          style={{
+            background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <CollapsibleSection
+            title="Canales"
+            testId="layer-controls-canales"
+            titleSize="xs"
+            titleWeight={600}
+          >
+            <Stack gap={6}>
+              {(canalesRelevadosItems?.length ?? 0) > 0 && (
+                <Stack gap={4}>
+                  <Checkbox
+                    size="xs"
+                    label="Canales relevados"
+                    checked={relevadosMaster}
+                    onChange={(event) =>
+                      onLayerVisibilityChange('canales_relevados', event.currentTarget.checked)
+                    }
+                  />
+                  <Stack gap={2} pl="md">
+                    {canalesRelevadosItems?.map(({ id, label }) => {
+                      const disabledRow = !relevadosMaster;
+                      const tooltipLabel = "Activá 'Canales relevados' para usar esta opción";
+                      return (
+                        <Tooltip
+                          key={id}
+                          label={tooltipLabel}
+                          disabled={!disabledRow}
+                          withinPortal
+                        >
+                          <div
+                            data-testid={`canal-toggle-${id}`}
+                            data-tooltip-label={disabledRow ? tooltipLabel : undefined}
+                          >
+                            <Checkbox
+                              size="xs"
+                              label={label}
+                              checked={!!vectorVisibility[id]}
+                              disabled={disabledRow}
+                              onChange={(event) =>
+                                onLayerVisibilityChange(id, event.currentTarget.checked)
+                              }
+                            />
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
+                  </Stack>
+                </Stack>
+              )}
+
+              {(canalesPropuestosItems?.length ?? 0) > 0 && (
+                <Stack gap={4}>
+                  <Checkbox
+                    size="xs"
+                    label="Canales propuestos"
+                    checked={propuestosMaster}
+                    onChange={(event) =>
+                      onLayerVisibilityChange('canales_propuestos', event.currentTarget.checked)
+                    }
+                  />
+                  <Stack gap={2} pl="md">
+                    {canalesPropuestosItems?.map(({ id, label }) => {
+                      const disabledRow = !propuestosMaster;
+                      const tooltipLabel = "Activá 'Canales propuestos' para usar esta opción";
+                      return (
+                        <Tooltip
+                          key={id}
+                          label={tooltipLabel}
+                          disabled={!disabledRow}
+                          withinPortal
+                        >
+                          <div
+                            data-testid={`canal-toggle-${id}`}
+                            data-tooltip-label={disabledRow ? tooltipLabel : undefined}
+                          >
+                            <Checkbox
+                              size="xs"
+                              label={label}
+                              checked={!!vectorVisibility[id]}
+                              disabled={disabledRow}
+                              onChange={(event) =>
+                                onLayerVisibilityChange(id, event.currentTarget.checked)
+                              }
+                            />
+                          </div>
+                        </Tooltip>
+                      );
+                    })}
+                  </Stack>
+                  {/*
+                    PropuestasEtapasFilter UNMOUNTS when the master is OFF — spec
+                    requirement "Section unmounts when master toggled off". When
+                    the caller did not supply etapas state (e.g. test fixtures
+                    without canales), we also bail to keep the render hole clean.
+                  */}
+                  {propuestasEtapasVisibility && onSetEtapaVisible && (
+                    <PropuestasEtapasFilter
+                      masterOn={propuestosMaster}
+                      propuestasEtapasVisibility={propuestasEtapasVisibility}
+                      onSetEtapaVisible={onSetEtapaVisible}
+                    />
+                  )}
+                </Stack>
+              )}
+            </Stack>
+          </CollapsibleSection>
+        </Paper>
+      )}
     </Box>
   );
 });

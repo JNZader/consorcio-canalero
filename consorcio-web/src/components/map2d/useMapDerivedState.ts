@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { GEO_LAYER_LABELS, buildTileUrl } from '../../hooks/useGeoLayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import type { PilarVerdeData } from '../../types/pilarVerde';
+import type { CanalesData } from '../../types/canales';
 import { decorateFeature, asFeatureCollection } from './map2dUtils';
 import {
   buildActiveLegendItems,
@@ -50,6 +51,12 @@ export function useMapDerivedState(params: {
    * the graceful-degradation fallback — see spec "missing files" scenario.
    */
   pilarVerde?: PilarVerdeData | null;
+  /**
+   * Pilar Azul (Canales) static data — loaded upstream by `useCanales()`.
+   * Same pass-through contract as `pilarVerde`. `showPilarAzul` gating flag
+   * in `buildVectorLayerItems` is derived from `!!canales?.index`.
+   */
+  canales?: Partial<CanalesData> | null;
 }) {
   const {
     capas,
@@ -73,6 +80,7 @@ export function useMapDerivedState(params: {
     intersectionsLength,
     isAdmin,
     pilarVerde = null,
+    canales = null,
   } = params;
 
   const zonaCollection = capas.zona ?? null;
@@ -172,6 +180,8 @@ export function useMapDerivedState(params: {
   // `aggregates` is the canonical gating slot because every downstream UI
   // (widget, legend, toggles) relies on it.
   const showPilarVerde = !!pilarVerde?.aggregates;
+  // Pilar Azul gates on the index.json slot — it's the bootstrap source.
+  const showPilarAzul = !!canales?.index;
 
   const vectorLayerItems = useMemo(
     () =>
@@ -182,6 +192,7 @@ export function useMapDerivedState(params: {
         intersectionsLength,
         isAdmin,
         showPilarVerde,
+        showPilarAzul,
       }),
     [
       approvedZonesCollection,
@@ -190,6 +201,7 @@ export function useMapDerivedState(params: {
       isAdmin,
       roadsCollection,
       showPilarVerde,
+      showPilarAzul,
     ],
   );
 

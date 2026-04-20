@@ -1,8 +1,15 @@
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, LineString } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 
 import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import type { CanalFeatureProperties, Etapa } from '../../types/canales';
+import {
+  buildCanalesPropuestasFilter,
+  buildCanalesPropuestasPaint,
+  buildCanalesRelevadosFilter,
+  buildCanalesRelevadosPaint,
+} from './canalesLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
@@ -46,11 +53,8 @@ export function syncWaterwayLayers(
         source: waterwayFile.id,
         paint: {
           'line-color': waterwayFile.color,
-          'line-width': waterwayFile.layer === 'canales_existentes' ? 4 : 3,
+          'line-width': 3,
           'line-opacity': 0.9,
-          ...(waterwayFile.layer === 'canales_existentes'
-            ? { 'line-dasharray': [3, 2] }
-            : {}),
         },
       });
     }
@@ -501,5 +505,124 @@ export function syncPorcentajeForestacionLayer(
 
   setLayerVisibility(map, `${id}-fill`, isVisible);
   raisePilarVerdeStack(map);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Pilar Azul (Canales) sync helper                                          */
+/*                                                                            */
+/*  ONE helper for both relevados + propuestos — they share infra (same data  */
+/*  shape, same mount/filter pattern) and rendering both in a single pass     */
+/*  keeps `raiseCanalesStack` consistent across visibility flips.             */
+/*                                                                            */
+/*  The helper is idempotent: addSource/addLayer are guarded by               */
+/*  getSource/getLayer checks. `setFilter` + `setLayerVisibility` are the     */
+/*  "hot path" called on every re-render.                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface SyncCanalesLayersParams {
+  /** Relevados FeatureCollection — `null` renders an empty source. */
+  relevados: FeatureCollection<LineString, CanalFeatureProperties> | null;
+  /** Propuestos FeatureCollection — `null` renders an empty source. */
+  propuestas: FeatureCollection<LineString, CanalFeatureProperties> | null;
+  /** Master toggle state for the relevados layer. */
+  relevadosVisible: boolean;
+  /** Master toggle state for the propuestos layer. */
+  propuestasVisible: boolean;
+  /** Slugs currently visible in the relevados layer (after per-canal filter). */
+  visibleRelevadoIds: readonly string[];
+  /** Slugs currently visible in the propuestos layer (after per-canal + etapa filter). */
+  visiblePropuestaIds: readonly string[];
+  /**
+   * Etapas currently visible — used by the propuestos layer filter's second
+   * branch. Pass ALL 5 when the user hasn't filtered anything; pass the
+   * subset when they've toggled some off.
+   */
+  activeEtapas: readonly Etapa[];
+}
+
+/**
+ * Raise the canales stack to the top AFTER each sync pass so pilar-verde
+ * fills (if mounted) still overlay them in click precedence — canales are
+ * line features, fills "win" on pixel-overlap in MapLibre z-order.
+ */
+function raiseCanalesStack(map: maplibregl.Map) {
+  const ids = [
+    `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+    `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+  ];
+  for (const id of ids) {
+    if (map.getLayer(id)) {
+      try {
+        map.moveLayer(id);
+      } catch {
+        // moveLayer can race with concurrent style edits — safe to ignore,
+        // next pass will retry.
+      }
+    }
+  }
+}
+
+export function syncCanalesLayers(
+  map: maplibregl.Map,
+  params: SyncCanalesLayersParams,
+): void {
+  const {
+    relevados,
+    propuestas,
+    relevadosVisible,
+    propuestasVisible,
+    visibleRelevadoIds,
+    visiblePropuestaIds,
+    activeEtapas,
+  } = params;
+
+  const relevadosSrcId = SOURCE_IDS.CANALES_RELEVADOS;
+  const propuestosSrcId = SOURCE_IDS.CANALES_PROPUESTOS;
+  const relevadosLayerId = `${relevadosSrcId}-line`;
+  const propuestosLayerId = `${propuestosSrcId}-line`;
+
+  // ── Sources (idempotent) ──
+  ensureGeoJsonSource(
+    map,
+    relevadosSrcId,
+    (relevados ?? asFeatureCollection([])) as FeatureCollection,
+  );
+  ensureGeoJsonSource(
+    map,
+    propuestosSrcId,
+    (propuestas ?? asFeatureCollection([])) as FeatureCollection,
+  );
+
+  // ── Layers (idempotent) ──
+  if (!map.getLayer(relevadosLayerId)) {
+    map.addLayer({
+      id: relevadosLayerId,
+      type: 'line',
+      source: relevadosSrcId,
+      paint: buildCanalesRelevadosPaint(),
+    });
+  }
+  if (!map.getLayer(propuestosLayerId)) {
+    map.addLayer({
+      id: propuestosLayerId,
+      type: 'line',
+      source: propuestosSrcId,
+      paint: buildCanalesPropuestasPaint(),
+    });
+  }
+
+  // ── Filters (hot path — called on every render) ──
+  map.setFilter(relevadosLayerId, buildCanalesRelevadosFilter(visibleRelevadoIds));
+  map.setFilter(
+    propuestosLayerId,
+    buildCanalesPropuestasFilter(visiblePropuestaIds, activeEtapas),
+  );
+
+  // ── Visibility (master toggles) ──
+  setLayerVisibility(map, relevadosLayerId, relevadosVisible);
+  setLayerVisibility(map, propuestosLayerId, propuestasVisible);
+
+  // ── Z-order ──
+  raiseCanalesStack(map);
 }
 

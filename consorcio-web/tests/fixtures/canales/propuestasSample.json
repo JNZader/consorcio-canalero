@@ -1,0 +1,78 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "schema_version": "1.0",
+    "generated_at": "2026-04-20T20:18:51Z"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "n3-tramo-faltante-de-interconexion",
+        "codigo": "N3",
+        "nombre": "Tramo faltante de interconexión",
+        "descripcion": null,
+        "estado": "propuesto",
+        "longitud_m": 685.5,
+        "longitud_declarada_m": 685.0,
+        "prioridad": "Alta",
+        "featured": true,
+        "tramo_folder": "Norte",
+        "source_style": "prio_Alta"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-62.38978905805504, -32.45715766926823],
+          [-62.39110479193295, -32.4580598687936]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "n5-extension-zona-noroeste-primer-ramal",
+        "codigo": "N5",
+        "nombre": "Extensión zona Noroeste primer ramal",
+        "descripcion": null,
+        "estado": "propuesto",
+        "longitud_m": 2511.7,
+        "longitud_declarada_m": 2507.0,
+        "prioridad": "Media-Alta",
+        "featured": false,
+        "tramo_folder": "Achalay",
+        "source_style": "prio_Media_Alta"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-62.47381226297578, -32.48297393453272],
+          [-62.48411022111631, -32.48493244308239]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "s2-complemento-opcional-p12-sujeto-a-presupuesto",
+        "codigo": null,
+        "nombre": "S2 complemento opcional (P12) · sujeto a presupuesto",
+        "descripcion": null,
+        "estado": "propuesto",
+        "longitud_m": 5914.8,
+        "longitud_declarada_m": 5916.0,
+        "prioridad": null,
+        "featured": false,
+        "tramo_folder": "Candil",
+        "source_style": "prio_Opcional"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-62.56241586259065, -32.56943076071839],
+          [-62.5586717976066, -32.56789637899195]
+        ]
+      }
+    }
+  ]
+}

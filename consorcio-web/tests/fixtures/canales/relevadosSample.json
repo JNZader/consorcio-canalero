@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "schema_version": "1.0",
+    "generated_at": "2026-04-20T20:18:51Z"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "canal-ne-sin-intervencion",
+        "codigo": null,
+        "nombre": "Canal NE (sin intervención)",
+        "descripcion": null,
+        "estado": "relevado",
+        "longitud_m": 8218.1,
+        "longitud_declarada_m": null,
+        "prioridad": null,
+        "featured": false,
+        "tramo_folder": "Canales existentes",
+        "source_style": "sin_obra"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-62.45473834783109, -32.58863827768679],
+          [-62.45377686722309, -32.58610722982952]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "s1-canal-chico-este-san-marcos-sud-readecuacion",
+        "codigo": "S1",
+        "nombre": "Canal chico este San Marcos Sud · readecuación",
+        "descripcion": null,
+        "estado": "relevado",
+        "longitud_m": 6054.1,
+        "longitud_declarada_m": null,
+        "prioridad": null,
+        "featured": false,
+        "tramo_folder": "Canal Este San Marcos Sud",
+        "source_style": "readec"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-62.46173264536526, -32.68389003200027],
+          [-62.47009972000856, -32.68246514645378]
+        ]
+      }
+    }
+  ]
+}

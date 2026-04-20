@@ -296,6 +296,8 @@ export const MapUiPanels = memo(function MapUiPanels({
             pilarVerdePorcentajeForestacionVisible={
               !!vectorVisibility.pilar_verde_porcentaje_forestacion
             }
+            pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
+            pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
           />
         )}
       </Box>

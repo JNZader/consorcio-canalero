@@ -48,3 +48,31 @@ describe('buildClickableLayers · z-order click precedence', () => {
     expect(layers).toContain(`${SOURCE_IDS.ROADS}-line`);
   });
 });
+
+describe('buildClickableLayers · Pilar Azul (Canales) inclusion', () => {
+  it('includes both Canales line layer ids in the whitelist', () => {
+    const layers = buildClickableLayers();
+    expect(layers).toContain(`${SOURCE_IDS.CANALES_RELEVADOS}-line`);
+    expect(layers).toContain(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
+  });
+
+  it('canales sit AFTER Pilar Verde fills (BPA wins over canal on overlap)', () => {
+    const layers = buildClickableLayers();
+    const pvBpaIdx = layers.indexOf(`${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`);
+    const canalRelIdx = layers.indexOf(`${SOURCE_IDS.CANALES_RELEVADOS}-line`);
+    const canalPropIdx = layers.indexOf(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
+    expect(pvBpaIdx).toBeGreaterThanOrEqual(0);
+    expect(canalRelIdx).toBeGreaterThan(pvBpaIdx);
+    expect(canalPropIdx).toBeGreaterThan(pvBpaIdx);
+  });
+
+  it('canales sit BEFORE catastro-fill so canal wins over catastro on overlap', () => {
+    const layers = buildClickableLayers();
+    const catastroIdx = layers.indexOf(`${SOURCE_IDS.CATASTRO}-fill`);
+    const canalRelIdx = layers.indexOf(`${SOURCE_IDS.CANALES_RELEVADOS}-line`);
+    const canalPropIdx = layers.indexOf(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
+    expect(catastroIdx).toBeGreaterThan(0);
+    expect(canalRelIdx).toBeLessThan(catastroIdx);
+    expect(canalPropIdx).toBeLessThan(catastroIdx);
+  });
+});
