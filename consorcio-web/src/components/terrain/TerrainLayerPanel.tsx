@@ -1,6 +1,11 @@
 import { Box, Checkbox, CloseButton, Group, Paper, Select, Slider, Stack, Text } from '@mantine/core';
 import { RasterLegend } from '../RasterLegend';
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
+import {
+  SOIL_CAPABILITY_COLORS,
+  SOIL_CAPABILITY_LABELS,
+  SOIL_CAPABILITY_ORDER,
+} from '../../hooks/useSoilMap';
 import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
 
 interface TerrainLayerPanelProps {
@@ -151,7 +156,56 @@ export function TerrainLayerPanel({
             ))}
           </Stack>
         </Box>
+
+        {vectorLayerVisibility.soil && <SoilLegend />}
       </Stack>
     </Paper>
+  );
+}
+
+/**
+ * Legend for the "Suelos IDECOR 1:50.000" vector layer rendered in 3D.
+ *
+ * Colors come from `SOIL_CAPABILITY_COLORS` in `useSoilMap.ts` — the same
+ * map feeds the MapLibre paint in `terrainVectorLayerEffects.ts`, so the
+ * legend can never drift from the rendered polygons.
+ *
+ * Labels are the Spanish IDECOR soil-capability class descriptors (I–VIII).
+ */
+function SoilLegend() {
+  return (
+    <Box data-testid="terrain-3d-soil-legend">
+      <Text size="xs" fw={600} mb={4}>
+        Suelos — Clases de capacidad (IDECOR)
+      </Text>
+      <Stack gap={2}>
+        {SOIL_CAPABILITY_ORDER.map((cap) => {
+          const color = SOIL_CAPABILITY_COLORS[cap];
+          const label = SOIL_CAPABILITY_LABELS[cap];
+          return (
+            <Group
+              key={cap}
+              gap={6}
+              wrap="nowrap"
+              data-testid={`terrain-3d-soil-legend-chip-${cap}`}
+            >
+              <Box
+                data-soil-swatch="true"
+                style={{
+                  background: color,
+                  width: 14,
+                  height: 14,
+                  borderRadius: 'var(--mantine-radius-xs)',
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                {cap} — {label}
+              </Text>
+            </Group>
+          );
+        })}
+      </Stack>
+    </Box>
   );
 }
