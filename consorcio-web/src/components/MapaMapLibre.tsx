@@ -92,7 +92,9 @@ export default function MapaMapLibre() {
   const isDraggingSlider = useRef(false);
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
+  // Phase 8 — array instead of single feature so InfoPanel can stack all
+  // overlapping features at the click point (one section per layer).
+  const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>('osm');
   const [viewMode, setViewMode] = useState<ViewMode>('base');
   const showLegend = true;
@@ -278,7 +280,7 @@ export default function MapaMapLibre() {
     mapReady,
     markingMode,
     setNewPoint,
-    setSelectedFeature,
+    setSelectedFeatures,
     showSuggestedZonesPanel,
     setSelectedDraftBasinId,
   });
@@ -558,8 +560,8 @@ export default function MapaMapLibre() {
           }
         }}
         onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
-        selectedFeature={selectedFeature}
-        onCloseInfoPanel={() => setSelectedFeature(null)}
+        selectedFeatures={selectedFeatures}
+        onCloseInfoPanel={() => setSelectedFeatures([])}
         bpaEnriched={pilarVerde?.bpaEnriched}
         bpaHistory={pilarVerde?.bpaHistory}
         newPoint={newPoint}

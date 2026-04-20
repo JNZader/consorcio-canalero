@@ -1,7 +1,11 @@
 /**
  * TerrainLayerPanelSoilLegend.test.tsx
  *
- * Validates that the 3D TerrainLayerPanel renders a legend for the
+ * Phase 8 — the 3D chrome was split into `<TerrainLayerTogglesPanel />` and
+ * `<TerrainLegendsPanel />`. This file now exercises the legend panel
+ * directly.
+ *
+ * Validates that `<TerrainLegendsPanel />` renders a legend for the
  * "Suelos IDECOR 1:50.000" vector layer when it is toggled ON, and hides
  * it when the layer is OFF.
  *
@@ -17,7 +21,7 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { TerrainLayerPanel } from '../../src/components/terrain/TerrainLayerPanel';
+import { TerrainLegendsPanel } from '../../src/components/terrain/TerrainLegendsPanel';
 import {
   SOIL_CAPABILITY_COLORS,
   SOIL_CAPABILITY_LABELS,
@@ -32,25 +36,17 @@ const SOIL_LEGEND_TESTID = 'terrain-3d-soil-legend';
 const SOIL_CHIP_TESTID_PREFIX = 'terrain-3d-soil-legend-chip';
 
 const baseProps = {
-  rasterLayers: [],
   activeRasterType: undefined,
-  activeRasterLayerId: undefined,
-  onActiveRasterLayerChange: vi.fn(),
-  overlayOpacity: 0.7,
-  onOverlayOpacityChange: vi.fn(),
   hiddenClasses: {},
   onClassToggle: vi.fn(),
   hiddenRanges: {},
   onRangeToggle: vi.fn(),
-  onVectorLayerToggle: vi.fn(),
-  onClose: vi.fn(),
-  hasApprovedZones: false,
 } as const;
 
-describe('TerrainLayerPanel — Suelos (soil) vector layer legend', () => {
+describe('TerrainLegendsPanel — Suelos (soil) vector layer legend', () => {
   it('renders all 8 IDECOR capability classes (I–VIII) with Spanish labels and SOIL_CAPABILITY_COLORS when soil layer is ON', () => {
     renderWithMantine(
-      <TerrainLayerPanel
+      <TerrainLegendsPanel
         {...baseProps}
         vectorLayerVisibility={{ soil: true }}
       />
@@ -97,7 +93,7 @@ describe('TerrainLayerPanel — Suelos (soil) vector layer legend', () => {
 
   it('does NOT render the soil legend when the soil layer toggle is OFF', () => {
     renderWithMantine(
-      <TerrainLayerPanel
+      <TerrainLegendsPanel
         {...baseProps}
         vectorLayerVisibility={{ soil: false }}
       />
@@ -108,7 +104,7 @@ describe('TerrainLayerPanel — Suelos (soil) vector layer legend', () => {
 
   it('does NOT render the soil legend when vectorLayerVisibility has no soil key', () => {
     renderWithMantine(
-      <TerrainLayerPanel
+      <TerrainLegendsPanel
         {...baseProps}
         vectorLayerVisibility={{}}
       />

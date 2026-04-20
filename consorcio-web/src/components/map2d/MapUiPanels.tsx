@@ -103,7 +103,12 @@ export interface MapUiPanelsProps {
   readonly onClearApprovedZones: () => void;
   readonly onRestoreVersion: (id: string) => void;
   readonly onExportApprovedZonesGeoJSON: () => void;
-  readonly selectedFeature: Feature | null;
+  /**
+   * Phase 8 — array of all features returned by MapLibre at the click
+   * point. InfoPanel renders one stacked section per feature in order
+   * (top-most first).
+   */
+  readonly selectedFeatures: readonly Feature[];
   readonly onCloseInfoPanel: () => void;
   /**
    * Optional Pilar Verde enriched catastro data — when present, InfoPanel
@@ -188,7 +193,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onClearApprovedZones,
   onRestoreVersion,
   onExportApprovedZonesGeoJSON,
-  selectedFeature,
+  selectedFeatures,
   onCloseInfoPanel,
   bpaEnriched,
   bpaHistory,
@@ -261,32 +266,41 @@ export const MapUiPanels = memo(function MapUiPanels({
         onToggleSuggestedZonesPanel={onToggleSuggestedZonesPanel}
         onOpenExportPng={onOpenExportPng}
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
-      >
-        {showLegend && (
-          <LeyendaPanel
-            consorcios={consorcios}
-            customItems={activeLegendItems}
-            floating={false}
-            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-            pilarVerdePorcentajeForestacionVisible={
-              !!vectorVisibility.pilar_verde_porcentaje_forestacion
-            }
-          />
-        )}
+      />
 
-        {visibleRasterLayers.length > 0 && (
-          <RasterLegend
-            layers={visibleRasterLayers}
-            hiddenClasses={hiddenClasses}
-            hiddenRanges={hiddenRanges}
-            onClassToggle={onClassToggle}
-            onRangeToggle={onRangeToggle}
-          />
-        )}
-      </MapActionsPanel>
+      {/*
+        Phase 8 Fix 3/4 — decouple legends from the top-right action bar so
+        they stop colliding with the InfoPanel (also top-right).
+          · LeyendaPanel   → bottom-LEFT  (via `floating={true}`)
+          · RasterLegend   → bottom-RIGHT (via its own `.rasterLegendPanel`)
+          · InfoPanel      → top-RIGHT    (via `.infoPanel`)
+        Each legend has its own bounded max-height + internal scroll so tall
+        DEM / BPA gradients don't push the layout.
+      */}
+      {showLegend && (
+        <LeyendaPanel
+          consorcios={consorcios}
+          customItems={activeLegendItems}
+          floating
+          pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+          pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+          pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+          pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+          pilarVerdePorcentajeForestacionVisible={
+            !!vectorVisibility.pilar_verde_porcentaje_forestacion
+          }
+        />
+      )}
+
+      {visibleRasterLayers.length > 0 && (
+        <RasterLegend
+          layers={visibleRasterLayers}
+          hiddenClasses={hiddenClasses}
+          hiddenRanges={hiddenRanges}
+          onClassToggle={onClassToggle}
+          onRangeToggle={onRangeToggle}
+        />
+      )}
 
       {showSuggestedZonesPanel && suggestedZoneSummaries.length > 0 && canManageZoning && (
         <SuggestedZonesPanel
@@ -315,9 +329,9 @@ export const MapUiPanels = memo(function MapUiPanels({
         />
       )}
 
-      {selectedFeature && (
+      {selectedFeatures.length > 0 && (
         <InfoPanel
-          feature={selectedFeature}
+          features={selectedFeatures}
           onClose={onCloseInfoPanel}
           bpaEnriched={bpaEnriched}
           bpaHistory={bpaHistory}

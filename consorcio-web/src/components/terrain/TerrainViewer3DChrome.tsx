@@ -11,7 +11,8 @@ import {
 } from '@mantine/core';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 
-import { TerrainLayerPanel } from './TerrainLayerPanel';
+import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
+import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 
 interface SelectedImageOption {
   value: string;
@@ -133,23 +134,33 @@ export function TerrainViewer3DChrome({
         </Paper>
 
         {showLayerPanel && (
-          <TerrainLayerPanel
-            rasterLayers={rasterLayers}
-            selectedImageOption={selectedImageOption}
-            activeRasterType={activeRasterType}
-            activeRasterLayerId={activeRasterLayerId}
-            onActiveRasterLayerChange={onActiveRasterLayerChange}
-            overlayOpacity={overlayOpacity}
-            onOverlayOpacityChange={onOverlayOpacityChange}
-            hiddenClasses={hiddenClasses}
-            onClassToggle={onClassToggle}
-            hiddenRanges={hiddenRanges}
-            onRangeToggle={onRangeToggle}
-            vectorLayerVisibility={vectorLayerVisibility}
-            onVectorLayerToggle={onVectorLayerToggle}
-            onClose={onToggleLayerPanel}
-            hasApprovedZones={hasApprovedZones}
-          />
+          <>
+            {/*
+              Phase 8 Fix 5/6 — legends moved OUT of the toggles panel into a
+              sibling. Rendered side-by-side so layer toggles (right) and
+              legends (left-of-toggles) no longer compete for vertical space.
+            */}
+            <TerrainLegendsPanel
+              activeRasterType={activeRasterType}
+              hiddenClasses={hiddenClasses}
+              onClassToggle={onClassToggle}
+              hiddenRanges={hiddenRanges}
+              onRangeToggle={onRangeToggle}
+              vectorLayerVisibility={vectorLayerVisibility}
+            />
+            <TerrainLayerTogglesPanel
+              rasterLayers={rasterLayers}
+              selectedImageOption={selectedImageOption}
+              activeRasterLayerId={activeRasterLayerId}
+              onActiveRasterLayerChange={onActiveRasterLayerChange}
+              overlayOpacity={overlayOpacity}
+              onOverlayOpacityChange={onOverlayOpacityChange}
+              vectorLayerVisibility={vectorLayerVisibility}
+              onVectorLayerToggle={onVectorLayerToggle}
+              onClose={onToggleLayerPanel}
+              hasApprovedZones={hasApprovedZones}
+            />
+          </>
         )}
 
         {!ready && (

@@ -1,51 +1,51 @@
+/**
+ * TerrainLayerTogglesPanel.tsx
+ *
+ * Phase 8 Fix 5 — one half of the split 3D chrome.
+ *
+ * Before: a single `TerrainLayerPanel` mixed layer toggles + raster select +
+ * opacity slider + soil legend + raster legend all in one block. Users
+ * reported the legends were cramped and legends + toggles competed for
+ * vertical space.
+ *
+ * Now: this component owns ONLY the input controls — overlay select,
+ * opacity slider, and per-layer checkboxes. Legends live in a sibling
+ * `TerrainLegendsPanel` rendered side-by-side in `TerrainViewer3DChrome`.
+ */
+
 import { Box, Checkbox, CloseButton, Group, Paper, Select, Slider, Stack, Text } from '@mantine/core';
-import { RasterLegend } from '../RasterLegend';
+
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
-import {
-  SOIL_CAPABILITY_COLORS,
-  SOIL_CAPABILITY_LABELS,
-  SOIL_CAPABILITY_ORDER,
-} from '../../hooks/useSoilMap';
 import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
 
-interface TerrainLayerPanelProps {
+interface TerrainLayerTogglesPanelProps {
   readonly rasterLayers: GeoLayerInfo[];
   readonly selectedImageOption?: {
     value: string;
     label: string;
   } | null;
-  readonly activeRasterType?: string;
   readonly activeRasterLayerId?: string;
-  readonly onActiveRasterLayerChange: (layerId: string) => void;
+  readonly onActiveRasterLayerChange: (layerId: string | null) => void;
   readonly overlayOpacity: number;
   readonly onOverlayOpacityChange: (value: number) => void;
-  readonly hiddenClasses: Record<string, number[]>;
-  readonly onClassToggle: (layerType: string, classIndex: number, visible: boolean) => void;
-  readonly hiddenRanges: Record<string, number[]>;
-  readonly onRangeToggle: (layerType: string, rangeIndex: number, visible: boolean) => void;
   readonly vectorLayerVisibility: Record<string, boolean>;
   readonly onVectorLayerToggle: (layerId: string, visible: boolean) => void;
   readonly onClose: () => void;
   readonly hasApprovedZones: boolean;
 }
 
-export function TerrainLayerPanel({
+export function TerrainLayerTogglesPanel({
   rasterLayers,
   selectedImageOption = null,
-  activeRasterType,
   activeRasterLayerId,
   onActiveRasterLayerChange,
   overlayOpacity,
   onOverlayOpacityChange,
-  hiddenClasses,
-  onClassToggle,
-  hiddenRanges,
-  onRangeToggle,
   vectorLayerVisibility,
   onVectorLayerToggle,
   onClose,
   hasApprovedZones,
-}: TerrainLayerPanelProps) {
+}: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
     label: GEO_LAYER_LABELS[layer.tipo] || layer.nombre,
@@ -59,13 +59,14 @@ export function TerrainLayerPanel({
       shadow="md"
       p="sm"
       radius="md"
+      data-testid="terrain-3d-toggles-panel"
       style={{
         position: 'absolute',
         top: 56,
         right: 12,
         zIndex: 15,
         width: 280,
-        maxHeight: 'calc(100% - 24px)',
+        maxHeight: 'calc(100vh - 96px)',
         overflowY: 'auto',
         background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
         backdropFilter: 'blur(6px)',
@@ -102,6 +103,9 @@ export function TerrainLayerPanel({
             placeholder="Seleccionar overlay"
             nothingFoundMessage="Sin capas raster"
           />
+          {/* We intentionally drop `null` from the Select's onChange — the
+              chrome accepts null but the UX here is "pick a layer", not
+              "clear to null". */}
         </Box>
 
         <Box>
@@ -124,17 +128,6 @@ export function TerrainLayerPanel({
           />
         </Box>
 
-        {activeRasterType && (
-          <RasterLegend
-            layers={[{ tipo: activeRasterType }]}
-            hiddenClasses={hiddenClasses}
-            onClassToggle={onClassToggle}
-            hiddenRanges={hiddenRanges}
-            onRangeToggle={onRangeToggle}
-            floating={false}
-          />
-        )}
-
         <Box>
           <Text size="xs" fw={600} mb={4}>
             Capas vectoriales 3D
@@ -156,56 +149,7 @@ export function TerrainLayerPanel({
             ))}
           </Stack>
         </Box>
-
-        {vectorLayerVisibility.soil && <SoilLegend />}
       </Stack>
     </Paper>
-  );
-}
-
-/**
- * Legend for the "Suelos IDECOR 1:50.000" vector layer rendered in 3D.
- *
- * Colors come from `SOIL_CAPABILITY_COLORS` in `useSoilMap.ts` — the same
- * map feeds the MapLibre paint in `terrainVectorLayerEffects.ts`, so the
- * legend can never drift from the rendered polygons.
- *
- * Labels are the Spanish IDECOR soil-capability class descriptors (I–VIII).
- */
-function SoilLegend() {
-  return (
-    <Box data-testid="terrain-3d-soil-legend">
-      <Text size="xs" fw={600} mb={4}>
-        Suelos — Clases de capacidad (IDECOR)
-      </Text>
-      <Stack gap={2}>
-        {SOIL_CAPABILITY_ORDER.map((cap) => {
-          const color = SOIL_CAPABILITY_COLORS[cap];
-          const label = SOIL_CAPABILITY_LABELS[cap];
-          return (
-            <Group
-              key={cap}
-              gap={6}
-              wrap="nowrap"
-              data-testid={`terrain-3d-soil-legend-chip-${cap}`}
-            >
-              <Box
-                data-soil-swatch="true"
-                style={{
-                  background: color,
-                  width: 14,
-                  height: 14,
-                  borderRadius: 'var(--mantine-radius-xs)',
-                  flexShrink: 0,
-                }}
-              />
-              <Text size="xs" c="dimmed">
-                {cap} — {label}
-              </Text>
-            </Group>
-          );
-        })}
-      </Stack>
-    </Box>
   );
 }

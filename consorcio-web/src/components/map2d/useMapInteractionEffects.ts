@@ -8,7 +8,13 @@ interface UseMapInteractionEffectsParams {
   mapReady: boolean;
   markingMode: boolean;
   setNewPoint: (value: { lat: number; lng: number } | null) => void;
-  setSelectedFeature: (value: Feature | null) => void;
+  /**
+   * Receives the FULL list of overlapping features MapLibre returned at the
+   * click point (top-most first, per z-order). Empty array clears the panel.
+   * Phase 8 — previously this was `Feature | null`; we now surface all of
+   * them so InfoPanel can render one section per layer.
+   */
+  setSelectedFeatures: (value: Feature[]) => void;
   showSuggestedZonesPanel: boolean;
   setSelectedDraftBasinId: (value: string | null) => void;
 }
@@ -56,7 +62,7 @@ export function useMapInteractionEffects({
   mapReady,
   markingMode,
   setNewPoint,
-  setSelectedFeature,
+  setSelectedFeatures,
   showSuggestedZonesPanel,
   setSelectedDraftBasinId,
 }: UseMapInteractionEffectsParams) {
@@ -76,18 +82,17 @@ export function useMapInteractionEffects({
         layers: clickableLayers.filter((id) => map.getLayer(id)),
       });
 
-      if (features.length > 0 && features[0]) {
-        setSelectedFeature(features[0] as unknown as Feature);
-      } else {
-        setSelectedFeature(null);
-      }
+      // Phase 8 — surface ALL overlapping features. MapLibre preserves the
+      // on-screen z-order (top-most first) which matches the user-intuitive
+      // "most specific first" ordering we want in the panel.
+      setSelectedFeatures(features as unknown as Feature[]);
     };
 
     map.on('click', handleClick);
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapReady, mapRef, markingMode, setNewPoint, setSelectedFeature]);
+  }, [mapReady, mapRef, markingMode, setNewPoint, setSelectedFeatures]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -312,7 +312,7 @@ describe('map2d extracted panels', () => {
         onClearApprovedZones={() => {}}
         onRestoreVersion={() => {}}
         onExportApprovedZonesGeoJSON={() => {}}
-        selectedFeature={feature}
+        selectedFeatures={[feature]}
         onCloseInfoPanel={onCloseInfoPanel}
         newPoint={null}
         onCloseAssetPointModal={() => {}}

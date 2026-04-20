@@ -29,7 +29,7 @@ describe('useMapInteractionEffects', () => {
   it('registers click handler and selects a rendered feature', () => {
     const { map, handlers } = createMapMock();
     const setNewPoint = vi.fn();
-    const setSelectedFeature = vi.fn();
+    const setSelectedFeatures = vi.fn();
     const setSelectedDraftBasinId = vi.fn();
     const selectedFeature: Feature = {
       type: 'Feature',
@@ -44,7 +44,7 @@ describe('useMapInteractionEffects', () => {
         mapReady: true,
         markingMode: false,
         setNewPoint,
-        setSelectedFeature,
+        setSelectedFeatures,
         showSuggestedZonesPanel: false,
         setSelectedDraftBasinId,
       }),
@@ -58,14 +58,16 @@ describe('useMapInteractionEffects', () => {
       lngLat: { lat: -32.6, lng: -62.6 },
     });
 
-    expect(setSelectedFeature).toHaveBeenCalledWith(selectedFeature);
+    // Phase 8 — hook now forwards the FULL feature array (top-most first)
+    // instead of the single first element; InfoPanel stacks them.
+    expect(setSelectedFeatures).toHaveBeenCalledWith([selectedFeature]);
     expect(setNewPoint).not.toHaveBeenCalled();
   });
 
   it('creates a new point in marking mode and captures basin id in zoning mode', () => {
     const { map, handlers } = createMapMock();
     const setNewPoint = vi.fn();
-    const setSelectedFeature = vi.fn();
+    const setSelectedFeatures = vi.fn();
     const setSelectedDraftBasinId = vi.fn();
 
     map.queryRenderedFeatures.mockReturnValue([{ properties: { id: 'basin-1' } }]);
@@ -77,7 +79,7 @@ describe('useMapInteractionEffects', () => {
           mapReady: true,
           markingMode: props.markingMode,
           setNewPoint,
-          setSelectedFeature,
+          setSelectedFeatures,
           showSuggestedZonesPanel: props.showSuggestedZonesPanel,
           setSelectedDraftBasinId,
         }),
@@ -101,6 +103,6 @@ describe('useMapInteractionEffects', () => {
     });
 
     expect(setSelectedDraftBasinId).toHaveBeenCalledWith('basin-1');
-    expect(setSelectedFeature).not.toHaveBeenCalled();
+    expect(setSelectedFeatures).not.toHaveBeenCalled();
   });
 });
