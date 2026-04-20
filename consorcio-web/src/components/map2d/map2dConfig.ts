@@ -2,6 +2,17 @@ import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 
 export const GEE_LAYER_NAMES = ['zona'] as const;
 
+/**
+ * Startup default for the 2D map base layer. On first load we show the
+ * satellite imagery so the 4 canonical layers — Satélite, Imagen (when an
+ * image is selected), Hidrografía, Red Vial — are active out of the box.
+ *
+ * This is component-local state (see `MapaMapLibre.tsx`), not persisted —
+ * users can switch to OSM from the layer-controls panel and the choice is
+ * forgotten on reload.
+ */
+export const DEFAULT_BASE_LAYER: 'osm' | 'satellite' = 'satellite';
+
 export const SOURCE_IDS = {
   WATERWAYS: 'map2d-waterways',
   SOIL: 'map2d-soil',

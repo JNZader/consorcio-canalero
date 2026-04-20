@@ -41,7 +41,7 @@ import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import { GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
 import {
   useAssetCreationHandler,
@@ -95,7 +95,9 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
-  const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>('osm');
+  // Startup default: 'satellite' so the first-load map shows Satélite + Imagen
+  // (single view when an image is selected) plus Hidrografía + Red Vial.
+  const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>(DEFAULT_BASE_LAYER);
   const [viewMode, setViewMode] = useState<ViewMode>('base');
   const showLegend = true;
   const [showSuggestedZonesPanel, setShowSuggestedZonesPanel] = useState(false);
