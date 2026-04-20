@@ -268,6 +268,12 @@ export const MapUiPanels = memo(function MapUiPanels({
             customItems={activeLegendItems}
             floating={false}
             pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+            pilarVerdePorcentajeForestacionVisible={
+              !!vectorVisibility.pilar_verde_porcentaje_forestacion
+            }
           />
         )}
 

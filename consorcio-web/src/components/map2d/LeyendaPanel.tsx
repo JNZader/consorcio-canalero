@@ -35,6 +35,42 @@ const BPA_HISTORICO_LEGEND_CHIPS = [
   { label: '7', color: PILAR_VERDE_COLORS.bpaHistoricoStop7 },
 ] as const;
 
+/**
+ * Renders a single color chip + a Spanish label — used by the 4 simple Pilar
+ * Verde layer legends (agro_aceptada / agro_presentada / agro_zonas /
+ * porcentaje_forestacion). Kept in-file to match the visual weight of the
+ * existing `BPA_HISTORICO_LEGEND_CHIPS` block without introducing a public
+ * component. Colors are passed by the caller from `PILAR_VERDE_COLORS` — the
+ * single source of truth for the MapLibre paints.
+ */
+function SimpleColorLegendChip({
+  color,
+  label,
+  testId,
+}: {
+  readonly color: string;
+  readonly label: string;
+  readonly testId: string;
+}) {
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid={testId}>
+      <span
+        data-color={color}
+        aria-label={label}
+        style={{
+          display: 'inline-block',
+          width: 12,
+          height: 12,
+          backgroundColor: color,
+          border: '1px solid rgba(0, 0, 0, 0.25)',
+          borderRadius: 2,
+        }}
+      />
+      <Text size="xs">{label}</Text>
+    </Group>
+  );
+}
+
 interface LeyendaPanelProps {
   readonly consorcios?: ConsorcioInfo[];
   readonly customItems?: LegendItem[];
@@ -45,6 +81,14 @@ interface LeyendaPanelProps {
    * matching legend.
    */
   readonly pilarVerdeBpaHistoricoVisible?: boolean;
+  /** Render the agro-aceptada (green / compliant) single-chip legend. */
+  readonly pilarVerdeAgroAceptadaVisible?: boolean;
+  /** Render the agro-presentada (red / non-compliant) single-chip legend. */
+  readonly pilarVerdeAgroPresentadaVisible?: boolean;
+  /** Render the agroforestal zonas (cyan / context) single-chip legend. */
+  readonly pilarVerdeAgroZonasVisible?: boolean;
+  /** Render the porcentaje forestación (violet / mandatory 2-5%) single-chip legend. */
+  readonly pilarVerdePorcentajeForestacionVisible?: boolean;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -52,11 +96,21 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   customItems = [],
   floating = true,
   pilarVerdeBpaHistoricoVisible = false,
+  pilarVerdeAgroAceptadaVisible = false,
+  pilarVerdeAgroPresentadaVisible = false,
+  pilarVerdeAgroZonasVisible = false,
+  pilarVerdePorcentajeForestacionVisible = false,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
 
   const legendItems =
     customItems.length > 0 ? customItems : [{ color: '#FF0000', label: 'Zona Consorcio', type: 'border' }];
+
+  const hasSimplePilarVerdeLegends =
+    pilarVerdeAgroAceptadaVisible ||
+    pilarVerdeAgroPresentadaVisible ||
+    pilarVerdeAgroZonasVisible ||
+    pilarVerdePorcentajeForestacionVisible;
 
   return (
     <Paper
@@ -152,6 +206,43 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               ))}
             </Group>
           </>
+        )}
+        {hasSimplePilarVerdeLegends && <Divider my={4} />}
+        {/*
+          Order mirrors `PILAR_VERDE_Z_ORDER` intuition (most specific → most
+          contextual):
+            1. agro_aceptada       (green — compliant)
+            2. agro_presentada     (red — non-compliant)
+            3. agro_zonas          (cyan — zonas agroforestales)
+            4. porcentaje_forestacion (violet — mandatory 2-5%)
+        */}
+        {pilarVerdeAgroAceptadaVisible && (
+          <SimpleColorLegendChip
+            color={PILAR_VERDE_COLORS.agroAceptadaFill}
+            label="Cumplen ley forestal"
+            testId="pilar-verde-agro-aceptada-legend"
+          />
+        )}
+        {pilarVerdeAgroPresentadaVisible && (
+          <SimpleColorLegendChip
+            color={PILAR_VERDE_COLORS.agroPresentadaFill}
+            label="No cumplen ley forestal"
+            testId="pilar-verde-agro-presentada-legend"
+          />
+        )}
+        {pilarVerdeAgroZonasVisible && (
+          <SimpleColorLegendChip
+            color={PILAR_VERDE_COLORS.agroZonasFill}
+            label="Zonas agroforestales"
+            testId="pilar-verde-agro-zonas-legend"
+          />
+        )}
+        {pilarVerdePorcentajeForestacionVisible && (
+          <SimpleColorLegendChip
+            color={PILAR_VERDE_COLORS.porcentajeForestacionFill}
+            label="Forestación obligatoria (2-5%)"
+            testId="pilar-verde-porcentaje-forestacion-legend"
+          />
         )}
       </Stack>
     </Paper>
