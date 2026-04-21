@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -68,6 +68,20 @@ class MapLegendItemRequest(BaseModel):
     detail: Optional[str] = None
 
 
+class CanalDetailRowRequest(BaseModel):
+    """Per-canal row for the "Canales existentes (Pilar Azul)" PDF table.
+
+    Distinct from `MapLegendItemRequest` because the third column is a numeric
+    `km` value (rendered in a dedicated narrow column), NOT a free-form detail
+    string. The TOTAL row is computed server-side from the sum of `km`."""
+
+    label: str
+    color: str
+    km: float
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class RasterLegendGroupRequest(BaseModel):
     label: str
     items: list[MapLegendItemRequest] = Field(default_factory=list)
@@ -95,7 +109,7 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     road_legend: list[MapLegendItemRequest] = Field(
         default_factory=list, alias="roadLegend"
     )
-    canal_legend: list[MapLegendItemRequest] = Field(
+    canal_legend: list[CanalDetailRowRequest] = Field(
         default_factory=list, alias="canalLegend"
     )
     raster_legends: list[RasterLegendGroupRequest] = Field(
