@@ -53,6 +53,13 @@ export function buildClickableLayers(): string[] {
     `${SOURCE_IDS.WATERWAYS}-arroyo-mojarras-line`,
     `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
     `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+    // ── Pilar Azul (Escuelas rurales) ──
+    // Symbol layer sits BETWEEN canales_propuestos-line (index 9) and
+    // soil-fill (index 11) per design `sdd/escuelas-rurales/design` §6.5.
+    // Canales WIN a crossing overlap (line-over-point, same rationale as
+    // canal-over-catastro). Schools WIN over soil/catastro/roads so the
+    // EscuelaCard opens instead of the generic parcel dump.
+    `${SOURCE_IDS.ESCUELAS}-symbol`,
     `${SOURCE_IDS.SOIL}-fill`,
     `${SOURCE_IDS.CATASTRO}-fill`,
     `${SOURCE_IDS.ROADS}-line`,
