@@ -464,6 +464,7 @@ export default function MapaMapLibre() {
     hiddenRanges,
     approvalName,
     exportSources,
+    zonaCollection,
   });
 
   /* ---------------------------------------------------------------------- */

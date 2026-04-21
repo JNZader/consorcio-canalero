@@ -8,7 +8,7 @@ import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
-import { formatExportFilename } from './map2dUtils';
+import { formatExportFilename, resolveConsorcioBounds } from './map2dUtils';
 
 interface LegendItem {
   color: string;
@@ -65,6 +65,20 @@ interface UseMapExportHandlersParams {
    * Passed through to `buildKmz({ data })` verbatim.
    */
   exportSources?: Record<string, FeatureCollection | null>;
+  /**
+   * Optional — the consorcio zone FeatureCollection (from GEE via
+   * `useMapDerivedState`). Used by the export pipeline to auto-fit the
+   * viewport to the full consorcio before capture:
+   *
+   *  - PDF: ALWAYS re-encuadra al consorcio before capture (formal deliverable).
+   *  - PNG: re-encuadra only when the user is at a zoom-out level
+   *    (`currentZoom <= fitZoom + 0.25`), otherwise respects the current
+   *    viewport so zoomed-in sub-area captures work as expected.
+   *
+   * When `null`/`undefined` (GEE fetch pending or failed), the hook falls
+   * back to `MAP_FALLBACK_BOUNDS` (derived from the `MAP_BOUNDS` constant).
+   */
+  zonaCollection?: FeatureCollection | null;
 }
 
 interface RasterLegendGroupPayload {
@@ -137,6 +151,7 @@ export function useMapExportHandlers({
   hiddenRanges = {},
   approvalName = '',
   exportSources,
+  zonaCollection = null,
 }: UseMapExportHandlersParams) {
   // ── KMZ export — store slices used by `handleExportKmz` ─────────────────
   // Selectors are intentionally narrow so an unrelated store update doesn't
@@ -170,19 +185,25 @@ export function useMapExportHandlers({
     try {
       const token = await getAuthToken();
 
-      // Hardening: force a fresh rasterized frame before reading the canvas.
-      // MapLibre's preserveDrawingBuffer (enabled in P1) keeps the backbuffer
+      // PDF export ALWAYS re-encuadra al consorcio completo before capture:
+      // the PDF is a formal deliverable, so the framing must be deterministic
+      // regardless of the user's current viewport. Then wait for `idle` so
+      // tiles + vector layers finish repainting before reading the canvas.
+      //
+      // MapLibre's `preserveDrawingBuffer` (enabled in P1) keeps the backbuffer
       // readable, but the frame may still be stale if no render happened
-      // recently — trigger a repaint and wait one render cycle.
+      // recently — `fitBounds({animate:false, duration:0})` + awaiting `idle`
+      // guarantees a fresh, fully-rendered frame.
       let mapImageDataUrl = '';
       if (map) {
         try {
+          const bounds = resolveConsorcioBounds(zonaCollection ?? null);
+          map.fitBounds(bounds, { padding: 40, animate: false, duration: 0 });
           await new Promise<void>((resolve) => {
-            map.once('render', () => resolve());
-            map.triggerRepaint();
+            map.once('idle', () => resolve());
           });
         } catch {
-          // Non-fatal: some test/mock maps don't implement triggerRepaint.
+          // Non-fatal: some test/mock maps don't implement fitBounds/once.
         }
         mapImageDataUrl = map.getCanvas().toDataURL('image/png');
       }
@@ -284,6 +305,7 @@ export function useMapExportHandlers({
     hiddenRanges,
     mapRef,
     visibleRasterLayers,
+    zonaCollection,
   ]);
 
   const handleExportApprovedZonesGeoJSON = useCallback(() => {
