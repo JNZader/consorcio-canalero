@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.etl_escuelas.build import build_geojson
+from scripts.etl_escuelas.build import build_geojson, serialize_feature_collection
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SAMPLE_KMZ = FIXTURES / "sample_escuelas.kmz"
@@ -147,3 +147,41 @@ class TestBuildIdempotentWithEnvPinned:
             "esc-test-disperso",
             "esc-test-aglomerado-2",
         ]
+
+
+class TestSerializeFeatureCollection:
+    def test_writes_file_with_trailing_newline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ETL_GENERATED_AT", "2026-04-21T00:00:00Z")
+        fc = build_geojson(SAMPLE_KMZ)
+        out = tmp_path / "escuelas_rurales.geojson"
+        serialize_feature_collection(fc, out)
+
+        assert out.exists()
+        blob = out.read_text(encoding="utf-8")
+        assert blob.endswith("\n")
+        # Round-trip via json.loads — guards against malformed output.
+        assert json.loads(blob) == fc
+
+    def test_serialized_output_is_byte_identical_when_env_pinned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Byte-idempotence on disk — spec REQ-ESC-1.
+        monkeypatch.setenv("ETL_GENERATED_AT", "2026-04-21T00:00:00Z")
+        out_a = tmp_path / "a.geojson"
+        out_b = tmp_path / "b.geojson"
+        serialize_feature_collection(build_geojson(SAMPLE_KMZ), out_a)
+        serialize_feature_collection(build_geojson(SAMPLE_KMZ), out_b)
+        assert out_a.read_bytes() == out_b.read_bytes()
+
+    def test_serialized_output_has_no_pii_substrings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Defense-in-depth — verify the on-disk serialization also avoids PII.
+        monkeypatch.setenv("ETL_GENERATED_AT", "2026-04-21T00:00:00Z")
+        out = tmp_path / "escuelas_rurales.geojson"
+        serialize_feature_collection(build_geojson(SAMPLE_KMZ), out)
+        blob = out.read_text(encoding="utf-8").lower()
+        for needle in PII_SUBSTRINGS:
+            assert needle not in blob, f"PII substring {needle!r} on disk"
