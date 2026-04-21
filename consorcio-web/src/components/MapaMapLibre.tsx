@@ -24,6 +24,7 @@ maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
+import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -31,6 +32,7 @@ import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useCanales } from '../hooks/useCanales';
 import { useEscuelas } from '../hooks/useEscuelas';
+import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
@@ -182,11 +184,13 @@ export default function MapaMapLibre() {
   };
   const { collection: escuelasCollection } = useEscuelas();
   const escuelasData = { collection: escuelasCollection };
+  const { catastroMap } = useCatastroMap();
 
   const {
     zonaCollection,
     roadsCollection,
     soilCollection,
+    waterwaysCollection,
     approvedZonesCollection,
     suggestedZonesDisplay,
     demTileUrl,
@@ -421,10 +425,33 @@ export default function MapaMapLibre() {
   // after it's ready. The actual integration happens via the DrawControl component
   // which uses map.addControl() imperatively (see DrawControl.tsx).
 
+  // ── KMZ export data sources ────────────────────────────────────────────
+  // Keys MUST match `kmzLayerRegistry` entries. Missing/null slots are
+  // silently skipped by `buildKmz` — the hook does not refuse when a slot
+  // is empty. Assembled inline (not memoised) because the cost is trivial
+  // (13 property reads) and the downstream hook dedupes by reference
+  // identity of each FeatureCollection.
+  const exportSources = {
+    canales_relevados: canalesRelevados,
+    canales_propuestos: canalesPropuestas,
+    escuelas: escuelasCollection,
+    pilar_verde_bpa_historico: pilarVerde?.bpaHistorico ?? null,
+    pilar_verde_agro_aceptada: pilarVerde?.agroAceptada ?? null,
+    pilar_verde_agro_presentada: pilarVerde?.agroPresentada ?? null,
+    pilar_verde_agro_zonas: pilarVerde?.agroZonas ?? null,
+    pilar_verde_porcentaje_forestacion: pilarVerde?.porcentajeForestacion ?? null,
+    waterways: waterwaysCollection,
+    roads: roadsCollection ?? null,
+    catastro: catastroMap,
+    soil: soilCollection,
+    'ypf-estacion-bombeo': YPF_ESTACION_BOMBEO_GEOJSON,
+  };
+
   const {
     handleExportPng,
     handleExportApprovedZonesPdf,
     handleExportApprovedZonesGeoJSON,
+    handleExportKmz: _handleExportKmz,
   } = useMapExportHandlers({
     mapRef,
     exportTitle,
@@ -436,7 +463,11 @@ export default function MapaMapLibre() {
     hiddenClasses,
     hiddenRanges,
     approvalName,
+    exportSources,
   });
+  // Exported for Batch F (export button in MapActionsPanel); keep the
+  // handler live so the hook's memoisation doesn't dead-code the wiring.
+  void _handleExportKmz;
 
   /* ---------------------------------------------------------------------- */
   /*  Infrastructure asset creation                                          */

@@ -5,6 +5,9 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback } from 
 import { API_URL, getAuthToken } from '../../lib/api';
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
+import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
+import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { formatExportFilename } from './map2dUtils';
 
 interface LegendItem {
@@ -51,6 +54,17 @@ interface UseMapExportHandlersParams {
    * Optional — approved zoning human name. Falls back for title/filename.
    */
   approvalName?: string;
+  /**
+   * Optional — per-layer FeatureCollection snapshot used by the KMZ export.
+   *
+   * Keys MUST match `kmzLayerRegistry` entries (see `/src/lib/kmzExport/
+   * kmzLayerRegistry.ts`). Any missing / `null` slot is silently skipped by
+   * `buildKmz`; the hook does NOT refuse to export when a slot is missing —
+   * the user may legitimately have only some layers available.
+   *
+   * Passed through to `buildKmz({ data })` verbatim.
+   */
+  exportSources?: Record<string, FeatureCollection | null>;
 }
 
 interface RasterLegendGroupPayload {
@@ -122,7 +136,16 @@ export function useMapExportHandlers({
   hiddenClasses = {},
   hiddenRanges = {},
   approvalName = '',
+  exportSources,
 }: UseMapExportHandlersParams) {
+  // ── KMZ export — store slices used by `handleExportKmz` ─────────────────
+  // Selectors are intentionally narrow so an unrelated store update doesn't
+  // re-render the entire map shell.
+  const kmzVisibleLayers = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
+  const kmzPropuestasEtapasVisibility = useMapLayerSyncStore(
+    (state) => state.propuestasEtapasVisibility,
+  );
+
   const handleExportPng = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -274,10 +297,52 @@ export function useMapExportHandlers({
     window.URL.revokeObjectURL(url);
   }, [approvedZones]);
 
+  // ── KMZ export — Phase 5 ────────────────────────────────────────────────
+  //
+  // Wires the Phase 3 `buildKmz` to the Phase 4 download trigger. The data
+  // map is supplied by the caller as `exportSources`, so this hook stays
+  // agnostic about which hooks own the raw FeatureCollections — less
+  // coupling and easier to mock in tests.
+  //
+  // Visibility comes from the Zustand layer sync store (the same store the
+  // on-screen map reads), so the exported KMZ MATCHES what the user sees:
+  // toggle off a layer → it's gone from the KMZ. Same rule for the etapas
+  // filter on `canales_propuestos`.
+  const handleExportKmz = useCallback(async () => {
+    try {
+      const timestamp = new Date();
+      const blob = await buildKmz({
+        visibleLayers: kmzVisibleLayers,
+        data: exportSources ?? {},
+        propuestasEtapasVisibility: kmzPropuestasEtapasVisibility,
+        timestamp,
+      });
+      const yyyy = timestamp.getFullYear();
+      const mm = String(timestamp.getMonth() + 1).padStart(2, '0');
+      const dd = String(timestamp.getDate()).padStart(2, '0');
+      const filename = `consorcio_canalero_${yyyy}-${mm}-${dd}.kmz`;
+      triggerKmzDownload(blob, filename);
+      notifications.show({
+        title: 'Exportación completada',
+        message: 'KMZ descargado correctamente',
+        color: 'green',
+      });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('KMZ export failed:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo generar el KMZ',
+        color: 'red',
+      });
+    }
+  }, [exportSources, kmzPropuestasEtapasVisibility, kmzVisibleLayers]);
+
   return {
     handleExportPng,
     handleExportApprovedZonesPdf,
     handleExportApprovedZonesGeoJSON,
+    handleExportKmz,
   };
 }
 
