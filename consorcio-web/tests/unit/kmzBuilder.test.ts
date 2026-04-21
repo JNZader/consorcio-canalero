@@ -366,3 +366,27 @@ describe('buildKmz — multi-layer integration', () => {
     expect(xml).not.toContain('puntos_conflicto');
   });
 });
+
+describe('buildKmz — placemark integration (Pair 2)', () => {
+  it('emits real Point geometry for escuelas, not the Pair 1 stub', async () => {
+    const blob = await buildKmz({
+      visibleLayers: { escuelas: true },
+      data: { escuelas },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).not.toContain('<name>stub</name>');
+    expect(xml).toContain('<Point>');
+    expect(xml).toContain('<coordinates>-62.6,-32.6</coordinates>');
+  });
+
+  it('humanizes escuelas name from "Esc. " to "Escuela "', async () => {
+    const blob = await buildKmz({
+      visibleLayers: { escuelas: true },
+      data: { escuelas },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).toContain('<name>Escuela San Martin</name>');
+    expect(xml).toContain('<name>Escuela Belgrano</name>');
+    expect(xml).not.toContain('<name>Esc. San Martin</name>');
+  });
+});
