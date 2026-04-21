@@ -103,6 +103,237 @@ describe('useMapActionHandlers', () => {
     createElement.mockRestore();
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // canalLegend payload — symmetric with roadLegend, feeds the "Canales
+  // existentes (Pilar Azul)" table on the approved-zones map PDF export.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('handleExportApprovedZonesPdf — canalLegend payload', () => {
+    function buildCanalFeature(overrides: Partial<{
+      id: string;
+      nombre: string;
+      longitud_m: number;
+      tramo_folder: string | null;
+      source_style: string | null;
+    }> = {}) {
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'LineString' as const, coordinates: [[0, 0], [1, 1]] },
+        properties: {
+          id: overrides.id ?? 'c1',
+          codigo: null,
+          nombre: overrides.nombre ?? 'Canal Uno',
+          descripcion: null,
+          estado: 'relevado' as const,
+          longitud_m: overrides.longitud_m ?? 8200,
+          longitud_declarada_m: null,
+          prioridad: null,
+          featured: false,
+          tramo_folder: overrides.tramo_folder ?? null,
+          source_style: overrides.source_style ?? 'sin_obra',
+        },
+      };
+    }
+
+    function runExport(canalesRelevados: unknown) {
+      const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        blob: async () => new Blob(['pdf']),
+      } as Response);
+      const createObjectURL = vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:test');
+      const revokeObjectURL = vi.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+      const originalCreateElement = document.createElement.bind(document);
+      const createElement = vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+        if (tagName === 'a') {
+          return { click: vi.fn(), href: '', download: '' } as unknown as HTMLElement;
+        }
+        return originalCreateElement(tagName);
+      }) as typeof document.createElement);
+
+      const approvedZones: FeatureCollection = { type: 'FeatureCollection', features: [] };
+      const mapRef = {
+        current: {
+          getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,MOCK' }),
+          fitBounds: vi.fn(),
+          triggerRepaint: vi.fn(),
+          once: (event: string, cb: () => void) => {
+            if (event === 'idle' || event === 'render') cb();
+          },
+        },
+      } as const;
+
+      return {
+        fetchMock,
+        createObjectURL,
+        revokeObjectURL,
+        createElement,
+        mapRef,
+        approvedZones,
+        canalesRelevados,
+      };
+    }
+
+    it('sends canalLegend=[] when canalesRelevados is null (visibility gate off)', async () => {
+      const { fetchMock, createObjectURL, revokeObjectURL, createElement, mapRef, approvedZones } =
+        runExport(null);
+
+      try {
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones,
+            canalesRelevados: null,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportApprovedZonesPdf();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<string, unknown>;
+        expect(body).toHaveProperty('canalLegend');
+        expect(Array.isArray(body.canalLegend)).toBe(true);
+        expect(body.canalLegend).toEqual([]);
+      } finally {
+        fetchMock.mockRestore();
+        createObjectURL.mockRestore();
+        revokeObjectURL.mockRestore();
+        createElement.mockRestore();
+      }
+    });
+
+    it('builds canalLegend entries with {label, color, detail} for each feature', async () => {
+      const canalesRelevados: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [
+          buildCanalFeature({
+            id: 'c1',
+            nombre: 'Canal Norte SMS',
+            longitud_m: 8200,
+            tramo_folder: 'Canal Norte SMS',
+            source_style: 'sin_obra',
+          }),
+          buildCanalFeature({
+            id: 'c2',
+            nombre: 'Canal Readec',
+            longitud_m: 4500,
+            tramo_folder: null,
+            source_style: 'readec',
+          }),
+          buildCanalFeature({
+            id: 'c3',
+            nombre: 'Canal Asoc',
+            longitud_m: 12345,
+            tramo_folder: 'Tramo Sur',
+            source_style: 'asociada',
+          }),
+        ] as unknown as FeatureCollection['features'],
+      };
+
+      const { fetchMock, createObjectURL, revokeObjectURL, createElement, mapRef, approvedZones } =
+        runExport(canalesRelevados);
+
+      try {
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones,
+            canalesRelevados,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportApprovedZonesPdf();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as {
+          canalLegend: Array<{ label: string; color: string; detail: string }>;
+        };
+
+        // length matches features
+        expect(body.canalLegend).toHaveLength(3);
+
+        // Detail format: "{km} km · {tramo_folder}" when folder is present.
+        expect(body.canalLegend[0]).toEqual({
+          label: 'Canal Norte SMS',
+          color: '#1D4ED8', // CANAL_STYLE_COLORS.sin_obra
+          detail: '8.2 km · Canal Norte SMS',
+        });
+
+        // Detail format: "{km} km" when tramo_folder is null.
+        expect(body.canalLegend[1]).toEqual({
+          label: 'Canal Readec',
+          color: '#3B82F6', // CANAL_STYLE_COLORS.readec
+          detail: '4.5 km',
+        });
+
+        // asociada → #60A5FA
+        expect(body.canalLegend[2]).toEqual({
+          label: 'Canal Asoc',
+          color: '#60A5FA', // CANAL_STYLE_COLORS.asociada
+          detail: '12.3 km · Tramo Sur',
+        });
+      } finally {
+        fetchMock.mockRestore();
+        createObjectURL.mockRestore();
+        revokeObjectURL.mockRestore();
+        createElement.mockRestore();
+      }
+    });
+
+    it('falls back to the default blue when source_style is missing', async () => {
+      const canalesRelevados: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [
+          buildCanalFeature({
+            id: 'c1',
+            nombre: 'Unknown Style',
+            longitud_m: 1000,
+            tramo_folder: null,
+            source_style: null,
+          }),
+        ] as unknown as FeatureCollection['features'],
+      };
+
+      const { fetchMock, createObjectURL, revokeObjectURL, createElement, mapRef, approvedZones } =
+        runExport(canalesRelevados);
+
+      try {
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones,
+            canalesRelevados,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportApprovedZonesPdf();
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as {
+          canalLegend: Array<{ label: string; color: string; detail: string }>;
+        };
+        expect(body.canalLegend).toHaveLength(1);
+        // Fallback color matches the MapLibre paint default (relevadoSinObra).
+        expect(body.canalLegend[0].color).toBe('#1D4ED8');
+        expect(body.canalLegend[0].detail).toBe('1.0 km');
+      } finally {
+        fetchMock.mockRestore();
+        createObjectURL.mockRestore();
+        revokeObjectURL.mockRestore();
+        createElement.mockRestore();
+      }
+    });
+  });
+
   it('sends the ApprovedZonesMapPdfRequest payload shape expected by the backend', async () => {
     const click = vi.fn();
     const originalCreateElement = document.createElement.bind(document);

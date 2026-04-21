@@ -465,6 +465,8 @@ export default function MapaMapLibre() {
     approvalName,
     exportSources,
     zonaCollection,
+    canalesRelevados:
+      vectorVisibility.canales_relevados && !!canalesRelevados ? canalesRelevados : null,
   });
 
   /* ---------------------------------------------------------------------- */

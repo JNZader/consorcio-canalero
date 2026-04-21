@@ -69,6 +69,27 @@ export const CANALES_COLORS = {
   outlinePropuesto: '#334155',
 } as const;
 
+/**
+ * Relevados-only: map from the ETL's `source_style` category to the render
+ * color used by `buildCanalesRelevadosPaint` above. Kept as a plain Record so
+ * non-MapLibre consumers (e.g. the PDF export legend builder) can resolve the
+ * same color without re-parsing the `match` expression.
+ *
+ * Keys MUST match the 3 spec-locked `source_style` values emitted by the ETL
+ * (`sin_obra`, `readec`, `asociada`). The fallback matches the MapLibre
+ * expression's default branch (`relevadoSinObra`).
+ *
+ * Invariants (pinned by tests):
+ *   - Every hex value here MUST equal the corresponding entry in
+ *     `CANALES_COLORS` — do not duplicate literals, import them back.
+ *   - Consumers SHOULD treat unknown keys as the same fallback (sin_obra).
+ */
+export const CANAL_STYLE_COLORS: Record<string, string> = {
+  sin_obra: CANALES_COLORS.relevadoSinObra,
+  readec: CANALES_COLORS.relevadoReadec,
+  asociada: CANALES_COLORS.relevadoAsociada,
+};
+
 // ---------------------------------------------------------------------------
 // Paint factories
 // ---------------------------------------------------------------------------

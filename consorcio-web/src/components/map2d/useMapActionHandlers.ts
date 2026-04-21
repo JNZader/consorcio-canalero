@@ -8,6 +8,8 @@ import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import type { CanalesFeatureCollection } from '../../types/canales';
+import { CANAL_STYLE_COLORS, CANALES_COLORS } from './canalesLayers';
 import { formatExportFilename, resolveConsorcioBounds } from './map2dUtils';
 
 interface LegendItem {
@@ -79,6 +81,16 @@ interface UseMapExportHandlersParams {
    * back to `MAP_FALLBACK_BOUNDS` (derived from the `MAP_BOUNDS` constant).
    */
   zonaCollection?: FeatureCollection | null;
+  /**
+   * Optional — the Canales Relevados (Pilar Azul) FeatureCollection.
+   *
+   * When provided (i.e. the `canales_relevados` toggle is ON upstream), the
+   * approved-zones PDF export builds a `canalLegend` body field listing each
+   * canal as `{label, color, detail}` for the backend's "Canales existentes
+   * (Pilar Azul)" table. `null` / `undefined` → `canalLegend: []` (visibility
+   * gate off), mirroring the roads block's `consorcios` gate.
+   */
+  canalesRelevados?: CanalesFeatureCollection | null;
 }
 
 interface RasterLegendGroupPayload {
@@ -152,6 +164,7 @@ export function useMapExportHandlers({
   approvalName = '',
   exportSources,
   zonaCollection = null,
+  canalesRelevados = null,
 }: UseMapExportHandlersParams) {
   // ── KMZ export — store slices used by `handleExportKmz` ─────────────────
   // Selectors are intentionally narrow so an unrelated store update doesn't
@@ -254,6 +267,28 @@ export function useMapExportHandlers({
         detail: `${consorcio.longitud_km.toFixed(1)} km`,
       }));
 
+      // Canales existentes (Pilar Azul) — symmetric with roadLegend. When
+      // `canalesRelevados` is null (toggle off or fetch pending), we send an
+      // empty array so the backend omits the block (mirrors the roads gate).
+      //
+      // Detail format: `"{km} km · {tramo_folder}"` when the ETL emits a
+      // `tramo_folder`; `"{km} km"` alone when it's null/empty. Color comes
+      // from `CANAL_STYLE_COLORS` (shared with the MapLibre paint), so the
+      // PDF swatch matches what the user sees on the live map.
+      const canalLegend = (canalesRelevados?.features ?? []).map((feature) => {
+        const props = feature.properties;
+        const km = (props.longitud_m / 1000).toFixed(1);
+        const folder = props.tramo_folder;
+        const detail = folder ? `${km} km · ${folder}` : `${km} km`;
+        const styleKey = props.source_style ?? 'sin_obra';
+        const color = CANAL_STYLE_COLORS[styleKey] ?? CANALES_COLORS.relevadoSinObra;
+        return {
+          label: String(props.nombre || 'Canal'),
+          color,
+          detail,
+        };
+      });
+
       const rasterLegends = buildRasterLegendsPayload(
         visibleRasterLayers,
         hiddenClasses,
@@ -281,6 +316,7 @@ export function useMapExportHandlers({
             mapImageDataUrl,
             zoneLegend,
             roadLegend,
+            canalLegend,
             rasterLegends,
             infoRows: [],
             zoneSummary,
@@ -332,6 +368,7 @@ export function useMapExportHandlers({
     activeLegendItems,
     approvalName,
     approvedZones,
+    canalesRelevados,
     consorcios,
     exportTitle,
     hiddenClasses,
