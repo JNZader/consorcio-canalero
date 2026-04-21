@@ -30,6 +30,7 @@ export { default as IconDroplet } from '@tabler/icons-react/dist/esm/icons/IconD
 export { default as IconEdit } from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 export { default as IconExternalLink } from '@tabler/icons-react/dist/esm/icons/IconExternalLink.mjs';
 export { default as IconFileDescription } from '@tabler/icons-react/dist/esm/icons/IconFileDescription.mjs';
+export { default as IconFileZip } from '@tabler/icons-react/dist/esm/icons/IconFileZip.mjs';
 export { default as IconFilter } from '@tabler/icons-react/dist/esm/icons/IconFilter.mjs';
 export { default as IconGlobe } from '@tabler/icons-react/dist/esm/icons/IconGlobe.mjs';
 export { default as IconHistory } from '@tabler/icons-react/dist/esm/icons/IconHistory.mjs';

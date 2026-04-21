@@ -84,8 +84,10 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
     await user.click(screen.getByRole('button', { name: /exportar/i }));
     await user.click(screen.getByText('Exportar KMZ'));
 
+    // Note: Mantine's `Menu.Item` passes the DOM click event through to
+    // onClick, so we assert call count, not zero-arg invocation.
+    // `handleExportKmz` ignores arguments — see useMapActionHandlers.ts.
     expect(onExportKmz).toHaveBeenCalledTimes(1);
-    expect(onExportKmz).toHaveBeenCalledWith();
   });
 
   it('omits the "Exportar KMZ" menu item when onExportKmz is undefined', async () => {
