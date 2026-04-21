@@ -388,12 +388,15 @@ class TestBuildApprovedZoningMapPdfCanalLegend:
         assert result.read(4) == b"%PDF"
 
     def test_with_canal_legend_renders_without_error(self, branding):
+        """Per-canal payload is now `{label, color, km: float}` — no more `detail`
+        string. The builder renders a 3-column table (swatch / label / km) with a
+        TOTAL row appended at the bottom."""
         from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         payload = self._base_payload()
         payload["canalLegend"] = [
-            {"label": "Canal Norte SMS", "color": "#1D4ED8", "detail": "8.2 km · Canal Norte SMS"},
-            {"label": "Canal Sur", "color": "#3B82F6", "detail": "12.5 km"},
+            {"label": "Canal Norte SMS", "color": "#1D4ED8", "km": 8.2},
+            {"label": "Canal Sur", "color": "#3B82F6", "km": 12.5},
         ]
         result = build_approved_zoning_map_pdf(payload, branding)
         assert isinstance(result, io.BytesIO)
@@ -402,18 +405,19 @@ class TestBuildApprovedZoningMapPdfCanalLegend:
 
     def test_with_canal_legend_produces_larger_pdf_than_without(self, branding):
         """Soft proxy for 'table is rendered': the Canales block adds a title
-        Paragraph + a Table flowable, so the byte output MUST be strictly larger
-        than the same payload without `canalLegend`. PDF content streams are
-        compressed, so we can't grep the title text directly; comparing sizes
-        is the standard pytest-friendly check for ReportLab output.
+        Paragraph + a Table flowable (now with swatch + nombre + km + TOTAL row),
+        so the byte output MUST be strictly larger than the same payload without
+        `canalLegend`. PDF content streams are compressed, so we can't grep the
+        title text directly; comparing sizes is the standard pytest-friendly
+        check for ReportLab output.
         """
         from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         baseline_payload = self._base_payload()
         with_canales_payload = self._base_payload()
         with_canales_payload["canalLegend"] = [
-            {"label": "Canal Norte SMS", "color": "#1D4ED8", "detail": "8.2 km · Canal Norte SMS"},
-            {"label": "Canal Sur", "color": "#3B82F6", "detail": "12.5 km"},
+            {"label": "Canal Norte SMS", "color": "#1D4ED8", "km": 8.2},
+            {"label": "Canal Sur", "color": "#3B82F6", "km": 12.5},
         ]
 
         baseline = build_approved_zoning_map_pdf(baseline_payload, branding).getvalue()
@@ -441,3 +445,155 @@ class TestBuildApprovedZoningMapPdfCanalLegend:
             f"Expected similar sizes when canalLegend is absent vs empty; "
             f"got without={len(without_key)}, with_empty={len(with_empty)}."
         )
+
+
+# ---------------------------------------------------------------------------
+# build_canales_detail_table — dedicated wide table with km column + TOTAL row
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCanalesDetailTable:
+    """The wide 3-column canales table is a NEW helper separate from
+    `build_color_legend_table` (which keeps fixed 8/92/28mm widths for roads).
+
+    Contract:
+      - 3 columns: [color swatch 8mm | label flex | km narrow ~16mm]
+      - Width-aware: receives `available_width_mm` and uses the full content width
+      - Includes a TOTAL row at the end with the summed km (computed server-side)
+      - Returns a list of flowables: [title Paragraph, Table] (or [title, fallback]
+        when items is empty)
+    """
+
+    def _branding(self) -> BrandingInfo:
+        return BrandingInfo(
+            nombre_organizacion="Consorcio Test",
+            color_primario="#1a5276",
+            logo_path=None,
+        )
+
+    def test_returns_title_and_table_flowables(self):
+        from reportlab.platypus import Paragraph, Table
+
+        from app.shared.pdf.builders_zoning import build_canales_detail_table
+
+        items = [
+            {"label": "Canal Norte SMS", "color": "#1D4ED8", "km": 8.2},
+            {"label": "Canal Sur", "color": "#3B82F6", "km": 12.5},
+        ]
+        story = build_canales_detail_table(
+            "Canales existentes (Pilar Azul)",
+            items,
+            self._branding(),
+            available_width_mm=180.0,
+        )
+        assert len(story) >= 2
+        assert isinstance(story[0], Paragraph)
+        assert isinstance(story[-1], Table)
+
+    def test_empty_items_returns_placeholder_paragraph(self):
+        from app.shared.pdf.builders_zoning import build_canales_detail_table
+
+        story = build_canales_detail_table(
+            "Canales existentes (Pilar Azul)",
+            [],
+            self._branding(),
+            available_width_mm=180.0,
+        )
+        # Title + "Sin datos" paragraph — no Table flowable
+        assert len(story) >= 2
+
+    def test_table_has_total_row_with_summed_km(self):
+        """The TOTAL row is the LAST data row. Header + N items + 1 TOTAL row."""
+        from reportlab.platypus import Table
+
+        from app.shared.pdf.builders_zoning import build_canales_detail_table
+
+        items = [
+            {"label": "Canal A", "color": "#1D4ED8", "km": 8.2},
+            {"label": "Canal B", "color": "#3B82F6", "km": 12.5},
+            {"label": "Canal C", "color": "#60A5FA", "km": 4.3},
+        ]
+        story = build_canales_detail_table(
+            "Canales existentes (Pilar Azul)",
+            items,
+            self._branding(),
+            available_width_mm=180.0,
+        )
+        # Last flowable is the Table — reach into its _cellvalues.
+        table = story[-1]
+        assert isinstance(table, Table)
+        # pylint: disable=protected-access
+        rows = table._cellvalues
+        # header + 3 items + TOTAL = 5 rows
+        assert len(rows) == 5
+        # Last row (TOTAL) — first cell empty (no swatch), second "TOTAL",
+        # third row contains the summed km = 25.0 (8.2 + 12.5 + 4.3).
+        last_row = rows[-1]
+        assert len(last_row) == 3
+        # swatch cell is empty (no color on TOTAL row)
+        # second cell contains "TOTAL" (may be wrapped in a Paragraph)
+        total_label = last_row[1]
+        total_label_text = (
+            total_label.getPlainText() if hasattr(total_label, "getPlainText") else str(total_label)
+        )
+        assert "TOTAL" in total_label_text
+        # km cell contains the sum — 25.0 rendered as "25.0"
+        total_km_cell = last_row[2]
+        total_km_text = (
+            total_km_cell.getPlainText() if hasattr(total_km_cell, "getPlainText") else str(total_km_cell)
+        )
+        assert "25.0" in total_km_text
+
+    def test_table_uses_full_available_width(self):
+        """The table's total colWidths should equal `available_width_mm` so the
+        table stretches across the full content area (NOT the fixed 128mm from
+        `build_color_legend_table`)."""
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Table
+
+        from app.shared.pdf.builders_zoning import build_canales_detail_table
+
+        items = [{"label": "Canal A", "color": "#1D4ED8", "km": 8.2}]
+        available = 180.0  # A4 minus 1.5cm margins
+        story = build_canales_detail_table(
+            "Canales existentes (Pilar Azul)",
+            items,
+            self._branding(),
+            available_width_mm=available,
+        )
+        table = story[-1]
+        assert isinstance(table, Table)
+        # Sum of column widths must equal the requested width (± 0.5mm slack).
+        # pylint: disable=protected-access
+        total_w = sum(table._colWidths)
+        expected = available * mm
+        assert abs(total_w - expected) < 0.5 * mm
+
+    def test_km_cells_are_numeric_strings(self):
+        """Cell displays just the number (no ' km' suffix — header supplies the unit)."""
+        from reportlab.platypus import Table
+
+        from app.shared.pdf.builders_zoning import build_canales_detail_table
+
+        items = [
+            {"label": "Canal A", "color": "#1D4ED8", "km": 8.2},
+            {"label": "Canal B", "color": "#3B82F6", "km": 12.5},
+        ]
+        story = build_canales_detail_table(
+            "Canales existentes (Pilar Azul)",
+            items,
+            self._branding(),
+            available_width_mm=180.0,
+        )
+        table = story[-1]
+        assert isinstance(table, Table)
+        # pylint: disable=protected-access
+        rows = table._cellvalues
+        # header row is rows[0] → item rows start at 1
+        first_km_cell = rows[1][2]
+        first_km_text = (
+            first_km_cell.getPlainText() if hasattr(first_km_cell, "getPlainText") else str(first_km_cell)
+        )
+        # Must contain the number but NOT the "km" string (unit is in the header).
+        assert "8.2" in first_km_text
+        assert "km" not in first_km_text.lower()
