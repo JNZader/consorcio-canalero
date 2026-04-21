@@ -69,6 +69,7 @@ export function useMapInitialization({
       zoom,
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
+      preserveDrawingBuffer: true,
     });
 
     map.addControl(new maplibre.NavigationControl(), 'top-right');
