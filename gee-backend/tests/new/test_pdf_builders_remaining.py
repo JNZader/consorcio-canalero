@@ -351,3 +351,93 @@ class TestBuildApprovedZoningMapPdf:
         }
         result = build_approved_zoning_map_pdf(payload, branding)
         assert isinstance(result, io.BytesIO)
+
+
+# ---------------------------------------------------------------------------
+# canalLegend — Canales existentes (Pilar Azul) table
+# ---------------------------------------------------------------------------
+
+
+class TestBuildApprovedZoningMapPdfCanalLegend:
+    """Symmetric with roadLegend: the map PDF must render a "Canales existentes"
+    detail table when `canalLegend` is supplied.
+
+    Imports use the canonical path `app.shared.pdf.builders_zoning` to avoid
+    the pre-existing broken imports in this file (the other classes in this
+    module import from `app.shared.pdf.builders`, which does NOT re-export the
+    zoning builders — those live in `builders_zoning` and are only aggregated
+    via the package `__init__.py`).
+    """
+
+    def _base_payload(self) -> dict:
+        return {
+            "title": "Canales test",
+            "mapImageDataUrl": "",
+            "zoneLegend": [],
+            "roadLegend": [],
+            "rasterLegends": [],
+            "zoneSummary": [],
+        }
+
+    def test_without_canal_legend_produces_valid_pdf(self, branding):
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
+
+        result = build_approved_zoning_map_pdf(self._base_payload(), branding)
+        assert isinstance(result, io.BytesIO)
+        result.seek(0)
+        assert result.read(4) == b"%PDF"
+
+    def test_with_canal_legend_renders_without_error(self, branding):
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
+
+        payload = self._base_payload()
+        payload["canalLegend"] = [
+            {"label": "Canal Norte SMS", "color": "#1D4ED8", "detail": "8.2 km · Canal Norte SMS"},
+            {"label": "Canal Sur", "color": "#3B82F6", "detail": "12.5 km"},
+        ]
+        result = build_approved_zoning_map_pdf(payload, branding)
+        assert isinstance(result, io.BytesIO)
+        result.seek(0)
+        assert result.read(4) == b"%PDF"
+
+    def test_with_canal_legend_produces_larger_pdf_than_without(self, branding):
+        """Soft proxy for 'table is rendered': the Canales block adds a title
+        Paragraph + a Table flowable, so the byte output MUST be strictly larger
+        than the same payload without `canalLegend`. PDF content streams are
+        compressed, so we can't grep the title text directly; comparing sizes
+        is the standard pytest-friendly check for ReportLab output.
+        """
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
+
+        baseline_payload = self._base_payload()
+        with_canales_payload = self._base_payload()
+        with_canales_payload["canalLegend"] = [
+            {"label": "Canal Norte SMS", "color": "#1D4ED8", "detail": "8.2 km · Canal Norte SMS"},
+            {"label": "Canal Sur", "color": "#3B82F6", "detail": "12.5 km"},
+        ]
+
+        baseline = build_approved_zoning_map_pdf(baseline_payload, branding).getvalue()
+        with_canales = build_approved_zoning_map_pdf(with_canales_payload, branding).getvalue()
+
+        assert len(with_canales) > len(baseline), (
+            "Expected the PDF with canalLegend to be larger than the baseline "
+            f"(baseline={len(baseline)} bytes, with_canales={len(with_canales)} bytes). "
+            "If they match, the canales block was NOT appended to the story."
+        )
+
+    def test_empty_canal_legend_matches_no_canal_legend(self, branding):
+        """`canalLegend: []` and the absence of the key MUST behave identically
+        (defensive — mirrors the roadLegend early-out)."""
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
+
+        without_key = build_approved_zoning_map_pdf(self._base_payload(), branding).getvalue()
+        empty_list_payload = self._base_payload()
+        empty_list_payload["canalLegend"] = []
+        with_empty = build_approved_zoning_map_pdf(empty_list_payload, branding).getvalue()
+
+        # Byte-for-byte equality is brittle (PDFs embed timestamps via xref),
+        # but sizes must match when no optional block was appended.
+        assert abs(len(without_key) - len(with_empty)) < 200, (
+            f"Expected similar sizes when canalLegend is absent vs empty; "
+            f"got without={len(without_key)}, with_empty={len(with_empty)}."
+        )

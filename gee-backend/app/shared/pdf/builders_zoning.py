@@ -130,6 +130,7 @@ def build_approved_zoning_map_pdf(
     image_data_url = str(payload.get("mapImageDataUrl") or "")
     zone_legend = payload.get("zoneLegend") or []
     road_legend = payload.get("roadLegend") or []
+    canal_legend = payload.get("canalLegend") or []
     raster_legends = payload.get("rasterLegends") or []
     zone_summary = payload.get("zoneSummary") or []
     if title:
@@ -210,7 +211,7 @@ def build_approved_zoning_map_pdf(
             build_color_legend_table("Leyenda de zonas", zone_legend, branding)
         )
         story.append(Spacer(1, 3 * mm))
-    elif zone_legend or road_legend or raster_legends:
+    elif zone_legend or road_legend or canal_legend or raster_legends:
         story.append(Paragraph("Leyendas", styles["subtitle"]))
 
     if road_legend:
@@ -226,6 +227,25 @@ def build_approved_zoning_map_pdf(
             build_color_legend_table(
                 "Red vial por consorcio caminero",
                 road_items,
+                branding,
+                extra_value_key="detail",
+            )
+        )
+        story.append(Spacer(1, 3 * mm))
+
+    if canal_legend:
+        canal_items = [
+            {
+                "label": str(item.get("label", "—")),
+                "color": str(item.get("color", "#1971c2")),
+                "detail": str(item.get("detail", "—")),
+            }
+            for item in canal_legend
+        ]
+        story.extend(
+            build_color_legend_table(
+                "Canales existentes (Pilar Azul)",
+                canal_items,
                 branding,
                 extra_value_key="detail",
             )

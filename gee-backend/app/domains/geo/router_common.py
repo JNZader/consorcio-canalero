@@ -95,6 +95,9 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     road_legend: list[MapLegendItemRequest] = Field(
         default_factory=list, alias="roadLegend"
     )
+    canal_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="canalLegend"
+    )
     raster_legends: list[RasterLegendGroupRequest] = Field(
         default_factory=list, alias="rasterLegends"
     )
