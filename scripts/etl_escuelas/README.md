@@ -1,7 +1,7 @@
 # ETL — Escuelas Rurales
 
 Static pipeline that turns `Escuelas_rurales_CC10mayo.kmz` into a PII-free
-GeoJSON + a single PNG icon consumed by the 2D map layer in `consorcio-web`.
+GeoJSON consumed by the 2D map layer in `consorcio-web`.
 
 ## Purpose
 
@@ -14,21 +14,24 @@ GeoJSON + a single PNG icon consumed by the 2D map layer in `consorcio-web`.
   - `consorcio-web/public/capas/escuelas/escuelas_rurales.geojson` —
     FeatureCollection with **exactly 4 property keys per feature**. No PII,
     by construction (see PII Policy below).
-  - `consorcio-web/public/capas/escuelas/escuela-icon.png` — 64×64 RGBA
-    PNG rendered from the Tabler Icons `school` outline glyph. Rasterized
-    **once** per icon revision, committed to the repo, served as a static
-    asset — **never** fetched at runtime.
-- Zero backend. Zero per-run HTTP. Zero DB migration. The geojson and the
-  PNG are both committed artefacts — the ETL is only invoked when the
-  source KMZ or the icon design changes.
+- Zero backend. Zero per-run HTTP. Zero DB migration. The geojson is a
+  committed artefact — the ETL is only invoked when the source KMZ
+  changes.
+
+> **Frontend rendering note.** The 7 school points are rendered on the
+> map as a native MapLibre `circle` layer (plus a companion text-only
+> `symbol` layer for the label). No icon asset is required. The
+> `export_icon.py` script and the `escuela-icon.png` asset that previous
+> iterations produced were removed — see
+> `consorcio-web/src/components/map2d/escuelasLayers.ts` for the current
+> rendering contract.
 
 ## Re-run instructions
 
 ### 0) Pick the Python interpreter
 
-Any `python>=3.11` with `Pillow>=10` works. The project's existing venv at
-`gee-backend/venv/` already has Pillow 12.x installed, so the simplest
-invocation is:
+Any `python>=3.11` works. The project's existing venv at `gee-backend/venv/`
+is fine:
 
 ```bash
 export PY="$PWD/gee-backend/venv/bin/python"
@@ -37,17 +40,7 @@ export PY="$PWD/gee-backend/venv/bin/python"
 (all commands below assume you are in the repo root —
 `/home/javier/programacion/consorcio-canalero`).
 
-### 1) Regenerate the icon PNG
-
-```bash
-$PY -m scripts.etl_escuelas.export_icon
-```
-
-Output: `consorcio-web/public/capas/escuelas/escuela-icon.png` (64×64, RGBA,
-transparent background, stroke `#1976d2` matching the KMZ operator blue).
-Commit the resulting PNG.
-
-### 2) Regenerate the GeoJSON
+### 1) Regenerate the GeoJSON
 
 ```bash
 ETL_GENERATED_AT=2026-04-21T00:00:00Z \
@@ -66,7 +59,7 @@ previous commit used if you are not refreshing the data.
 
 Commit the resulting `.geojson`.
 
-### 3) Run the tests
+### 2) Run the tests
 
 ```bash
 $PY -m pytest scripts/etl_escuelas/tests/ -v
@@ -74,46 +67,6 @@ $PY -m pytest scripts/etl_escuelas/tests/ -v
 
 All 40 tests must pass (11 parse, 13 slug, 16 build) with zero regressions
 against the 86 canales tests under `scripts/tests/canales/`.
-
-## Icon license
-
-The rasterized PNG is derived from the Tabler Icons `school` outline glyph:
-
-- Upstream: https://tabler.io/icons/icon/school
-- License: [Tabler Icons MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)
-- Local source used for reference: `consorcio-web/node_modules/@tabler/icons/icons/outline/school.svg`
-
-The output PNG inherits the MIT license. Tabler Icons is already a runtime
-dependency of the frontend (`@tabler/icons-react ^3.36.1` in
-`consorcio-web/package.json`), so no new licensing obligation is incurred.
-
-### Rasterization strategy
-
-The Tabler `school` glyph is an extremely simple two-path SVG (one
-polyline for the roof, one vertical-line + half-ellipse arc for the bell).
-Instead of pulling in an SVG parser, `export_icon.py` hand-translates
-those primitives into Pillow `ImageDraw.line` and `ImageDraw.arc` calls —
-Pillow alone is enough.
-
-**Fallback (not currently used)**: if the upstream glyph becomes too
-complex for the hand-translated path, switch to `cairosvg`:
-
-```bash
-pip install cairosvg  # NOT installed in the project venv by default
-```
-
-and rewrite `render_icon` around `cairosvg.svg2png(url=SVG_PATH, output_width=64, output_height=64)`. The SVG source at
-`consorcio-web/node_modules/@tabler/icons/icons/outline/school.svg` is
-local and does not require a network fetch at rasterization time. The
-fallback chain (in order of preference):
-
-1. `cairosvg` (Python, renders any SVG).
-2. `rsvg-convert` CLI (via `librsvg`).
-3. ImageMagick `magick convert -background none -density 384 school.svg -resize 64x64 school.png`.
-
-Whichever path is used, the PNG must stay a transparent-background 64×64
-RGBA. Install commands must go through `--break-system-packages` review
-and be approved explicitly — do **not** `pip install` silently in CI.
 
 ## PII Policy
 
@@ -182,9 +135,6 @@ change AND a new spec REQ — the default posture is closed.
 - **Pinnable timestamp**: `metadata.generated_at` honours
   `ETL_GENERATED_AT`. Leave it pinned across re-runs of the same KMZ so
   the geojson diff stays empty.
-- **PNG size**: the current icon is 378 bytes. A larger PNG after a
-  re-run usually means the glyph changed (not that something is broken)
-  — inspect visually and confirm.
 - **Tests for the KMZ extractor**: we REUSE
   `scripts.etl_canales.kmz.extract_placemarks` unchanged. Do not fork it.
 
