@@ -430,6 +430,12 @@ export default function MapaMapLibre() {
     exportTitle,
     setExportPngModalOpen,
     approvedZones,
+    activeLegendItems,
+    consorcios: vectorVisibility.roads && !!roadsCollection ? consorcios : [],
+    visibleRasterLayers,
+    hiddenClasses,
+    hiddenRanges,
+    approvalName,
   });
 
   /* ---------------------------------------------------------------------- */

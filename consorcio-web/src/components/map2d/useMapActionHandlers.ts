@@ -3,13 +3,112 @@ import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { type Dispatch, type RefObject, type SetStateAction, useCallback } from 'react';
 import { API_URL, getAuthToken } from '../../lib/api';
+import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
+import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { formatExportFilename } from './map2dUtils';
+
+interface LegendItem {
+  color: string;
+  label: string;
+  type: string;
+}
+
+interface RasterLayerTag {
+  tipo: string;
+}
 
 interface UseMapExportHandlersParams {
   mapRef: RefObject<maplibregl.Map | null>;
   exportTitle: string;
   setExportPngModalOpen: (open: boolean) => void;
   approvedZones: FeatureCollection | null | undefined;
+  /**
+   * Optional — legend items currently visible on the map.
+   * Used to build the `zoneLegend` payload field. Defaults to [].
+   */
+  activeLegendItems?: LegendItem[];
+  /**
+   * Optional — consorcio caminero rows for the roads legend.
+   * Used to build the `roadLegend` payload field. Defaults to [].
+   */
+  consorcios?: ConsorcioInfo[];
+  /**
+   * Optional — raster layers currently visible on the map.
+   * Used to build the `rasterLegends` payload field. Defaults to [].
+   */
+  visibleRasterLayers?: RasterLayerTag[];
+  /**
+   * Optional — per-layer categorical class indices hidden by the user.
+   * Used to filter `rasterLegends` items. Defaults to {}.
+   */
+  hiddenClasses?: Record<string, number[]>;
+  /**
+   * Optional — per-layer continuous range indices hidden by the user.
+   * Used to filter `rasterLegends` items. Defaults to {}.
+   */
+  hiddenRanges?: Record<string, number[]>;
+  /**
+   * Optional — approved zoning human name. Falls back for title/filename.
+   */
+  approvalName?: string;
+}
+
+interface RasterLegendGroupPayload {
+  label: string;
+  items: Array<{ label: string; color: string }>;
+}
+
+function buildRasterLegendsPayload(
+  visibleRasterLayers: RasterLayerTag[],
+  hiddenClasses: Record<string, number[]>,
+  hiddenRanges: Record<string, number[]>,
+): RasterLegendGroupPayload[] {
+  return visibleRasterLayers
+    .map((layer) => {
+      const config = LAYER_LEGEND_CONFIG[layer.tipo];
+      if (!config) return null;
+
+      if (config.categorical && config.categories) {
+        const hiddenSet = new Set(hiddenClasses[layer.tipo] ?? []);
+        return {
+          label: config.label,
+          items: config.categories
+            .map((category, index) => ({
+              label: category.label,
+              color: category.color,
+              hidden: hiddenSet.has(index),
+            }))
+            .filter((item) => !item.hidden)
+            .map(({ label, color }) => ({ label, color })),
+        } satisfies RasterLegendGroupPayload;
+      }
+
+      if (config.ranges) {
+        const hiddenSet = new Set(hiddenRanges[layer.tipo] ?? []);
+        return {
+          label: config.label,
+          items: config.ranges
+            .map((range, index) => ({
+              label: range.label,
+              color: range.color,
+              hidden: hiddenSet.has(index),
+            }))
+            .filter((item) => !item.hidden)
+            .map(({ label, color }) => ({ label, color })),
+        } satisfies RasterLegendGroupPayload;
+      }
+
+      return {
+        label: config.label,
+        items: [
+          {
+            label: `${config.min}${config.unit ? ` ${config.unit}` : ''} – ${config.max}${config.unit ? ` ${config.unit}` : ''}`,
+            color: config.colorStops.at(-1) ?? '#888888',
+          },
+        ],
+      } satisfies RasterLegendGroupPayload;
+    })
+    .filter((group): group is RasterLegendGroupPayload => !!group && group.items.length > 0);
 }
 
 export function useMapExportHandlers({
@@ -17,6 +116,12 @@ export function useMapExportHandlers({
   exportTitle,
   setExportPngModalOpen,
   approvedZones,
+  activeLegendItems = [],
+  consorcios = [],
+  visibleRasterLayers = [],
+  hiddenClasses = {},
+  hiddenRanges = {},
+  approvalName = '',
 }: UseMapExportHandlersParams) {
   const handleExportPng = useCallback(() => {
     const map = mapRef.current;
@@ -41,7 +146,49 @@ export function useMapExportHandlers({
 
     try {
       const token = await getAuthToken();
-      const mapSnapshot = map ? map.getCanvas().toDataURL('image/png') : null;
+
+      // Hardening: force a fresh rasterized frame before reading the canvas.
+      // MapLibre's preserveDrawingBuffer (enabled in P1) keeps the backbuffer
+      // readable, but the frame may still be stale if no render happened
+      // recently — trigger a repaint and wait one render cycle.
+      let mapImageDataUrl = '';
+      if (map) {
+        try {
+          await new Promise<void>((resolve) => {
+            map.once('render', () => resolve());
+            map.triggerRepaint();
+          });
+        } catch {
+          // Non-fatal: some test/mock maps don't implement triggerRepaint.
+        }
+        mapImageDataUrl = map.getCanvas().toDataURL('image/png');
+      }
+
+      const title = (exportTitle?.trim() || approvalName?.trim() || 'Zonificación aprobada').trim();
+
+      const zoneLegend = activeLegendItems.map((item) => ({
+        label: item.label,
+        color: item.color,
+      }));
+
+      const roadLegend = consorcios.map((consorcio) => ({
+        label: `${consorcio.codigo} — ${consorcio.nombre}`,
+        color: consorcio.color,
+        detail: `${consorcio.longitud_km.toFixed(1)} km`,
+      }));
+
+      const rasterLegends = buildRasterLegendsPayload(
+        visibleRasterLayers,
+        hiddenClasses,
+        hiddenRanges,
+      );
+
+      const zoneSummary = approvedZones.features.map((feature) => ({
+        name: String(feature.properties?.nombre || 'Zona'),
+        subcuencas: Number(feature.properties?.basin_count || 0),
+        areaHa: Number(feature.properties?.superficie_ha || 0).toFixed(1),
+        color: String(feature.properties?.__color || '#1971c2'),
+      }));
 
       const response = await fetch(
         `${API_URL}/api/v2/geo/basins/approved-zones/current/export-map-pdf`,
@@ -52,8 +199,14 @@ export function useMapExportHandlers({
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            features: approvedZones.features,
-            map_snapshot: mapSnapshot,
+            title,
+            subtitle: '',
+            mapImageDataUrl,
+            zoneLegend,
+            roadLegend,
+            rasterLegends,
+            infoRows: [],
+            zoneSummary,
           }),
         },
       );
@@ -64,7 +217,10 @@ export function useMapExportHandlers({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = formatExportFilename('zonificacion_aprobada', 'pdf');
+      link.download = formatExportFilename(
+        exportTitle?.trim() || approvalName?.trim() || 'zonificacion_aprobada',
+        'pdf',
+      );
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (_error) {
@@ -74,7 +230,17 @@ export function useMapExportHandlers({
         color: 'red',
       });
     }
-  }, [approvedZones, mapRef]);
+  }, [
+    activeLegendItems,
+    approvalName,
+    approvedZones,
+    consorcios,
+    exportTitle,
+    hiddenClasses,
+    hiddenRanges,
+    mapRef,
+    visibleRasterLayers,
+  ]);
 
   const handleExportApprovedZonesGeoJSON = useCallback(() => {
     if (!approvedZones) return;
