@@ -9,10 +9,10 @@
  *   - 4 fields rendered in this order: Nombre (title) · Localidad · Ámbito · Nivel.
  *   - No conditional rows, no empty-state branches (ETL guarantees the 4 values).
  *   - `nombre` humanization: ETL ships raw `"Esc. …"`; card replaces the leading
- *     `"Esc. "` with `"Escuela "` for display. The map label keeps the raw
- *     prefix (that path lives in `escuelasLayers.ts::buildEscuelasLabelLayout`
- *     via `['get', 'nombre']` — NOT tested here). Carry-over from Batch D risks
- *     note (apply-progress #2061 — risk #1).
+ *     `"Esc. "` with `"Escuela "` for display. There is no map-side label layer
+ *     any more (the companion symbol layer was removed — it required a `glyphs`
+ *     URL on the style), so this card is the only place the humanized name is
+ *     shown. Carry-over from Batch D risks note (apply-progress #2061 — risk #1).
  */
 
 import { MantineProvider } from '@mantine/core';

@@ -22,12 +22,10 @@
  *
  * The ETL ships `nombre` RAW from the KMZ (still prefixed `"Esc. "` — see
  * `types/escuelas.ts` jsdoc). We strip that prefix here at RENDER TIME only.
- * The MapLibre `text-field` binding on the companion `escuelas-label` layer
- * (in `escuelasLayers.ts::buildEscuelasLabelLayout`) uses `['get','nombre']`
- * and therefore KEEPS the raw prefix on the map label — humanization is an
- * InfoPanel-only concern. Pinned by tests:
+ * There is no map-side label layer (a companion symbol layer was removed
+ * because it would require a `glyphs` URL on the style), so this card is the
+ * sole place the humanized name is shown to the user — on click. Pinned by:
  *   - `EscuelaCard.test.tsx` — "Esc. " → "Escuela " in heading.
- *   - Map label path is NOT tested here (belongs to escuelasLayers tests).
  *
  * @see spec  `sdd/escuelas-rurales/spec` §REQ-ESC-5
  * @see design `sdd/escuelas-rurales/design` §9 EscuelaCard UI

@@ -2,17 +2,21 @@
  * escuelasSyncHelpers.test.ts
  *
  * Tests for `syncEscuelasLayer` — the SYNCHRONOUS composer that mounts the
- * native MapLibre circle layer + companion label layer.
+ * native MapLibre circle layer for the Pilar Azul (Escuelas rurales) points.
  *
  * This file was rewritten after the symbol+icon approach was abandoned (see
- * `escuelasLayers.ts` header for history). The helper now:
+ * `escuelasLayers.ts` header for history). The short-lived companion
+ * text-only `symbol` label layer was also removed — it required a `glyphs`
+ * URL on the map style, and this deployment does not configure one. The
+ * feature name is shown on click via `EscuelaCard` instead.
+ *
+ * The helper now:
  *   1. Ensures one geojson source (`SOURCE_IDS.ESCUELAS`).
  *   2. Adds a `circle` layer (`escuelas-symbol`) bound to that source.
- *   3. Adds a `symbol` layer (`escuelas-label`) bound to the same source.
- *   4. Flips the visibility of BOTH layers together on the master toggle.
+ *   3. Flips the visibility of the circle layer on the master toggle.
  *
- * No Promise. No `loadImage`. No `addImage`. Null-tolerant (empty
- * FeatureCollection when `collection` is null).
+ * No Promise. No `loadImage`. No `addImage`. No label symbol layer.
+ * Null-tolerant (empty FeatureCollection when `collection` is null).
  */
 
 import type { FeatureCollection, Point } from 'geojson';
@@ -20,10 +24,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { EscuelaFeatureProperties } from '../../src/types/escuelas';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
-import {
-  ESCUELAS_LABEL_LAYER_ID,
-  ESCUELAS_LAYER_ID,
-} from '../../src/components/map2d/escuelasLayers';
+import { ESCUELAS_LAYER_ID } from '../../src/components/map2d/escuelasLayers';
 import { syncEscuelasLayer } from '../../src/components/map2d/mapLayerEffectHelpers';
 
 // ---------------------------------------------------------------------------
@@ -99,11 +100,11 @@ const SAMPLE_PROPS: EscuelaFeatureProperties = {
 };
 
 // ---------------------------------------------------------------------------
-// First mount — source + circle + label ordering
+// First mount — source + circle layer
 // ---------------------------------------------------------------------------
 
 describe('syncEscuelasLayer · first mount', () => {
-  it('adds source and BOTH circle + label layers with correct ids', () => {
+  it('adds source and the circle layer with the correct id/type', () => {
     const map = createMapMock();
 
     syncEscuelasLayer(
@@ -118,41 +119,25 @@ describe('syncEscuelasLayer · first mount', () => {
       expect.objectContaining({ type: 'geojson' }),
     );
 
-    expect(map.addLayer).toHaveBeenCalledTimes(2);
+    expect(map.addLayer).toHaveBeenCalledTimes(1);
 
-    const firstLayer = map.addLayer.mock.calls[0]![0] as {
+    const circleLayer = map.addLayer.mock.calls[0]![0] as {
       id: string;
       type: string;
       source: string;
     };
-    expect(firstLayer.id).toBe(ESCUELAS_LAYER_ID);
-    expect(firstLayer.type).toBe('circle');
-    expect(firstLayer.source).toBe(SOURCE_IDS.ESCUELAS);
-
-    const secondLayer = map.addLayer.mock.calls[1]![0] as {
-      id: string;
-      type: string;
-      source: string;
-    };
-    expect(secondLayer.id).toBe(ESCUELAS_LABEL_LAYER_ID);
-    expect(secondLayer.type).toBe('symbol');
-    expect(secondLayer.source).toBe(SOURCE_IDS.ESCUELAS);
+    expect(circleLayer.id).toBe(ESCUELAS_LAYER_ID);
+    expect(circleLayer.type).toBe('circle');
+    expect(circleLayer.source).toBe(SOURCE_IDS.ESCUELAS);
   });
 
-  it('mounts the circle layer BEFORE the label layer so label draws on top', () => {
+  it('does NOT mount any `symbol` layer (the label layer was removed — no glyphs in style)', () => {
     const map = createMapMock();
 
     syncEscuelasLayer(map as never, fc(), true);
 
-    const circleIdx = map.callOrder.findIndex(
-      (c) => c === `addLayer:${ESCUELAS_LAYER_ID}:circle`,
-    );
-    const labelIdx = map.callOrder.findIndex(
-      (c) => c === `addLayer:${ESCUELAS_LABEL_LAYER_ID}:symbol`,
-    );
-
-    expect(circleIdx).toBeGreaterThanOrEqual(0);
-    expect(labelIdx).toBeGreaterThan(circleIdx);
+    const symbolAdds = map.callOrder.filter((c) => c.endsWith(':symbol'));
+    expect(symbolAdds).toEqual([]);
   });
 
   it('does NOT touch any image / icon APIs (native circle layer — no asset pipeline)', () => {
@@ -167,18 +152,13 @@ describe('syncEscuelasLayer · first mount', () => {
     expect((map as Record<string, unknown>).hasImage).toBeUndefined();
   });
 
-  it('toggle ON → setLayoutProperty(visibility, "visible") on BOTH layers', () => {
+  it('toggle ON → setLayoutProperty(visibility, "visible") on the circle layer', () => {
     const map = createMapMock();
 
     syncEscuelasLayer(map as never, fc(), true);
 
     expect(map.setLayoutProperty).toHaveBeenCalledWith(
       ESCUELAS_LAYER_ID,
-      'visibility',
-      'visible',
-    );
-    expect(map.setLayoutProperty).toHaveBeenCalledWith(
-      ESCUELAS_LABEL_LAYER_ID,
       'visibility',
       'visible',
     );
@@ -194,11 +174,6 @@ describe('syncEscuelasLayer · first mount', () => {
       'visibility',
       'none',
     );
-    expect(map.setLayoutProperty).toHaveBeenCalledWith(
-      ESCUELAS_LABEL_LAYER_ID,
-      'visibility',
-      'none',
-    );
     expect(map.removeLayer).not.toHaveBeenCalled();
     expect(map.removeSource).not.toHaveBeenCalled();
   });
@@ -209,7 +184,7 @@ describe('syncEscuelasLayer · first mount', () => {
 // ---------------------------------------------------------------------------
 
 describe('syncEscuelasLayer · idempotency', () => {
-  it('second call does not duplicate source/layers, only updates visibility', () => {
+  it('second call does not duplicate source/layer, only updates visibility', () => {
     const map = createMapMock();
 
     syncEscuelasLayer(map as never, fc(), true);
@@ -223,11 +198,6 @@ describe('syncEscuelasLayer · idempotency', () => {
     expect(map.addLayer).not.toHaveBeenCalled();
     expect(map.setLayoutProperty).toHaveBeenCalledWith(
       ESCUELAS_LAYER_ID,
-      'visibility',
-      'none',
-    );
-    expect(map.setLayoutProperty).toHaveBeenCalledWith(
-      ESCUELAS_LABEL_LAYER_ID,
       'visibility',
       'none',
     );

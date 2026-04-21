@@ -11,13 +11,7 @@ import {
   buildCanalesRelevadosFilter,
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
-import {
-  ESCUELAS_LABEL_LAYER_ID,
-  ESCUELAS_LAYER_ID,
-  buildEscuelasCirclePaint,
-  buildEscuelasLabelLayout,
-  buildEscuelasLabelPaint,
-} from './escuelasLayers';
+import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
@@ -637,19 +631,23 @@ export function syncCanalesLayers(
 /* -------------------------------------------------------------------------- */
 /*  Pilar Azul (Escuelas rurales) sync helper                                 */
 /*                                                                            */
-/*  Two MapLibre-native layers backed by a single geojson source:             */
+/*  ONE MapLibre-native layer backed by a single geojson source:              */
 /*    - `escuelas-symbol` (type: 'circle') — the clickable point. Its id      */
 /*      keeps the historical `-symbol` suffix so the click-precedence test    */
 /*      (pinned at index 10 in `buildClickableLayers`) and the InfoPanel      */
 /*      discriminator branch do not need to change.                           */
-/*    - `escuelas-label`  (type: 'symbol', text-only) — renders `nombre`      */
-/*      under the circle. NOT registered as clickable — the circle catches    */
-/*      all clicks.                                                           */
 /*                                                                            */
-/*  Motivation: the previous symbol+icon-image approach had two successive    */
-/*  silent-fail paths (MapLibre v4 Promise loadImage API + generic            */
-/*  symbol-layer-hides-when-icon-missing behavior). For seven static points   */
-/*  the asset pipeline buys nothing — the native circle layer is              */
+/*  History: a companion text-only `symbol` label layer rendered the          */
+/*  `nombre` property beneath each circle. It was removed because any         */
+/*  MapLibre `symbol` layer using `text-field` requires a `glyphs` URL on     */
+/*  the style, and this deployment does NOT configure a glyphs endpoint.      */
+/*  The feature name is shown on click via `EscuelaCard` inside `InfoPanel`   */
+/*  — that is the designed UX.                                                */
+/*                                                                            */
+/*  Motivation for the circle: the previous symbol+icon-image approach had    */
+/*  two successive silent-fail paths (MapLibre v4 Promise loadImage API +     */
+/*  generic symbol-layer-hides-when-icon-missing behavior). For seven static  */
+/*  points the asset pipeline buys nothing — the native circle layer is       */
 /*  synchronous, deterministic, and has no silent-fail modes.                 */
 /*                                                                            */
 /*  Null-tolerance contract: when `useEscuelas()` graceful-degrades to        */
@@ -669,7 +667,6 @@ export function syncEscuelasLayer(
 ): void {
   const sourceId = SOURCE_IDS.ESCUELAS;
   const circleLayerId = ESCUELAS_LAYER_ID;
-  const labelLayerId = ESCUELAS_LABEL_LAYER_ID;
 
   // ── Source (idempotent) ──
   // Cast-erase the point-feature narrowing for `ensureGeoJsonSource` which
@@ -690,21 +687,7 @@ export function syncEscuelasLayer(
     });
   }
 
-  // ── Label layer (idempotent) ──
-  // Mounted AFTER the circle layer so it draws on top (MapLibre renders in
-  // addLayer order when no `beforeId` is specified).
-  if (!map.getLayer(labelLayerId)) {
-    map.addLayer({
-      id: labelLayerId,
-      type: 'symbol',
-      source: sourceId,
-      layout: buildEscuelasLabelLayout(),
-      paint: buildEscuelasLabelPaint(),
-    });
-  }
-
-  // ── Visibility (master toggle — both layers flip together) ──
+  // ── Visibility (master toggle) ──
   setLayerVisibility(map, circleLayerId, isVisible);
-  setLayerVisibility(map, labelLayerId, isVisible);
 }
 

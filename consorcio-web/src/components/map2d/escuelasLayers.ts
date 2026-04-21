@@ -7,9 +7,8 @@
  * ---------------
  * Seven static points are rendered with a NATIVE MapLibre `circle` layer
  * (`escuelas-symbol` — id preserved for backwards-compat with click precedence
- * tests) plus a companion `symbol` layer (`escuelas-label`) that carries only
- * the text label. No image asset, no `loadImage`, no `addImage`, no
- * Promise-shaped mount path.
+ * tests). No image asset, no `loadImage`, no `addImage`, no Promise-shaped
+ * mount path, and NO companion `symbol` label layer.
  *
  * History
  * -------
@@ -31,19 +30,28 @@
  * The icon asset and its ETL export script are removed as part of this
  * refactor.
  *
+ * A short-lived companion text-only `symbol` layer was also added to render
+ * the `nombre` property as a text label beneath each circle. That layer was
+ * removed after live testing surfaced a hard MapLibre error: any `symbol`
+ * layer with `text-field` requires a `glyphs` URL on the map style, and this
+ * deployment deliberately does NOT configure a glyphs endpoint. Rather than
+ * wire up glyph infra for a single text-only label, the layer is dropped
+ * entirely — the feature name is already shown on click via `EscuelaCard`
+ * inside `InfoPanel`, which is the designed UX.
+ *
  * Consumers
  * ---------
  *   - `mapLayerEffectHelpers.ts::syncEscuelasLayer` composes
- *     `ensureGeoJsonSource` + circle `addLayer` + label `addLayer` for an
- *     idempotent, SYNCHRONOUS mount pipeline.
+ *     `ensureGeoJsonSource` + circle `addLayer` for an idempotent, SYNCHRONOUS
+ *     mount pipeline.
  *   - `LeyendaPanel.tsx` renders a 12×12 blue circle swatch matching the map
  *     `circle-color` / `circle-stroke` paint (no image reference).
  *   - `InfoPanel.tsx` discriminates clicks via
  *     `feature.layer.id === ESCUELAS_LAYER_ID` — the circle layer is the
- *     click target; the label layer is not registered as clickable.
+ *     click target.
  */
 
-import type { CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
+import type { CircleLayerSpecification } from 'maplibre-gl';
 
 import { SOURCE_IDS } from './map2dConfig';
 
@@ -70,16 +78,6 @@ export const ESCUELAS_SOURCE_ID = SOURCE_IDS.ESCUELAS;
  */
 export const ESCUELAS_LAYER_ID = 'escuelas-symbol' as const;
 
-/**
- * Companion text-label layer id.
- *
- * A second layer (`type: 'symbol'`, text-only — no `icon-image`) draws the
- * `nombre` property under the circle. Keeping the label in its own layer
- * means the circle layer stays a pure click target and the label cannot
- * accidentally steal a click.
- */
-export const ESCUELAS_LABEL_LAYER_ID = 'escuelas-label' as const;
-
 // ---------------------------------------------------------------------------
 // Circle paint / layout factories
 // ---------------------------------------------------------------------------
@@ -104,51 +102,5 @@ export function buildEscuelasCirclePaint(): CirclePaint {
     'circle-color': '#1976d2',
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 2,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Label (companion symbol) layout / paint factories
-// ---------------------------------------------------------------------------
-
-type SymbolLayout = NonNullable<SymbolLayerSpecification['layout']>;
-type SymbolPaint = NonNullable<SymbolLayerSpecification['paint']>;
-
-/**
- * Layout for the companion `escuelas-label` symbol layer.
- *
- *   - `text-field` reads `nombre` directly from the feature properties.
- *     Label is raw (same rule as before — no humanization on the map; that
- *     lives in `EscuelaCard.tsx` at render time for the InfoPanel only).
- *   - `text-offset: [0, 1.2]` drops the label 1.2 em below the anchor so it
- *     sits under the circle dot.
- *   - `text-optional: true` means the layer still renders when the label
- *     collides at very low zoom (the circle is the primary signal).
- */
-export function buildEscuelasLabelLayout(): SymbolLayout {
-  return {
-    'text-field': ['get', 'nombre'],
-    'text-size': 11,
-    'text-offset': [0, 1.2],
-    'text-optional': true,
-    'text-anchor': 'top',
-    'text-allow-overlap': false,
-  };
-}
-
-/**
- * Paint for the companion `escuelas-label` symbol layer.
- *
- *   - `text-color` `#1a237e` matches the Pilar Azul blue family (slightly
- *     darker than the circle fill so the label reads as secondary).
- *   - `text-halo-color` white + `text-halo-width: 1.5` guarantees the label
- *     stays legible over any combination of canales lines and satellite
- *     imagery underneath.
- */
-export function buildEscuelasLabelPaint(): SymbolPaint {
-  return {
-    'text-color': '#1a237e',
-    'text-halo-color': '#ffffff',
-    'text-halo-width': 1.5,
   };
 }
