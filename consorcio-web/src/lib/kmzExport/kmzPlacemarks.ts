@@ -182,10 +182,11 @@ function humanizeEscuelasName(raw: string): string {
 
 /**
  * Pick the name for a feature using the documented priority chain:
- *   properties.nombre → properties.name → `${entry.label} ${index}`.
+ *   non-empty properties.nombre → non-empty properties.name →
+ *   `${entry.label} ${index + 1}`  (1-indexed fallback).
  *
- * Pair 4 will tighten the fallback to `${entry.label} ${index + 1}`
- * (1-indexed) and short-circuit on empty strings.
+ * Empty strings short-circuit to the fallback so features with
+ * `nombre: ''` still get a meaningful `<name>` element.
  *
  * Note: `nombre` / `name` are NOT on the PII denylist, so they survive
  * `stripPii`. We call `stripPii` up-front defensively — if a future
@@ -200,14 +201,14 @@ function resolveName(
   const rawProps = feature.properties ?? {};
   const props = stripPii(rawProps);
   const nombre = props['nombre'];
-  if (typeof nombre === 'string') {
+  if (typeof nombre === 'string' && nombre.length > 0) {
     return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(nombre) : nombre;
   }
   const name = props['name'];
-  if (typeof name === 'string') {
+  if (typeof name === 'string' && name.length > 0) {
     return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(name) : name;
   }
-  return `${entry.label} ${index}`;
+  return `${entry.label} ${index + 1}`;
 }
 
 // ---------------------------------------------------------------------------
