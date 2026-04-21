@@ -10,6 +10,9 @@ import {
 
 const notificationsShow = vi.fn();
 const getAuthTokenMock = vi.fn();
+const buildKmzMock = vi.fn();
+const triggerKmzDownloadMock = vi.fn();
+const useMapLayerSyncStoreMock = vi.fn();
 
 vi.mock('@mantine/notifications', () => ({
   notifications: {
@@ -22,10 +25,30 @@ vi.mock('../../src/lib/api', () => ({
   getAuthToken: (...args: unknown[]) => getAuthTokenMock(...args),
 }));
 
+vi.mock('../../src/lib/kmzExport/kmzBuilder', () => ({
+  buildKmz: (...args: unknown[]) => buildKmzMock(...args),
+}));
+
+vi.mock('../../src/lib/kmzExport/triggerKmzDownload', () => ({
+  triggerKmzDownload: (...args: unknown[]) => triggerKmzDownloadMock(...args),
+}));
+
+vi.mock('../../src/stores/mapLayerSyncStore', () => ({
+  useMapLayerSyncStore: (selector: (state: unknown) => unknown) =>
+    useMapLayerSyncStoreMock(selector),
+}));
+
 describe('useMapActionHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getAuthTokenMock.mockResolvedValue('token-123');
+    // Default store state — tests override as needed.
+    useMapLayerSyncStoreMock.mockImplementation((selector: (state: unknown) => unknown) =>
+      selector({
+        map2d: { visibleVectors: {}, activeRasterType: null },
+        propuestasEtapasVisibility: {},
+      }),
+    );
   });
 
   it('exports PNG and closes the modal', () => {
@@ -293,6 +316,152 @@ describe('useMapActionHandlers', () => {
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
     fetchMock.mockRestore();
+  });
+
+  describe('handleExportKmz', () => {
+    function fc(features: unknown[] = []): FeatureCollection {
+      return { type: 'FeatureCollection', features: features as never[] };
+    }
+
+    function renderExportHook(
+      overrides: Partial<Parameters<typeof useMapExportHandlers>[0]> = {},
+    ) {
+      const canalesRelevados = fc([{ type: 'Feature', geometry: null, properties: {} }]);
+      const canalesPropuestos = fc([{ type: 'Feature', geometry: null, properties: {} }]);
+      const escuelas = fc([{ type: 'Feature', geometry: null, properties: {} }]);
+      const bpaHistorico = fc([{ type: 'Feature', geometry: null, properties: {} }]);
+      const ypf = fc([{ type: 'Feature', geometry: null, properties: {} }]);
+
+      const exportSources = {
+        canales_relevados: canalesRelevados,
+        canales_propuestos: canalesPropuestos,
+        escuelas,
+        pilar_verde_bpa_historico: bpaHistorico,
+        pilar_verde_agro_aceptada: null,
+        pilar_verde_agro_presentada: null,
+        pilar_verde_agro_zonas: null,
+        pilar_verde_porcentaje_forestacion: null,
+        waterways: null,
+        roads: null,
+        catastro: null,
+        soil: null,
+        'ypf-estacion-bombeo': ypf,
+      };
+
+      const mapRef = {
+        current: {
+          getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,mock' }),
+        },
+      } as const;
+
+      const { result } = renderHook(() =>
+        useMapExportHandlers({
+          mapRef,
+          exportTitle: 'Mapa Test',
+          setExportPngModalOpen: vi.fn(),
+          approvedZones: null,
+          exportSources,
+          ...overrides,
+        }),
+      );
+      return { result, sources: exportSources };
+    }
+
+    it('reads visibleVectors + propuestasEtapasVisibility from the store', async () => {
+      const visibleVectors = { canales_relevados: true, escuelas: false };
+      const propuestasEtapasVisibility = { '1': true, '2': false, '3': true, '4': true, '5': true };
+      useMapLayerSyncStoreMock.mockImplementation((selector: (state: unknown) => unknown) =>
+        selector({
+          map2d: { visibleVectors, activeRasterType: null },
+          propuestasEtapasVisibility,
+        }),
+      );
+      buildKmzMock.mockResolvedValue(new Blob(['kmz']));
+
+      const { result } = renderExportHook();
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      expect(buildKmzMock).toHaveBeenCalledTimes(1);
+      const input = buildKmzMock.mock.calls[0][0] as {
+        visibleLayers: Record<string, boolean>;
+        propuestasEtapasVisibility: Record<string, boolean>;
+        data: Record<string, unknown>;
+        timestamp: Date;
+      };
+      expect(input.visibleLayers).toEqual(visibleVectors);
+      expect(input.propuestasEtapasVisibility).toEqual(propuestasEtapasVisibility);
+    });
+
+    it('passes the data map to buildKmz keyed by layer keys', async () => {
+      buildKmzMock.mockResolvedValue(new Blob(['kmz']));
+      const { result, sources } = renderExportHook();
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      const input = buildKmzMock.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(input.data.canales_relevados).toBe(sources.canales_relevados);
+      expect(input.data.canales_propuestos).toBe(sources.canales_propuestos);
+      expect(input.data.escuelas).toBe(sources.escuelas);
+      expect(input.data.pilar_verde_bpa_historico).toBe(sources.pilar_verde_bpa_historico);
+      expect(input.data['ypf-estacion-bombeo']).toBe(sources['ypf-estacion-bombeo']);
+    });
+
+    it('triggers download with YYYY-MM-DD filename after buildKmz resolves', async () => {
+      const blob = new Blob(['kmz'], { type: 'application/vnd.google-earth.kmz' });
+      buildKmzMock.mockResolvedValue(blob);
+
+      const { result } = renderExportHook();
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      expect(triggerKmzDownloadMock).toHaveBeenCalledTimes(1);
+      const [downloadedBlob, filename] = triggerKmzDownloadMock.mock.calls[0];
+      expect(downloadedBlob).toBe(blob);
+      expect(filename).toMatch(/^consorcio_canalero_\d{4}-\d{2}-\d{2}\.kmz$/);
+    });
+
+    it('does NOT call triggerKmzDownload when buildKmz throws', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      buildKmzMock.mockRejectedValue(new Error('boom'));
+
+      const { result } = renderExportHook();
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      expect(triggerKmzDownloadMock).not.toHaveBeenCalled();
+      // Error path notifies the user (mirror handleExportApprovedZonesPdf).
+      expect(notificationsShow).toHaveBeenCalledWith(
+        expect.objectContaining({ color: 'red' }),
+      );
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('shows a success notification when the export completes', async () => {
+      buildKmzMock.mockResolvedValue(new Blob(['kmz']));
+
+      const { result } = renderExportHook();
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      // At least one green-colored notification was dispatched.
+      const greenCalls = notificationsShow.mock.calls.filter(([arg]) =>
+        (arg as { color?: string })?.color === 'green',
+      );
+      expect(greenCalls.length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   it('creates infrastructure assets and resets state on success', async () => {
