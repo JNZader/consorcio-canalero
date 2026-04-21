@@ -10,7 +10,7 @@
  *   - No conditional rows, no empty-state branches (ETL guarantees the 4 values).
  *   - `nombre` humanization: ETL ships raw `"Esc. …"`; card replaces the leading
  *     `"Esc. "` with `"Escuela "` for display. The map label keeps the raw
- *     prefix (that path lives in `escuelasLayers.ts::buildEscuelasSymbolLayout`
+ *     prefix (that path lives in `escuelasLayers.ts::buildEscuelasLabelLayout`
  *     via `['get', 'nombre']` — NOT tested here). Carry-over from Batch D risks
  *     note (apply-progress #2061 — risk #1).
  */
