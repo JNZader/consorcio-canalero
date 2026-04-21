@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-20T20:18:51Z",
+  "generated_at": "2026-04-21T00:45:30Z",
   "counts": {
     "relevados": 23,
     "propuestas": 20,
@@ -302,36 +302,36 @@
       "estado": "propuesto"
     },
     {
-      "id": "s2-complemento-opcional-p12-sujeto-a-presupuesto",
+      "id": "p12-s2-complemento-opcional-p12-sujeto-a-presupuesto",
       "nombre": "S2 complemento opcional (P12) · sujeto a presupuesto",
-      "codigo": null,
-      "prioridad": null,
+      "codigo": "P12",
+      "prioridad": "Opcional",
       "longitud_m": 5914.8,
       "featured": false,
       "estado": "propuesto"
     },
     {
-      "id": "s2-alternativa-b-o-c-p13",
+      "id": "p13-s2-alternativa-b-o-c-p13",
       "nombre": "S2 alternativa b o c (P13)",
-      "codigo": null,
+      "codigo": "P13",
       "prioridad": "Media-Alta",
       "longitud_m": 5359.9,
       "featured": false,
       "estado": "propuesto"
     },
     {
-      "id": "s2-alternativa-a-o-c-p14a-norte",
+      "id": "p14a-s2-alternativa-a-o-c-p14a-norte",
       "nombre": "S2 alternativa a o c (P14a norte)",
-      "codigo": null,
+      "codigo": "P14a",
       "prioridad": "Media-Alta",
       "longitud_m": 3109.7,
       "featured": false,
       "estado": "propuesto"
     },
     {
-      "id": "s2-alternativa-c-p15",
+      "id": "p15-s2-alternativa-c-p15",
       "nombre": "S2 alternativa c (P15)",
-      "codigo": null,
+      "codigo": "P15",
       "prioridad": "Media-Alta",
       "longitud_m": 2357.1,
       "featured": false,
@@ -365,9 +365,9 @@
       "estado": "propuesto"
     },
     {
-      "id": "s2-alternativa-a-solamente-p14b-sur",
+      "id": "p14b-s2-alternativa-a-solamente-p14b-sur",
       "nombre": "S2 alternativa a solamente (P14b sur)",
-      "codigo": null,
+      "codigo": "P14b",
       "prioridad": "Media-Alta",
       "longitud_m": 2027.1,
       "featured": false,

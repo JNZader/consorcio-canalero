@@ -78,6 +78,19 @@ _CODIGO_RE = re.compile(r"^[A-Z]{1,3}\d{1,2}[A-Z]?$")
 # absorbed into descripcion at the call site).
 _LONG_RE = re.compile(r"^(\d[\d.]*)(?:,(\d+))?\s*m\b")
 
+# Parenthesized real-code detector: names like
+# ``"S2 complemento opcional (P12) · 5.916 m · sujeto a presupuesto"`` carry
+# the TRUE codigo inside the parentheses (``P12``).  The leading ``S2`` is a
+# family/group marker the author uses, NOT the canal identifier.  Matches
+# ``(P12)``, ``(P14a)``, ``(P14b)``, ``(N3)`` — P-series (propuestas) and
+# N-series (norte) for safety.  The parens may carry trailing words the
+# author uses to disambiguate sibling alternatives (``(P14a norte)``,
+# ``(P14b sur)``); only the leading codigo token is captured, the rest
+# stays in the descripcion via the normal chunk walk.  Case-sensitive on
+# purpose: ``(p12)`` would be typo drift we want to surface, not silently
+# consume.
+_PARENTHESIZED_CODE_RE = re.compile(r"\(([PN]\d+[a-z]?)\b")
+
 
 @dataclass(frozen=True)
 class ParsedName:
@@ -149,6 +162,18 @@ def parse_name(raw: str) -> ParsedName:
     featured = STAR in working
     if featured:
         working = working.split(STAR, 1)[0].rstrip()
+
+    # --- Parenthesized code override.  When the author packed the real
+    # codigo inside parentheses (e.g. ``"S2 complemento opcional (P12) ·
+    # 5.916 m · sujeto a presupuesto"``), that wins unconditionally over any
+    # strict/fallback position-based recovery below.  This matches the
+    # authoring convention used across the propuestas layer: ``S2`` is the
+    # group family, ``(P12)`` is the canal itself.  We capture the match
+    # here and apply it AFTER the normal parse so the rest of the pipeline
+    # (longitud, prioridad, descripcion, featured) keeps producing the same
+    # structured fields — only the codigo slot is overridden.
+    paren_match = _PARENTHESIZED_CODE_RE.search(working)
+    paren_code: str | None = paren_match.group(1) if paren_match else None
 
     # --- Split on · and trim every chunk.
     chunks = [c.strip() for c in working.split(SEP)]
@@ -242,10 +267,33 @@ def parse_name(raw: str) -> ParsedName:
             prioridad,
         )
 
+    # Parenthesized P/N-series code wins over any prefix-based codigo.  This
+    # is the documented authoring convention for propuestas where the leading
+    # token ("S2") is a family marker, not the canal code.
+    final_codigo = paren_code if paren_code else codigo
+
+    # Keyword inference fallback — ONLY runs when the strict/fallback parse
+    # failed to extract an explicit priority token.  Real KMZ names like
+    # "S2 complemento opcional (P12) · 5.916 m · sujeto a presupuesto" carry
+    # lowercase semantic cues ("opcional", "sujeto a presupuesto", "largo
+    # plazo") instead of the canonical uppercase tag the rest of the dataset
+    # uses.  Without this step those features end up with prioridad=None and
+    # the MapLibre ``["in", ["get", "prioridad"], ["literal", activeEtapas]]``
+    # filter silently hides them — the P12 invisibility bug.  Explicit
+    # uppercase tags always take precedence because the strict parse ran
+    # first; this is a fallback, not an override.
+    final_prioridad = prioridad
+    if final_prioridad is None:
+        lower = raw.lower()
+        if "opcional" in lower or "sujeto a presupuesto" in lower:
+            final_prioridad = "Opcional"
+        elif "largo plazo" in lower:
+            final_prioridad = "Largo plazo"
+
     return ParsedName(
-        codigo=codigo,
+        codigo=final_codigo,
         descripcion=descripcion,
         longitud_declarada_m=longitud,
-        prioridad=prioridad,
+        prioridad=final_prioridad,
         featured=featured,
     )

@@ -150,12 +150,61 @@ class TestFallbackPath:
 
     def test_real_opcional_with_sujeto_a_presupuesto_tail(self):
         # Real propuesta name — last chunk is descriptive noise, not priority.
+        # The parenthesized (P12) is the REAL code (bug fix: parser used to
+        # extract "S2" or None; now it extracts "P12" from the parenthesis).
         raw = "S2 complemento opcional (P12) · 5.916 m · sujeto a presupuesto"
         parsed = parse_name(raw)
-        assert parsed.codigo is None  # "S2 complemento..." doesn't start with a bare code token
+        assert parsed.codigo == "P12"
         assert parsed.longitud_declarada_m == 5916.0
-        # "sujeto a presupuesto" is NOT a canonical priority → None.
-        assert parsed.prioridad is None
+        # Keyword inference kicks in: lowercase "opcional" + "sujeto a
+        # presupuesto" tail both map to "Opcional" when no explicit
+        # uppercase priority tag is present.
+        assert parsed.prioridad == "Opcional"
+
+
+class TestParenthesizedCodeOverride:
+    """A parenthesized P-series / N-series code in the name overrides any
+    prefix token. Real KMZ names like "S2 complemento opcional (P12) · ..."
+    carry the true codigo inside the parentheses; S2 is just the group
+    family marker used by the author, not the canal code.
+    """
+
+    def test_parenthesized_code_overrides_prefix(self):
+        # S2 is the group prefix, (P12) is the real code.
+        r = parse_name(
+            "S2 complemento opcional (P12) · 5.916 m · sujeto a presupuesto"
+        )
+        assert r.codigo == "P12"
+        assert r.descripcion.startswith("S2 complemento opcional")
+        # longitud + prioridad may or may not parse; both OK.
+
+    def test_parenthesized_code_with_letter_suffix(self):
+        r = parse_name("S2 alternativa a o c (P14a norte)")
+        assert r.codigo == "P14a"
+
+    def test_parenthesized_code_without_length_or_prio(self):
+        r = parse_name("S2 alternativa b o c (P13)")
+        assert r.codigo == "P13"
+
+    def test_parenthesized_code_p14b(self):
+        r = parse_name("S2 alternativa a solamente (P14b sur)")
+        assert r.codigo == "P14b"
+
+    def test_parenthesized_code_p15(self):
+        r = parse_name("S2 alternativa c (P15)")
+        assert r.codigo == "P15"
+
+    def test_no_parenthesis_keeps_prefix(self):
+        # No paren → keep current behavior (S2 as code, or None).
+        r = parse_name("S2 núcleo · Tramo norte centro-este")
+        # The original may be S2 or None depending on strict pattern — but
+        # NOT P-anything.
+        assert r.codigo is None or r.codigo.startswith("S")
+
+    def test_parenthesized_n_series_code(self):
+        # N-series in parentheses also triggers the override (for safety).
+        r = parse_name("Grupo · Canal viejo (N3) · 500 m")
+        assert r.codigo == "N3"
 
     def test_real_largo_plazo_normalisation(self):
         raw = "S7 · Extensión Monte Leña oeste · 6.277 m · LARGO PLAZO"
@@ -163,6 +212,33 @@ class TestFallbackPath:
         assert parsed.codigo == "S7"
         assert parsed.longitud_declarada_m == 6277.0
         assert parsed.prioridad == "Largo plazo"
+
+
+class TestPriorityInferenceFromKeywords:
+    """When the explicit/strict parser can't extract a priority token, infer
+    from keywords in the full raw name. Applies ONLY when explicit parse
+    failed — uppercase tags ALWAYS win.
+    """
+
+    def test_infer_opcional_from_lowercase_keyword(self):
+        r = parse_name("S2 complemento opcional (P12) · 5.916 m · sujeto a presupuesto")
+        assert r.codigo == "P12"
+        assert r.prioridad == "Opcional"
+        assert r.longitud_declarada_m == 5916.0
+
+    def test_infer_opcional_from_sujeto_presupuesto_even_without_word(self):
+        # Hypothetical: a name with "sujeto a presupuesto" but no "opcional"
+        r = parse_name("N9 tramo conexión futura · 2.500 m · sujeto a presupuesto")
+        assert r.prioridad == "Opcional"
+
+    def test_infer_largo_plazo(self):
+        r = parse_name("Alguna cosa largo plazo (P99) · 100 m")
+        assert r.prioridad == "Largo plazo"
+
+    def test_explicit_priority_wins_over_keyword(self):
+        # Even if "opcional" appears, the uppercase "ALTA" token wins
+        r = parse_name("N3 tramo opcional alternativo · 500 m · ALTA")
+        assert r.prioridad == "Alta"  # NOT "Opcional"
 
 
 class TestFeaturedStarDetection:
