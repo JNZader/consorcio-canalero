@@ -7,6 +7,7 @@ import {
   useMapExportHandlers,
   useZoningHandlers,
 } from '../../src/components/map2d/useMapActionHandlers';
+import { MAP_FALLBACK_BOUNDS } from '../../src/components/map2d/map2dUtils';
 
 const notificationsShow = vi.fn();
 const getAuthTokenMock = vi.fn();
@@ -549,4 +550,175 @@ describe('useMapActionHandlers', () => {
     expect(setSelectedDraftBasinId).toHaveBeenCalledWith(null);
     expect(setDraftDestinationZoneId).toHaveBeenCalledWith(null);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Auto-fit to consorcio — shared helpers
+  // ─────────────────────────────────────────────────────────────────────────
+  function buildZonaCollection(): FeatureCollection {
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [-62.8, -32.7],
+                [-62.4, -32.7],
+                [-62.4, -32.5],
+                [-62.8, -32.5],
+                [-62.8, -32.7],
+              ],
+            ],
+          },
+          properties: {},
+        },
+      ],
+    };
+  }
+
+  interface FakeMapOptions {
+    currentZoom?: number;
+    fitZoom?: number;
+    /** If true, `cameraForBounds` returns undefined (older MapLibre / mocks). */
+    cameraUndefined?: boolean;
+  }
+
+  function buildFakeMap(opts: FakeMapOptions = {}) {
+    const fitBounds = vi.fn();
+    const triggerRepaint = vi.fn();
+    const once = vi.fn((event: string, cb: () => void) => {
+      // Invoke 'idle' and 'render' callbacks synchronously so awaits resolve.
+      if (event === 'idle' || event === 'render') {
+        cb();
+      }
+    });
+    const getZoom = vi.fn(() => opts.currentZoom ?? 10);
+    const cameraForBounds = vi.fn(() =>
+      opts.cameraUndefined ? undefined : { zoom: opts.fitZoom ?? 11 },
+    );
+    const map = {
+      fitBounds,
+      triggerRepaint,
+      once,
+      getZoom,
+      cameraForBounds,
+      getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,MOCK' }),
+    };
+    return { map, fitBounds, triggerRepaint, once, getZoom, cameraForBounds };
+  }
+
+  describe('handleExportApprovedZonesPdf — auto-fit to consorcio', () => {
+    it('calls fitBounds with the zonaCollection bbox BEFORE capturing the canvas', async () => {
+      const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        blob: async () => new Blob(['pdf']),
+      } as Response);
+      const createObjectURL = vi
+        .spyOn(window.URL, 'createObjectURL')
+        .mockReturnValue('blob:test');
+      const revokeObjectURL = vi
+        .spyOn(window.URL, 'revokeObjectURL')
+        .mockImplementation(() => {});
+
+      const { map, fitBounds, once } = buildFakeMap();
+      // Spy on toDataURL to assert ordering vs fitBounds.
+      const toDataURLSpy = vi.fn(() => 'data:image/png;base64,MOCK');
+      map.getCanvas = () => ({ toDataURL: toDataURLSpy }) as never;
+
+      const zonaCollection = buildZonaCollection();
+      const approvedZones: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [],
+      };
+      const mapRef = { current: map } as const;
+
+      try {
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones,
+            zonaCollection,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportApprovedZonesPdf();
+        });
+
+        // fitBounds MUST be called.
+        expect(fitBounds).toHaveBeenCalledTimes(1);
+        const [bounds, options] = fitBounds.mock.calls[0];
+        // Bounds come from the zonaCollection's bbox.
+        expect(bounds).toEqual([
+          [-62.8, -32.7],
+          [-62.4, -32.5],
+        ]);
+        // animate: false and duration: 0 for instant snap during capture.
+        expect(options).toEqual(
+          expect.objectContaining({ animate: false, duration: 0 }),
+        );
+
+        // After fitBounds, awaits 'idle' before capture.
+        expect(once).toHaveBeenCalledWith('idle', expect.any(Function));
+
+        // Ordering: fitBounds happens before toDataURL.
+        const fitOrder = fitBounds.mock.invocationCallOrder[0];
+        const captureOrder = toDataURLSpy.mock.invocationCallOrder[0];
+        expect(fitOrder).toBeLessThan(captureOrder);
+      } finally {
+        fetchMock.mockRestore();
+        createObjectURL.mockRestore();
+        revokeObjectURL.mockRestore();
+      }
+    });
+
+    it('falls back to MAP_FALLBACK_BOUNDS when zonaCollection is null', async () => {
+      const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        blob: async () => new Blob(['pdf']),
+      } as Response);
+      const createObjectURL = vi
+        .spyOn(window.URL, 'createObjectURL')
+        .mockReturnValue('blob:test');
+      const revokeObjectURL = vi
+        .spyOn(window.URL, 'revokeObjectURL')
+        .mockImplementation(() => {});
+
+      const { map, fitBounds } = buildFakeMap();
+      const approvedZones: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [],
+      };
+      const mapRef = { current: map } as const;
+
+      try {
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones,
+            zonaCollection: null,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportApprovedZonesPdf();
+        });
+
+        expect(fitBounds).toHaveBeenCalledTimes(1);
+        const [bounds] = fitBounds.mock.calls[0];
+        expect(bounds).toEqual(MAP_FALLBACK_BOUNDS);
+      } finally {
+        fetchMock.mockRestore();
+        createObjectURL.mockRestore();
+        revokeObjectURL.mockRestore();
+      }
+    });
+  });
+
 });
