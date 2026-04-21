@@ -36,7 +36,6 @@ function createMapMock() {
 function emptyCollections() {
   const fc = { type: 'FeatureCollection' as const, features: [] };
   return {
-    zonaCollection: fc,
     approvedZonesCollection: fc,
     cuencasCollection: fc,
     basins: fc,
@@ -49,7 +48,6 @@ function emptyCollections() {
 
 function baselineVisibility() {
   return {
-    zona: true,
     approved_zones: true,
     basins: true,
     roads: true,
@@ -109,6 +107,27 @@ describe('terrainVectorLayerEffects paint constants (layer-visibility audit)', (
       'line-width': 1.2,
       'line-opacity': 0.85,
     });
+  });
+
+  // Removal task — the "Zona Consorcio" outline is redundant in 3D because
+  // the 3D mesh IS the consorcio zone (rendering a red outline around the
+  // whole viewport is visual noise). The zona layer was removed from the 3D
+  // viewer entirely in Batch G; 2D still renders it via its own pipeline.
+  // This test locks the contract so it cannot come back silently.
+  it('does NOT register any zona source or line layer in the 3D viewer', () => {
+    const map = createMapMock();
+
+    syncTerrainVectorLayers(
+      map as never,
+      emptyCollections(),
+      baselineVisibility(),
+    );
+
+    const sourceIds = map.addSource.mock.calls.map(([id]) => id as string);
+    const layerIds = map.addLayer.mock.calls.map(([layer]) => layer?.id as string);
+
+    expect(sourceIds.some((id) => id.includes('zona'))).toBe(false);
+    expect(layerIds.some((id) => id.includes('zona'))).toBe(false);
   });
 
   // Locks Fix 3 — MapLibre renders in declaration order (last = top). If a

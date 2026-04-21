@@ -7,7 +7,6 @@ import {
 } from './terrainViewer3DUtils';
 
 export const TERRAIN_SOURCE_IDS = {
-  zona: 'terrain-vector-zona',
   approved_zones: 'terrain-vector-approved-zones',
   cuencas: 'terrain-vector-cuencas',
   basins: 'terrain-vector-basins',
@@ -17,8 +16,12 @@ export const TERRAIN_SOURCE_IDS = {
   catastro: 'terrain-vector-catastro',
 } as const;
 
+// NOTE: the "Zona Consorcio" outline (formerly `terrain-vector-zona`, red
+// 3px 0.95 opacity) was removed from the 3D viewer entirely — the 3D mesh
+// IS the consorcio zone, so a red perimeter outline was visual noise. 2D
+// keeps its own independent zona layer via `mapLayerEffectHelpers`
+// (`SOURCE_IDS.ZONA` / `syncZonaLayer`), untouched by this change.
 interface TerrainVectorCollections {
-  zonaCollection: FeatureCollection | null;
   approvedZonesCollection: FeatureCollection | null | undefined;
   cuencasCollection: FeatureCollection | null;
   basins: FeatureCollection | null | undefined;
@@ -61,16 +64,6 @@ function ensureTerrainVectorLayers(
   map: maplibregl.Map,
   collections: TerrainVectorCollections,
 ) {
-  ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.zona, collections.zonaCollection);
-  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.zona}-line`)) {
-    map.addLayer({
-      id: `${TERRAIN_SOURCE_IDS.zona}-line`,
-      type: 'line',
-      source: TERRAIN_SOURCE_IDS.zona,
-      paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
-    });
-  }
-
   ensureGeoJsonSource(
     map,
     TERRAIN_SOURCE_IDS.approved_zones,
@@ -225,11 +218,6 @@ export function syncTerrainVectorLayers(
     map,
     `${TERRAIN_SOURCE_IDS.approved_zones}-line`,
     visibility.approved_zones && !!collections.approvedZonesCollection,
-  );
-  ensureLayerVisibility(
-    map,
-    `${TERRAIN_SOURCE_IDS.zona}-line`,
-    visibility.zona && !!collections.zonaCollection,
   );
   ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.cuencas}-fill`, false);
   ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.cuencas}-line`, false);

@@ -28,9 +28,12 @@ export const SUPPORTED_3D_RASTER_TYPES: Terrain3DRasterLayerConfig[] = [
   { tipo: 'drainage_need', status: 'supported' },
 ];
 
+// NOTE: the "Zona Consorcio" toggle was removed from the 3D vector config —
+// the 3D mesh IS the consorcio area, so the red perimeter outline that the
+// toggle used to control was redundant visual noise. 2D keeps its own
+// "Zona Consorcio" toggle via `LayerControlsPanel`, untouched by this change.
 export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'approved_zones', label: 'Cuencas', status: 'supported' },
-  { id: 'zona', label: 'Zona Consorcio', status: 'supported' },
   { id: 'basins', label: 'Subcuencas', status: 'supported' },
   { id: 'roads', label: 'Red Vial', status: 'supported' },
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },

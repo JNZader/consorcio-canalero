@@ -31,7 +31,6 @@ describe('terrainViewer3DUtils', () => {
       ml: featureCollection([pointFeature('ml-1')]),
       noroeste: null,
       norte: null,
-      zona: null,
     });
 
     expect(result?.features).toHaveLength(2);

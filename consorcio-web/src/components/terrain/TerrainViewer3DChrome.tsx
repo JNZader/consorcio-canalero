@@ -9,8 +9,15 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
+import type { Etapa } from '../../types/canales';
+import type {
+  BpaEnrichedFile,
+  BpaHistoryFile,
+} from '../../types/pilarVerde';
 
+import { InfoPanel } from '../map2d/InfoPanel';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 
@@ -49,6 +56,44 @@ interface TerrainViewer3DChromeProps {
   hasApprovedZones: boolean;
   ready: boolean;
   selectedImage: SelectedImageSummary | null;
+  /**
+   * 5-key record sourced from `mapLayerSyncStore.propuestasEtapasVisibility`.
+   * Forwarded untouched into the toggles panel's Canales CollapsibleSection so
+   * the conditional `<PropuestasEtapasFilter>` can render its 5 rows. Optional
+   * so legacy tests/pages that don't care about Pilar Azul can skip it.
+   */
+  etapasVisibility?: Readonly<Record<Etapa, boolean>>;
+  /** Parent-owned setter for a single etapa (delegates to the store). */
+  onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
+  /**
+   * Phase 4 (Batch E) — visibility flags forwarded to
+   * `<TerrainLegendsPanel>` so each of the 7 conditional Pilar Verde +
+   * Canales legend blocks can gate its own render. Derived by
+   * `TerrainViewer3D` from `mapLayerSyncStore.map3d.visibleVectors`.
+   *
+   * Optional for backwards compatibility — pre-Batch-E callers that don't
+   * care about Pilar Verde / Canales legends can skip them and the panel
+   * falls back to the pre-existing raster + soil legends.
+   */
+  bpaHistoricoVisible?: boolean;
+  agroAceptadaVisible?: boolean;
+  agroPresentadaVisible?: boolean;
+  agroZonasVisible?: boolean;
+  porcentajeForestacionVisible?: boolean;
+  canalesRelevadosVisible?: boolean;
+  canalesPropuestosVisible?: boolean;
+  /**
+   * Phase 5 (Batch F) — click-driven InfoPanel overlay. Renders
+   * absolutely-positioned above the terrain chrome via the shared
+   * `.infoPanel` CSS class (position: absolute, z-index: 1000). Empty
+   * array ⇒ panel unmounts. Optional so pre-Phase-5 tests can skip it.
+   */
+  selectedFeatures?: readonly Feature[];
+  onCloseInfoPanel?: () => void;
+  /** Pilar Verde enriched catastro dataset — forwarded to `<InfoPanel>`. */
+  bpaEnriched?: BpaEnrichedFile | null;
+  /** Pilar Verde histórico lookup — forwarded to `<InfoPanel>`. */
+  bpaHistory?: BpaHistoryFile | null;
 }
 
 export function TerrainViewer3DChrome({
@@ -76,6 +121,19 @@ export function TerrainViewer3DChrome({
   hasApprovedZones,
   ready,
   selectedImage,
+  etapasVisibility,
+  onSetEtapaVisible,
+  bpaHistoricoVisible,
+  agroAceptadaVisible,
+  agroPresentadaVisible,
+  agroZonasVisible,
+  porcentajeForestacionVisible,
+  canalesRelevadosVisible,
+  canalesPropuestosVisible,
+  selectedFeatures,
+  onCloseInfoPanel,
+  bpaEnriched,
+  bpaHistory,
 }: TerrainViewer3DChromeProps) {
   return (
     <>
@@ -147,6 +205,13 @@ export function TerrainViewer3DChrome({
               hiddenRanges={hiddenRanges}
               onRangeToggle={onRangeToggle}
               vectorLayerVisibility={vectorLayerVisibility}
+              bpaHistoricoVisible={bpaHistoricoVisible}
+              agroAceptadaVisible={agroAceptadaVisible}
+              agroPresentadaVisible={agroPresentadaVisible}
+              agroZonasVisible={agroZonasVisible}
+              porcentajeForestacionVisible={porcentajeForestacionVisible}
+              canalesRelevadosVisible={canalesRelevadosVisible}
+              canalesPropuestosVisible={canalesPropuestosVisible}
             />
             <TerrainLayerTogglesPanel
               rasterLayers={rasterLayers}
@@ -159,6 +224,8 @@ export function TerrainViewer3DChrome({
               onVectorLayerToggle={onVectorLayerToggle}
               onClose={onToggleLayerPanel}
               hasApprovedZones={hasApprovedZones}
+              etapasVisibility={etapasVisibility}
+              onSetEtapaVisible={onSetEtapaVisible}
             />
           </>
         )}
@@ -180,6 +247,23 @@ export function TerrainViewer3DChrome({
               <Text c="white">Cargando terreno 3D...</Text>
             </Stack>
           </Box>
+        )}
+
+        {/*
+          Phase 5 (Batch F) — click-driven InfoPanel overlay. Rendered INSIDE
+          the relative Paper so the shared `.infoPanel` CSS module class
+          (position: absolute, top: calc(spacing.md + 108px), right:
+          spacing.md, z-index: 1000) is scoped to the 3D canvas. `z-index:
+          1000` sits above the toggles button (`zIndex: 16`) and the chrome
+          panels (`zIndex: 16`), so the panel always wins on overlap.
+        */}
+        {selectedFeatures && selectedFeatures.length > 0 && onCloseInfoPanel && (
+          <InfoPanel
+            features={selectedFeatures}
+            onClose={onCloseInfoPanel}
+            bpaEnriched={bpaEnriched}
+            bpaHistory={bpaHistory}
+          />
         )}
 
         <Box

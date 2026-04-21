@@ -13,6 +13,7 @@ import {
   Alert,
   Stack,
 } from '@mantine/core';
+import type { Feature } from 'geojson';
 import { IconAlertTriangle } from '../ui/icons';
 import { API_URL } from '../../lib/api';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
@@ -21,7 +22,9 @@ import { useGEELayers } from '../../hooks/useGEELayers';
 import { useBasins } from '../../hooks/useBasins';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
+import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
+import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { useSoilMap } from '../../hooks/useSoilMap';
 import { useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useWaterways } from '../../hooks/useWaterways';
@@ -35,6 +38,9 @@ import {
 } from './terrainViewer3DUtils';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
+import { useTerrainCanalesEffects } from './useTerrainCanalesEffects';
+import { useTerrainInteractionEffects } from './useTerrainInteractionEffects';
+import { useTerrainPilarVerdeEffects } from './useTerrainPilarVerdeEffects';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -90,9 +96,16 @@ export default function TerrainViewer3D({
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
     TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
   );
+  // Phase 5 (Batch F) — click results surfaced by `useTerrainInteractionEffects`.
+  // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
+  const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
   const { layers: allGeoLayers } = useGeoLayers();
+  // NOTE: `zona` was intentionally dropped from the 3D GEE layer fetch —
+  // the 3D viewer no longer renders a Zona Consorcio outline (the 3D mesh
+  // IS the consorcio area, so the outline was redundant). Only the 4 GEE
+  // sub-cuencas (Candil / ML / Noroeste / Norte) feed the cuencas build.
   const { layers: geeLayers } = useGEELayers({
-    layerNames: ['zona', 'candil', 'ml', 'noroeste', 'norte'],
+    layerNames: ['candil', 'ml', 'noroeste', 'norte'],
   });
   const { basins } = useBasins();
   const { approvedZones } = useApprovedZones();
@@ -100,6 +113,21 @@ export default function TerrainViewer3D({
   const { waterways } = useWaterways();
   const { catastroMap } = useCatastroMap();
   const { soilMap } = useSoilMap();
+  // Pilar Verde + Pilar Azul (Canales) — strict mirror of 2D MapaMapLibre
+  // wiring. The hooks share TanStack cache keys with the 2D viewer, so when
+  // both viewers mount in the same session the static GeoJSON assets are
+  // fetched once. Slot data resolves via `pilarVerde?.bpaHistorico`,
+  // `pilarVerde?.agroAceptada`, `pilarVerde?.agroPresentada`,
+  // `pilarVerde?.agroZonas`, `pilarVerde?.porcentajeForestacion`,
+  // `pilarVerde?.bpaEnriched`, `pilarVerde?.bpaHistory`. Canales hook
+  // exposes `relevados`, `propuestas`, `index` directly; subsequent batches
+  // (Phase 1+) wire these into the 3D layer sync effects.
+  const { data: pilarVerde } = usePilarVerde();
+  const {
+    relevados: canalesRelevados,
+    propuestas: canalesPropuestas,
+    index: canalesIndex,
+  } = useCanales();
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
@@ -107,6 +135,13 @@ export default function TerrainViewer3D({
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
   const seedViewFromOther = useMapLayerSyncStore((state) => state.seedViewFromOther);
+  // Pilar Azul etapas filter — the 5 etapas record + single-etapa setter are
+  // shared between 2D and 3D via the same `mapLayerSyncStore` slice, so
+  // flipping an etapa here updates both viewers simultaneously. The
+  // `TerrainLayerTogglesPanel` consumes these props only when the propuestos
+  // master is ON (the `<PropuestasEtapasFilter>` UNMOUNTS otherwise, per spec).
+  const etapasVisibility = useMapLayerSyncStore((state) => state.propuestasEtapasVisibility);
+  const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
   const rasterLayers = useMemo(() => getSupported3DRasterLayers(allGeoLayers), [allGeoLayers]);
   const selectedImageOption = selectedImage
     ? {
@@ -166,6 +201,15 @@ export default function TerrainViewer3D({
     seedViewFromOther('map3d', 'map2d');
   }, [is3DViewInitialized, seedViewFromOther]);
 
+  // Idempotent — 2D can also register; shared guard in store
+  // (`if (!(key in seedMap2d))` inside `registerPilarAzul`) makes the dual
+  // 2D + 3D mount safe. We read the action via `getState()` rather than the
+  // hook selector because we never re-render on action-identity changes.
+  useEffect(() => {
+    if (!canalesIndex) return;
+    useMapLayerSyncStore.getState().registerPilarAzul(canalesIndex);
+  }, [canalesIndex]);
+
   useEffect(() => {
     if (selectedImage && sharedActiveRasterType === null) return;
     if (sharedActiveRasterType === null) return;
@@ -200,7 +244,6 @@ export default function TerrainViewer3D({
     setSharedActiveRasterType('map3d', next);
   }, [activeRasterType, selectedImageIsActive, setSharedActiveRasterType, sharedActiveRasterType]);
 
-  const zonaCollection = geeLayers.zona ?? null;
   const approvedZonesCollection = approvedZones;
   const cuencasCollection = buildCuencasCollection(geeLayers);
   const roadsCollection = caminos;
@@ -372,7 +415,6 @@ export default function TerrainViewer3D({
     syncTerrainVectorLayers(
       map,
       {
-        zonaCollection,
         approvedZonesCollection,
         cuencasCollection,
         basins,
@@ -393,8 +435,47 @@ export default function TerrainViewer3D({
     soilCollection,
     vectorLayerVisibility,
     waterwaysCollection,
-    zonaCollection,
   ]);
+
+  // Pilar Verde layer sync (Phase 1 of `pilar-verde-y-canales-3d`): 5
+  // dedicated effects (one per layer) mirror the 2D `useMapLayerEffects`
+  // wiring. Z-order is auto-hoisted inside each sync helper, so no explicit
+  // `raisePilarVerdeStack` call is needed here.
+  useTerrainPilarVerdeEffects({
+    mapRef,
+    ready,
+    pilarVerde,
+    vectorLayerVisibility,
+  });
+
+  // Canales (Pilar Azul) layer sync (Phase 2 of `pilar-verde-y-canales-3d`):
+  // one effect drives `syncCanalesLayers` with the per-canal visible id
+  // lists + active etapas, mirroring the 2D `useMapLayerEffects` blueprint
+  // (lines 299-346). Z-order is auto-hoisted inside `syncCanalesLayers` so
+  // canales stay on top of Pilar Verde fills without an explicit hoist.
+  useTerrainCanalesEffects({
+    mapRef,
+    ready,
+    canales: {
+      relevados: canalesRelevados,
+      propuestas: canalesPropuestas,
+      index: canalesIndex,
+    },
+  });
+
+  // Phase 5 (Batch F) — click → queryRenderedFeatures(±5px bbox) →
+  // selectedFeatures → <InfoPanel> overlay. Strict mirror of
+  // `map2d/useMapInteractionEffects` (feature-click branch only). The
+  // handler installs AFTER `ready=true` and cleans up on unmount.
+  useTerrainInteractionEffects({
+    mapRef,
+    ready,
+    setSelectedFeatures,
+  });
+
+  const handleCloseInfoPanel = useCallback(() => {
+    setSelectedFeatures([]);
+  }, []);
 
   // Update exaggeration
   const handleExaggerationChange = useCallback(
@@ -461,6 +542,29 @@ export default function TerrainViewer3D({
         hasApprovedZones={!!approvedZonesCollection}
         ready={ready}
         selectedImage={selectedImage}
+        etapasVisibility={etapasVisibility}
+        onSetEtapaVisible={setEtapaVisible}
+        // Phase 4 (Batch E) — derive the 7 legend-visibility flags from the
+        // local `vectorLayerVisibility` record (mirrored from the store via
+        // `sharedVisibleVectors`). Each legend block in `<TerrainLegendsPanel>`
+        // gates its own render on the matching master toggle.
+        bpaHistoricoVisible={!!vectorLayerVisibility.pilar_verde_bpa_historico}
+        agroAceptadaVisible={!!vectorLayerVisibility.pilar_verde_agro_aceptada}
+        agroPresentadaVisible={!!vectorLayerVisibility.pilar_verde_agro_presentada}
+        agroZonasVisible={!!vectorLayerVisibility.pilar_verde_agro_zonas}
+        porcentajeForestacionVisible={
+          !!vectorLayerVisibility.pilar_verde_porcentaje_forestacion
+        }
+        canalesRelevadosVisible={!!vectorLayerVisibility.canales_relevados}
+        canalesPropuestosVisible={!!vectorLayerVisibility.canales_propuestos}
+        // Phase 5 (Batch F) — click → InfoPanel overlay. `bpaEnriched` and
+        // `bpaHistory` are destructured from `pilarVerde` so `<BpaCard>` can
+        // render the "En BPA" histórico footer for catastro-only features
+        // whose `nro_cuenta` matches an enriched parcel.
+        selectedFeatures={selectedFeatures}
+        onCloseInfoPanel={handleCloseInfoPanel}
+        bpaEnriched={pilarVerde?.bpaEnriched ?? null}
+        bpaHistory={pilarVerde?.bpaHistory ?? null}
       />
     </Stack>
   );
