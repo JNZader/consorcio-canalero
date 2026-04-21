@@ -19,6 +19,7 @@ import {
   syncSoilLayers,
   syncSuggestedZoneLayers,
   syncWaterwayLayers,
+  syncYpfEstacionBombeoLayer,
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
 import {
@@ -368,6 +369,17 @@ export function useMapLayerEffects({
     > | null;
     syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas);
   }, [mapReady, mapRef, escuelas?.collection, vectorVisibility.escuelas]);
+
+  // ── YPF estación de bombeo (Monte Leña) ────────────────────────────────
+  // Single hardcoded landmark — always-on, no toggle, no tear-down. The
+  // sync helper is idempotent, so re-running on map-ready flips is safe.
+  // Dep array is minimal on purpose: the data is a module-level constant,
+  // so only the map identity + readiness matter.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncYpfEstacionBombeoLayer(map);
+  }, [mapReady, mapRef]);
 
   // ── DEM z-order hoist ───────────────────────────────────────────────────
   // Keep the DEM raster just below the user-authored stack (Pilar Verde +

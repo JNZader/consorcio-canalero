@@ -15,6 +15,12 @@ import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
+  YPF_ESTACION_BOMBEO_GEOJSON,
+  YPF_ESTACION_BOMBEO_LAYER_ID,
+  YPF_ESTACION_BOMBEO_SOURCE_ID,
+  buildYpfEstacionBombeoPaint,
+} from './ypfEstacionBombeoLayer';
+import {
   PILAR_VERDE_Z_ORDER,
   buildAgroAceptadaFillPaint,
   buildAgroAceptadaLinePaint,
@@ -689,5 +695,38 @@ export function syncEscuelasLayer(
 
   // ── Visibility (master toggle) ──
   setLayerVisibility(map, circleLayerId, isVisible);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  YPF estación de bombeo — single hardcoded landmark                        */
+/*                                                                            */
+/*  Sibling of `syncEscuelasLayer` but radically simpler:                     */
+/*    - ONE MapLibre-native `circle` layer backed by the hardcoded            */
+/*      FeatureCollection from `ypfEstacionBombeoLayer.ts`.                   */
+/*    - NO visibility flag — the layer is always mounted AND always visible   */
+/*      from map init (no tear-down path).                                    */
+/*    - Idempotent: addSource/addLayer are guarded by getSource/getLayer so   */
+/*      re-running the effect is safe.                                        */
+/* -------------------------------------------------------------------------- */
+
+export function syncYpfEstacionBombeoLayer(map: maplibregl.Map): void {
+  // ── Source (idempotent) ──
+  ensureGeoJsonSource(
+    map,
+    YPF_ESTACION_BOMBEO_SOURCE_ID,
+    YPF_ESTACION_BOMBEO_GEOJSON as unknown as FeatureCollection,
+  );
+
+  // ── Circle layer (idempotent) ──
+  if (!map.getLayer(YPF_ESTACION_BOMBEO_LAYER_ID)) {
+    map.addLayer({
+      id: YPF_ESTACION_BOMBEO_LAYER_ID,
+      type: 'circle',
+      source: YPF_ESTACION_BOMBEO_SOURCE_ID,
+      paint: buildYpfEstacionBombeoPaint(),
+    });
+  }
+
+  // No visibility toggle — the layer is always-on by design.
 }
 

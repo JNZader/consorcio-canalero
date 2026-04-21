@@ -5,6 +5,10 @@ import styles from '../../styles/components/map.module.css';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
+import {
+  YPF_ESTACION_BOMBEO_COLOR,
+  YPF_ESTACION_BOMBEO_LABEL,
+} from './ypfEstacionBombeoLayer';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 
 interface LegendItem {
@@ -494,6 +498,30 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             <Text size="xs">Escuela rural</Text>
           </Group>
         )}
+        {/*
+          YPF estación de bombeo — ALWAYS rendered. No visibility flag gates
+          this entry. The 12×12 orange swatch mirrors the MapLibre `circle`
+          paint on the `ypf-estacion-bombeo-circle` layer (fill `#d84315`
+          Material Deep Orange 800, 2px white stroke). Color + label are
+          imported from `ypfEstacionBombeoLayer.ts` so the legend and the
+          map paint stay in lock-step.
+        */}
+        <Group gap="xs" wrap="nowrap" data-testid="ypf-estacion-bombeo-legend">
+          <div
+            data-testid="ypf-estacion-bombeo-legend-swatch"
+            aria-label={YPF_ESTACION_BOMBEO_LABEL}
+            style={{
+              display: 'inline-block',
+              width: 12,
+              height: 12,
+              backgroundColor: YPF_ESTACION_BOMBEO_COLOR,
+              border: '2px solid #ffffff',
+              borderRadius: '50%',
+              boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
+            }}
+          />
+          <Text size="xs">{YPF_ESTACION_BOMBEO_LABEL}</Text>
+        </Group>
         </Stack>
       </CollapsibleSection>
     </Paper>
