@@ -33,6 +33,7 @@ Rules of engagement:
 from __future__ import annotations
 
 import re
+from typing import Final
 
 # Whitelist regex — one pattern captures all 3 approved labels in one pass.
 # Rationale:
@@ -43,15 +44,15 @@ import re
 #   * ``re.IGNORECASE`` → future-proof against ``LOCALIDAD`` vs ``Localidad``.
 #   * ``re.UNICODE`` is default in Python 3; kept explicit for documentation.
 #   * ``[ÁA]mbito`` accepts both the accented and ASCII-folded spellings.
-LABEL_PATTERN: re.Pattern[str] = re.compile(
+LABEL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"<b>\s*(Localidad|[ÁA]mbito|Nivel)\s*:\s*</b>\s*([^<]+?)\s*<br\s*/?>",
     re.IGNORECASE | re.UNICODE,
 )
 
-# Mapping from the raw label (lowercased, accent-folded) to the output key.
-# Keeps the contract crisp: the returned dict has EXACTLY these 3 keys when
-# all fields are present.
-_LABEL_TO_KEY: dict[str, str] = {
+# Mapping from the raw label (lowercased, accent-folded) to the canonical
+# output key.  Keeps the parser's contract crisp: the returned dict has
+# EXACTLY these 3 keys when all labels are present in the CDATA.
+_LABEL_TO_KEY: Final[dict[str, str]] = {
     "localidad": "localidad",
     "ambito": "ambito",
     "ámbito": "ambito",
