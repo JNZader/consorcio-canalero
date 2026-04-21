@@ -36,7 +36,7 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
         expect(
           screen.getByText(
-            /Sistema de gestion y monitoreo de cuencas hidricas/i
+            /Sistema colaborativo de gestion territorial/i
           )
         ).toBeInTheDocument();
       });
@@ -79,38 +79,41 @@ describe('HomePage', () => {
       it('should render Mapa Interactivo feature', () => {
         renderWithMantine(<HomeContent />);
         expect(screen.getByText('Mapa Interactivo')).toBeInTheDocument();
-        expect(screen.getByText(/Visualiza las cuencas, caminos y zonas inundadas/i)).toBeInTheDocument();
+        expect(screen.getByText(/Visualiza cuencas, hidrografia, caminos rurales/i)).toBeInTheDocument();
       });
 
-      it('should render Panel de Control feature', () => {
+      it('should render Reportar un Problema feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Panel de Control')).toBeInTheDocument();
-        expect(screen.getByText(/estadisticas en tiempo real/i)).toBeInTheDocument();
+        expect(screen.getByText('Reportar un Problema')).toBeInTheDocument();
+        expect(screen.getByText(/Reporta problemas en caminos, canales o alcantarillas/i)).toBeInTheDocument();
       });
 
-      it('should render Sistema de Reportes feature', () => {
+      it('should render Sugerencias feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Sistema de Reportes')).toBeInTheDocument();
-        expect(screen.getByText(/Reporta problemas en caminos/i)).toBeInTheDocument();
+        expect(screen.getByText('Sugerencias')).toBeInTheDocument();
+        expect(screen.getByText(/Propone mejoras o reporta necesidades/i)).toBeInTheDocument();
       });
 
-      it('should render Analisis Satelital feature', () => {
+      it('should render Panel de Gestion feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Analisis Satelital')).toBeInTheDocument();
-        expect(screen.getByText(/Deteccion automatica de inundaciones/i)).toBeInTheDocument();
+        expect(screen.getByText('Panel de Gestion')).toBeInTheDocument();
+        expect(screen.getByText(/tramites, reuniones, finanzas y padron/i)).toBeInTheDocument();
       });
 
       it('should render feature links with correct hrefs', () => {
         renderWithMantine(<HomeContent />);
-        
+
         const mapaLink = screen.getByRole('link', { name: /Mapa Interactivo/i });
         expect(mapaLink).toHaveAttribute('href', '/mapa');
 
-        const adminLink = screen.getByRole('link', { name: /Panel de Control/i });
-        expect(adminLink).toHaveAttribute('href', '/admin');
+        const reportarLink = screen.getByRole('link', { name: /Reportar un Problema/i });
+        expect(reportarLink).toHaveAttribute('href', '/reportes');
 
-        const reportesLink = screen.getByRole('link', { name: /Sistema de Reportes/i });
-        expect(reportesLink).toHaveAttribute('href', '/reportes');
+        const sugerenciasLink = screen.getByRole('link', { name: /Sugerencias/i });
+        expect(sugerenciasLink).toHaveAttribute('href', '/sugerencias');
+
+        const adminLink = screen.getByRole('link', { name: /Panel de Gestion/i });
+        expect(adminLink).toHaveAttribute('href', '/admin');
       });
     });
 
@@ -184,41 +187,42 @@ describe('HomePage', () => {
 
       it('should have descriptive text for features', () => {
         renderWithMantine(<HomeContent />);
-        
+
         // Check for specific feature descriptions
-        expect(screen.getByText(/Visualiza las cuencas/i)).toBeInTheDocument();
-        expect(screen.getByText(/estadisticas en tiempo real/i)).toBeInTheDocument();
+        expect(screen.getByText(/Visualiza cuencas/i)).toBeInTheDocument();
         expect(screen.getByText(/Reporta problemas en caminos/i)).toBeInTheDocument();
+        expect(screen.getByText(/Propone mejoras/i)).toBeInTheDocument();
+        expect(screen.getByText(/tramites, reuniones, finanzas/i)).toBeInTheDocument();
       });
     });
 
     describe('content completeness', () => {
       it('should render all major sections', () => {
         renderWithMantine(<HomeContent />);
-        
+
         // Hero badge
         expect(screen.getByText('Bell Ville, Cordoba')).toBeInTheDocument();
-        
+
         // Stats
         expect(screen.getByText('88,277')).toBeInTheDocument();
         expect(screen.getByText('749')).toBeInTheDocument();
-        
+
         // Features
         expect(screen.getByText('Mapa Interactivo')).toBeInTheDocument();
-        expect(screen.getByText('Panel de Control')).toBeInTheDocument();
-        
+        expect(screen.getByText('Panel de Gestion')).toBeInTheDocument();
+
         // CTA
         expect(screen.getByText(/Ayuda a mantener/i)).toBeInTheDocument();
       });
 
       it('should have correct number of feature cards', () => {
         renderWithMantine(<HomeContent />);
-        
+
         const features = [
           'Mapa Interactivo',
-          'Panel de Control',
-          'Sistema de Reportes',
-          'Analisis Satelital',
+          'Reportar un Problema',
+          'Sugerencias',
+          'Panel de Gestion',
         ];
 
         features.forEach((feature) => {
