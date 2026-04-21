@@ -75,6 +75,13 @@ export interface MapUiPanelsProps {
   readonly onToggleSuggestedZonesPanel: () => void;
   readonly onOpenExportPng: () => void;
   readonly onExportApprovedZonesPdf: () => void;
+  /**
+   * Optional — KMZ export handler produced by
+   * `useMapExportHandlers.handleExportKmz`. When provided, the
+   * `MapActionsPanel` renders the "Exportar KMZ" entry inside the
+   * existing Export dropdown.
+   */
+  readonly onExportKmz?: () => void;
   readonly showLegend: boolean;
   readonly consorcios: ConsorcioInfo[];
   readonly activeLegendItems: LegendItem[];
@@ -165,6 +172,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onToggleSuggestedZonesPanel,
   onOpenExportPng,
   onExportApprovedZonesPdf,
+  onExportKmz,
   showLegend,
   consorcios,
   activeLegendItems,
@@ -313,6 +321,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         onToggleSuggestedZonesPanel={onToggleSuggestedZonesPanel}
         onOpenExportPng={onOpenExportPng}
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+        onExportKmz={onExportKmz}
       />
 
       {visibleRasterLayers.length > 0 && (

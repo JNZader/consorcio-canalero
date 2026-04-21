@@ -451,7 +451,7 @@ export default function MapaMapLibre() {
     handleExportPng,
     handleExportApprovedZonesPdf,
     handleExportApprovedZonesGeoJSON,
-    handleExportKmz: _handleExportKmz,
+    handleExportKmz,
   } = useMapExportHandlers({
     mapRef,
     exportTitle,
@@ -465,9 +465,6 @@ export default function MapaMapLibre() {
     approvalName,
     exportSources,
   });
-  // Exported for Batch F (export button in MapActionsPanel); keep the
-  // handler live so the hook's memoisation doesn't dead-code the wiring.
-  void _handleExportKmz;
 
   /* ---------------------------------------------------------------------- */
   /*  Infrastructure asset creation                                          */
@@ -562,6 +559,7 @@ export default function MapaMapLibre() {
         onToggleSuggestedZonesPanel={() => setShowSuggestedZonesPanel((prev) => !prev)}
         onOpenExportPng={() => setExportPngModalOpen(true)}
         onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+        onExportKmz={handleExportKmz}
         showLegend={showLegend}
         consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
         activeLegendItems={activeLegendItems}

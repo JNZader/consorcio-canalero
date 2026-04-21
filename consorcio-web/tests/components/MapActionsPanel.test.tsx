@@ -31,9 +31,91 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MapActionsPanel } from '../../src/components/map2d/MapActionsPanel';
+import { MapUiPanels, type MapUiPanelsProps } from '../../src/components/map2d/MapUiPanels';
 
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider>{ui}</MantineProvider>);
+}
+
+function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps {
+  const noop = vi.fn();
+  return {
+    baseLayer: 'osm',
+    onBaseLayerChange: noop,
+    viewMode: 'base',
+    onViewModeChange: noop,
+    hasSingleImage: false,
+    hasComparison: false,
+    singleImageInfo: null,
+    comparisonInfo: null,
+    layerItems: [],
+    vectorVisibility: {},
+    onLayerVisibilityChange: noop,
+    showIGNOverlay: false,
+    onShowIGNOverlayChange: noop,
+    demEnabled: false,
+    showDemOverlay: false,
+    onShowDemOverlayChange: noop,
+    activeDemLayerId: null,
+    onActiveDemLayerIdChange: noop,
+    demOptions: [],
+    isOperator: false,
+    markingMode: false,
+    onToggleMarkingMode: noop,
+    canManageZoning: false,
+    showSuggestedZonesPanel: false,
+    hasApprovedZones: false,
+    onToggleSuggestedZonesPanel: noop,
+    onOpenExportPng: noop,
+    onExportApprovedZonesPdf: noop,
+    showLegend: false,
+    consorcios: [],
+    activeLegendItems: [],
+    visibleRasterLayers: [],
+    hiddenClasses: {},
+    hiddenRanges: {},
+    onClassToggle: noop,
+    onRangeToggle: noop,
+    suggestedZoneSummaries: [],
+    suggestedZoneNames: {},
+    onZoneNameChange: noop,
+    selectedDraftBasinName: null,
+    selectedDraftBasinZoneId: null,
+    draftDestinationZoneId: null,
+    onDestinationZoneChange: noop,
+    onApplyBasinMove: noop,
+    approvedAt: null,
+    approvedVersion: null,
+    approvedZonesHistory: [],
+    approvalName: '',
+    approvalNotes: '',
+    onApprovalNameChange: noop,
+    onApprovalNotesChange: noop,
+    onCloseSuggestedZonesPanel: noop,
+    onApproveZones: noop,
+    onClearApprovedZones: noop,
+    onRestoreVersion: noop,
+    onExportApprovedZonesGeoJSON: noop,
+    selectedFeatures: [],
+    onCloseInfoPanel: noop,
+    newPoint: null,
+    onCloseAssetPointModal: noop,
+    onSubmitAssetPointModal: noop,
+    isSubmitting: false,
+    nameInputProps: {},
+    typeInputProps: {},
+    descriptionInputProps: {},
+    exportPngModalOpen: false,
+    onCloseExportPngModal: noop,
+    exportTitle: '',
+    exportIncludeLegend: true,
+    exportIncludeMetadata: true,
+    onExportTitleChange: noop,
+    onExportIncludeLegendChange: noop,
+    onExportIncludeMetadataChange: noop,
+    onExportPng: noop,
+    ...overrides,
+  };
 }
 
 describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
@@ -146,5 +228,31 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
     const menu = png.closest('[role="menu"]');
     expect(menu).not.toBeNull();
     expect(menu?.contains(kmz)).toBe(true);
+  });
+});
+
+describe('<MapUiPanels /> — onExportKmz wiring to MapActionsPanel', () => {
+  it('threads onExportKmz through MapUiPanels so clicking "Exportar KMZ" invokes the handler', async () => {
+    const user = userEvent.setup();
+    const onExportKmz = vi.fn();
+
+    renderWithMantine(
+      <MapUiPanels {...buildMapUiPanelsProps({ onExportKmz })} />
+    );
+
+    await user.click(screen.getByRole('button', { name: /exportar/i }));
+    await user.click(screen.getByText('Exportar KMZ'));
+
+    expect(onExportKmz).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT render the "Exportar KMZ" item when MapUiPanels receives no onExportKmz', async () => {
+    const user = userEvent.setup();
+
+    renderWithMantine(<MapUiPanels {...buildMapUiPanelsProps()} />);
+
+    await user.click(screen.getByRole('button', { name: /exportar/i }));
+    expect(screen.getByText('Exportar PNG')).toBeInTheDocument();
+    expect(screen.queryByText('Exportar KMZ')).not.toBeInTheDocument();
   });
 });
