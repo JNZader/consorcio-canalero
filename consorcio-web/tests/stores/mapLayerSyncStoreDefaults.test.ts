@@ -54,6 +54,8 @@ const INITIAL_OFF_VECTORS = [
   'catastro',
   'hydraulic_risk',
   'puntos_conflicto',
+  // Pilar Azul — Escuelas rurales (v1 master toggle, opt-in per design §7).
+  'escuelas',
 ] as const;
 
 describe('mapLayerSyncStore — startup defaults', () => {
