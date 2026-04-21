@@ -20,8 +20,6 @@ describe('useMapDerivedState', () => {
         caminos: featureCollection([
           { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: { color: '#fff' } },
         ]),
-        assets: [{ tipo: 'puente', longitud: -62.6, latitud: -32.6, nombre: 'Activo' }],
-        publicLayers: [{ id: 'pub-1', data: featureCollection([]) }],
         soilMap: featureCollection([
           { type: 'Feature', geometry: { type: 'Point', coordinates: [-62.6, -32.6] }, properties: { cap: 'III' } },
         ]),
@@ -66,21 +64,19 @@ describe('useMapDerivedState', () => {
           basins: true,
           soil: true,
           waterways: true,
-          infrastructure: true,
         },
         hasApprovedZones: false,
         intersectionsLength: 1,
+        isAdmin: true,
       }),
     );
 
     expect(result.current.zonaCollection?.features).toHaveLength(1);
-    expect(result.current.infrastructureCollection?.features).toHaveLength(1);
     expect(result.current.suggestedZoneSummaries[0]).toMatchObject({ id: 'z1', basinCount: 1 });
     expect(result.current.selectedDraftBasinName).toBe('Subcuenca 1');
     expect(result.current.selectedDraftBasinZoneId).toBe('z1');
     expect(result.current.hasSingleImage).toBe(true);
     expect(result.current.hasComparison).toBe(true);
-    expect(result.current.vectorLayerItems.some((item) => item.id === 'public_layers')).toBe(true);
     expect(result.current.demLayerOptions).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
   });
 });

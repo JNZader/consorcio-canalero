@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildCuencasCollection,
-  buildInfrastructureCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
-  getInfrastructureColor,
 } from '../../src/components/terrain/terrainViewer3DUtils';
 
 function pointFeature(
@@ -57,18 +55,5 @@ describe('terrainViewer3DUtils', () => {
 
     expect(result?.features[0]?.properties?.__color).toBe('#123456');
     expect(result?.features[0]?.properties?.__label).toBe('Canal Norte');
-  });
-
-  it('maps infrastructure types to stable colors and builds feature collection', () => {
-    expect(getInfrastructureColor('puente')).toBe('#f03e3e');
-    expect(getInfrastructureColor('alcantarilla')).toBe('#1971c2');
-    expect(getInfrastructureColor('canal')).toBe('#2f9e44');
-    expect(getInfrastructureColor('otro')).toBe('#fd7e14');
-
-    const result = buildInfrastructureCollection([
-      { tipo: 'puente', latitud: -32.62, longitud: -62.68, nombre: 'Puente A' },
-    ]);
-
-    expect(result?.features[0]?.properties?.__color).toBe('#f03e3e');
   });
 });

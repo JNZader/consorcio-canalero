@@ -78,21 +78,17 @@ describe('map2dDerived', () => {
         basins: true,
         soil: true,
         waterways: true,
-        infrastructure: true,
       },
       hasApprovedZones: true,
       approvedZones: polygonCollection([pointFeature('a1', { nombre: 'Cuenca A', __color: '#abcdef' })]),
       basins: polygonCollection([pointFeature('b1')]),
       soilMap: polygonCollection([pointFeature('s1', { cap: 'III' })]),
-      infrastructureCollection: polygonCollection([pointFeature('i1')]),
     });
 
     expect(items.some((item) => item.label === 'Zona Consorcio')).toBe(true);
     expect(items.some((item) => item.label === 'Cuenca A')).toBe(true);
     expect(items.some((item) => item.label === 'Subcuencas operativas')).toBe(true);
     expect(items.some((item) => item.label === 'Clase III')).toBe(true);
-    expect(items.some((item) => item.label === 'Infraestructura')).toBe(true);
-    expect(items.some((item) => item.label === 'Canales existentes')).toBe(true);
   });
 
   it('builds visible vector layer items and DEM select options', () => {
@@ -101,9 +97,8 @@ describe('map2dDerived', () => {
         basins: polygonCollection([pointFeature('b1')]),
         approvedZonesCollection: null,
         roadsCollection: polygonCollection([pointFeature('r1')]),
-        infrastructureCollection: null,
-        publicLayersLength: 2,
         intersectionsLength: 1,
+        isAdmin: true,
       }),
     ).toEqual([
       { id: 'basins', label: 'Subcuencas' },
@@ -111,9 +106,7 @@ describe('map2dDerived', () => {
       { id: 'roads', label: 'Red vial' },
       { id: 'soil', label: 'Suelos IDECOR' },
       { id: 'catastro', label: 'Catastro rural' },
-      { id: 'public_layers', label: 'Capas públicas' },
       { id: 'puntos_conflicto', label: 'Puntos conflicto' },
-      { id: 'canal_suggestions', label: 'Sugerencias canal' },
     ]);
 
     expect(

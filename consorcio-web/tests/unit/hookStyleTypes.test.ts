@@ -79,10 +79,4 @@ describe('useMartinLayers — MartinSourceStyle type', () => {
     // The "fill: boolean" field from leaflet.vectorgrid StyleDef must NOT exist
     expect('fill' in style).toBe(false);
   });
-
-  it('MARTIN_SOURCES canal_suggestions style has no "fill" boolean field', () => {
-    const style: MartinSourceStyle = MARTIN_SOURCES.canal_suggestions.style;
-    expect(style.color).toBe('#0369a1');
-    expect('fill' in style).toBe(false);
-  });
 });
