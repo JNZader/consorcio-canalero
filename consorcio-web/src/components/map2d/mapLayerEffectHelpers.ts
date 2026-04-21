@@ -12,10 +12,11 @@ import {
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
 import {
+  ESCUELAS_LABEL_LAYER_ID,
   ESCUELAS_LAYER_ID,
-  buildEscuelasSymbolLayout,
-  buildEscuelasSymbolPaint,
-  registerEscuelaIcon,
+  buildEscuelasCirclePaint,
+  buildEscuelasLabelLayout,
+  buildEscuelasLabelPaint,
 } from './escuelasLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
@@ -636,38 +637,39 @@ export function syncCanalesLayers(
 /* -------------------------------------------------------------------------- */
 /*  Pilar Azul (Escuelas rurales) sync helper                                 */
 /*                                                                            */
-/*  ONE symbol layer with an icon-image bound to the `escuela` raster (from   */
-/*  `escuelasLayers.ts::registerEscuelaIcon`). Async signature is             */
-/*  load-bearing: MapLibre silently hides symbols whose `icon-image` was      */
-/*  not yet registered via `addImage` — we MUST await the icon registration  */
-/*  before calling `addLayer`. `registerEscuelaIcon` is internally idempotent */
-/*  (promise + `hasImage` double-guard), so repeated calls on every sync pass */
-/*  stay cheap.                                                               */
+/*  Two MapLibre-native layers backed by a single geojson source:             */
+/*    - `escuelas-symbol` (type: 'circle') — the clickable point. Its id      */
+/*      keeps the historical `-symbol` suffix so the click-precedence test    */
+/*      (pinned at index 10 in `buildClickableLayers`) and the InfoPanel      */
+/*      discriminator branch do not need to change.                           */
+/*    - `escuelas-label`  (type: 'symbol', text-only) — renders `nombre`      */
+/*      under the circle. NOT registered as clickable — the circle catches    */
+/*      all clicks.                                                           */
+/*                                                                            */
+/*  Motivation: the previous symbol+icon-image approach had two successive    */
+/*  silent-fail paths (MapLibre v4 Promise loadImage API + generic            */
+/*  symbol-layer-hides-when-icon-missing behavior). For seven static points   */
+/*  the asset pipeline buys nothing — the native circle layer is              */
+/*  synchronous, deterministic, and has no silent-fail modes.                 */
 /*                                                                            */
 /*  Null-tolerance contract: when `useEscuelas()` graceful-degrades to        */
 /*  `collection: null` (fetch failure), we still mount an empty              */
 /*  FeatureCollection on the source so `setLayerVisibility` has something to  */
 /*  act on — same pattern as `syncSoilLayers`.                                */
 /*                                                                            */
-/*  Toggle OFF uses visibility-none (NOT removeLayer/removeSource) per        */
-/*  design §6.4 — matches the Pilar Verde / canales / soil patterns. This    */
-/*  preserves the icon registration and the source/layer mount across        */
-/*  toggle cycles, avoiding repeated `loadImage` hits on every ON flip.       */
+/*  Toggle OFF uses visibility-none (NOT removeLayer/removeSource) — matches  */
+/*  the Pilar Verde / canales / soil patterns. This preserves the source +   */
+/*  layer mount across toggle cycles.                                         */
 /* -------------------------------------------------------------------------- */
 
-export async function syncEscuelasLayer(
+export function syncEscuelasLayer(
   map: maplibregl.Map,
   collection: FeatureCollection<Point, EscuelaFeatureProperties> | null,
   isVisible: boolean,
-): Promise<void> {
+): void {
   const sourceId = SOURCE_IDS.ESCUELAS;
-  const layerId = ESCUELAS_LAYER_ID;
-
-  // ── Icon (idempotent — internal hasImage guard) ──
-  // Await BEFORE the layer mount. registerEscuelaIcon is a no-op on re-runs
-  // when the image is already registered (fast path), so this is cheap even
-  // on hot-path sync passes triggered by unrelated dep changes.
-  await registerEscuelaIcon(map);
+  const circleLayerId = ESCUELAS_LAYER_ID;
+  const labelLayerId = ESCUELAS_LABEL_LAYER_ID;
 
   // ── Source (idempotent) ──
   // Cast-erase the point-feature narrowing for `ensureGeoJsonSource` which
@@ -678,18 +680,31 @@ export async function syncEscuelasLayer(
     (collection ?? asFeatureCollection([])) as FeatureCollection,
   );
 
-  // ── Layer (idempotent) ──
-  if (!map.getLayer(layerId)) {
+  // ── Circle layer (idempotent) ──
+  if (!map.getLayer(circleLayerId)) {
     map.addLayer({
-      id: layerId,
-      type: 'symbol',
+      id: circleLayerId,
+      type: 'circle',
       source: sourceId,
-      layout: buildEscuelasSymbolLayout(),
-      paint: buildEscuelasSymbolPaint(),
+      paint: buildEscuelasCirclePaint(),
     });
   }
 
-  // ── Visibility (master toggle — no removeLayer/removeSource on OFF) ──
-  setLayerVisibility(map, layerId, isVisible);
+  // ── Label layer (idempotent) ──
+  // Mounted AFTER the circle layer so it draws on top (MapLibre renders in
+  // addLayer order when no `beforeId` is specified).
+  if (!map.getLayer(labelLayerId)) {
+    map.addLayer({
+      id: labelLayerId,
+      type: 'symbol',
+      source: sourceId,
+      layout: buildEscuelasLabelLayout(),
+      paint: buildEscuelasLabelPaint(),
+    });
+  }
+
+  // ── Visibility (master toggle — both layers flip together) ──
+  setLayerVisibility(map, circleLayerId, isVisible);
+  setLayerVisibility(map, labelLayerId, isVisible);
 }
 

@@ -355,10 +355,10 @@ export function useMapLayerEffects({
   ]);
 
   // ── Pilar Azul (Escuelas rurales) ──────────────────────────────────────
-  // Mirrors the canales effect but narrowed to a single symbol layer. The
-  // sync helper is async (icon registration must complete before addLayer),
-  // so we fire-and-forget with a catch to avoid unhandled promise rejections
-  // when the map tears down between the effect call and the promise resolve.
+  // Native MapLibre `circle` layer + companion text-only `symbol` layer for
+  // the label. The sync helper is synchronous (no icon asset, no loadImage,
+  // no Promise) — previous symbol+icon approach had two successive silent-
+  // fail paths and was abandoned. See `escuelasLayers.ts` header for history.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -366,12 +366,7 @@ export function useMapLayerEffects({
       GeoJSON.Point,
       import('../../types/escuelas').EscuelaFeatureProperties
     > | null;
-    syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas).catch(
-      (err) => {
-        // eslint-disable-next-line no-console
-        console.warn('[escuelas:sync] syncEscuelasLayer failed', err);
-      },
-    );
+    syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas);
   }, [mapReady, mapRef, escuelas?.collection, vectorVisibility.escuelas]);
 
   // ── DEM z-order hoist ───────────────────────────────────────────────────

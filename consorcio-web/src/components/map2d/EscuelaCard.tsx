@@ -22,8 +22,8 @@
  *
  * The ETL ships `nombre` RAW from the KMZ (still prefixed `"Esc. "` — see
  * `types/escuelas.ts` jsdoc). We strip that prefix here at RENDER TIME only.
- * The MapLibre `text-field` binding on `escuelas-symbol` (in
- * `escuelasLayers.ts::buildEscuelasSymbolLayout`) uses `['get','nombre']`
+ * The MapLibre `text-field` binding on the companion `escuelas-label` layer
+ * (in `escuelasLayers.ts::buildEscuelasLabelLayout`) uses `['get','nombre']`
  * and therefore KEEPS the raw prefix on the map label — humanization is an
  * InfoPanel-only concern. Pinned by tests:
  *   - `EscuelaCard.test.tsx` — "Esc. " → "Escuela " in heading.
