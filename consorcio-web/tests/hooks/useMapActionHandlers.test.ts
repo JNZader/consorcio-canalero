@@ -204,7 +204,7 @@ describe('useMapActionHandlers', () => {
       }
     });
 
-    it('builds canalLegend entries with {label, color, detail} for each feature', async () => {
+    it('builds canalLegend entries with {label, color, km} for each feature', async () => {
       const canalesRelevados: FeatureCollection = {
         type: 'FeatureCollection',
         features: [
@@ -252,31 +252,33 @@ describe('useMapActionHandlers', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as {
-          canalLegend: Array<{ label: string; color: string; detail: string }>;
+          canalLegend: Array<{ label: string; color: string; km: number }>;
         };
 
         // length matches features
         expect(body.canalLegend).toHaveLength(3);
 
-        // Detail format: "{km} km · {tramo_folder}" when folder is present.
+        // km is now a number with 1-decimal precision; tramo_folder is dropped
+        // from the payload entirely (no more "detail" string).
         expect(body.canalLegend[0]).toEqual({
           label: 'Canal Norte SMS',
           color: '#1D4ED8', // CANAL_STYLE_COLORS.sin_obra
-          detail: '8.2 km · Canal Norte SMS',
+          km: 8.2,
         });
+        // no `detail` field survives
+        expect(body.canalLegend[0]).not.toHaveProperty('detail');
 
-        // Detail format: "{km} km" when tramo_folder is null.
         expect(body.canalLegend[1]).toEqual({
           label: 'Canal Readec',
           color: '#3B82F6', // CANAL_STYLE_COLORS.readec
-          detail: '4.5 km',
+          km: 4.5,
         });
 
-        // asociada → #60A5FA
+        // asociada → #60A5FA ; 12345m → 12.3km (1-decimal)
         expect(body.canalLegend[2]).toEqual({
           label: 'Canal Asoc',
           color: '#60A5FA', // CANAL_STYLE_COLORS.asociada
-          detail: '12.3 km · Tramo Sur',
+          km: 12.3,
         });
       } finally {
         fetchMock.mockRestore();
@@ -319,12 +321,15 @@ describe('useMapActionHandlers', () => {
         });
 
         const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as {
-          canalLegend: Array<{ label: string; color: string; detail: string }>;
+          canalLegend: Array<{ label: string; color: string; km: number }>;
         };
         expect(body.canalLegend).toHaveLength(1);
         // Fallback color matches the MapLibre paint default (relevadoSinObra).
         expect(body.canalLegend[0].color).toBe('#1D4ED8');
-        expect(body.canalLegend[0].detail).toBe('1.0 km');
+        // 1000m → 1.0km as a number, not a string, no "km" suffix.
+        expect(body.canalLegend[0].km).toBe(1.0);
+        expect(typeof body.canalLegend[0].km).toBe('number');
+        expect(body.canalLegend[0]).not.toHaveProperty('detail');
       } finally {
         fetchMock.mockRestore();
         createObjectURL.mockRestore();
