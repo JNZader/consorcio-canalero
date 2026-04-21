@@ -45,13 +45,11 @@ interface MockImage {
   height: number;
 }
 
-type LoadImageCallback = (err: Error | null, image: MockImage | null) => void;
-
 function createMapMock(options?: {
   images?: string[];
   layers?: string[];
   sources?: string[];
-  /** When true, `loadImage` rejects — tests null/error paths. */
+  /** When set, `loadImage` rejects with this error — tests the error path. */
   loadImageError?: Error;
 }) {
   const images = new Set<string>(options?.images ?? []);
@@ -72,13 +70,13 @@ function createMapMock(options?: {
       callOrder.push(`addImage:${name}`);
       images.add(name);
     }),
-    loadImage: vi.fn((url: string, cb: LoadImageCallback) => {
+    // MapLibre GL JS 4.x: loadImage(url) returns Promise<{data: Image}>.
+    loadImage: vi.fn((url: string) => {
       callOrder.push(`loadImage:${url}`);
       if (options?.loadImageError) {
-        cb(options.loadImageError, null);
-        return;
+        return Promise.reject(options.loadImageError);
       }
-      cb(null, { width: 64, height: 64 });
+      return Promise.resolve({ data: { width: 64, height: 64 } as MockImage });
     }),
     getSource: vi.fn((id: string) => {
       callOrder.push(`getSource:${id}`);

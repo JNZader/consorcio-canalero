@@ -35,14 +35,12 @@ interface MockImage {
   height: number;
 }
 
-type LoadImageCallback = (err: Error | null, image: MockImage | null) => void;
-
 interface MapMockOptions {
   /** Image names to pretend are already registered. */
   images?: string[];
-  /** If true, `loadImage` rejects with an error. */
+  /** If set, `loadImage` rejects with this error (v4 Promise API). */
   loadImageError?: Error;
-  /** If true, `loadImage` resolves with null image (simulates missing asset). */
+  /** If true, `loadImage` resolves with `{data: null}` (simulates missing asset). */
   loadImageReturnsNullImage?: boolean;
 }
 
@@ -61,17 +59,17 @@ function createMapMock(options: MapMockOptions = {}) {
       callOrder.push(`addImage:${name}`);
       images.add(name);
     }),
-    loadImage: vi.fn((url: string, cb: LoadImageCallback) => {
+    // MapLibre GL JS 4.x: loadImage(url) returns Promise<{data: Image}>.
+    // The pre-v4 callback overload was removed — see escuelasLayers.ts.
+    loadImage: vi.fn((url: string) => {
       callOrder.push(`loadImage:${url}`);
       if (options.loadImageError) {
-        cb(options.loadImageError, null);
-        return;
+        return Promise.reject(options.loadImageError);
       }
       if (options.loadImageReturnsNullImage) {
-        cb(null, null);
-        return;
+        return Promise.resolve({ data: null });
       }
-      cb(null, { width: 64, height: 64 });
+      return Promise.resolve({ data: { width: 64, height: 64 } as MockImage });
     }),
   };
   return map;
@@ -110,12 +108,9 @@ describe('registerEscuelaIcon · first mount', () => {
       registerEscuelaIcon(map as unknown as maplibregl.Map),
     ).resolves.toBeUndefined();
 
-    // loadImage was called with the canonical URL
+    // loadImage was called with the canonical URL (v4 API: no callback arg).
     expect(map.loadImage).toHaveBeenCalledTimes(1);
-    expect(map.loadImage).toHaveBeenCalledWith(
-      ESCUELA_ICON_URL,
-      expect.any(Function),
-    );
+    expect(map.loadImage).toHaveBeenCalledWith(ESCUELA_ICON_URL);
 
     // addImage was called exactly once, with pixelRatio=2 (design §6.2)
     expect(map.addImage).toHaveBeenCalledTimes(1);
@@ -152,8 +147,8 @@ describe('registerEscuelaIcon · hasImage guard', () => {
 
   it('does not call addImage twice when two concurrent registrations race (double hasImage guard)', async () => {
     // Simulate the race: first registration populates the cache before the
-    // second callback fires. We stub loadImage to populate hasImage BEFORE
-    // invoking the callback, so the post-load double-check in
+    // second Promise resolves. We stub loadImage to populate `hasImage`
+    // BEFORE the Promise resolves, so the post-load double-check in
     // `registerEscuelaIcon` must skip `addImage`.
     const images = new Set<string>();
     const map = {
@@ -161,11 +156,11 @@ describe('registerEscuelaIcon · hasImage guard', () => {
       addImage: vi.fn((name: string) => {
         images.add(name);
       }),
-      loadImage: vi.fn((_url: string, cb: LoadImageCallback) => {
+      loadImage: vi.fn((_url: string) => {
         // Race: another registration completed between the initial guard and
-        // the callback, so the image is already present when we resume.
+        // the Promise resolve, so the image is already present when we resume.
         images.add(ESCUELA_ICON_NAME);
-        cb(null, { width: 64, height: 64 });
+        return Promise.resolve({ data: { width: 64, height: 64 } as MockImage });
       }),
     };
 

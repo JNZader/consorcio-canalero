@@ -56,35 +56,34 @@ export const ESCUELA_ICON_URL = '/capas/escuelas/escuela-icon.png' as const;
  *   1. Re-downloading the PNG when the image is already registered
  *      (fast path — no loadImage call at all).
  *   2. A race where two concurrent registrations both see `hasImage=false`
- *      before the first callback fires, then both attempt to `addImage`.
+ *      before the first Promise resolves, then both attempt to `addImage`.
  *      The second `addImage` would throw an "Image already exists" error
- *      from MapLibre. Double-guarding inside the callback makes the second
+ *      from MapLibre. Double-guarding after the `await` makes the second
  *      call a silent no-op.
  *
  * Design §6.2 locks the exact sequence:
  *   `loadImage → hasImage guard → addImage(name, img, {pixelRatio: 2})`.
+ *
+ * MapLibre GL JS 4.x note: `map.loadImage(url)` returns
+ * `Promise<{data: HTMLImageElement | ImageBitmap}>`. The pre-v4 callback
+ * overload was REMOVED — a stray `(err, image) => ...` callback would be
+ * silently discarded and the surrounding code would await forever.
  */
-export function registerEscuelaIcon(map: maplibregl.Map): Promise<void> {
-  if (map.hasImage(ESCUELA_ICON_NAME)) return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
-    map.loadImage(ESCUELA_ICON_URL, (err, image) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      if (!image) {
-        reject(new Error('map.loadImage resolved without an image'));
-        return;
-      }
-      // Post-load double-check — another registration may have won the race
-      // between our initial `hasImage` and this callback. Safe no-op on
-      // retry; no exception from MapLibre.
-      if (!map.hasImage(ESCUELA_ICON_NAME)) {
-        map.addImage(ESCUELA_ICON_NAME, image, { pixelRatio: 2 });
-      }
-      resolve();
-    });
-  });
+export async function registerEscuelaIcon(map: maplibregl.Map): Promise<void> {
+  if (map.hasImage(ESCUELA_ICON_NAME)) return;
+
+  const response = await map.loadImage(ESCUELA_ICON_URL);
+  const image = response?.data;
+  if (!image) {
+    throw new Error('map.loadImage resolved without an image');
+  }
+
+  // Post-load double-check — another registration may have won the race
+  // between our initial `hasImage` and this resume point. Safe no-op on
+  // retry; no exception from MapLibre.
+  if (!map.hasImage(ESCUELA_ICON_NAME)) {
+    map.addImage(ESCUELA_ICON_NAME, image, { pixelRatio: 2 });
+  }
 }
 
 // ---------------------------------------------------------------------------
