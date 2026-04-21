@@ -161,9 +161,42 @@ export function useMapExportHandlers({
     (state) => state.propuestasEtapasVisibility,
   );
 
-  const handleExportPng = useCallback(() => {
+  const handleExportPng = useCallback(async () => {
     const map = mapRef.current;
     if (!map) return;
+
+    // Auto-fit to consorcio — ONLY when the user is zoomed out enough that
+    // the whole consorcio is visible (or more). If the user is zoomed in on
+    // a specific sub-area, respect their viewport and capture as-is.
+    //
+    // Threshold: currentZoom <= fitZoom + EPSILON. EPSILON = 0.25 gives a
+    // small buffer so tiny cosmetic zoom drifts (e.g. after a fitBounds that
+    // left the viewport at 10.99 instead of exactly 11) still trigger a fit.
+    try {
+      const bounds = resolveConsorcioBounds(zonaCollection ?? null);
+      const cam = map.cameraForBounds?.(bounds, { padding: 40 });
+      const currentZoom = map.getZoom?.() ?? 0;
+      const fitZoom = cam?.zoom;
+      const EPSILON = 0.25;
+
+      if (typeof fitZoom === 'number' && currentZoom <= fitZoom + EPSILON) {
+        map.fitBounds(bounds, { padding: 40, animate: false, duration: 0 });
+        await new Promise<void>((resolve) => {
+          map.once('idle', () => resolve());
+        });
+      } else {
+        // Respect user viewport, but still wait for a stable render so the
+        // capture isn't mid-transition.
+        map.triggerRepaint?.();
+        await new Promise<void>((resolve) => {
+          map.once('idle', () => resolve());
+        });
+      }
+    } catch {
+      // Non-fatal: some test/mock maps don't implement the viewport APIs.
+      // Fall through to the capture below.
+    }
+
     const canvas = map.getCanvas();
     const dataUrl = canvas.toDataURL('image/png');
     const link = document.createElement('a');
@@ -176,7 +209,7 @@ export function useMapExportHandlers({
       message: 'PNG descargado correctamente',
       color: 'green',
     });
-  }, [exportTitle, mapRef, setExportPngModalOpen]);
+  }, [exportTitle, mapRef, setExportPngModalOpen, zonaCollection]);
 
   const handleExportApprovedZonesPdf = useCallback(async () => {
     if (!approvedZones) return;

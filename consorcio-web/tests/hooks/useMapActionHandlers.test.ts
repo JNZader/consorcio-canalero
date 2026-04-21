@@ -52,7 +52,7 @@ describe('useMapActionHandlers', () => {
     );
   });
 
-  it('exports PNG and closes the modal', () => {
+  it('exports PNG and closes the modal', async () => {
     const click = vi.fn();
     const originalCreateElement = document.createElement.bind(document);
     const createElement = vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
@@ -67,9 +67,17 @@ describe('useMapActionHandlers', () => {
     }) as typeof document.createElement);
 
     const setExportPngModalOpen = vi.fn();
+    // Provide the full viewport API so the async auto-fit path completes.
     const mapRef = {
       current: {
         getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,mock' }),
+        cameraForBounds: () => ({ zoom: 11 }),
+        getZoom: () => 13, // zoomed in → no fitBounds, goes through else branch
+        fitBounds: vi.fn(),
+        triggerRepaint: vi.fn(),
+        once: (event: string, cb: () => void) => {
+          if (event === 'idle' || event === 'render') cb();
+        },
       },
     } as const;
 
@@ -82,8 +90,8 @@ describe('useMapActionHandlers', () => {
       }),
     );
 
-    act(() => {
-      result.current.handleExportPng();
+    await act(async () => {
+      await result.current.handleExportPng();
     });
 
     expect(click).toHaveBeenCalledTimes(1);
@@ -132,6 +140,11 @@ describe('useMapActionHandlers', () => {
       const mapRef = {
         current: {
           getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,REALBASE64==' }),
+          fitBounds: vi.fn(),
+          triggerRepaint: vi.fn(),
+          once: (event: string, cb: () => void) => {
+            if (event === 'idle' || event === 'render') cb();
+          },
         },
       } as const;
 
