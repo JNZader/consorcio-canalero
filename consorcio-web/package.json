@@ -48,7 +48,6 @@
     "react-dom": "^19.2.3",
     "react-helmet-async": "^2.0.5",
     "recharts": "^3.7.0",
-    "tokml": "^0.4.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
