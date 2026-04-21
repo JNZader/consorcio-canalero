@@ -390,3 +390,22 @@ describe('buildKmz — placemark integration (Pair 2)', () => {
     expect(xml).not.toContain('<name>Esc. San Martin</name>');
   });
 });
+
+describe('buildKmz — PII hardening (Pair 3)', () => {
+  it('does NOT leak PII values when a feature carries cue / directivo', async () => {
+    const piiEscuelas = fc([
+      pt([-62.6, -32.6], {
+        nombre: 'Test',
+        cue: '12345',
+        directivo: 'John Doe',
+      }),
+    ]);
+    const blob = await buildKmz({
+      visibleLayers: { escuelas: true },
+      data: { escuelas: piiEscuelas },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).not.toContain('12345');
+    expect(xml).not.toContain('John Doe');
+  });
+});
