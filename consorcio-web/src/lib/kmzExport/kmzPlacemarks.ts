@@ -5,34 +5,226 @@
  * module so the geometry dispatch + XML escape + name resolution can be
  * tested independently of the zip packaging.
  *
- * STUB — Pair 1: emits a minimal `<Placemark>` so the builder contract
- * tests pass. Pair 2 replaces this with the real geometry emitter.
+ * Supported geometries (GeoJSON → KML):
+ *   - `Point`           → `<Point><coordinates>lng,lat[,z]</coordinates></Point>`
+ *   - `LineString`      → `<LineString><coordinates>…</coordinates></LineString>`
+ *   - `Polygon`         → `<Polygon>` with `<outerBoundaryIs>` + zero-or-more
+ *                         `<innerBoundaryIs>` (holes).
+ *   - `MultiPoint`      → `<MultiGeometry>` wrapping N `<Point>`.
+ *   - `MultiLineString` → `<MultiGeometry>` wrapping N `<LineString>`.
+ *   - `MultiPolygon`    → `<MultiGeometry>` wrapping N `<Polygon>`.
  *
- * Why the stub exists: the builder tests pin "at least one <Placemark>
- * inside a Folder" but do NOT yet pin the geometry serialization. Pair 2
- * tests will pin the geometry, and Pair 2 GREEN rewrites this function.
+ * Anything else (incl. `GeometryCollection` or a geometry missing its
+ * `coordinates` array) emits a `<!-- no geometry -->` comment inside the
+ * Placemark instead of throwing. Keeps bad data from crashing an export.
+ *
+ * Name resolution priority:
+ *   1. `feature.properties.nombre`
+ *   2. `feature.properties.name`
+ *   3. Fallback `${entry.label} ${index + 1}` (Pair 4 pins the 1-based).
+ *
+ * Escuelas-only humanization: leading `"Esc. "` → `"Escuela "`, mirroring
+ * `EscuelaCard.tsx`'s presentational rule so the KMZ reads the same as
+ * the in-app card.
+ *
+ * All name text is XML-escaped (5 entities). Description is NOT emitted
+ * in Phase 3 — Pair 3 adds PII strip as a defensive helper for when
+ * descriptions are added later.
  */
 
-import type { Feature } from 'geojson';
+import type {
+  Feature,
+  Geometry,
+  LineString,
+  MultiLineString,
+  MultiPoint,
+  MultiPolygon,
+  Point,
+  Polygon,
+  Position,
+} from 'geojson';
 
 import type { KmzLayerEntry } from './kmzLayerRegistry';
+
+// ---------------------------------------------------------------------------
+// XML escape — the 5 entity set.
+// ---------------------------------------------------------------------------
+
+/** Escape the 5 XML entities (`&`, `<`, `>`, `"`, `'`) in text content. */
+export function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// ---------------------------------------------------------------------------
+// Coordinate formatting.
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialize a single GeoJSON `Position` (`[lng, lat]` or `[lng, lat, z]`)
+ * to the KML `lng,lat[,z]` primitive. Drops extra trailing coords defensively.
+ */
+function coord(pos: Position): string {
+  if (pos.length >= 3 && Number.isFinite(pos[2])) {
+    return `${pos[0]},${pos[1]},${pos[2]}`;
+  }
+  return `${pos[0]},${pos[1]}`;
+}
+
+/** Serialize an array of positions space-separated (KML convention). */
+function coordList(positions: readonly Position[]): string {
+  return positions.map(coord).join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Per-geometry emitters.
+// ---------------------------------------------------------------------------
+
+function emitPoint(g: Point): string {
+  return `<Point><coordinates>${coord(g.coordinates)}</coordinates></Point>`;
+}
+
+function emitLineString(g: LineString): string {
+  return `<LineString><coordinates>${coordList(g.coordinates)}</coordinates></LineString>`;
+}
+
+function emitPolygon(g: Polygon): string {
+  if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
+  const [outer, ...inner] = g.coordinates;
+  const outerBlock =
+    `<outerBoundaryIs><LinearRing><coordinates>${coordList(outer)}</coordinates></LinearRing></outerBoundaryIs>`;
+  const innerBlocks = inner
+    .map(
+      (ring) =>
+        `<innerBoundaryIs><LinearRing><coordinates>${coordList(ring)}</coordinates></LinearRing></innerBoundaryIs>`,
+    )
+    .join('');
+  return `<Polygon>${outerBlock}${innerBlocks}</Polygon>`;
+}
+
+function emitMultiPoint(g: MultiPoint): string {
+  if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
+  const children = g.coordinates
+    .map((c) => emitPoint({ type: 'Point', coordinates: c }))
+    .join('');
+  return `<MultiGeometry>${children}</MultiGeometry>`;
+}
+
+function emitMultiLineString(g: MultiLineString): string {
+  if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
+  const children = g.coordinates
+    .map((c) => emitLineString({ type: 'LineString', coordinates: c }))
+    .join('');
+  return `<MultiGeometry>${children}</MultiGeometry>`;
+}
+
+function emitMultiPolygon(g: MultiPolygon): string {
+  if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
+  const children = g.coordinates
+    .map((c) => emitPolygon({ type: 'Polygon', coordinates: c }))
+    .join('');
+  return `<MultiGeometry>${children}</MultiGeometry>`;
+}
+
+/**
+ * Dispatch on geometry type. Returns either a KML geometry fragment or
+ * `<!-- no geometry -->` for nulls / unknowns / malformed input.
+ */
+function emitGeometry(geometry: Geometry | null | undefined): string {
+  if (!geometry) return '<!-- no geometry -->';
+  const typed = geometry as Geometry & { coordinates?: unknown };
+  if (!('coordinates' in typed) || typed.coordinates == null) {
+    return '<!-- no geometry -->';
+  }
+
+  switch (geometry.type) {
+    case 'Point':
+      return emitPoint(geometry);
+    case 'LineString':
+      return emitLineString(geometry);
+    case 'Polygon':
+      return emitPolygon(geometry);
+    case 'MultiPoint':
+      return emitMultiPoint(geometry);
+    case 'MultiLineString':
+      return emitMultiLineString(geometry);
+    case 'MultiPolygon':
+      return emitMultiPolygon(geometry);
+    default:
+      // `GeometryCollection` or anything unexpected → swallow silently.
+      return '<!-- no geometry -->';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Name resolution.
+// ---------------------------------------------------------------------------
+
+const ESCUELAS_KEY = 'escuelas';
+const ESC_PREFIX = 'Esc. ';
+
+/**
+ * Humanize a raw escuelas name: `"Esc. Foo"` → `"Escuela Foo"`. Mirrors
+ * `EscuelaCard.tsx::formatEscuelaName` so the in-app card and the exported
+ * KMZ read identically. Applied ONLY when `entry.key === 'escuelas'`.
+ */
+function humanizeEscuelasName(raw: string): string {
+  if (raw.startsWith(ESC_PREFIX)) {
+    return `Escuela ${raw.slice(ESC_PREFIX.length)}`;
+  }
+  return raw;
+}
+
+/**
+ * Pick the name for a feature using the documented priority chain:
+ *   properties.nombre → properties.name → `${entry.label} ${index + 1}`.
+ *
+ * Empty-string names short-circuit to the fallback (Pair 4 pins this).
+ */
+function resolveName(
+  feature: Feature,
+  entry: KmzLayerEntry,
+  index: number,
+): string {
+  const props = feature.properties ?? {};
+  const nombre = props['nombre'];
+  if (typeof nombre === 'string' && nombre.length > 0) {
+    return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(nombre) : nombre;
+  }
+  const name = props['name'];
+  if (typeof name === 'string' && name.length > 0) {
+    return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(name) : name;
+  }
+  return `${entry.label} ${index + 1}`;
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point.
+// ---------------------------------------------------------------------------
 
 /**
  * Emit a KML `<Placemark>` element for the given GeoJSON feature.
  *
- * Pair 1 STUB — minimal structure. The index arg is reserved for the
- * Pair 4 null-name fallback; accepted now so the builder call site is
- * already on the final signature.
+ * `index` is the feature's position inside its source FeatureCollection,
+ * used ONLY for the null-name fallback (`"${entry.label} ${index + 1}"`).
  */
 export function buildPlacemark(
-  _feature: Feature,
+  feature: Feature,
   entry: KmzLayerEntry,
-  _index: number,
+  index: number,
 ): string {
+  const displayName = resolveName(feature, entry, index);
+  const geometryBlock = emitGeometry(feature.geometry);
+
   return (
     `<Placemark>` +
-    `<name>stub</name>` +
+    `<name>${escapeXml(displayName)}</name>` +
     `<styleUrl>#${entry.key}-style</styleUrl>` +
+    geometryBlock +
     `</Placemark>`
   );
 }
