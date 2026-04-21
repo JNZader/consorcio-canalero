@@ -193,6 +193,69 @@ describe('registerEscuelaIcon · error handling', () => {
 });
 
 // ---------------------------------------------------------------------------
+// MapLibre v4 Promise API — regression guard for the callback→Promise shift
+// ---------------------------------------------------------------------------
+//
+// MapLibre GL JS 4.x removed the callback overload of `map.loadImage`. The
+// function now takes ONLY a URL and returns a `Promise<{data: HTMLImageElement
+// | ImageBitmap}>`. A pre-v4 call like `map.loadImage(url, (err, img) => ...)`
+// silently discards the callback and leaves the wrapping Promise pending
+// forever — symbol layers whose `icon-image` references the icon then render
+// invisibly because `addImage` is never called.
+//
+// This test pins the v4-correct behavior with a Promise-returning mock so any
+// regression back to the callback style is caught by CI.
+// -- see fix(escuelas): maplibre v4 loadImage Promise API
+// ---------------------------------------------------------------------------
+
+describe('registerEscuelaIcon · MapLibre v4 Promise loadImage API', () => {
+  it('registers the icon when loadImage is a Promise (v4 API, no callback)', async () => {
+    // v4 map surface: loadImage takes (url) only, returns Promise<{data}>.
+    const images = new Set<string>();
+    const imageInstance = { width: 64, height: 64 };
+    const map = {
+      hasImage: vi.fn((name: string) => images.has(name)),
+      addImage: vi.fn((name: string) => {
+        images.add(name);
+      }),
+      loadImage: vi.fn(
+        (url: string): Promise<{ data: MockImage }> => {
+          expect(url).toBe(ESCUELA_ICON_URL);
+          return Promise.resolve({ data: imageInstance });
+        },
+      ),
+    };
+
+    await expect(
+      registerEscuelaIcon(map as unknown as maplibregl.Map),
+    ).resolves.toBeUndefined();
+
+    // Critical assertion: addImage MUST have been called with the unwrapped
+    // `.data` image object (not the outer `{data: ...}` envelope), otherwise
+    // MapLibre silently hides the symbol layer that references the icon.
+    expect(map.addImage).toHaveBeenCalledTimes(1);
+    expect(map.addImage).toHaveBeenCalledWith(
+      ESCUELA_ICON_NAME,
+      imageInstance,
+      { pixelRatio: 2 },
+    );
+  });
+
+  it('rejects when the v4 loadImage Promise rejects', async () => {
+    const map = {
+      hasImage: vi.fn(() => false),
+      addImage: vi.fn(),
+      loadImage: vi.fn(() => Promise.reject(new Error('network failure'))),
+    };
+
+    await expect(
+      registerEscuelaIcon(map as unknown as maplibregl.Map),
+    ).rejects.toThrow('network failure');
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Layout factory — design §6.3 locks the exact shape
 // ---------------------------------------------------------------------------
 
