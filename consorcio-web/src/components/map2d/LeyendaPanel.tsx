@@ -4,7 +4,6 @@ import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
-import { ESCUELA_ICON_URL } from './escuelasLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 
@@ -224,12 +223,12 @@ interface LeyendaPanelProps {
    */
   readonly pilarAzulCanalesPropuestosVisible?: boolean;
   /**
-   * Render the "Escuela rural" single-chip block (icon thumbnail + label).
-   * Enable when the `escuelas` master toggle is ON. The icon IS the legend
-   * (there is nothing to color-swatch — it is a bundled PNG loaded from
-   * `ESCUELA_ICON_URL`). The Pilar Azul section divider above also widens
-   * to include this flag so the chip never sits orphan against the
-   * previous section.
+   * Render the "Escuela rural" single-chip block (blue circle swatch +
+   * label). Enable when the `escuelas` master toggle is ON. The swatch
+   * mirrors the MapLibre `circle` paint on the `escuelas-symbol` layer
+   * (blue fill `#1976d2`, 2px white stroke). The Pilar Azul section
+   * divider above also widens to include this flag so the chip never sits
+   * orphan against the previous section.
    */
   readonly pilarAzulEscuelasVisible?: boolean;
 }
@@ -472,12 +471,25 @@ export const LeyendaPanel = memo(function LeyendaPanel({
         )}
         {pilarAzulEscuelasVisible && (
           <Group gap="xs" wrap="nowrap" data-testid="escuelas-legend">
-            <img
-              src={ESCUELA_ICON_URL}
-              width={24}
-              height={24}
-              alt=""
-              style={{ display: 'inline-block' }}
+            {/*
+              12×12 blue circle swatch — mirrors the MapLibre `circle` paint
+              on the `escuelas-symbol` layer (fill `#1976d2`, 2px white
+              stroke). Kept as a plain `<div>` so the swatch carries no image
+              asset dependency; the color is inline-matched to
+              `buildEscuelasCirclePaint()` in `escuelasLayers.ts`.
+            */}
+            <div
+              data-testid="escuelas-legend-swatch"
+              aria-label="Escuela rural"
+              style={{
+                display: 'inline-block',
+                width: 12,
+                height: 12,
+                backgroundColor: '#1976d2',
+                border: '2px solid #ffffff',
+                borderRadius: '50%',
+                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
+              }}
             />
             <Text size="xs">Escuela rural</Text>
           </Group>
