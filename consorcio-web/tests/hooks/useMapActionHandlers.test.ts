@@ -721,4 +721,190 @@ describe('useMapActionHandlers', () => {
     });
   });
 
+  describe('handleExportPng — fit-or-respect-zoom threshold', () => {
+    // Reusable <a> stub so the link.click() inside handleExportPng doesn't
+    // explode when the test env's default document.createElement('a') is used.
+    function stubAnchor() {
+      const click = vi.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      const createElement = vi
+        .spyOn(document, 'createElement')
+        .mockImplementation(((tagName: string) => {
+          if (tagName === 'a') {
+            return { click, href: '', download: '' } as unknown as HTMLElement;
+          }
+          return originalCreateElement(tagName);
+        }) as typeof document.createElement);
+      return { click, createElement };
+    }
+
+    it('calls fitBounds when current zoom is BELOW the threshold (zoomed out)', async () => {
+      const { createElement } = stubAnchor();
+      try {
+        const zonaCollection = buildZonaCollection();
+        const { map, fitBounds, once } = buildFakeMap({
+          currentZoom: 10.8,
+          fitZoom: 11,
+        });
+        const mapRef = { current: map } as const;
+
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa Test',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones: null,
+            zonaCollection,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportPng();
+        });
+
+        expect(fitBounds).toHaveBeenCalledTimes(1);
+        const [bounds] = fitBounds.mock.calls[0];
+        expect(bounds).toEqual([
+          [-62.8, -32.7],
+          [-62.4, -32.5],
+        ]);
+        expect(once).toHaveBeenCalledWith('idle', expect.any(Function));
+      } finally {
+        createElement.mockRestore();
+      }
+    });
+
+    it('calls fitBounds when current zoom is AT the threshold (≤ fitZoom + 0.25)', async () => {
+      const { createElement } = stubAnchor();
+      try {
+        const zonaCollection = buildZonaCollection();
+        // currentZoom 11.25, fitZoom 11 → 11.25 ≤ 11 + 0.25 → fit
+        const { map, fitBounds } = buildFakeMap({
+          currentZoom: 11.25,
+          fitZoom: 11,
+        });
+        const mapRef = { current: map } as const;
+
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa Test',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones: null,
+            zonaCollection,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportPng();
+        });
+
+        expect(fitBounds).toHaveBeenCalledTimes(1);
+      } finally {
+        createElement.mockRestore();
+      }
+    });
+
+    it('does NOT call fitBounds when current zoom is ABOVE the threshold (zoomed in)', async () => {
+      const { createElement } = stubAnchor();
+      try {
+        const zonaCollection = buildZonaCollection();
+        // currentZoom 12.5, fitZoom 11 → 12.5 > 11 + 0.25 → respect user zoom
+        const { map, fitBounds, once } = buildFakeMap({
+          currentZoom: 12.5,
+          fitZoom: 11,
+        });
+        const mapRef = { current: map } as const;
+
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa Test',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones: null,
+            zonaCollection,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportPng();
+        });
+
+        expect(fitBounds).not.toHaveBeenCalled();
+        // Still awaits a stable render before capture.
+        expect(once).toHaveBeenCalledWith('idle', expect.any(Function));
+      } finally {
+        createElement.mockRestore();
+      }
+    });
+
+    it('uses MAP_FALLBACK_BOUNDS for cameraForBounds and fitBounds when zonaCollection is null', async () => {
+      const { createElement } = stubAnchor();
+      try {
+        const { map, fitBounds, cameraForBounds } = buildFakeMap({
+          currentZoom: 9.0,
+          fitZoom: 10,
+        });
+        const mapRef = { current: map } as const;
+
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa Test',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones: null,
+            zonaCollection: null,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportPng();
+        });
+
+        // cameraForBounds was computed against the fallback bounds.
+        expect(cameraForBounds).toHaveBeenCalledTimes(1);
+        const [cbBounds] = cameraForBounds.mock.calls[0];
+        expect(cbBounds).toEqual(MAP_FALLBACK_BOUNDS);
+
+        // And fitBounds was called with the fallback bounds
+        // (currentZoom 9 ≤ fitZoom 10 + 0.25 → fit).
+        expect(fitBounds).toHaveBeenCalledTimes(1);
+        const [fbBounds] = fitBounds.mock.calls[0];
+        expect(fbBounds).toEqual(MAP_FALLBACK_BOUNDS);
+      } finally {
+        createElement.mockRestore();
+      }
+    });
+
+    it('skips fitBounds when cameraForBounds returns undefined (defensive default)', async () => {
+      const { createElement } = stubAnchor();
+      try {
+        const zonaCollection = buildZonaCollection();
+        const { map, fitBounds, once } = buildFakeMap({
+          currentZoom: 10,
+          cameraUndefined: true,
+        });
+        const mapRef = { current: map } as const;
+
+        const { result } = renderHook(() =>
+          useMapExportHandlers({
+            mapRef,
+            exportTitle: 'Mapa Test',
+            setExportPngModalOpen: vi.fn(),
+            approvedZones: null,
+            zonaCollection,
+          } as Parameters<typeof useMapExportHandlers>[0]),
+        );
+
+        await act(async () => {
+          await result.current.handleExportPng();
+        });
+
+        expect(fitBounds).not.toHaveBeenCalled();
+        expect(once).toHaveBeenCalledWith('idle', expect.any(Function));
+      } finally {
+        createElement.mockRestore();
+      }
+    });
+  });
 });
