@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Sample Escuelas — synthetic fixture</name>
+  <description>3 placemarks covering (a) Rural Aglomerado + middot-nivel, (b) Rural Disperso + plain-nivel, (c) duplicate nombre to trigger slug collision counter.</description>
+  <Style id="escuela">
+    <IconStyle>
+      <color>ff0055ff</color>
+      <scale>1.3</scale>
+      <Icon><href>http://maps.google.com/mapfiles/kml/shapes/schools.png</href></Icon>
+    </IconStyle>
+  </Style>
+  <Placemark>
+    <name>Esc. Test Aglomerado</name>
+    <description><![CDATA[
+<b>Escuela Test Aglomerado</b><br/>
+<b>CUE:</b> 999000001<br/>
+<b>Localidad:</b> Fixture Town<br/>
+<b>Departamento:</b> Fixture Dept<br/>
+<b>Ámbito:</b> Rural Aglomerado<br/>
+<b>Nivel:</b> Inicial · Primario<br/>
+<b>Sector:</b> Estatal<br/>
+<b>Directivo:</b> Fixture Directivo<br/>
+<b>Teléfono:</b> (000) 00000000<br/><b>Email:</b> fixture@example.com<br/>]]></description>
+    <styleUrl>#escuela</styleUrl>
+    <Point>
+      <coordinates>-62.500000,-32.500000,0</coordinates>
+    </Point>
+  </Placemark>
+  <Placemark>
+    <name>Esc. Test Disperso</name>
+    <description><![CDATA[
+<b>Escuela Test Disperso</b><br/>
+<b>CUE:</b> 999000002<br/>
+<b>Localidad:</b> Other Town<br/>
+<b>Ámbito:</b> Rural Disperso<br/>
+<b>Nivel:</b> Primario<br/>
+<b>Sector:</b> Estatal<br/>
+<b>Directivo:</b> Fixture Director<br/>]]></description>
+    <styleUrl>#escuela</styleUrl>
+    <Point>
+      <coordinates>-62.400000,-32.400000,0</coordinates>
+    </Point>
+  </Placemark>
+  <Placemark>
+    <name>Esc. Test Aglomerado</name>
+    <description><![CDATA[
+<b>Escuela Test Aglomerado</b><br/>
+<b>Localidad:</b> Duplicate Town<br/>
+<b>Ámbito:</b> Rural Aglomerado<br/>
+<b>Nivel:</b> Inicial<br/>]]></description>
+    <styleUrl>#escuela</styleUrl>
+    <Point>
+      <coordinates>-62.300000,-32.300000,0</coordinates>
+    </Point>
+  </Placemark>
+</Document>
+</kml>
