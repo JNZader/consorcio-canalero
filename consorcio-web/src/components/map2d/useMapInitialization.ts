@@ -72,6 +72,7 @@ export function useMapInitialization({
     });
 
     map.addControl(new maplibre.NavigationControl(), 'top-right');
+    map.addControl(new maplibre.FullscreenControl(), 'top-right');
     map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
     map.on('load', () => {
