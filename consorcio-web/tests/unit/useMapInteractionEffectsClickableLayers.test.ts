@@ -76,3 +76,47 @@ describe('buildClickableLayers · Pilar Azul (Canales) inclusion', () => {
     expect(canalPropIdx).toBeLessThan(catastroIdx);
   });
 });
+
+describe('buildClickableLayers · Pilar Azul (Escuelas rurales) inclusion', () => {
+  it('includes the escuelas-symbol layer id in the whitelist', () => {
+    const layers = buildClickableLayers();
+    expect(layers).toContain(`${SOURCE_IDS.ESCUELAS}-symbol`);
+  });
+
+  it('pins escuelas-symbol at array index 10 (between canales_propuestos-line @9 and soil-fill @11)', () => {
+    // Design `sdd/escuelas-rurales/design` §6.5 locks the exact array position
+    // so the click-precedence behavior is predictable and test-pinned.
+    const layers = buildClickableLayers();
+    expect(layers[9]).toBe(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
+    expect(layers[10]).toBe(`${SOURCE_IDS.ESCUELAS}-symbol`);
+    expect(layers[11]).toBe(`${SOURCE_IDS.SOIL}-fill`);
+  });
+
+  it('escuelas sits AFTER canales_propuestos-line so canal wins on crossing overlap', () => {
+    // Overlap scenario: a proposed canal line crosses a school icon. The
+    // canal feature MUST win click precedence (canales are the more-specific
+    // hydraulic context — same rationale as the canal-vs-catastro ordering).
+    const layers = buildClickableLayers();
+    const canalPropIdx = layers.indexOf(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
+    const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
+    expect(canalPropIdx).toBeGreaterThanOrEqual(0);
+    expect(escuelaIdx).toBeGreaterThan(canalPropIdx);
+  });
+
+  it('escuelas sits BEFORE soil-fill so school wins over soil on overlap', () => {
+    // Reverse overlap: a school icon over a SOIL-fill parcel must open the
+    // EscuelaCard, not the generic soil dump.
+    const layers = buildClickableLayers();
+    const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
+    const soilIdx = layers.indexOf(`${SOURCE_IDS.SOIL}-fill`);
+    expect(escuelaIdx).toBeGreaterThanOrEqual(0);
+    expect(soilIdx).toBeGreaterThan(escuelaIdx);
+  });
+
+  it('escuelas sits BEFORE catastro-fill so school wins over catastro on overlap', () => {
+    const layers = buildClickableLayers();
+    const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
+    const catastroIdx = layers.indexOf(`${SOURCE_IDS.CATASTRO}-fill`);
+    expect(escuelaIdx).toBeLessThan(catastroIdx);
+  });
+});
