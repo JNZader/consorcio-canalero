@@ -354,3 +354,51 @@ describe('buildPlacemark — <styleUrl>', () => {
     expect(out).toContain('<styleUrl>#escuelas-style</styleUrl>');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pair 4 — null-name fallback (1-indexed)
+// ---------------------------------------------------------------------------
+
+describe('buildPlacemark — null-name fallback (Pair 4)', () => {
+  it('uses `${entry.label} ${index+1}` when neither nombre nor name is present', () => {
+    const f = feature(
+      { type: 'Point', coordinates: [-62, -32] },
+      { otherProp: 'whatever' },
+    );
+    const out = buildPlacemark(f, POINT_ENTRY, 0);
+    expect(out).toContain('<name>Escuelas rurales 1</name>');
+  });
+
+  it('is 1-indexed — index 3 → "{label} 4"', () => {
+    const f = feature(
+      { type: 'Point', coordinates: [-62, -32] },
+      { otherProp: 'whatever' },
+    );
+    const out = buildPlacemark(f, POINT_ENTRY, 3);
+    expect(out).toContain('<name>Escuelas rurales 4</name>');
+  });
+
+  it('falls back on empty-string nombre', () => {
+    const f = feature(
+      { type: 'Point', coordinates: [-62, -32] },
+      { nombre: '' },
+    );
+    const out = buildPlacemark(f, POINT_ENTRY, 0);
+    expect(out).toContain('<name>Escuelas rurales 1</name>');
+  });
+
+  it('falls back on empty-string name', () => {
+    const f = feature(
+      { type: 'Point', coordinates: [-62, -32] },
+      { name: '' },
+    );
+    const out = buildPlacemark(f, POINT_ENTRY, 0);
+    expect(out).toContain('<name>Escuelas rurales 1</name>');
+  });
+
+  it('falls back when properties is missing altogether', () => {
+    const f = { type: 'Feature', properties: null, geometry: { type: 'Point', coordinates: [-62, -32] } } as Feature;
+    const out = buildPlacemark(f, POINT_ENTRY, 2);
+    expect(out).toContain('<name>Escuelas rurales 3</name>');
+  });
+});

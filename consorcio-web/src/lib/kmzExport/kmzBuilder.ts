@@ -22,7 +22,7 @@
  */
 
 import JSZip from 'jszip';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { FeatureCollection } from 'geojson';
 
 import { buildPlacemark } from './kmzPlacemarks';
 import {
@@ -65,10 +65,6 @@ const KML_XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
 const KML_ROOT_OPEN = '<kml xmlns="http://www.opengis.net/kml/2.2">';
 const KML_ROOT_CLOSE = '</kml>';
 
-/** Canales propuestos layer key — mirrored here to avoid magic strings
- *  in the etapas filter branch. */
-const CANALES_PROPUESTOS_KEY = 'canales_propuestos';
-
 /** Format a Date as ISO-local YYYY-MM-DD (no time). Used for the
  *  `<Document><name>` and the download filename. */
 function formatDocumentDate(ts: Date): string {
@@ -98,34 +94,7 @@ function shouldIncludeLayer(
   return visibleLayers[entry.key] === true;
 }
 
-/**
- * Apply the optional etapas filter. ONLY `canales_propuestos` features
- * are affected — other layers pass through unchanged.
- *
- *   - `propuestasEtapasVisibility` absent → no filter (all etapas).
- *   - `propuestasEtapasVisibility` is `{}` → permissive default (all).
- *   - Otherwise → keep only features whose `properties.etapa` has its
- *     visibility flag set to `true`.
- */
-function filterFeatures(
-  entry: KmzLayerEntry,
-  features: readonly Feature[],
-  propuestasEtapasVisibility: Record<string, boolean> | undefined,
-): readonly Feature[] {
-  if (entry.key !== CANALES_PROPUESTOS_KEY) return features;
-  if (!propuestasEtapasVisibility) return features;
-  const activeEntries = Object.entries(propuestasEtapasVisibility);
-  if (activeEntries.length === 0) return features;
-
-  return features.filter((f) => {
-    const etapa = f.properties?.etapa;
-    if (typeof etapa !== 'string') return true;
-    // If the etapa key is missing from the visibility map, default to
-    // "visible" — only EXPLICIT `false` hides a feature.
-    const flag = propuestasEtapasVisibility[etapa];
-    return flag !== false;
-  });
-}
+// Pair 4 extends this with an etapas filter for `canales_propuestos`.
 
 // ---------------------------------------------------------------------------
 // Main assembler.
@@ -139,7 +108,7 @@ function filterFeatures(
  * trigger (see Phase 4).
  */
 export async function buildKmz(input: BuildKmzInput): Promise<Blob> {
-  const { visibleLayers, data, propuestasEtapasVisibility, timestamp } = input;
+  const { visibleLayers, data, timestamp } = input;
   const dateLabel = formatDocumentDate(timestamp ?? new Date());
 
   // 1. Filter + resolve the registry to the "included" shortlist.
@@ -151,11 +120,12 @@ export async function buildKmz(input: BuildKmzInput): Promise<Blob> {
   const stylesBlock = buildKmzStyles(includedEntries);
 
   // 3. Emit one Folder per included entry.
+  //    Pair 4 layers an etapas filter on top of this loop for
+  //    `canales_propuestos`.
   const foldersBlock = includedEntries
     .map((entry) => {
       const rawFeatures = data[entry.key]?.features ?? [];
-      const filtered = filterFeatures(entry, rawFeatures, propuestasEtapasVisibility);
-      const placemarks = filtered
+      const placemarks = rawFeatures
         .map((feature, index) => buildPlacemark(feature, entry, index))
         .join('');
       return `<Folder><name>${escapeXml(entry.label)}</name>${placemarks}</Folder>`;

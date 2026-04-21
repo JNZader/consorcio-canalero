@@ -409,3 +409,98 @@ describe('buildKmz — PII hardening (Pair 3)', () => {
     expect(xml).not.toContain('John Doe');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pair 4 — etapas filter + null-name fallback
+// ---------------------------------------------------------------------------
+
+describe('buildKmz — etapas filter for canales_propuestos (Pair 4)', () => {
+  const propuestos = fc([
+    line(
+      [
+        [-62.1, -32.1],
+        [-62.2, -32.2],
+      ],
+      { nombre: 'Prop-E1-A', etapa: 'Etapa 1' },
+    ),
+    line(
+      [
+        [-62.3, -32.3],
+        [-62.4, -32.4],
+      ],
+      { nombre: 'Prop-E1-B', etapa: 'Etapa 1' },
+    ),
+    line(
+      [
+        [-62.5, -32.5],
+        [-62.6, -32.6],
+      ],
+      { nombre: 'Prop-E2', etapa: 'Etapa 2' },
+    ),
+    line(
+      [
+        [-62.7, -32.7],
+        [-62.8, -32.8],
+      ],
+      { nombre: 'Prop-E3', etapa: 'Etapa 3' },
+    ),
+  ]);
+
+  it('includes ONLY etapa-1 features when only Etapa 1 is visible', async () => {
+    const blob = await buildKmz({
+      visibleLayers: { canales_propuestos: true },
+      data: { canales_propuestos: propuestos },
+      propuestasEtapasVisibility: {
+        'Etapa 1': true,
+        'Etapa 2': false,
+        'Etapa 3': false,
+      },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).toContain('Prop-E1-A');
+    expect(xml).toContain('Prop-E1-B');
+    expect(xml).not.toContain('Prop-E2');
+    expect(xml).not.toContain('Prop-E3');
+  });
+
+  it('includes ALL etapas when propuestasEtapasVisibility is undefined', async () => {
+    const blob = await buildKmz({
+      visibleLayers: { canales_propuestos: true },
+      data: { canales_propuestos: propuestos },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).toContain('Prop-E1-A');
+    expect(xml).toContain('Prop-E2');
+    expect(xml).toContain('Prop-E3');
+  });
+
+  it('includes ALL etapas when propuestasEtapasVisibility is empty object', async () => {
+    const blob = await buildKmz({
+      visibleLayers: { canales_propuestos: true },
+      data: { canales_propuestos: propuestos },
+      propuestasEtapasVisibility: {},
+    });
+    const xml = await extractKml(blob);
+    expect(xml).toContain('Prop-E1-A');
+    expect(xml).toContain('Prop-E2');
+    expect(xml).toContain('Prop-E3');
+  });
+
+  it('does NOT apply the etapas filter to other layers', async () => {
+    const escuelasWithEtapa = fc([
+      pt([-62, -32], { nombre: 'Escuela-E1', etapa: 'Etapa 1' }),
+      pt([-62.1, -32.1], { nombre: 'Escuela-E2', etapa: 'Etapa 2' }),
+    ]);
+    const blob = await buildKmz({
+      visibleLayers: { escuelas: true },
+      data: { escuelas: escuelasWithEtapa },
+      propuestasEtapasVisibility: {
+        'Etapa 1': true,
+        'Etapa 2': false,
+      },
+    });
+    const xml = await extractKml(blob);
+    expect(xml).toContain('Escuela-E1');
+    expect(xml).toContain('Escuela-E2');
+  });
+});
