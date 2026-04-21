@@ -211,7 +211,28 @@ export function useMapExportHandlers({
         },
       );
 
-      if (!response.ok) throw new Error('Error al generar PDF');
+      if (!response.ok) {
+        // Parse the response body so the developer sees the exact failure.
+        // FastAPI ships validation errors as {detail: [{loc, msg, type}, ...]}.
+        let detail: unknown = null;
+        try {
+          const parsed = (await response.json()) as { detail?: unknown };
+          detail = parsed?.detail ?? parsed;
+        } catch {
+          // Body wasn't JSON — fall back to status text only.
+        }
+        // eslint-disable-next-line no-console
+        console.error(
+          `[export-map-pdf] HTTP ${response.status} ${response.statusText || ''}`.trim(),
+          detail,
+        );
+        const firstMsg = Array.isArray(detail)
+          ? (detail[0] as { msg?: unknown } | undefined)?.msg
+          : undefined;
+        throw new Error(
+          typeof firstMsg === 'string' ? `Error al generar PDF: ${firstMsg}` : 'Error al generar PDF',
+        );
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
