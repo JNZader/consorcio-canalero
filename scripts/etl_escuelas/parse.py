@@ -33,6 +33,7 @@ Rules of engagement:
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Final
 
 # Whitelist regex — one pattern captures all 3 approved labels in one pass.
@@ -58,6 +59,63 @@ _LABEL_TO_KEY: Final[dict[str, str]] = {
     "ámbito": "ambito",
     "nivel": "nivel",
 }
+
+
+_NON_ALNUM_RE: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9]+")
+
+
+def slug(text: str) -> str:
+    """Return a URL-safe, lowercase, accent-free slug.
+
+    Mirrors the approach used by ``scripts.etl_canales.slugify.slugify`` —
+    NFKD-decompose the input, drop every combining mark, lowercase, collapse
+    non-alphanumeric runs to ``-``, and trim edge dashes.  Pure function: no
+    I/O, no global state.
+
+    Args:
+        text: Any human-readable label (typically a placemark ``<name>``).
+
+    Returns:
+        The deterministic slug.  Empty or whitespace-only input yields ``""``
+        so callers can compose suffix strings without NPE-style surprises.
+    """
+    if not text:
+        return ""
+    # NFKD splits accented characters into base + combining mark; we drop
+    # every combining mark so "á" → "a", "ñ" → "n", "ü" → "u".
+    decomposed = unicodedata.normalize("NFKD", text)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    lowered = stripped.lower()
+    collapsed = _NON_ALNUM_RE.sub("-", lowered)
+    return collapsed.strip("-")
+
+
+def slug_with_counter(base: str, seen: dict[str, int]) -> str:
+    """Append a ``-2``, ``-3``, … suffix when ``base`` was already returned.
+
+    The first call with a given ``base`` returns it AS-IS.  Subsequent calls
+    with the SAME ``base`` return ``base-2``, ``base-3``, … in human-friendly
+    one-indexed-after-first order.  The caller owns the ``seen`` dict so the
+    loop body stays stateless.
+
+    Rationale: the Escuelas KMZ is a flat list (no nested folders), so a
+    base-keyed counter is enough to resolve name collisions deterministically.
+    For the richer folder-aware scheme see ``etl_canales.slugify_with_suffix``.
+
+    Args:
+        base: The already-computed base slug (usually ``slug(placemark.name)``).
+        seen: Mutable counter dict — updated in-place.  Pass a fresh ``{}`` at
+            the start of each ETL run so runs don't leak state.
+
+    Returns:
+        The unique slug for this call.  Every output is guaranteed to differ
+        from every previous output in the same ``seen`` scope.
+    """
+    count = seen.get(base, 0)
+    seen[base] = count + 1
+    if count == 0:
+        return base
+    return f"{base}-{count + 1}"
 
 
 def parse_description(cdata: str) -> dict[str, str]:
