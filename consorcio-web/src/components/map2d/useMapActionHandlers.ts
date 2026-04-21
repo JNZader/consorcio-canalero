@@ -271,21 +271,24 @@ export function useMapExportHandlers({
       // `canalesRelevados` is null (toggle off or fetch pending), we send an
       // empty array so the backend omits the block (mirrors the roads gate).
       //
-      // Detail format: `"{km} km · {tramo_folder}"` when the ETL emits a
-      // `tramo_folder`; `"{km} km"` alone when it's null/empty. Color comes
-      // from `CANAL_STYLE_COLORS` (shared with the MapLibre paint), so the
-      // PDF swatch matches what the user sees on the live map.
+      // Payload shape: `{label, color, km: number}` — one per canal. The
+      // backend renders a dedicated 3-column table (swatch | nombre | km) and
+      // sums the km values server-side for the TOTAL row. We send km as a
+      // 1-decimal `number` (NOT a string) so the schema validates cleanly and
+      // the PDF column stays numeric. `tramo_folder` is no longer part of the
+      // payload — the table dropped that column entirely.
+      //
+      // Color comes from `CANAL_STYLE_COLORS` (shared with the MapLibre paint),
+      // so the PDF swatch matches what the user sees on the live map.
       const canalLegend = (canalesRelevados?.features ?? []).map((feature) => {
         const props = feature.properties;
-        const km = (props.longitud_m / 1000).toFixed(1);
-        const folder = props.tramo_folder;
-        const detail = folder ? `${km} km · ${folder}` : `${km} km`;
+        const km = Number((props.longitud_m / 1000).toFixed(1));
         const styleKey = props.source_style ?? 'sin_obra';
         const color = CANAL_STYLE_COLORS[styleKey] ?? CANALES_COLORS.relevadoSinObra;
         return {
           label: String(props.nombre || 'Canal'),
           color,
-          detail,
+          km,
         };
       });
 
