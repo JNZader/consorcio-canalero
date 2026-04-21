@@ -30,19 +30,21 @@ describe('sugerenciasApi', () => {
     );
   });
 
-  it('builds checkLimit query params correctly', async () => {
-    await sugerenciasApi.checkLimit('vecino@example.com', '3534000000');
+  // checkLimit is a documented no-op stub in production
+  // (see TODO: v2 rate limit endpoint pending). When the endpoint is built,
+  // these tests should revert to the legacy network-call style.
+  it('checkLimit returns stub RateLimitInfo when contact params are provided', async () => {
+    const result = await sugerenciasApi.checkLimit('vecino@example.com', '3534000000');
 
-    expect(apiFetch).toHaveBeenCalledWith(
-      '/public/sugerencias/limit?email=vecino%40example.com&telefono=3534000000',
-      { skipAuth: true }
-    );
+    expect(result).toEqual({ remaining: 3, limit: 3, reset_hours: 24 });
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it('builds checkLimit request without params when contact is missing', async () => {
-    await sugerenciasApi.checkLimit();
+  it('checkLimit returns stub RateLimitInfo when contact is missing', async () => {
+    const result = await sugerenciasApi.checkLimit();
 
-    expect(apiFetch).toHaveBeenCalledWith('/public/sugerencias/limit?', { skipAuth: true });
+    expect(result).toEqual({ remaining: 3, limit: 3, reset_hours: 24 });
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it('builds admin list query with provided filters only', async () => {

@@ -20,11 +20,15 @@ describe('useMapInitialization', () => {
     const scaleControl = vi.fn(function ScaleControl() {
       return { scale: true };
     });
+    const fullscreenControl = vi.fn(function FullscreenControl() {
+      return { fullscreen: true };
+    });
 
     const maplibre = {
       Map: mapConstructor,
       NavigationControl: navigationControl,
       ScaleControl: scaleControl,
+      FullscreenControl: fullscreenControl,
     } as any;
 
     const containerRef = { current: document.createElement('div') };
@@ -35,7 +39,8 @@ describe('useMapInitialization', () => {
       useMapInitialization({
         maplibre,
         containerRef: containerRef as any,
-        center: [-62.68, -32.62],
+        centerLat: -32.62,
+        centerLng: -62.68,
         zoom: 10,
         mapRef: mapRef as any,
         setMapReady,
@@ -49,7 +54,7 @@ describe('useMapInitialization', () => {
         zoom: 10,
       }),
     );
-    expect(mockMap.addControl).toHaveBeenCalledTimes(2);
+    expect(mockMap.addControl).toHaveBeenCalledTimes(3);
     expect(mockMap.on).toHaveBeenCalledWith('load', expect.any(Function));
     expect(mockMap.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(mapRef.current).toBe(mockMap);

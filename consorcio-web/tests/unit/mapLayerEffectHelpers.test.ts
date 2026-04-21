@@ -100,6 +100,7 @@ describe('mapLayerEffectHelpers', () => {
     });
 
     syncImageOverlays(map as never, {
+      baseLayer: 'satellite',
       viewMode: 'single',
       selectedImage: { tile_url: 'https://tiles.example.com/single/{z}/{x}/{y}.png' },
       comparison: null,
@@ -142,6 +143,7 @@ describe('mapLayerEffectHelpers', () => {
     });
 
     syncImageOverlays(map as never, {
+      baseLayer: 'satellite',
       viewMode: 'comparison',
       selectedImage: null,
       comparison: {
