@@ -174,6 +174,66 @@ describe('useMapActionHandlers', () => {
     }
   });
 
+  it('surfaces the FastAPI 422 detail when the backend rejects the payload', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const fastApiDetail = [
+      {
+        loc: ['body', 'mapImageDataUrl'],
+        msg: 'field required',
+        type: 'value_error.missing',
+      },
+    ];
+
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: fastApiDetail }),
+    } as unknown as Response);
+
+    const approvedZones: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [],
+    };
+
+    const mapRef = {
+      current: {
+        getCanvas: () => ({ toDataURL: () => 'data:image/png;base64,MOCK' }),
+      },
+    } as const;
+
+    try {
+      const { result } = renderHook(() =>
+        useMapExportHandlers({
+          mapRef,
+          exportTitle: 'Mapa',
+          setExportPngModalOpen: vi.fn(),
+          approvedZones,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleExportApprovedZonesPdf();
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+
+      // At least one console.error call must include the FastAPI detail.
+      const loggedMatches = consoleErrorSpy.mock.calls.some((call) =>
+        call.some((arg) => {
+          if (arg === fastApiDetail) return true;
+          const text = typeof arg === 'string' ? arg : JSON.stringify(arg);
+          return text.includes('mapImageDataUrl') || text.includes('field required');
+        }),
+      );
+      expect(loggedMatches).toBe(true);
+    } finally {
+      consoleErrorSpy.mockRestore();
+      fetchMock.mockRestore();
+    }
+  });
+
   it('exports approved zones as PDF and GeoJSON', async () => {
     const click = vi.fn();
     const originalCreateElement = document.createElement.bind(document);
