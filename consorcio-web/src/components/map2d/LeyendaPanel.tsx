@@ -4,6 +4,7 @@ import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
+import { ESCUELA_ICON_URL } from './escuelasLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 
@@ -222,6 +223,15 @@ interface LeyendaPanelProps {
    * Enable when the `canales_propuestos` master toggle is ON.
    */
   readonly pilarAzulCanalesPropuestosVisible?: boolean;
+  /**
+   * Render the "Escuela rural" single-chip block (icon thumbnail + label).
+   * Enable when the `escuelas` master toggle is ON. The icon IS the legend
+   * (there is nothing to color-swatch — it is a bundled PNG loaded from
+   * `ESCUELA_ICON_URL`). The Pilar Azul section divider above also widens
+   * to include this flag so the chip never sits orphan against the
+   * previous section.
+   */
+  readonly pilarAzulEscuelasVisible?: boolean;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -239,6 +249,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarVerdePorcentajeForestacionVisible = false,
   pilarAzulCanalesRelevadosVisible = false,
   pilarAzulCanalesPropuestosVisible = false,
+  pilarAzulEscuelasVisible = false,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
 
@@ -419,9 +430,9 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             />
           </Stack>
         )}
-        {(pilarAzulCanalesRelevadosVisible || pilarAzulCanalesPropuestosVisible) && (
-          <Divider my={4} />
-        )}
+        {(pilarAzulCanalesRelevadosVisible ||
+          pilarAzulCanalesPropuestosVisible ||
+          pilarAzulEscuelasVisible) && <Divider my={4} />}
         {pilarAzulCanalesRelevadosVisible && (
           <Stack gap={2} data-testid="canales-relevados-legend">
             <Text fw={500} size="xs">
@@ -458,6 +469,18 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               />
             ))}
           </Stack>
+        )}
+        {pilarAzulEscuelasVisible && (
+          <Group gap="xs" wrap="nowrap" data-testid="escuelas-legend">
+            <img
+              src={ESCUELA_ICON_URL}
+              width={24}
+              height={24}
+              alt=""
+              style={{ display: 'inline-block' }}
+            />
+            <Text size="xs">Escuela rural</Text>
+          </Group>
         )}
         </Stack>
       </CollapsibleSection>

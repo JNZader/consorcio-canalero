@@ -298,6 +298,7 @@ export const MapUiPanels = memo(function MapUiPanels({
             }
             pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
             pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
+            pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
           />
         )}
       </Box>

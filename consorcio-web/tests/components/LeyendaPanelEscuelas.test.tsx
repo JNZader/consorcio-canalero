@@ -95,16 +95,18 @@ describe('<LeyendaPanel /> — Escuelas rurales block', () => {
 // The existing divider guard in LeyendaPanel was:
 //   (pilarAzulCanalesRelevadosVisible || pilarAzulCanalesPropuestosVisible)
 // Batch F widens it to include escuelas so the divider still renders when
-// ONLY the escuelas toggle is ON. We detect the divider by counting the
-// `hr` elements inside the Leyenda container — Mantine `<Divider />` maps
-// to `<hr>` by default.
+// ONLY the escuelas toggle is ON. We detect the divider via the a11y
+// `role="separator"` contract — that is what Mantine `<Divider />` emits
+// (not a bare `<hr>`). Counting role=separator also ignores any decorative
+// elements that may share `<hr>` or equivalent semantics.
 // ---------------------------------------------------------------------------
 
 describe('<LeyendaPanel /> — Pilar Azul section divider widening', () => {
   it('does NOT render the Pilar Azul divider when ALL Pilar Azul flags are off', () => {
     const { container } = renderWithMantine(<LeyendaPanel />);
-    // Zero Pilar Azul flags → zero Pilar Azul dividers.
-    expect(container.querySelectorAll('hr').length).toBe(0);
+    // Zero Pilar Azul flags → zero Pilar Azul dividers. (Other dividers
+    // belong to Pilar Verde blocks; those are also off in this render.)
+    expect(container.querySelectorAll('[role="separator"]').length).toBe(0);
   });
 
   it('renders the Pilar Azul divider when ONLY escuelas is on', () => {
@@ -114,7 +116,7 @@ describe('<LeyendaPanel /> — Pilar Azul section divider widening', () => {
     // With only escuelas ON, the widened guard must still emit the Pilar
     // Azul section divider so the escuelas chip does not sit orphan
     // against the previous section (Pilar Verde or customItems).
-    expect(container.querySelectorAll('hr').length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelectorAll('[role="separator"]').length).toBeGreaterThanOrEqual(1);
     // And of course the escuelas chip itself is present.
     expect(screen.getByTestId('escuelas-legend')).toBeInTheDocument();
   });
@@ -128,7 +130,7 @@ describe('<LeyendaPanel /> — Pilar Azul section divider widening', () => {
     );
     // Still just one Pilar Azul section divider (no dupes — the widening
     // is an OR, not an additional block).
-    expect(container.querySelectorAll('hr').length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelectorAll('[role="separator"]').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId('escuelas-legend')).toBeInTheDocument();
     expect(screen.getByTestId('canales-relevados-legend')).toBeInTheDocument();
   });
