@@ -45,6 +45,7 @@ import type {
 } from 'geojson';
 
 import type { KmzLayerEntry } from './kmzLayerRegistry';
+import { stripPii } from './kmzPiiStrip';
 
 // ---------------------------------------------------------------------------
 // XML escape — the 5 entity set.
@@ -184,13 +185,19 @@ function humanizeEscuelasName(raw: string): string {
  *   properties.nombre → properties.name → `${entry.label} ${index + 1}`.
  *
  * Empty-string names short-circuit to the fallback (Pair 4 pins this).
+ *
+ * Note: `nombre` / `name` are NOT on the PII denylist, so they survive
+ * `stripPii`. We call `stripPii` up-front defensively — if a future
+ * change extends the denylist, names remain safe and any future
+ * `<description>` / `<ExtendedData>` emission inherits sanitized props.
  */
 function resolveName(
   feature: Feature,
   entry: KmzLayerEntry,
   index: number,
 ): string {
-  const props = feature.properties ?? {};
+  const rawProps = feature.properties ?? {};
+  const props = stripPii(rawProps);
   const nombre = props['nombre'];
   if (typeof nombre === 'string' && nombre.length > 0) {
     return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(nombre) : nombre;
