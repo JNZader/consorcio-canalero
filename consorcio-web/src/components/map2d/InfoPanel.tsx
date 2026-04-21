@@ -36,6 +36,7 @@ import { memo, useMemo } from 'react';
 
 import styles from '../../styles/components/map.module.css';
 import type { CanalFeatureProperties } from '../../types/canales';
+import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type {
   BpaEnrichedFile,
   BpaHistoryFile,
@@ -43,6 +44,8 @@ import type {
 } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
+import { EscuelaCard } from './EscuelaCard';
+import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { normalizeBpaFlat } from './bpaPracticas';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
 
@@ -222,6 +225,22 @@ function FeatureSection({
     return (
       <div data-testid="info-panel-feature-section">
         <CanalCard properties={properties as unknown as CanalFeatureProperties} />
+      </div>
+    );
+  }
+
+  // Pilar Azul — Escuelas rurales branch. Activates when the MapLibre-native
+  // `layer.id` equals the escuelas symbol layer id. Sits AFTER canal (which
+  // itself can't collide — escuelas are Points, canales are LineStrings) and
+  // BEFORE the generic whitelist dump. See design `sdd/escuelas-rurales/design`
+  // §8 InfoPanel Routing. The click-overlap behavior (canal vs escuela when a
+  // canal line crosses a school icon) is resolved by the ARRAY order inside
+  // `useMapInteractionEffects.ts::buildClickableLayers()` — InfoPanel just
+  // renders whatever MapLibre returns, each in its own per-feature section.
+  if (withLayer.layer?.id === ESCUELAS_LAYER_ID) {
+    return (
+      <div data-testid="info-panel-feature-section">
+        <EscuelaCard properties={properties as unknown as EscuelaFeatureProperties} />
       </div>
     );
   }
