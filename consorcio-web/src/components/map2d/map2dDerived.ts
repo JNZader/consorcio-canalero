@@ -187,6 +187,15 @@ export function buildVectorLayerItems(params: {
    * layer control. Per-canal sub-toggles are rendered by Phase 4.
    */
   showPilarAzul?: boolean;
+  /**
+   * Whether the Pilar Azul (Escuelas rurales) static data has loaded
+   * (collection non-null). When true, the single "Escuelas rurales" master
+   * toggle renders in the layer control. There are NO per-school sub-toggles
+   * — one master covers all 7 features (design §7). Defaults to `false` for
+   * backwards compatibility (callers who haven't wired `useEscuelas` yet
+   * see no behavior change).
+   */
+  showEscuelas?: boolean;
 }) {
   const {
     basins,
@@ -196,6 +205,7 @@ export function buildVectorLayerItems(params: {
     isAdmin,
     showPilarVerde = false,
     showPilarAzul = false,
+    showEscuelas = false,
   } = params;
 
   return [
@@ -229,6 +239,8 @@ export function buildVectorLayerItems(params: {
     // rendered by Phase 4's `LayerControlsPanel` Canales section.
     { id: 'canales_relevados', label: 'Canales relevados', show: showPilarAzul },
     { id: 'canales_propuestos', label: 'Canales propuestos', show: showPilarAzul },
+    // ── Pilar Azul (Escuelas rurales) — single master toggle (design §7) ──
+    { id: 'escuelas', label: 'Escuelas rurales', show: showEscuelas },
   ]
     .filter(({ show }) => show)
     .map(({ id, label }) => ({ id, label }));
