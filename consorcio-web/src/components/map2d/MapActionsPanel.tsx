@@ -15,8 +15,8 @@ interface MapActionsPanelProps {
   readonly onExportApprovedZonesPdf: () => void;
   /**
    * Optional — when provided, renders a new "Exportar KMZ" entry in
-   * the Export dropdown (sibling of "Exportar PNG" / "Exportar PDF
-   * zonificación"). Mirrors the gating style of
+   * the Export dropdown (sibling of "Exportar PNG" / "Exportar PDF").
+   * Mirrors the gating style of
    * `onExportApprovedZonesPdf` (entry is conditionally rendered based
    * on the capability being available).
    *
@@ -77,7 +77,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               </Menu.Item>
               {hasApprovedZones && (
                 <Menu.Item leftSection={<IconMap size={14} />} onClick={onExportApprovedZonesPdf}>
-                  Exportar PDF zonificación
+                  Exportar PDF
                 </Menu.Item>
               )}
               {onExportKmz && (

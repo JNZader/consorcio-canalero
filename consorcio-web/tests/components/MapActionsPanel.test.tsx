@@ -8,13 +8,13 @@
  *
  *   1. When `onExportKmz` is provided, a menu item with the literal
  *      label "Exportar KMZ" renders inside the same dropdown that owns
- *      "Exportar PNG" / "Exportar PDF zonificación".
+ *      "Exportar PNG" / "Exportar PDF".
  *   2. Clicking that menu item invokes `onExportKmz` exactly once with
  *      no arguments.
  *   3. When `onExportKmz` is NOT provided (undefined), the menu item is
- *      NOT rendered at all — this mirrors how the "Exportar PDF
- *      zonificación" item is gated by `hasApprovedZones`. The overall
- *      "Exportar" dropdown stays clickable because PNG is always on.
+ *      NOT rendered at all — this mirrors how the "Exportar PDF" item
+ *      is gated by `hasApprovedZones`. The overall "Exportar" dropdown
+ *      stays clickable because PNG is always on.
  *
  * Rationale for not disabling the KMZ entry based on
  * `visibleVectors`: YPF is modelled as an always-on floor inside
