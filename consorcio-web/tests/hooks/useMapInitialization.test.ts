@@ -59,4 +59,55 @@ describe('useMapInitialization', () => {
     expect(mockMap.remove).toHaveBeenCalledTimes(1);
     expect(setMapReady).toHaveBeenCalledWith(false);
   });
+
+  it('registers a FullscreenControl at top-right on the 2D map', () => {
+    const mockMap = {
+      addControl: vi.fn(),
+      on: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const mapConstructor = vi.fn(function MockMap() {
+      return mockMap;
+    });
+    const NavigationControl = vi.fn(function NavigationControl() {
+      return { nav: true };
+    });
+    const ScaleControl = vi.fn(function ScaleControl() {
+      return { scale: true };
+    });
+    const FullscreenControl = vi.fn(function FullscreenControl() {
+      return { fullscreen: true };
+    });
+
+    const maplibre = {
+      Map: mapConstructor,
+      NavigationControl,
+      ScaleControl,
+      FullscreenControl,
+    } as any;
+
+    const containerRef = { current: document.createElement('div') };
+    const mapRef = { current: null };
+    const setMapReady = vi.fn();
+
+    renderHook(() =>
+      useMapInitialization({
+        maplibre,
+        containerRef: containerRef as any,
+        centerLat: -32.62,
+        centerLng: -62.68,
+        zoom: 10,
+        mapRef: mapRef as any,
+        setMapReady,
+      }),
+    );
+
+    expect(FullscreenControl).toHaveBeenCalledTimes(1);
+    const fullscreenCall = mockMap.addControl.mock.calls.find(
+      ([control]) => control && control.fullscreen === true,
+    );
+    expect(fullscreenCall).toBeDefined();
+    expect(fullscreenCall?.[1]).toBe('top-right');
+  });
 });
