@@ -13,6 +13,7 @@ import {
   syncBasinLayers,
   syncBpaHistoricoLayer,
   syncCanalesLayers,
+  syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
   syncRoadLayers,
   syncSoilLayers,
@@ -32,6 +33,7 @@ import { syncCatastroLayers } from './mapLayerEffectHelpers';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import type { CanalesData, Etapa } from '../../types/canales';
 import { ALL_ETAPAS } from '../../types/canales';
+import type { EscuelasData } from '../../types/escuelas';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 
 interface LayerLike {
@@ -78,6 +80,12 @@ interface UseMapLayerEffectsParams {
    * Pilar Verde — `undefined` means not-wired-yet, `null` slots stay hidden.
    */
   canales?: Partial<CanalesData> | null;
+  /**
+   * Pilar Azul (Escuelas rurales) static data. Same graceful-degradation
+   * contract: `undefined` means not-wired-yet; `collection: null` means
+   * fetch failed and the layer mounts an empty source.
+   */
+  escuelas?: Partial<EscuelasData> | null;
 }
 
 export function useMapLayerEffects({
@@ -106,6 +114,7 @@ export function useMapLayerEffects({
   waterwaysDefs,
   pilarVerde,
   canales,
+  escuelas,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -344,6 +353,26 @@ export function useMapLayerEffects({
     vectorVisibility,
     propuestasEtapasVisibility,
   ]);
+
+  // ── Pilar Azul (Escuelas rurales) ──────────────────────────────────────
+  // Mirrors the canales effect but narrowed to a single symbol layer. The
+  // sync helper is async (icon registration must complete before addLayer),
+  // so we fire-and-forget with a catch to avoid unhandled promise rejections
+  // when the map tears down between the effect call and the promise resolve.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const collection = (escuelas?.collection ?? null) as FeatureCollection<
+      GeoJSON.Point,
+      import('../../types/escuelas').EscuelaFeatureProperties
+    > | null;
+    syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas).catch(
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[escuelas:sync] syncEscuelasLayer failed', err);
+      },
+    );
+  }, [mapReady, mapRef, escuelas?.collection, vectorVisibility.escuelas]);
 
   // ── DEM z-order hoist ───────────────────────────────────────────────────
   // Keep the DEM raster just below the user-authored stack (Pilar Verde +

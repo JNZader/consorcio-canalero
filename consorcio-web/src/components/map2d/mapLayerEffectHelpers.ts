@@ -1,15 +1,22 @@
-import type { FeatureCollection, LineString } from 'geojson';
+import type { FeatureCollection, LineString, Point } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 
 import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
+import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import {
   buildCanalesPropuestasFilter,
   buildCanalesPropuestasPaint,
   buildCanalesRelevadosFilter,
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
+import {
+  ESCUELAS_LAYER_ID,
+  buildEscuelasSymbolLayout,
+  buildEscuelasSymbolPaint,
+  registerEscuelaIcon,
+} from './escuelasLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
@@ -624,5 +631,65 @@ export function syncCanalesLayers(
 
   // ── Z-order ──
   raiseCanalesStack(map);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Pilar Azul (Escuelas rurales) sync helper                                 */
+/*                                                                            */
+/*  ONE symbol layer with an icon-image bound to the `escuela` raster (from   */
+/*  `escuelasLayers.ts::registerEscuelaIcon`). Async signature is             */
+/*  load-bearing: MapLibre silently hides symbols whose `icon-image` was      */
+/*  not yet registered via `addImage` — we MUST await the icon registration  */
+/*  before calling `addLayer`. `registerEscuelaIcon` is internally idempotent */
+/*  (promise + `hasImage` double-guard), so repeated calls on every sync pass */
+/*  stay cheap.                                                               */
+/*                                                                            */
+/*  Null-tolerance contract: when `useEscuelas()` graceful-degrades to        */
+/*  `collection: null` (fetch failure), we still mount an empty              */
+/*  FeatureCollection on the source so `setLayerVisibility` has something to  */
+/*  act on — same pattern as `syncSoilLayers`.                                */
+/*                                                                            */
+/*  Toggle OFF uses visibility-none (NOT removeLayer/removeSource) per        */
+/*  design §6.4 — matches the Pilar Verde / canales / soil patterns. This    */
+/*  preserves the icon registration and the source/layer mount across        */
+/*  toggle cycles, avoiding repeated `loadImage` hits on every ON flip.       */
+/* -------------------------------------------------------------------------- */
+
+export async function syncEscuelasLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection<Point, EscuelaFeatureProperties> | null,
+  isVisible: boolean,
+): Promise<void> {
+  const sourceId = SOURCE_IDS.ESCUELAS;
+  const layerId = ESCUELAS_LAYER_ID;
+
+  // ── Icon (idempotent — internal hasImage guard) ──
+  // Await BEFORE the layer mount. registerEscuelaIcon is a no-op on re-runs
+  // when the image is already registered (fast path), so this is cheap even
+  // on hot-path sync passes triggered by unrelated dep changes.
+  await registerEscuelaIcon(map);
+
+  // ── Source (idempotent) ──
+  // Cast-erase the point-feature narrowing for `ensureGeoJsonSource` which
+  // accepts the broader `FeatureCollection`. The runtime shape is identical.
+  ensureGeoJsonSource(
+    map,
+    sourceId,
+    (collection ?? asFeatureCollection([])) as FeatureCollection,
+  );
+
+  // ── Layer (idempotent) ──
+  if (!map.getLayer(layerId)) {
+    map.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      layout: buildEscuelasSymbolLayout(),
+      paint: buildEscuelasSymbolPaint(),
+    });
+  }
+
+  // ── Visibility (master toggle — no removeLayer/removeSource on OFF) ──
+  setLayerVisibility(map, layerId, isVisible);
 }
 

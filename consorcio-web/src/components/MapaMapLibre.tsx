@@ -30,6 +30,7 @@ import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useCanales } from '../hooks/useCanales';
+import { useEscuelas } from '../hooks/useEscuelas';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
@@ -179,6 +180,8 @@ export default function MapaMapLibre() {
     propuestas: canalesPropuestas,
     index: canalesIndex,
   };
+  const { collection: escuelasCollection } = useEscuelas();
+  const escuelasData = { collection: escuelasCollection };
 
   const {
     zonaCollection,
@@ -222,6 +225,7 @@ export default function MapaMapLibre() {
     isAdmin,
     pilarVerde,
     canales: canalesData,
+    escuelas: escuelasData,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -270,6 +274,7 @@ export default function MapaMapLibre() {
     waterwaysDefs: WATERWAY_DEFS,
     pilarVerde,
     canales: canalesData,
+    escuelas: escuelasData,
   });
 
   useMapInitialization({

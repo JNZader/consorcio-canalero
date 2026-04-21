@@ -4,6 +4,7 @@ import { GEO_LAYER_LABELS, buildTileUrl } from '../../hooks/useGeoLayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import type { CanalesData } from '../../types/canales';
+import type { EscuelasData } from '../../types/escuelas';
 import { decorateFeature, asFeatureCollection } from './map2dUtils';
 import {
   buildActiveLegendItems,
@@ -57,6 +58,12 @@ export function useMapDerivedState(params: {
    * in `buildVectorLayerItems` is derived from `!!canales?.index`.
    */
   canales?: Partial<CanalesData> | null;
+  /**
+   * Pilar Azul (Escuelas rurales) static data — loaded upstream by
+   * `useEscuelas()`. `showEscuelas` gating flag in `buildVectorLayerItems`
+   * is derived from `!!escuelas?.collection`.
+   */
+  escuelas?: Partial<EscuelasData> | null;
 }) {
   const {
     capas,
@@ -81,6 +88,7 @@ export function useMapDerivedState(params: {
     isAdmin,
     pilarVerde = null,
     canales = null,
+    escuelas = null,
   } = params;
 
   const zonaCollection = capas.zona ?? null;
@@ -182,6 +190,8 @@ export function useMapDerivedState(params: {
   const showPilarVerde = !!pilarVerde?.aggregates;
   // Pilar Azul gates on the index.json slot — it's the bootstrap source.
   const showPilarAzul = !!canales?.index;
+  // Escuelas gates on the collection slot (single static asset).
+  const showEscuelas = !!escuelas?.collection;
 
   const vectorLayerItems = useMemo(
     () =>
@@ -193,6 +203,7 @@ export function useMapDerivedState(params: {
         isAdmin,
         showPilarVerde,
         showPilarAzul,
+        showEscuelas,
       }),
     [
       approvedZonesCollection,
@@ -202,6 +213,7 @@ export function useMapDerivedState(params: {
       roadsCollection,
       showPilarVerde,
       showPilarAzul,
+      showEscuelas,
     ],
   );
 

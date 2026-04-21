@@ -37,6 +37,9 @@ vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
   syncAgroPresentadaLayer: vi.fn(),
   syncAgroZonasLayer: vi.fn(),
   syncPorcentajeForestacionLayer: vi.fn(),
+  // ── Pilar Azul (Canales + Escuelas) ──
+  syncCanalesLayers: vi.fn(),
+  syncEscuelasLayer: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/components/map2d/mapRasterOverlayHelpers', () => ({
