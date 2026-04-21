@@ -43,6 +43,11 @@ export const SOURCE_IDS = {
   // so the source id == the master-toggle id (no translation table).
   CANALES_RELEVADOS: 'canales_relevados',
   CANALES_PROPUESTOS: 'canales_propuestos',
+  // ── Pilar Azul (Escuelas rurales) ──
+  // String value `'escuelas'` matches the master-toggle key in
+  // `defaultVisibleVectors` AND `ESCUELAS_SOURCE_ID` in `escuelasLayers.ts`
+  // (Batch C locked the identical-string contract — see apply-progress #2061).
+  ESCUELAS: 'escuelas',
 } as const;
 
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];

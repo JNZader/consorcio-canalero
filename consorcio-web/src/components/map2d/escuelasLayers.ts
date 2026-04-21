@@ -21,14 +21,20 @@
 import type { SymbolLayerSpecification } from 'maplibre-gl';
 import type maplibregl from 'maplibre-gl';
 
+import { SOURCE_IDS } from './map2dConfig';
+
 /**
- * Source id for the static escuelas FeatureCollection. Held here as a local
- * constant for Batch C; Batch D (toggle wiring) will add `SOURCE_IDS.ESCUELAS`
- * to `map2dConfig.ts` pointing to this same string so the two references
- * agree. The value is the toggle key used in `defaultVisibleVectors`
- * (design §7) — same pattern as Pilar Azul canales.
+ * Source id for the static escuelas FeatureCollection.
+ *
+ * Batch D consolidation: now imported from `SOURCE_IDS.ESCUELAS`
+ * (`map2dConfig.ts`) so the value is authoritative in exactly one place. The
+ * string `'escuelas'` is ALSO the master-toggle key in
+ * `defaultVisibleVectors` (design §7) — same pattern as Pilar Azul canales,
+ * where the source id equals the toggle id and no translation table is
+ * needed. Re-exported here so colocated consumers (`syncEscuelasLayer`,
+ * InfoPanel, LeyendaPanel tests) keep a single import path.
  */
-export const ESCUELAS_SOURCE_ID = 'escuelas' as const;
+export const ESCUELAS_SOURCE_ID = SOURCE_IDS.ESCUELAS;
 
 /** Canonical layer id — the MapLibre-native discriminator used by InfoPanel. */
 export const ESCUELAS_LAYER_ID = 'escuelas-symbol' as const;

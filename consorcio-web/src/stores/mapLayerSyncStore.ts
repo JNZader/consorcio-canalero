@@ -114,6 +114,10 @@ const defaultVisibleVectors: Record<string, boolean> = {
   catastro: false,
   hydraulic_risk: false,
   puntos_conflicto: false,
+  // ── Pilar Azul — Escuelas rurales (design §7) ──
+  // Single master toggle, default OFF. Opt-in per spec REQ-ESC-9.
+  // No sub-toggles — the one layer carries all 7 features.
+  escuelas: false,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
