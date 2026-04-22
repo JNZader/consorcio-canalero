@@ -70,8 +70,9 @@ from app.domains.geo.visualization.service import VisualizationService  # noqa: 
 from app.domains.geo.visualization import renderer as _renderer_module  # noqa: E402
 from app.domains.geo.models import TipoGeoLayer  # noqa: E402
 
-# Patch target path for calculation functions
-_CALC_MODULE = "app.domains.geo.visualization.service"
+# Patch target path for calculation functions (lazy-imported inside service
+# methods, so we patch the source module, not the consumer).
+_CALC_MODULE = "app.domains.geo.intelligence.calculations"
 _REPO_MODULE = "app.domains.geo.visualization.service.GeoRepository"
 
 
@@ -660,19 +661,13 @@ class TestLoadDemHelper:
 # ---------------------------------------------------------------------------
 
 class TestServiceImports:
-    """Verify calculation functions are importable from the service module."""
+    """Verify module-level imports in the service module.
 
-    def test_service_module_imports_generar_zonificacion(self):
-        import app.domains.geo.visualization.service as svc_mod
-        assert hasattr(svc_mod, "generar_zonificacion")
-
-    def test_service_module_imports_simular_escorrentia(self):
-        import app.domains.geo.visualization.service as svc_mod
-        assert hasattr(svc_mod, "simular_escorrentia")
-
-    def test_service_module_imports_detectar_puntos_conflicto(self):
-        import app.domains.geo.visualization.service as svc_mod
-        assert hasattr(svc_mod, "detectar_puntos_conflicto")
+    Note: generar_zonificacion / simular_escorrentia / detectar_puntos_conflicto
+    are intentionally LAZY-imported inside methods (commit 978efca) so the
+    service module loads in environments without geopandas. Tests asserting
+    they exist as module attributes were removed.
+    """
 
     def test_service_module_imports_tipo_geo_layer(self):
         import app.domains.geo.visualization.service as svc_mod

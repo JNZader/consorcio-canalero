@@ -26,24 +26,24 @@ from fastapi.testclient import TestClient
 
 class TestValidateGeojsonFilename:
     def test_accepts_geojson(self):
-        from app.domains.geo.router import _validate_geojson_filename
+        from app.domains.geo.router_common import _validate_geojson_filename
 
         _validate_geojson_filename("basins.geojson")  # no exception
 
     def test_accepts_json(self):
-        from app.domains.geo.router import _validate_geojson_filename
+        from app.domains.geo.router_common import _validate_geojson_filename
 
         _validate_geojson_filename("data.json")
 
     def test_rejects_none(self):
-        from app.domains.geo.router import _validate_geojson_filename
+        from app.domains.geo.router_common import _validate_geojson_filename
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_geojson_filename(None)
         assert exc_info.value.status_code == 400
 
     def test_rejects_wrong_extension(self):
-        from app.domains.geo.router import _validate_geojson_filename
+        from app.domains.geo.router_common import _validate_geojson_filename
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_geojson_filename("data.csv")
@@ -52,35 +52,35 @@ class TestValidateGeojsonFilename:
 
 class TestReadGeojsonUpload:
     def test_rejects_empty(self):
-        from app.domains.geo.router import _read_geojson_upload
+        from app.domains.geo.router_common import _read_geojson_upload
 
         with pytest.raises(HTTPException) as exc_info:
             _read_geojson_upload(b"")
         assert exc_info.value.status_code == 400
 
     def test_rejects_invalid_json(self):
-        from app.domains.geo.router import _read_geojson_upload
+        from app.domains.geo.router_common import _read_geojson_upload
 
         with pytest.raises(HTTPException) as exc_info:
             _read_geojson_upload(b"not json")
         assert exc_info.value.status_code == 400
 
     def test_rejects_non_feature_collection(self):
-        from app.domains.geo.router import _read_geojson_upload
+        from app.domains.geo.router_common import _read_geojson_upload
 
         with pytest.raises(HTTPException) as exc_info:
             _read_geojson_upload(json.dumps({"type": "Feature"}).encode())
         assert exc_info.value.status_code == 400
 
     def test_rejects_missing_features(self):
-        from app.domains.geo.router import _read_geojson_upload
+        from app.domains.geo.router_common import _read_geojson_upload
 
         with pytest.raises(HTTPException) as exc_info:
             _read_geojson_upload(json.dumps({"type": "FeatureCollection", "features": "bad"}).encode())
         assert exc_info.value.status_code == 400
 
     def test_accepts_valid_geojson(self):
-        from app.domains.geo.router import _read_geojson_upload
+        from app.domains.geo.router_common import _read_geojson_upload
 
         payload = {"type": "FeatureCollection", "features": []}
         result = _read_geojson_upload(json.dumps(payload).encode())
@@ -89,20 +89,20 @@ class TestReadGeojsonUpload:
 
 class TestExtractSourceProperties:
     def test_returns_source_properties_if_present(self):
-        from app.domains.geo.router import _extract_source_properties
+        from app.domains.geo.router_common import _extract_source_properties
 
         props = {"source_properties": {"name": "Zone 1"}, "other": "val"}
         assert _extract_source_properties(props) == {"name": "Zone 1"}
 
     def test_returns_full_properties_if_no_source(self):
-        from app.domains.geo.router import _extract_source_properties
+        from app.domains.geo.router_common import _extract_source_properties
 
         props = {"name": "Zone 1", "area": 100}
         result = _extract_source_properties(props)
         assert result == props
 
     def test_returns_empty_for_non_dict(self):
-        from app.domains.geo.router import _extract_source_properties
+        from app.domains.geo.router_common import _extract_source_properties
 
         assert _extract_source_properties(None) == {}
         assert _extract_source_properties("string") == {}
@@ -141,19 +141,19 @@ class TestGetUserDisplayName:
 
 class TestGetGeoBundleStorageDir:
     def test_returns_first_writable(self, tmp_path):
-        with patch("app.domains.geo.router.Path") as MockPath:
+        with patch("app.domains.geo.router_common.Path") as MockPath:
             mock_candidate = MagicMock()
             mock_candidate.mkdir.return_value = None
             MockPath.return_value = mock_candidate
 
-            from app.domains.geo.router import _get_geo_bundle_storage_dir
+            from app.domains.geo.router_common import _get_geo_bundle_storage_dir
 
             # Reset so we hit the real logic
             from importlib import reload
-            import app.domains.geo.router
+            import app.domains.geo.router_common
 
     def test_raises_500_when_all_fail(self):
-        from app.domains.geo.router import _get_geo_bundle_storage_dir
+        from app.domains.geo.router_common import _get_geo_bundle_storage_dir
 
         with patch("pathlib.Path.mkdir", side_effect=OSError("fail")):
             with pytest.raises(HTTPException) as exc_info:
@@ -185,14 +185,14 @@ class TestSerializeApprovedZoning:
 
 class TestNormalizePolygonWkt:
     def test_polygon(self):
-        from app.domains.geo.router import _normalize_polygon_wkt
+        from app.domains.geo.router_common import _normalize_polygon_wkt
 
         geom = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
         wkt = _normalize_polygon_wkt(geom)
         assert "POLYGON" in wkt
 
     def test_multipolygon_merges(self):
-        from app.domains.geo.router import _normalize_polygon_wkt
+        from app.domains.geo.router_common import _normalize_polygon_wkt
 
         geom = {
             "type": "MultiPolygon",
@@ -207,7 +207,7 @@ class TestNormalizePolygonWkt:
 
 class TestImportZonasPayload:
     def test_empty_features_raises(self):
-        from app.domains.geo.router import _import_zonas_operativas_payload
+        from app.domains.geo.router_common import _import_zonas_operativas_payload
 
         db = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
@@ -215,7 +215,7 @@ class TestImportZonasPayload:
         assert exc_info.value.status_code == 400
 
     def test_feature_without_geometry_raises(self):
-        from app.domains.geo.router import _import_zonas_operativas_payload
+        from app.domains.geo.router_common import _import_zonas_operativas_payload
 
         db = MagicMock()
         db.execute.return_value = MagicMock(rowcount=0)
@@ -227,7 +227,7 @@ class TestImportZonasPayload:
         assert exc_info.value.status_code == 400
 
     def test_unsupported_geometry_raises(self):
-        from app.domains.geo.router import _import_zonas_operativas_payload
+        from app.domains.geo.router_common import _import_zonas_operativas_payload
 
         db = MagicMock()
         db.execute.return_value = MagicMock(rowcount=0)
@@ -246,7 +246,7 @@ class TestImportZonasPayload:
         assert exc_info.value.status_code == 400
 
     def test_valid_import(self):
-        from app.domains.geo.router import _import_zonas_operativas_payload
+        from app.domains.geo.router_common import _import_zonas_operativas_payload
 
         db = MagicMock()
         db.execute.return_value = MagicMock(rowcount=0)
@@ -270,7 +270,7 @@ class TestImportZonasPayload:
 
 class TestImportApprovedZoningPayload:
     def test_feature_collection_format(self):
-        from app.domains.geo.router import _import_approved_zoning_payload
+        from app.domains.geo.router_common import _import_approved_zoning_payload
 
         db = MagicMock()
         repo = MagicMock()
@@ -296,7 +296,7 @@ class TestImportApprovedZoningPayload:
         assert result["imported_count"] == 1
 
     def test_flat_features_format(self):
-        from app.domains.geo.router import _import_approved_zoning_payload
+        from app.domains.geo.router_common import _import_approved_zoning_payload
 
         db = MagicMock()
         repo = MagicMock()
@@ -324,7 +324,7 @@ class TestImportApprovedZoningPayload:
         assert result["imported_count"] == 1
 
     def test_empty_features_raises(self):
-        from app.domains.geo.router import _import_approved_zoning_payload
+        from app.domains.geo.router_common import _import_approved_zoning_payload
 
         db = MagicMock()
         repo = MagicMock()
@@ -337,7 +337,7 @@ class TestImportApprovedZoningPayload:
 
 class TestUpsertBundleLayer:
     def test_creates_new_layer(self):
-        from app.domains.geo.router import _upsert_bundle_layer
+        from app.domains.geo.router_common import _upsert_bundle_layer
 
         db = MagicMock()
         db.query.return_value.filter.return_value.one_or_none.return_value = None
@@ -357,7 +357,7 @@ class TestUpsertBundleLayer:
         db.add.assert_called_once()
 
     def test_updates_existing_layer(self):
-        from app.domains.geo.router import _upsert_bundle_layer
+        from app.domains.geo.router_common import _upsert_bundle_layer
 
         existing = SimpleNamespace(
             nombre="old", fuente="old", archivo_path="/old.tif",
@@ -426,7 +426,7 @@ class TestGetTileClient:
 
 class TestHistoricFloods:
     def test_historic_floods_list(self):
-        from app.domains.geo.router import HISTORIC_FLOODS
+        from app.domains.geo.router_gee_support import HISTORIC_FLOODS
 
         assert len(HISTORIC_FLOODS) >= 2
         assert all("id" in f for f in HISTORIC_FLOODS)
@@ -440,14 +440,14 @@ class TestHistoricFloods:
 
 class TestRequestModels:
     def test_zonal_stats_request_defaults(self):
-        from app.domains.geo.router import ZonalStatsRequest
+        from app.domains.geo.router_analysis import ZonalStatsRequest
 
         req = ZonalStatsRequest(layer_tipo="slope")
         assert req.zona_source == "zonas_operativas"
         assert req.area_id is None
 
     def test_approved_zones_build_request(self):
-        from app.domains.geo.router import ApprovedZonesBuildRequest
+        from app.domains.geo.router_common import ApprovedZonesBuildRequest
 
         req = ApprovedZonesBuildRequest()
         assert req.assignments == {}
@@ -462,7 +462,7 @@ class TestRequestModels:
         assert req.nombre == "Zonificación Consorcio aprobada"
 
     def test_approved_zones_response(self):
-        from app.domains.geo.router import ApprovedZonesResponse
+        from app.domains.geo.router_common import ApprovedZonesResponse
 
         resp = ApprovedZonesResponse(
             id=str(uuid.uuid4()),
@@ -474,7 +474,7 @@ class TestRequestModels:
         assert resp.version == 1
 
     def test_geo_json_import_response(self):
-        from app.domains.geo.router import GeoJsonImportResponse
+        from app.domains.geo.router_common import GeoJsonImportResponse
 
         resp = GeoJsonImportResponse(
             importedCount=5,
@@ -484,7 +484,7 @@ class TestRequestModels:
         assert resp.imported_count == 5
 
     def test_geo_bundle_import_response(self):
-        from app.domains.geo.router import GeoBundleImportResponse
+        from app.domains.geo.router_common import GeoBundleImportResponse
 
         resp = GeoBundleImportResponse(
             layersImported=3,
@@ -503,25 +503,25 @@ class TestRequestModels:
         assert req.zone_legend == []
 
     def test_map_legend_item_request(self):
-        from app.domains.geo.router import MapLegendItemRequest
+        from app.domains.geo.router_common import MapLegendItemRequest
 
         item = MapLegendItemRequest(label="Zone A", color="#ff0000")
         assert item.detail is None
 
     def test_raster_legend_group_request(self):
-        from app.domains.geo.router import RasterLegendGroupRequest
+        from app.domains.geo.router_common import RasterLegendGroupRequest
 
         group = RasterLegendGroupRequest(label="Elevation")
         assert group.items == []
 
     def test_map_info_row_request(self):
-        from app.domains.geo.router import MapInfoRowRequest
+        from app.domains.geo.router_common import MapInfoRowRequest
 
         row = MapInfoRowRequest(label="Area", value="100 ha")
         assert row.label == "Area"
 
     def test_zone_summary_row_request(self):
-        from app.domains.geo.router import ZoneSummaryRowRequest
+        from app.domains.geo.router_common import ZoneSummaryRowRequest
 
         row = ZoneSummaryRowRequest(name="Zone A", subcuencas=3, areaHa=500.0)
         assert row.name == "Zone A"
