@@ -1,21 +1,26 @@
 /**
- * MeasurementToolbar — 3-button floating control for the measurement
- * workflow (SDD map-measurement-tools, Batch B).
+ * MeasurementToolbar — progressive-disclosure floating control for the
+ * measurement workflow (SDD map-measurement-tools, Batch-post refactor).
  *
  * The toolbar is a pure presentational component: it takes the current
  * mode + the "has any measurements?" flag, and wires 3 callbacks. State
  * lives in the `useMeasurement` hook that the parent owns.
  *
  * Contract pinned by these tests:
- * - Renders exactly 3 ActionIcon buttons: Distance, Area, Clear.
- * - Each button has an aria-label matching its Spanish tooltip.
- * - Clicking a button invokes the corresponding callback once.
- * - The "Distance" button is visually active when mode is
- *   'measuring-distance', and only then.
- * - The "Area" button is visually active when mode is 'measuring-area',
- *   and only then.
- * - The "Clear" button is DISABLED when `hasMeasurements` is false
- *   (nothing to clear) and ENABLED when there is at least one.
+ * - Renders a SINGLE trigger ActionIcon "Medir" that opens a Mantine
+ *   `Menu` with two items: "Medir distancia" and "Medir área".
+ *   Mirrors the Exportar dropdown pattern from `MapActionsPanel`.
+ * - When `mode !== 'idle'` the Medir trigger uses `variant="filled"`
+ *   so the user has a clear visual cue that measuring mode is live.
+ *   Mirrors the `#fd7e14` orange used by the draw modes in Batch B.
+ * - The "Limpiar" ActionIcon is CONDITIONALLY rendered: shown ONLY
+ *   when `hasMeasurements === true`. It is NOT disabled when there is
+ *   nothing to clear — it is hidden entirely to reduce chrome.
+ * - Clicking "Medir distancia" invokes `onStartDistance` exactly once
+ *   and closes the dropdown.
+ * - Clicking "Medir área" invokes `onStartArea` exactly once and
+ *   closes the dropdown.
+ * - Clicking "Limpiar" invokes `onClear` exactly once.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -31,7 +36,7 @@ function renderWithMantine(ui: ReactNode) {
 }
 
 describe('<MeasurementToolbar />', () => {
-  it('renders 3 buttons with the expected aria-labels', () => {
+  it('renders only the Medir trigger when idle and nothing has been measured', () => {
     renderWithMantine(
       <MeasurementToolbar
         mode="idle"
@@ -42,12 +47,52 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /medir distancia/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /medir área/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /limpiar mediciones/i })).toBeInTheDocument();
+    // Medir trigger is present.
+    expect(screen.getByRole('button', { name: /medir/i })).toBeInTheDocument();
+
+    // Limpiar is NOT rendered when there's nothing to clear.
+    expect(screen.queryByRole('button', { name: /limpiar/i })).not.toBeInTheDocument();
+
+    // Exactly ONE toolbar button rendered in this state.
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
-  it('calls onStartDistance when the Distance button is clicked', async () => {
+  it('renders the Limpiar button ALONGSIDE Medir when hasMeasurements is true', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={true}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /medir/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /limpiar/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('opens a dropdown with "Medir distancia" and "Medir área" when Medir is clicked', async () => {
+    const user = userEvent.setup();
+
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /medir/i }));
+
+    expect(screen.getByText('Medir distancia')).toBeInTheDocument();
+    expect(screen.getByText('Medir área')).toBeInTheDocument();
+  });
+
+  it('calls onStartDistance when "Medir distancia" is selected from the dropdown', async () => {
     const user = userEvent.setup();
     const onStartDistance = vi.fn();
 
@@ -61,11 +106,13 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /medir distancia/i }));
+    await user.click(screen.getByRole('button', { name: /medir/i }));
+    await user.click(screen.getByText('Medir distancia'));
+
     expect(onStartDistance).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onStartArea when the Area button is clicked', async () => {
+  it('calls onStartArea when "Medir área" is selected from the dropdown', async () => {
     const user = userEvent.setup();
     const onStartArea = vi.fn();
 
@@ -79,11 +126,13 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /medir área/i }));
+    await user.click(screen.getByRole('button', { name: /medir/i }));
+    await user.click(screen.getByText('Medir área'));
+
     expect(onStartArea).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onClear when the Clear button is clicked (and clearable)', async () => {
+  it('calls onClear when the Limpiar button is clicked', async () => {
     const user = userEvent.setup();
     const onClear = vi.fn();
 
@@ -97,41 +146,11 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /limpiar mediciones/i }));
+    await user.click(screen.getByRole('button', { name: /limpiar/i }));
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the Clear button when hasMeasurements is false', () => {
-    renderWithMantine(
-      <MeasurementToolbar
-        mode="idle"
-        hasMeasurements={false}
-        onStartDistance={() => {}}
-        onStartArea={() => {}}
-        onClear={() => {}}
-      />,
-    );
-
-    const clearBtn = screen.getByRole('button', { name: /limpiar mediciones/i });
-    expect(clearBtn).toBeDisabled();
-  });
-
-  it('enables the Clear button when hasMeasurements is true', () => {
-    renderWithMantine(
-      <MeasurementToolbar
-        mode="idle"
-        hasMeasurements={true}
-        onStartDistance={() => {}}
-        onStartArea={() => {}}
-        onClear={() => {}}
-      />,
-    );
-
-    const clearBtn = screen.getByRole('button', { name: /limpiar mediciones/i });
-    expect(clearBtn).toBeEnabled();
-  });
-
-  it('marks the Distance button as aria-pressed when mode is measuring-distance', () => {
+  it('marks the Medir trigger as active (variant="filled") when mode is measuring-distance', () => {
     renderWithMantine(
       <MeasurementToolbar
         mode="measuring-distance"
@@ -142,14 +161,13 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    const distanceBtn = screen.getByRole('button', { name: /medir distancia/i });
-    const areaBtn = screen.getByRole('button', { name: /medir área/i });
-
-    expect(distanceBtn).toHaveAttribute('aria-pressed', 'true');
-    expect(areaBtn).toHaveAttribute('aria-pressed', 'false');
+    const medirBtn = screen.getByRole('button', { name: /medir/i });
+    // Mantine renders `variant="filled"` with the `mantine-ActionIcon-root`
+    // data attribute `data-variant="filled"`.
+    expect(medirBtn).toHaveAttribute('data-variant', 'filled');
   });
 
-  it('marks the Area button as aria-pressed when mode is measuring-area', () => {
+  it('marks the Medir trigger as active (variant="filled") when mode is measuring-area', () => {
     renderWithMantine(
       <MeasurementToolbar
         mode="measuring-area"
@@ -160,14 +178,11 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    const distanceBtn = screen.getByRole('button', { name: /medir distancia/i });
-    const areaBtn = screen.getByRole('button', { name: /medir área/i });
-
-    expect(distanceBtn).toHaveAttribute('aria-pressed', 'false');
-    expect(areaBtn).toHaveAttribute('aria-pressed', 'true');
+    const medirBtn = screen.getByRole('button', { name: /medir/i });
+    expect(medirBtn).toHaveAttribute('data-variant', 'filled');
   });
 
-  it('marks neither Distance nor Area as aria-pressed when mode is idle', () => {
+  it('does NOT mark the Medir trigger as filled when mode is idle', () => {
     renderWithMantine(
       <MeasurementToolbar
         mode="idle"
@@ -178,13 +193,7 @@ describe('<MeasurementToolbar />', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /medir distancia/i })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-    expect(screen.getByRole('button', { name: /medir área/i })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    const medirBtn = screen.getByRole('button', { name: /medir/i });
+    expect(medirBtn).not.toHaveAttribute('data-variant', 'filled');
   });
 });
