@@ -424,23 +424,6 @@ class TestGetTileClient:
         router_mod._tile_client = None  # cleanup
 
 
-# ---------------------------------------------------------------------------
-# STAC endpoints (light mocking)
-# ---------------------------------------------------------------------------
-
-
-class TestStacEndpoints:
-    def test_stac_root_returns_catalog(self):
-        from app.domains.geo.router import stac_root
-
-        request = MagicMock()
-        request.base_url = "http://localhost:8000/"
-        result = stac_root(request)
-        assert result["type"] == "Catalog"
-        assert result["stac_version"] == "1.0.0"
-        assert any(link["rel"] == "collections" for link in result["links"])
-
-
 class TestHistoricFloods:
     def test_historic_floods_list(self):
         from app.domains.geo.router import HISTORIC_FLOODS
@@ -462,54 +445,6 @@ class TestRequestModels:
         req = ZonalStatsRequest(layer_tipo="slope")
         assert req.zona_source == "zonas_operativas"
         assert req.area_id is None
-
-    def test_water_detection_request(self):
-        from app.domains.geo.router import WaterDetectionRequest
-
-        req = WaterDetectionRequest(
-            zona_id=uuid.uuid4(),
-            target_date="2025-03-01",
-        )
-        assert req.days_window == 15
-        assert req.cloud_cover_max == 20
-
-    def test_water_multi_date_request(self):
-        from app.domains.geo.router import WaterMultiDateRequest
-
-        req = WaterMultiDateRequest(
-            zona_id=uuid.uuid4(),
-            dates=["2025-01-01", "2025-02-01"],
-        )
-        assert len(req.dates) == 2
-
-    def test_ndwi_trend_request(self):
-        from app.domains.geo.router import NdwiTrendRequest
-
-        req = NdwiTrendRequest(
-            zona_id=uuid.uuid4(),
-            start_date="2025-01-01",
-            end_date="2025-06-01",
-        )
-        assert req.cloud_cover_max == 30
-
-    def test_raster_compare_request(self):
-        from app.domains.geo.router import RasterCompareRequest
-
-        req = RasterCompareRequest(layer_tipo="twi")
-        assert req.zona_id is None
-
-    def test_import_canals_request(self):
-        from app.domains.geo.router import ImportCanalsRequest
-
-        req = ImportCanalsRequest(geojson_paths=["/a.geojson"])
-        assert req.rebuild_topology is True
-        assert req.tolerance == 0.0001
-
-    def test_shortest_path_request(self):
-        from app.domains.geo.router import ShortestPathRequest
-
-        req = ShortestPathRequest(from_lon=-63.0, from_lat=-32.0, to_lon=-63.1, to_lat=-32.1)
-        assert req.from_lon == -63.0
 
     def test_approved_zones_build_request(self):
         from app.domains.geo.router import ApprovedZonesBuildRequest
@@ -607,69 +542,3 @@ class TestRequestModels:
 
         br = BackfillRequest(start_date="2025-01-01", end_date="2025-01-31")
         assert br.start_date == date(2025, 1, 1)
-
-
-# ---------------------------------------------------------------------------
-# _run_feature_extraction
-# ---------------------------------------------------------------------------
-
-
-class TestRunFeatureExtraction:
-    def test_extracts_features_for_labels(self):
-        from app.domains.geo.router import _run_feature_extraction
-
-        mock_repo = MagicMock()
-        mock_repo.extract_zone_features.return_value = {"hand_mean": 1.5}
-        mock_db = MagicMock()
-
-        with (
-            patch("app.domains.geo.router.GeoRepository", return_value=mock_repo),
-            patch("app.db.session.SessionLocal", return_value=mock_db),
-        ):
-            _run_feature_extraction(
-                event_id=uuid.uuid4(),
-                event_date=date(2025, 3, 1),
-                label_ids_and_zonas=[(str(uuid.uuid4()), str(uuid.uuid4()))],
-            )
-            mock_repo.extract_zone_features.assert_called_once()
-            mock_db.commit.assert_called_once()
-            mock_db.close.assert_called_once()
-
-    def test_handles_extraction_failure(self):
-        from app.domains.geo.router import _run_feature_extraction
-
-        mock_repo = MagicMock()
-        mock_repo.extract_zone_features.side_effect = RuntimeError("gee down")
-        mock_db = MagicMock()
-
-        with (
-            patch("app.domains.geo.router.GeoRepository", return_value=mock_repo),
-            patch("app.db.session.SessionLocal", return_value=mock_db),
-        ):
-            # Should not raise
-            _run_feature_extraction(
-                event_id=uuid.uuid4(),
-                event_date=date(2025, 3, 1),
-                label_ids_and_zonas=[(str(uuid.uuid4()), str(uuid.uuid4()))],
-            )
-            mock_db.rollback.assert_called_once()
-            mock_db.close.assert_called_once()
-
-    def test_empty_features_increments_failed(self):
-        from app.domains.geo.router import _run_feature_extraction
-
-        mock_repo = MagicMock()
-        mock_repo.extract_zone_features.return_value = None  # empty result
-        mock_db = MagicMock()
-
-        with (
-            patch("app.domains.geo.router.GeoRepository", return_value=mock_repo),
-            patch("app.db.session.SessionLocal", return_value=mock_db),
-        ):
-            _run_feature_extraction(
-                event_id=uuid.uuid4(),
-                event_date=date(2025, 3, 1),
-                label_ids_and_zonas=[(str(uuid.uuid4()), str(uuid.uuid4()))],
-            )
-            mock_repo.update_label_features.assert_not_called()
-            mock_db.close.assert_called_once()

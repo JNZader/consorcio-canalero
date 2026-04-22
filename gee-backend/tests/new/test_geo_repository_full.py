@@ -1,8 +1,7 @@
 """Comprehensive tests for geo/repository.py — all remaining methods.
 
 Uses real database fixtures (conftest.py pattern) with transaction rollback.
-Covers: job CRUD, layer CRUD, approved zoning, analisis, flood events,
-rainfall records, and bulk upserts.
+Covers: job CRUD, layer CRUD, approved zoning, and analisis.
 """
 
 import uuid
@@ -27,12 +26,9 @@ import app.domains.tramites.models  # noqa: F401
 from app.domains.geo.models import (
     AnalisisGeo,
     EstadoGeoJob,
-    FloodEvent,
-    FloodLabel,
     GeoApprovedZoning,
     GeoJob,
     GeoLayer,
-    RainfallRecord,
 )
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.repository import GeoRepository
@@ -371,117 +367,3 @@ class TestAnalisisGeo:
             db, analisis.id, estado="failed", error="GEE timeout"
         )
         assert updated.error == "GEE timeout"
-
-
-# ──────────────────────────────────────────────
-# RAINFALL RECORDS
-# ──────────────────────────────────────────────
-
-
-class TestRainfallRecords:
-    def test_insert_rainfall_record(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 1")
-        record = repo.insert_rainfall_record(
-            db,
-            zona_operativa_id=zona_id,
-            record_date=date(2025, 6, 15),
-            precipitation_mm=12.5,
-        )
-        assert record.id is not None
-        assert record.precipitation_mm == 12.5
-
-    def test_get_rainfall_by_zone(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 2")
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=zona_id,
-            record_date=date(2025, 6, 1), precipitation_mm=5.0,
-        )
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=zona_id,
-            record_date=date(2025, 6, 2), precipitation_mm=10.0,
-        )
-        records = repo.get_rainfall_by_zone(db, zona_id)
-        assert len(records) == 2
-
-    def test_get_rainfall_by_zone_with_date_range(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 3")
-        for day in range(1, 11):
-            repo.insert_rainfall_record(
-                db, zona_operativa_id=zona_id,
-                record_date=date(2025, 6, day), precipitation_mm=float(day),
-            )
-        records = repo.get_rainfall_by_zone(
-            db, zona_id, start_date=date(2025, 6, 3), end_date=date(2025, 6, 7),
-        )
-        assert len(records) == 5
-
-    def test_get_accumulated_rainfall(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 4")
-        for day in range(1, 8):
-            repo.insert_rainfall_record(
-                db, zona_operativa_id=zona_id,
-                record_date=date(2025, 6, day), precipitation_mm=10.0,
-            )
-        total = repo.get_accumulated_rainfall(
-            db, zona_id, reference_date=date(2025, 6, 7), window_days=7,
-        )
-        assert total == 70.0
-
-    def test_get_accumulated_rainfall_empty(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 5")
-        total = repo.get_accumulated_rainfall(
-            db, zona_id, reference_date=date(2025, 6, 1), window_days=7,
-        )
-        assert total == 0.0
-
-    def test_get_rainfall_summary(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 6")
-        for day in range(1, 6):
-            repo.insert_rainfall_record(
-                db, zona_operativa_id=zona_id,
-                record_date=date(2025, 6, day), precipitation_mm=float(day * 2),
-            )
-        summary = repo.get_rainfall_summary(
-            db, start_date=date(2025, 6, 1), end_date=date(2025, 6, 5),
-        )
-        assert len(summary) >= 1
-        assert summary[0]["total_mm"] > 0
-
-    def test_get_rainfall_summary_with_zone_filter(self, db: Session, repo: GeoRepository):
-        zona_id = _create_zona(db, "Rainfall Zone 7a")
-        other_zona = _create_zona(db, "Rainfall Zone 7b")
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=zona_id,
-            record_date=date(2025, 6, 1), precipitation_mm=10.0,
-        )
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=other_zona,
-            record_date=date(2025, 6, 1), precipitation_mm=20.0,
-        )
-        summary = repo.get_rainfall_summary(
-            db, start_date=date(2025, 6, 1), end_date=date(2025, 6, 1),
-            zona_operativa_id=zona_id,
-        )
-        assert len(summary) == 1
-        assert summary[0]["total_mm"] == 10.0
-
-    def test_get_rainfall_daily_max(self, db: Session, repo: GeoRepository):
-        zona_a = _create_zona(db, "Rainfall Zone 8a")
-        zona_b = _create_zona(db, "Rainfall Zone 8b")
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=zona_a,
-            record_date=date(2025, 6, 1), precipitation_mm=5.0,
-        )
-        repo.insert_rainfall_record(
-            db, zona_operativa_id=zona_b,
-            record_date=date(2025, 6, 1), precipitation_mm=15.0,
-        )
-        daily = repo.get_rainfall_daily_max(
-            db, start_date=date(2025, 6, 1), end_date=date(2025, 6, 1),
-        )
-        assert len(daily) == 1
-        assert daily[0]["precipitation_mm"] == 15.0
-
-    def test_bulk_upsert_rainfall_empty(self, db: Session, repo: GeoRepository):
-        count = repo.bulk_upsert_rainfall(db, [])
-        assert count == 0
