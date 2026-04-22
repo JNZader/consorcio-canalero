@@ -45,15 +45,15 @@ services:
       - backend-cache:/app/.cache
       - geo-data:/data/geo
     environment:
-      - ENVIRONMENT=development
-      - DEBUG=true
-      - RATE_LIMIT_DISABLED=true
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-true}
+      - RATE_LIMIT_DISABLED=${RATE_LIMIT_DISABLED:-true}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - GEO_WORKER_TILE_URL=http://geo-worker:8001
-      - MARTIN_INTERNAL_URL=http://martin:3000
-      - MARTIN_PUBLIC_URL=
-      - CORS_ORIGINS=https://consorcio-canalero.pages.dev,http://localhost:5173,http://localhost:3000
+      - MARTIN_INTERNAL_URL=${MARTIN_INTERNAL_URL:-http://martin:3000}
+      - MARTIN_PUBLIC_URL=${MARTIN_PUBLIC_URL:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://consorcio-canalero.pages.dev,http://localhost:5173,http://localhost:3000}
     env_file:
       - ./gee-backend/.env
     depends_on:
@@ -108,7 +108,7 @@ services:
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
     environment:
-      - ENVIRONMENT=development
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     env_file:
@@ -146,7 +146,7 @@ services:
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
     environment:
-      - ENVIRONMENT=development
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     env_file:
