@@ -92,22 +92,22 @@ class TestFmtMoney:
 
 class TestDecodeDataUrlImage:
     def test_none_input(self):
-        from app.shared.pdf.builders import _decode_data_url_image
+        from app.shared.pdf.builders_common import decode_data_url_image as _decode_data_url_image
 
         assert _decode_data_url_image(None) is None
 
     def test_empty_string(self):
-        from app.shared.pdf.builders import _decode_data_url_image
+        from app.shared.pdf.builders_common import decode_data_url_image as _decode_data_url_image
 
         assert _decode_data_url_image("") is None
 
     def test_no_comma(self):
-        from app.shared.pdf.builders import _decode_data_url_image
+        from app.shared.pdf.builders_common import decode_data_url_image as _decode_data_url_image
 
         assert _decode_data_url_image("data:image/png;base64") is None
 
     def test_valid_data_url(self):
-        from app.shared.pdf.builders import _decode_data_url_image
+        from app.shared.pdf.builders_common import decode_data_url_image as _decode_data_url_image
 
         # Create a small valid base64 image
         raw_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
@@ -117,7 +117,7 @@ class TestDecodeDataUrlImage:
         assert isinstance(result, io.BytesIO)
 
     def test_invalid_base64(self):
-        from app.shared.pdf.builders import _decode_data_url_image
+        from app.shared.pdf.builders_common import decode_data_url_image as _decode_data_url_image
 
         result = _decode_data_url_image("data:image/png;base64,!!!invalid!!!")
         assert result is None
@@ -130,7 +130,7 @@ class TestDecodeDataUrlImage:
 
 class TestBuildColorLegendTable:
     def test_with_items(self, branding):
-        from app.shared.pdf.builders import _build_color_legend_table
+        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
 
         items = [
             {"label": "Zone A", "color": "#ff0000"},
@@ -140,13 +140,13 @@ class TestBuildColorLegendTable:
         assert len(story) >= 2  # title + table
 
     def test_empty_items(self, branding):
-        from app.shared.pdf.builders import _build_color_legend_table
+        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
 
         story = _build_color_legend_table("Empty", [], branding)
         assert len(story) >= 2  # title + "Sin datos" paragraph
 
     def test_with_extra_value_key(self, branding):
-        from app.shared.pdf.builders import _build_color_legend_table
+        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
 
         items = [
             {"label": "Road A", "color": "#888888", "detail": "100 km"},
@@ -164,7 +164,7 @@ class TestBuildColorLegendTable:
 
 class TestBuildApprovedZoningPdf:
     def test_with_features(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_pdf
 
         zoning = SimpleNamespace(
             nombre="Test Zoning",
@@ -198,7 +198,7 @@ class TestBuildApprovedZoningPdf:
         assert result.read(4) == b"%PDF"
 
     def test_without_features(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_pdf
 
         zoning = SimpleNamespace(
             nombre="Empty Zoning",
@@ -212,7 +212,7 @@ class TestBuildApprovedZoningPdf:
         assert isinstance(result, io.BytesIO)
 
     def test_with_invalid_area_values(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_pdf
 
         zoning = SimpleNamespace(
             nombre="Bad Data",
@@ -231,7 +231,7 @@ class TestBuildApprovedZoningPdf:
         assert isinstance(result, io.BytesIO)
 
     def test_none_feature_collection(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_pdf
 
         zoning = SimpleNamespace(
             nombre="No FC",
@@ -252,7 +252,7 @@ class TestBuildApprovedZoningPdf:
 
 class TestBuildApprovedZoningMapPdf:
     def test_with_all_elements(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_map_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         # Create a tiny valid PNG for the map image
         import struct
@@ -297,7 +297,7 @@ class TestBuildApprovedZoningMapPdf:
         assert result.read(4) == b"%PDF"
 
     def test_without_image(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_map_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         payload = {
             "title": "No Image Map",
@@ -311,7 +311,7 @@ class TestBuildApprovedZoningMapPdf:
         assert isinstance(result, io.BytesIO)
 
     def test_zone_legend_without_summary(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_map_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         payload = {
             "title": "Legend Only",
@@ -325,7 +325,7 @@ class TestBuildApprovedZoningMapPdf:
         assert isinstance(result, io.BytesIO)
 
     def test_road_legend_only(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_map_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         payload = {
             "title": "Roads Only",
@@ -339,7 +339,7 @@ class TestBuildApprovedZoningMapPdf:
         assert isinstance(result, io.BytesIO)
 
     def test_empty_title(self, branding):
-        from app.shared.pdf.builders import build_approved_zoning_map_pdf
+        from app.shared.pdf.builders_zoning import build_approved_zoning_map_pdf
 
         payload = {
             "title": "",
