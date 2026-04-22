@@ -7,9 +7,11 @@
  * callbacks.
  *
  * Placement:
- * - Absolute, `top: 10, left: 10` — the map's built-in NavigationControl
- *   lives at `top-right` (see `useMapInitialization.ts`), so we don't
- *   collide with it.
+ * - Absolute, `top: 150, right: 10` — sits right-aligned, directly below
+ *   the MapLibre `top-right` control stack (NavigationControl ~110px +
+ *   FullscreenControl ~30px + margin). See `useMapInitialization.ts` for
+ *   the controls that define the stack. Horizontal layout (3 buttons in a
+ *   `Group`) so the row doesn't clash visually with the fullscreen button.
  * - `zIndex: 16` matches `MapActionsPanel`'s layer so we're above the
  *   map canvas but below modals/menus.
  *
@@ -22,7 +24,7 @@
  *   exposes `aria-disabled` via Mantine.
  */
 
-import { ActionIcon, Paper, Stack, Tooltip } from '@mantine/core';
+import { ActionIcon, Group, Paper, Tooltip } from '@mantine/core';
 import { memo } from 'react';
 
 import { IconPolygon, IconRuler, IconTrash } from '../../ui/icons';
@@ -53,15 +55,15 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
       radius="md"
       style={{
         position: 'absolute',
-        top: 10,
-        left: 10,
+        top: 150,
+        right: 10,
         zIndex: 16,
         background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
         backdropFilter: 'blur(6px)',
       }}
     >
-      <Stack gap={4}>
-        <Tooltip label="Medir distancia" position="right" withArrow>
+      <Group gap={4} wrap="nowrap">
+        <Tooltip label="Medir distancia" position="bottom" withArrow>
           <ActionIcon
             aria-label="Medir distancia"
             aria-pressed={isMeasuringDistance}
@@ -74,7 +76,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           </ActionIcon>
         </Tooltip>
 
-        <Tooltip label="Medir área" position="right" withArrow>
+        <Tooltip label="Medir área" position="bottom" withArrow>
           <ActionIcon
             aria-label="Medir área"
             aria-pressed={isMeasuringArea}
@@ -87,7 +89,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           </ActionIcon>
         </Tooltip>
 
-        <Tooltip label="Limpiar mediciones" position="right" withArrow>
+        <Tooltip label="Limpiar mediciones" position="bottom" withArrow>
           <ActionIcon
             aria-label="Limpiar mediciones"
             size="lg"
@@ -99,7 +101,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             <IconTrash size={18} />
           </ActionIcon>
         </Tooltip>
-      </Stack>
+      </Group>
     </Paper>
   );
 });
