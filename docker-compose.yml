@@ -9,9 +9,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: consorcio
-      POSTGRES_USER: consorcio
-      POSTGRES_PASSWORD: consorcio_dev
+      POSTGRES_DB: ${POSTGRES_DB:-consorcio}
+      POSTGRES_USER: ${POSTGRES_USER:-consorcio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-consorcio_dev}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -48,8 +48,8 @@ services:
       - ENVIRONMENT=development
       - DEBUG=true
       - RATE_LIMIT_DISABLED=true
-      - DATABASE_URL=postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - GEO_WORKER_TILE_URL=http://geo-worker:8001
       - MARTIN_INTERNAL_URL=http://martin:3000
       - MARTIN_PUBLIC_URL=
@@ -109,8 +109,8 @@ services:
       - geo-data:/data/geo
     environment:
       - ENVIRONMENT=development
-      - DATABASE_URL=postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     env_file:
       - ./gee-backend/.env
     depends_on:
@@ -147,8 +147,8 @@ services:
       - geo-data:/data/geo
     environment:
       - ENVIRONMENT=development
-      - DATABASE_URL=postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     env_file:
       - ./gee-backend/.env
     depends_on:
