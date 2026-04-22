@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     import geopandas as gpd
 
 import numpy as np
-from shapely.geometry import LineString
 
 from app.domains.geo.intelligence.calculations_hydrology_support import (
     calcular_indice_criticidad_hidrica_impl,

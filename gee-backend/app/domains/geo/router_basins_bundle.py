@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
-    ApprovedZonesBuildRequest,
     ApprovedZonesMapPdfRequest,
     ApprovedZonesResponse,
     ApprovedZonesSaveRequest,
