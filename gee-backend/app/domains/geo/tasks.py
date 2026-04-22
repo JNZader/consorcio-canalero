@@ -540,23 +540,3 @@ def composite_analysis_task(
         tipo_geo_layer=TipoGeoLayer,
         estado_geo_job=EstadoGeoJob,
     )
-
-
-@celery_app.task(queue="geo", name="geo.rainfall_daily_sync")
-def rainfall_daily_sync() -> dict:
-    from datetime import date as date_type, timedelta as td
-
-    from app.domains.geo.rainfall_service import backfill_rainfall
-
-    db = _get_db()
-    try:
-        yesterday = date_type.today() - td(days=1)
-        result = backfill_rainfall(db, start_date=yesterday, end_date=yesterday)
-        logger.info(
-            "rainfall_daily_sync.done",
-            date=yesterday.isoformat(),
-            records=result["total_records"],
-        )
-        return result
-    finally:
-        db.close()

@@ -277,63 +277,6 @@ class DemPipelineResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────
-# RAINFALL SCHEMAS
-# ──────────────────────────────────────────────
-
-
-class RainfallRecordResponse(BaseModel):
-    """Single rainfall record for a zona on a given date."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    zona_operativa_id: uuid.UUID
-    date: date
-    precipitation_mm: float
-    source: str
-    created_at: datetime
-
-
-class BackfillRequest(BaseModel):
-    """Payload to trigger a rainfall backfill job."""
-
-    start_date: date = Field(..., description="Start date for backfill")
-    end_date: date = Field(..., description="End date for backfill")
-    zona_ids: Optional[list[uuid.UUID]] = Field(
-        None,
-        description="Specific zona IDs to backfill. If null, all active zonas.",
-    )
-    source: str = Field(
-        default="CHIRPS",
-        description="Rainfall data source: CHIRPS (historical) or IMERG (extreme events)",
-        pattern="^(CHIRPS|IMERG)$",
-    )
-
-
-class RainfallEventResponse(BaseModel):
-    """A detected rainfall event exceeding a threshold."""
-
-    event_start: date = Field(..., description="First day of the rainfall event")
-    event_end: date = Field(..., description="Last day of the rainfall event")
-    zona_operativa_id: uuid.UUID
-    accumulated_mm: float = Field(
-        ..., description="Total accumulated precipitation in mm"
-    )
-    duration_days: int = Field(..., description="Number of days in the event window")
-
-
-class RainfallSuggestionResponse(BaseModel):
-    """A rainfall event paired with a recommended Sentinel-2 image."""
-
-    event_start: date
-    event_end: date
-    zona_operativa_id: uuid.UUID
-    accumulated_mm: float
-    suggested_image_date: Optional[date] = None
-    cloud_cover_pct: Optional[float] = None
-
-
-# ──────────────────────────────────────────────
 # NDWI BASELINE SCHEMAS
 # ──────────────────────────────────────────────
 
@@ -409,14 +352,3 @@ class EventoAfectadosResponse(BaseModel):
     total_consorcistas: int
     total_ha: float
     zonas_afectadas: list[AfectadosResponse]
-
-
-class RainfallSummaryResponse(BaseModel):
-    """Aggregated rainfall statistics for a zona over a period."""
-
-    zona_operativa_id: uuid.UUID
-    zona_name: Optional[str] = None
-    total_mm: float = Field(..., description="Total precipitation in mm")
-    avg_mm: float = Field(..., description="Average daily precipitation in mm")
-    max_mm: float = Field(..., description="Maximum single-day precipitation in mm")
-    rainy_days: int = Field(..., description="Number of days with precipitation > 0")

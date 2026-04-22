@@ -8,10 +8,10 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import case, func, literal, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.domains.geo.models import GeoApprovedZoning, GeoLayer, RainfallRecord
+from app.domains.geo.models import GeoApprovedZoning, GeoLayer
 
 
 def paginated_results(
@@ -44,84 +44,6 @@ def approved_zoning_stmt(*, active_only: bool = False, cuenca: Optional[str] = N
     else:
         stmt = stmt.where(GeoApprovedZoning.cuenca == cuenca)
     return stmt
-
-
-def round_rainfall_summary_row(row) -> dict[str, Any]:
-    """Serialize an aggregated rainfall row to a response dict."""
-    return {
-        "zona_operativa_id": row.zona_operativa_id,
-        "total_mm": round(float(row.total_mm or 0), 2),
-        "avg_mm": round(float(row.avg_mm or 0), 2),
-        "max_mm": round(float(row.max_mm or 0), 2),
-        "rainy_days": int(row.rainy_days or 0),
-    }
-
-
-def rainfall_priority_case():
-    return case(
-        (RainfallRecord.source == "IMERG", literal(0)),
-        else_=literal(1),
-    )
-
-
-def build_rainfall_summary_subquery(
-    *,
-    start_date: date,
-    end_date: date,
-    zona_operativa_id: Optional[uuid.UUID] = None,
-    source: Optional[str] = None,
-):
-    """Return the deduplicated rainfall subquery used by summary/daily aggregations."""
-    inner = (
-        select(
-            RainfallRecord.zona_operativa_id,
-            RainfallRecord.date,
-            RainfallRecord.precipitation_mm,
-        )
-        .where(
-            RainfallRecord.date >= start_date,
-            RainfallRecord.date <= end_date,
-        )
-        .distinct(RainfallRecord.zona_operativa_id, RainfallRecord.date)
-        .order_by(
-            RainfallRecord.zona_operativa_id,
-            RainfallRecord.date,
-            rainfall_priority_case().asc(),
-        )
-    )
-    if source is not None:
-        inner = inner.where(RainfallRecord.source == source)
-    if zona_operativa_id is not None:
-        inner = inner.where(RainfallRecord.zona_operativa_id == zona_operativa_id)
-    return inner.subquery()
-
-
-def build_rainfall_daily_subquery(
-    *,
-    start_date: date,
-    end_date: date,
-    source: Optional[str] = None,
-):
-    inner = (
-        select(
-            RainfallRecord.date,
-            RainfallRecord.zona_operativa_id,
-            RainfallRecord.precipitation_mm,
-        )
-        .where(
-            RainfallRecord.date >= start_date,
-            RainfallRecord.date <= end_date,
-        )
-        .distinct(RainfallRecord.date, RainfallRecord.zona_operativa_id)
-        .order_by(
-            RainfallRecord.date,
-            RainfallRecord.zona_operativa_id,
-            rainfall_priority_case().asc(),
-        )
-    )
-    if source is not None:
-        inner = inner.where(RainfallRecord.source == source)
-    return inner.subquery()
 
 
 def compute_raster_zone_features(

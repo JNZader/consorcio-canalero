@@ -18,9 +18,6 @@ from app.domains.geo.schemas import (
     FloodEventListResponse,
     FloodEventResponse,
     FloodLabelResponse,
-    RainfallEventResponse,
-    RainfallRecordResponse,
-    RainfallSummaryResponse,
     TrainingResultResponse,
 )
 from app.domains.geo.intelligence.schemas import (
@@ -229,100 +226,6 @@ class TestFloodEventContracts:
         assert "satellite_source" in body
         assert "labels" in body
         assert isinstance(body["labels"], list)
-
-
-# ──────────────────────────────────────────────
-# RAINFALL ENDPOINTS
-# ──────────────────────────────────────────────
-
-
-class TestRainfallContracts:
-    """Contract: /geo/rainfall/* response shapes."""
-
-    def test_backfill_422_missing_dates(self, client):
-        """POST /rainfall/backfill with missing dates returns 422."""
-        resp = client.post("/api/v2/geo/rainfall/backfill", json={})
-        assert resp.status_code == 422
-
-    def test_rainfall_summary_requires_dates(self, client):
-        """GET /rainfall/summary without query params returns 422."""
-        resp = client.get("/api/v2/geo/rainfall/summary")
-        assert resp.status_code == 422
-
-    def test_rainfall_daily_requires_dates(self, client):
-        """GET /rainfall/daily without query params returns 422."""
-        resp = client.get("/api/v2/geo/rainfall/daily")
-        assert resp.status_code == 422
-
-    def test_rainfall_zones_200(self, client, mock_geo_repo):
-        """GET /rainfall/zones/{zone_id} returns zone rainfall data."""
-        zone_id = uuid.uuid4()
-        mock_geo_repo.get_rainfall_by_zone.return_value = []
-
-        resp = client.get(f"/api/v2/geo/rainfall/zones/{zone_id}")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert "zona_operativa_id" in body
-        assert "records" in body
-        assert isinstance(body["records"], list)
-
-    def test_rainfall_events_200(self, client, mock_db):
-        """GET /rainfall/events returns event detection results."""
-        with patch(
-            "app.domains.geo.rainfall_service.detect_rainfall_events",
-            return_value=[],
-        ):
-            resp = client.get(
-                "/api/v2/geo/rainfall/events",
-                params={"start": "2024-01-01", "end": "2024-12-31"},
-            )
-            assert resp.status_code == 200
-            body = resp.json()
-            assert "threshold_mm" in body
-            assert "window_days" in body
-            assert "total" in body
-            assert "events" in body
-            assert isinstance(body["events"], list)
-
-    def test_rainfall_events_default_threshold(self, client, mock_db):
-        """GET /rainfall/events uses default threshold_mm=50."""
-        with patch(
-            "app.domains.geo.rainfall_service.detect_rainfall_events",
-            return_value=[],
-        ):
-            resp = client.get("/api/v2/geo/rainfall/events")
-            if resp.status_code == 200:
-                body = resp.json()
-                assert body["threshold_mm"] == 50.0
-
-    def test_rainfall_suggestions_200(self, client, mock_db):
-        """GET /rainfall/suggestions returns suggestion list."""
-        with patch(
-            "app.domains.geo.rainfall_service.detect_rainfall_events",
-            return_value=[],
-        ):
-            resp = client.get(
-                "/api/v2/geo/rainfall/suggestions",
-                params={"start": "2024-01-01", "end": "2024-12-31"},
-            )
-            if resp.status_code == 200:
-                body = resp.json()
-                assert isinstance(body, dict)
-
-    def test_backfill_202(self, client):
-        """POST /rainfall/backfill returns 202 with job info."""
-        with patch("app.domains.geo.tasks.rainfall_backfill") as mock_task:
-            mock_task.delay.return_value = MagicMock(id="celery-task-123")
-
-            payload = {
-                "start_date": "2024-01-01",
-                "end_date": "2024-12-31",
-            }
-            resp = client.post("/api/v2/geo/rainfall/backfill", json=payload)
-            if resp.status_code == 202:
-                body = resp.json()
-                assert "job_id" in body
-                assert "status" in body
 
 
 # ──────────────────────────────────────────────
@@ -565,41 +468,6 @@ class TestResponseSchemaValidation:
         }
         result = FloodLabelResponse(**data)
         assert result.is_flooded is True
-
-    def test_rainfall_record_validates(self):
-        data = {
-            "id": str(uuid.uuid4()),
-            "zona_operativa_id": str(uuid.uuid4()),
-            "date": "2025-01-15",
-            "precipitation_mm": 25.4,
-            "source": "CHIRPS",
-            "created_at": "2025-01-15T00:00:00",
-        }
-        result = RainfallRecordResponse(**data)
-        assert result.precipitation_mm == 25.4
-
-    def test_rainfall_event_validates(self):
-        data = {
-            "event_start": "2025-01-01",
-            "event_end": "2025-01-03",
-            "zona_operativa_id": str(uuid.uuid4()),
-            "accumulated_mm": 75.0,
-            "duration_days": 3,
-        }
-        result = RainfallEventResponse(**data)
-        assert result.duration_days == 3
-
-    def test_rainfall_summary_validates(self):
-        data = {
-            "zona_operativa_id": str(uuid.uuid4()),
-            "zona_name": "Zona Norte",
-            "total_mm": 150.0,
-            "avg_mm": 5.0,
-            "max_mm": 40.0,
-            "rainy_days": 20,
-        }
-        result = RainfallSummaryResponse(**data)
-        assert result.zona_name == "Zona Norte"
 
     def test_training_result_validates(self):
         data = {

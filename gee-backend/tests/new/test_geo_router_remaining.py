@@ -536,9 +536,3 @@ class TestRequestModels:
                 nombre="Flood March 2025",
                 labels=[],
             )
-
-    def test_backfill_request_schema(self):
-        from app.domains.geo.schemas import BackfillRequest
-
-        br = BackfillRequest(start_date="2025-01-01", end_date="2025-01-31")
-        assert br.start_date == date(2025, 1, 1)

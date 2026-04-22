@@ -495,26 +495,3 @@ class TestDelineateBasins:
 
             with pytest.raises(RuntimeError):
                 delineate_basins_task("a1", "/fd.tif", job_id=str(uuid.uuid4()))
-
-
-# ---------------------------------------------------------------------------
-# Rainfall tasks
-# ---------------------------------------------------------------------------
-
-
-class TestRainfallTasks:
-    # Note: rainfall_backfill and rainfall_daily_sync Celery bound tasks
-    # are tested indirectly via test_rainfall_service.py which covers
-    # the backfill_rainfall() function they delegate to.
-
-    def test_rainfall_daily_sync(self, mock_db):
-        mock_backfill = MagicMock(return_value={"total_records": 5, "batches_processed": 1})
-        with (
-            patch("app.domains.geo.tasks._get_db", return_value=mock_db),
-            patch("app.domains.geo.rainfall_service.backfill_rainfall", mock_backfill),
-        ):
-            from app.domains.geo.tasks import rainfall_daily_sync
-
-            result = rainfall_daily_sync()
-            assert result["total_records"] == 5
-            mock_db.close.assert_called_once()

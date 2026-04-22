@@ -373,7 +373,6 @@ from app.domains.geo.schemas import (
     AnalisisGeoCreate,
     AnalisisGeoListResponse,
     AnalisisGeoResponse,
-    BackfillRequest,
     DemPipelineRequest,
     DemPipelineResponse,
     FloodEventCreate,
@@ -386,10 +385,6 @@ from app.domains.geo.schemas import (
     GeoJobResponse,
     GeoLayerListResponse,
     GeoLayerResponse,
-    RainfallEventResponse,
-    RainfallRecordResponse,
-    RainfallSuggestionResponse,
-    RainfallSummaryResponse,
     TrainingResultResponse,
 )
 
@@ -593,72 +588,6 @@ class TestDemPipelineRequest:
     def test_min_basin_area_non_negative(self):
         with pytest.raises(ValidationError):
             DemPipelineRequest(min_basin_area_ha=-1.0)
-
-
-class TestBackfillRequest:
-    def test_valid_request(self):
-        r = BackfillRequest(
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        assert r.zona_ids is None
-
-    def test_missing_dates(self):
-        with pytest.raises(ValidationError):
-            BackfillRequest()
-
-    def test_with_zona_ids(self):
-        ids = [uuid.uuid4(), uuid.uuid4()]
-        r = BackfillRequest(
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-            zona_ids=ids,
-        )
-        assert len(r.zona_ids) == 2
-
-
-class TestRainfallResponses:
-    def test_rainfall_record(self):
-        class Fake:
-            id = uuid.uuid4()
-            zona_operativa_id = uuid.uuid4()
-            date = date(2025, 1, 15)
-            precipitation_mm = 25.4
-            source = "CHIRPS"
-            created_at = datetime(2025, 1, 15)
-
-        resp = RainfallRecordResponse.model_validate(Fake())
-        assert resp.precipitation_mm == 25.4
-
-    def test_rainfall_event(self):
-        r = RainfallEventResponse(
-            event_start=date(2025, 1, 1),
-            event_end=date(2025, 1, 3),
-            zona_operativa_id=uuid.uuid4(),
-            accumulated_mm=75.0,
-            duration_days=3,
-        )
-        assert r.duration_days == 3
-
-    def test_rainfall_suggestion(self):
-        r = RainfallSuggestionResponse(
-            event_start=date(2025, 1, 1),
-            event_end=date(2025, 1, 3),
-            zona_operativa_id=uuid.uuid4(),
-            accumulated_mm=75.0,
-        )
-        assert r.suggested_image_date is None
-        assert r.cloud_cover_pct is None
-
-    def test_rainfall_summary(self):
-        r = RainfallSummaryResponse(
-            zona_operativa_id=uuid.uuid4(),
-            total_mm=150.0,
-            avg_mm=5.0,
-            max_mm=40.0,
-            rainy_days=20,
-        )
-        assert r.zona_name is None
 
 
 # ──────────────────────────────────────────────
