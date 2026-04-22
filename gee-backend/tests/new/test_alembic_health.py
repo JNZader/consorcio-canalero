@@ -170,10 +170,20 @@ class TestAlembicHealthIntegration:
         assert result["status"] == "unhealthy"
 
     def test_real_alembic_tree_with_stamped_db(self, db):
-        """Stamp the test DB with a real revision (7e25b857692b) and verify healthy."""
+        """Stamp the test DB with the current head revision and verify healthy."""
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
         from sqlalchemy import text
 
-        # Create alembic_version table and insert a valid stamp from the real tree.
+        from app.core.health import ALEMBIC_INI_PATH
+
+        # Resolve the current head dynamically so the test remains valid as
+        # migrations are added.
+        cfg = Config(str(ALEMBIC_INI_PATH))
+        current_head = ScriptDirectory.from_config(cfg).get_current_head()
+        assert current_head, "Expected alembic to have a single head"
+
+        # Create alembic_version table and insert the real head stamp.
         db.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS alembic_version "
@@ -181,15 +191,16 @@ class TestAlembicHealthIntegration:
             )
         )
         db.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('7e25b857692b')")
+            text("INSERT INTO alembic_version (version_num) VALUES (:rev)"),
+            {"rev": current_head},
         )
         db.flush()
 
         result = check_alembic_health_sync(db)
         assert result["status"] == "healthy", f"Expected healthy, got: {result}"
-        assert result["current_rev"] == "7e25b857692b"
+        assert result["current_rev"] == current_head
         assert result["is_head"] is True
-        assert "7e25b857692b" in result["heads"]
+        assert current_head in result["heads"]
 
     def test_real_alembic_tree_with_phantom_stamp(self, db):
         """Stamp the test DB with a fabricated revision and verify unhealthy."""
