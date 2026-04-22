@@ -18,7 +18,7 @@
  * - Re-computes positions when `measurements` changes.
  */
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MeasurementLabels } from '@/components/map2d/measurement/MeasurementLabels';
@@ -221,7 +221,9 @@ describe('<MeasurementLabels />', () => {
     const callsBefore = mock.map.project.mock.calls.length;
 
     // Simulate a map pan — the registered handler should re-run projections.
-    mock.emit('move');
+    act(() => {
+      mock.emit('move');
+    });
 
     expect(mock.map.project.mock.calls.length).toBeGreaterThan(callsBefore);
   });
