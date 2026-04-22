@@ -45,6 +45,9 @@ import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
+import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
+import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
+import { useMeasurement } from './map2d/measurement/useMeasurement';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
 import {
@@ -425,6 +428,21 @@ export default function MapaMapLibre() {
   // after it's ready. The actual integration happens via the DrawControl component
   // which uses map.addControl() imperatively (see DrawControl.tsx).
 
+  /* ---------------------------------------------------------------------- */
+  /*  Measurement tools (SDD map-measurement-tools)                          */
+  /* ---------------------------------------------------------------------- */
+  // `useMeasurement` owns a DEDICATED MapboxDraw instance so its `clear()`
+  // never touches LineDrawControl features. We pass `mapReady ? map : null`
+  // so the hook's `useEffect` re-runs once the map finishes loading (the
+  // bare ref would never re-trigger React on its own).
+  const measurementMap = mapReady ? mapRef.current : null;
+  const {
+    state: measurementState,
+    startDistance: startMeasureDistance,
+    startArea: startMeasureArea,
+    clear: clearMeasurements,
+  } = useMeasurement(measurementMap);
+
   // ── KMZ export data sources ────────────────────────────────────────────
   // Keys MUST match `kmzLayerRegistry` entries. Missing/null slots are
   // silently skipped by `buildKmz` — the hook does not refuse when a slot
@@ -529,6 +547,19 @@ export default function MapaMapLibre() {
       {mapReady && mapRef.current && isOperator && (
         <LineDrawControl map={mapRef.current} value={drawnLine} onChange={setDrawnLine} />
       )}
+
+      {/* Measurement tools: floating toolbar + HTML label overlay. */}
+      <MeasurementToolbar
+        mode={measurementState.mode}
+        hasMeasurements={measurementState.measurements.length > 0}
+        onStartDistance={startMeasureDistance}
+        onStartArea={startMeasureArea}
+        onClear={clearMeasurements}
+      />
+      <MeasurementLabels
+        map={measurementMap}
+        measurements={measurementState.measurements}
+      />
 
       <MapUiPanels
         baseLayer={baseLayer}
