@@ -1,7 +1,7 @@
 import { Badge, Button, Card, Group, SimpleGrid, Text } from '@mantine/core';
 import { IconMessageDots } from '../../../../ui/icons';
-import { hasAgendaItems } from '../reunionesUtils';
 import type { Reunion } from '../reunionesTypes';
+import { hasAgendaItems } from '../reunionesUtils';
 
 export function ReunionesGrid({
   reuniones,

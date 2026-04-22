@@ -63,14 +63,22 @@ export default function ImageExplorerPanel() {
             <Group gap="xs" mt="auto">
               <IconCalendar size={16} />
               <Text size="xs" c="dimmed">
-                {controller.sensor === 'sentinel1' ? 'SAR funciona con nubes' : 'Selecciona un dia del calendario'}
+                {controller.sensor === 'sentinel1'
+                  ? 'SAR funciona con nubes'
+                  : 'Selecciona un dia del calendario'}
               </Text>
             </Group>
           </Group>
         </Group>
       </Paper>
 
-      <div style={{ display: 'grid', gridTemplateColumns: controller.isMobile ? '1fr' : 'minmax(280px, 340px) 1fr', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: controller.isMobile ? '1fr' : 'minmax(280px, 340px) 1fr',
+          gap: 16,
+        }}
+      >
         <div>
           <ImageExplorerCalendar
             year={controller.calendarYear}

@@ -5,13 +5,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { DEFAULT_CATEGORIES, DEFAULT_INCOME_SOURCES } from './constants';
+import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 import {
   addNormalizedOption,
   buildOptionData,
   getFinanzasOptions,
   normalizeArray,
 } from './finanzasUtils';
-import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 
 export function useFinanzasController() {
   const [gastos, setGastos] = useState<Gasto[]>([]);
@@ -90,7 +90,7 @@ export function useFinanzasController() {
         gastosData,
         ingresosData,
         DEFAULT_CATEGORIES,
-        DEFAULT_INCOME_SOURCES,
+        DEFAULT_INCOME_SOURCES
       );
 
       setGastos(gastosData);
@@ -204,7 +204,7 @@ export function useFinanzasController() {
             ...current,
             comprobante_url: comprobanteUrl,
           }
-        : current,
+        : current
     );
   };
 

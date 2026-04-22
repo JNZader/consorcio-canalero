@@ -1,4 +1,3 @@
-import type { StoreUser } from '../stores/authStore';
 import {
   Avatar,
   Box,
@@ -13,6 +12,7 @@ import {
 } from '@mantine/core';
 import { signOut } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
+import type { StoreUser } from '../stores/authStore';
 import { useAuthLoading, useAuthStore } from '../stores/authStore';
 import type { Usuario } from '../types';
 import { IconChartBar, IconLogout, IconUser } from './ui/icons';

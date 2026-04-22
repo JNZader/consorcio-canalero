@@ -64,9 +64,7 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
 
       const draw = new MapboxDraw({
         displayControlsDefault: false,
-        controls: showControls
-          ? { polygon: true, trash: true }
-          : undefined,
+        controls: showControls ? { polygon: true, trash: true } : undefined,
         defaultMode: 'simple_select',
         styles: [
           // Polygon fill (active)
@@ -156,7 +154,7 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
     }, [map, showControls]);
 
     return null;
-  },
+  }
 );
 
 DrawControl.displayName = 'DrawControl';

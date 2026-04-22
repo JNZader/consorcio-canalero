@@ -21,15 +21,15 @@
  * tested in isolation (the builder is already a fat integration contract).
  */
 
-import JSZip from 'jszip';
 import type { Feature, FeatureCollection } from 'geojson';
+import JSZip from 'jszip';
 
-import { buildPlacemark } from './kmzPlacemarks';
 import {
   KMZ_EXCLUDED_LAYER_KEYS,
   KMZ_LAYER_REGISTRY,
   type KmzLayerEntry,
 } from './kmzLayerRegistry';
+import { buildPlacemark } from './kmzPlacemarks';
 import { buildKmzStyles } from './kmzStyles';
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ function formatDocumentDate(ts: Date): string {
 function filterFeaturesByEtapa(
   entry: KmzLayerEntry,
   features: readonly Feature[],
-  propuestasEtapasVisibility: Record<string, boolean> | undefined,
+  propuestasEtapasVisibility: Record<string, boolean> | undefined
 ): readonly Feature[] {
   if (entry.key !== CANALES_PROPUESTOS_KEY) return features;
   if (!propuestasEtapasVisibility) return features;
@@ -117,7 +117,7 @@ function filterFeaturesByEtapa(
 function shouldIncludeLayer(
   entry: KmzLayerEntry,
   visibleLayers: Record<string, boolean>,
-  data: Record<string, FeatureCollection | null>,
+  data: Record<string, FeatureCollection | null>
 ): boolean {
   if (EXCLUDED_SET.has(entry.key)) return false;
   const fc = data[entry.key];
@@ -145,7 +145,7 @@ export async function buildKmz(input: BuildKmzInput): Promise<Blob> {
 
   // 1. Filter + resolve the registry to the "included" shortlist.
   const includedEntries = KMZ_LAYER_REGISTRY.filter((entry) =>
-    shouldIncludeLayer(entry, visibleLayers, data),
+    shouldIncludeLayer(entry, visibleLayers, data)
   );
 
   // 2. Emit the style block for the included entries only.
@@ -158,11 +158,7 @@ export async function buildKmz(input: BuildKmzInput): Promise<Blob> {
   const foldersBlock = includedEntries
     .map((entry) => {
       const rawFeatures = data[entry.key]?.features ?? [];
-      const filtered = filterFeaturesByEtapa(
-        entry,
-        rawFeatures,
-        propuestasEtapasVisibility,
-      );
+      const filtered = filterFeaturesByEtapa(entry, rawFeatures, propuestasEtapasVisibility);
       const placemarks = filtered
         .map((feature, index) => buildPlacemark(feature, entry, index))
         .join('');
@@ -171,15 +167,9 @@ export async function buildKmz(input: BuildKmzInput): Promise<Blob> {
     .join('');
 
   // 4. Wrap in the KML document.
-  const documentBlock =
-    `<Document>` +
-    `<name>Consorcio Canalero — ${dateLabel}</name>` +
-    stylesBlock +
-    foldersBlock +
-    `</Document>`;
+  const documentBlock = `<Document><name>Consorcio Canalero — ${dateLabel}</name>${stylesBlock}${foldersBlock}</Document>`;
 
-  const kmlString =
-    KML_XML_DECLARATION + KML_ROOT_OPEN + documentBlock + KML_ROOT_CLOSE;
+  const kmlString = KML_XML_DECLARATION + KML_ROOT_OPEN + documentBlock + KML_ROOT_CLOSE;
 
   // 5. Package into the KMZ (zip with a single `doc.kml` entry).
   const zip = new JSZip();

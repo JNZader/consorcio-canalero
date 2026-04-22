@@ -1,5 +1,5 @@
-import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import { queryKeys } from '../lib/query';
 
 export interface SoilFeatureProperties {

@@ -27,8 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { EscuelaFeatureCollection } from '../types/escuelas';
 
 /** Canonical public asset path — kept as an export so tests can assert it. */
-export const ESCUELAS_GEOJSON_URL =
-  '/capas/escuelas/escuelas_rurales.geojson' as const;
+export const ESCUELAS_GEOJSON_URL = '/capas/escuelas/escuelas_rurales.geojson' as const;
 
 interface LoadResult {
   collection: EscuelaFeatureCollection | null;
@@ -45,16 +44,14 @@ async function loadEscuelas(): Promise<LoadResult> {
     const res = await fetch(ESCUELAS_GEOJSON_URL);
     if (!res.ok) {
       // eslint-disable-next-line no-console
-      console.warn(
-        `[escuelas:fetch] failed to load (${res.status}): ${ESCUELAS_GEOJSON_URL}`,
-      );
+      console.warn(`[escuelas:fetch] failed to load (${res.status}): ${ESCUELAS_GEOJSON_URL}`);
       return { collection: null, failed: true };
     }
     const json = (await res.json()) as EscuelaFeatureCollection;
     return { collection: json, failed: false };
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(`[escuelas:fetch] network error:`, err);
+    console.warn('[escuelas:fetch] network error:', err);
     return { collection: null, failed: true };
   }
 }

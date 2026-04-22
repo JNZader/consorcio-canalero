@@ -1,21 +1,8 @@
-import {
-  Box,
-  Button,
-  Group,
-  Loader,
-  Paper,
-  Slider,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Box, Button, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
-import type {
-  BpaEnrichedFile,
-  BpaHistoryFile,
-} from '../../types/pilarVerde';
+import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
 import { InfoPanel } from '../map2d/InfoPanel';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';

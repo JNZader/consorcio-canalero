@@ -5,7 +5,7 @@
  * (sensor, date, visualization, etc.) and regenerate the tile on page load.
  */
 
-import { apiFetch, GEE_TIMEOUT } from './core';
+import { GEE_TIMEOUT, apiFetch } from './core';
 
 // ── Types ──
 
@@ -62,8 +62,7 @@ export const mapImageApi = {
    * Returns the full image result including the fresh tile_url.
    */
   regenerateTile: async (params: ImagenMapaParams) => {
-    const sensorEndpoint =
-      params.sensor === 'Sentinel-1' ? 'sentinel1' : 'sentinel2';
+    const sensorEndpoint = params.sensor === 'Sentinel-1' ? 'sentinel1' : 'sentinel2';
 
     const queryParams = new URLSearchParams({
       target_date: params.target_date,

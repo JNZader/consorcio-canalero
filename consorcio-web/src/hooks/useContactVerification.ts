@@ -10,11 +10,11 @@
 
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
-import { useAuthStore } from '../stores/authStore';
-import { authAdapter } from '../lib/auth/index';
 import { signOut } from '../lib/auth';
+import { authAdapter } from '../lib/auth/index';
 import { logger } from '../lib/logger';
 import { isValidEmail } from '../lib/validators';
+import { useAuthStore } from '../stores/authStore';
 
 export type VerificationMethod = 'google' | 'email';
 

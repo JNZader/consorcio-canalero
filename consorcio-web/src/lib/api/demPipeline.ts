@@ -5,7 +5,7 @@
  * and fetching generated layers/basins.
  */
 
-import { apiFetch, GEE_TIMEOUT } from './core';
+import { GEE_TIMEOUT, apiFetch } from './core';
 
 // ===========================================
 // TYPES
@@ -88,8 +88,7 @@ export const demPipelineApi = {
   /**
    * Get job status by ID.
    */
-  getJob: (jobId: string): Promise<GeoJobResponse> =>
-    apiFetch(`/geo/jobs/${jobId}`),
+  getJob: (jobId: string): Promise<GeoJobResponse> => apiFetch(`/geo/jobs/${jobId}`),
 
   /**
    * List generated geo layers.
@@ -102,8 +101,7 @@ export const demPipelineApi = {
   /**
    * Get basin polygons as GeoJSON.
    */
-  getBasins: (): Promise<BasinsGeoJSON> =>
-    apiFetch('/geo/basins', { skipAuth: true }),
+  getBasins: (): Promise<BasinsGeoJSON> => apiFetch('/geo/basins', { skipAuth: true }),
 
   /**
    * Get download URL for a layer file.

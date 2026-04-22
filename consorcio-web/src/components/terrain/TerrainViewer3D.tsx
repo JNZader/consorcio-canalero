@@ -6,38 +6,35 @@
  * Ctrl+drag (or two-finger drag on mobile) to see elevation.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import {
-  Alert,
-  Stack,
-} from '@mantine/core';
+import { Alert, Stack } from '@mantine/core';
 import type { Feature } from 'geojson';
-import { IconAlertTriangle } from '../ui/icons';
-import { API_URL } from '../../lib/api';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
-import { buildTileUrl, type GeoLayerInfo, useGeoLayers } from '../../hooks/useGeoLayers';
-import { useGEELayers } from '../../hooks/useGEELayers';
-import { useBasins } from '../../hooks/useBasins';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
+import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
 import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
+import { useGEELayers } from '../../hooks/useGEELayers';
+import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
-import { useSoilMap } from '../../hooks/useSoilMap';
 import { useSelectedImageListener } from '../../hooks/useSelectedImage';
+import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
+import { API_URL } from '../../lib/api';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { IconAlertTriangle } from '../ui/icons';
+import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
+import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
+  TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
   buildCuencasCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
-  TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
 } from './terrainViewer3DUtils';
-import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
-import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { useTerrainCanalesEffects } from './useTerrainCanalesEffects';
 import { useTerrainInteractionEffects } from './useTerrainInteractionEffects';
 import { useTerrainPilarVerdeEffects } from './useTerrainPilarVerdeEffects';
@@ -89,12 +86,14 @@ export default function TerrainViewer3D({
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(textureLayerId ?? demLayerId ?? null);
+  const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
+    textureLayerId ?? demLayerId ?? null
+  );
   activeRasterLayerIdRef.current = activeRasterLayerId;
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
-    TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
+    TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
   );
   // Phase 5 (Batch F) — click results surfaced by `useTerrainInteractionEffects`.
   // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
@@ -162,12 +161,14 @@ export default function TerrainViewer3D({
     ? selectedImage.tile_url
     : activeRasterLayer
       ? buildTileUrl(activeRasterLayer.id, {
-          hideClasses: (hiddenClasses[activeRasterLayer.tipo] ?? []).length > 0
-            ? hiddenClasses[activeRasterLayer.tipo]
-            : undefined,
-          hideRanges: (hiddenRanges[activeRasterLayer.tipo] ?? []).length > 0
-            ? hiddenRanges[activeRasterLayer.tipo]
-            : undefined,
+          hideClasses:
+            (hiddenClasses[activeRasterLayer.tipo] ?? []).length > 0
+              ? hiddenClasses[activeRasterLayer.tipo]
+              : undefined,
+          hideRanges:
+            (hiddenRanges[activeRasterLayer.tipo] ?? []).length > 0
+              ? hiddenRanges[activeRasterLayer.tipo]
+              : undefined,
         })
       : `${API_URL}/api/v2/geo/layers/${textureLayerId ?? demLayerId}/tiles/{z}/{x}/{y}.png?v=${TERRAIN_TILE_CACHE_BUSTER}`;
 
@@ -214,7 +215,7 @@ export default function TerrainViewer3D({
     if (selectedImage && sharedActiveRasterType === null) return;
     if (sharedActiveRasterType === null) return;
     const matched = rasterLayers.find(
-      (layer: GeoLayerInfo) => layer.tipo === sharedActiveRasterType,
+      (layer: GeoLayerInfo) => layer.tipo === sharedActiveRasterType
     );
     if (matched && matched.id !== activeRasterLayerIdRef.current) {
       setActiveRasterLayerId(matched.id);
@@ -298,7 +299,7 @@ export default function TerrainViewer3D({
             tiles: [activeRasterTileUrlRef.current ?? ''],
             tileSize: 256,
           },
-          'satellite': {
+          satellite: {
             type: 'raster',
             tiles: [
               'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -354,9 +355,7 @@ export default function TerrainViewer3D({
       // so a 503 from earthengine.googleapis.com is expected if the session
       // was generated much earlier. Just log and continue.
       const isTileError =
-        'tile' in event ||
-        /AJAXError/i.test(msg) ||
-        /earthengine\.googleapis\.com/i.test(msg);
+        'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
 
       if (isTileError) {
         console.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
@@ -423,7 +422,7 @@ export default function TerrainViewer3D({
         soilCollection,
         catastroCollection,
       },
-      vectorLayerVisibility as typeof TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
+      vectorLayerVisibility as typeof TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
     );
   }, [
     approvedZonesCollection,
@@ -478,29 +477,21 @@ export default function TerrainViewer3D({
   }, []);
 
   // Update exaggeration
-  const handleExaggerationChange = useCallback(
-    (value: number) => {
-      setExaggeration(value);
-      const map = mapRef.current;
-      if (!map) return;
+  const handleExaggerationChange = useCallback((value: number) => {
+    setExaggeration(value);
+    const map = mapRef.current;
+    if (!map) return;
 
-      map.setTerrain({
-        source: 'terrain-rgb',
-        exaggeration: value,
-      });
-    },
-    [],
-  );
+    map.setTerrain({
+      source: 'terrain-rgb',
+      exaggeration: value,
+    });
+  }, []);
 
   if (!demLayerId) {
     return (
-      <Alert
-        icon={<IconAlertTriangle size={16} />}
-        title="Sin capa DEM"
-        color="yellow"
-      >
-        No hay capa DEM disponible para visualizar en 3D. Ejecuta el pipeline
-        DEM primero.
+      <Alert icon={<IconAlertTriangle size={16} />} title="Sin capa DEM" color="yellow">
+        No hay capa DEM disponible para visualizar en 3D. Ejecuta el pipeline DEM primero.
       </Alert>
     );
   }
@@ -508,11 +499,7 @@ export default function TerrainViewer3D({
   return (
     <Stack gap="sm">
       {errorMessage && (
-        <Alert
-          icon={<IconAlertTriangle size={16} />}
-          title="Error cargando terreno 3D"
-          color="red"
-        >
+        <Alert icon={<IconAlertTriangle size={16} />} title="Error cargando terreno 3D" color="red">
           {errorMessage}
         </Alert>
       )}
@@ -552,9 +539,7 @@ export default function TerrainViewer3D({
         agroAceptadaVisible={!!vectorLayerVisibility.pilar_verde_agro_aceptada}
         agroPresentadaVisible={!!vectorLayerVisibility.pilar_verde_agro_presentada}
         agroZonasVisible={!!vectorLayerVisibility.pilar_verde_agro_zonas}
-        porcentajeForestacionVisible={
-          !!vectorLayerVisibility.pilar_verde_porcentaje_forestacion
-        }
+        porcentajeForestacionVisible={!!vectorLayerVisibility.pilar_verde_porcentaje_forestacion}
         canalesRelevadosVisible={!!vectorLayerVisibility.canales_relevados}
         canalesPropuestosVisible={!!vectorLayerVisibility.canales_propuestos}
         // Phase 5 (Batch F) — click → InfoPanel overlay. `bpaEnriched` and

@@ -51,7 +51,7 @@ export function formatLongitudMeters(meters: number): string {
  */
 export function formatLongitud(
   computed: number,
-  declared: number | null | undefined = null,
+  declared: number | null | undefined = null
 ): string {
   const primary = formatLongitudMeters(computed);
   if (declared === null || declared === undefined) return primary;

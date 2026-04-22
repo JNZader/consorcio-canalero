@@ -1,38 +1,30 @@
-import {
-  Button,
-  Container,
-  Group,
-  Paper,
-  SimpleGrid,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Button, Container, Group, Paper, SimpleGrid, Text, Title } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { type Sugerencia, type SugerenciasStats, sugerenciasApi, apiFetch } from '../../../lib/api';
 import { useCanales } from '../../../hooks/useCanales';
+import { type Sugerencia, type SugerenciasStats, apiFetch, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
 import {
-  IconCheck,
-  IconPlus,
-  IconCalendar,
-  IconTrash,
-  IconClock,
-  IconUsers,
   IconBuilding,
+  IconCalendar,
+  IconCheck,
+  IconClock,
+  IconPlus,
+  IconTrash,
+  IconUsers,
 } from '../../ui/icons';
+import { CreateInternalModal } from './components/CreateInternalModal';
+import { ProximaReunionSection } from './components/ProximaReunionSection';
+import { StatsCard } from './components/StatsCard';
+import { SugerenciasFilters } from './components/SugerenciasFilters';
+import { SugerenciasTableContent } from './components/SugerenciasTableContent';
+import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
 import type { SeguimientoEntry } from './sugerenciasPanelTypes';
 import { filterSugerenciasByQuery, getStatusBadge } from './sugerenciasPanelUtils';
-import { StatsCard } from './components/StatsCard';
-import { SugerenciasTableContent } from './components/SugerenciasTableContent';
-import { CreateInternalModal } from './components/CreateInternalModal';
-import { SuggestionDetailModal } from './components/SuggestionDetailModal';
-import { ProximaReunionSection } from './components/ProximaReunionSection';
-import { SugerenciasFilters } from './components/SugerenciasFilters';
 
 export default function SugerenciasPanel() {
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
@@ -106,7 +98,7 @@ export default function SugerenciasPanel() {
             },
           ]
         : [],
-    [relevadosFC],
+    [relevadosFC]
   );
 
   useLiveRegion();
@@ -180,7 +172,9 @@ export default function SugerenciasPanel() {
     setLoadingHistorial(true);
     try {
       // TODO: v2 uses sugerencias/{id} with historial included, or a dedicated historial endpoint
-      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(`/sugerencias/${id}/historial`).catch(() => [] as SeguimientoEntry[]);
+      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(
+        `/sugerencias/${id}/historial`
+      ).catch(() => [] as SeguimientoEntry[]);
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setHistorial(data);
     } catch (err) {
@@ -418,10 +412,7 @@ export default function SugerenciasPanel() {
           />
         </SimpleGrid>
 
-        <ProximaReunionSection
-          proximaReunion={proximaReunion}
-          onViewDetail={handleViewDetail}
-        />
+        <ProximaReunionSection proximaReunion={proximaReunion} onViewDetail={handleViewDetail} />
 
         <SugerenciasFilters
           searchInputValue={searchInputValue}

@@ -74,7 +74,7 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
     const emitCurrent = () => {
       const all = draw.getAll();
       const accepted = all.features.filter(
-        (f) => f.geometry.type === 'LineString' || f.geometry.type === 'Point',
+        (f) => f.geometry.type === 'LineString' || f.geometry.type === 'Point'
       );
       if (accepted.length === 0) {
         onChangeRef.current(null);

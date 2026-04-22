@@ -45,9 +45,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Nested plain-object values are sanitized recursively. Non-plain-object
  * values (arrays, Dates, primitives) pass through by reference.
  */
-export function stripPii(
-  properties: Record<string, unknown>,
-): Record<string, unknown> {
+export function stripPii(properties: Record<string, unknown>): Record<string, unknown> {
   const output: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(properties)) {

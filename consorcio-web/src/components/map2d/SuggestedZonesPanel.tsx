@@ -9,8 +9,8 @@ import {
   Select,
   Stack,
   Text,
-  Textarea,
   TextInput,
+  Textarea,
 } from '@mantine/core';
 import { memo } from 'react';
 import { IconDownload } from '../ui/icons';
@@ -126,7 +126,10 @@ export const SuggestedZonesPanel = memo(function SuggestedZonesPanel({
                   Subcuenca seleccionada: <b>{selectedBasinName || 'Ninguna'}</b>
                 </Text>
                 <Text size="xs" c="dimmed">
-                  Zona actual: {selectedBasinZoneId ? (zoneNames[selectedBasinZoneId] ?? selectedBasinZoneId) : '-'}
+                  Zona actual:{' '}
+                  {selectedBasinZoneId
+                    ? (zoneNames[selectedBasinZoneId] ?? selectedBasinZoneId)
+                    : '-'}
                 </Text>
                 <Select
                   size="xs"
@@ -139,7 +142,11 @@ export const SuggestedZonesPanel = memo(function SuggestedZonesPanel({
                 <Button
                   size="xs"
                   variant="light"
-                  disabled={!selectedBasinName || !destinationZoneId || destinationZoneId === selectedBasinZoneId}
+                  disabled={
+                    !selectedBasinName ||
+                    !destinationZoneId ||
+                    destinationZoneId === selectedBasinZoneId
+                  }
                   onClick={onApplyBasinMove}
                 >
                   Mover subcuenca a esta zona
@@ -200,10 +207,20 @@ export const SuggestedZonesPanel = memo(function SuggestedZonesPanel({
           </Group>
           {hasApprovedZones && (
             <Group grow mt={8}>
-              <Button size="xs" variant="light" leftSection={<IconDownload size={14} />} onClick={onExportApprovedZonesGeoJSON}>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconDownload size={14} />}
+                onClick={onExportApprovedZonesGeoJSON}
+              >
                 GeoJSON
               </Button>
-              <Button size="xs" variant="light" leftSection={<IconDownload size={14} />} onClick={onExportApprovedZonesPdf}>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconDownload size={14} />}
+                onClick={onExportApprovedZonesPdf}
+              >
                 PDF
               </Button>
             </Group>
@@ -224,7 +241,8 @@ export const SuggestedZonesPanel = memo(function SuggestedZonesPanel({
                       onChange={(event) => onZoneNameChange(zone.id, event.currentTarget.value)}
                     />
                     <Text size="xs" c="dimmed">
-                      Familia: {zone.family || '-'} • Subcuencas: {zone.basinCount} • Sup: {zone.superficieHa.toFixed(1)} ha
+                      Familia: {zone.family || '-'} • Subcuencas: {zone.basinCount} • Sup:{' '}
+                      {zone.superficieHa.toFixed(1)} ha
                     </Text>
                   </Stack>
                 </Paper>

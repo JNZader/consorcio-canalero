@@ -95,6 +95,7 @@ export function buildWaterwayLayerConfigs(waterwayDefs: readonly WaterwayDef[]) 
     id: `${SOURCE_IDS.WATERWAYS}-${spec.suffix}`,
     url: spec.url,
     layer: spec.layer,
-    color: waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.color ?? spec.fallbackColor,
+    color:
+      waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.color ?? spec.fallbackColor,
   }));
 }

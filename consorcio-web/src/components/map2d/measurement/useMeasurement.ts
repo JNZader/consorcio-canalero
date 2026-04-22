@@ -42,11 +42,11 @@
  */
 
 import type { Feature, LineString, Point, Polygon } from 'geojson';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type maplibregl from 'maplibre-gl';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import centerOfMass from '@turf/center-of-mass';
 import area from '@turf/area';
+import centerOfMass from '@turf/center-of-mass';
 import length from '@turf/length';
 import midpoint from '@turf/midpoint';
 
@@ -149,7 +149,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
         const geom = feature.geometry;
         const featureId = coerceId(
           (feature as { id?: unknown }).id,
-          `measurement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          `measurement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         );
 
         if (geom.type === 'LineString') {
@@ -230,6 +230,6 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
   return useMemo(
     () => ({ state, startDistance, startArea, clear, cancel }),
-    [state, startDistance, startArea, clear, cancel],
+    [state, startDistance, startArea, clear, cancel]
   );
 }

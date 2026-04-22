@@ -30,14 +30,14 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
 import {
+  type AuthResult,
   signInWithEmail,
   signInWithGoogle,
   signOut,
   signUpWithEmail,
-  type AuthResult,
 } from '../lib/auth';
+import { type StoreUser, type UserRole, useAuthStore } from '../stores/authStore';
 import type { Usuario } from '../types';
-import { useAuthStore, type UserRole, type StoreUser } from '../stores/authStore';
 
 /**
  * Auth state returned by useAuth hook

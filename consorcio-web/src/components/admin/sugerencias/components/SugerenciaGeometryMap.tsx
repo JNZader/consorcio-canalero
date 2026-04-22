@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
+import { useEffect, useRef } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
-import type { Sugerencia } from '../../../../lib/api';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../../constants';
+import type { Sugerencia } from '../../../../lib/api';
 
 function addCanalLayers(
   map: maplibregl.Map,
@@ -31,7 +31,9 @@ function addCanalLayers(
   }
 }
 
-function getGeometryBounds(geometry: FeatureCollection): [[number, number], [number, number]] | null {
+function getGeometryBounds(
+  geometry: FeatureCollection
+): [[number, number], [number, number]] | null {
   const coords: [number, number][] = [];
   for (const feature of geometry.features) {
     if (feature.geometry.type !== 'LineString') continue;
@@ -56,7 +58,12 @@ function addSuggestionGeometry(map: maplibregl.Map, geometry: FeatureCollection 
     id: 'sugerencia-geom-line',
     type: 'line',
     source: 'sugerencia-geom',
-    paint: { 'line-color': '#7B1FA2', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [8, 6] },
+    paint: {
+      'line-color': '#7B1FA2',
+      'line-width': 4,
+      'line-opacity': 0.95,
+      'line-dasharray': [8, 6],
+    },
   });
 
   const bounds = getGeometryBounds(geometry);
@@ -71,7 +78,11 @@ export function SugerenciaGeometryMap({
   canales,
 }: Readonly<{
   geometry: Sugerencia['geometry'];
-  canales: Array<{ id: string; data: FeatureCollection; style: { color?: string; weight?: number; opacity?: number } }>;
+  canales: Array<{
+    id: string;
+    data: FeatureCollection;
+    style: { color?: string; weight?: number; opacity?: number };
+  }>;
 }>) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);

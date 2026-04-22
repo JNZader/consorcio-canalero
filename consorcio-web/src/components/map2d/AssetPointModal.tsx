@@ -1,4 +1,4 @@
-import { Button, Modal, Select, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, Modal, Select, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import { type FormEvent, memo } from 'react';
 
 interface AssetPointModalProps {

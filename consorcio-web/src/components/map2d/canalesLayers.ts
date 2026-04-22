@@ -22,8 +22,8 @@
 
 import type { ExpressionSpecification, LineLayerSpecification } from 'maplibre-gl';
 
+import type { PILAR_AZUL_LAYER_IDS } from '../../stores/mapLayerSyncStore';
 import type { Etapa } from '../../types/canales';
-import { PILAR_AZUL_LAYER_IDS } from '../../stores/mapLayerSyncStore';
 
 /**
  * Render z-order. Relevados mounted FIRST; propuestos mounted AFTER so they
@@ -168,7 +168,7 @@ export function buildCanalesPropuestasPaint(): LinePaint {
  * set is constant per tile, so it's effectively free.
  */
 export function buildCanalesRelevadosFilter(
-  visibleIds: readonly string[],
+  visibleIds: readonly string[]
 ): ExpressionSpecification {
   return ['in', ['get', 'id'], ['literal', [...visibleIds]]] as ExpressionSpecification;
 }
@@ -188,7 +188,7 @@ export function buildCanalesRelevadosFilter(
  */
 export function buildCanalesPropuestasFilter(
   visibleIds: readonly string[],
-  activeEtapas: readonly Etapa[],
+  activeEtapas: readonly Etapa[]
 ): ExpressionSpecification {
   const idFilter: ExpressionSpecification = [
     'in',

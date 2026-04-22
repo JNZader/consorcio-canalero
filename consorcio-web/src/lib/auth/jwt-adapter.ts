@@ -180,7 +180,7 @@ export class JWTAuthAdapter implements AuthAdapter {
 
   private notifyListeners(
     event: 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED',
-    session: AuthSession | null,
+    session: AuthSession | null
   ): void {
     for (const listener of this.listeners) {
       try {

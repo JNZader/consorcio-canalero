@@ -345,10 +345,7 @@ export interface BpaHistoricoFeatureProperties {
   /** True iff the parcel appears in `bpa_2025`. */
   bpa_activa_2025: boolean;
 }
-export type BpaHistoricoFeature = Feature<
-  MultiPolygon | Polygon,
-  BpaHistoricoFeatureProperties
->;
+export type BpaHistoricoFeature = Feature<MultiPolygon | Polygon, BpaHistoricoFeatureProperties>;
 export type BpaHistoricoFeatureCollection = FeatureCollection<
   MultiPolygon | Polygon,
   BpaHistoricoFeatureProperties

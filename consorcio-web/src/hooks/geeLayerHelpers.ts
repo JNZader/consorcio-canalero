@@ -4,7 +4,7 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import type { GEELayerName, GEELayerData, GEELayersMap } from './useGEELayers';
+import type { GEELayerData, GEELayerName, GEELayersMap } from './useGEELayers';
 
 /**
  * Generic error message for GEE layer loading failures.

@@ -17,9 +17,9 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
+import { apiFetch } from '../lib/api';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
-import { apiFetch } from '../lib/api';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
 interface ProfileFormValues {

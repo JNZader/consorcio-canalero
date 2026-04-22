@@ -28,8 +28,8 @@
  *     elsewhere in the measurement subdirectory.
  */
 
-import { useEffect, useState } from 'react';
 import type maplibregl from 'maplibre-gl';
+import { useEffect, useState } from 'react';
 
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
@@ -44,10 +44,7 @@ interface PixelPosition {
   readonly y: number;
 }
 
-export function MeasurementLabels({
-  map,
-  measurements,
-}: MeasurementLabelsProps) {
+export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps) {
   const [positions, setPositions] = useState<Record<string, PixelPosition>>({});
 
   useEffect(() => {

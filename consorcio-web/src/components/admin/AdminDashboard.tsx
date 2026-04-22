@@ -123,9 +123,11 @@ export default function AdminDashboard() {
       body: formData,
     });
 
-    const payload = (await response.json().catch(() => null)) as
-      | { importedCount?: number; metadata?: Record<string, unknown>; detail?: string }
-      | null;
+    const payload = (await response.json().catch(() => null)) as {
+      importedCount?: number;
+      metadata?: Record<string, unknown>;
+      detail?: string;
+    } | null;
 
     if (!response.ok) {
       throw new Error(payload?.detail || `Error al importar (${response.status})`);
@@ -242,9 +244,11 @@ export default function AdminDashboard() {
         body: formData,
       });
 
-      const payload = (await response.json().catch(() => null)) as
-        | { layersImported?: number; vectorsImported?: Record<string, number>; detail?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        layersImported?: number;
+        vectorsImported?: Record<string, number>;
+        detail?: string;
+      } | null;
 
       if (!response.ok) {
         throw new Error(payload?.detail || `Error al importar bundle (${response.status})`);

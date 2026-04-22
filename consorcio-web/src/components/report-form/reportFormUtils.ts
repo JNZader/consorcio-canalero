@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
 import { notifications } from '@mantine/notifications';
+import type { ReactNode } from 'react';
 import { publicApi } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import type { Ubicacion } from './reportFormTypes';

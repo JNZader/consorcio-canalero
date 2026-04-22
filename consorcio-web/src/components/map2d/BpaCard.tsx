@@ -32,16 +32,21 @@
 import { Badge, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
 
-import { humanizePractica } from './bpaPracticas';
-import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import type {
   Bpa2025EnrichedRecord,
   BpaEjeKey,
   PilarVerdePracticaKey,
 } from '../../types/pilarVerde';
 import { PILAR_VERDE_PRACTICA_KEYS } from '../../types/pilarVerde';
+import { humanizePractica } from './bpaPracticas';
+import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 
-const EJES_ORDERED: readonly BpaEjeKey[] = ['persona', 'planeta', 'prosperidad', 'alianza'] as const;
+const EJES_ORDERED: readonly BpaEjeKey[] = [
+  'persona',
+  'planeta',
+  'prosperidad',
+  'alianza',
+] as const;
 
 const EJE_COLOR_BY_KEY: Record<BpaEjeKey, string> = {
   persona: PILAR_VERDE_COLORS.ejePersona,
@@ -108,9 +113,7 @@ function EjeBadges({ bpa }: { bpa: Bpa2025EnrichedRecord }) {
  * Extract the adopted practicas from a 2025 record, keeping the keys that
  * flag as "Si". Returns an empty array when `bpa` is null.
  */
-function adoptedPracticas(
-  bpa: Bpa2025EnrichedRecord | null | undefined,
-): PilarVerdePracticaKey[] {
+function adoptedPracticas(bpa: Bpa2025EnrichedRecord | null | undefined): PilarVerdePracticaKey[] {
   if (!bpa) return [];
   return PILAR_VERDE_PRACTICA_KEYS.filter((key) => bpa.practicas[key] === 'Si');
 }
@@ -132,7 +135,8 @@ export const BpaCard = memo(function BpaCard({
         : null;
   // Phase 7 prefers the explicit `bpa_activa_2025` flag; otherwise infer from
   // the presence of a 2025 record.
-  const isActiva2025 = typeof bpa_activa_2025 === 'boolean' ? bpa_activa_2025 : bpa !== null && bpa !== undefined;
+  const isActiva2025 =
+    typeof bpa_activa_2025 === 'boolean' ? bpa_activa_2025 : bpa !== null && bpa !== undefined;
   const adoptadas = adoptedPracticas(bpa);
   const anioslistStr = (años_lista ?? []).join(', ');
   const totalPracticas = PILAR_VERDE_PRACTICA_KEYS.length;

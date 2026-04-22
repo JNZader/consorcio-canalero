@@ -57,12 +57,7 @@ export const MAPBOX_DRAW_LINE_STYLES = [
   {
     id: 'gl-draw-points-active',
     type: 'circle',
-    filter: [
-      'all',
-      ['==', '$type', 'Point'],
-      ['==', 'meta', 'feature'],
-      ['==', 'active', 'true'],
-    ],
+    filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature'], ['==', 'active', 'true']],
     paint: {
       'circle-radius': 7,
       'circle-color': '#ef4444',

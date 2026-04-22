@@ -12,13 +12,13 @@ interface SuggestionGeometryControlProps {
 const DRAW_SOURCE_ID = 'suggestion-geometry-source';
 
 function toFeatureCollection(
-  features: Array<Feature<Point | LineString, GeoJsonProperties>>,
+  features: Array<Feature<Point | LineString, GeoJsonProperties>>
 ): FeatureCollection<Point | LineString, GeoJsonProperties> {
   return { type: 'FeatureCollection', features };
 }
 
 function toMapFeatures(
-  value: DrawnLineFeatureCollection | null,
+  value: DrawnLineFeatureCollection | null
 ): Array<Feature<Point | LineString, GeoJsonProperties>> {
   return (value?.features ?? []).map((feature, index) => ({
     type: 'Feature',
@@ -29,7 +29,7 @@ function toMapFeatures(
 }
 
 function buildNextValue(
-  features: Array<Feature<Point | LineString, GeoJsonProperties>>,
+  features: Array<Feature<Point | LineString, GeoJsonProperties>>
 ): DrawnLineFeatureCollection | null {
   if (features.length === 0) return null;
 
@@ -52,7 +52,7 @@ function buildNextValue(
               coordinates: feature.geometry.coordinates,
             },
             properties: {},
-          },
+          }
     ),
   };
 }

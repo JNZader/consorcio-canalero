@@ -1,4 +1,13 @@
-import { Button, FileInput, Modal, NumberInput, Select, SimpleGrid, Stack, TextInput } from '@mantine/core';
+import {
+  Button,
+  FileInput,
+  Modal,
+  NumberInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  TextInput,
+} from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 import type { IngresoFormValues } from './IngresoFormModal';

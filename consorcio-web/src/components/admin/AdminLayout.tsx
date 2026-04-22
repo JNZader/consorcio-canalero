@@ -11,31 +11,23 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
-import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import ThemeToggle from '../ThemeToggle';
 import {
   IconArrowLeft,
   IconCalendar,
-  IconCalculator,
   IconChartBar,
-  IconChartHistogram,
   IconClipboardList,
   IconCoin,
-  IconDroplet,
   IconHome,
   IconLightbulb,
-  IconLeaf,
   IconLogout,
   IconMap,
   IconMountain,
-  IconNetwork,
-  IconWaveSine,
   IconPhoto,
-  IconSatellite,
   IconSettings,
   IconUser,
-  IconUsers,
 } from '../ui/icons';
 
 // Navigation sections

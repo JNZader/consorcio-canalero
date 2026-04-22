@@ -1,15 +1,12 @@
 import { Box, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
-import { memo, useState, type CSSProperties } from 'react';
+import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
+import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
-import {
-  YPF_ESTACION_BOMBEO_COLOR,
-  YPF_ESTACION_BOMBEO_LABEL,
-} from './ypfEstacionBombeoLayer';
-import { ALL_ETAPAS, type Etapa } from '../../types/canales';
+import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
 
 interface LegendItem {
   color: string;
@@ -124,20 +121,8 @@ function CanalDashedLineChip({
   readonly testId: string;
 }) {
   return (
-    <Group
-      gap="xs"
-      wrap="nowrap"
-      data-testid={testId}
-      data-color={color}
-      data-dashed="true"
-    >
-      <svg
-        width={18}
-        height={3}
-        role="img"
-        aria-label={label}
-        style={{ display: 'inline-block' }}
-      >
+    <Group gap="xs" wrap="nowrap" data-testid={testId} data-color={color} data-dashed="true">
+      <svg width={18} height={3} role="img" aria-label={label} style={{ display: 'inline-block' }}>
         <line
           x1={0}
           y1={1.5}
@@ -157,8 +142,8 @@ function CanalDashedLineChip({
  * Color + label pairs for the propuestos legend — ordered by priority
  * (Alta → Largo plazo) to match the map paint and the filter UI.
  */
-const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> =
-  ALL_ETAPAS.map((etapa) => {
+const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> = ALL_ETAPAS.map(
+  (etapa) => {
     switch (etapa) {
       case 'Alta':
         return { etapa, color: CANALES_COLORS.propuestoAlta };
@@ -171,7 +156,8 @@ const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> =
       case 'Largo plazo':
         return { etapa, color: CANALES_COLORS.propuestoLargoPlazo };
     }
-  });
+  }
+);
 
 interface LeyendaPanelProps {
   readonly consorcios?: ConsorcioInfo[];
@@ -257,7 +243,9 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   const [showConsorcios, setShowConsorcios] = useState(false);
 
   const legendItems =
-    customItems.length > 0 ? customItems : [{ color: '#FF0000', label: 'Zona Consorcio', type: 'border' }];
+    customItems.length > 0
+      ? customItems
+      : [{ color: '#FF0000', label: 'Zona Consorcio', type: 'border' }];
 
   const hasSimplePilarVerdeLegends =
     pilarVerdeAgroAceptadaVisible ||
@@ -292,82 +280,82 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     >
       <CollapsibleSection title="Leyenda" testId="leyenda" titleSize="sm" titleWeight={600}>
         <Stack gap={4}>
-        {legendItems.map((item) => (
-          <Group key={item.label} gap="xs">
-            <LegendItemIndicator item={item} />
-            <Text size="xs">{item.label}</Text>
-          </Group>
-        ))}
-        {consorcios.length > 0 && (
-          <>
-            <Divider my={4} />
-            <Group
-              gap="xs"
-              style={{ cursor: 'pointer' }}
-              onClick={() => setShowConsorcios(!showConsorcios)}
-            >
-              <Text fw={600} size="xs" c="dimmed">
-                Red Vial ({consorcios.length} consorcios)
-              </Text>
-              <Text size="xs" c="dimmed">
-                {showConsorcios ? '▼' : '►'}
-              </Text>
+          {legendItems.map((item) => (
+            <Group key={item.label} gap="xs">
+              <LegendItemIndicator item={item} />
+              <Text size="xs">{item.label}</Text>
             </Group>
-            {showConsorcios && (
-              <Stack gap={2} pl="xs">
-                {consorcios.map((consorcio) => (
-                  <Group key={consorcio.codigo} gap="xs" wrap="nowrap">
-                    <Box
+          ))}
+          {consorcios.length > 0 && (
+            <>
+              <Divider my={4} />
+              <Group
+                gap="xs"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowConsorcios(!showConsorcios)}
+              >
+                <Text fw={600} size="xs" c="dimmed">
+                  Red Vial ({consorcios.length} consorcios)
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {showConsorcios ? '▼' : '►'}
+                </Text>
+              </Group>
+              {showConsorcios && (
+                <Stack gap={2} pl="xs">
+                  {consorcios.map((consorcio) => (
+                    <Group key={consorcio.codigo} gap="xs" wrap="nowrap">
+                      <Box
+                        style={{
+                          width: 16,
+                          height: 3,
+                          backgroundColor: consorcio.color,
+                          borderRadius: 1,
+                        }}
+                      />
+                      <Text
+                        size="xs"
+                        truncate
+                        style={{ maxWidth: 150 }}
+                        title={`${consorcio.nombre} - ${consorcio.longitud_km} km`}
+                      >
+                        {consorcio.codigo} ({consorcio.longitud_km.toFixed(0)} km)
+                      </Text>
+                    </Group>
+                  ))}
+                </Stack>
+              )}
+            </>
+          )}
+          {pilarVerdeBpaHistoricoVisible && (
+            <>
+              <Divider my={4} />
+              <Text size="xs" c="dimmed" fw={500}>
+                Años en BPA:
+              </Text>
+              <Group gap="xs" wrap="nowrap" data-testid="bpa-historico-legend">
+                {BPA_HISTORICO_LEGEND_CHIPS.map((chip) => (
+                  <Group key={chip.label} gap={4} wrap="nowrap">
+                    <span
+                      data-color={chip.color}
+                      aria-label={`${chip.label} años`}
                       style={{
-                        width: 16,
-                        height: 3,
-                        backgroundColor: consorcio.color,
-                        borderRadius: 1,
+                        display: 'inline-block',
+                        width: 12,
+                        height: 12,
+                        backgroundColor: chip.color,
+                        border: '1px solid #166534',
+                        borderRadius: 2,
                       }}
                     />
-                    <Text
-                      size="xs"
-                      truncate
-                      style={{ maxWidth: 150 }}
-                      title={`${consorcio.nombre} - ${consorcio.longitud_km} km`}
-                    >
-                      {consorcio.codigo} ({consorcio.longitud_km.toFixed(0)} km)
-                    </Text>
+                    <Text size="xs">{chip.label}</Text>
                   </Group>
                 ))}
-              </Stack>
-            )}
-          </>
-        )}
-        {pilarVerdeBpaHistoricoVisible && (
-          <>
-            <Divider my={4} />
-            <Text size="xs" c="dimmed" fw={500}>
-              Años en BPA:
-            </Text>
-            <Group gap="xs" wrap="nowrap" data-testid="bpa-historico-legend">
-              {BPA_HISTORICO_LEGEND_CHIPS.map((chip) => (
-                <Group key={chip.label} gap={4} wrap="nowrap">
-                  <span
-                    data-color={chip.color}
-                    aria-label={`${chip.label} años`}
-                    style={{
-                      display: 'inline-block',
-                      width: 12,
-                      height: 12,
-                      backgroundColor: chip.color,
-                      border: '1px solid #166534',
-                      borderRadius: 2,
-                    }}
-                  />
-                  <Text size="xs">{chip.label}</Text>
-                </Group>
-              ))}
-            </Group>
-          </>
-        )}
-        {hasSimplePilarVerdeLegends && <Divider my={4} />}
-        {/*
+              </Group>
+            </>
+          )}
+          {hasSimplePilarVerdeLegends && <Divider my={4} />}
+          {/*
           Order mirrors `PILAR_VERDE_Z_ORDER` intuition (most specific → most
           contextual):
             1. agro_aceptada       (green — compliant)
@@ -375,130 +363,130 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             3. agro_zonas          (cyan — zonas agroforestales)
             4. porcentaje_forestacion (violet — mandatory 2-5%)
         */}
-        {pilarVerdeAgroAceptadaVisible && (
-          <SimpleColorLegendChip
-            color={PILAR_VERDE_COLORS.agroAceptadaFill}
-            label="Cumplen ley forestal"
-            testId="pilar-verde-agro-aceptada-legend"
-          />
-        )}
-        {pilarVerdeAgroPresentadaVisible && (
-          <SimpleColorLegendChip
-            color={PILAR_VERDE_COLORS.agroPresentadaFill}
-            label="No cumplen ley forestal"
-            testId="pilar-verde-agro-presentada-legend"
-          />
-        )}
-        {pilarVerdeAgroZonasVisible && (
-          <Stack gap={2} data-testid="pilar-verde-agro-zonas-legend">
-            <Text fw={500} size="xs">
-              Zonas agroforestales
-            </Text>
+          {pilarVerdeAgroAceptadaVisible && (
             <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.agroZonaRioTercero}
-              label="Río Tercero Este"
-              testId="pilar-verde-agro-zonas-legend-rio-tercero"
+              color={PILAR_VERDE_COLORS.agroAceptadaFill}
+              label="Cumplen ley forestal"
+              testId="pilar-verde-agro-aceptada-legend"
             />
+          )}
+          {pilarVerdeAgroPresentadaVisible && (
             <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.agroZonaCarcarana}
-              label="Río Carcarañá"
-              testId="pilar-verde-agro-zonas-legend-carcarana"
+              color={PILAR_VERDE_COLORS.agroPresentadaFill}
+              label="No cumplen ley forestal"
+              testId="pilar-verde-agro-presentada-legend"
             />
-            <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.agroZonaTortugas}
-              label="Arroyo Tortugas Este"
-              testId="pilar-verde-agro-zonas-legend-tortugas"
-            />
-          </Stack>
-        )}
-        {pilarVerdePorcentajeForestacionVisible && (
-          <Stack gap={2} data-testid="pilar-verde-porcentaje-forestacion-legend">
-            <Text fw={500} size="xs">
-              Forestación obligatoria
-            </Text>
-            <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.porcentajeForestacionBaja}
-              label="Baja (≤ 2,3%)"
-              testId="pilar-verde-porcentaje-forestacion-baja"
-            />
-            <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.porcentajeForestacionMedia}
-              label="Media (2,4 – 2,6%)"
-              testId="pilar-verde-porcentaje-forestacion-media"
-            />
-            <SimpleColorLegendChip
-              color={PILAR_VERDE_COLORS.porcentajeForestacionAlta}
-              label="Alta (≥ 2,7%)"
-              testId="pilar-verde-porcentaje-forestacion-alta"
-            />
-          </Stack>
-        )}
-        {(pilarAzulCanalesRelevadosVisible ||
-          pilarAzulCanalesPropuestosVisible ||
-          pilarAzulEscuelasVisible) && <Divider my={4} />}
-        {pilarAzulCanalesRelevadosVisible && (
-          <Stack gap={2} data-testid="canales-relevados-legend">
-            <Text fw={500} size="xs">
-              Canales Relevados
-            </Text>
-            <CanalSolidLineChip
-              color={CANALES_COLORS.relevadoSinObra}
-              label="Sin obra"
-              testId="canal-relevado-chip-sin-obra"
-            />
-            <CanalSolidLineChip
-              color={CANALES_COLORS.relevadoReadec}
-              label="Readecuación"
-              testId="canal-relevado-chip-readec"
-            />
-            <CanalSolidLineChip
-              color={CANALES_COLORS.relevadoAsociada}
-              label="Asociada"
-              testId="canal-relevado-chip-asociada"
-            />
-          </Stack>
-        )}
-        {pilarAzulCanalesPropuestosVisible && (
-          <Stack gap={2} data-testid="canales-propuestos-legend">
-            <Text fw={500} size="xs">
-              Canales Propuestos
-            </Text>
-            {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) => (
-              <CanalDashedLineChip
-                key={etapa}
-                color={color}
-                label={etapa}
-                testId={`canal-propuesto-chip-${etapa}`}
+          )}
+          {pilarVerdeAgroZonasVisible && (
+            <Stack gap={2} data-testid="pilar-verde-agro-zonas-legend">
+              <Text fw={500} size="xs">
+                Zonas agroforestales
+              </Text>
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.agroZonaRioTercero}
+                label="Río Tercero Este"
+                testId="pilar-verde-agro-zonas-legend-rio-tercero"
               />
-            ))}
-          </Stack>
-        )}
-        {pilarAzulEscuelasVisible && (
-          <Group gap="xs" wrap="nowrap" data-testid="escuelas-legend">
-            {/*
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.agroZonaCarcarana}
+                label="Río Carcarañá"
+                testId="pilar-verde-agro-zonas-legend-carcarana"
+              />
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.agroZonaTortugas}
+                label="Arroyo Tortugas Este"
+                testId="pilar-verde-agro-zonas-legend-tortugas"
+              />
+            </Stack>
+          )}
+          {pilarVerdePorcentajeForestacionVisible && (
+            <Stack gap={2} data-testid="pilar-verde-porcentaje-forestacion-legend">
+              <Text fw={500} size="xs">
+                Forestación obligatoria
+              </Text>
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.porcentajeForestacionBaja}
+                label="Baja (≤ 2,3%)"
+                testId="pilar-verde-porcentaje-forestacion-baja"
+              />
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.porcentajeForestacionMedia}
+                label="Media (2,4 – 2,6%)"
+                testId="pilar-verde-porcentaje-forestacion-media"
+              />
+              <SimpleColorLegendChip
+                color={PILAR_VERDE_COLORS.porcentajeForestacionAlta}
+                label="Alta (≥ 2,7%)"
+                testId="pilar-verde-porcentaje-forestacion-alta"
+              />
+            </Stack>
+          )}
+          {(pilarAzulCanalesRelevadosVisible ||
+            pilarAzulCanalesPropuestosVisible ||
+            pilarAzulEscuelasVisible) && <Divider my={4} />}
+          {pilarAzulCanalesRelevadosVisible && (
+            <Stack gap={2} data-testid="canales-relevados-legend">
+              <Text fw={500} size="xs">
+                Canales Relevados
+              </Text>
+              <CanalSolidLineChip
+                color={CANALES_COLORS.relevadoSinObra}
+                label="Sin obra"
+                testId="canal-relevado-chip-sin-obra"
+              />
+              <CanalSolidLineChip
+                color={CANALES_COLORS.relevadoReadec}
+                label="Readecuación"
+                testId="canal-relevado-chip-readec"
+              />
+              <CanalSolidLineChip
+                color={CANALES_COLORS.relevadoAsociada}
+                label="Asociada"
+                testId="canal-relevado-chip-asociada"
+              />
+            </Stack>
+          )}
+          {pilarAzulCanalesPropuestosVisible && (
+            <Stack gap={2} data-testid="canales-propuestos-legend">
+              <Text fw={500} size="xs">
+                Canales Propuestos
+              </Text>
+              {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) => (
+                <CanalDashedLineChip
+                  key={etapa}
+                  color={color}
+                  label={etapa}
+                  testId={`canal-propuesto-chip-${etapa}`}
+                />
+              ))}
+            </Stack>
+          )}
+          {pilarAzulEscuelasVisible && (
+            <Group gap="xs" wrap="nowrap" data-testid="escuelas-legend">
+              {/*
               12×12 blue circle swatch — mirrors the MapLibre `circle` paint
               on the `escuelas-symbol` layer (fill `#1976d2`, 2px white
               stroke). Kept as a plain `<div>` so the swatch carries no image
               asset dependency; the color is inline-matched to
               `buildEscuelasCirclePaint()` in `escuelasLayers.ts`.
             */}
-            <div
-              data-testid="escuelas-legend-swatch"
-              aria-label="Escuela rural"
-              style={{
-                display: 'inline-block',
-                width: 12,
-                height: 12,
-                backgroundColor: '#1976d2',
-                border: '2px solid #ffffff',
-                borderRadius: '50%',
-                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
-              }}
-            />
-            <Text size="xs">Escuela rural</Text>
-          </Group>
-        )}
-        {/*
+              <div
+                data-testid="escuelas-legend-swatch"
+                aria-label="Escuela rural"
+                style={{
+                  display: 'inline-block',
+                  width: 12,
+                  height: 12,
+                  backgroundColor: '#1976d2',
+                  border: '2px solid #ffffff',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
+                }}
+              />
+              <Text size="xs">Escuela rural</Text>
+            </Group>
+          )}
+          {/*
           YPF estación de bombeo — ALWAYS rendered. No visibility flag gates
           this entry. The 12×12 orange swatch mirrors the MapLibre `circle`
           paint on the `ypf-estacion-bombeo-circle` layer (fill `#d84315`
@@ -506,22 +494,22 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           imported from `ypfEstacionBombeoLayer.ts` so the legend and the
           map paint stay in lock-step.
         */}
-        <Group gap="xs" wrap="nowrap" data-testid="ypf-estacion-bombeo-legend">
-          <div
-            data-testid="ypf-estacion-bombeo-legend-swatch"
-            aria-label={YPF_ESTACION_BOMBEO_LABEL}
-            style={{
-              display: 'inline-block',
-              width: 12,
-              height: 12,
-              backgroundColor: YPF_ESTACION_BOMBEO_COLOR,
-              border: '2px solid #ffffff',
-              borderRadius: '50%',
-              boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
-            }}
-          />
-          <Text size="xs">{YPF_ESTACION_BOMBEO_LABEL}</Text>
-        </Group>
+          <Group gap="xs" wrap="nowrap" data-testid="ypf-estacion-bombeo-legend">
+            <div
+              data-testid="ypf-estacion-bombeo-legend-swatch"
+              aria-label={YPF_ESTACION_BOMBEO_LABEL}
+              style={{
+                display: 'inline-block',
+                width: 12,
+                height: 12,
+                backgroundColor: YPF_ESTACION_BOMBEO_COLOR,
+                border: '2px solid #ffffff',
+                borderRadius: '50%',
+                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
+              }}
+            />
+            <Text size="xs">{YPF_ESTACION_BOMBEO_LABEL}</Text>
+          </Group>
         </Stack>
       </CollapsibleSection>
     </Paper>

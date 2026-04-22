@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Center,
-  Paper,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Anchor, Button, Center, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { resetPassword } from '../../lib/auth';
@@ -54,15 +44,11 @@ export default function ForgotPasswordForm() {
 
         {sent ? (
           <Stack gap="md">
-            <Alert
-              color="green"
-              icon={<IconCheck size={16} />}
-              title="Email enviado"
-            >
+            <Alert color="green" icon={<IconCheck size={16} />} title="Email enviado">
               <Text size="sm">
-                Si existe una cuenta con el email <strong>{form.values.email}</strong>,
-                recibiras un enlace para restablecer tu contrasena.
-                Revisa tu bandeja de entrada y la carpeta de spam.
+                Si existe una cuenta con el email <strong>{form.values.email}</strong>, recibiras un
+                enlace para restablecer tu contrasena. Revisa tu bandeja de entrada y la carpeta de
+                spam.
               </Text>
             </Alert>
 

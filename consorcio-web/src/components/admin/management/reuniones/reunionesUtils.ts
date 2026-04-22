@@ -20,7 +20,7 @@ export function normalizeArrayResponse<T>(payload: unknown): T[] {
 export function buildReferrableOptions(
   reports: Array<{ id: string; tipo: string; ubicacion_texto?: string }>,
   tramites: Array<{ id: string; titulo: string; numero_expediente?: string }>,
-  assets: Array<{ id: string; nombre: string; tipo: string }>,
+  assets: Array<{ id: string; nombre: string; tipo: string }>
 ): EntityOption[] {
   return [
     ...reports.map((report) => ({
@@ -69,7 +69,7 @@ export function hasAgendaItems(items?: string[]) {
 export function buildAgendaTopicPayload(
   values: { titulo: string; descripcion: string; referencias: string[] },
   agenda: AgendaItem[],
-  availableEntities: EntityOption[],
+  availableEntities: EntityOption[]
 ) {
   return {
     titulo: values.titulo,

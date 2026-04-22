@@ -6,8 +6,8 @@
  */
 
 import { Helmet } from 'react-helmet-async';
-import Header from './Header';
 import Footer from './Footer';
+import Header from './Header';
 
 interface RootLayoutProps {
   /** Page title (will be suffixed with site name) */

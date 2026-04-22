@@ -65,7 +65,7 @@ export function asFeatureCollection(features: Feature[]): FeatureCollection {
 
 export function decorateFeature(
   feature: Feature<Geometry, GeoJsonProperties>,
-  properties: GeoJsonProperties,
+  properties: GeoJsonProperties
 ): Feature<Geometry, GeoJsonProperties> {
   return {
     ...feature,
@@ -76,9 +76,7 @@ export function decorateFeature(
   };
 }
 
-export function buildCuencasCollection(
-  geeLayers: GeeLayerMapLike,
-): FeatureCollection | null {
+export function buildCuencasCollection(geeLayers: GeeLayerMapLike): FeatureCollection | null {
   const defs = [
     { key: 'candil', color: GEE_LAYER_COLORS.candil, label: 'Candil' },
     { key: 'ml', color: GEE_LAYER_COLORS.ml, label: 'ML' },
@@ -91,15 +89,15 @@ export function buildCuencasCollection(
       decorateFeature(feature, {
         __color: color,
         __label: label,
-      }),
-    ),
+      })
+    )
   );
 
   return features.length > 0 ? asFeatureCollection(features) : null;
 }
 
 export function buildSoilCollection(
-  soilMap: FeatureCollection | null | undefined,
+  soilMap: FeatureCollection | null | undefined
 ): FeatureCollection | null {
   if (!soilMap) return null;
 
@@ -107,21 +105,19 @@ export function buildSoilCollection(
     soilMap.features.map((feature) =>
       decorateFeature(feature, {
         __color: getSoilColor((feature.properties as { cap?: string | null } | null)?.cap),
-      }),
-    ),
+      })
+    )
   );
 }
 
-export function buildWaterwaysCollection(
-  waterways: WaterwayLike[],
-): FeatureCollection | null {
+export function buildWaterwaysCollection(waterways: WaterwayLike[]): FeatureCollection | null {
   const features = waterways.flatMap((layer) =>
     layer.data.features.map((feature) =>
       decorateFeature(feature, {
         __color: layer.style.color ?? '#1565C0',
         __label: layer.nombre,
-      }),
-    ),
+      })
+    )
   );
 
   return features.length > 0 ? asFeatureCollection(features) : null;
@@ -178,8 +174,7 @@ export function buildClickableLayers3D(): string[] {
  */
 export function filterExistingLayers(
   map: Pick<maplibregl.Map, 'getLayer'>,
-  ids: readonly string[],
+  ids: readonly string[]
 ): string[] {
   return ids.filter((id) => Boolean(map.getLayer(id)));
 }
-

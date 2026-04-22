@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { ALL_ETAPAS, type Etapa, type IndexFile } from '../types/canales';
 
@@ -79,10 +79,10 @@ export const PILAR_AZUL_DEFAULT_VISIBILITY: Record<PilarAzulLayerId, boolean> = 
  * (v1 policy) — see `getVisiblePropuestaIds`.
  */
 export const PROPUESTAS_ETAPAS_DEFAULTS: Record<Etapa, boolean> = {
-  'Alta': true,
+  Alta: true,
   'Media-Alta': true,
-  'Media': true,
-  'Opcional': true,
+  Media: true,
+  Opcional: true,
   'Largo plazo': true,
 };
 
@@ -334,8 +334,8 @@ export const useMapLayerSyncStore = create<
         canalesPropuestasPrioridad: state.canalesPropuestasPrioridad,
         propuestasEtapasVisibility: state.propuestasEtapasVisibility,
       }),
-    },
-  ),
+    }
+  )
 );
 
 // Re-export Etapa + ALL_ETAPAS here too so consumers can import them from the

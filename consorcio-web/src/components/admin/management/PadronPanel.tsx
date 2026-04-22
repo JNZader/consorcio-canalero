@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Badge,
   Box,
   Button,
@@ -6,16 +7,15 @@ import {
   Divider,
   FileInput,
   Group,
+  Modal,
+  NumberInput,
+  Paper,
+  SimpleGrid,
   Stack,
   Table,
   Text,
-  Title,
-  Paper,
-  ActionIcon,
-  Modal,
   TextInput,
-  NumberInput,
-  SimpleGrid,
+  Title,
   Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -25,8 +25,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
-import { IconPlus, IconSearch, IconUser, IconCreditCard } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { IconCreditCard, IconPlus, IconSearch, IconUser } from '../../ui/icons';
 
 // Types for this panel
 interface Consorcista {
@@ -75,7 +75,9 @@ export default function PadronPanel() {
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await apiFetch<Consorcista[] | { items: Consorcista[] }>(`/padron?search=${search}`);
+      const response = await apiFetch<Consorcista[] | { items: Consorcista[] }>(
+        `/padron?search=${search}`
+      );
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setConsorcistas(data);
     } catch (err) {
@@ -91,7 +93,9 @@ export default function PadronPanel() {
   const fetchPagos = async (id: string) => {
     try {
       // TODO: Pagos endpoint not implemented in v2 padron yet
-      const response = await apiFetch<Pago[] | { items: Pago[] }>(`/padron/${id}/pagos`).catch(() => [] as Pago[]);
+      const response = await apiFetch<Pago[] | { items: Pago[] }>(`/padron/${id}/pagos`).catch(
+        () => [] as Pago[]
+      );
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setPagos(data);
     } catch (err) {

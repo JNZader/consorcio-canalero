@@ -26,10 +26,10 @@ import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text } from '
 import { useMemo } from 'react';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
-import { getActiveAttributions } from '../map2d/layerAttributions';
-import { PropuestasEtapasFilter } from '../map2d/PropuestasEtapasFilter';
-import { CollapsibleSection } from '../ui/CollapsibleSection';
 import type { Etapa } from '../../types/canales';
+import { PropuestasEtapasFilter } from '../map2d/PropuestasEtapasFilter';
+import { getActiveAttributions } from '../map2d/layerAttributions';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
 
 /**

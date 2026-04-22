@@ -87,12 +87,7 @@ export const MEASUREMENT_DRAW_STYLES: DrawStyle[] = [
   {
     id: 'gl-draw-vertex-active-measurement',
     type: 'circle',
-    filter: [
-      'all',
-      ['==', 'meta', 'vertex'],
-      ['==', '$type', 'Point'],
-      ['==', 'active', 'true'],
-    ],
+    filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point'], ['==', 'active', 'true']],
     paint: {
       'circle-radius': 7,
       'circle-color': ACCENT_STRONG,

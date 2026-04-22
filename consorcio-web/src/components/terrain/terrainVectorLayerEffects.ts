@@ -1,10 +1,7 @@
 import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 
-import {
-  asFeatureCollection,
-  type TerrainVectorLayerVisibility,
-} from './terrainViewer3DUtils';
+import { type TerrainVectorLayerVisibility, asFeatureCollection } from './terrainViewer3DUtils';
 
 export const TERRAIN_SOURCE_IDS = {
   approved_zones: 'terrain-vector-approved-zones',
@@ -34,7 +31,7 @@ interface TerrainVectorCollections {
 function ensureGeoJsonSource(
   map: maplibregl.Map,
   sourceId: string,
-  data: FeatureCollection | null | undefined,
+  data: FeatureCollection | null | undefined
 ) {
   const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
   const nextData = data ?? asFeatureCollection([]);
@@ -50,25 +47,14 @@ function ensureGeoJsonSource(
   });
 }
 
-function ensureLayerVisibility(
-  map: maplibregl.Map,
-  layerId: string,
-  visible: boolean,
-) {
+function ensureLayerVisibility(map: maplibregl.Map, layerId: string, visible: boolean) {
   if (map.getLayer(layerId)) {
     map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
   }
 }
 
-function ensureTerrainVectorLayers(
-  map: maplibregl.Map,
-  collections: TerrainVectorCollections,
-) {
-  ensureGeoJsonSource(
-    map,
-    TERRAIN_SOURCE_IDS.approved_zones,
-    collections.approvedZonesCollection,
-  );
+function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVectorCollections) {
+  ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.approved_zones, collections.approvedZonesCollection);
   if (!map.getLayer(`${TERRAIN_SOURCE_IDS.approved_zones}-fill`)) {
     map.addLayer({
       id: `${TERRAIN_SOURCE_IDS.approved_zones}-fill`,
@@ -199,61 +185,60 @@ function ensureTerrainVectorLayers(
       paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-opacity': 0.85 },
     });
   }
-
 }
 
 export function syncTerrainVectorLayers(
   map: maplibregl.Map,
   collections: TerrainVectorCollections,
-  visibility: TerrainVectorLayerVisibility,
+  visibility: TerrainVectorLayerVisibility
 ) {
   ensureTerrainVectorLayers(map, collections);
 
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.approved_zones}-fill`,
-    visibility.approved_zones && !!collections.approvedZonesCollection,
+    visibility.approved_zones && !!collections.approvedZonesCollection
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.approved_zones}-line`,
-    visibility.approved_zones && !!collections.approvedZonesCollection,
+    visibility.approved_zones && !!collections.approvedZonesCollection
   );
   ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.cuencas}-fill`, false);
   ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.cuencas}-line`, false);
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.basins}-fill`,
-    visibility.basins && !!collections.basins,
+    visibility.basins && !!collections.basins
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.basins}-line`,
-    visibility.basins && !!collections.basins,
+    visibility.basins && !!collections.basins
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.roads}-line`,
-    visibility.roads && !!collections.roadsCollection,
+    visibility.roads && !!collections.roadsCollection
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.waterways}-line`,
-    visibility.waterways && !!collections.waterwaysCollection,
+    visibility.waterways && !!collections.waterwaysCollection
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.soil}-fill`,
-    visibility.soil && !!collections.soilCollection,
+    visibility.soil && !!collections.soilCollection
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.soil}-line`,
-    visibility.soil && !!collections.soilCollection,
+    visibility.soil && !!collections.soilCollection
   );
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.catastro}-line`,
-    visibility.catastro && !!collections.catastroCollection,
+    visibility.catastro && !!collections.catastroCollection
   );
 }

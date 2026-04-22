@@ -76,7 +76,7 @@ export function CollapsibleSection({
         toggle();
       }
     },
-    [toggle],
+    [toggle]
   );
 
   return (

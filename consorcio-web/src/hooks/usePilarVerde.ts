@@ -20,10 +20,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../lib/query';
 import type {
+  AggregatesFile,
   AgroAceptadaFeatureCollection,
   AgroPresentadaFeatureCollection,
   AgroZonasFeatureCollection,
-  AggregatesFile,
   Bpa2025FeatureCollection,
   BpaEnrichedFile,
   BpaHistoricoFeatureCollection,
@@ -61,7 +61,7 @@ async function loadAllPilarVerde(): Promise<PilarVerdeData> {
   // Order matches PILAR_VERDE_PUBLIC_PATHS so the .map() preserves slot identity.
   const slotKeys = Object.keys(PILAR_VERDE_PUBLIC_PATHS) as SlotKey[];
   const settled = await Promise.allSettled(
-    slotKeys.map((key) => fetchSlot<unknown>(PILAR_VERDE_PUBLIC_PATHS[key])),
+    slotKeys.map((key) => fetchSlot<unknown>(PILAR_VERDE_PUBLIC_PATHS[key]))
   );
   const out: PilarVerdeData = {
     zonaAmpliada: null,
@@ -89,11 +89,7 @@ async function loadAllPilarVerde(): Promise<PilarVerdeData> {
   return out;
 }
 
-function assignSlot(
-  data: PilarVerdeData,
-  key: SlotKey,
-  value: unknown,
-): void {
+function assignSlot(data: PilarVerdeData, key: SlotKey, value: unknown): void {
   switch (key) {
     case 'zonaAmpliada':
       data.zonaAmpliada = value as ZonaAmpliadaFeatureCollection;

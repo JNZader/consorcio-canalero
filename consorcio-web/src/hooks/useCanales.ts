@@ -17,11 +17,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import type {
-  CanalesData,
-  CanalesFeatureCollection,
-  IndexFile,
-} from '../types/canales';
+import type { CanalesData, CanalesFeatureCollection, IndexFile } from '../types/canales';
 
 /** Public asset paths — keys mirror `CanalesData` slot names. */
 export const CANALES_PATHS = {
@@ -48,7 +44,7 @@ interface LoadResult {
 async function loadAllCanales(): Promise<LoadResult> {
   const slotKeys = Object.keys(CANALES_PATHS) as SlotKey[];
   const settled = await Promise.allSettled(
-    slotKeys.map((key) => fetchSlot<unknown>(CANALES_PATHS[key])),
+    slotKeys.map((key) => fetchSlot<unknown>(CANALES_PATHS[key]))
   );
 
   const data: CanalesData = {

@@ -32,7 +32,7 @@ export interface RegisterCredentials {
 
 export type AuthStateChangeCallback = (
   event: 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED',
-  session: AuthSession | null,
+  session: AuthSession | null
 ) => void;
 
 export interface AuthAdapter {

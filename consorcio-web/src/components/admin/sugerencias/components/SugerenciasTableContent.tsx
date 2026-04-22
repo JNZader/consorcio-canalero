@@ -1,4 +1,14 @@
-import { ActionIcon, Badge, Center, Group, Loader, Pagination, Table, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Center,
+  Group,
+  Loader,
+  Pagination,
+  Table,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { EmptyState } from '../../../ui/EmptyState';

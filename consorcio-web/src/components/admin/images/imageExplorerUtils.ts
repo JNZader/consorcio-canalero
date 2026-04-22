@@ -1,8 +1,18 @@
 import type { SelectedImage } from '../../../hooks/useSelectedImage';
 
 export const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
 ] as const;
 
 export const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'] as const;
@@ -32,7 +42,7 @@ export interface VisualizationOption {
 
 export function buildVisualizationOptions(
   sensor: 'sentinel2' | 'sentinel1',
-  visualizations: VisualizationOption[] | null | undefined,
+  visualizations: VisualizationOption[] | null | undefined
 ) {
   if (sensor === 'sentinel2') {
     const safeVisualizations = Array.isArray(visualizations) ? visualizations : [];
@@ -48,7 +58,7 @@ export function buildVisualizationOptions(
 }
 
 export function createSelectedImageFromResult(
-  result: ImageResultLike | null,
+  result: ImageResultLike | null
 ): SelectedImage | null {
   if (!result) return null;
   return {

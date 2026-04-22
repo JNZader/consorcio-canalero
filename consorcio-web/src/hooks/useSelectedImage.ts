@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mapImageApi, type ImagenMapaParams } from '../lib/api/mapImage';
+import { type ImagenMapaParams, mapImageApi } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
 import { isValidSelectedImage } from '../lib/typeGuards';
 
@@ -226,9 +226,7 @@ export function useSelectedImageListener() {
             setSelectedImage(restored);
             // Also cache in localStorage for fast future loads
             localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-            window.dispatchEvent(
-              new CustomEvent('selectedImageChange', { detail: restored })
-            );
+            window.dispatchEvent(new CustomEvent('selectedImageChange', { detail: restored }));
           } else if (needsRefresh) {
             // Backend couldn't regenerate — remove stale entry
             localStorage.removeItem(STORAGE_KEY);

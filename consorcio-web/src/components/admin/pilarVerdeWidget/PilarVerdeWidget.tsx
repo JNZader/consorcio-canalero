@@ -30,11 +30,7 @@ import { memo } from 'react';
 
 import { usePilarVerde } from '../../../hooks/usePilarVerde';
 import type { AggregatesFile } from '../../../types/pilarVerde';
-import {
-  computeBpaKpis,
-  computeHistoricalKpis,
-  computeLeyForestalKpis,
-} from './computeKpis';
+import { computeBpaKpis, computeHistoricalKpis, computeLeyForestalKpis } from './computeKpis';
 import { fmt } from './fmt';
 
 export interface PilarVerdeWidgetProps {

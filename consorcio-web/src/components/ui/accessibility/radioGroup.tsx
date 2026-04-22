@@ -20,7 +20,16 @@ interface AccessibleRadioGroupProps {
   readonly columns?: number;
 }
 
-export function AccessibleRadioGroup({ name, label, options, value, onChange, error, required = false, columns = 4 }: AccessibleRadioGroupProps) {
+export function AccessibleRadioGroup({
+  name,
+  label,
+  options,
+  value,
+  onChange,
+  error,
+  required = false,
+  columns = 4,
+}: AccessibleRadioGroupProps) {
   const [focusedIndex, setFocusedIndex] = useState(() => {
     const index = options.findIndex((option) => option.value === value);
     return index >= 0 ? index : 0;
@@ -104,7 +113,9 @@ export function AccessibleRadioGroup({ name, label, options, value, onChange, er
               }}
             >
               {option.icon && <span aria-hidden="true">{option.icon}</span>}
-              <Text size="sm" fw={500}>{option.label}</Text>
+              <Text size="sm" fw={500}>
+                {option.label}
+              </Text>
             </button>
           );
         })}

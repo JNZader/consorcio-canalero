@@ -5,8 +5,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
-import { CoordinatesInput } from '../ui/accessibility';
 import formStyles from '../../styles/components/form.module.css';
+import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
 
 interface LocationSectionProps {
@@ -173,8 +173,8 @@ export function LocationSection({
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       </Box>
       <Text size="xs" c="gray.6" mt="xs">
-        Haz clic dentro del área del consorcio para marcar la ubicación del incidente.
-        Referencia: límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
+        Haz clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:
+        límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
       </Text>
     </>
   );

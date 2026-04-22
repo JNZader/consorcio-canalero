@@ -1,4 +1,12 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { visuallyHiddenStyle } from './shared';
 
 interface LiveRegionContextType {
@@ -41,7 +49,13 @@ export function LiveRegionProvider({ children }: Readonly<{ children: ReactNode 
       <div aria-live="polite" aria-atomic="true" className="sr-only" style={visuallyHiddenStyle}>
         {politeMessage}
       </div>
-      <div role="alert" aria-live="assertive" aria-atomic="true" className="sr-only" style={visuallyHiddenStyle}>
+      <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        className="sr-only"
+        style={visuallyHiddenStyle}
+      >
         {assertiveMessage}
       </div>
     </LiveRegionContext.Provider>

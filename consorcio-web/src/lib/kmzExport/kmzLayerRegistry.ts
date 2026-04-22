@@ -38,18 +38,14 @@
  * module and import it here (single-source-of-truth invariant).
  */
 
-import {
-  CANALES_COLORS,
-} from '../../components/map2d/canalesLayers';
-import {
-  PILAR_VERDE_COLORS,
-} from '../../components/map2d/pilarVerdeLayers';
+import { CANALES_COLORS } from '../../components/map2d/canalesLayers';
+import { PILAR_VERDE_COLORS } from '../../components/map2d/pilarVerdeLayers';
 import {
   YPF_ESTACION_BOMBEO_COLOR,
   YPF_ESTACION_BOMBEO_LABEL,
 } from '../../components/map2d/ypfEstacionBombeoLayer';
-import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
+import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 
 /** Geometry dispatch hint used by Phase 2 style builders. */
 export type KmzLayerGeometry = 'point' | 'line' | 'polygon';
@@ -82,11 +78,7 @@ export interface KmzLayerEntry {
  * tuple as a defense-in-depth check — the registry already doesn't include
  * them, but the denylist makes the intent explicit.
  */
-export const KMZ_EXCLUDED_LAYER_KEYS = [
-  'puntos_conflicto',
-  'approved_zones',
-  'basins',
-] as const;
+export const KMZ_EXCLUDED_LAYER_KEYS = ['puntos_conflicto', 'approved_zones', 'basins'] as const;
 
 /**
  * Primary waterway representative = Río Tercero (biggest / most prominent
@@ -98,7 +90,7 @@ if (!RIO_TERCERO_WATERWAY) {
   throw new Error(
     'kmzLayerRegistry: `rio_tercero` missing from WATERWAY_DEFS — waterway ' +
       'representative color cannot be resolved. Update the fallback before ' +
-      'editing WATERWAY_DEFS.',
+      'editing WATERWAY_DEFS.'
   );
 }
 

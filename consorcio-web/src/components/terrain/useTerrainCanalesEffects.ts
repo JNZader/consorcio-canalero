@@ -43,18 +43,11 @@
 
 import type { FeatureCollection, LineString } from 'geojson';
 import type maplibregl from 'maplibre-gl';
-import { useEffect, type RefObject } from 'react';
+import { type RefObject, useEffect } from 'react';
 
+import { ALL_ETAPAS, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import type { CanalFeatureProperties, Etapa, IndexFile } from '../../types/canales';
 import { syncCanalesLayers } from '../map2d/mapLayerEffectHelpers';
-import {
-  ALL_ETAPAS,
-  useMapLayerSyncStore,
-} from '../../stores/mapLayerSyncStore';
-import type {
-  CanalFeatureProperties,
-  Etapa,
-  IndexFile,
-} from '../../types/canales';
 
 export interface UseCanalesHookPayload {
   /** Relevados FeatureCollection — `null` while the fetch is in flight. */
@@ -89,15 +82,13 @@ export function useTerrainCanalesEffects({
 }: UseTerrainCanalesEffectsParams): void {
   // Master toggles (selective subscription — only re-render on flips).
   const relevadosVisible = useMapLayerSyncStore(
-    (s) => s.map3d.visibleVectors.canales_relevados ?? false,
+    (s) => s.map3d.visibleVectors.canales_relevados ?? false
   );
   const propuestasVisible = useMapLayerSyncStore(
-    (s) => s.map3d.visibleVectors.canales_propuestos ?? false,
+    (s) => s.map3d.visibleVectors.canales_propuestos ?? false
   );
   // Etapas filter slice — shared between 2D + 3D.
-  const propuestasEtapasVisibility = useMapLayerSyncStore(
-    (s) => s.propuestasEtapasVisibility,
-  );
+  const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
   // Broad slice — triggers re-sync when any per-canal flag changes. We read
   // per-canal flags via `getState()` inside the effect body (avoids
   // subscribing to 43 individual selectors).
@@ -139,13 +130,10 @@ export function useTerrainCanalesEffects({
     // user has flipped every etapa OFF — preserves the 2D behavior of
     // rendering all propuestos when no etapa-specific filter is selected
     // (spec scenario "5 etapas all true → filter is no-op").
-    const activeEtapas = (
-      Object.entries(state.propuestasEtapasVisibility) as [Etapa, boolean][]
-    )
+    const activeEtapas = (Object.entries(state.propuestasEtapasVisibility) as [Etapa, boolean][])
       .filter(([, v]) => v)
       .map(([k]) => k);
-    const effectiveEtapas: readonly Etapa[] =
-      activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS;
+    const effectiveEtapas: readonly Etapa[] = activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS;
 
     syncCanalesLayers(map, {
       relevados: canales.relevados,

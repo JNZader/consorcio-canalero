@@ -18,11 +18,7 @@
  * @see design `sdd/pilar-verde-bpa-agroforestal/design` § 5 AdminDashboard Widget
  */
 
-import type {
-  AggregatesBpa,
-  AggregatesLeyForestal,
-  BpaYear,
-} from '../../../types/pilarVerde';
+import type { AggregatesBpa, AggregatesLeyForestal, BpaYear } from '../../../types/pilarVerde';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -147,4 +143,3 @@ export function computeHistoricalKpis(slice: AggregatesBpa | null | undefined): 
     evolucion,
   };
 }
-

@@ -3,6 +3,11 @@ import type maplibregl from 'maplibre-gl';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useEffect } from 'react';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import type { CanalesData, Etapa } from '../../types/canales';
+import { ALL_ETAPAS } from '../../types/canales';
+import type { EscuelasData } from '../../types/escuelas';
+import type { PilarVerdeData } from '../../types/pilarVerde';
 import {
   shouldShowSuggestedZones,
   syncAgroAceptadaLayer,
@@ -22,6 +27,7 @@ import {
   syncYpfEstacionBombeoLayer,
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
+import { syncCatastroLayers } from './mapLayerEffectHelpers';
 import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,
@@ -30,12 +36,6 @@ import {
   syncImageOverlays,
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
-import { syncCatastroLayers } from './mapLayerEffectHelpers';
-import type { PilarVerdeData } from '../../types/pilarVerde';
-import type { CanalesData, Etapa } from '../../types/canales';
-import { ALL_ETAPAS } from '../../types/canales';
-import type { EscuelasData } from '../../types/escuelas';
-import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 
 interface LayerLike {
   id: string;
@@ -165,11 +165,7 @@ export function useMapLayerEffects({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncApprovedZoneLayers(
-      map,
-      approvedZonesCollection,
-      !!vectorVisibility.approved_zones,
-    );
+    syncApprovedZoneLayers(map, approvedZonesCollection, !!vectorVisibility.approved_zones);
   }, [approvedZonesCollection, mapReady, mapRef, vectorVisibility.approved_zones]);
 
   useEffect(() => {
@@ -182,7 +178,7 @@ export function useMapLayerEffects({
         showSuggestedZonesPanel,
         hasApprovedZones,
         suggestedZonesDisplay,
-      }),
+      })
     );
   }, [hasApprovedZones, mapReady, mapRef, showSuggestedZonesPanel, suggestedZonesDisplay]);
 
@@ -193,11 +189,7 @@ export function useMapLayerEffects({
   }, [activeDemLayerId, demTileUrl, mapReady, mapRef, showDemOverlay]);
 
   useEffect(() => {
-    const nextLayers = getVisibleRasterLayersForDem(
-      allGeoLayers,
-      showDemOverlay,
-      activeDemLayerId,
-    );
+    const nextLayers = getVisibleRasterLayersForDem(allGeoLayers, showDemOverlay, activeDemLayerId);
     setVisibleRasterLayers((prev) => {
       if (prev.length === nextLayers.length && prev[0]?.tipo === nextLayers[0]?.tipo) {
         return prev;
@@ -237,7 +229,7 @@ export function useMapLayerEffects({
     syncBpaHistoricoLayer(
       map,
       data as FeatureCollection | null,
-      !!vectorVisibility.pilar_verde_bpa_historico,
+      !!vectorVisibility.pilar_verde_bpa_historico
     );
   }, [mapReady, mapRef, pilarVerde?.bpaHistorico, vectorVisibility.pilar_verde_bpa_historico]);
 
@@ -248,7 +240,7 @@ export function useMapLayerEffects({
     syncAgroAceptadaLayer(
       map,
       data as FeatureCollection | null,
-      !!vectorVisibility.pilar_verde_agro_aceptada,
+      !!vectorVisibility.pilar_verde_agro_aceptada
     );
   }, [mapReady, mapRef, pilarVerde?.agroAceptada, vectorVisibility.pilar_verde_agro_aceptada]);
 
@@ -259,7 +251,7 @@ export function useMapLayerEffects({
     syncAgroPresentadaLayer(
       map,
       data as FeatureCollection | null,
-      !!vectorVisibility.pilar_verde_agro_presentada,
+      !!vectorVisibility.pilar_verde_agro_presentada
     );
   }, [mapReady, mapRef, pilarVerde?.agroPresentada, vectorVisibility.pilar_verde_agro_presentada]);
 
@@ -270,7 +262,7 @@ export function useMapLayerEffects({
     syncAgroZonasLayer(
       map,
       data as FeatureCollection | null,
-      !!vectorVisibility.pilar_verde_agro_zonas,
+      !!vectorVisibility.pilar_verde_agro_zonas
     );
   }, [mapReady, mapRef, pilarVerde?.agroZonas, vectorVisibility.pilar_verde_agro_zonas]);
 
@@ -281,7 +273,7 @@ export function useMapLayerEffects({
     syncPorcentajeForestacionLayer(
       map,
       data as FeatureCollection | null,
-      !!vectorVisibility.pilar_verde_porcentaje_forestacion,
+      !!vectorVisibility.pilar_verde_porcentaje_forestacion
     );
   }, [
     mapReady,
@@ -302,9 +294,7 @@ export function useMapLayerEffects({
 
   // Subscribe to the propuestas-etapas slice so the layer filter re-runs
   // whenever the user toggles an etapa.
-  const propuestasEtapasVisibility = useMapLayerSyncStore(
-    (s) => s.propuestasEtapasVisibility,
-  );
+  const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
 
   useEffect(() => {
     const map = mapRef.current;

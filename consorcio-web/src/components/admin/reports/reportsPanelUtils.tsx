@@ -15,7 +15,11 @@ export function getCategoryLabel(category: string): string {
   return CATEGORY_OPTIONS.find((c) => c.value === category)?.label || category;
 }
 
-export function filterReports(reports: Report[], filterCategory: string | null, searchQuery: string) {
+export function filterReports(
+  reports: Report[],
+  filterCategory: string | null,
+  searchQuery: string
+) {
   let pending = 0;
   let inReview = 0;
 

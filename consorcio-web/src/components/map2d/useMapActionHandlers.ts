@@ -2,14 +2,14 @@ import { notifications } from '@mantine/notifications';
 import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { type Dispatch, type RefObject, type SetStateAction, useCallback } from 'react';
-import { API_URL, getAuthToken } from '../../lib/api';
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
+import { API_URL, getAuthToken } from '../../lib/api';
 import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { CanalesFeatureCollection } from '../../types/canales';
-import { CANAL_STYLE_COLORS, CANALES_COLORS } from './canalesLayers';
+import { CANALES_COLORS, CANAL_STYLE_COLORS } from './canalesLayers';
 import { formatExportFilename, resolveConsorcioBounds } from './map2dUtils';
 
 interface LegendItem {
@@ -101,7 +101,7 @@ interface RasterLegendGroupPayload {
 function buildRasterLegendsPayload(
   visibleRasterLayers: RasterLayerTag[],
   hiddenClasses: Record<string, number[]>,
-  hiddenRanges: Record<string, number[]>,
+  hiddenRanges: Record<string, number[]>
 ): RasterLegendGroupPayload[] {
   return visibleRasterLayers
     .map((layer) => {
@@ -171,7 +171,7 @@ export function useMapExportHandlers({
   // re-render the entire map shell.
   const kmzVisibleLayers = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const kmzPropuestasEtapasVisibility = useMapLayerSyncStore(
-    (state) => state.propuestasEtapasVisibility,
+    (state) => state.propuestasEtapasVisibility
   );
 
   const handleExportPng = useCallback(async () => {
@@ -295,7 +295,7 @@ export function useMapExportHandlers({
       const rasterLegends = buildRasterLegendsPayload(
         visibleRasterLayers,
         hiddenClasses,
-        hiddenRanges,
+        hiddenRanges
       );
 
       const zoneSummary = approvedZones.features.map((feature) => ({
@@ -324,7 +324,7 @@ export function useMapExportHandlers({
             infoRows: [],
             zoneSummary,
           }),
-        },
+        }
       );
 
       if (!response.ok) {
@@ -340,13 +340,15 @@ export function useMapExportHandlers({
         // eslint-disable-next-line no-console
         console.error(
           `[export-map-pdf] HTTP ${response.status} ${response.statusText || ''}`.trim(),
-          detail,
+          detail
         );
         const firstMsg = Array.isArray(detail)
           ? (detail[0] as { msg?: unknown } | undefined)?.msg
           : undefined;
         throw new Error(
-          typeof firstMsg === 'string' ? `Error al generar PDF: ${firstMsg}` : 'Error al generar PDF',
+          typeof firstMsg === 'string'
+            ? `Error al generar PDF: ${firstMsg}`
+            : 'Error al generar PDF'
         );
       }
 
@@ -356,7 +358,7 @@ export function useMapExportHandlers({
       link.href = url;
       link.download = formatExportFilename(
         exportTitle?.trim() || approvalName?.trim() || 'zonificacion_aprobada',
-        'pdf',
+        'pdf'
       );
       link.click();
       window.URL.revokeObjectURL(url);
@@ -387,7 +389,10 @@ export function useMapExportHandlers({
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = formatExportFilename('zonificacion_aprobada', 'png').replace('.png', '.geojson');
+    link.download = formatExportFilename('zonificacion_aprobada', 'png').replace(
+      '.png',
+      '.geojson'
+    );
     link.click();
     window.URL.revokeObjectURL(url);
   }, [approvedZones]);
@@ -443,12 +448,14 @@ export function useMapExportHandlers({
 
 interface UseAssetCreationHandlerParams<TFormValues> {
   newPoint: { lat: number; lng: number } | null;
-  createAsset: (payload: TFormValues & {
-    latitud: number;
-    longitud: number;
-    estado_actual: 'bueno' | 'regular' | 'malo' | 'critico';
-    tipo: 'alcantarilla' | 'puente' | 'canal' | 'otro';
-  }) => Promise<unknown>;
+  createAsset: (
+    payload: TFormValues & {
+      latitud: number;
+      longitud: number;
+      estado_actual: 'bueno' | 'regular' | 'malo' | 'critico';
+      tipo: 'alcantarilla' | 'puente' | 'canal' | 'otro';
+    }
+  ) => Promise<unknown>;
   setIsSubmitting: (value: boolean) => void;
   setNewPoint: (value: { lat: number; lng: number } | null) => void;
   setMarkingMode: (value: boolean) => void;
@@ -484,12 +491,16 @@ export function useAssetCreationHandler<TFormValues extends { nombre: string; ti
         setMarkingMode(false);
         resetForm();
       } catch (_error) {
-        notifications.show({ title: 'Error', message: 'No se pudo guardar el punto', color: 'red' });
+        notifications.show({
+          title: 'Error',
+          message: 'No se pudo guardar el punto',
+          color: 'red',
+        });
       } finally {
         setIsSubmitting(false);
       }
     },
-    [createAsset, newPoint, resetForm, setIsSubmitting, setMarkingMode, setNewPoint],
+    [createAsset, newPoint, resetForm, setIsSubmitting, setMarkingMode, setNewPoint]
   );
 }
 
@@ -506,7 +517,7 @@ interface UseZoningHandlersParams {
       zoneNames: Record<string, string>;
       nombre: string;
       notes: string | null;
-    },
+    }
   ) => Promise<unknown>;
   clearApprovedZones: () => Promise<unknown>;
   selectedDraftBasinId: string | null;
@@ -539,9 +550,17 @@ export function useZoningHandlers({
         nombre: approvalName || 'Zonificación Consorcio aprobada',
         notes: approvalNotes || null,
       });
-      notifications.show({ title: 'Zonificación aprobada', message: 'Guardada exitosamente', color: 'green' });
+      notifications.show({
+        title: 'Zonificación aprobada',
+        message: 'Guardada exitosamente',
+        color: 'green',
+      });
     } catch (_error) {
-      notifications.show({ title: 'Error', message: 'No se pudo aprobar la zonificación', color: 'red' });
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo aprobar la zonificación',
+        color: 'red',
+      });
     }
   }, [
     approvalName,
@@ -555,7 +574,11 @@ export function useZoningHandlers({
   const handleClearApprovedZones = useCallback(async () => {
     try {
       await clearApprovedZones();
-      notifications.show({ title: 'Zonificación limpiada', message: 'La aprobada fue eliminada', color: 'green' });
+      notifications.show({
+        title: 'Zonificación limpiada',
+        message: 'La aprobada fue eliminada',
+        color: 'green',
+      });
     } catch (_error) {
       notifications.show({ title: 'Error', message: 'No se pudo limpiar', color: 'red' });
     }
@@ -563,7 +586,10 @@ export function useZoningHandlers({
 
   const handleApplyBasinMove = useCallback(() => {
     if (!selectedDraftBasinId || !draftDestinationZoneId) return;
-    setDraftBasinAssignments((prev) => ({ ...prev, [selectedDraftBasinId]: draftDestinationZoneId }));
+    setDraftBasinAssignments((prev) => ({
+      ...prev,
+      [selectedDraftBasinId]: draftDestinationZoneId,
+    }));
     setSelectedDraftBasinId(null);
     setDraftDestinationZoneId(null);
   }, [

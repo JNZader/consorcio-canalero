@@ -11,7 +11,12 @@ interface CoordinatesInputProps {
   readonly onAddressSearch?: (address: string) => Promise<{ lat: number; lng: number } | null>;
 }
 
-export function CoordinatesInput({ onCoordinatesChange, currentLat, currentLng, onAddressSearch }: CoordinatesInputProps) {
+export function CoordinatesInput({
+  onCoordinatesChange,
+  currentLat,
+  currentLng,
+  onAddressSearch,
+}: CoordinatesInputProps) {
   const [manualLat, setManualLat] = useState(currentLat?.toString() || '');
   const [manualLng, setManualLng] = useState(currentLng?.toString() || '');
   const [searchAddress, setSearchAddress] = useState('');
@@ -57,7 +62,9 @@ export function CoordinatesInput({ onCoordinatesChange, currentLat, currentLng, 
         onCoordinatesChange(result.lat, result.lng);
         setManualLat(result.lat.toString());
         setManualLng(result.lng.toString());
-        announce(`Direccion encontrada: latitud ${result.lat.toFixed(4)}, longitud ${result.lng.toFixed(4)}`);
+        announce(
+          `Direccion encontrada: latitud ${result.lat.toFixed(4)}, longitud ${result.lng.toFixed(4)}`
+        );
       } else {
         setError('No se encontro la direccion. Intenta con otra busqueda.');
         announce('Direccion no encontrada', 'assertive');
@@ -73,21 +80,57 @@ export function CoordinatesInput({ onCoordinatesChange, currentLat, currentLng, 
 
   return (
     <Stack gap="md">
-      <Box component="fieldset" style={{ border: '1px solid var(--mantine-color-gray-4)', padding: '1rem', borderRadius: 8 }}>
+      <Box
+        component="fieldset"
+        style={{
+          border: '1px solid var(--mantine-color-gray-4)',
+          padding: '1rem',
+          borderRadius: 8,
+        }}
+      >
         <Text component="legend" size="sm" fw={500} mb="xs">
           Opcion 1: Ingresar coordenadas manualmente
         </Text>
         <Group gap="sm" align="flex-end">
-          <TextInput label="Latitud" placeholder="-32.63" value={manualLat} onChange={(event) => setManualLat(event.target.value)} aria-describedby="lat-format-help" style={{ flex: 1 }} inputMode="decimal" />
-          <TextInput label="Longitud" placeholder="-62.68" value={manualLng} onChange={(event) => setManualLng(event.target.value)} aria-describedby="lng-format-help" style={{ flex: 1 }} inputMode="decimal" />
-          <Button onClick={handleManualSubmit} variant="light">Establecer</Button>
+          <TextInput
+            label="Latitud"
+            placeholder="-32.63"
+            value={manualLat}
+            onChange={(event) => setManualLat(event.target.value)}
+            aria-describedby="lat-format-help"
+            style={{ flex: 1 }}
+            inputMode="decimal"
+          />
+          <TextInput
+            label="Longitud"
+            placeholder="-62.68"
+            value={manualLng}
+            onChange={(event) => setManualLng(event.target.value)}
+            aria-describedby="lng-format-help"
+            style={{ flex: 1 }}
+            inputMode="decimal"
+          />
+          <Button onClick={handleManualSubmit} variant="light">
+            Establecer
+          </Button>
         </Group>
-        <Text id="lat-format-help" size="xs" c="gray.6" mt="xs">Formato: numeros decimales (ej: -32.63000 para latitud sur)</Text>
+        <Text id="lat-format-help" size="xs" c="gray.6" mt="xs">
+          Formato: numeros decimales (ej: -32.63000 para latitud sur)
+        </Text>
       </Box>
 
       {onAddressSearch && (
-        <Box component="fieldset" style={{ border: '1px solid var(--mantine-color-gray-4)', padding: '1rem', borderRadius: 8 }}>
-          <Text component="legend" size="sm" fw={500} mb="xs">Opcion 2: Buscar por direccion</Text>
+        <Box
+          component="fieldset"
+          style={{
+            border: '1px solid var(--mantine-color-gray-4)',
+            padding: '1rem',
+            borderRadius: 8,
+          }}
+        >
+          <Text component="legend" size="sm" fw={500} mb="xs">
+            Opcion 2: Buscar por direccion
+          </Text>
           <Group gap="sm">
             <TextInput
               placeholder="Ej: Ruta 9 km 312, Bell Ville, Cordoba"
@@ -99,7 +142,9 @@ export function CoordinatesInput({ onCoordinatesChange, currentLat, currentLng, 
                 if (event.key === 'Enter') handleAddressSearch();
               }}
             />
-            <Button onClick={handleAddressSearch} loading={searching} variant="light">Buscar</Button>
+            <Button onClick={handleAddressSearch} loading={searching} variant="light">
+              Buscar
+            </Button>
           </Group>
         </Box>
       )}
@@ -108,7 +153,10 @@ export function CoordinatesInput({ onCoordinatesChange, currentLat, currentLng, 
 
       {currentLat && currentLng && (
         <Alert color="green" variant="light">
-          <Text size="sm"><strong>Ubicacion seleccionada:</strong> {currentLat.toFixed(5)}, {currentLng.toFixed(5)}</Text>
+          <Text size="sm">
+            <strong>Ubicacion seleccionada:</strong> {currentLat.toFixed(5)},{' '}
+            {currentLng.toFixed(5)}
+          </Text>
         </Alert>
       )}
     </Stack>

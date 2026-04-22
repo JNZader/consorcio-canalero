@@ -8,12 +8,12 @@
  *  - isInsideZona(): checks if a point falls inside the consorcio boundary
  */
 
-import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
-import { useGEELayers } from './useGEELayers';
-import { useWaterways, type WaterwayLayer } from './useWaterways';
 import { logger } from '../lib/logger';
+import { useGEELayers } from './useGEELayers';
+import { type WaterwayLayer, useWaterways } from './useWaterways';
 
 // ── Static file loaders ─────────────────────────────────────────────────────
 
@@ -65,14 +65,14 @@ export function addReferenceLayers(
     zonaGeoJson: FeatureCollection | null;
     caminosGeoJson: FeatureCollection | null;
     waterways: WaterwayLayer[];
-  },
+  }
 ) {
   const { zonaGeoJson, caminosGeoJson, waterways } = opts;
 
   // Find the first draw layer to insert reference layers BEFORE it
-  const firstDrawLayer = map.getStyle()?.layers?.find(
-    (l) => l.id.startsWith('gl-draw-') || l.id.includes('mapbox-gl-draw'),
-  )?.id;
+  const firstDrawLayer = map
+    .getStyle()
+    ?.layers?.find((l) => l.id.startsWith('gl-draw-') || l.id.includes('mapbox-gl-draw'))?.id;
 
   // 1) Caminos — bottom layer (same as MapaMapLibre ROADS paint)
   if (caminosGeoJson) {
@@ -80,12 +80,15 @@ export function addReferenceLayers(
       map.addSource(FORM_CAMINOS_SOURCE, { type: 'geojson', data: caminosGeoJson });
     }
     if (!map.getLayer(`${FORM_CAMINOS_SOURCE}-line`)) {
-      map.addLayer({
-        id: `${FORM_CAMINOS_SOURCE}-line`,
-        type: 'line',
-        source: FORM_CAMINOS_SOURCE,
-        paint: { 'line-color': '#FFEB3B', 'line-width': 2, 'line-opacity': 0.9 },
-      }, firstDrawLayer);
+      map.addLayer(
+        {
+          id: `${FORM_CAMINOS_SOURCE}-line`,
+          type: 'line',
+          source: FORM_CAMINOS_SOURCE,
+          paint: { 'line-color': '#FFEB3B', 'line-width': 2, 'line-opacity': 0.9 },
+        },
+        firstDrawLayer
+      );
     }
   }
 
@@ -99,16 +102,19 @@ export function addReferenceLayers(
       map.addSource(srcId, { type: 'geojson', data: ww.data });
     }
     if (!map.getLayer(layerId)) {
-      map.addLayer({
-        id: layerId,
-        type: 'line',
-        source: srcId,
-        paint: {
-          'line-color': ww.style.color,
-          'line-width': ww.style.weight,
-          'line-opacity': ww.style.opacity,
+      map.addLayer(
+        {
+          id: layerId,
+          type: 'line',
+          source: srcId,
+          paint: {
+            'line-color': ww.style.color,
+            'line-width': ww.style.weight,
+            'line-opacity': ww.style.opacity,
+          },
         },
-      }, firstDrawLayer);
+        firstDrawLayer
+      );
     }
   }
 
@@ -118,12 +124,15 @@ export function addReferenceLayers(
       map.addSource(FORM_ZONA_SOURCE, { type: 'geojson', data: zonaGeoJson });
     }
     if (!map.getLayer(`${FORM_ZONA_SOURCE}-line`)) {
-      map.addLayer({
-        id: `${FORM_ZONA_SOURCE}-line`,
-        type: 'line',
-        source: FORM_ZONA_SOURCE,
-        paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
-      }, firstDrawLayer);
+      map.addLayer(
+        {
+          id: `${FORM_ZONA_SOURCE}-line`,
+          type: 'line',
+          source: FORM_ZONA_SOURCE,
+          paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
+        },
+        firstDrawLayer
+      );
     }
   }
 }
@@ -139,7 +148,7 @@ function pointInRing(point: [number, number], ring: number[][]): boolean {
     const yi = ring[i][1];
     const xj = ring[j][0];
     const yj = ring[j][1];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
   }
@@ -160,7 +169,7 @@ function pointInPolygon(point: [number, number], coords: number[][][]): boolean 
  */
 export function isInsideZona(
   zonaGeoJson: FeatureCollection | null,
-  lngLat: [number, number],
+  lngLat: [number, number]
 ): boolean {
   if (!zonaGeoJson || !zonaGeoJson.features?.length) return true;
   try {

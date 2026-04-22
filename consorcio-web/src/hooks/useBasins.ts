@@ -4,8 +4,8 @@
  * Returns a GeoJSON FeatureCollection with simplified basin geometries.
  */
 
-import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import { API_URL } from '../lib/api';
 import { queryKeys } from '../lib/query';
 
@@ -23,13 +23,7 @@ interface UseBasinsOptions {
 }
 
 export function useBasins(options: UseBasinsOptions = {}) {
-  const {
-    bbox = null,
-    tolerance = 0.001,
-    limit = 500,
-    cuenca = null,
-    enabled = true,
-  } = options;
+  const { bbox = null, tolerance = 0.001, limit = 500, cuenca = null, enabled = true } = options;
 
   const bboxKey = bbox?.join(',') ?? null;
 
@@ -48,9 +42,7 @@ export function useBasins(options: UseBasinsOptions = {}) {
       }
       params.set('adjusted', 'true');
 
-      const response = await fetch(
-        `${API_URL}/api/v2/geo/basins?${params.toString()}`,
-      );
+      const response = await fetch(`${API_URL}/api/v2/geo/basins?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(`Error fetching basins: ${response.status}`);

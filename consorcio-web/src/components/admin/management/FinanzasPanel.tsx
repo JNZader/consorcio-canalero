@@ -1,11 +1,6 @@
-import { Button, Container, Group, Tabs, Title, Text } from '@mantine/core';
+import { Button, Container, Group, Tabs, Text, Title } from '@mantine/core';
 import { LoadingState } from '../../ui/LoadingState';
-import {
-  IconArrowUpRight,
-  IconCoin,
-  IconPlus,
-  IconReceipt,
-} from '../../ui/icons';
+import { IconArrowUpRight, IconCoin, IconPlus, IconReceipt } from '../../ui/icons';
 import { EditGastoModal } from './finanzas/components/EditGastoModal';
 import { EditIngresoModal } from './finanzas/components/EditIngresoModal';
 import { FinanzasSummaryTab } from './finanzas/components/FinanzasSummaryTab';
@@ -30,7 +25,11 @@ export default function FinanzasPanel() {
           <Title order={2}>Administracion Financiera</Title>
           <Text c="dimmed">Seguimiento de gastos y ejecucion presupuestaria</Text>
         </div>
-        <Button leftSection={<IconPlus size={18} />} onClick={controller.gastoModal.open} color="red">
+        <Button
+          leftSection={<IconPlus size={18} />}
+          onClick={controller.gastoModal.open}
+          color="red"
+        >
           Registrar Gasto
         </Button>
         <Button

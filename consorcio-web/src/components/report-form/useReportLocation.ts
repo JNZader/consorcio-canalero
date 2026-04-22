@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
 import type { UseFormReturnType } from '@mantine/form';
-import { handleGeoError, handleGeoSuccess, showNotification } from './reportFormUtils';
+import { useCallback, useState } from 'react';
 import type { Ubicacion } from './reportFormTypes';
+import { handleGeoError, handleGeoSuccess, showNotification } from './reportFormUtils';
 
 interface ReportFormValues {
   tipo: string;

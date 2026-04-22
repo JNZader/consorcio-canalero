@@ -1,7 +1,7 @@
 import { ActionIcon, Anchor, Paper, Table, Text } from '@mantine/core';
+import { IconEdit } from '../../../../ui/icons';
 import type { Ingreso } from '../finanzasTypes';
 import { renderFuenteBadge } from '../finanzasUtils';
-import { IconEdit } from '../../../../ui/icons';
 
 export function IngresosTable({
   ingresos,

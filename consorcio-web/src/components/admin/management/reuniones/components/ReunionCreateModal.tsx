@@ -1,13 +1,4 @@
-import {
-  ActionIcon,
-  Button,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  TextInput,
-  Textarea,
-} from '@mantine/core';
+import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconTrash } from '../../../../ui/icons';
 

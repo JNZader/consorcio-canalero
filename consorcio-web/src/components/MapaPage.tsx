@@ -15,13 +15,13 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { Suspense, lazy, useState } from 'react';
+import { useGeoLayers } from '../hooks/useGeoLayers';
+import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
-import { useSelectedImageListener } from '../hooks/useSelectedImage';
-import { useGeoLayers } from '../hooks/useGeoLayers';
 import { MapaContenido } from './MapaInteractivo';
-import { IconAlertTriangle, IconMap, IconPhoto, IconSatellite, Icon3dCubeSphere } from './ui/icons';
+import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
 
 // Lazy-load TerrainViewer3D to avoid bundling deck.gl/geo-layers when not used
 const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
@@ -187,18 +187,25 @@ export function MapaContent() {
           ) : (
             <Suspense
               fallback={
-                <Box p="xl" style={{ minHeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Box
+                  p="xl"
+                  style={{
+                    minHeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                   <Stack align="center" gap="md">
                     <Skeleton circle height={48} width={48} />
-                    <Text size="sm" c="dimmed">Cargando visualizador 3D...</Text>
+                    <Text size="sm" c="dimmed">
+                      Cargando visualizador 3D...
+                    </Text>
                   </Stack>
                 </Box>
               }
             >
-              <TerrainViewer3D
-                demLayerId={demRawLayer?.id}
-                height={600}
-              />
+              <TerrainViewer3D demLayerId={demRawLayer?.id} height={600} />
             </Suspense>
           )}
         </Paper>

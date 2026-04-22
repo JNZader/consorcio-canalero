@@ -1,30 +1,30 @@
 import {
+  ActionIcon,
   Badge,
   Button,
   Container,
   Divider,
   Group,
+  Modal,
+  Paper,
+  Select,
   Stack,
   Table,
   Text,
-  Title,
-  Timeline,
-  Paper,
-  ActionIcon,
-  Modal,
   TextInput,
   Textarea,
-  Select,
+  Timeline,
+  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, API_URL, getAuthToken } from '../../../lib/api';
+import { type TramiteEstadoCanonico, formatTramiteEstado } from '../../../constants/tramites';
+import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import { formatTramiteEstado, type TramiteEstadoCanonico } from '../../../constants/tramites';
-import { filterCanonicalTramites, type RawTramiteItem } from './tramitesCanonical';
-import { IconPlus, IconExternalLink, IconHistory, IconDownload } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { IconDownload, IconExternalLink, IconHistory, IconPlus } from '../../ui/icons';
+import { type RawTramiteItem, filterCanonicalTramites } from './tramitesCanonical';
 
 interface Tramite {
   id: string;

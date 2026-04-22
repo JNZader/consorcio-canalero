@@ -1,7 +1,7 @@
 import { Box, Button, Center, Group, Loader, Paper, Stack, Text, ThemeIcon } from '@mantine/core';
-import { useEffect, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
-import { useAuth, type UserRole } from '../../hooks/useAuth';
+import { useEffect, useState } from 'react';
+import { type UserRole, useAuth } from '../../hooks/useAuth';
 import { IconArrowLeft, IconLock } from '../ui/icons';
 
 /**

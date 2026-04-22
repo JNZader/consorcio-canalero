@@ -1,5 +1,5 @@
-import type { FeatureCollection } from 'geojson';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import { API_URL, getAuthToken } from '../lib/api';
 import { queryKeys } from '../lib/query';
 
@@ -34,7 +34,7 @@ async function saveApprovedZonesRequest(
     nombre?: string;
     cuenca?: string | null;
     notes?: string | null;
-  },
+  }
 ) {
   const token = await getAuthToken();
   const response = await fetch(`${API_URL}/api/v2/geo/basins/approved-zones/current`, {
@@ -121,7 +121,14 @@ export function useApprovedZones() {
       nombre?: string;
       cuenca?: string | null;
       notes?: string | null;
-    }) => saveApprovedZonesRequest(featureCollection, { assignments, zoneNames, nombre, cuenca, notes }),
+    }) =>
+      saveApprovedZonesRequest(featureCollection, {
+        assignments,
+        zoneNames,
+        nombre,
+        cuenca,
+        notes,
+      }),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.approvedZones(), data);
       queryClient.invalidateQueries({ queryKey: queryKeys.approvedZonesHistory() });
@@ -159,7 +166,7 @@ export function useApprovedZones() {
         nombre?: string;
         cuenca?: string | null;
         notes?: string | null;
-      },
+      }
     ) =>
       saveMutation.mutateAsync({
         featureCollection,
@@ -171,8 +178,7 @@ export function useApprovedZones() {
       }),
     clearApprovedZones: async (options?: { cuenca?: string | null }) =>
       clearMutation.mutateAsync({ cuenca: options?.cuenca }),
-    restoreApprovedZonesVersion: async (id: string) =>
-      restoreMutation.mutateAsync({ id }),
+    restoreApprovedZonesVersion: async (id: string) => restoreMutation.mutateAsync({ id }),
     loading: query.isLoading,
     historyLoading: historyQuery.isLoading,
     saving: saveMutation.isPending,

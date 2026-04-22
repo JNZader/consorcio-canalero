@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { publicApi } from '../../lib/api';
 import { logger } from '../../lib/logger';
-import { showNotification, uploadPhotoIfExists } from './reportFormUtils';
 import type { Ubicacion } from './reportFormTypes';
+import { showNotification, uploadPhotoIfExists } from './reportFormUtils';
 
 interface ReportFormValues {
   tipo: string;

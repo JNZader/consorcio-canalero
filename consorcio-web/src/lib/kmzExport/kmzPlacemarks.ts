@@ -96,12 +96,11 @@ function emitLineString(g: LineString): string {
 function emitPolygon(g: Polygon): string {
   if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
   const [outer, ...inner] = g.coordinates;
-  const outerBlock =
-    `<outerBoundaryIs><LinearRing><coordinates>${coordList(outer)}</coordinates></LinearRing></outerBoundaryIs>`;
+  const outerBlock = `<outerBoundaryIs><LinearRing><coordinates>${coordList(outer)}</coordinates></LinearRing></outerBoundaryIs>`;
   const innerBlocks = inner
     .map(
       (ring) =>
-        `<innerBoundaryIs><LinearRing><coordinates>${coordList(ring)}</coordinates></LinearRing></innerBoundaryIs>`,
+        `<innerBoundaryIs><LinearRing><coordinates>${coordList(ring)}</coordinates></LinearRing></innerBoundaryIs>`
     )
     .join('');
   return `<Polygon>${outerBlock}${innerBlocks}</Polygon>`;
@@ -109,9 +108,7 @@ function emitPolygon(g: Polygon): string {
 
 function emitMultiPoint(g: MultiPoint): string {
   if (!g.coordinates || g.coordinates.length === 0) return '<!-- no geometry -->';
-  const children = g.coordinates
-    .map((c) => emitPoint({ type: 'Point', coordinates: c }))
-    .join('');
+  const children = g.coordinates.map((c) => emitPoint({ type: 'Point', coordinates: c })).join('');
   return `<MultiGeometry>${children}</MultiGeometry>`;
 }
 
@@ -193,18 +190,14 @@ function humanizeEscuelasName(raw: string): string {
  * change extends the denylist, names remain safe and any future
  * `<description>` / `<ExtendedData>` emission inherits sanitized props.
  */
-function resolveName(
-  feature: Feature,
-  entry: KmzLayerEntry,
-  index: number,
-): string {
+function resolveName(feature: Feature, entry: KmzLayerEntry, index: number): string {
   const rawProps = feature.properties ?? {};
   const props = stripPii(rawProps);
-  const nombre = props['nombre'];
+  const nombre = props.nombre;
   if (typeof nombre === 'string' && nombre.length > 0) {
     return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(nombre) : nombre;
   }
-  const name = props['name'];
+  const name = props.name;
   if (typeof name === 'string' && name.length > 0) {
     return entry.key === ESCUELAS_KEY ? humanizeEscuelasName(name) : name;
   }
@@ -221,19 +214,9 @@ function resolveName(
  * `index` is the feature's position inside its source FeatureCollection,
  * used ONLY for the null-name fallback (`"${entry.label} ${index + 1}"`).
  */
-export function buildPlacemark(
-  feature: Feature,
-  entry: KmzLayerEntry,
-  index: number,
-): string {
+export function buildPlacemark(feature: Feature, entry: KmzLayerEntry, index: number): string {
   const displayName = resolveName(feature, entry, index);
   const geometryBlock = emitGeometry(feature.geometry);
 
-  return (
-    `<Placemark>` +
-    `<name>${escapeXml(displayName)}</name>` +
-    `<styleUrl>#${entry.key}-style</styleUrl>` +
-    geometryBlock +
-    `</Placemark>`
-  );
+  return `<Placemark><name>${escapeXml(displayName)}</name><styleUrl>#${entry.key}-style</styleUrl>${geometryBlock}</Placemark>`;
 }

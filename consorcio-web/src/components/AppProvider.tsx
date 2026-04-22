@@ -9,7 +9,7 @@
  */
 
 import { MantineProvider as Provider } from '@mantine/core';
-import { notifications, Notifications } from '@mantine/notifications';
+import { Notifications, notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { sharedColorSchemeManager } from '../lib/mantine';

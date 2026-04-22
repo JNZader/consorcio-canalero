@@ -1,7 +1,15 @@
 import { create } from 'zustand';
-import { configApi, type SystemConfig } from '../lib/api';
+import {
+  CONSORCIO_AREA_HA,
+  CONSORCIO_KM_CAMINOS,
+  DEFAULT_DAYS_BACK,
+  DEFAULT_MAX_CLOUD,
+  MAP_BOUNDS,
+  MAP_CENTER,
+  MAP_DEFAULT_ZOOM,
+} from '../constants';
+import { type SystemConfig, configApi } from '../lib/api';
 import { logger } from '../lib/logger';
-import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_BOUNDS, CONSORCIO_AREA_HA, CONSORCIO_KM_CAMINOS, DEFAULT_MAX_CLOUD, DEFAULT_DAYS_BACK } from '../constants';
 
 /**
  * Default system configuration used when the API is unavailable.

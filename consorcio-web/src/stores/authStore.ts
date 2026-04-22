@@ -13,7 +13,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearAuthTokenCache } from '../lib/api';
-import { authAdapter, type AuthUser } from '../lib/auth/index';
+import { type AuthUser, authAdapter } from '../lib/auth/index';
 import { logger } from '../lib/logger';
 import { safeGetUserRole } from '../lib/typeGuards';
 import type { Usuario } from '../types';
@@ -178,32 +178,34 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             if (!authListenerRegistered) {
               authListenerRegistered = true;
 
-              authListenerUnsubscribe = authAdapter.onAuthStateChange((event: string, newSession: { access_token: string; user: AuthUser } | null) => {
-                if (event === 'SIGNED_IN' && newSession?.user) {
-                  const profile = mapAuthUserToProfile(newSession.user);
-                  const storeUser = mapAuthUserToStoreUser(newSession.user);
+              authListenerUnsubscribe = authAdapter.onAuthStateChange(
+                (event: string, newSession: { access_token: string; user: AuthUser } | null) => {
+                  if (event === 'SIGNED_IN' && newSession?.user) {
+                    const profile = mapAuthUserToProfile(newSession.user);
+                    const storeUser = mapAuthUserToStoreUser(newSession.user);
 
-                  set({
-                    user: storeUser,
-                    session: { access_token: newSession.access_token },
-                    profile,
-                    loading: false,
-                    error: null,
-                  });
-                } else if (event === 'SIGNED_OUT') {
-                  clearAuthTokenCache();
-                  set({
-                    user: null,
-                    session: null,
-                    profile: null,
-                    loading: false,
-                    error: null,
-                  });
-                } else if (event === 'TOKEN_REFRESHED' && newSession) {
-                  clearAuthTokenCache(); // Clear cache so new token is fetched
-                  set({ session: { access_token: newSession.access_token } });
+                    set({
+                      user: storeUser,
+                      session: { access_token: newSession.access_token },
+                      profile,
+                      loading: false,
+                      error: null,
+                    });
+                  } else if (event === 'SIGNED_OUT') {
+                    clearAuthTokenCache();
+                    set({
+                      user: null,
+                      session: null,
+                      profile: null,
+                      loading: false,
+                      error: null,
+                    });
+                  } else if (event === 'TOKEN_REFRESHED' && newSession) {
+                    clearAuthTokenCache(); // Clear cache so new token is fetched
+                    set({ session: { access_token: newSession.access_token } });
+                  }
                 }
-              });
+              );
             }
           } catch (err) {
             logger.error('Error al inicializar auth:', err);

@@ -15,12 +15,6 @@ import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
-  YPF_ESTACION_BOMBEO_GEOJSON,
-  YPF_ESTACION_BOMBEO_LAYER_ID,
-  YPF_ESTACION_BOMBEO_SOURCE_ID,
-  buildYpfEstacionBombeoPaint,
-} from './ypfEstacionBombeoLayer';
-import {
   PILAR_VERDE_Z_ORDER,
   buildAgroAceptadaFillPaint,
   buildAgroAceptadaLinePaint,
@@ -32,11 +26,14 @@ import {
   buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
+import {
+  YPF_ESTACION_BOMBEO_GEOJSON,
+  YPF_ESTACION_BOMBEO_LAYER_ID,
+  YPF_ESTACION_BOMBEO_SOURCE_ID,
+  buildYpfEstacionBombeoPaint,
+} from './ypfEstacionBombeoLayer';
 
-export function syncBaseTileVisibility(
-  map: maplibregl.Map,
-  baseLayer: 'osm' | 'satellite',
-) {
+export function syncBaseTileVisibility(map: maplibregl.Map, baseLayer: 'osm' | 'satellite') {
   setLayerVisibility(map, 'osm-tiles', baseLayer === 'osm');
   setLayerVisibility(map, 'satellite-tiles', baseLayer === 'satellite');
 }
@@ -44,7 +41,7 @@ export function syncBaseTileVisibility(
 export function syncWaterwayLayers(
   map: maplibregl.Map,
   waterwaysDefs: readonly (typeof WATERWAY_DEFS)[number][],
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const waterwayFiles = buildWaterwayLayerConfigs(waterwaysDefs);
 
@@ -74,7 +71,7 @@ export function syncWaterwayLayers(
 export function syncSoilLayers(
   map: maplibregl.Map,
   soilCollection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.SOIL, soilCollection ?? asFeatureCollection([]));
 
@@ -141,15 +138,14 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
 function findFirstWaterwayLayerId(map: maplibregl.Map): string | undefined {
   const style = map.getStyle();
   return style?.layers?.find(
-    (layer) =>
-      layer.id.startsWith(`${SOURCE_IDS.WATERWAYS}-`) && layer.id.endsWith('-line'),
+    (layer) => layer.id.startsWith(`${SOURCE_IDS.WATERWAYS}-`) && layer.id.endsWith('-line')
   )?.id;
 }
 
 export function syncRoadLayers(
   map: maplibregl.Map,
   roadsCollection: FeatureCollection | null | undefined,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.ROADS, roadsCollection ?? asFeatureCollection([]));
 
@@ -185,7 +181,7 @@ export function syncRoadLayers(
 export function syncBasinLayers(
   map: maplibregl.Map,
   basins: FeatureCollection | null | undefined,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.BASINS, basins ?? asFeatureCollection([]));
 
@@ -211,10 +207,7 @@ export function syncBasinLayers(
   setLayerVisibility(map, `${SOURCE_IDS.BASINS}-line`, isVisible && !!basins);
 }
 
-export function syncZonaLayer(
-  map: maplibregl.Map,
-  zonaCollection: FeatureCollection | null,
-) {
+export function syncZonaLayer(map: maplibregl.Map, zonaCollection: FeatureCollection | null) {
   ensureGeoJsonSource(map, SOURCE_IDS.ZONA, zonaCollection ?? asFeatureCollection([]));
 
   if (!map.getLayer(`${SOURCE_IDS.ZONA}-line`)) {
@@ -232,12 +225,12 @@ export function syncZonaLayer(
 export function syncApprovedZoneLayers(
   map: maplibregl.Map,
   approvedZonesCollection: FeatureCollection | null | undefined,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   ensureGeoJsonSource(
     map,
     SOURCE_IDS.APPROVED_ZONES,
-    approvedZonesCollection ?? asFeatureCollection([]),
+    approvedZonesCollection ?? asFeatureCollection([])
   );
 
   if (!map.getLayer(`${SOURCE_IDS.APPROVED_ZONES}-fill`)) {
@@ -265,8 +258,16 @@ export function syncApprovedZoneLayers(
     });
   }
 
-  setLayerVisibility(map, `${SOURCE_IDS.APPROVED_ZONES}-fill`, isVisible && !!approvedZonesCollection);
-  setLayerVisibility(map, `${SOURCE_IDS.APPROVED_ZONES}-line`, isVisible && !!approvedZonesCollection);
+  setLayerVisibility(
+    map,
+    `${SOURCE_IDS.APPROVED_ZONES}-fill`,
+    isVisible && !!approvedZonesCollection
+  );
+  setLayerVisibility(
+    map,
+    `${SOURCE_IDS.APPROVED_ZONES}-line`,
+    isVisible && !!approvedZonesCollection
+  );
 }
 
 export function shouldShowSuggestedZones(params: {
@@ -275,21 +276,19 @@ export function shouldShowSuggestedZones(params: {
   suggestedZonesDisplay: FeatureCollection | null;
 }) {
   return (
-    params.showSuggestedZonesPanel &&
-    !params.hasApprovedZones &&
-    !!params.suggestedZonesDisplay
+    params.showSuggestedZonesPanel && !params.hasApprovedZones && !!params.suggestedZonesDisplay
   );
 }
 
 export function syncSuggestedZoneLayers(
   map: maplibregl.Map,
   suggestedZonesDisplay: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   ensureGeoJsonSource(
     map,
     SOURCE_IDS.SUGGESTED_ZONES,
-    suggestedZonesDisplay ?? asFeatureCollection([]),
+    suggestedZonesDisplay ?? asFeatureCollection([])
   );
 
   if (!map.getLayer(`${SOURCE_IDS.SUGGESTED_ZONES}-fill`)) {
@@ -370,7 +369,7 @@ function raisePilarVerdeStack(map: maplibregl.Map) {
 export function syncBpaHistoricoLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const id = SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
@@ -403,7 +402,7 @@ export function syncBpaHistoricoLayer(
 export function syncAgroAceptadaLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const id = SOURCE_IDS.PILAR_VERDE_AGRO_ACEPTADA;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
@@ -434,7 +433,7 @@ export function syncAgroAceptadaLayer(
 export function syncAgroPresentadaLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const id = SOURCE_IDS.PILAR_VERDE_AGRO_PRESENTADA;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
@@ -465,7 +464,7 @@ export function syncAgroPresentadaLayer(
 export function syncAgroZonasLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const id = SOURCE_IDS.PILAR_VERDE_AGRO_ZONAS;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
@@ -496,7 +495,7 @@ export function syncAgroZonasLayer(
 export function syncPorcentajeForestacionLayer(
   map: maplibregl.Map,
   collection: FeatureCollection | null,
-  isVisible: boolean,
+  isVisible: boolean
 ) {
   const id = SOURCE_IDS.PILAR_VERDE_PORCENTAJE_FORESTACION;
   ensureGeoJsonSource(map, id, collection ?? asFeatureCollection([]));
@@ -554,10 +553,7 @@ export interface SyncCanalesLayersParams {
  * line features, fills "win" on pixel-overlap in MapLibre z-order.
  */
 function raiseCanalesStack(map: maplibregl.Map) {
-  const ids = [
-    `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
-    `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
-  ];
+  const ids = [`${SOURCE_IDS.CANALES_RELEVADOS}-line`, `${SOURCE_IDS.CANALES_PROPUESTOS}-line`];
   for (const id of ids) {
     if (map.getLayer(id)) {
       try {
@@ -570,10 +566,7 @@ function raiseCanalesStack(map: maplibregl.Map) {
   }
 }
 
-export function syncCanalesLayers(
-  map: maplibregl.Map,
-  params: SyncCanalesLayersParams,
-): void {
+export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayersParams): void {
   const {
     relevados,
     propuestas,
@@ -593,12 +586,12 @@ export function syncCanalesLayers(
   ensureGeoJsonSource(
     map,
     relevadosSrcId,
-    (relevados ?? asFeatureCollection([])) as FeatureCollection,
+    (relevados ?? asFeatureCollection([])) as FeatureCollection
   );
   ensureGeoJsonSource(
     map,
     propuestosSrcId,
-    (propuestas ?? asFeatureCollection([])) as FeatureCollection,
+    (propuestas ?? asFeatureCollection([])) as FeatureCollection
   );
 
   // ── Layers (idempotent) ──
@@ -621,10 +614,7 @@ export function syncCanalesLayers(
 
   // ── Filters (hot path — called on every render) ──
   map.setFilter(relevadosLayerId, buildCanalesRelevadosFilter(visibleRelevadoIds));
-  map.setFilter(
-    propuestosLayerId,
-    buildCanalesPropuestasFilter(visiblePropuestaIds, activeEtapas),
-  );
+  map.setFilter(propuestosLayerId, buildCanalesPropuestasFilter(visiblePropuestaIds, activeEtapas));
 
   // ── Visibility (master toggles) ──
   setLayerVisibility(map, relevadosLayerId, relevadosVisible);
@@ -669,7 +659,7 @@ export function syncCanalesLayers(
 export function syncEscuelasLayer(
   map: maplibregl.Map,
   collection: FeatureCollection<Point, EscuelaFeatureProperties> | null,
-  isVisible: boolean,
+  isVisible: boolean
 ): void {
   const sourceId = SOURCE_IDS.ESCUELAS;
   const circleLayerId = ESCUELAS_LAYER_ID;
@@ -677,11 +667,7 @@ export function syncEscuelasLayer(
   // ── Source (idempotent) ──
   // Cast-erase the point-feature narrowing for `ensureGeoJsonSource` which
   // accepts the broader `FeatureCollection`. The runtime shape is identical.
-  ensureGeoJsonSource(
-    map,
-    sourceId,
-    (collection ?? asFeatureCollection([])) as FeatureCollection,
-  );
+  ensureGeoJsonSource(map, sourceId, (collection ?? asFeatureCollection([])) as FeatureCollection);
 
   // ── Circle layer (idempotent) ──
   if (!map.getLayer(circleLayerId)) {
@@ -714,7 +700,7 @@ export function syncYpfEstacionBombeoLayer(map: maplibregl.Map): void {
   ensureGeoJsonSource(
     map,
     YPF_ESTACION_BOMBEO_SOURCE_ID,
-    YPF_ESTACION_BOMBEO_GEOJSON as unknown as FeatureCollection,
+    YPF_ESTACION_BOMBEO_GEOJSON as unknown as FeatureCollection
   );
 
   // ── Circle layer (idempotent) ──
@@ -729,4 +715,3 @@ export function syncYpfEstacionBombeoLayer(map: maplibregl.Map): void {
 
   // No visibility toggle — the layer is always-on by design.
 }
-

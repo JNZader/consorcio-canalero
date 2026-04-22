@@ -33,12 +33,15 @@ export function useMapInitialization({
             type: 'raster',
             tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             maxzoom: 19,
           },
           'satellite-base': {
             type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
             tileSize: 256,
             attribution: '&copy; Esri',
           },
@@ -88,9 +91,7 @@ export function useMapInitialization({
             ? event.error.message
             : '';
       const isTileError =
-        'tile' in event ||
-        /AJAXError/i.test(msg) ||
-        /earthengine\.googleapis\.com/i.test(msg);
+        'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
       if (!isTileError) {
         console.error('MapaMapLibre error:', event.error);
       }

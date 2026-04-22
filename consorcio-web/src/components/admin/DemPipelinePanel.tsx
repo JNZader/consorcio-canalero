@@ -7,7 +7,6 @@
  * - View results: 3D terrain viewer, generated layers list, basin map, download links
  */
 
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -26,6 +25,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { useDemPipeline } from '../../hooks/useDemPipeline';
+import { demPipelineApi } from '../../lib/api/demPipeline';
+import type { GeoLayerResponse } from '../../lib/api/demPipeline';
 import {
   IconAlertTriangle,
   IconChartBar,
@@ -34,9 +37,6 @@ import {
   IconPlayerPlay,
   IconRefresh,
 } from '../ui/icons';
-import { useDemPipeline } from '../../hooks/useDemPipeline';
-import { demPipelineApi } from '../../lib/api/demPipeline';
-import type { GeoLayerResponse } from '../../lib/api/demPipeline';
 
 // Lazy load the 3D viewer since it pulls in deck.gl
 const TerrainViewer3D = lazy(() => import('../terrain/TerrainViewer3D'));
@@ -56,17 +56,8 @@ const LAYER_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function DemPipelinePanel() {
-  const {
-    state,
-    progress,
-    layers,
-    basins,
-    error,
-    submit,
-    reset,
-    fetchLayers,
-    fetchBasins,
-  } = useDemPipeline();
+  const { state, progress, layers, basins, error, submit, reset, fetchLayers, fetchBasins } =
+    useDemPipeline();
 
   const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(5000);
 
@@ -91,15 +82,12 @@ export default function DemPipelinePanel() {
             <Title order={2}>DEM Pipeline</Title>
           </Group>
           <Text c="dimmed" size="sm">
-            Analisis de elevacion digital: descarga desde GEE, analisis de terreno y delineacion de cuencas
+            Analisis de elevacion digital: descarga desde GEE, analisis de terreno y delineacion de
+            cuencas
           </Text>
         </div>
         {state !== 'idle' && (
-          <Button
-            variant="subtle"
-            leftSection={<IconRefresh size={16} />}
-            onClick={reset}
-          >
+          <Button variant="subtle" leftSection={<IconRefresh size={16} />} onClick={reset}>
             Reiniciar
           </Button>
         )}
@@ -114,8 +102,8 @@ export default function DemPipelinePanel() {
           <Stack gap="md">
             <Text size="sm" c="dimmed">
               Este proceso descarga el modelo de elevacion digital (DEM) desde Google Earth Engine,
-              ejecuta un analisis completo de terreno (pendiente, aspecto, flujo, TWI, HAND, drenaje,
-              clasificacion) y delinea cuencas hidrograficas automaticamente.
+              ejecuta un analisis completo de terreno (pendiente, aspecto, flujo, TWI, HAND,
+              drenaje, clasificacion) y delinea cuencas hidrograficas automaticamente.
             </Text>
 
             <Group>
@@ -123,9 +111,7 @@ export default function DemPipelinePanel() {
                 label="Area minima de cuenca (ha)"
                 description="Cuencas menores a este valor se descartan"
                 value={minBasinAreaHa}
-                onChange={(val) =>
-                  setMinBasinAreaHa(typeof val === 'number' ? val : 5000)
-                }
+                onChange={(val) => setMinBasinAreaHa(typeof val === 'number' ? val : 5000)}
                 min={1000}
                 max={50000}
                 step={1000}
@@ -134,11 +120,7 @@ export default function DemPipelinePanel() {
             </Group>
 
             {error && (
-              <Alert
-                icon={<IconAlertTriangle size={16} />}
-                color="red"
-                title="Error"
-              >
+              <Alert icon={<IconAlertTriangle size={16} />} color="red" title="Error">
                 {error}
               </Alert>
             )}
@@ -164,14 +146,7 @@ export default function DemPipelinePanel() {
             <Text c="dimmed" size="sm">
               Esto puede tardar varios minutos dependiendo del area.
             </Text>
-            <Progress
-              value={progress}
-              size="xl"
-              radius="xl"
-              w="100%"
-              animated
-              striped
-            />
+            <Progress value={progress} size="xl" radius="xl" w="100%" animated striped />
             <Text size="sm" fw={600}>
               {progress}% completado
             </Text>
@@ -194,10 +169,7 @@ export default function DemPipelinePanel() {
                 </Center>
               }
             >
-              <TerrainViewer3D
-                demLayerId={demRawLayer?.id}
-                height={500}
-              />
+              <TerrainViewer3D demLayerId={demRawLayer?.id} height={500} />
             </Suspense>
           </Paper>
 
@@ -291,11 +263,7 @@ function LayerRow({ layer }: { readonly layer: GeoLayerResponse }) {
         </Badge>
       </Table.Td>
       <Table.Td>
-        <Badge
-          size="sm"
-          variant="outline"
-          color={layer.formato === 'geojson' ? 'teal' : 'blue'}
-        >
+        <Badge size="sm" variant="outline" color={layer.formato === 'geojson' ? 'teal' : 'blue'}>
           {formatBadge}
         </Badge>
       </Table.Td>

@@ -28,8 +28,9 @@
 
 import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
-import { useEffect, type RefObject } from 'react';
+import { type RefObject, useEffect } from 'react';
 
+import type { PilarVerdeData } from '../../types/pilarVerde';
 import {
   syncAgroAceptadaLayer,
   syncAgroPresentadaLayer,
@@ -37,7 +38,6 @@ import {
   syncBpaHistoricoLayer,
   syncPorcentajeForestacionLayer,
 } from '../map2d/mapLayerEffectHelpers';
-import type { PilarVerdeData } from '../../types/pilarVerde';
 
 export interface UseTerrainPilarVerdeEffectsParams {
   /** Ref to the mounted MapLibre instance. `null` before `setReady(true)`. */
@@ -81,14 +81,9 @@ export function useTerrainPilarVerdeEffects({
     syncBpaHistoricoLayer(
       map,
       data as FeatureCollection,
-      !!vectorLayerVisibility.pilar_verde_bpa_historico,
+      !!vectorLayerVisibility.pilar_verde_bpa_historico
     );
-  }, [
-    mapRef,
-    ready,
-    pilarVerde?.bpaHistorico,
-    vectorLayerVisibility.pilar_verde_bpa_historico,
-  ]);
+  }, [mapRef, ready, pilarVerde?.bpaHistorico, vectorLayerVisibility.pilar_verde_bpa_historico]);
 
   // ── 2. Agro aceptada ────────────────────────────────────────────────────
   useEffect(() => {
@@ -99,14 +94,9 @@ export function useTerrainPilarVerdeEffects({
     syncAgroAceptadaLayer(
       map,
       data as FeatureCollection,
-      !!vectorLayerVisibility.pilar_verde_agro_aceptada,
+      !!vectorLayerVisibility.pilar_verde_agro_aceptada
     );
-  }, [
-    mapRef,
-    ready,
-    pilarVerde?.agroAceptada,
-    vectorLayerVisibility.pilar_verde_agro_aceptada,
-  ]);
+  }, [mapRef, ready, pilarVerde?.agroAceptada, vectorLayerVisibility.pilar_verde_agro_aceptada]);
 
   // ── 3. Agro presentada ──────────────────────────────────────────────────
   useEffect(() => {
@@ -117,7 +107,7 @@ export function useTerrainPilarVerdeEffects({
     syncAgroPresentadaLayer(
       map,
       data as FeatureCollection,
-      !!vectorLayerVisibility.pilar_verde_agro_presentada,
+      !!vectorLayerVisibility.pilar_verde_agro_presentada
     );
   }, [
     mapRef,
@@ -135,14 +125,9 @@ export function useTerrainPilarVerdeEffects({
     syncAgroZonasLayer(
       map,
       data as FeatureCollection,
-      !!vectorLayerVisibility.pilar_verde_agro_zonas,
+      !!vectorLayerVisibility.pilar_verde_agro_zonas
     );
-  }, [
-    mapRef,
-    ready,
-    pilarVerde?.agroZonas,
-    vectorLayerVisibility.pilar_verde_agro_zonas,
-  ]);
+  }, [mapRef, ready, pilarVerde?.agroZonas, vectorLayerVisibility.pilar_verde_agro_zonas]);
 
   // ── 5. Porcentaje forestación ───────────────────────────────────────────
   useEffect(() => {
@@ -153,7 +138,7 @@ export function useTerrainPilarVerdeEffects({
     syncPorcentajeForestacionLayer(
       map,
       data as FeatureCollection,
-      !!vectorLayerVisibility.pilar_verde_porcentaje_forestacion,
+      !!vectorLayerVisibility.pilar_verde_porcentaje_forestacion
     );
   }, [
     mapRef,

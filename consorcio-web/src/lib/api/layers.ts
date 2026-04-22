@@ -2,8 +2,8 @@
  * Layers API module - Vector layers management.
  */
 
-import { apiFetch, getAuthToken, API_URL, API_PREFIX, LONG_TIMEOUT, unwrapItems } from './core';
 import type { Layer } from '../../types';
+import { API_PREFIX, API_URL, LONG_TIMEOUT, apiFetch, getAuthToken, unwrapItems } from './core';
 
 export const layersApi = {
   /**
@@ -46,7 +46,7 @@ export const layersApi = {
   reorder: (layers: { id: string; orden: number }[]): Promise<void> =>
     apiFetch('/capas/reorder', {
       method: 'PUT',
-      body: JSON.stringify({ ordered_ids: layers.map(l => l.id) }),
+      body: JSON.stringify({ ordered_ids: layers.map((l) => l.id) }),
     }),
 
   /**

@@ -23,7 +23,7 @@
 
 import type { FillLayerSpecification, LineLayerSpecification } from 'maplibre-gl';
 
-import { PILAR_VERDE_LAYER_IDS } from '../../stores/mapLayerSyncStore';
+import type { PILAR_VERDE_LAYER_IDS } from '../../stores/mapLayerSyncStore';
 
 /**
  * Render z-order, bottom → top.

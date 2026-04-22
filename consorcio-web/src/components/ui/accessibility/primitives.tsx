@@ -53,7 +53,11 @@ const DEFAULT_SKIP_LINKS: SkipLink[] = [
 
 export function SkipLinks({ links = DEFAULT_SKIP_LINKS }: SkipLinksProps) {
   return (
-    <Box component="nav" aria-label="Enlaces de salto" style={{ position: 'absolute', top: 0, left: 0, zIndex: 10000 }}>
+    <Box
+      component="nav"
+      aria-label="Enlaces de salto"
+      style={{ position: 'absolute', top: 0, left: 0, zIndex: 10000 }}
+    >
       {links.map((link, index) => (
         <a
           key={link.href}

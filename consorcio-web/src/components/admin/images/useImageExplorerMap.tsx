@@ -2,9 +2,9 @@ import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../constants';
-import { useConfigStore } from '../../../stores/configStore';
 import { API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { useConfigStore } from '../../../stores/configStore';
 
 export function useImageExplorerMap() {
   const config = useConfigStore((state) => state.config);
@@ -25,13 +25,17 @@ export function useImageExplorerMap() {
         sources: {
           satellite: {
             type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
             tileSize: 256,
             attribution: 'Tiles &copy; Esri',
           },
           labels: {
             type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            ],
             tileSize: 256,
           },
         },
@@ -105,8 +109,13 @@ export function useImageExplorerMap() {
         attribution: 'Imagery &copy; Google Earth Engine',
       });
       map.addLayer(
-        { id: 'gee-image-layer', type: 'raster', source: 'gee-image', paint: { 'raster-opacity': 0.9 } },
-        zonaLayerIdRef.current ?? undefined,
+        {
+          id: 'gee-image-layer',
+          type: 'raster',
+          source: 'gee-image',
+          paint: { 'raster-opacity': 0.9 },
+        },
+        zonaLayerIdRef.current ?? undefined
       );
       tileLayerIdRef.current = 'gee-image-layer';
     };

@@ -14,7 +14,7 @@ export function asFeatureCollection(features: Feature[]): FeatureCollection {
 
 export function decorateFeature(
   feature: Feature<Geometry, GeoJsonProperties>,
-  properties: GeoJsonProperties,
+  properties: GeoJsonProperties
 ): Feature<Geometry, GeoJsonProperties> {
   return {
     ...feature,
@@ -28,7 +28,7 @@ export function decorateFeature(
 export function ensureGeoJsonSource(
   map: maplibregl.Map,
   sourceId: string,
-  data: FeatureCollection,
+  data: FeatureCollection
 ): void {
   const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
   if (existing) {
@@ -57,7 +57,12 @@ export function formatExportFilename(title: string, extension: 'png' | 'pdf') {
 
 // Leaflet: [[-32.665914, -62.750969], [-32.44785, -62.345994]] = [[lat,lng],[lat,lng]]
 // MapLibre image source needs 4 corners: NW, NE, SE, SW as [[lng,lat], ...]
-export const IGN_MAPLIBRE_COORDS: [[number, number], [number, number], [number, number], [number, number]] = [
+export const IGN_MAPLIBRE_COORDS: [
+  [number, number],
+  [number, number],
+  [number, number],
+  [number, number],
+] = [
   [-62.750969, -32.44785],
   [-62.345994, -32.44785],
   [-62.345994, -32.665914],
@@ -91,9 +96,7 @@ export const MAP_FALLBACK_BOUNDS: LngLatBoundsLike = [
  * Returns `null` when the input is `null`, has no features, or no feature
  * has readable coordinates.
  */
-export function getFeatureCollectionBounds(
-  fc: FeatureCollection | null,
-): LngLatBoundsLike | null {
+export function getFeatureCollectionBounds(fc: FeatureCollection | null): LngLatBoundsLike | null {
   if (!fc || !Array.isArray(fc.features) || fc.features.length === 0) {
     return null;
   }
@@ -162,8 +165,6 @@ export function getFeatureCollectionBounds(
  * Never returns `null` — callers can unconditionally pass the result to
  * `map.fitBounds`.
  */
-export function resolveConsorcioBounds(
-  zonaCollection: FeatureCollection | null,
-): LngLatBoundsLike {
+export function resolveConsorcioBounds(zonaCollection: FeatureCollection | null): LngLatBoundsLike {
   return getFeatureCollectionBounds(zonaCollection) ?? MAP_FALLBACK_BOUNDS;
 }

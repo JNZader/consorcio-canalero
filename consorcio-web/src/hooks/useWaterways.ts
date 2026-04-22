@@ -10,8 +10,8 @@
  * desviador + canal Litín-Tortugas) continue to load from this hook.
  */
 
-import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 
@@ -87,10 +87,12 @@ export function useWaterways() {
             logger.warn(`Error loading waterway '${def.id}'`, err);
             return null;
           }
-        }),
+        })
       );
 
-      const loaded = results.filter((r): r is NonNullable<typeof r> => r !== null) as WaterwayLayer[];
+      const loaded = results.filter(
+        (r): r is NonNullable<typeof r> => r !== null
+      ) as WaterwayLayer[];
       if (loaded.length === 0) {
         throw new Error('No se pudieron cargar las capas hidrográficas');
       }

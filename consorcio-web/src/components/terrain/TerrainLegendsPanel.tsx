@@ -20,15 +20,15 @@
 
 import { Box, Divider, Group, Paper, Stack, Text } from '@mantine/core';
 
-import { CANALES_COLORS } from '../map2d/canalesLayers';
-import { PILAR_VERDE_COLORS } from '../map2d/pilarVerdeLayers';
-import { RasterLegend } from '../RasterLegend';
 import {
   SOIL_CAPABILITY_COLORS,
   SOIL_CAPABILITY_LABELS,
   SOIL_CAPABILITY_ORDER,
 } from '../../hooks/useSoilMap';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
+import { RasterLegend } from '../RasterLegend';
+import { CANALES_COLORS } from '../map2d/canalesLayers';
+import { PILAR_VERDE_COLORS } from '../map2d/pilarVerdeLayers';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 
 interface TerrainLegendsPanelProps {
@@ -71,8 +71,8 @@ const BPA_HISTORICO_LEGEND_CHIPS = [
  * (`Alta → Largo plazo`). Single source mirroring the 2D `LeyendaPanel` — the
  * map, legend, and etapas filter share this tuple so nothing drifts.
  */
-const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> =
-  ALL_ETAPAS.map((etapa) => {
+const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> = ALL_ETAPAS.map(
+  (etapa) => {
     switch (etapa) {
       case 'Alta':
         return { etapa, color: CANALES_COLORS.propuestoAlta };
@@ -85,7 +85,8 @@ const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> =
       case 'Largo plazo':
         return { etapa, color: CANALES_COLORS.propuestoLargoPlazo };
     }
-  });
+  }
+);
 
 /**
  * Pilar Verde simple chip (solid square swatch + Spanish label). Used by
@@ -168,20 +169,8 @@ function CanalDashedLineChip({
   readonly testId: string;
 }) {
   return (
-    <Group
-      gap="xs"
-      wrap="nowrap"
-      data-testid={testId}
-      data-color={color}
-      data-dashed="true"
-    >
-      <svg
-        width={18}
-        height={3}
-        role="img"
-        aria-label={label}
-        style={{ display: 'inline-block' }}
-      >
+    <Group gap="xs" wrap="nowrap" data-testid={testId} data-color={color} data-dashed="true">
+      <svg width={18} height={3} role="img" aria-label={label} style={{ display: 'inline-block' }}>
         <line
           x1={0}
           y1={1.5}

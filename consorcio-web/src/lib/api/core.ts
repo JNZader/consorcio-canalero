@@ -122,7 +122,9 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
           authAdapter.clearTokens();
           window.dispatchEvent(new CustomEvent('auth:expired'));
           // Reset flag after redirect completes (fallback: 10s)
-          setTimeout(() => { _handlingAuthExpiry = false; }, 10_000);
+          setTimeout(() => {
+            _handlingAuthExpiry = false;
+          }, 10_000);
         }
         throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
       }

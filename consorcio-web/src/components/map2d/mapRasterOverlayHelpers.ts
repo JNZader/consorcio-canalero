@@ -24,7 +24,7 @@ function addRasterOverlay(
   map: maplibregl.Map,
   sourceId: string,
   tileUrl: string,
-  beforeLayerId = 'vector-layers-start',
+  beforeLayerId = 'vector-layers-start'
 ) {
   removeRasterOverlay(map, sourceId);
   map.addSource(sourceId, {
@@ -39,7 +39,7 @@ function addRasterOverlay(
       source: sourceId,
       paint: { 'raster-opacity': 0.85 },
     },
-    beforeLayerId,
+    beforeLayerId
   );
 }
 
@@ -49,16 +49,14 @@ export function syncDemRasterLayer(
     showDemOverlay: boolean;
     activeDemLayerId: string | null;
     demTileUrl: string | null;
-  },
+  }
 ) {
   if (!params.showDemOverlay || !params.activeDemLayerId || !params.demTileUrl) {
     setLayerVisibility(map, `${SOURCE_IDS.DEM_RASTER}-layer`, false);
     return;
   }
 
-  const existing = map.getSource(SOURCE_IDS.DEM_RASTER) as
-    | maplibregl.RasterTileSource
-    | undefined;
+  const existing = map.getSource(SOURCE_IDS.DEM_RASTER) as maplibregl.RasterTileSource | undefined;
 
   if (existing) {
     (
@@ -82,7 +80,7 @@ export function syncDemRasterLayer(
         source: SOURCE_IDS.DEM_RASTER,
         paint: { 'raster-opacity': 0.6 },
       },
-      'vector-layers-start',
+      'vector-layers-start'
     );
   } else {
     setLayerVisibility(map, `${SOURCE_IDS.DEM_RASTER}-layer`, true);
@@ -159,7 +157,7 @@ export function moveDemAboveContextualVectors(map: maplibregl.Map) {
 export function getVisibleRasterLayersForDem(
   allGeoLayers: LayerLike[],
   showDemOverlay: boolean,
-  activeDemLayerId: string | null,
+  activeDemLayerId: string | null
 ) {
   if (!showDemOverlay || !activeDemLayerId) {
     return [] as Array<{ tipo: string }>;
@@ -186,7 +184,7 @@ export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
         source: SOURCE_IDS.IGN,
         paint: { 'raster-opacity': 0.65 },
       },
-      'vector-layers-start',
+      'vector-layers-start'
     );
   }
 
@@ -203,15 +201,14 @@ export function syncImageOverlays(
       left?: { tile_url: string } | null;
       right?: { tile_url: string } | null;
     } | null;
-  },
+  }
 ) {
   // Image overlays only apply when the user is actively showing satellite
   // imagery as the base layer; in OSM mode they are always hidden so the
   // user gets the plain street map even if a previously selected image is
   // still persisted in the imagery store.
   const showImagery = params.baseLayer === 'satellite';
-  const showSingle =
-    showImagery && params.viewMode === 'single' && !!params.selectedImage;
+  const showSingle = showImagery && params.viewMode === 'single' && !!params.selectedImage;
   const showComparison =
     showImagery &&
     params.viewMode === 'comparison' &&
@@ -237,7 +234,7 @@ export function syncMartinSuggestionLayers(
   map: maplibregl.Map,
   params: {
     showConflictPoints: boolean;
-  },
+  }
 ) {
   const puntosStyle = MARTIN_SOURCES.puntos_conflicto.style;
 
@@ -265,9 +262,5 @@ export function syncMartinSuggestionLayers(
       },
     });
   }
-  setLayerVisibility(
-    map,
-    `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
-    params.showConflictPoints,
-  );
+  setLayerVisibility(map, `${SOURCE_IDS.MARTIN_PUNTOS}-circle`, params.showConflictPoints);
 }

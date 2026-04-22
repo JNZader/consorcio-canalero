@@ -1,8 +1,8 @@
 import { Badge, Box, Button, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
-import { IconCheck } from '../ui/icons';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
+import { IconCheck } from '../ui/icons';
 
 export function showSuggestionNotification(
   title: string,
@@ -32,7 +32,7 @@ export function buildSugerenciaPayload(
   },
   userEmail: string | null,
   userName: string | null,
-  geometry: DrawnLineFeatureCollection | null,
+  geometry: DrawnLineFeatureCollection | null
 ) {
   return {
     titulo: values.titulo,

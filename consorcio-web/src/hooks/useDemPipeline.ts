@@ -8,14 +8,10 @@
  * - Loading/error state management
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { demPipelineApi } from '../lib/api/demPipeline';
-import type {
-  BasinsGeoJSON,
-  GeoJobResponse,
-  GeoLayerResponse,
-} from '../lib/api/demPipeline';
+import type { BasinsGeoJSON, GeoJobResponse, GeoLayerResponse } from '../lib/api/demPipeline';
 import { logger } from '../lib/logger';
 
 type PipelineState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
@@ -110,7 +106,7 @@ export function useDemPipeline(): UseDemPipelineResult {
         }
       }, 5000);
     },
-    [stopPolling, fetchLayers, fetchBasins],
+    [stopPolling, fetchLayers, fetchBasins]
   );
 
   const submit = useCallback(
@@ -145,7 +141,7 @@ export function useDemPipeline(): UseDemPipelineResult {
         });
       }
     },
-    [pollStatus],
+    [pollStatus]
   );
 
   const reset = useCallback(() => {

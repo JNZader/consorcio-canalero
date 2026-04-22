@@ -113,7 +113,9 @@ export function useMapInteractionEffects({
 
     const handleBasinClick = (event: maplibregl.MapMouseEvent) => {
       const features = map.queryRenderedFeatures(event.point, {
-        layers: [`${SOURCE_IDS.BASINS}-fill`, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`].filter((id) => map.getLayer(id)),
+        layers: [`${SOURCE_IDS.BASINS}-fill`, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`].filter((id) =>
+          map.getLayer(id)
+        ),
       });
       if (features.length > 0 && features[0]) {
         const basinId = features[0].properties?.id;

@@ -14,8 +14,8 @@ import {
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
-import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
 import type { AgendaItem, EntityOption, Reunion } from '../reunionesTypes';
+import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
 
 export interface AgendaFormValues {
   titulo: string;

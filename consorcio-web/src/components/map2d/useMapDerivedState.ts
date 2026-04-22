@@ -2,10 +2,9 @@ import type { FeatureCollection } from 'geojson';
 import { useMemo } from 'react';
 import { GEO_LAYER_LABELS, buildTileUrl } from '../../hooks/useGeoLayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
-import type { PilarVerdeData } from '../../types/pilarVerde';
 import type { CanalesData } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
-import { decorateFeature, asFeatureCollection } from './map2dUtils';
+import type { PilarVerdeData } from '../../types/pilarVerde';
 import {
   buildActiveLegendItems,
   buildBasinFeatureById,
@@ -16,6 +15,7 @@ import {
   buildVectorLayerItems,
   buildZoneDefinitionById,
 } from './map2dDerived';
+import { asFeatureCollection, decorateFeature } from './map2dUtils';
 
 interface GeoLayer {
   id: string;
@@ -39,7 +39,10 @@ export function useMapDerivedState(params: {
   activeDemLayerId: string | null;
   selectedDraftBasinId: string | null;
   selectedImage: { sensor: string; target_date: string } | null;
-  comparison: { left?: { target_date: string } | null; right?: { target_date: string } | null } | null;
+  comparison: {
+    left?: { target_date: string } | null;
+    right?: { target_date: string } | null;
+  } | null;
   vectorVisibility: Record<string, boolean>;
   hasApprovedZones: boolean;
   intersectionsLength: number;
@@ -97,8 +100,8 @@ export function useMapDerivedState(params: {
   const waterwaysCollection = useMemo((): FeatureCollection | null => {
     const features = waterways.flatMap((layer) =>
       layer.data.features.map((feature) =>
-        decorateFeature(feature, { __color: layer.style.color ?? '#1565C0', __label: layer.nombre }),
-      ),
+        decorateFeature(feature, { __color: layer.style.color ?? '#1565C0', __label: layer.nombre })
+      )
     );
     return features.length > 0 ? asFeatureCollection(features) : null;
   }, [waterways]);
@@ -107,15 +110,17 @@ export function useMapDerivedState(params: {
     if (!soilMap) return null;
     return asFeatureCollection(
       soilMap.features.map((feature) =>
-        decorateFeature(feature, { __color: getSoilColor((feature.properties as { cap?: string | null } | null)?.cap) }),
-      ),
+        decorateFeature(feature, {
+          __color: getSoilColor((feature.properties as { cap?: string | null } | null)?.cap),
+        })
+      )
     );
   }, [soilMap]);
 
   const approvedZonesCollection = approvedZones;
   const suggestedZonesDisplay = useMemo(
     () => buildSuggestedZonesDisplay(basins, draftBasinAssignments, suggestedZoneNames),
-    [basins, draftBasinAssignments, suggestedZoneNames],
+    [basins, draftBasinAssignments, suggestedZoneNames]
   );
 
   const demTileUrl = useMemo(() => {
@@ -123,26 +128,38 @@ export function useMapDerivedState(params: {
     const layer = allGeoLayers.find((item) => item.id === activeDemLayerId);
     if (!layer) return null;
     return buildTileUrl(layer.id, {
-      hideClasses: (hiddenClasses[layer.tipo] ?? []).length > 0 ? hiddenClasses[layer.tipo] : undefined,
-      hideRanges: (hiddenRanges[layer.tipo] ?? []).length > 0 ? hiddenRanges[layer.tipo] : undefined,
+      hideClasses:
+        (hiddenClasses[layer.tipo] ?? []).length > 0 ? hiddenClasses[layer.tipo] : undefined,
+      hideRanges:
+        (hiddenRanges[layer.tipo] ?? []).length > 0 ? hiddenRanges[layer.tipo] : undefined,
     });
   }, [activeDemLayerId, allGeoLayers, hiddenClasses, hiddenRanges]);
 
   const compositeTypes = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
-  const demLayers = useMemo(() => allGeoLayers.filter((layer) => !compositeTypes.has(layer.tipo)), [allGeoLayers, compositeTypes]);
+  const demLayers = useMemo(
+    () => allGeoLayers.filter((layer) => !compositeTypes.has(layer.tipo)),
+    [allGeoLayers, compositeTypes]
+  );
 
-  const initialDraftAssignments = useMemo(() => buildInitialDraftAssignments(suggestedZones), [suggestedZones]);
-  const zoneDefinitionById = useMemo(() => buildZoneDefinitionById(suggestedZones), [suggestedZones]);
+  const initialDraftAssignments = useMemo(
+    () => buildInitialDraftAssignments(suggestedZones),
+    [suggestedZones]
+  );
+  const zoneDefinitionById = useMemo(
+    () => buildZoneDefinitionById(suggestedZones),
+    [suggestedZones]
+  );
   const basinFeatureById = useMemo(() => buildBasinFeatureById(basins), [basins]);
 
   const effectiveBasinAssignments = useMemo(
     () => ({ ...initialDraftAssignments, ...draftBasinAssignments }),
-    [draftBasinAssignments, initialDraftAssignments],
+    [draftBasinAssignments, initialDraftAssignments]
   );
 
   const suggestedZoneSummaries = useMemo(
-    () => buildSuggestedZoneSummaries(zoneDefinitionById, effectiveBasinAssignments, basinFeatureById),
-    [basinFeatureById, effectiveBasinAssignments, zoneDefinitionById],
+    () =>
+      buildSuggestedZoneSummaries(zoneDefinitionById, effectiveBasinAssignments, basinFeatureById),
+    [basinFeatureById, effectiveBasinAssignments, zoneDefinitionById]
   );
 
   const selectedDraftBasinName = useMemo(() => {
@@ -153,7 +170,7 @@ export function useMapDerivedState(params: {
 
   const selectedDraftBasinZoneId = useMemo(
     () => (selectedDraftBasinId ? (effectiveBasinAssignments[selectedDraftBasinId] ?? null) : null),
-    [effectiveBasinAssignments, selectedDraftBasinId],
+    [effectiveBasinAssignments, selectedDraftBasinId]
   );
 
   const activeLegendItems = useMemo(
@@ -166,22 +183,23 @@ export function useMapDerivedState(params: {
         basins,
         soilMap,
       }),
-    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap],
+    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap]
   );
 
   const hasSingleImage = !!selectedImage;
   const hasComparison = !!(comparison?.left && comparison.right);
 
   const singleImageInfo = useMemo(
-    () => (selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null),
-    [selectedImage],
+    () =>
+      selectedImage ? { sensor: selectedImage.sensor, date: selectedImage.target_date } : null,
+    [selectedImage]
   );
   const comparisonInfo = useMemo(
     () =>
       comparison?.left && comparison.right
         ? { leftDate: comparison.left.target_date, rightDate: comparison.right.target_date }
         : null,
-    [comparison],
+    [comparison]
   );
 
   // Pilar Verde is considered "available" once at least one slot has resolved.
@@ -214,10 +232,13 @@ export function useMapDerivedState(params: {
       showPilarVerde,
       showPilarAzul,
       showEscuelas,
-    ],
+    ]
   );
 
-  const demLayerOptions = useMemo(() => buildDemLayerOptions(demLayers, GEO_LAYER_LABELS), [demLayers]);
+  const demLayerOptions = useMemo(
+    () => buildDemLayerOptions(demLayers, GEO_LAYER_LABELS),
+    [demLayers]
+  );
 
   return {
     zonaCollection,

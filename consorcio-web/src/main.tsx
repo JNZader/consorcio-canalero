@@ -4,18 +4,18 @@
  * All providers are consolidated here in a single React tree.
  */
 
-import React, { useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
-import { RouterProvider, createRouter } from '@tanstack/react-router';
-import { QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { RouterProvider, createRouter } from '@tanstack/react-router';
+import React, { useEffect } from 'react';
+import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 
-import { routeTree } from './routeTree.gen';
+import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
 import { mantineTheme } from './lib/theme';
-import { sharedColorSchemeManager } from './lib/mantine';
+import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
 

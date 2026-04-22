@@ -42,7 +42,9 @@ export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
 ];
 
 const supportedRasterTypeSet = new Set(
-  SUPPORTED_3D_RASTER_TYPES.filter((layer) => layer.status === 'supported').map((layer) => layer.tipo),
+  SUPPORTED_3D_RASTER_TYPES.filter((layer) => layer.status === 'supported').map(
+    (layer) => layer.tipo
+  )
 );
 
 export function getSupported3DRasterLayers(layers: GeoLayerInfo[]): GeoLayerInfo[] {

@@ -1,16 +1,16 @@
-import { Grid, Paper, Text, Group, Stack, Title, Badge } from '@mantine/core';
-import { BarChart, LineChart, DonutChart } from '@mantine/charts';
-import {
-  IconReportMoney,
-  IconAlertTriangle,
-  IconDroplet,
-  IconChartBar,
-  IconChartLine,
-  IconPieChart,
-} from '../../ui/icons';
+import { BarChart, DonutChart, LineChart } from '@mantine/charts';
+import { Badge, Grid, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { apiFetch, statsApi } from '../../../lib/api';
 import { useDashboardStats, useMonitoringDashboard } from '../../../lib/query';
+import {
+  IconAlertTriangle,
+  IconChartBar,
+  IconChartLine,
+  IconDroplet,
+  IconPieChart,
+  IconReportMoney,
+} from '../../ui/icons';
 
 interface FinanceBalanceSummary {
   total_ingresos: number;

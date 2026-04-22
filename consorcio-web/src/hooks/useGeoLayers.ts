@@ -69,8 +69,8 @@ export function useGeoLayers() {
       }
 
       const data = await response.json();
-      const items: GeoLayerInfo[] = (data.items || []).filter(
-        (l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo),
+      const items: GeoLayerInfo[] = (data.items || []).filter((l: GeoLayerInfo) =>
+        TILE_CAPABLE_TYPES.has(l.tipo)
       );
 
       const seen = new Map<string, GeoLayerInfo>();
@@ -101,7 +101,7 @@ export function useGeoLayers() {
  */
 export function buildTileUrl(
   layerId: string,
-  options?: { colormap?: string; hideClasses?: number[]; hideRanges?: number[] },
+  options?: { colormap?: string; hideClasses?: number[]; hideRanges?: number[] }
 ): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
   const params = new URLSearchParams();

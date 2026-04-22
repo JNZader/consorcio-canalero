@@ -6,7 +6,9 @@ export function useFocusTrap(isActive: boolean, containerRef: RefObject<HTMLElem
     if (!isActive || !containerRef.current) return;
 
     const container = containerRef.current;
-    const focusableElements = container.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const focusableElements = container.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
     if (focusableElements.length === 0) return;
 
     const firstElement = focusableElements[0];

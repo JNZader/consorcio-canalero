@@ -1,6 +1,6 @@
 import { Button, Group, Paper, SimpleGrid, Text, Title } from '@mantine/core';
-import { getBalanceCards, renderBalanceCard } from '../finanzasUtils';
 import type { Balance } from '../finanzasTypes';
+import { getBalanceCards, renderBalanceCard } from '../finanzasUtils';
 
 export function FinanzasSummaryTab({
   balance,

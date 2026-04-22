@@ -1,12 +1,12 @@
 import type { Feature, FeatureCollection } from 'geojson';
-import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { getSoilColor } from '../../hooks/useSoilMap';
+import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { decorateFeature } from './map2dUtils';
 
 export function buildSuggestedZonesDisplay(
   basins: FeatureCollection | null | undefined,
   draftBasinAssignments: Record<string, string>,
-  suggestedZoneNames: Record<string, string>,
+  suggestedZoneNames: Record<string, string>
 ): FeatureCollection | null {
   if (!basins) return null;
 
@@ -16,13 +16,16 @@ export function buildSuggestedZonesDisplay(
       .filter((feature) => feature.properties?.draft_zone_id)
       .map((feature) => {
         const zoneId = String(feature.properties?.draft_zone_id ?? '');
-        const effectiveZoneId = draftBasinAssignments[String(feature.properties?.id ?? '')] ?? zoneId;
+        const effectiveZoneId =
+          draftBasinAssignments[String(feature.properties?.id ?? '')] ?? zoneId;
         const colors: Record<string, string> = {
           Norte: '#9C27B0',
           'Monte Leña': '#4CAF50',
           Candil: '#2196F3',
         };
-        const zoneName = suggestedZoneNames[effectiveZoneId] ?? String(feature.properties?.nombre ?? effectiveZoneId);
+        const zoneName =
+          suggestedZoneNames[effectiveZoneId] ??
+          String(feature.properties?.nombre ?? effectiveZoneId);
         const color = colors[zoneName] ?? '#1971c2';
         return decorateFeature(feature, { __color: color, __zone_id: effectiveZoneId });
       }),
@@ -69,7 +72,7 @@ export function buildBasinFeatureById(basins: FeatureCollection | null | undefin
 export function buildSuggestedZoneSummaries(
   zoneDefinitionById: Record<string, { defaultName: string; family: string | null; color: string }>,
   effectiveBasinAssignments: Record<string, string>,
-  basinFeatureById: Record<string, Feature>,
+  basinFeatureById: Record<string, Feature>
 ) {
   return Object.entries(zoneDefinitionById).map(([zoneId, zoneDef]) => {
     let basinCount = 0;
@@ -91,7 +94,7 @@ export function buildSuggestedZoneSummaries(
 
 function pushApprovedZoneLegendItems(
   items: Array<{ color: string; label: string; type: string }>,
-  approvedZones: FeatureCollection,
+  approvedZones: FeatureCollection
 ) {
   for (const feature of approvedZones.features) {
     items.push({
@@ -104,7 +107,7 @@ function pushApprovedZoneLegendItems(
 
 function pushSoilLegendItems(
   items: Array<{ color: string; label: string; type: string }>,
-  soilMap: FeatureCollection,
+  soilMap: FeatureCollection
 ) {
   const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
   const presentCaps = new Set<string>();
@@ -140,7 +143,8 @@ export function buildActiveLegendItems(params: {
   basins: FeatureCollection | null | undefined;
   soilMap: FeatureCollection | null | undefined;
 }) {
-  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap } = params;
+  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap } =
+    params;
 
   const items: Array<{ color: string; label: string; type: string }> = [];
 
@@ -216,7 +220,11 @@ export function buildVectorLayerItems(params: {
     },
     { id: 'approved_zones', label: 'Cuencas', show: !!approvedZonesCollection },
     { id: 'waterways', label: 'Hidrografía', show: true },
-    { id: 'roads', label: 'Red vial', show: !!roadsCollection && roadsCollection.features.length > 0 },
+    {
+      id: 'roads',
+      label: 'Red vial',
+      show: !!roadsCollection && roadsCollection.features.length > 0,
+    },
     { id: 'soil', label: 'Suelos IDECOR', show: true },
     { id: 'catastro', label: 'Catastro rural', show: true },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
@@ -248,7 +256,7 @@ export function buildVectorLayerItems(params: {
 
 export function buildDemLayerOptions(
   demLayers: Array<{ id: string; tipo: string; nombre: string }>,
-  geoLayerLabels: Record<string, string>,
+  geoLayerLabels: Record<string, string>
 ) {
   return demLayers.map((layer) => ({
     value: layer.id,

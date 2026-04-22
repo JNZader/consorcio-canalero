@@ -1,23 +1,16 @@
-import {
-  Badge,
-  Container,
-  Group,
-  Paper,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Badge, Container, Group, Paper, Text, Title } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Report, reportsApi, apiFetch } from '../../../lib/api';
+import { type Report, apiFetch, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
-import type { SeguimientoEntry } from './reportsPanelTypes';
-import { ITEMS_PER_PAGE } from './constants';
-import { filterReports, getStatusBadge } from './reportsPanelUtils';
+import { ReportDetailModal } from './components/ReportDetailModal';
 import { ReportsFilters } from './components/ReportsFilters';
 import { ReportsTableContent } from './components/ReportsTableContent';
-import { ReportDetailModal } from './components/ReportDetailModal';
+import { ITEMS_PER_PAGE } from './constants';
+import type { SeguimientoEntry } from './reportsPanelTypes';
+import { filterReports, getStatusBadge } from './reportsPanelUtils';
 
 export default function ReportsPanel() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -82,7 +75,9 @@ export default function ReportsPanel() {
   const loadHistory = async (id: string) => {
     setLoadingHistory(true);
     try {
-      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(`/management/seguimiento/reporte/${id}`);
+      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(
+        `/management/seguimiento/reporte/${id}`
+      );
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setHistory(data);
     } catch (err) {

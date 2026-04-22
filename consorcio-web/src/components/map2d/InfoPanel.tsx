@@ -37,16 +37,12 @@ import { memo, useMemo } from 'react';
 import styles from '../../styles/components/map.module.css';
 import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
-import type {
-  BpaEnrichedFile,
-  BpaHistoryFile,
-  ParcelEnriched,
-} from '../../types/pilarVerde';
+import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
 import { EscuelaCard } from './EscuelaCard';
-import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { normalizeBpaFlat } from './bpaPracticas';
+import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
 
 /**
@@ -102,7 +98,7 @@ function extractCuenta(props: Record<string, unknown>): string | null {
 
 function findParcelByCuenta(
   enriched: BpaEnrichedFile | null | undefined,
-  cuenta: string | null,
+  cuenta: string | null
 ): ParcelEnriched | null {
   if (!enriched || !cuenta) return null;
   const match = enriched.parcels.find((p) => p.nro_cuenta === cuenta);
@@ -133,7 +129,7 @@ interface BpaDetection {
 function detectBpa(
   properties: Record<string, unknown>,
   bpaEnriched: BpaEnrichedFile | null | undefined,
-  bpaHistory: BpaHistoryFile | null | undefined,
+  bpaHistory: BpaHistoryFile | null | undefined
 ): BpaDetection {
   // Path (A): flat bpa_total on the feature itself (legacy bpa_2025 layer).
   const bpaFromFeature = normalizeBpaFlat(properties);
@@ -161,7 +157,7 @@ function detectBpa(
   let nombreFromHistorico: string | null = null;
   if (historico && Object.keys(historico).length > 0) {
     const lastYear = Object.keys(historico).sort().reverse()[0];
-    nombreFromHistorico = lastYear ? historico[lastYear] ?? null : null;
+    nombreFromHistorico = lastYear ? (historico[lastYear] ?? null) : null;
   }
   const nombre = nombreFrom2025 ?? nombreFromFeature ?? nombreFromHistorico ?? '';
 
@@ -191,12 +187,12 @@ function FeatureSection({
 
   const detection = useMemo(
     () => detectBpa(properties, bpaEnriched, bpaHistory),
-    [properties, bpaEnriched, bpaHistory],
+    [properties, bpaEnriched, bpaHistory]
   );
 
   const displayable = useMemo(
     () => getDisplayableProperties(withLayer.layer?.id, properties),
-    [withLayer.layer?.id, properties],
+    [withLayer.layer?.id, properties]
   );
 
   if (detection.shouldRenderBpa) {

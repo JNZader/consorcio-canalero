@@ -1,4 +1,4 @@
-import { Button, Group, Modal, Select, Stack, Textarea, TextInput } from '@mantine/core';
+import { Button, Group, Modal, Select, Stack, TextInput, Textarea } from '@mantine/core';
 import { CATEGORIA_OPTIONS, PRIORIDAD_OPTIONS } from '../constants';
 
 export function CreateInternalModal({

@@ -1,17 +1,17 @@
 import { Box } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { type FormEvent, memo } from 'react';
+import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
+import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import { RasterLegend } from '../RasterLegend';
 import { AssetPointModal } from './AssetPointModal';
 import { ExportPngModal } from './ExportPngModal';
 import { InfoPanel } from './InfoPanel';
 import { LayerControlsPanel } from './LayerControlsPanel';
+import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
 import { SuggestedZonesPanel } from './SuggestedZonesPanel';
-import { ViewModePanel, type ViewMode } from './ViewModePanel';
-import { LeyendaPanel } from './LeyendaPanel';
-import { RasterLegend } from '../RasterLegend';
-import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
-import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import { type ViewMode, ViewModePanel } from './ViewModePanel';
 
 interface LayerItem {
   id: string;

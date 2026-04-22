@@ -1,10 +1,20 @@
-import { Box, Checkbox, Divider, Paper, SegmentedControl, Select, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  Box,
+  Checkbox,
+  Divider,
+  Paper,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
-import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { getActiveAttributions } from './layerAttributions';
-import { PropuestasEtapasFilter } from './PropuestasEtapasFilter';
 import type { Etapa } from '../../types/canales';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { PropuestasEtapasFilter } from './PropuestasEtapasFilter';
+import { getActiveAttributions } from './layerAttributions';
 
 interface LayerItem {
   id: string;
@@ -225,12 +235,7 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                       const disabledRow = !relevadosMaster;
                       const tooltipLabel = "Activá 'Canales relevados' para usar esta opción";
                       return (
-                        <Tooltip
-                          key={id}
-                          label={tooltipLabel}
-                          disabled={!disabledRow}
-                          withinPortal
-                        >
+                        <Tooltip key={id} label={tooltipLabel} disabled={!disabledRow} withinPortal>
                           <div
                             data-testid={`canal-toggle-${id}`}
                             data-tooltip-label={disabledRow ? tooltipLabel : undefined}
@@ -267,12 +272,7 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                       const disabledRow = !propuestosMaster;
                       const tooltipLabel = "Activá 'Canales propuestos' para usar esta opción";
                       return (
-                        <Tooltip
-                          key={id}
-                          label={tooltipLabel}
-                          disabled={!disabledRow}
-                          withinPortal
-                        >
+                        <Tooltip key={id} label={tooltipLabel} disabled={!disabledRow} withinPortal>
                           <div
                             data-testid={`canal-toggle-${id}`}
                             data-tooltip-label={disabledRow ? tooltipLabel : undefined}

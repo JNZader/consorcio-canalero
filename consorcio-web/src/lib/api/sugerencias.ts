@@ -112,8 +112,11 @@ export const sugerenciasApi = {
    * Verificar limite de sugerencias para un contacto.
    * TODO: v2 does not have a dedicated rate limit check endpoint yet.
    */
-  checkLimit: async (_email?: string, _telefono?: string): Promise<RateLimitInfo> =>
-    ({ remaining: 3, limit: 3, reset_hours: 24 }),
+  checkLimit: async (_email?: string, _telefono?: string): Promise<RateLimitInfo> => ({
+    remaining: 3,
+    limit: 3,
+    reset_hours: 24,
+  }),
 
   /**
    * Listar sugerencias (requiere auth).

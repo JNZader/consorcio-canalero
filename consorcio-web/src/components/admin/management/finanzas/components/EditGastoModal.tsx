@@ -1,7 +1,7 @@
 import { Button, FileInput, Modal, Select, Stack, TextInput } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
-import type { Gasto } from '../finanzasTypes';
 import { IconUpload } from '../../../../ui/icons';
+import type { Gasto } from '../finanzasTypes';
 
 interface EditGastoFormValues {
   categoria: string;

@@ -1,12 +1,17 @@
 import { Badge, Card, Group, Text, ThemeIcon } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
-import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 import { IconArrowDownRight, IconArrowUpRight, IconReportMoney } from '../../../ui/icons';
+import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 
 export const normalizeArray = <T,>(response: T[] | { items: T[] }): T[] =>
   Array.isArray(response) ? response : (response.items ?? []);
 
-export function getFinanzasOptions(gastos: Gasto[], ingresos: Ingreso[], defaultCategories: string[], defaultSources: string[]) {
+export function getFinanzasOptions(
+  gastos: Gasto[],
+  ingresos: Ingreso[],
+  defaultCategories: string[],
+  defaultSources: string[]
+) {
   const cats = [...new Set(gastos.map((g) => g.categoria).filter(Boolean))];
   const srcs = [...new Set(ingresos.map((i) => i.fuente).filter(Boolean))];
 

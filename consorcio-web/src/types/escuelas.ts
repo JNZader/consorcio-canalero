@@ -67,10 +67,7 @@ export interface EscuelaFeatureProperties {
 export type EscuelaFeature = Feature<Point, EscuelaFeatureProperties>;
 
 /** FeatureCollection shape returned by `useEscuelas()`. */
-export type EscuelaFeatureCollection = FeatureCollection<
-  Point,
-  EscuelaFeatureProperties
->;
+export type EscuelaFeatureCollection = FeatureCollection<Point, EscuelaFeatureProperties>;
 
 // ---------------------------------------------------------------------------
 // Composite shape returned by `useEscuelas()`

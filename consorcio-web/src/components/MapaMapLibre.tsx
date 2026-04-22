@@ -12,7 +12,7 @@
 import { Box } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import type { Feature, } from 'geojson';
+import type { Feature } from 'geojson';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
@@ -21,18 +21,18 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 // Register PMTiles protocol once at module level
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
+import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
+import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
+import { useEscuelas } from '../hooks/useEscuelas';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePilarVerde } from '../hooks/usePilarVerde';
-import { useCanales } from '../hooks/useCanales';
-import { useEscuelas } from '../hooks/useEscuelas';
-import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { useSuggestedZones } from '../hooks/useSuggestedZones';
@@ -40,27 +40,27 @@ import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { useCanAccess } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
-import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
+import type { ViewMode } from './map2d/ViewModePanel';
+import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
-import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
-import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
+import { useComparisonSlider } from './map2d/useComparisonSlider';
 import {
   useAssetCreationHandler,
   useMapExportHandlers,
   useZoningHandlers,
 } from './map2d/useMapActionHandlers';
-import { useComparisonSlider } from './map2d/useComparisonSlider';
-import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
-import { useMapInitialization } from './map2d/useMapInitialization';
-import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
-import type { ViewMode } from './map2d/ViewModePanel';
+import { useMapInitialization } from './map2d/useMapInitialization';
+import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
+import { useMapLayerEffects } from './map2d/useMapLayerEffects';
+import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -139,7 +139,7 @@ export default function MapaMapLibre() {
 
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)
   const [vectorVisibility, setVectorVisibility] = useState<Record<string, boolean>>(
-    () => sharedVisibleVectors,
+    () => sharedVisibleVectors
   );
 
   // Sync from shared store → local
@@ -152,7 +152,7 @@ export default function MapaMapLibre() {
       setVectorVisibility((prev) => ({ ...prev, [layerId]: visible }));
       setSharedVectorVisibility('map2d', layerId, visible);
     },
-    [setSharedVectorVisibility],
+    [setSharedVectorVisibility]
   );
 
   // ── Data hooks ────────────────────────────────────────────────────────────
@@ -178,8 +178,11 @@ export default function MapaMapLibre() {
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
   const { data: pilarVerde } = usePilarVerde();
-  const { relevados: canalesRelevados, propuestas: canalesPropuestas, index: canalesIndex } =
-    useCanales();
+  const {
+    relevados: canalesRelevados,
+    propuestas: canalesPropuestas,
+    index: canalesIndex,
+  } = useCanales();
   const canalesData = {
     relevados: canalesRelevados,
     propuestas: canalesPropuestas,
@@ -556,10 +559,7 @@ export default function MapaMapLibre() {
         onStartArea={startMeasureArea}
         onClear={clearMeasurements}
       />
-      <MeasurementLabels
-        map={measurementMap}
-        measurements={measurementState.measurements}
-      />
+      <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
 
       <MapUiPanels
         baseLayer={baseLayer}
@@ -616,7 +616,9 @@ export default function MapaMapLibre() {
         }
         suggestedZoneSummaries={suggestedZoneSummaries}
         suggestedZoneNames={suggestedZoneNames}
-        onZoneNameChange={(id, value) => setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))}
+        onZoneNameChange={(id, value) =>
+          setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
+        }
         selectedDraftBasinName={selectedDraftBasinName}
         selectedDraftBasinZoneId={selectedDraftBasinZoneId}
         draftDestinationZoneId={draftDestinationZoneId}
@@ -635,7 +637,11 @@ export default function MapaMapLibre() {
         onRestoreVersion={async (id) => {
           try {
             await restoreApprovedZonesVersion(id);
-            notifications.show({ title: 'Versión restaurada', message: 'Zonificación restaurada', color: 'green' });
+            notifications.show({
+              title: 'Versión restaurada',
+              message: 'Zonificación restaurada',
+              color: 'green',
+            });
           } catch (_err) {
             notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
           }

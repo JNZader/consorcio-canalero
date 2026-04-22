@@ -4,12 +4,12 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import type { AgendaItem, EntityOption, Reunion } from './reunionesTypes';
 import {
   buildAgendaTopicPayload,
   buildReferrableOptions,
   normalizeArrayResponse,
 } from './reunionesUtils';
-import type { AgendaItem, EntityOption, Reunion } from './reunionesTypes';
 
 export function useReunionesController() {
   const [reuniones, setReuniones] = useState<Reunion[]>([]);
@@ -55,7 +55,7 @@ export function useReunionesController() {
     setLoading(true);
     try {
       const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones').catch(
-        () => ({ items: [] as Reunion[], total: 0 }),
+        () => ({ items: [] as Reunion[], total: 0 })
       );
       setReuniones(normalizeArrayResponse<Reunion>(response));
     } catch (err) {
@@ -68,7 +68,7 @@ export function useReunionesController() {
   const fetchAgenda = useCallback(async (reunionId: string) => {
     try {
       const response = await apiFetch<AgendaItem[] | { items: AgendaItem[] }>(
-        `/reuniones/${reunionId}/agenda`,
+        `/reuniones/${reunionId}/agenda`
       ).catch(() => [] as AgendaItem[]);
       setAgenda(Array.isArray(response) ? response : (response.items ?? []));
     } catch (err) {
@@ -96,7 +96,7 @@ export function useReunionesController() {
         numero_expediente?: string;
       }>(tramitesRaw);
       const assets = normalizeArrayResponse<{ id: string; nombre: string; tipo: string }>(
-        assetsRaw,
+        assetsRaw
       );
 
       setAvailableEntities(buildReferrableOptions(reports, tramites, assets));

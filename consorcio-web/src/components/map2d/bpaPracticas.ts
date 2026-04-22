@@ -139,7 +139,7 @@ function normalizeActiva(raw: unknown): boolean {
  *   else     renderGeneric(feature.properties)
  */
 export function normalizeBpaFlat(
-  props: Record<string, unknown> | null | undefined,
+  props: Record<string, unknown> | null | undefined
 ): Bpa2025EnrichedRecord | null {
   if (!props) return null;
   const rawTotal = props.bpa_total;
@@ -191,9 +191,7 @@ export function adoptedCount(practices: BpaPracticesRecord): number {
  * `<BpaCard>` currently uses `PRACTICAS_SORTED` (pure alphabetical) per spec.
  * This helper is kept tested so the refactor path stays open.
  */
-export function sortPracticasByAdopcion(
-  practices: BpaPracticesRecord,
-): PilarVerdePracticaKey[] {
+export function sortPracticasByAdopcion(practices: BpaPracticesRecord): PilarVerdePracticaKey[] {
   const si: PilarVerdePracticaKey[] = [];
   const no: PilarVerdePracticaKey[] = [];
   for (const key of PRACTICAS_SORTED) {

@@ -3,17 +3,17 @@
  * Centralizes layer loading logic used across multiple map components.
  */
 
-import type { FeatureCollection } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import type { FeatureCollection } from 'geojson';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 import { parseFeatureCollection } from '../lib/typeGuards';
 import {
+  NO_LAYERS_ERROR_MESSAGE,
+  layersMapToArray,
   processLoadResults,
   shouldSetError,
-  layersMapToArray,
-  NO_LAYERS_ERROR_MESSAGE,
 } from './geeLayerHelpers';
 
 // Default layer names available from GEE

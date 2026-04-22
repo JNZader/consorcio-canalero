@@ -66,8 +66,7 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background:
-              'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
+            background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
             zIndex: 20,
           }}
         >

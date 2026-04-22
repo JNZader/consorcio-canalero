@@ -120,7 +120,7 @@ function isEmpty(value: unknown): boolean {
  */
 export function getDisplayableProperties(
   layerId: string | undefined | null,
-  props: Record<string, unknown>,
+  props: Record<string, unknown>
 ): DisplayableProperty[] {
   const whitelistKey = resolveLayerWhitelistKey(layerId);
 

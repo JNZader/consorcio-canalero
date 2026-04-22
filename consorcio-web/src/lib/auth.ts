@@ -3,10 +3,10 @@
  * Now backed by the JWT auth adapter instead of Supabase.
  */
 
+import { type UserRole, useAuthStore } from '../stores/authStore';
 import { authAdapter } from './auth/index';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
-import { useAuthStore, type UserRole } from '../stores/authStore';
 
 // Re-export types from store for backwards compatibility
 export type { UserRole };
@@ -167,10 +167,10 @@ export async function isOperadorOrAdmin(userId: string): Promise<boolean> {
 function translateAuthError(message: string): string {
   const errorMessages: Record<string, string> = {
     'Invalid login credentials': 'Email o contrasena incorrectos',
-    'LOGIN_BAD_CREDENTIALS': 'Email o contrasena incorrectos',
+    LOGIN_BAD_CREDENTIALS: 'Email o contrasena incorrectos',
     'Email not confirmed': 'Debes confirmar tu email antes de iniciar sesion',
     'User already registered': 'Este email ya esta registrado',
-    'REGISTER_USER_ALREADY_EXISTS': 'Este email ya esta registrado',
+    REGISTER_USER_ALREADY_EXISTS: 'Este email ya esta registrado',
     'Password should be at least 6 characters': 'La contrasena debe tener al menos 6 caracteres',
     'Unable to validate email address: invalid format': 'Formato de email invalido',
     'Signup requires a valid password': 'Se requiere una contrasena valida',
@@ -178,9 +178,8 @@ function translateAuthError(message: string): string {
     'Email rate limit exceeded': 'Demasiados intentos. Intenta de nuevo mas tarde',
     'Error al iniciar sesion': 'Email o contrasena incorrectos',
     'Error al registrarse': 'Error al crear la cuenta',
-    'RESET_PASSWORD_BAD_TOKEN': 'El enlace de recuperacion es invalido o ya expiro.',
-    'RESET_PASSWORD_INVALID_PASSWORD':
-      'La contrasena no cumple los requisitos minimos de seguridad.',
+    RESET_PASSWORD_BAD_TOKEN: 'El enlace de recuperacion es invalido o ya expiro.',
+    RESET_PASSWORD_INVALID_PASSWORD: 'La contrasena no cumple los requisitos minimos de seguridad.',
   };
 
   // Buscar traduccion exacta

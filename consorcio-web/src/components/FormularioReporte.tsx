@@ -1,27 +1,10 @@
-import {
-  Box,
-  Divider,
-  LoadingOverlay,
-  Overlay,
-  Paper,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Box, Divider, LoadingOverlay, Overlay, Paper, Stack, Text, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { useConfigStore } from '../stores/configStore';
-import { useLiveRegion, LiveRegionProvider } from './ui/accessibility';
-import {
-  IconBuildingBridge,
-  IconDroplet,
-  IconFileDescription,
-  IconRoad,
-} from './ui/icons';
-import { ContactVerificationSection } from './verification';
 import {
   DescripcionField,
   FotoField,
@@ -33,6 +16,9 @@ import { StepHeader } from './report-form/StepHeader';
 import { getErrorString } from './report-form/reportFormUtils';
 import { useReportFormSubmission } from './report-form/useReportFormSubmission';
 import { useReportLocation } from './report-form/useReportLocation';
+import { LiveRegionProvider, useLiveRegion } from './ui/accessibility';
+import { IconBuildingBridge, IconDroplet, IconFileDescription, IconRoad } from './ui/icons';
+import { ContactVerificationSection } from './verification';
 
 const TIPO_ICONS: Record<string, ReactNode> = {
   alcantarilla_tapada: <IconBuildingBridge size={24} />,

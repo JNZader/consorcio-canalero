@@ -4,9 +4,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, useFormMapLayers } from '../../hooks/useFormMapLayers';
+import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
-import formStyles from '../../styles/components/form.module.css';
 import { GeometrySummary } from './suggestionFormUtils';
 
 export function SuggestionGeometrySection({
@@ -78,8 +78,8 @@ export function SuggestionGeometrySection({
       </Group>
 
       <Text size="xs" c="dimmed">
-        Haz un clic para marcar un punto. Si haces otro clic, se convierte en línea.
-        Clic derecho o clic sobre el punto para borrar lo último.
+        Haz un clic para marcar un punto. Si haces otro clic, se convierte en línea. Clic derecho o
+        clic sobre el punto para borrar lo último.
       </Text>
 
       <Box className={formStyles.mapContainer}>
@@ -94,8 +94,8 @@ export function SuggestionGeometrySection({
       </Box>
 
       <Text size="xs" c="dimmed">
-        Referencia: límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
-        Lo que dibujes queda como sugerencia, no como canal oficial.
+        Referencia: límite del consorcio (rojo), hidrografía (azul), caminos (amarillo). Lo que
+        dibujes queda como sugerencia, no como canal oficial.
       </Text>
     </Stack>
   );

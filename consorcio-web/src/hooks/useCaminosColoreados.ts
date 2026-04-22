@@ -3,9 +3,9 @@
  * Cada camino tiene un color asignado segun su consorcio para visualizacion diferenciada.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../lib/api';
 import { queryKeys } from '../lib/query';
 

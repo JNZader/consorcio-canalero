@@ -18,17 +18,17 @@ import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { MAX_LENGTHS, validators } from '../lib/validators';
-import { LiveRegionProvider } from './ui/accessibility';
-import { ContactVerificationSection } from './verification';
-import { CATEGORIAS } from './suggestion-form/suggestionFormConstants';
 import { SuggestionGeometrySection } from './suggestion-form/SuggestionGeometrySection';
 import { SuggestionStepIndicator } from './suggestion-form/SuggestionStepIndicator';
+import { CATEGORIAS } from './suggestion-form/suggestionFormConstants';
 import {
   FormFieldWithSkeleton,
-  getStep2Badge,
   SuccessScreen,
+  getStep2Badge,
 } from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
+import { LiveRegionProvider } from './ui/accessibility';
+import { ContactVerificationSection } from './verification';
 
 function FormularioContenido() {
   const form = useForm({
@@ -178,7 +178,11 @@ function FormularioContenido() {
               />
             </FormFieldWithSkeleton>
 
-            <FormFieldWithSkeleton label="Categoria" isVerified={contactoVerificado} skeletonHeight={36}>
+            <FormFieldWithSkeleton
+              label="Categoria"
+              isVerified={contactoVerificado}
+              skeletonHeight={36}
+            >
               <Select
                 label="Categoria"
                 placeholder="Selecciona una categoria"

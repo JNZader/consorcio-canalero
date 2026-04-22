@@ -3,7 +3,7 @@
  * Replaces SWR with better TypeScript support and auth-aware fetching.
  */
 
-import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { type Layer, layersApi, monitoringApi, reportsApi, statsApi } from './api';
 
@@ -41,7 +41,12 @@ export const queryKeys = {
   geoLayers: () => ['geo-layers'] as const,
   geeLayers: (names: readonly string[]) => ['gee-layers', ...names] as const,
   waterways: () => ['waterways'] as const,
-  basins: (opts: { tolerance: number; limit: number; cuenca?: string | null; bbox?: string | null }) => ['basins', opts] as const,
+  basins: (opts: {
+    tolerance: number;
+    limit: number;
+    cuenca?: string | null;
+    bbox?: string | null;
+  }) => ['basins', opts] as const,
   suggestedZones: (opts: { cuenca?: string | null }) => ['suggested-zones', opts] as const,
   approvedZones: () => ['approved-zones'] as const,
   approvedZonesHistory: () => ['approved-zones-history'] as const,

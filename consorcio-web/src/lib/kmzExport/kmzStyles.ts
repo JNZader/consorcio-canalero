@@ -38,8 +38,7 @@ import type { KmzLayerEntry } from './kmzLayerRegistry';
 
 /** Google-hosted solid-circle icon. Used since ~2009 in KML samples —
  *  minimal availability risk vs. hosting our own asset inside the KMZ. */
-const PLACEMARK_CIRCLE_HREF =
-  'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png';
+const PLACEMARK_CIRCLE_HREF = 'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png';
 
 /** Default alpha when the input hex has no embedded alpha and no override. */
 const DEFAULT_ALPHA = 'ff';
@@ -77,9 +76,7 @@ export function webHexToKmlColor(hex: string, alphaOverride?: string): string {
   const stripped = hex.startsWith('#') ? hex.slice(1) : hex;
 
   if (!HEX_RE.test(stripped) || (stripped.length !== 6 && stripped.length !== 8)) {
-    throw new Error(
-      `webHexToKmlColor: invalid hex "${hex}" — expected #RRGGBB or #RRGGBBAA`,
-    );
+    throw new Error(`webHexToKmlColor: invalid hex "${hex}" — expected #RRGGBB or #RRGGBBAA`);
   }
 
   const r = stripped.slice(0, 2).toLowerCase();
@@ -90,7 +87,7 @@ export function webHexToKmlColor(hex: string, alphaOverride?: string): string {
   const alpha = (alphaOverride ?? embeddedAlpha ?? DEFAULT_ALPHA).toLowerCase();
   if (!HEX_RE.test(alpha) || alpha.length !== 2) {
     throw new Error(
-      `webHexToKmlColor: invalid alphaOverride "${alphaOverride}" — expected two hex chars`,
+      `webHexToKmlColor: invalid alphaOverride "${alphaOverride}" — expected two hex chars`
     );
   }
 
@@ -109,15 +106,7 @@ export function webHexToKmlColor(hex: string, alphaOverride?: string): string {
  */
 export function buildPointStyle(entry: KmzLayerEntry): string {
   const color = webHexToKmlColor(entry.color, FULL_ALPHA);
-  return (
-    `<Style id="${entry.key}-style">` +
-    `<IconStyle>` +
-    `<color>${color}</color>` +
-    `<scale>1.1</scale>` +
-    `<Icon><href>${PLACEMARK_CIRCLE_HREF}</href></Icon>` +
-    `</IconStyle>` +
-    `</Style>`
-  );
+  return `<Style id="${entry.key}-style"><IconStyle><color>${color}</color><scale>1.1</scale><Icon><href>${PLACEMARK_CIRCLE_HREF}</href></Icon></IconStyle></Style>`;
 }
 
 /**
@@ -128,14 +117,7 @@ export function buildPointStyle(entry: KmzLayerEntry): string {
  */
 export function buildLineStyle(entry: KmzLayerEntry): string {
   const color = webHexToKmlColor(entry.color, FULL_ALPHA);
-  return (
-    `<Style id="${entry.key}-style">` +
-    `<LineStyle>` +
-    `<color>${color}</color>` +
-    `<width>3</width>` +
-    `</LineStyle>` +
-    `</Style>`
-  );
+  return `<Style id="${entry.key}-style"><LineStyle><color>${color}</color><width>3</width></LineStyle></Style>`;
 }
 
 /**
@@ -154,19 +136,7 @@ export function buildPolygonStyle(entry: KmzLayerEntry): string {
     : POLYGON_FILL_ALPHA;
   const fillColor = webHexToKmlColor(entry.color, fillAlpha);
 
-  return (
-    `<Style id="${entry.key}-style">` +
-    `<LineStyle>` +
-    `<color>${strokeColor}</color>` +
-    `<width>2</width>` +
-    `</LineStyle>` +
-    `<PolyStyle>` +
-    `<color>${fillColor}</color>` +
-    `<fill>1</fill>` +
-    `<outline>1</outline>` +
-    `</PolyStyle>` +
-    `</Style>`
-  );
+  return `<Style id="${entry.key}-style"><LineStyle><color>${strokeColor}</color><width>2</width></LineStyle><PolyStyle><color>${fillColor}</color><fill>1</fill><outline>1</outline></PolyStyle></Style>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,9 +162,7 @@ export function buildKmzStyles(registry: readonly KmzLayerEntry[]): string {
           // if somebody adds a new variant the compiler will flag this.
           const _exhaustive: never = entry.geometryHint;
           throw new Error(
-            `buildKmzStyles: unknown geometryHint for key "${entry.key}" — ${String(
-              _exhaustive,
-            )}`,
+            `buildKmzStyles: unknown geometryHint for key "${entry.key}" — ${String(_exhaustive)}`
           );
         }
       }

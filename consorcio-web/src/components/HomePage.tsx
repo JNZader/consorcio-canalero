@@ -15,8 +15,8 @@ import {
 import { memo } from 'react';
 import type { ReactNode } from 'react';
 import { withBasePath } from '../lib/basePath';
-import { IconInfoCircle } from './ui/icons';
 import styles from '../styles/components/home.module.css';
+import { IconInfoCircle } from './ui/icons';
 import { IconChartBar, IconClipboardList, IconLightbulb, IconMap } from './ui/icons';
 
 const STATS = [
@@ -136,7 +136,11 @@ export const HomeContent = memo(function HomeContent() {
 
       {/* Stats Section */}
       <Container size="lg" className={styles.statsSection}>
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl" style={{ maxWidth: 600, margin: '0 auto' }}>
+        <SimpleGrid
+          cols={{ base: 1, sm: 2 }}
+          spacing="xl"
+          style={{ maxWidth: 600, margin: '0 auto' }}
+        >
           {STATS.map((stat) => {
             const cardContent = (
               <Card

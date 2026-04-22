@@ -22,8 +22,8 @@
 import { Checkbox, Stack, Text } from '@mantine/core';
 import { memo } from 'react';
 
-import { CANALES_COLORS } from './canalesLayers';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
+import { CANALES_COLORS } from './canalesLayers';
 
 /**
  * Per-etapa color dot. Keyed on the canonical `Etapa` union so a future

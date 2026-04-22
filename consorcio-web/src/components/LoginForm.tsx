@@ -231,12 +231,7 @@ export function LoginFormContent() {
             )}
 
             {mode === 'login' && (
-              <Anchor
-                component="a"
-                href={withBasePath('/forgot-password')}
-                size="sm"
-                ta="right"
-              >
+              <Anchor component="a" href={withBasePath('/forgot-password')} size="sm" ta="right">
                 Olvidaste tu contrasena?
               </Anchor>
             )}

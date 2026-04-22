@@ -30,9 +30,9 @@
 import { Badge, Divider, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
 
+import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import { formatLongitud } from './canalesFormat';
 import { CANALES_COLORS } from './canalesLayers';
-import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 
 // ---------------------------------------------------------------------------
 // Helpers — kept at module scope so they can be inlined by the bundler and
