@@ -1,4 +1,4 @@
-import { Box, Button, Group, Menu, Paper } from '@mantine/core';
+import { ActionIcon, Box, Button, Group, Menu, Paper, Tooltip } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo } from 'react';
 import { IconDownload, IconFileZip, IconLayers, IconMap, IconPhoto } from '../ui/icons';
@@ -67,9 +67,11 @@ export const MapActionsPanel = memo(function MapActionsPanel({
         <Group gap="xs">
           <Menu shadow="md" width={200}>
             <Menu.Target>
-              <Button size="xs" variant="light" leftSection={<IconDownload size={14} />}>
-                Exportar
-              </Button>
+              <Tooltip label="Exportar" position="bottom" withArrow>
+                <ActionIcon aria-label="Exportar" size="md" variant="light">
+                  <IconDownload size={14} />
+                </ActionIcon>
+              </Tooltip>
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
