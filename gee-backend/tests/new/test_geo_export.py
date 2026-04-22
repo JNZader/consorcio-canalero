@@ -455,6 +455,13 @@ class TestExportQgisIntegration:
         )
         return response.json()["access_token"]
 
+    @pytest.mark.skipif(
+        not __import__("os").getenv("TEST_LIVE_BACKEND"),
+        reason=(
+            "Requires live backend with seeded operator credentials — "
+            "set TEST_LIVE_BACKEND=1 to run"
+        ),
+    )
     def test_authenticated_operator_gets_200_valid_zip(self):
         import httpx
 
