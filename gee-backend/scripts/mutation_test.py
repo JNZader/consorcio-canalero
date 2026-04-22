@@ -26,18 +26,6 @@ MODULES = {
         "source": "app/domains/geo/ml/flood_prediction.py",
         "tests": "tests/new/test_flood_prediction.py",
     },
-    "rainfall_service": {
-        "source": "app/domains/geo/rainfall_service.py",
-        "tests": "tests/unit/test_rainfall_service.py",
-    },
-    "calculations": {
-        "source": "app/domains/geo/intelligence/calculations.py",
-        "tests": "tests/unit/test_canal_calculations.py tests/unit/test_calculations_coverage.py tests/unit/test_calculations_full.py",
-    },
-    "water_detection": {
-        "source": "app/domains/geo/water_detection.py",
-        "tests": "tests/unit/test_water_detection.py",
-    },
 }
 
 
