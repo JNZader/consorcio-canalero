@@ -25,7 +25,12 @@ from app.core.middleware import (
     RequestLoggingMiddleware,
 )
 from app.core.rate_limit import get_rate_limiter
-from app.core.health import check_database_health, check_redis_health, check_gee_health
+from app.core.health import (
+    check_alembic_health,
+    check_database_health,
+    check_gee_health,
+    check_redis_health,
+)
 
 APP_VERSION = "2.0.0"
 
@@ -148,11 +153,13 @@ async def health():
     db_health = await check_database_health()
     redis_health = await check_redis_health()
     gee_health = await check_gee_health()
+    alembic_health = await check_alembic_health()
 
     services = {
         "database": db_health,
         "redis": redis_health,
         "gee": gee_health,
+        "alembic": alembic_health,
     }
 
     is_healthy = db_health["status"] == "healthy"
