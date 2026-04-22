@@ -110,8 +110,9 @@ def _ensure_initialized() -> None:
                 # .env files often mangle JSON — double quotes get stripped
                 # by shell expansion or dotenv parsers. Fix unquoted keys/values:
                 import re
+
                 fixed = re.sub(
-                    r'(?<=\{|,)\s*(\w+)\s*:',
+                    r"(?<=\{|,)\s*(\w+)\s*:",
                     r' "\1":',
                     key_json,
                 )

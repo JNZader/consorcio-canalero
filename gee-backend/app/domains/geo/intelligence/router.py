@@ -397,5 +397,3 @@ def compare_composite_stats(
     return CompositeComparisonResponse(
         area_id=area_id, tipo=tipo, items=items, total=len(items)
     )
-
-

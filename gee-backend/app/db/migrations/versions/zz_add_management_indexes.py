@@ -18,13 +18,23 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # denuncias
     op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_estado ON denuncias(estado)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_fecha_creacion ON denuncias(fecha_creacion)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_denuncias_fecha_creacion ON denuncias(fecha_creacion)"
+    )
 
     # sugerencias
-    op.execute("CREATE INDEX IF NOT EXISTS idx_sugerencias_estado ON sugerencias(estado)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_sugerencias_categoria ON sugerencias(categoria)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_sugerencias_prioridad ON sugerencias(prioridad)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_sugerencias_fecha_creacion ON sugerencias(fecha_creacion)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sugerencias_estado ON sugerencias(estado)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sugerencias_categoria ON sugerencias(categoria)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sugerencias_prioridad ON sugerencias(prioridad)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sugerencias_fecha_creacion ON sugerencias(fecha_creacion)"
+    )
 
     # tramites
     op.execute("CREATE INDEX IF NOT EXISTS idx_tramites_estado ON tramites(estado)")

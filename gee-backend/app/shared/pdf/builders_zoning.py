@@ -171,6 +171,7 @@ def build_canales_detail_table(
     story.append(table)
     return story
 
+
 # ── Zonificacion aprobada PDF ────────────────────────────
 
 
