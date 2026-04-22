@@ -16,8 +16,11 @@
  *
  * - formatArea:
  *   - < 10_000 m² → "N m²" (Math.round)
- *   - < 10_000_000 m² → "X.Y ha" (toFixed(1))
- *   - >= 10_000_000 m² → "X.Y km²" (toFixed(1))
+ *   - >= 10_000 m² → "X.Y ha" (toFixed(1)), even for very large areas.
+ *   - Argentine agricultural convention: hectares all the way up — no km²
+ *     ladder. A consorcio of ~88_277 ha is expressed as "88277.0 ha", not
+ *     "882.8 km²". Keeping a single unit above the m² threshold avoids
+ *     unit-switching surprises in field workflows.
  *   - Negative → "0 m²"; NaN/Infinity → "— m²".
  *
  * Rounding mode: Math.round (IEEE 754 round-half-to-even is NOT required for
@@ -117,18 +120,19 @@ describe('measurementFormat', () => {
       expect(formatArea(123456)).toBe('12.3 ha');
     });
 
-    it('formats 9999999 m² as "1000.0 ha" (just below km² threshold)', () => {
+    it('formats 9999999 m² as "1000.0 ha" (stays in ha branch)', () => {
       expect(formatArea(9999999)).toBe('1000.0 ha');
     });
 
-    it('formats exactly 10000000 m² as "10.0 km²" (km² threshold)', () => {
-      expect(formatArea(10000000)).toBe('10.0 km²');
+    it('formats exactly 10000000 m² as "1000.0 ha" (no km² ladder)', () => {
+      expect(formatArea(10000000)).toBe('1000.0 ha');
     });
 
-    // Sanity check: consorcio area is ~88277 ha ≈ 882.77 km². This locks the
+    // Sanity check: consorcio area is ~88277 ha. Argentine convention keeps
+    // hectares all the way up — we never switch to km². This locks the
     // real-world usage we care about.
-    it('formats consorcio-scale area (88277 ha) as "882.8 km²"', () => {
-      expect(formatArea(88277 * 10000)).toBe('882.8 km²');
+    it('formats consorcio-scale area (88277 ha) as "88277.0 ha"', () => {
+      expect(formatArea(88277 * 10000)).toBe('88277.0 ha');
     });
 
     it('clamps negative input to "0 m²" (soft error)', () => {
