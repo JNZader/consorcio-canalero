@@ -52,6 +52,8 @@ export default defineConfig({
           '**/vendor-maplibre-*.js',
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
+          '**/vendor-charts-*.js',
+          '**/vendor-mantine-extras-*.js',
         ],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
@@ -82,6 +84,22 @@ export default defineConfig({
               expiration: {
                 maxEntries: 500,
                 maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+            },
+          },
+          // Heavy lazy vendor chunks — do not precache on install; cache after first use.
+          {
+            urlPattern:
+              /\/assets\/vendor-(maplibre|map-draw|pmtiles|charts|mantine-extras)-.*\.js$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'lazy-vendor-chunks',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
               },
             },
           },
