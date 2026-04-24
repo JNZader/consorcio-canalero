@@ -1,5 +1,5 @@
 # Robots.txt for Consorcio Canalero 10 de Mayo
-# https://consorcio-canalero.vercel.app
+# https://consorcio-canalero.pages.dev
 
 User-agent: *
 Allow: /
@@ -18,4 +18,4 @@ Disallow: /*?draft=*
 Crawl-delay: 1
 
 # Sitemap location
-Sitemap: https://consorcio-canalero.vercel.app/sitemap.xml
+Sitemap: https://consorcio-canalero.pages.dev/sitemap.xml
