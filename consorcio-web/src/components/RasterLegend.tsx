@@ -75,12 +75,13 @@ export const RasterLegend = memo(function RasterLegend({
                         <Checkbox
                           size="xs"
                           checked={isVisible}
+                          onClick={(event) => event.stopPropagation()}
                           onChange={() => onClassToggle?.(tipo, idx, !isVisible)}
                           styles={{
                             input: { cursor: 'pointer' },
                             root: { display: 'flex', alignItems: 'center' },
                           }}
-                          aria-label={`Toggle ${cat.label}`}
+                          aria-label={`${isVisible ? 'Ocultar' : 'Mostrar'} ${cat.label} en ${config.label}`}
                         />
                         <Box
                           style={{
@@ -134,12 +135,13 @@ export const RasterLegend = memo(function RasterLegend({
                         <Checkbox
                           size="xs"
                           checked={isVisible}
+                          onClick={(event) => event.stopPropagation()}
                           onChange={() => onRangeToggle?.(tipo, idx, !isVisible)}
                           styles={{
                             input: { cursor: 'pointer' },
                             root: { display: 'flex', alignItems: 'center' },
                           }}
-                          aria-label={`Toggle ${range.label}`}
+                          aria-label={`${isVisible ? 'Ocultar' : 'Mostrar'} ${range.label} en ${config.label}`}
                         />
                         <Box
                           style={{
