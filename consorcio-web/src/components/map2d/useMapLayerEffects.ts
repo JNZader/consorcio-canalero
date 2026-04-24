@@ -37,6 +37,11 @@ import {
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
 
+function observeLayerSyncDependencyChange(..._values: readonly unknown[]): void {
+  // Intentional no-op: some effects must re-run after sibling layer effects
+  // have mounted/reordered sources even when this effect only needs map state.
+}
+
 interface LayerLike {
   id: string;
   nombre: string;
@@ -315,7 +320,7 @@ export function useMapLayerEffects({
     const visiblePropuestaIds = state.getVisiblePropuestaIds('map2d');
 
     // Active etapas = keys with value `true`.
-    const activeEtapas = (Object.entries(state.propuestasEtapasVisibility) as [Etapa, boolean][])
+    const activeEtapas = (Object.entries(propuestasEtapasVisibility) as [Etapa, boolean][])
       .filter(([, v]) => v)
       .map(([k]) => k);
 
@@ -378,6 +383,21 @@ export function useMapLayerEffects({
   // runs after all Pilar Verde + Canales sync effects — the deps cover every
   // signal that can mount/unmount one of the reference layers.
   useEffect(() => {
+    observeLayerSyncDependencyChange(
+      demTileUrl,
+      vectorVisibility,
+      canales,
+      canales?.index,
+      canales?.relevados,
+      canales?.propuestas,
+      pilarVerde?.bpaHistorico,
+      pilarVerde?.agroAceptada,
+      pilarVerde?.agroPresentada,
+      pilarVerde?.agroZonas,
+      pilarVerde?.porcentajeForestacion,
+      propuestasEtapasVisibility
+    );
+
     const map = mapRef.current;
     if (!map || !mapReady) return;
     if (!showDemOverlay || !activeDemLayerId) return;

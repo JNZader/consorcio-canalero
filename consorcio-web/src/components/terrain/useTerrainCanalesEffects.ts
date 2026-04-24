@@ -113,13 +113,12 @@ export function useTerrainCanalesEffects({
     // effect runs still render — matches 2D blueprint exactly
     // (`useMapLayerEffects.ts` lines 307–312). The master toggle gates
     // the whole layer via `relevadosVisible` below.
-    const map3dVectors = state.map3d.visibleVectors;
     const visibleRelevadoIds =
       canales.index?.relevados
         .map(({ id }) => id)
         .filter((slug) => {
           const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
-          return map3dVectors[key] !== false;
+          return visibleVectors[key] !== false;
         }) ?? [];
 
     // `getVisiblePropuestaIds` bakes in master gate + per-canal + etapa
@@ -130,7 +129,7 @@ export function useTerrainCanalesEffects({
     // user has flipped every etapa OFF — preserves the 2D behavior of
     // rendering all propuestos when no etapa-specific filter is selected
     // (spec scenario "5 etapas all true → filter is no-op").
-    const activeEtapas = (Object.entries(state.propuestasEtapasVisibility) as [Etapa, boolean][])
+    const activeEtapas = (Object.entries(propuestasEtapasVisibility) as [Etapa, boolean][])
       .filter(([, v]) => v)
       .map(([k]) => k);
     const effectiveEtapas: readonly Etapa[] = activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS;

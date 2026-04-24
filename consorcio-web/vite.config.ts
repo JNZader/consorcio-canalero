@@ -143,7 +143,7 @@ export default defineConfig({
           'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
           'vendor-charts': ['recharts'],
           'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw', 'pmtiles'],
-'vendor-router': ['@tanstack/react-router'],
+          'vendor-router': ['@tanstack/react-router'],
         },
       },
     },
