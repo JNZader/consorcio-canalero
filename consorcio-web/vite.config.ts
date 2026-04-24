@@ -47,7 +47,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
-        globIgnores: ['data/suelos_cu.geojson'],
+        globIgnores: [
+          'data/suelos_cu.geojson',
+          '**/vendor-maplibre-*.js',
+          '**/vendor-map-draw-*.js',
+          '**/vendor-pmtiles-*.js',
+        ],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         runtimeCaching: [
@@ -133,7 +138,6 @@ export default defineConfig({
       },
       output: {
         manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
           'vendor-mantine': [
             '@mantine/core',
             '@mantine/hooks',
@@ -142,7 +146,9 @@ export default defineConfig({
           ],
           'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
           'vendor-charts': ['recharts'],
-          'vendor-map': ['maplibre-gl', '@mapbox/mapbox-gl-draw', 'pmtiles'],
+          'vendor-maplibre': ['maplibre-gl'],
+          'vendor-map-draw': ['@mapbox/mapbox-gl-draw'],
+          'vendor-pmtiles': ['pmtiles'],
           'vendor-router': ['@tanstack/react-router'],
         },
       },
