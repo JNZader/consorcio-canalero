@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { memo } from 'react';
 import { IconDownload } from '../ui/icons';
+import { SUGGESTED_ZONES_PANEL_ID } from './MapActionsPanel';
 
 export interface SuggestedZonesPanelProps {
   readonly zones: Array<{
@@ -86,6 +87,8 @@ export const SuggestedZonesPanel = memo(function SuggestedZonesPanel({
 
   return (
     <Paper
+      id={SUGGESTED_ZONES_PANEL_ID}
+      aria-label="Panel de zonificación"
       shadow="md"
       p="sm"
       radius="md"

@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { memo } from 'react';
 import { IconDownload, IconFileZip, IconLayers, IconMap, IconPhoto } from '../ui/icons';
 
+export const SUGGESTED_ZONES_PANEL_ID = 'map-suggested-zones-panel';
+
 interface MapActionsPanelProps {
   readonly isOperator: boolean;
   readonly markingMode: boolean;
@@ -96,6 +98,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               variant={markingMode ? 'filled' : 'light'}
               color={markingMode ? 'red' : undefined}
               onClick={onToggleMarkingMode}
+              aria-pressed={markingMode}
             >
               {markingMode ? 'Cancelar marcado' : 'Marcar punto'}
             </Button>
@@ -107,6 +110,8 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               variant="light"
               leftSection={<IconLayers size={14} />}
               onClick={onToggleSuggestedZonesPanel}
+              aria-expanded={showSuggestedZonesPanel}
+              aria-controls={SUGGESTED_ZONES_PANEL_ID}
             >
               {showSuggestedZonesPanel
                 ? 'Ocultar zonificación'

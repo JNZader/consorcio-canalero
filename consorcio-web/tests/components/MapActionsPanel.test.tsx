@@ -119,6 +119,35 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
 }
 
 describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
+  it('exposes pressed and expanded state for map action toggles', () => {
+    renderWithMantine(
+      <MapActionsPanel
+        isOperator
+        markingMode
+        onToggleMarkingMode={() => {}}
+        canManageZoning
+        showSuggestedZonesPanel
+        hasApprovedZones
+        onToggleSuggestedZonesPanel={() => {}}
+        onOpenExportPng={() => {}}
+        onExportApprovedZonesPdf={() => {}}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /cancelar marcado/i })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /ocultar zonificación/i })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /ocultar zonificación/i })).toHaveAttribute(
+      'aria-controls',
+      'map-suggested-zones-panel'
+    );
+  });
+
   it('renders the "Exportar KMZ" menu item inside the Export dropdown when onExportKmz is provided', async () => {
     const user = userEvent.setup();
 

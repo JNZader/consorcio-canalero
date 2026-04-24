@@ -146,7 +146,22 @@ describe('map2d extracted panels', () => {
 
     expect(screen.getByText(/zonificación aprobada/i)).toBeInTheDocument();
     expect(screen.getByText('view-mode-slot')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /ver zonificación/i })).toBeInTheDocument();
+    expect(document.getElementById('map-suggested-zones-panel')).toHaveAttribute(
+      'aria-label',
+      'Panel de zonificación'
+    );
+    expect(screen.getByRole('button', { name: /marcar punto/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: /ver zonificación/i })).toHaveAttribute(
+      'aria-controls',
+      'map-suggested-zones-panel'
+    );
+    expect(screen.getByRole('button', { name: /ver zonificación/i })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
 
     await user.click(screen.getByRole('button', { name: /aprobar esta zonificación/i }));
     expect(onApproveZones).toHaveBeenCalledTimes(1);
