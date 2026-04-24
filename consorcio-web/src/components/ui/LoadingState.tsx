@@ -21,7 +21,7 @@ export function LoadingState({
   if (variant === 'skeleton') {
     const skeletonIds = getSkeletonIds(skeletonCount);
     return (
-      <Stack gap="lg" aria-live="polite" aria-busy="true" aria-label={message}>
+      <Stack gap="lg" role="status" aria-live="polite" aria-busy="true" aria-label={message}>
         <Skeleton height={40} width={200} />
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
           {skeletonIds.map((id) => (
@@ -37,7 +37,13 @@ export function LoadingState({
   }
 
   return (
-    <Center h={fullScreen ? '100vh' : 400} aria-live="polite" aria-busy="true" aria-label={message}>
+    <Center
+      h={fullScreen ? '100vh' : 400}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={message}
+    >
       <Stack align="center" gap="md">
         <Loader size="lg" type="dots" aria-hidden="true" />
         <Text c="gray.6" size="sm">

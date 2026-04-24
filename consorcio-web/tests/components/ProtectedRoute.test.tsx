@@ -149,6 +149,7 @@ describe('ProtectedRouteContent', () => {
 
       // Content should not be shown while loading
       expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
+      expect(screen.getByRole('status', { name: /verificando sesión/i })).toBeInTheDocument();
       expect(navigateMock).not.toHaveBeenCalled();
     });
   });
@@ -227,6 +228,7 @@ describe('ProtectedRouteContent', () => {
     );
 
     expect(await screen.findByText('Acceso Denegado')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveAccessibleName('Acceso Denegado');
     expect(screen.getByText('Sin permiso')).toBeInTheDocument();
 
     rerender(

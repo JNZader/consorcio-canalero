@@ -33,6 +33,7 @@ describe('UI Components', () => {
 
     it('should render skeleton variant', () => {
       const { container } = renderWithMantine(<LoadingState variant="skeleton" />);
+      expect(screen.getByRole('status', { name: 'Cargando...' })).toBeInTheDocument();
       const skeletons = container.querySelectorAll('[class*="Skeleton"]');
       expect(skeletons.length).toBeGreaterThan(0);
     });
@@ -51,7 +52,7 @@ describe('UI Components', () => {
 
     it('should have proper aria attributes for accessibility', () => {
       renderWithMantine(<LoadingState />);
-      const container = screen.getByLabelText('Cargando...');
+      const container = screen.getByRole('status', { name: 'Cargando...' });
       expect(container).toHaveAttribute('aria-live', 'polite');
       expect(container).toHaveAttribute('aria-busy', 'true');
     });

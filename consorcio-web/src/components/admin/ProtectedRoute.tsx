@@ -1,7 +1,8 @@
-import { Box, Button, Center, Group, Loader, Paper, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Box, Button, Center, Group, Paper, Stack, Text, ThemeIcon } from '@mantine/core';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { type UserRole, useAuth } from '../../hooks/useAuth';
+import { LoadingState } from '../ui/LoadingState';
 import { IconArrowLeft, IconLock } from '../ui/icons';
 
 /**
@@ -21,22 +22,6 @@ interface ProtectedRouteProps {
 }
 
 /**
- * Componente de carga mientras se verifica la autenticacion
- */
-function LoadingState() {
-  return (
-    <Center mih="100vh">
-      <Stack align="center" gap="md">
-        <Loader size="lg" type="dots" />
-        <Text c="gray.6" size="sm">
-          Verificando sesion...
-        </Text>
-      </Stack>
-    </Center>
-  );
-}
-
-/**
  * Componente que se muestra cuando el usuario no tiene permisos
  */
 function UnauthorizedState({
@@ -50,17 +35,25 @@ function UnauthorizedState({
 }>) {
   return (
     <Center mih="100vh">
-      <Paper shadow="md" p="xl" radius="md" w={400}>
+      <Paper
+        shadow="md"
+        p="xl"
+        radius="md"
+        w={400}
+        role="alert"
+        aria-labelledby="protected-route-unauthorized-title"
+        aria-describedby="protected-route-unauthorized-message"
+      >
         <Stack align="center" gap="lg">
-          <ThemeIcon size={64} radius="xl" color="red" variant="light">
+          <ThemeIcon size={64} radius="xl" color="red" variant="light" aria-hidden="true">
             <IconLock size={32} />
           </ThemeIcon>
 
           <Box ta="center">
-            <Text size="xl" fw={600} mb="xs">
+            <Text id="protected-route-unauthorized-title" size="xl" fw={600} mb="xs">
               Acceso Denegado
             </Text>
-            <Text c="gray.6" size="sm">
+            <Text id="protected-route-unauthorized-message" c="gray.6" size="sm">
               {message}
             </Text>
           </Box>
@@ -92,16 +85,7 @@ function NotAuthenticatedState({ loginUrl }: Readonly<{ loginUrl: string }>) {
     router.navigate({ to: loginUrl });
   }, [loginUrl, router]);
 
-  return (
-    <Center mih="100vh">
-      <Stack align="center" gap="md">
-        <Loader size="lg" type="dots" />
-        <Text c="gray.6" size="sm">
-          Redirigiendo al inicio de sesion...
-        </Text>
-      </Stack>
-    </Center>
-  );
+  return <LoadingState message="Redirigiendo al inicio de sesión..." fullScreen />;
 }
 
 /**
@@ -145,9 +129,15 @@ export function ProtectedRouteContent({
     }
   }, [isAuthenticated, profile, isLoading, allowedRoles, canAccess]);
 
+  useEffect(() => {
+    if (authState === 'unauthorized' && unauthorizedUrl) {
+      router.navigate({ to: unauthorizedUrl });
+    }
+  }, [authState, router, unauthorizedUrl]);
+
   // Estado de carga
   if (authState === 'loading') {
-    return <LoadingState />;
+    return <LoadingState message="Verificando sesión..." fullScreen />;
   }
 
   // No autenticado - redirigir al login
@@ -159,8 +149,7 @@ export function ProtectedRouteContent({
   if (authState === 'unauthorized') {
     // Si hay URL de redireccion, redirigir
     if (unauthorizedUrl) {
-      router.navigate({ to: unauthorizedUrl });
-      return <LoadingState />;
+      return <LoadingState message="Redirigiendo..." fullScreen />;
     }
 
     // Mostrar mensaje de acceso denegado
