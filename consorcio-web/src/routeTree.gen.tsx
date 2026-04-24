@@ -234,6 +234,33 @@ const sugerenciasRoute = createRoute({
 // AUTH CALLBACK ROUTE (OAuth redirect handler)
 // ============================================
 
+function redactAuthCallbackUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+
+    for (const params of [url.searchParams, new URLSearchParams(url.hash.replace(/^#/, ''))]) {
+      for (const key of ['token', 'access_token']) {
+        if (params.has(key)) {
+          params.set(key, 'present');
+        }
+      }
+
+      if (params !== url.searchParams) {
+        const redactedHash = params.toString();
+        url.hash = redactedHash ? `#${redactedHash}` : '';
+      }
+    }
+
+    return url.toString();
+  } catch {
+    return 'URL de callback invalida';
+  }
+}
+
+function clearAuthCallbackUrl() {
+  window.history.replaceState(null, document.title, withBasePath('/auth/callback'));
+}
+
 function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('Procesando...');
@@ -241,13 +268,19 @@ function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       logger.debug('[AUTH CALLBACK] Starting callback handler');
-      logger.debug('[AUTH CALLBACK] Current URL:', window.location.href);
-      setDebugInfo(`URL: ${window.location.href}`);
+      const redactedCallbackUrl = redactAuthCallbackUrl(window.location.href);
+      logger.debug('[AUTH CALLBACK] Current URL:', redactedCallbackUrl);
+      setDebugInfo(`URL: ${redactedCallbackUrl}`);
 
       try {
         // Get params from URL (backend Google OAuth callback)
         const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token') || urlParams.get('access_token');
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const token =
+          hashParams.get('token') ||
+          hashParams.get('access_token') ||
+          urlParams.get('token') ||
+          urlParams.get('access_token');
         const errorParam = urlParams.get('error');
         const errorDescription = urlParams.get('error_description');
 
@@ -270,9 +303,13 @@ function AuthCallbackPage() {
         if (token) {
           // Store the token and fetch user profile from /users/me
           logger.debug('[AUTH CALLBACK] Got token, fetching user profile...');
+          clearAuthCallbackUrl();
           localStorage.setItem('consorcio_auth_token', token);
 
-          const API_URL = import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
+          const API_URL =
+            import.meta.env.VITE_API_URL ||
+            import.meta.env.PUBLIC_API_URL ||
+            'http://localhost:8000';
           const profileRes = await fetch(`${API_URL}/api/v2/users/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });

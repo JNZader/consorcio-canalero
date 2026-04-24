@@ -51,6 +51,8 @@ if settings.google_oauth_client_id:
 
     from fastapi import Depends, Request
     from fastapi.responses import RedirectResponse
+    from google.auth.transport import requests as google_auth_requests
+    from google.oauth2 import id_token as google_id_token
     from httpx_oauth.clients.google import GoogleOAuth2
 
     _oauth_logger = logging.getLogger(__name__)
@@ -72,11 +74,26 @@ if settings.google_oauth_client_id:
 
     _static_redirect_url = _get_oauth_redirect_url()
 
+    def _verify_google_id_token(raw_id_token: str) -> dict:
+        """Verify Google ID token signature and expected claims."""
+        id_info = google_id_token.verify_oauth2_token(
+            raw_id_token,
+            google_auth_requests.Request(),
+            settings.google_oauth_client_id,
+        )
+
+        issuer = id_info.get("iss")
+        if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+            raise ValueError("Invalid Google token issuer")
+
+        if id_info.get("email_verified") is not True:
+            raise ValueError("Google account email is not verified")
+
+        return id_info
+
     # ── Custom OAuth endpoints (authorize + callback) ──
     # We don't use fastapi-users' get_oauth_router because BearerTransport
     # returns JSON on callback — but the browser needs a redirect to the frontend.
-    from jose import jwt as jose_jwt
-
     from app.auth.dependencies import get_jwt_strategy
     from app.auth.models import User, UserRole
     from app.db.session import get_async_db
@@ -114,7 +131,7 @@ if settings.google_oauth_client_id:
     ):
         """
         Google OAuth callback — exchanges code for token, finds/creates user,
-        then redirects to the frontend with a JWT in the query string.
+        then redirects to the frontend with a JWT in the URL fragment.
         """
         frontend_callback = f"{settings.frontend_url.rstrip('/')}/auth/callback"
 
@@ -139,15 +156,14 @@ if settings.google_oauth_client_id:
             # Exchange authorization code for Google access token
             oauth_token = await google_oauth_client.get_access_token(code, redirect_url)
 
-            # Decode the id_token to get user info (no People API needed)
+            # Verify the id_token to get user info (no People API needed)
             id_token = oauth_token.get("id_token")
             if not id_token:
                 return RedirectResponse(
                     url=f"{frontend_callback}?{urlencode({'error': 'no_id_token', 'error_description': 'Google did not return an id_token'})}"
                 )
 
-            # Decode without verification — we already trust Google's token endpoint
-            id_info = jose_jwt.get_unverified_claims(id_token)
+            id_info = _verify_google_id_token(id_token)
             account_email = id_info.get("email")
             if not account_email:
                 return RedirectResponse(
@@ -194,7 +210,9 @@ if settings.google_oauth_client_id:
 
             _oauth_logger.info("Google OAuth login successful for %s", account_email)
             return RedirectResponse(
-                url=f"{frontend_callback}?{urlencode({'access_token': token})}"
+                # Use the URL fragment so the browser can read the token, but it is
+                # not sent back to servers or captured in standard request logs.
+                url=f"{frontend_callback}#{urlencode({'access_token': token})}"
             )
 
         except Exception as exc:
