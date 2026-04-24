@@ -12,6 +12,30 @@ interface UseMapInitializationParams {
   setMapReady: (ready: boolean) => void;
 }
 
+/**
+ * Prevent the browser's native drag-and-drop gesture from hijacking MapLibre
+ * pan gestures. This is intentionally done with a capture-phase event guard,
+ * not only CSS, because satellite/raster map DOM can change after initial
+ * render and browser-native dragstart still wins intermittently in Chromium.
+ */
+export function installMapNativeDragGuards(container: HTMLElement): () => void {
+  const preventNativeDrag = (event: DragEvent) => {
+    event.preventDefault();
+  };
+
+  container.addEventListener('dragstart', preventNativeDrag, { capture: true });
+  container.style.userSelect = 'none';
+  container.style.webkitUserSelect = 'none';
+  container.style.setProperty('-webkit-user-drag', 'none');
+
+  return () => {
+    container.removeEventListener('dragstart', preventNativeDrag, { capture: true });
+    container.style.userSelect = '';
+    container.style.webkitUserSelect = '';
+    container.style.removeProperty('-webkit-user-drag');
+  };
+}
+
 export function useMapInitialization({
   maplibre,
   containerRef,
@@ -23,6 +47,8 @@ export function useMapInitialization({
 }: UseMapInitializationParams) {
   useEffect(() => {
     if (!containerRef.current) return;
+
+    const removeNativeDragGuards = installMapNativeDragGuards(containerRef.current);
 
     const map = new maplibre.Map({
       container: containerRef.current,
@@ -100,6 +126,7 @@ export function useMapInitialization({
     mapRef.current = map;
 
     return () => {
+      removeNativeDragGuards();
       map.remove();
       mapRef.current = null;
       setMapReady(false);
