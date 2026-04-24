@@ -21,14 +21,14 @@ Implementar un sistema unificado de WhatsApp que permita:
            │                          │                           │
            ▼                          ▼                           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           FRONTEND (Astro)                                   │
-│                           Vercel / Netlify                                   │
+│                         FRONTEND (React + Vite)                              │
+│                           Cloudflare Pages                                   │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         BACKEND API (FastAPI)                                │
-│                              Railway                                         │
+│                         Docker/Hetzner                                       │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
 │  │  /api/v1/   │  │  /webhook/  │  │  /whatsapp/ │  │  Background Tasks   │ │
 │  │  reports    │  │  whatsapp   │  │  send       │  │  (notificaciones)   │ │
@@ -38,9 +38,9 @@ Implementar un sistema unificado de WhatsApp que permita:
                     ┌─────────────────┼─────────────────┐
                     ▼                 ▼                 ▼
           ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-          │    Supabase     │ │  WhatsApp Cloud │ │     Redis       │
-          │   PostgreSQL    │ │      API        │ │  (cache/queue)  │
-          │   + Storage     │ │     (Meta)      │ │                 │
+          │  PostgreSQL     │ │  WhatsApp Cloud │ │     Redis       │
+          │   + PostGIS     │ │      API        │ │  (cache/queue)  │
+          │                 │ │     (Meta)      │ │                 │
           └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 

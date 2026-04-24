@@ -1,4 +1,7 @@
-# Guia de Despliegue - Consorcio Canalero
+# Guia de Despliegue - Consorcio Canalero (LEGACY)
+
+> ADVERTENCIA: guia legacy conservada solo como referencia historica. La topologia actual usa Cloudflare Pages para el frontend y el stack Docker/Hetzner documentado en `DEPLOY.md` y `docs/DEPLOY_CLOUDFLARE.md`. No uses esta guia para produccion sin actualizarla.
+
 
 Esta guia te lleva paso a paso para:
 1. Subir tu codigo a **GitHub**

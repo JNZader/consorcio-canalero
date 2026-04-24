@@ -117,7 +117,7 @@
 
 #### SEC-14: Content-Security-Policy ausente en nginx
 - **Archivos:** `nginx/nginx.conf`, `consorcio-web/Dockerfile`
-- **Accion:** Agregar CSP header equivalente al de `vercel.json`.
+- **Accion:** Mantener/ajustar CSP en `consorcio-web/public/_headers` (Cloudflare Pages) segun dominios reales de API, tiles y workers.
 
 #### SEC-15: Instalacion insegura de Koyeb CLI en CI
 - **Archivos:** `.github/workflows/ci.yml:316`, `backend-ci.yml:228`
@@ -500,7 +500,7 @@
 
 #### DO-03: Sin staging environment
 - **Impacto:** Changes van directo a produccion.
-- **Accion:** Agregar staging en Vercel (preview) y/o Koyeb.
+- **Accion:** Usar previews de Cloudflare Pages y un backend/staging separado antes de promover a produccion.
 
 #### DO-04: Backend Dockerfile sin non-root user
 - **Archivo:** `gee-backend/Dockerfile`
@@ -546,9 +546,10 @@
 - **Archivos:** `nginx/nginx.conf` vs config embebida en `consorcio-web/Dockerfile`
 - **Accion:** Consolidar en una sola estrategia.
 
-#### DO-14: Topologia de deploy confusa (Vercel vs Koyeb para frontend)
-- **Impacto:** CI deploya frontend a Koyeb pero existe `vercel.json`.
-- **Accion:** Documentar y clarificar la topologia de produccion.
+#### DO-14: Topologia de deploy confusa (frontend legacy vs Cloudflare Pages)
+- **Impacto:** Configs/docs legacy de Vercel/Koyeb generaban confusion sobre la topologia real.
+- **Estado:** En progreso: frontend alineado a Cloudflare Pages (`public/_headers`, `_redirects`, README y guia CF).
+- **Accion:** Mantener `DEPLOY.md` + `docs/DEPLOY_CLOUDFLARE.md` como fuente de verdad y retirar configs legacy no usadas.
 
 #### DO-15: Makefile `backend-build` usa target incorrecto
 - **Archivo:** `Makefile:97` - `--target runtime` pero stage se llama `production`
