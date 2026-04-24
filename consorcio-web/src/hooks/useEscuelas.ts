@@ -23,6 +23,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { logger } from '../lib/logger';
 
 import type { EscuelaFeatureCollection } from '../types/escuelas';
 
@@ -43,15 +44,13 @@ async function loadEscuelas(): Promise<LoadResult> {
   try {
     const res = await fetch(ESCUELAS_GEOJSON_URL);
     if (!res.ok) {
-      // eslint-disable-next-line no-console
-      console.warn(`[escuelas:fetch] failed to load (${res.status}): ${ESCUELAS_GEOJSON_URL}`);
+      logger.warn(`[escuelas:fetch] failed to load (${res.status}): ${ESCUELAS_GEOJSON_URL}`);
       return { collection: null, failed: true };
     }
     const json = (await res.json()) as EscuelaFeatureCollection;
     return { collection: json, failed: false };
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[escuelas:fetch] network error:', err);
+    logger.warn('[escuelas:fetch] network error', err);
     return { collection: null, failed: true };
   }
 }

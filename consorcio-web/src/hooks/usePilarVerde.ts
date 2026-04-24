@@ -18,6 +18,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 import type {
   AggregatesFile,
@@ -82,8 +83,7 @@ async function loadAllPilarVerde(): Promise<PilarVerdeData> {
       assignSlot(out, key, result.value);
     } else {
       // Leave as null. Consumer surfaces "Datos no disponibles".
-      // eslint-disable-next-line no-console
-      console.warn(`[pilarVerde] failed to load ${key}:`, result.reason);
+      logger.warn(`[pilarVerde] failed to load ${key}`, result.reason);
     }
   });
   return out;

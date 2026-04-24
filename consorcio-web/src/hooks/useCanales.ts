@@ -12,11 +12,12 @@
  *
  * Returned shape: `{ relevados, propuestas, index, isLoading, isError }`.
  * `isError` is a coarse "something failed" flag (any slot 404 / network reject)
- * — per-slot diagnostics are logged via `console.warn` tagged `[canales:fetch]`.
+ * — per-slot diagnostics are logged via the app logger tagged `[canales:fetch]`.
  */
 
 import { useQuery } from '@tanstack/react-query';
 
+import { logger } from '../lib/logger';
 import type { CanalesData, CanalesFeatureCollection, IndexFile } from '../types/canales';
 
 /** Public asset paths — keys mirror `CanalesData` slot names. */
@@ -60,8 +61,7 @@ async function loadAllCanales(): Promise<LoadResult> {
       assignSlot(data, key, result.value);
     } else {
       anyFailed = true;
-      // eslint-disable-next-line no-console
-      console.warn(`[canales:fetch] failed to load ${key}:`, result.reason);
+      logger.warn(`[canales:fetch] failed to load ${key}`, result.reason);
     }
   });
 

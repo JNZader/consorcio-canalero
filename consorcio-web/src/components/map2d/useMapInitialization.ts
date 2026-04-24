@@ -1,14 +1,15 @@
 import type maplibregl from 'maplibre-gl';
-import { useEffect } from 'react';
+import { type RefObject, useEffect } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
+import { logger } from '../../lib/logger';
 
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   centerLat: number;
   centerLng: number;
   zoom: number;
-  mapRef: React.RefObject<maplibregl.Map | null>;
+  mapRef: RefObject<maplibregl.Map | null>;
   setMapReady: (ready: boolean) => void;
 }
 
@@ -119,7 +120,7 @@ export function useMapInitialization({
       const isTileError =
         'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
       if (!isTileError) {
-        console.error('MapaMapLibre error:', event.error);
+        logger.error('MapaMapLibre error', event.error);
       }
     });
 

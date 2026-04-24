@@ -178,7 +178,7 @@ export default function SugerenciasPanel() {
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setHistorial(data);
     } catch (err) {
-      console.error(err);
+      logger.error('Failed to load suggestion history', err);
     } finally {
       setLoadingHistorial(false);
     }

@@ -24,6 +24,7 @@ import { useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
+import { logger } from '../../lib/logger';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
@@ -358,11 +359,11 @@ export default function TerrainViewer3D({
         'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
 
       if (isTileError) {
-        console.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
+        logger.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
         return;
       }
 
-      console.error('MapLibre terrain error', event.error);
+      logger.error('MapLibre terrain error', event.error);
       setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
     });
 

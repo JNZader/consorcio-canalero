@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, useFormMapLayers } from '../../hooks/useFormMapLayers';
+import { logger } from '../../lib/logger';
 import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
@@ -64,7 +65,7 @@ export function SuggestionGeometrySection({
     try {
       addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
     } catch (err) {
-      console.error('[SugerenciaMap] addReferenceLayers failed:', err);
+      logger.error('[SugerenciaMap] addReferenceLayers failed', err);
     }
   }, [zonaGeoJson, caminosGeoJson, waterways, mapReady]);
 

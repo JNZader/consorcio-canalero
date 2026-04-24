@@ -7,6 +7,7 @@ import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { API_URL, getAuthToken } from '../../lib/api';
 import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
+import { logger } from '../../lib/logger';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { CanalesFeatureCollection } from '../../types/canales';
 import { CANALES_COLORS, CANAL_STYLE_COLORS } from './canalesLayers';
@@ -337,8 +338,7 @@ export function useMapExportHandlers({
         } catch {
           // Body wasn't JSON — fall back to status text only.
         }
-        // eslint-disable-next-line no-console
-        console.error(
+        logger.error(
           `[export-map-pdf] HTTP ${response.status} ${response.statusText || ''}`.trim(),
           detail
         );
@@ -362,7 +362,8 @@ export function useMapExportHandlers({
       );
       link.click();
       window.URL.revokeObjectURL(url);
-    } catch (_error) {
+    } catch (error) {
+      logger.error('PDF export failed', error);
       notifications.show({
         title: 'Error',
         message: 'No se pudo generar el PDF',
@@ -428,8 +429,7 @@ export function useMapExportHandlers({
         color: 'green',
       });
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('KMZ export failed:', error);
+      logger.error('KMZ export failed', error);
       notifications.show({
         title: 'Error',
         message: 'No se pudo generar el KMZ',
