@@ -102,6 +102,8 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
     // legend + padding) and let it scroll internally instead.
     <Box
       data-testid="layer-controls-panel-scroll"
+      role="region"
+      aria-label="Controles de capas del mapa"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -126,6 +128,7 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
           </Text>
           <SegmentedControl
             size="xs"
+            aria-label="Seleccionar capa base"
             value={baseLayer}
             onChange={(value) => onBaseLayerChange(value as 'osm' | 'satellite')}
             data={[
@@ -181,6 +184,7 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                 {showDemOverlay && (
                   <Select
                     size="xs"
+                    aria-label="Tipo de capa DEM"
                     placeholder="Tipo de capa"
                     value={activeDemLayerId}
                     onChange={onActiveDemLayerIdChange}

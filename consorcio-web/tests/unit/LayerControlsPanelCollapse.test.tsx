@@ -38,9 +38,13 @@ const baseProps = {
 };
 
 describe('<LayerControlsPanel /> — "Capas" collapsible section', () => {
-  it('renders the Capas checkboxes visible by default (expanded)', () => {
+  it('renders the panel landmark and Capas checkboxes visible by default (expanded)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
+    expect(
+      screen.getByRole('region', { name: /controles de capas del mapa/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/seleccionar capa base/i)).toBeInTheDocument();
     expect(screen.getByText('Capas')).toBeInTheDocument();
     expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
     expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
@@ -69,6 +73,20 @@ describe('<LayerControlsPanel /> — "Capas" collapsible section', () => {
     expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
     expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('exposes an accessible label for the DEM layer selector', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        demEnabled
+        showDemOverlay
+        activeDemLayerId="slope"
+        demOptions={[{ value: 'slope', label: 'Pendiente' }]}
+      />,
+    );
+
+    expect(screen.getAllByLabelText(/tipo de capa dem/i)[0]).toBeInTheDocument();
   });
 
   it('toggles via Enter key on the header', () => {
