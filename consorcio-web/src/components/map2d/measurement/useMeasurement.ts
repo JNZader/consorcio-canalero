@@ -43,7 +43,8 @@
 
 import type { Feature, LineString, Point, Polygon } from 'geojson';
 import type maplibregl from 'maplibre-gl';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type MapboxDraw from '@mapbox/mapbox-gl-draw';
+import { useEffect, useRef, useState } from 'react';
 
 import area from '@turf/area';
 import centerOfMass from '@turf/center-of-mass';
@@ -126,8 +127,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     mode: 'idle',
     measurements: [],
   });
-  // biome-ignore lint/suspicious/noExplicitAny: MapboxDraw instance — typings are loose
-  const drawRef = useRef<any>(null);
+  const drawRef = useRef<MapboxDraw | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -140,8 +140,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     removeMapboxDrawArtifacts(map);
 
     // MapboxDraw targets the same GL control API as maplibre-gl.
-    // biome-ignore lint/suspicious/noExplicitAny: MapboxDraw implements IControl at runtime
-    map.addControl(draw as any);
+    map.addControl(draw as unknown as maplibregl.IControl);
 
     const handleCreate = (event: unknown) => {
       const features = (event as { features?: Feature[] })?.features ?? [];
@@ -189,10 +188,9 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     return () => {
       map.off('draw.create', handleCreate);
       try {
-        // biome-ignore lint/suspicious/noExplicitAny: MapboxDraw implements IControl at runtime
-        if (map.hasControl(draw as any)) {
-          // biome-ignore lint/suspicious/noExplicitAny: MapboxDraw implements IControl at runtime
-          map.removeControl(draw as any);
+        const control = draw as unknown as maplibregl.IControl;
+        if (map.hasControl(control)) {
+          map.removeControl(control);
         }
       } catch {
         // ignore — removal can race with map teardown
@@ -202,34 +200,31 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     };
   }, [map]);
 
-  const startDistance = useCallback(() => {
+  const startDistance = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('draw_line_string');
     setState((prev) => ({ ...prev, mode: 'measuring-distance' }));
-  }, []);
+  };
 
-  const startArea = useCallback(() => {
+  const startArea = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('draw_polygon');
     setState((prev) => ({ ...prev, mode: 'measuring-area' }));
-  }, []);
+  };
 
-  const clear = useCallback(() => {
+  const clear = () => {
     const draw = drawRef.current;
     if (draw) draw.deleteAll();
     // NOTE: this ONLY clears the measurement draw instance. LineDrawControl
     // uses its own independent MapboxDraw — canales are untouched.
     setState({ mode: 'idle', measurements: [] });
-  }, []);
+  };
 
-  const cancel = useCallback(() => {
+  const cancel = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('simple_select');
     setState((prev) => ({ ...prev, mode: 'idle' }));
-  }, []);
+  };
 
-  return useMemo(
-    () => ({ state, startDistance, startArea, clear, cancel }),
-    [state, startDistance, startArea, clear, cancel]
-  );
+  return { state, startDistance, startArea, clear, cancel };
 }

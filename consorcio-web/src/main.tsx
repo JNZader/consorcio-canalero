@@ -8,7 +8,7 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
-import React, { useEffect } from 'react';
+import { StrictMode, type ReactNode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 
@@ -76,7 +76,7 @@ declare module '@tanstack/react-router' {
 /**
  * Component that initializes authentication on app mount.
  */
-function AuthInitializer({ children }: { children: React.ReactNode }) {
+function AuthInitializer({ children }: { children: ReactNode }) {
   const initialize = useAuthStore((state) => state.initialize);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ function App() {
 
 // Mount the application
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  <StrictMode>
     <App />
-  </React.StrictMode>
+  </StrictMode>
 );
