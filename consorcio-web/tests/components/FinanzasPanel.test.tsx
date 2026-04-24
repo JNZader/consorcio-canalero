@@ -82,10 +82,16 @@ describe('FinanzasPanel', () => {
     expect(screen.getByText(/caja actual/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /libro de gastos/i }));
+    expect(screen.getByRole('table', { name: /libro de gastos/i })).toBeInTheDocument();
     expect(await screen.findByText('Combustible retroexcavadora')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /editar gasto: combustible retroexcavadora/i })
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /libro de ingresos/i }));
+    expect(screen.getByRole('table', { name: /libro de ingresos/i })).toBeInTheDocument();
     expect(await screen.findByText('Cuota marzo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /editar ingreso: cuota marzo/i })).toBeInTheDocument();
   });
 
   it('creates a new gasto and shows success notification', async () => {

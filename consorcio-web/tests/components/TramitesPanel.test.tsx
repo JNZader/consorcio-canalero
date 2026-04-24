@@ -92,8 +92,12 @@ describe('TramitesPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Gestion de Expedientes')).toBeInTheDocument();
+    expect(
+      screen.getByRole('table', { name: /tabla de expedientes provinciales/i })
+    ).toBeInTheDocument();
     expect(screen.getByText('Canal Norte')).toBeInTheDocument();
     expect(screen.getByText('PENDIENTE')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ver historial del expediente a-1/i })).toBeInTheDocument();
     expect(screen.queryByText('Tramite legacy')).not.toBeInTheDocument();
     expect(screen.queryByText('INICIADO')).not.toBeInTheDocument();
   });

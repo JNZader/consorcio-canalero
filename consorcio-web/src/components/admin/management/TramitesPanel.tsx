@@ -146,48 +146,59 @@ export default function TramitesPanel() {
       </Group>
 
       <Paper withBorder radius="md">
-        <Table verticalSpacing="sm">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Titulo / Expediente</Table.Th>
-              <Table.Th>Estado</Table.Th>
-              <Table.Th>Ultima Actualizacion</Table.Th>
-              <Table.Th>Acciones</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {tramites.map((t) => (
-              <Table.Tr key={t.id}>
-                <Table.Td>
-                  <Stack gap={0}>
-                    <Text fw={500} size="sm">
-                      {t.titulo}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Nro: {t.numero_expediente || 'S/N'}
-                    </Text>
-                  </Stack>
-                </Table.Td>
-                <Table.Td>
-                  <Badge variant="light">{formatTramiteEstado(t.estado)}</Badge>
-                </Table.Td>
-                <Table.Td>
-                  <Text size="xs">{new Date(t.ultima_actualizacion).toLocaleDateString()}</Text>
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon variant="light" color="blue" onClick={() => fetchDetalle(t.id)}>
-                      <IconHistory size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="light" color="gray">
-                      <IconExternalLink size={16} />
-                    </ActionIcon>
-                  </Group>
-                </Table.Td>
+        <Table.ScrollContainer minWidth={680} type="native">
+          <Table verticalSpacing="sm" aria-label="Tabla de expedientes provinciales">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Titulo / Expediente</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Ultima Actualizacion</Table.Th>
+                <Table.Th>Acciones</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {tramites.map((t) => (
+                <Table.Tr key={t.id}>
+                  <Table.Td>
+                    <Stack gap={0}>
+                      <Text fw={500} size="sm">
+                        {t.titulo}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Nro: {t.numero_expediente || 'S/N'}
+                      </Text>
+                    </Stack>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light">{formatTramiteEstado(t.estado)}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="xs">{new Date(t.ultima_actualizacion).toLocaleDateString()}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" wrap="nowrap">
+                      <ActionIcon
+                        variant="light"
+                        color="blue"
+                        onClick={() => fetchDetalle(t.id)}
+                        aria-label={`Ver historial del expediente ${t.numero_expediente || t.titulo}`}
+                      >
+                        <IconHistory size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="light"
+                        color="gray"
+                        aria-label={`Abrir expediente externo ${t.numero_expediente || t.titulo}`}
+                      >
+                        <IconExternalLink size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
 
       {/* Modal Nuevo Expediente */}
