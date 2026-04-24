@@ -114,7 +114,12 @@ describe('ReportsPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('No hay denuncias')).toBeInTheDocument();
-    expect(screen.getByText('No se encontraron denuncias con los filtros aplicados')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'No hay denuncias' })).toHaveAccessibleDescription(
+      'No se encontraron denuncias con los filtros aplicados'
+    );
+    expect(
+      screen.getByText('No se encontraron denuncias con los filtros aplicados')
+    ).toBeInTheDocument();
   });
 
   it('opens the detail modal and loads report history', async () => {

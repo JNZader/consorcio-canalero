@@ -210,6 +210,9 @@ describe('SugerenciasPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('No hay sugerencias')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'No hay sugerencias' })).toHaveAccessibleDescription(
+      'No se encontraron sugerencias con los filtros aplicados'
+    );
     expect(
       screen.getByText('No se encontraron sugerencias con los filtros aplicados')
     ).toBeInTheDocument();

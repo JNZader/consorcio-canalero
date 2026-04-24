@@ -35,7 +35,7 @@ export function SugerenciasTableContent({
 }>) {
   if (loading) {
     return (
-      <Center py="xl" aria-busy="true" aria-live="polite">
+      <Center py="xl" role="status" aria-busy="true" aria-live="polite">
         <Group align="center">
           <Loader aria-hidden="true" />
           <Text size="sm" c="gray.6">
