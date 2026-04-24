@@ -10,12 +10,10 @@
 
 | Setting | Value |
 |---------|-------|
-| Framework preset | None |
-| Build command | `cd consorcio-web && npm install --legacy-peer-deps && npm run build` |
-| Build output directory | `consorcio-web/dist` |
-| Root directory | `/` (project root) |
-
-> **Note:** `--legacy-peer-deps` is required because some dependencies have peer dependency conflicts.
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | `consorcio-web` |
 
 ## Environment Variables
 
@@ -23,7 +21,8 @@ Set these in **Cloudflare Dashboard > Pages project > Settings > Environment var
 
 | Variable | Value | Notes |
 |----------|-------|-------|
-| `VITE_API_URL` | `https://your-backend-url.com` | Backend API base URL |
+| `VITE_API_URL` | `https://api.consorcio.example.com` | Backend API base URL |
+| `VITE_MARTIN_URL` | `https://tiles.consorcio.example.com` | Public Martin/vector tiles URL |
 
 > **Node version**: Cloudflare Pages v3 uses Node 22 by default. No need to set `NODE_VERSION`.
 
@@ -37,16 +36,12 @@ The file `consorcio-web/public/_redirects` handles client-side routing by redire
 
 ## Security Headers
 
-The file `consorcio-web/public/_headers` adds security headers to all responses:
+The file `consorcio-web/public/_headers` adds production headers to Cloudflare Pages responses, including:
 
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=(self)`
-
-## Wrangler Config (Optional)
-
-A `consorcio-web/wrangler.toml` is included for local development with `wrangler pages dev`. The dashboard configuration takes precedence for deployed builds.
+- security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS)
+- Content Security Policy for the API, tile providers and workers
+- long-lived immutable caching for hashed assets
+- short/no-cache rules for service worker files
 
 ## Custom Domain
 

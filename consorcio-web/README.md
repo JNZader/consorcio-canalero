@@ -4,14 +4,14 @@ Sistema web para el monitoreo de cuencas hidricas del Consorcio Canalero 10 de M
 
 ## Stack Tecnologico
 
-- **Framework:** React 19 + Vite 6
+- **Framework:** React 19 + Vite 7
 - **Routing:** TanStack Router
 - **State:** Zustand + TanStack Query
-- **UI:** Mantine v7
-- **Mapas:** Leaflet + react-leaflet
+- **UI:** Mantine v8
+- **Mapas:** MapLibre GL + PMTiles
 - **Backend:** FastAPI + Google Earth Engine
-- **Auth:** Supabase Auth
-- **Hosting:** Vercel
+- **Auth:** JWT del backend + Google OAuth
+- **Hosting:** Cloudflare Pages
 
 ## Funcionalidades
 
@@ -34,9 +34,8 @@ npm install
 cp .env.example .env
 
 # Configurar las variables en .env
-# - VITE_SUPABASE_URL
-# - VITE_SUPABASE_ANON_KEY
-# - VITE_GEE_API_URL
+# - VITE_API_URL
+# - VITE_MARTIN_URL (opcional)
 
 # Iniciar servidor de desarrollo
 npm run dev
@@ -53,7 +52,8 @@ src/
 │   └── ui/              # Componentes UI reutilizables
 ├── hooks/               # Custom hooks
 ├── lib/                 # Utilidades y clientes
-│   ├── supabase.ts      # Cliente Supabase
+│   ├── api/             # Cliente HTTP y endpoints
+│   ├── auth/            # Adaptador JWT/backend
 │   └── query.ts         # TanStack Query client
 ├── routes/              # Rutas TanStack Router
 ├── stores/              # Zustand stores
@@ -61,12 +61,13 @@ src/
 └── types/               # TypeScript types
 ```
 
-## Configuracion de Supabase
+## Configuracion de Auth
 
-1. Crear proyecto en [supabase.com](https://supabase.com)
-2. Ejecutar el SQL de `supabase/schema.sql`
-3. Configurar Auth providers
-4. Copiar URL y anon key al `.env`
+La autenticacion usa el backend FastAPI:
+
+1. Configurar `VITE_API_URL` en `.env` para apuntar al backend.
+2. Configurar `JWT_SECRET` y, opcionalmente, credenciales Google OAuth en el backend.
+3. En produccion, definir `VITE_API_URL` y `VITE_MARTIN_URL` en Cloudflare Pages.
 
 ## Comandos
 
@@ -79,15 +80,23 @@ src/
 | `npm test` | Ejecutar tests con Vitest |
 | `npm run lint` | Linting con Biome |
 
-## Deploy a Vercel
+## Deploy a Cloudflare Pages
 
-```bash
-# Build
-npm run build
+Cloudflare Pages construye desde `consorcio-web` y publica `dist`.
 
-# Deploy
-npx vercel
-```
+Configuracion recomendada:
+
+| Setting | Valor |
+|---------|-------|
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | `consorcio-web` |
+
+Archivos relevantes:
+
+- `public/_headers`: headers de seguridad, CSP y cache.
+- `public/_redirects`: fallback SPA hacia `index.html`.
 
 ## Integracion con GEE Backend
 
