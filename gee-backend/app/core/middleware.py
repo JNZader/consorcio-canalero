@@ -103,6 +103,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Keep browser capability exposure low for API responses. The frontend
+        # may request geolocation, but the API never needs direct device access.
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
+
+        # Only emit HSTS when the request reached the public edge over HTTPS.
+        # In local/dev and internal container traffic this app often sees HTTP.
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        if request.url.scheme == "https" or forwarded_proto == "https":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+
+        if request.url.path.startswith("/api/v2/auth/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+
         return response
 
 
