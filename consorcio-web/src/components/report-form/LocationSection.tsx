@@ -9,6 +9,10 @@ import formStyles from '../../styles/components/form.module.css';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
 
+const MANUAL_COORDINATES_PANEL_ID = 'input-coordenadas-manual';
+const LOCATION_HELP_ID = 'ubicacion-mapa-ayuda';
+const SELECTED_LOCATION_ID = 'ubicacion-seleccionada';
+
 interface LocationSectionProps {
   ubicacion: Ubicacion | null;
   mostrarInputManual: boolean;
@@ -40,6 +44,9 @@ export function LocationSection({
   const onLocationSelectRef = useRef(onLocationSelect);
   onLocationSelectRef.current = onLocationSelect;
   const { zonaGeoJson, caminosGeoJson, waterways } = useFormMapLayers();
+  const selectedCoordinatesLabel = ubicacion
+    ? `${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`
+    : null;
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -131,6 +138,7 @@ export function LocationSection({
           variant="light"
           size="sm"
           leftSection={<span aria-hidden="true">&#128205;</span>}
+          aria-busy={obteniendoUbicacion}
         >
           Usar mi ubicacion GPS
         </Button>
@@ -139,16 +147,22 @@ export function LocationSection({
           variant="subtle"
           size="sm"
           aria-expanded={mostrarInputManual}
-          aria-controls="input-coordenadas-manual"
+          aria-controls={MANUAL_COORDINATES_PANEL_ID}
         >
           {mostrarInputManual ? 'Ocultar entrada manual' : 'Ingresar coordenadas manualmente'}
         </Button>
-        {ubicacion && (
-          <Group gap="xs">
-            <Badge color="green" variant="light">
-              {ubicacion.lat.toFixed(5)}, {ubicacion.lng.toFixed(5)}
+        {ubicacion && selectedCoordinatesLabel && (
+          <Group gap="xs" role="status" aria-live="polite">
+            <Badge id={SELECTED_LOCATION_ID} color="green" variant="light">
+              {selectedCoordinatesLabel}
             </Badge>
-            <Button size="xs" variant="subtle" color="red" onClick={onClearLocation}>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              onClick={onClearLocation}
+              aria-label={`Limpiar ubicación seleccionada ${selectedCoordinatesLabel}`}
+            >
               Limpiar
             </Button>
           </Group>
@@ -156,7 +170,12 @@ export function LocationSection({
       </Group>
 
       <Collapse in={mostrarInputManual}>
-        <Box id="input-coordenadas-manual" mb="md">
+        <Box
+          id={MANUAL_COORDINATES_PANEL_ID}
+          role="region"
+          aria-labelledby="ubicacion-label"
+          mb="md"
+        >
           <CoordinatesInput
             onCoordinatesChange={onCoordinatesChange}
             currentLat={ubicacion?.lat}
@@ -168,11 +187,16 @@ export function LocationSection({
       <Box
         className={`${formStyles.mapContainer} ${formStyles.mapContainerLarge}`}
         role="application"
-        aria-label="Mapa interactivo para seleccionar ubicacion. Haz clic en el mapa para marcar la ubicacion del incidente."
+        aria-label="Mapa interactivo para seleccionar ubicación"
+        aria-describedby={
+          selectedCoordinatesLabel
+            ? `${LOCATION_HELP_ID} ${SELECTED_LOCATION_ID}`
+            : LOCATION_HELP_ID
+        }
       >
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       </Box>
-      <Text size="xs" c="gray.6" mt="xs">
+      <Text id={LOCATION_HELP_ID} size="xs" c="gray.6" mt="xs">
         Haz clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:
         límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
       </Text>
