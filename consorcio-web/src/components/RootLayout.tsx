@@ -5,6 +5,8 @@
  * the common page structure (header, main, footer).
  */
 
+import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import Footer from './Footer';
 import Header from './Header';
@@ -25,10 +27,19 @@ interface RootLayoutProps {
   /** Hide the footer component */
   hideFooter?: boolean;
   /** Page content */
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 // JSON-LD structured data for the organization
+function focusMainContentFromHash() {
+  if (window.location.hash !== '#main-content') {
+    return;
+  }
+
+  const main = document.getElementById('main-content');
+  main?.focus();
+}
+
 const organizationSchema = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
@@ -70,6 +81,15 @@ export function RootLayout({
   const canonicalURL = `${siteUrl}${typeof window !== 'undefined' ? window.location.pathname : ''}`;
   const fullImage = image.startsWith('http') ? image : `${siteUrl}${image}`;
 
+  useEffect(() => {
+    window.addEventListener('hashchange', focusMainContentFromHash);
+    focusMainContentFromHash();
+
+    return () => {
+      window.removeEventListener('hashchange', focusMainContentFromHash);
+    };
+  }, []);
+
   return (
     <>
       <Helmet>
@@ -109,7 +129,10 @@ export function RootLayout({
 
       {!hideHeader && <Header />}
 
-      <main id="main-content" className="flex-1">
+      <main id="main-content" className="flex-1" tabIndex={-1} aria-busy="false">
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          Contenido cargado
+        </div>
         {children}
       </main>
 

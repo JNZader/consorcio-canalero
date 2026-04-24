@@ -522,7 +522,12 @@ export default function MapaMapLibre() {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <Box className={styles.mapWrapper} style={{ position: 'relative', height: '100%' }}>
+    <Box
+      className={styles.mapWrapper}
+      role="application"
+      aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
+      style={{ position: 'relative', height: '100%' }}
+    >
       {/* Map container */}
       <div ref={sliderContainerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />

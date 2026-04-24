@@ -64,6 +64,58 @@ export const mantineTheme = createTheme({
   // Inspirada en los rios y campos de la pampa cordobesa
   // Optimizado para contraste WCAG AA (4.5:1 para texto, 3:1 para elementos grandes)
   colors: {
+    // Paletas Mantine base ajustadas para que variantes `filled` y `light`
+    // mantengan contraste AA en texto chico.
+    blue: [
+      '#e7f5ff',
+      '#d0ebff',
+      '#a5d8ff',
+      '#74c0fc',
+      '#4dabf7',
+      '#339af0',
+      '#1864ab',
+      '#1971c2',
+      '#0b4f8a',
+      '#083b66',
+    ],
+    red: [
+      '#fff5f5',
+      '#ffe3e3',
+      '#ffc9c9',
+      '#ffa8a8',
+      '#ff8787',
+      '#ff6b6b',
+      '#a61e1e',
+      '#8a1919',
+      '#681212',
+      '#681212',
+    ],
+    orange: [
+      '#fff4e6',
+      '#ffe8cc',
+      '#ffd8a8',
+      '#ffc078',
+      '#ffa94d',
+      '#ff922b',
+      '#9a3412',
+      '#7c2d12',
+      '#5f210d',
+      '#5f210d',
+    ],
+    // Paleta base Mantine ajustada: gray.6 por defecto (#868e96) no alcanza
+    // contraste AA sobre blanco para texto chico; mantenemos escala compatible.
+    gray: [
+      '#f8f9fa',
+      '#f1f3f5',
+      '#e9ecef',
+      '#dee2e6',
+      '#ced4da',
+      '#adb5bd',
+      '#4b5563',
+      '#495057',
+      '#343a40',
+      '#212529',
+    ],
     // Paleta institucional - Verde-Azulado Rio
     // Ajustada para mejor contraste en modo oscuro
     institucional: [
@@ -72,10 +124,10 @@ export const mantineTheme = createTheme({
       '#a3d4c4',
       '#7bc2ac',
       '#5ab394',
-      '#3da67f',
-      '#2d9970',
-      '#34a876', // Cambiado de #1e7d5a - ratio 4.6:1 sobre #2e2e2e
+      '#2d8f68',
       '#16654a',
+      '#0d4d38',
+      '#0a3d2d',
       '#0d4d38',
     ],
     // Paleta de acento - Dorado Trigal

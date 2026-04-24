@@ -106,6 +106,9 @@ body {
 /* El color dimmed por defecto tiene ratio ~4.0:1, necesitamos 4.5:1 minimo */
 :root {
   --mantine-color-dimmed: #6b7280; /* gray-500 - ratio 5.9:1 sobre blanco */
+  --mantine-color-gray-6: #4b5563; /* accessible gray for text + subtle nav */
+  --mantine-color-orange-filled: #c2410c; /* white text ratio > 4.5:1 */
+  --mantine-color-orange-filled-hover: #9a3412;
 }
 
 [data-mantine-color-scheme="dark"] {
@@ -115,6 +118,12 @@ body {
 /* Clase auxiliar para texto secundario accesible */
 .text-dimmed-accessible {
   color: var(--mantine-color-dimmed);
+}
+
+/* Links embedded in prose must not rely on color alone (WCAG 1.4.1). */
+.mantine-Anchor-root {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 /* Indicador de campos requeridos */
@@ -508,4 +517,18 @@ h1, h2, h3, h4, h5, h6 {
   ::view-transition-new(root) {
     animation: none;
   }
+}
+
+/* Ensure icon-only controls also satisfy mobile touch target guidance. */
+.mantine-ActionIcon-root,
+.mantine-Burger-root {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* Dark-scheme contrast overrides for text colors used directly via Mantine vars. */
+:root[data-mantine-color-scheme='dark'] {
+  --mantine-color-gray-6: #a3a3a3;
+  --mantine-color-dimmed: #a3a3a3;
+  --mantine-color-institucional-7: #7bc2ac;
 }

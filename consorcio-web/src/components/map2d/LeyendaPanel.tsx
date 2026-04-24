@@ -60,7 +60,7 @@ function SimpleColorLegendChip({
     <Group gap="xs" wrap="nowrap" data-testid={testId}>
       <span
         data-color={color}
-        aria-label={label}
+        aria-hidden="true"
         style={{
           display: 'inline-block',
           width: 12,
@@ -91,7 +91,7 @@ function CanalSolidLineChip({
   return (
     <Group gap="xs" wrap="nowrap" data-testid={testId} data-color={color}>
       <span
-        aria-label={label}
+        aria-hidden="true"
         style={{
           display: 'inline-block',
           width: 18,
@@ -497,7 +497,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           <Group gap="xs" wrap="nowrap" data-testid="ypf-estacion-bombeo-legend">
             <div
               data-testid="ypf-estacion-bombeo-legend-swatch"
-              aria-label={YPF_ESTACION_BOMBEO_LABEL}
+              aria-hidden="true"
               style={{
                 display: 'inline-block',
                 width: 12,

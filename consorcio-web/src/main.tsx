@@ -19,9 +19,9 @@ import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
 
-// Global styles
-import './styles/global.css';
+// Mantine styles first, then global overrides.
 import './styles/mantine-imports';
+import './styles/global.css';
 
 // Create the router instance
 const basepath = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';

@@ -70,7 +70,7 @@ describe('<LeyendaPanel /> — YPF estación de bombeo block', () => {
     expect(style.borderRadius).toBe('50%');
     expect(style.border).toContain('2px');
     expect(style.border.toLowerCase()).toContain('solid');
-    expect(swatch).toHaveAttribute('aria-label', 'Estación de bombeo YPF');
+    expect(swatch).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('contains NO <img> — swatch is pure CSS (no asset dependency)', () => {

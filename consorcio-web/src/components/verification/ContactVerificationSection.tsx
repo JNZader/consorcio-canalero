@@ -181,6 +181,7 @@ export function ContactVerificationSection({
       <form onSubmit={_form.onSubmit(handleMagicLinkSubmit)}>
         <Stack gap="sm">
           <TextInput
+            label="Email"
             placeholder="tu@email.com"
             leftSection={<IconMail size={16} />}
             {..._form.getInputProps('email')}

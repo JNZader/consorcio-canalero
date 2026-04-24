@@ -11,6 +11,7 @@ export const FooterContent = memo(function FooterContent() {
   return (
     <Box
       component="footer"
+      role="contentinfo"
       py="xl"
       style={{
         background: 'var(--mantine-color-gray-8)',

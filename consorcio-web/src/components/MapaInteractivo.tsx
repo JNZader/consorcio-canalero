@@ -7,7 +7,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 // Esto separa MapLibre del bundle inicial
 const MapaMapLibre = lazy(() => import('./MapaMapLibre'));
 
-// Componente de carga mientras se descarga Leaflet
+// Componente de carga mientras se descarga MapLibre
 function MapaLoadingSkeleton() {
   return (
     <Box

@@ -93,6 +93,7 @@ docker-compose.override.yml
 # ===========================================
 coverage/
 playwright-report/
+a11y-report/
 test-results/
 *.lcov
 .stryker-tmp/
