@@ -254,6 +254,7 @@ export default function PadronPanel() {
 
       <Paper shadow="sm" p="md" radius="md" mb="md">
         <TextInput
+          aria-label="Buscar consorcistas"
           placeholder="Buscar por Nombre, Apellido o CUIT..."
           leftSection={<IconSearch size={16} />}
           value={search}
@@ -262,53 +263,60 @@ export default function PadronPanel() {
       </Paper>
 
       <Paper withBorder radius="md">
-        <Table verticalSpacing="sm" highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Consorcista</Table.Th>
-              <Table.Th>CUIT</Table.Th>
-              <Table.Th>Representación</Table.Th>
-              <Table.Th>Acciones</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {consorcistas.map((c) => (
-              <Table.Tr key={c.id}>
-                <Table.Td>
-                  <Group gap="sm">
-                    <IconUser size={16} color="gray" />
-                    <Text fw={500} size="sm">
-                      {c.apellido}, {c.nombre}
-                    </Text>
-                  </Group>
-                </Table.Td>
-                <Table.Td>
-                  <Text size="sm">{c.cuit}</Text>
-                </Table.Td>
-                <Table.Td>
-                  <Text size="sm" fs="italic" c="dimmed">
-                    {c.representa_a || '-'}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <Tooltip label="Ver Pagos / Cuotas">
-                      <ActionIcon variant="light" color="green" onClick={() => handleViewPagos(c)}>
-                        <IconCreditCard size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                </Table.Td>
+        <Table.ScrollContainer minWidth={680} type="native">
+          <Table verticalSpacing="sm" highlightOnHover aria-label="Tabla de consorcistas">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Consorcista</Table.Th>
+                <Table.Th>CUIT</Table.Th>
+                <Table.Th>Representación</Table.Th>
+                <Table.Th>Acciones</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {consorcistas.map((c) => (
+                <Table.Tr key={c.id}>
+                  <Table.Td>
+                    <Group gap="sm" wrap="nowrap">
+                      <IconUser size={16} color="gray" aria-hidden="true" />
+                      <Text fw={500} size="sm">
+                        {c.apellido}, {c.nombre}
+                      </Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{c.cuit}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" fs="italic" c="dimmed">
+                      {c.representa_a || '-'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" wrap="nowrap">
+                      <Tooltip label="Ver Pagos / Cuotas">
+                        <ActionIcon
+                          variant="light"
+                          color="green"
+                          onClick={() => handleViewPagos(c)}
+                          aria-label={`Ver pagos y cuotas de ${c.apellido}, ${c.nombre}`}
+                        >
+                          <IconCreditCard size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
 
       {/* Modal Nuevo Consorcista */}
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Consorcista" size="lg">
         <form onSubmit={form.onSubmit(handleCreate)}>
-          <SimpleGrid cols={2} spacing="sm">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <TextInput
               label="Nombre"
               placeholder="Ej: Juan"
@@ -335,7 +343,7 @@ export default function PadronPanel() {
             mt="sm"
             {...form.getInputProps('representa_a')}
           />
-          <SimpleGrid cols={2} mt="sm">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm">
             <TextInput
               label="Email"
               placeholder="email@ejemplo.com"
@@ -362,39 +370,47 @@ export default function PadronPanel() {
               </Text>
             </Box>
 
-            <Table withColumnBorders>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Año</Table.Th>
-                  <Table.Th>Monto</Table.Th>
-                  <Table.Th>Estado</Table.Th>
-                  <Table.Th>Fecha Pago</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {[2026, 2025, 2024].map((anio) => {
-                  const pago = pagos.find((p) => p.anio === anio);
-                  return (
-                    <Table.Tr key={anio}>
-                      <Table.Td fw={600}>{anio}</Table.Td>
-                      <Table.Td>${pago?.monto || '-'}</Table.Td>
-                      <Table.Td>
-                        <Badge color={pago?.estado === 'pagado' ? 'green' : 'red'} variant="light">
-                          {pago?.estado || 'PENDIENTE'}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {pago?.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString() : '-'}
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
+            <Table.ScrollContainer minWidth={520} type="native">
+              <Table
+                withColumnBorders
+                aria-label={`Cuotas anuales de ${selectedConsorcista.apellido}, ${selectedConsorcista.nombre}`}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Año</Table.Th>
+                    <Table.Th>Monto</Table.Th>
+                    <Table.Th>Estado</Table.Th>
+                    <Table.Th>Fecha Pago</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {[2026, 2025, 2024].map((anio) => {
+                    const pago = pagos.find((p) => p.anio === anio);
+                    return (
+                      <Table.Tr key={anio}>
+                        <Table.Td fw={600}>{anio}</Table.Td>
+                        <Table.Td>${pago?.monto || '-'}</Table.Td>
+                        <Table.Td>
+                          <Badge
+                            color={pago?.estado === 'pagado' ? 'green' : 'red'}
+                            variant="light"
+                          >
+                            {pago?.estado || 'PENDIENTE'}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          {pago?.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString() : '-'}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
 
             <Divider label="Registrar Nuevo Pago" labelPosition="center" />
             <Paper p="sm" bg="gray.0">
-              <Group grow align="flex-end">
+              <Group grow align="flex-end" wrap="wrap">
                 <NumberInput
                   label="Año"
                   value={nuevoPagoAnio}

@@ -53,12 +53,15 @@ describe('PadronPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Padrón de Consorcistas')).toBeInTheDocument();
+    expect(screen.getByLabelText(/buscar consorcistas/i)).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /tabla de consorcistas/i })).toBeInTheDocument();
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
 
     const row = screen.getByRole('row', { name: /perez, ana/i });
-    await user.click(within(row).getByRole('button'));
+    await user.click(within(row).getByRole('button', { name: /ver pagos y cuotas de perez, ana/i }));
     expect(await screen.findByText('Estado de Cuotas Anuales')).toBeInTheDocument();
     expect(screen.getByText('CUIT: 20-12345678-9')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /cuotas anuales de perez, ana/i })).toBeInTheDocument();
   });
 
   it('shows validation notification when import is requested without file', async () => {
@@ -132,7 +135,7 @@ describe('PadronPanel', () => {
     await screen.findByText('Padrón de Consorcistas');
 
     const row = screen.getByRole('row', { name: /perez, ana/i });
-    await user.click(within(row).getByRole('button'));
+    await user.click(within(row).getByRole('button', { name: /ver pagos y cuotas de perez, ana/i }));
     const pagosDialog = await screen.findByRole('dialog', { name: /estado de cuotas anuales/i });
 
     await user.click(within(pagosDialog).getByRole('button', { name: /registrar/i }));
