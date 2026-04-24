@@ -10,6 +10,11 @@ import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
 import { GeometrySummary } from './suggestionFormUtils';
 
+const SUGGESTION_GEOMETRY_LABEL_ID = 'sugerencia-geometria-label';
+const SUGGESTION_GEOMETRY_INSTRUCTIONS_ID = 'sugerencia-geometria-instrucciones';
+const SUGGESTION_GEOMETRY_REFERENCE_ID = 'sugerencia-geometria-referencia';
+const SUGGESTION_GEOMETRY_SUMMARY_ID = 'sugerencia-geometria-resumen';
+
 export function SuggestionGeometrySection({
   geometry,
   onChange,
@@ -72,18 +77,26 @@ export function SuggestionGeometrySection({
   return (
     <Stack gap="xs">
       <Group justify="space-between" align="center">
-        <Text size="sm" fw={500}>
+        <Text id={SUGGESTION_GEOMETRY_LABEL_ID} size="sm" fw={500}>
           Canal en mapa
         </Text>
-        <GeometrySummary geometry={geometry} />
+        <Box id={SUGGESTION_GEOMETRY_SUMMARY_ID} role="status" aria-live="polite">
+          <GeometrySummary geometry={geometry} />
+        </Box>
       </Group>
 
-      <Text size="xs" c="dimmed">
+      <Text id={SUGGESTION_GEOMETRY_INSTRUCTIONS_ID} size="xs" c="dimmed">
         Haz un clic para marcar un punto. Si haces otro clic, se convierte en línea. Clic derecho o
         clic sobre el punto para borrar lo último.
       </Text>
 
-      <Box className={formStyles.mapContainer}>
+      <Box
+        className={formStyles.mapContainer}
+        role="application"
+        aria-labelledby={SUGGESTION_GEOMETRY_LABEL_ID}
+        aria-describedby={`${SUGGESTION_GEOMETRY_INSTRUCTIONS_ID} ${SUGGESTION_GEOMETRY_SUMMARY_ID} ${SUGGESTION_GEOMETRY_REFERENCE_ID}`}
+        aria-busy={!mapReady}
+      >
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
         {mapReady && mapInstanceRef.current && (
           <SuggestionGeometryControl
@@ -94,7 +107,7 @@ export function SuggestionGeometrySection({
         )}
       </Box>
 
-      <Text size="xs" c="dimmed">
+      <Text id={SUGGESTION_GEOMETRY_REFERENCE_ID} size="xs" c="dimmed">
         Referencia: límite del consorcio (rojo), hidrografía (azul), caminos (amarillo). Lo que
         dibujes queda como sugerencia, no como canal oficial.
       </Text>
