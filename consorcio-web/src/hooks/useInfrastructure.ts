@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
-import { apiFetch, unwrapItems } from '../lib/api';
+import { apiFetch, getAuthToken, unwrapItems } from '../lib/api';
 import { queryKeys } from '../lib/query';
 
 export interface InfrastructureAsset {
@@ -26,7 +26,7 @@ export function useInfrastructure() {
         .catch(() => [] as InfrastructureAsset[]);
 
       let intersectionsData: FeatureCollection | null = null;
-      const token = localStorage.getItem('consorcio_auth_token');
+      const token = await getAuthToken();
       if (token) {
         try {
           const data = await apiFetch<FeatureCollection>('/geo/intelligence/conflictos');

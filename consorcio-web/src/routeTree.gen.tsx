@@ -24,6 +24,7 @@ import { RootLayout } from './components/RootLayout';
 import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
 import { authAdapter } from './lib/auth/index';
+import { persistAuthSession } from './lib/auth/storage';
 import { logger } from './lib/logger';
 
 // Lazy load all page components for better performance
@@ -304,7 +305,6 @@ function AuthCallbackPage() {
           // Store the token and fetch user profile from /users/me
           logger.debug('[AUTH CALLBACK] Got token, fetching user profile...');
           clearAuthCallbackUrl();
-          localStorage.setItem('consorcio_auth_token', token);
 
           const API_URL =
             import.meta.env.VITE_API_URL ||
@@ -321,9 +321,10 @@ function AuthCallbackPage() {
               email: userData.email,
               nombre: userData.nombre || '',
               apellido: userData.apellido || '',
+              telefono: userData.telefono || '',
               role: userData.role || 'ciudadano',
             };
-            localStorage.setItem('consorcio_auth_user', JSON.stringify(user));
+            persistAuthSession({ access_token: token, user });
             logger.debug('[AUTH CALLBACK] Profile saved:', { role: user.role });
 
             // Re-initialize auth store

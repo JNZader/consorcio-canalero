@@ -14,30 +14,22 @@ import type {
   LoginCredentials,
   RegisterCredentials,
 } from './types';
-
-const TOKEN_KEY = 'consorcio_auth_token';
-const USER_KEY = 'consorcio_auth_user';
+import {
+  clearAuthStorage,
+  getStoredAccessToken,
+  getStoredAuthSession,
+  persistAuthSession,
+} from './storage';
 
 export class JWTAuthAdapter implements AuthAdapter {
   private listeners: Set<AuthStateChangeCallback> = new Set();
 
   async getSession(): Promise<AuthSession | null> {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const userJson = localStorage.getItem(USER_KEY);
-
-    if (!token || !userJson) return null;
-
-    try {
-      const user: AuthUser = JSON.parse(userJson);
-      return { access_token: token, user };
-    } catch {
-      this.clearStorage();
-      return null;
-    }
+    return getStoredAuthSession();
   }
 
   async getAccessToken(): Promise<string | null> {
-    return localStorage.getItem(TOKEN_KEY);
+    return getStoredAccessToken();
   }
 
   async login(credentials: LoginCredentials): Promise<AuthSession> {
@@ -116,7 +108,7 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = getStoredAccessToken();
 
     if (token) {
       try {
@@ -169,13 +161,11 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   private persistSession(session: AuthSession): void {
-    localStorage.setItem(TOKEN_KEY, session.access_token);
-    localStorage.setItem(USER_KEY, JSON.stringify(session.user));
+    persistAuthSession(session);
   }
 
   private clearStorage(): void {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    clearAuthStorage();
   }
 
   private notifyListeners(
