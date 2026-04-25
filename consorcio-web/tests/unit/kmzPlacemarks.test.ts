@@ -402,3 +402,63 @@ describe('buildPlacemark — null-name fallback (Pair 4)', () => {
     expect(out).toContain('<name>Escuelas rurales 3</name>');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Geometry simplification
+// ---------------------------------------------------------------------------
+
+describe('buildPlacemark — geometry simplification', () => {
+  it('simplifies polygons with >= 100 vertices', () => {
+    const centerLng = -62.5;
+    const centerLat = -32.5;
+    const radius = 0.01;
+    const totalVertices = 200;
+    const ring: [number, number][] = [];
+    for (let i = 0; i < totalVertices; i++) {
+      const angle = (i / totalVertices) * 2 * Math.PI;
+      ring.push([
+        centerLng + radius * Math.cos(angle),
+        centerLat + radius * Math.sin(angle),
+      ]);
+    }
+    // Close the ring
+    ring.push([ring[0][0], ring[0][1]]);
+
+    const f = feature(
+      {
+        type: 'Polygon',
+        coordinates: [ring],
+      },
+      { nombre: 'Big polygon' },
+    );
+    const out = buildPlacemark(f, POLY_ENTRY, 0);
+    expect(out).toContain('<Polygon>');
+    // Extract coordinate tuples from the output to count them
+    const coordinatesMatch = out.match(/<coordinates>([^<]+)<\/coordinates>/);
+    expect(coordinatesMatch).toBeTruthy();
+    const coordCount = coordinatesMatch![1].trim().split(/\s+/).length;
+    expect(coordCount).toBeLessThan(totalVertices);
+  });
+
+  it('does NOT simplify polygons with < 100 vertices', () => {
+    const ring: [number, number][] = [
+      [-62.5, -32.5],
+      [-62.6, -32.5],
+      [-62.6, -32.6],
+      [-62.5, -32.6],
+      [-62.5, -32.5],
+    ];
+    const f = feature(
+      {
+        type: 'Polygon',
+        coordinates: [ring],
+      },
+      { nombre: 'Small polygon' },
+    );
+    const out = buildPlacemark(f, POLY_ENTRY, 0);
+    const coordinatesMatch = out.match(/<coordinates>([^<]+)<\/coordinates>/);
+    expect(coordinatesMatch).toBeTruthy();
+    const coordCount = coordinatesMatch![1].trim().split(/\s+/).length;
+    expect(coordCount).toBe(ring.length);
+  });
+});

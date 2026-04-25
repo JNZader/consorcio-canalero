@@ -46,6 +46,7 @@ import type {
 
 import type { KmzLayerEntry } from './kmzLayerRegistry';
 import { stripPii } from './kmzPiiStrip';
+import simplify from '@turf/simplify';
 
 // ---------------------------------------------------------------------------
 // XML escape — the 5 entity set.
@@ -205,6 +206,43 @@ function resolveName(feature: Feature, entry: KmzLayerEntry, index: number): str
 }
 
 // ---------------------------------------------------------------------------
+// Geometry simplification.
+// ---------------------------------------------------------------------------
+
+/** Count total vertex count for a GeoJSON geometry. */
+function countVertices(geometry: Geometry): number {
+  switch (geometry.type) {
+    case 'Point':
+      return 1;
+    case 'MultiPoint':
+      return geometry.coordinates.length;
+    case 'LineString':
+      return geometry.coordinates.length;
+    case 'MultiLineString':
+      return geometry.coordinates.reduce((sum, line) => sum + line.length, 0);
+    case 'Polygon':
+      return geometry.coordinates.reduce((sum, ring) => sum + ring.length, 0);
+    case 'MultiPolygon':
+      return geometry.coordinates.reduce(
+        (sum, polygon) => sum + polygon.reduce((s, ring) => s + ring.length, 0),
+        0,
+      );
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Simplify geometry if it has >= 100 vertices.
+ * Returns the original geometry (or null/undefined) untouched when under the threshold.
+ */
+function maybeSimplifyGeometry(geometry: Geometry | null | undefined): Geometry | null | undefined {
+  if (!geometry) return geometry;
+  if (countVertices(geometry) < 100) return geometry;
+  return simplify(geometry, { tolerance: 0.00005, highQuality: true, mutate: false });
+}
+
+// ---------------------------------------------------------------------------
 // Public entry point.
 // ---------------------------------------------------------------------------
 
@@ -216,7 +254,7 @@ function resolveName(feature: Feature, entry: KmzLayerEntry, index: number): str
  */
 export function buildPlacemark(feature: Feature, entry: KmzLayerEntry, index: number): string {
   const displayName = resolveName(feature, entry, index);
-  const geometryBlock = emitGeometry(feature.geometry);
+  const geometryBlock = emitGeometry(maybeSimplifyGeometry(feature.geometry));
 
   return `<Placemark><name>${escapeXml(displayName)}</name><styleUrl>#${entry.key}-style</styleUrl>${geometryBlock}</Placemark>`;
 }
