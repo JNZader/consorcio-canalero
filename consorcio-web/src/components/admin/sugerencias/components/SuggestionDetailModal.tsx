@@ -22,6 +22,8 @@ import { CATEGORIA_OPTIONS, ESTADO_OPTIONS } from '../constants';
 import type { SeguimientoEntry } from '../sugerenciasPanelTypes';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
 
+const SUGGESTION_HISTORY_REGION_ID = 'suggestion-history-region';
+
 export function SuggestionDetailModal({
   opened,
   onClose,
@@ -208,12 +210,19 @@ export function SuggestionDetailModal({
                 size="xs"
                 onClick={() => setShowHistorial(!showHistorial)}
                 loading={loadingHistorial}
+                aria-expanded={showHistorial}
+                aria-controls={SUGGESTION_HISTORY_REGION_ID}
               >
                 {showHistorial ? 'Ocultar' : 'Mostrar'} ({historial.length})
               </Button>
             </Group>
 
-            <Collapse in={showHistorial}>
+            <Collapse
+              id={SUGGESTION_HISTORY_REGION_ID}
+              in={showHistorial}
+              role="region"
+              aria-label="Historial de gestión de la sugerencia"
+            >
               {historial.length === 0 ? (
                 <Text size="sm" c="dimmed" ta="center" py="md">
                   {loadingHistorial ? 'Cargando historial...' : 'Sin historial disponible'}

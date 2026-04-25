@@ -150,6 +150,17 @@ describe('SugerenciasPanel', () => {
     await user.click(within(row).getByRole('button'));
     const modal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
     expect(within(modal).getByText('Solicitamos limpieza por acumulacion de barro')).toBeInTheDocument();
+
+    const historyToggle = within(modal).getByRole('button', { name: /mostrar/i });
+    expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(historyToggle).toHaveAttribute('aria-controls', 'suggestion-history-region');
+
+    await user.click(historyToggle);
+
+    expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      within(modal).getByRole('region', { name: /historial de gestión de la sugerencia/i })
+    ).toHaveAttribute('id', 'suggestion-history-region');
   });
 
   it('creates internal topic and submits management update', async () => {
