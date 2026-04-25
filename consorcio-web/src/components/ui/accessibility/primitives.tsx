@@ -1,14 +1,23 @@
 import { Alert, Box, Text } from '@mantine/core';
-import type { ElementType, ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react';
 import { visuallyHiddenStyle } from './shared';
 
-interface VisuallyHiddenProps {
+interface VisuallyHiddenProps extends ComponentPropsWithoutRef<'span'> {
   readonly children: ReactNode;
   readonly as?: ElementType;
 }
 
-export function VisuallyHidden({ children, as: Component = 'span' }: VisuallyHiddenProps) {
-  return <Component style={visuallyHiddenStyle}>{children}</Component>;
+export function VisuallyHidden({
+  children,
+  as: Component = 'span',
+  style,
+  ...props
+}: VisuallyHiddenProps) {
+  return (
+    <Component style={{ ...visuallyHiddenStyle, ...style }} {...props}>
+      {children}
+    </Component>
+  );
 }
 
 interface AccessibleErrorProps {

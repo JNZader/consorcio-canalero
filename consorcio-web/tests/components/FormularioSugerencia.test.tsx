@@ -66,6 +66,21 @@ const renderForm = () => {
   );
 };
 
+const verifiedContactState = {
+  contactoVerificado: true,
+  userEmail: 'vecino@example.com',
+  userName: 'Vecino',
+  metodoVerificacion: 'google',
+  loading: false,
+  magicLinkSent: false,
+  magicLinkEmail: null,
+  setMetodoVerificacion: vi.fn(),
+  loginWithGoogle: vi.fn(),
+  sendMagicLink: vi.fn(),
+  logout: vi.fn(),
+  resetVerificacion: vi.fn(),
+};
+
 describe('FormularioSugerencia', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,20 +146,7 @@ describe('FormularioSugerencia', () => {
 
   describe('Submission Success Flows', () => {
     it('submits verified suggestion and shows success screen', async () => {
-      useContactVerificationMock.mockReturnValue({
-        contactoVerificado: true,
-        userEmail: 'vecino@example.com',
-        userName: 'Vecino',
-        metodoVerificacion: 'google',
-        loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
-        loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
-        logout: vi.fn(),
-        resetVerificacion: vi.fn(),
-      });
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
 
       const user = userEvent.setup();
       renderForm();
@@ -158,8 +160,33 @@ describe('FormularioSugerencia', () => {
 
       await waitFor(() => {
         expect(sugerenciasApi.createPublic).toHaveBeenCalled();
-        expect(screen.getByText(/Gracias por tu sugerencia/i)).toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent(/Gracias por tu sugerencia/i);
       });
+    });
+
+    it('announces submission progress while the suggestion is being sent', async () => {
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+      let resolveCreatePublic!: (value: { id: string; message: string; remaining_today: number }) => void;
+      vi.mocked(sugerenciasApi.createPublic).mockReturnValue(
+        new Promise((resolve) => {
+          resolveCreatePublic = resolve;
+        })
+      );
+
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Mejorar drenaje principal');
+      await user.type(
+        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        'Propongo limpiar y ensanchar el drenaje antes de la temporada de lluvias'
+      );
+      await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
+
+      expect(screen.getByRole('status')).toHaveTextContent(/enviando sugerencia/i);
+
+      resolveCreatePublic({ id: 'sug-1', message: 'ok', remaining_today: 1 });
+      await screen.findByText(/Gracias por tu sugerencia/i);
     });
 
     it.each([

@@ -27,7 +27,7 @@ import {
   getStep2Badge,
 } from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
-import { LiveRegionProvider } from './ui/accessibility';
+import { LiveRegionProvider, VisuallyHidden } from './ui/accessibility';
 import { ContactVerificationSection } from './verification';
 
 function FormularioContenido() {
@@ -95,6 +95,11 @@ function FormularioContenido() {
   return (
     <Paper shadow="md" p="xl" radius="md" pos="relative">
       <LoadingOverlay visible={enviando} />
+      {enviando && (
+        <VisuallyHidden as="p" role="status" aria-live="polite">
+          Enviando sugerencia, por favor espera.
+        </VisuallyHidden>
+      )}
 
       <Title order={2} mb="md">
         Enviar Sugerencia
@@ -157,7 +162,7 @@ function FormularioContenido() {
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             {remainingToday === 0 && contactoVerificado && (
-              <Alert color="red" variant="light">
+              <Alert color="red" variant="light" role="alert" aria-live="assertive">
                 Has alcanzado el limite de sugerencias por hoy. Vuelve manana.
               </Alert>
             )}

@@ -74,9 +74,9 @@ export function SuccessScreen({
   const showRemainingBadge = remainingToday !== null && remainingToday > 0;
 
   return (
-    <Paper shadow="md" p="xl" radius="md">
+    <Paper shadow="md" p="xl" radius="md" role="status" aria-live="polite">
       <Stack align="center" gap="lg">
-        <IconCheck size={64} color="var(--mantine-color-green-6)" />
+        <IconCheck size={64} color="var(--mantine-color-green-6)" aria-hidden="true" />
         <Title order={2} ta="center">
           Gracias por tu sugerencia
         </Title>
