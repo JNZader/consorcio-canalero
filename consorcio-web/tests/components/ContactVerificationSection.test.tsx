@@ -3,7 +3,7 @@
  * Tests for contact verification component with Google OAuth and Magic Link flows
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { describe, it, expect, vi } from 'vitest';
 import { ContactVerificationSection } from '../../src/components/verification/ContactVerificationSection';
@@ -76,6 +76,24 @@ describe('ContactVerificationSection', () => {
       fireEvent.change(input, { target: { value: 'user@example.com' } });
       fireEvent.click(screen.getByRole('button', { name: /enviar link de acceso/i }));
       expect(onSendMagicLink).toHaveBeenCalledWith('user@example.com');
+    });
+
+    it('should connect email validation error to the magic link field', async () => {
+      const onSendMagicLink = vi.fn();
+      render(<ContactVerificationSection {...defaultProps} onSendMagicLink={onSendMagicLink} />, {
+        wrapper: Wrapper,
+      });
+
+      const input = screen.getByLabelText(/email/i);
+      fireEvent.click(screen.getByRole('button', { name: /enviar link de acceso/i }));
+
+      await waitFor(() => {
+        expect(input).toHaveAttribute('aria-invalid', 'true');
+        expect(input.getAttribute('aria-describedby')).toContain('magic-link-email-error');
+      });
+
+      expect(screen.getByText(/el email es requerido/i)).toHaveAttribute('role', 'alert');
+      expect(onSendMagicLink).not.toHaveBeenCalled();
     });
   });
 

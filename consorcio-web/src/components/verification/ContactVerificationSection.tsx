@@ -20,6 +20,8 @@ import { validateEmail } from '../../lib/validators';
 import { IconCheck, IconMail, IconShieldCheck } from '../ui/icons';
 import type { VerificationMethod } from './types';
 
+const MAGIC_LINK_EMAIL_ERROR_ID = 'magic-link-email-error';
+
 export interface ContactVerificationSectionProps {
   /** Usuario esta verificado (autenticado) */
   readonly contactoVerificado: boolean;
@@ -178,14 +180,20 @@ export function ContactVerificationSection({
       <Divider label="o usa tu email" labelPosition="center" />
 
       {/* Magic Link */}
-      <form onSubmit={_form.onSubmit(handleMagicLinkSubmit)}>
+      <form onSubmit={_form.onSubmit(handleMagicLinkSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
             label="Email"
             placeholder="tu@email.com"
             leftSection={<IconMail size={16} />}
             {..._form.getInputProps('email')}
+            required
             size="md"
+            errorProps={{
+              id: MAGIC_LINK_EMAIL_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <Button type="submit" variant="light" fullWidth>
             Enviar link de acceso
