@@ -178,7 +178,7 @@ describe('map2d extracted panels', () => {
     await user.click(screen.getByLabelText(/ign altimetría/i));
     expect(onShowIGNOverlayChange).toHaveBeenCalledWith(true);
 
-    await user.click(screen.getByLabelText(/capa dem/i));
+    await user.click(screen.getByRole('checkbox', { name: /^capa dem$/i }));
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
 
     await user.click(screen.getByRole('button', { name: /marcar punto/i }));
@@ -254,6 +254,28 @@ describe('map2d extracted panels', () => {
 
     fireEvent.mouseDown(screen.getByRole('separator', { name: /divisor de comparación/i }));
     expect(onSliderMouseDown).toHaveBeenCalledTimes(1);
+  });
+
+  it('connects asset point name validation error to the field', () => {
+    renderWithMantine(
+      <AssetPointModal
+        opened
+        coordinates={{ lat: -32.62543, lng: -62.68421 }}
+        onClose={() => {}}
+        onSubmit={(event) => event?.preventDefault()}
+        isSubmitting={false}
+        nameInputProps={{ value: '', onChange: () => {}, error: 'Nombre demasiado corto' }}
+        typeInputProps={{ value: 'puente', onChange: () => {} }}
+        descriptionInputProps={{ value: '', onChange: () => {} }}
+      />
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /nombre/i });
+
+    expect(nameInput.closest('form')).toHaveAttribute('novalidate');
+    expect(nameInput).toHaveAttribute('aria-invalid', 'true');
+    expect(nameInput.getAttribute('aria-describedby')).toContain('asset-point-name-error');
+    expect(screen.getByText(/nombre demasiado corto/i)).toHaveAttribute('role', 'alert');
   });
 
   it('composes the extracted panels through MapUiPanels', async () => {

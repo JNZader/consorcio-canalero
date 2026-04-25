@@ -19,6 +19,8 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'otro', label: 'Otro' },
 ];
 
+const ASSET_POINT_NAME_ERROR_ID = 'asset-point-name-error';
+
 export const AssetPointModal = memo(function AssetPointModal({
   opened,
   coordinates,
@@ -31,12 +33,23 @@ export const AssetPointModal = memo(function AssetPointModal({
 }: AssetPointModalProps) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar activo de infraestructura" size="sm">
-      <form onSubmit={onSubmit}>
+      <form onSubmit={onSubmit} noValidate>
         <Stack gap="xs">
           <Text size="xs" c="dimmed">
             Coordenadas: {coordinates?.lat.toFixed(5)}, {coordinates?.lng.toFixed(5)}
           </Text>
-          <TextInput size="xs" label="Nombre" placeholder="Nombre del activo" {...nameInputProps} />
+          <TextInput
+            size="xs"
+            label="Nombre"
+            placeholder="Nombre del activo"
+            required
+            {...nameInputProps}
+            errorProps={{
+              id: ASSET_POINT_NAME_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
+          />
           <Select size="xs" label="Tipo" data={ASSET_TYPE_OPTIONS} {...typeInputProps} />
           <Textarea
             size="xs"
