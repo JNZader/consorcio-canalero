@@ -15,6 +15,9 @@ import { resetPasswordWithToken } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
 
+const RESET_PASSWORD_ERROR_ID = 'reset-password-error';
+const RESET_CONFIRM_PASSWORD_ERROR_ID = 'reset-confirm-password-error';
+
 interface ResetPasswordFormProps {
   token: string;
 }
@@ -120,7 +123,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               </Alert>
             )}
 
-            <form onSubmit={form.onSubmit(handleSubmit)}>
+            <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
               <Stack gap="md">
                 <PasswordInput
                   label="Nueva contrasena"
@@ -128,6 +131,12 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                   leftSection={<IconLock size={16} />}
                   {...form.getInputProps('password')}
                   required
+                  aria-invalid={form.errors.password ? 'true' : undefined}
+                  errorProps={{
+                    id: RESET_PASSWORD_ERROR_ID,
+                    role: 'alert',
+                    'aria-live': 'assertive',
+                  }}
                 />
 
                 <PasswordInput
@@ -136,6 +145,12 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                   leftSection={<IconLock size={16} />}
                   {...form.getInputProps('confirmPassword')}
                   required
+                  aria-invalid={form.errors.confirmPassword ? 'true' : undefined}
+                  errorProps={{
+                    id: RESET_CONFIRM_PASSWORD_ERROR_ID,
+                    role: 'alert',
+                    'aria-live': 'assertive',
+                  }}
                 />
 
                 <Button type="submit" fullWidth loading={loading}>

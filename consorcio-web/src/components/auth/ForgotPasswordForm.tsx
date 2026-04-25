@@ -6,6 +6,8 @@ import { withBasePath } from '../../lib/basePath';
 import { validateEmail } from '../../lib/validators';
 import { IconAlertCircle, IconArrowLeft, IconCheck, IconMail } from '../ui/icons';
 
+const FORGOT_PASSWORD_EMAIL_ERROR_ID = 'forgot-password-email-error';
+
 export default function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -74,7 +76,7 @@ export default function ForgotPasswordForm() {
               </Alert>
             )}
 
-            <form onSubmit={form.onSubmit(handleSubmit)}>
+            <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
               <Stack gap="md">
                 <TextInput
                   label="Email"
@@ -82,6 +84,11 @@ export default function ForgotPasswordForm() {
                   leftSection={<IconMail size={16} />}
                   {...form.getInputProps('email')}
                   required
+                  errorProps={{
+                    id: FORGOT_PASSWORD_EMAIL_ERROR_ID,
+                    role: 'alert',
+                    'aria-live': 'assertive',
+                  }}
                 />
 
                 <Button type="submit" fullWidth loading={loading}>
