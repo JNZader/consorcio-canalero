@@ -20,16 +20,25 @@ function emptyCollection(): FeatureCollection {
 
 function createMapMock(options?: {
   layers?: string[];
-  sources?: string[];
+  sources?: string[] | Record<string, unknown>;
 }) {
   const layers = new Set(options?.layers ?? []);
-  const sources = new Set(options?.sources ?? []);
+  const sourceRecords = new Map<string, unknown>();
+  if (Array.isArray(options?.sources)) {
+    for (const id of options.sources) {
+      sourceRecords.set(id, { id });
+    }
+  } else if (options?.sources) {
+    for (const [id, source] of Object.entries(options.sources)) {
+      sourceRecords.set(id, source);
+    }
+  }
 
   return {
     getLayer: vi.fn((id: string) => (layers.has(id) ? { id } : undefined)),
-    getSource: vi.fn((id: string) => (sources.has(id) ? { id } : undefined)),
-    addSource: vi.fn((id: string) => {
-      sources.add(id);
+    getSource: vi.fn((id: string) => sourceRecords.get(id)),
+    addSource: vi.fn((id: string, source?: unknown) => {
+      sourceRecords.set(id, source ?? { id });
     }),
     addLayer: vi.fn((layer: { id: string }) => {
       layers.add(layer.id);
@@ -38,7 +47,7 @@ function createMapMock(options?: {
       layers.delete(id);
     }),
     removeSource: vi.fn((id: string) => {
-      sources.delete(id);
+      sourceRecords.delete(id);
     }),
     setLayoutProperty: vi.fn(),
   };
@@ -225,5 +234,31 @@ describe('mapLayerEffectHelpers', () => {
     expect(demLayer?.paint).toMatchObject({
       'raster-opacity': 0.6,
     });
+  });
+
+  it('replaces the DEM raster source when the selected tile URL changes', () => {
+    const map = createMapMock({
+      layers: [`${SOURCE_IDS.DEM_RASTER}-layer`],
+      sources: {
+        [SOURCE_IDS.DEM_RASTER]: {
+          serialize: () => ({ tiles: ['https://tiles.example.com/old/{z}/{x}/{y}.png'] }),
+        },
+      },
+    });
+
+    syncDemRasterLayer(map as never, {
+      showDemOverlay: true,
+      activeDemLayerId: 'dem-2',
+      demTileUrl: 'https://tiles.example.com/new/{z}/{x}/{y}.png',
+    });
+
+    expect(map.removeLayer).toHaveBeenCalledWith(`${SOURCE_IDS.DEM_RASTER}-layer`);
+    expect(map.removeSource).toHaveBeenCalledWith(SOURCE_IDS.DEM_RASTER);
+    expect(map.addSource).toHaveBeenCalledWith(
+      SOURCE_IDS.DEM_RASTER,
+      expect.objectContaining({
+        tiles: ['https://tiles.example.com/new/{z}/{x}/{y}.png'],
+      })
+    );
   });
 });

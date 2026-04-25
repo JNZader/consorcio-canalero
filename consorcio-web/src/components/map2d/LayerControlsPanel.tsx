@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import type { Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { PropuestasEtapasFilter } from './PropuestasEtapasFilter';
@@ -93,6 +93,25 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
     }
     return getActiveAttributions(visibleSet);
   }, [vectorVisibility]);
+  const firstDemLayerId = demOptions[0]?.value ?? null;
+
+  useEffect(() => {
+    if (!showDemOverlay || !firstDemLayerId) return;
+    const activeLayerExists = demOptions.some((option) => option.value === activeDemLayerId);
+    if (!activeLayerExists) {
+      onActiveDemLayerIdChange(firstDemLayerId);
+    }
+  }, [activeDemLayerId, demOptions, firstDemLayerId, onActiveDemLayerIdChange, showDemOverlay]);
+
+  const handleDemOverlayChange = useCallback(
+    (visible: boolean) => {
+      if (visible && !activeDemLayerId && firstDemLayerId) {
+        onActiveDemLayerIdChange(firstDemLayerId);
+      }
+      onShowDemOverlayChange(visible);
+    },
+    [activeDemLayerId, firstDemLayerId, onActiveDemLayerIdChange, onShowDemOverlayChange]
+  );
 
   return (
     // Bounded outer scroll container: when many layer toggles, DEM options
@@ -179,7 +198,7 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                   size="xs"
                   label="Capa DEM"
                   checked={showDemOverlay}
-                  onChange={(event) => onShowDemOverlayChange(event.currentTarget.checked)}
+                  onChange={(event) => handleDemOverlayChange(event.currentTarget.checked)}
                 />
                 {showDemOverlay && (
                   <Select

@@ -10,7 +10,7 @@
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
 
@@ -87,6 +87,29 @@ describe('<LayerControlsPanel /> — "Capas" collapsible section', () => {
     );
 
     expect(screen.getAllByLabelText(/tipo de capa dem/i)[0]).toBeInTheDocument();
+  });
+
+  it('selects the first DEM layer before enabling the overlay when none is active', () => {
+    const onShowDemOverlayChange = vi.fn();
+    const onActiveDemLayerIdChange = vi.fn();
+
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        demEnabled
+        onShowDemOverlayChange={onShowDemOverlayChange}
+        onActiveDemLayerIdChange={onActiveDemLayerIdChange}
+        demOptions={[
+          { value: 'dem-1', label: 'Elevación' },
+          { value: 'slope-1', label: 'Pendiente' },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Capa DEM'));
+
+    expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('dem-1');
+    expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
   });
 
   it('toggles via Enter key on the header', () => {

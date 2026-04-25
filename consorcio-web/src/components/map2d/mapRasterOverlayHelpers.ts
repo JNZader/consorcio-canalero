@@ -43,6 +43,13 @@ function addRasterOverlay(
   );
 }
 
+function getRasterTiles(source: maplibregl.Source | undefined): string[] | undefined {
+  const serializableSource = source as
+    | (maplibregl.Source & { serialize?: () => { tiles?: string[] }; tiles?: string[] })
+    | undefined;
+  return serializableSource?.serialize?.().tiles ?? serializableSource?.tiles;
+}
+
 export function syncDemRasterLayer(
   map: maplibregl.Map,
   params: {
@@ -57,13 +64,22 @@ export function syncDemRasterLayer(
   }
 
   const existing = map.getSource(SOURCE_IDS.DEM_RASTER) as maplibregl.RasterTileSource | undefined;
+  const existingTiles = getRasterTiles(existing);
+  const sourceHasCurrentTiles = existingTiles?.[0] === params.demTileUrl;
 
-  if (existing) {
+  if (existing && sourceHasCurrentTiles) {
     (
       existing as maplibregl.RasterTileSource & {
         setTiles?: (tiles: string[]) => void;
       }
     ).setTiles?.([params.demTileUrl]);
+  } else if (existing) {
+    removeRasterOverlay(map, SOURCE_IDS.DEM_RASTER);
+    map.addSource(SOURCE_IDS.DEM_RASTER, {
+      type: 'raster',
+      tiles: [params.demTileUrl],
+      tileSize: 256,
+    });
   } else {
     map.addSource(SOURCE_IDS.DEM_RASTER, {
       type: 'raster',
