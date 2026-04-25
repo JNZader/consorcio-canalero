@@ -66,6 +66,8 @@ export interface MapUiPanelsProps {
   readonly activeDemLayerId: string | null;
   readonly onActiveDemLayerIdChange: (value: string | null) => void;
   readonly demOptions: DemOption[];
+  readonly canalesRelevadosItems?: readonly LayerItem[];
+  readonly canalesPropuestosItems?: readonly LayerItem[];
   readonly isOperator: boolean;
   readonly markingMode: boolean;
   readonly onToggleMarkingMode: () => void;
@@ -169,6 +171,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   activeDemLayerId,
   onActiveDemLayerIdChange,
   demOptions,
+  canalesRelevadosItems,
+  canalesPropuestosItems,
   isOperator,
   markingMode,
   onToggleMarkingMode,
@@ -296,6 +300,8 @@ export const MapUiPanels = memo(function MapUiPanels({
             activeDemLayerId={activeDemLayerId}
             onActiveDemLayerIdChange={onActiveDemLayerIdChange}
             demOptions={demOptions}
+            canalesRelevadosItems={canalesRelevadosItems}
+            canalesPropuestosItems={canalesPropuestosItems}
           />
           {showLegend && (
             <LeyendaPanel

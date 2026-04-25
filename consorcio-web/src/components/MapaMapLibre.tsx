@@ -16,7 +16,7 @@ import type { Feature } from 'geojson';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 // Register PMTiles protocol once at module level
 const _pmtilesProtocol = new Protocol();
@@ -190,6 +190,22 @@ export default function MapaMapLibre() {
     propuestas: canalesPropuestas,
     index: canalesIndex,
   };
+  const canalesRelevadosItems = useMemo(
+    () =>
+      canalesIndex?.relevados.map((r) => ({
+        id: `canal_relevado_${r.id.replace(/-/g, '_')}`,
+        label: r.nombre,
+      })) ?? [],
+    [canalesIndex]
+  );
+  const canalesPropuestosItems = useMemo(
+    () =>
+      canalesIndex?.propuestas.map((p) => ({
+        id: `canal_propuesto_${p.id.replace(/-/g, '_')}`,
+        label: p.nombre,
+      })) ?? [],
+    [canalesIndex]
+  );
   const { collection: escuelasCollection } = useEscuelas();
   const escuelasData = { collection: escuelasCollection };
   const { catastroMap } = useCatastroMap();
@@ -660,6 +676,8 @@ export default function MapaMapLibre() {
           activeDemLayerId={activeDemLayerId}
           onActiveDemLayerIdChange={setActiveDemLayerId}
           demOptions={demLayerOptions}
+          canalesRelevadosItems={canalesRelevadosItems}
+          canalesPropuestosItems={canalesPropuestosItems}
           isOperator={isOperator}
           markingMode={markingMode}
           onToggleMarkingMode={() => {

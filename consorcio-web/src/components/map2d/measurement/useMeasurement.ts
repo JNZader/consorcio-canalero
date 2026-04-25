@@ -49,6 +49,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import area from '@turf/area';
 import centerOfMass from '@turf/center-of-mass';
+import distance from '@turf/distance';
 import length from '@turf/length';
 import midpoint from '@turf/midpoint';
 
@@ -97,24 +98,52 @@ function coerceId(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-function computeLineLabelAnchor(line: Feature<LineString>): [number, number] {
+export function computeLineLabelAnchor(line: Feature<LineString>): [number, number] {
   const coords = line.geometry.coordinates;
   if (coords.length === 0) return [0, 0];
-  const first = coords[0];
+  if (coords.length === 1) {
+    const [lng, lat] = coords[0];
+    return [lng, lat];
+  }
+
+  if (coords.length === 2) {
+    const firstPt: Feature<Point> = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: coords[0] },
+      properties: {},
+    };
+    const lastPt: Feature<Point> = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: coords[1] },
+      properties: {},
+    };
+    const mid = midpoint(firstPt, lastPt);
+    const [lng, lat] = mid.geometry.coordinates;
+    return [lng, lat];
+  }
+
+  const totalLength = length(line, { units: 'meters' });
+  const target = totalLength / 2;
+  let accumulated = 0;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const from = coords[i];
+    const to = coords[i + 1];
+    const segmentLength = distance(from, to, { units: 'meters' });
+
+    if (accumulated + segmentLength >= target) {
+      const ratio = segmentLength === 0 ? 0 : (target - accumulated) / segmentLength;
+      const lng = from[0] + (to[0] - from[0]) * ratio;
+      const lat = from[1] + (to[1] - from[1]) * ratio;
+      return [lng, lat];
+    }
+
+    accumulated += segmentLength;
+  }
+
+  // Fallback for floating-point drift: return last coordinate
   const last = coords[coords.length - 1];
-  const firstPt: Feature<Point> = {
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: first },
-    properties: {},
-  };
-  const lastPt: Feature<Point> = {
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: last },
-    properties: {},
-  };
-  const mid = midpoint(firstPt, lastPt);
-  const [lng, lat] = mid.geometry.coordinates;
-  return [lng, lat];
+  return [last[0], last[1]];
 }
 
 function computePolygonLabelAnchor(poly: Feature<Polygon>): [number, number] {
