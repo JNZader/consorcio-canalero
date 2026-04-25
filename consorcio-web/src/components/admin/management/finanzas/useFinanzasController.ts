@@ -69,6 +69,9 @@ export function useFinanzasController() {
     initialValues: {
       categoria: '',
     },
+    validate: {
+      categoria: (value) => validateRequiredOption(value, 'Categoria'),
+    },
   });
 
   const ingresoForm = useForm({
@@ -95,6 +98,11 @@ export function useFinanzasController() {
       pagador: '',
       comprobante_url: '',
       fecha: '',
+    },
+    validate: {
+      descripcion: validateDescripcion,
+      monto: validateMonto,
+      fuente: (value) => validateRequiredOption(value, 'Fuente'),
     },
   });
 

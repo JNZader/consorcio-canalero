@@ -12,6 +12,10 @@ import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 import type { IngresoFormValues } from './IngresoFormModal';
 
+const EDIT_INGRESO_DESCRIPTION_ERROR_ID = 'edit-ingreso-description-error';
+const EDIT_INGRESO_AMOUNT_ERROR_ID = 'edit-ingreso-amount-error';
+const EDIT_INGRESO_SOURCE_ERROR_ID = 'edit-ingreso-source-error';
+
 export function EditIngresoModal({
   opened,
   onClose,
@@ -35,11 +39,30 @@ export function EditIngresoModal({
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Editar ingreso">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
-          <TextInput label="Descripcion" required {...form.getInputProps('descripcion')} />
+          <TextInput
+            label="Descripcion"
+            required
+            {...form.getInputProps('descripcion')}
+            errorProps={{
+              id: EDIT_INGRESO_DESCRIPTION_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
+          />
           <SimpleGrid cols={2}>
-            <NumberInput label="Monto ($)" required hideControls {...form.getInputProps('monto')} />
+            <NumberInput
+              label="Monto ($)"
+              required
+              hideControls
+              {...form.getInputProps('monto')}
+              errorProps={{
+                id: EDIT_INGRESO_AMOUNT_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
+            />
             <Select
               label="Fuente"
               placeholder="Selecciona fuente"
@@ -47,6 +70,11 @@ export function EditIngresoModal({
               searchable
               required
               {...form.getInputProps('fuente')}
+              errorProps={{
+                id: EDIT_INGRESO_SOURCE_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
           </SimpleGrid>
           <Button type="button" variant="subtle" size="xs" onClick={onOpenSource}>

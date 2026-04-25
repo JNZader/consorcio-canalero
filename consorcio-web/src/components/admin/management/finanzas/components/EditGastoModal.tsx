@@ -3,6 +3,8 @@ import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 import type { Gasto } from '../finanzasTypes';
 
+const EDIT_GASTO_CATEGORY_ERROR_ID = 'edit-gasto-category-error';
+
 interface EditGastoFormValues {
   categoria: string;
 }
@@ -34,7 +36,7 @@ export function EditGastoModal({
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Editar categoria de gasto">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <Select
             label="Categoria"
@@ -43,6 +45,11 @@ export function EditGastoModal({
             searchable
             required
             {...form.getInputProps('categoria')}
+            errorProps={{
+              id: EDIT_GASTO_CATEGORY_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <Button type="button" variant="subtle" size="xs" onClick={onOpenCategory}>
             Agregar categoria

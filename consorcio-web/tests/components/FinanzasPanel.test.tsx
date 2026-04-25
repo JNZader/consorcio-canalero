@@ -264,6 +264,43 @@ describe('FinanzasPanel', () => {
     );
   });
 
+  it('connects edit ingreso validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+
+    await user.click(screen.getByRole('tab', { name: /libro de ingresos/i }));
+    const row = await screen.findByRole('row', { name: /cuota marzo/i });
+    await user.click(within(row).getByRole('button'));
+
+    const dialog = await screen.findByRole('dialog', { name: /editar ingreso/i });
+    const description = within(dialog).getByLabelText(/descripcion/i);
+    const amount = within(dialog).getByLabelText(/monto \(\$\)/i);
+
+    await user.clear(description);
+    await user.clear(amount);
+    await user.click(within(dialog).getByRole('button', { name: /actualizar ingreso/i }));
+
+    await waitFor(() => {
+      expect(description).toHaveAttribute('aria-invalid', 'true');
+      expect(description.getAttribute('aria-describedby')).toContain(
+        'edit-ingreso-description-error'
+      );
+      expect(amount).toHaveAttribute('aria-invalid', 'true');
+      expect(amount.getAttribute('aria-describedby')).toContain('edit-ingreso-amount-error');
+    });
+
+    expect(within(dialog).getByText(/descripcion requerida/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/el monto debe ser mayor a 0/i)).toHaveAttribute(
+      'role',
+      'alert'
+    );
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/finanzas/ingresos/i1',
+      expect.objectContaining({ method: 'PATCH' })
+    );
+  });
+
   it('updates gasto category from edit modal', async () => {
     const user = userEvent.setup();
 
