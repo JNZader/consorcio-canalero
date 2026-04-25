@@ -60,8 +60,11 @@ describe('suggestion field errors', () => {
 
     const title = screen.getByRole('textbox', { name: /titulo de la sugerencia/i });
     const description = screen.getByRole('textbox', { name: /descripcion/i });
+    const form = title.closest('form') as HTMLFormElement;
 
-    fireEvent.submit(title.closest('form') as HTMLFormElement);
+    expect(form).toHaveAttribute('novalidate');
+
+    fireEvent.submit(form);
 
     await waitFor(() => {
       expectFieldDescribedByError(title, 'suggestion-title-error');

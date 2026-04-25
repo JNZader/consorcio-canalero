@@ -162,7 +162,7 @@ function FormularioContenido() {
           />
         )}
 
-        <form onSubmit={form.onSubmit(handleSubmit)}>
+        <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="md">
             {remainingToday === 0 && contactoVerificado && (
               <Alert color="red" variant="light" role="alert" aria-live="assertive">

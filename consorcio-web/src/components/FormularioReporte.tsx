@@ -164,7 +164,7 @@ function FormularioContenido() {
           variant="secondary"
         />
 
-        <form onSubmit={form.onSubmit(handleSubmit)}>
+        <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="lg">
             <TipoProblemaField
               contactoVerificado={contactoVerificado}

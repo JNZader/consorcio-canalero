@@ -150,6 +150,7 @@ describe('FormularioReporte', () => {
       );
 
       const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
+      expect(screen.getByLabelText(/descripcion/i).closest('form')).toHaveAttribute('novalidate');
       expect(submitButton).toBeDisabled();
     });
 
