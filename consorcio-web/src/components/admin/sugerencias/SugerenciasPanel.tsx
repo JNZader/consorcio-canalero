@@ -46,6 +46,10 @@ export default function SugerenciasPanel() {
   const [newDescripcion, setNewDescripcion] = useState('');
   const [newCategoria, setNewCategoria] = useState<string | null>(null);
   const [newPrioridad, setNewPrioridad] = useState<string>('normal');
+  const [createErrors, setCreateErrors] = useState<{
+    titulo?: string;
+    descripcion?: string;
+  }>({});
   const [creating, setCreating] = useState(false);
 
   // Filters
@@ -325,7 +329,13 @@ export default function SugerenciasPanel() {
   };
 
   const handleCreateInternal = async () => {
-    if (!newTitulo.trim() || !newDescripcion.trim()) {
+    const validationErrors = {
+      titulo: newTitulo.trim() ? undefined : 'Titulo requerido',
+      descripcion: newDescripcion.trim() ? undefined : 'Descripcion requerida',
+    };
+
+    if (validationErrors.titulo || validationErrors.descripcion) {
+      setCreateErrors(validationErrors);
       notifications.show({
         title: 'Error',
         message: 'Titulo y descripcion son requeridos',
@@ -353,6 +363,7 @@ export default function SugerenciasPanel() {
       setNewDescripcion('');
       setNewCategoria(null);
       setNewPrioridad('normal');
+      setCreateErrors({});
       refreshAll();
     } catch (error) {
       logger.error('Error creating internal:', error);
@@ -364,6 +375,11 @@ export default function SugerenciasPanel() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleCloseCreate = () => {
+    setCreateErrors({});
+    closeCreate();
   };
 
   // Filter sugerencias by search query
@@ -469,17 +485,28 @@ export default function SugerenciasPanel() {
 
         <CreateInternalModal
           opened={createOpened}
-          onClose={closeCreate}
+          onClose={handleCloseCreate}
           newTitulo={newTitulo}
-          setNewTitulo={setNewTitulo}
+          setNewTitulo={(value) => {
+            setNewTitulo(value);
+            if (createErrors.titulo) {
+              setCreateErrors((current) => ({ ...current, titulo: undefined }));
+            }
+          }}
           newDescripcion={newDescripcion}
-          setNewDescripcion={setNewDescripcion}
+          setNewDescripcion={(value) => {
+            setNewDescripcion(value);
+            if (createErrors.descripcion) {
+              setCreateErrors((current) => ({ ...current, descripcion: undefined }));
+            }
+          }}
           newCategoria={newCategoria}
           setNewCategoria={setNewCategoria}
           newPrioridad={newPrioridad}
           setNewPrioridad={setNewPrioridad}
           creating={creating}
           onCreate={handleCreateInternal}
+          errors={createErrors}
         />
       </Container>
     </LiveRegionProvider>

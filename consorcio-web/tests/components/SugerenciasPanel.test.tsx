@@ -199,6 +199,35 @@ describe('SugerenciasPanel', () => {
     );
   });
 
+  it('connects internal topic validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('Gestion de Sugerencias');
+    await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
+    const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
+
+    const titleInput = within(createModal).getByLabelText(/titulo/i);
+    const descriptionInput = within(createModal).getByLabelText(/descripcion/i);
+    await user.click(within(createModal).getByRole('button', { name: /crear tema/i }));
+
+    await waitFor(() => {
+      expect(titleInput).toHaveAttribute('aria-invalid', 'true');
+      expect(titleInput.getAttribute('aria-describedby')).toContain('internal-topic-title-error');
+      expect(descriptionInput).toHaveAttribute('aria-invalid', 'true');
+      expect(descriptionInput.getAttribute('aria-describedby')).toContain(
+        'internal-topic-description-error'
+      );
+    });
+
+    expect(within(createModal).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(within(createModal).getByText(/descripcion requerida/i)).toHaveAttribute(
+      'role',
+      'alert'
+    );
+    expect(sugerenciasApi.createInternal).not.toHaveBeenCalled();
+  });
+
   it('shows empty state when no suggestions are returned', async () => {
     vi.mocked(sugerenciasApi.getAll).mockResolvedValueOnce({
       items: [],
