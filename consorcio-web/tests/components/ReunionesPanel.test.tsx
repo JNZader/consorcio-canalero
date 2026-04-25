@@ -124,6 +124,35 @@ describe('ReunionesPanel', () => {
     );
   });
 
+  it('connects create reunion validation errors to their fields', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('Reuniones de Comision');
+    await user.click(screen.getByRole('button', { name: /nueva reunion/i }));
+    const dialog = await screen.findByRole('dialog', { name: /nueva reunion/i });
+
+    await user.click(within(dialog).getByRole('button', { name: /crear reunion/i }));
+
+    const title = within(dialog).getByLabelText(/titulo/i);
+    const date = within(dialog).getByLabelText(/fecha y hora/i);
+
+    await waitFor(() => {
+      expect(title).toHaveAttribute('aria-invalid', 'true');
+      expect(title.getAttribute('aria-describedby')).toContain('reunion-title-error');
+      expect(date).toHaveAttribute('aria-invalid', 'true');
+      expect(date.getAttribute('aria-describedby')).toContain('reunion-date-error');
+    });
+
+    expect(within(dialog).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/fecha y hora requeridas/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/agrega al menos un punto/i)).toHaveAttribute('role', 'alert');
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/reuniones',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
   it('shows empty agenda and allows adding a new topic', async () => {
     const user = userEvent.setup();
     let agendaItems: Array<{

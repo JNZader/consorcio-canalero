@@ -2,6 +2,10 @@ import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Textarea } fr
 import type { UseFormReturnType } from '@mantine/form';
 import { IconTrash } from '../../../../ui/icons';
 
+const REUNION_TITLE_ERROR_ID = 'reunion-title-error';
+const REUNION_DATE_ERROR_ID = 'reunion-date-error';
+const REUNION_CHECKLIST_ERROR_ID = 'reunion-checklist-error';
+
 export interface ReunionCreateFormValues {
   titulo: string;
   fecha_reunion: string;
@@ -30,19 +34,29 @@ export function ReunionCreateModal({
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Nueva Reunion" size="lg">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
             label="Titulo"
             placeholder="Ej: Reunion de comision de marzo"
             required
             {...form.getInputProps('titulo')}
+            errorProps={{
+              id: REUNION_TITLE_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <TextInput
             type="datetime-local"
             label="Fecha y hora"
             required
             {...form.getInputProps('fecha_reunion')}
+            errorProps={{
+              id: REUNION_DATE_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <TextInput
             label="Lugar"
@@ -101,7 +115,13 @@ export function ReunionCreateModal({
             </Stack>
 
             {form.errors.orden_del_dia_items ? (
-              <Text size="xs" c="red">
+              <Text
+                id={REUNION_CHECKLIST_ERROR_ID}
+                size="xs"
+                c="red"
+                role="alert"
+                aria-live="assertive"
+              >
                 {form.errors.orden_del_dia_items}
               </Text>
             ) : null}
