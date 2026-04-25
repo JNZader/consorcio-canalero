@@ -117,7 +117,9 @@ describe('TramitesPanel', () => {
     renderPanel();
 
     await user.click(await screen.findByRole('button', { name: /nuevo expediente/i }));
-    const modal = await screen.findByRole('dialog', { name: /registrar nuevo expediente provincial/i });
+    const modal = await screen.findByRole('dialog', {
+      name: /registrar nuevo expediente provincial/i,
+    });
 
     await user.type(within(modal).getByLabelText(/titulo del tramite/i), 'Obra Canal Sur');
     await user.type(within(modal).getByLabelText(/numero de expediente/i), '0416-999/2026');
@@ -143,6 +145,30 @@ describe('TramitesPanel', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && !options).length).toBe(2);
+  });
+
+  it('connects new expediente title validation error to the field', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: /nuevo expediente/i }));
+    const modal = await screen.findByRole('dialog', {
+      name: /registrar nuevo expediente provincial/i,
+    });
+
+    await user.click(within(modal).getByRole('button', { name: /crear expediente/i }));
+
+    const title = within(modal).getByLabelText(/titulo del tramite/i);
+    await waitFor(() => {
+      expect(title).toHaveAttribute('aria-invalid', 'true');
+      expect(title.getAttribute('aria-describedby')).toContain('tramite-title-error');
+    });
+
+    expect(within(modal).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(mockApiFetch).not.toHaveBeenCalledWith(
+      '/tramites',
+      expect.objectContaining({ method: 'POST' })
+    );
   });
 
   it('opens the history modal with timeline entries from detalle', async () => {

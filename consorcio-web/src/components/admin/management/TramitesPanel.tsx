@@ -34,6 +34,8 @@ interface Tramite {
   ultima_actualizacion: string;
 }
 
+const TRAMITE_TITLE_ERROR_ID = 'tramite-title-error';
+
 interface Avance {
   id: string;
   fecha: string;
@@ -114,6 +116,9 @@ export default function TramitesPanel() {
       numero_expediente: '',
       descripcion: '',
       prioridad: 'normal',
+    },
+    validate: {
+      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
     },
   });
 
@@ -203,13 +208,18 @@ export default function TramitesPanel() {
 
       {/* Modal Nuevo Expediente */}
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Expediente Provincial">
-        <form onSubmit={form.onSubmit(handleCreate)}>
+        <form onSubmit={form.onSubmit(handleCreate)} noValidate>
           <Stack gap="sm">
             <TextInput
               label="Titulo del Tramite"
               placeholder="Ej: Obra Canal San Marcos"
               required
               {...form.getInputProps('titulo')}
+              errorProps={{
+                id: TRAMITE_TITLE_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
             <TextInput
               label="Numero de Expediente"
