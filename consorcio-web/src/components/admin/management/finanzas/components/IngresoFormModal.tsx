@@ -13,6 +13,10 @@ import {
 import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 
+const INGRESO_DESCRIPTION_ERROR_ID = 'ingreso-description-error';
+const INGRESO_AMOUNT_ERROR_ID = 'ingreso-amount-error';
+const INGRESO_SOURCE_ERROR_ID = 'ingreso-source-error';
+
 export interface IngresoFormValues {
   descripcion: string;
   monto: number;
@@ -45,13 +49,18 @@ export function IngresoFormModal({
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar Ingreso">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
             label="Descripcion"
             placeholder="Ej: Subsidio provincial"
             required
             {...form.getInputProps('descripcion')}
+            errorProps={{
+              id: INGRESO_DESCRIPTION_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <SimpleGrid cols={2}>
             <NumberInput
@@ -60,6 +69,11 @@ export function IngresoFormModal({
               required
               hideControls
               {...form.getInputProps('monto')}
+              errorProps={{
+                id: INGRESO_AMOUNT_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
             <Select
               label="Fuente"
@@ -68,6 +82,11 @@ export function IngresoFormModal({
               searchable
               required
               {...form.getInputProps('fuente')}
+              errorProps={{
+                id: INGRESO_SOURCE_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
           </SimpleGrid>
           <Group justify="space-between" gap="xs">

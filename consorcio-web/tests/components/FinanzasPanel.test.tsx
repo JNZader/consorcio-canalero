@@ -128,8 +128,10 @@ describe('FinanzasPanel', () => {
     await user.type(within(dialog).getByLabelText(/descripcion del gasto/i), 'Repuestos bomba');
     await user.type(within(dialog).getByLabelText(/monto \(\$\)/i), '1500');
 
-    const categoriaInput = within(dialog).getByLabelText(/categoria/i);
-    fireEvent.change(categoriaInput, { target: { value: 'obras' } });
+    await user.click(within(dialog).getByRole('button', { name: /agregar categoria/i }));
+    const categoryDialog = await screen.findByRole('dialog', { name: /nueva categoria/i });
+    await user.type(within(categoryDialog).getByLabelText('Nombre'), 'Obras');
+    await user.click(within(categoryDialog).getByRole('button', { name: /guardar categoria/i }));
 
     fireEvent.change(within(dialog).getByLabelText(/^fecha$/i), { target: { value: '2026-03-10' } });
     await user.click(within(dialog).getByRole('button', { name: /guardar gasto/i }));
@@ -146,6 +148,45 @@ describe('FinanzasPanel', () => {
         title: 'Gasto registrado',
         color: 'green',
       })
+    );
+  });
+
+  it('connects new gasto validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+
+    await user.click(screen.getByRole('button', { name: /registrar gasto/i }));
+    const dialog = await screen.findByRole('dialog', { name: /registrar gasto de caja/i });
+
+    await user.click(within(dialog).getByRole('button', { name: /guardar gasto/i }));
+
+    const description = within(dialog).getByLabelText(/descripcion del gasto/i);
+    const amount = within(dialog).getByLabelText(/monto \(\$\)/i);
+    const category = within(dialog).getByLabelText(/categoria/i);
+
+    await waitFor(() => {
+      expect(description).toHaveAttribute('aria-invalid', 'true');
+      expect(description.getAttribute('aria-describedby')).toContain('gasto-description-error');
+      expect(amount).toHaveAttribute('aria-invalid', 'true');
+      expect(amount.getAttribute('aria-describedby')).toContain(
+        'gasto-amount-error'
+      );
+      expect(category).toHaveAttribute('aria-invalid', 'true');
+      expect(category.getAttribute('aria-describedby')).toContain(
+        'gasto-category-error'
+      );
+    });
+
+    expect(within(dialog).getByText(/descripcion requerida/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/el monto debe ser mayor a 0/i)).toHaveAttribute(
+      'role',
+      'alert'
+    );
+    expect(within(dialog).getByText(/categoria requerida/i)).toHaveAttribute('role', 'alert');
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/finanzas/gastos',
+      expect.objectContaining({ method: 'POST' })
     );
   });
 

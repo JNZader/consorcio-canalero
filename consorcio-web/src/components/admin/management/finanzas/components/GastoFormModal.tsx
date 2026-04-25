@@ -13,6 +13,10 @@ import {
 import type { UseFormReturnType } from '@mantine/form';
 import { IconUpload } from '../../../../ui/icons';
 
+const GASTO_DESCRIPTION_ERROR_ID = 'gasto-description-error';
+const GASTO_AMOUNT_ERROR_ID = 'gasto-amount-error';
+const GASTO_CATEGORY_ERROR_ID = 'gasto-category-error';
+
 export interface GastoFormValues {
   descripcion: string;
   monto: number;
@@ -44,13 +48,18 @@ export function GastoFormModal({
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar Gasto de Caja">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
             label="Descripcion del Gasto"
             placeholder="Ej: Compra de 500L gasoil"
             required
             {...form.getInputProps('descripcion')}
+            errorProps={{
+              id: GASTO_DESCRIPTION_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <SimpleGrid cols={2}>
             <NumberInput
@@ -59,6 +68,11 @@ export function GastoFormModal({
               required
               hideControls
               {...form.getInputProps('monto')}
+              errorProps={{
+                id: GASTO_AMOUNT_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
             <Select
               label="Categoria"
@@ -67,6 +81,11 @@ export function GastoFormModal({
               searchable
               required
               {...form.getInputProps('categoria')}
+              errorProps={{
+                id: GASTO_CATEGORY_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
           </SimpleGrid>
           <Group justify="space-between" gap="xs">

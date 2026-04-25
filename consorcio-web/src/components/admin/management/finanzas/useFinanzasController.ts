@@ -13,6 +13,18 @@ import {
   normalizeArray,
 } from './finanzasUtils';
 
+function validateDescripcion(value: string) {
+  return value.trim().length < 3 ? 'Descripcion requerida' : null;
+}
+
+function validateMonto(value: number) {
+  return value > 0 ? null : 'El monto debe ser mayor a 0';
+}
+
+function validateRequiredOption(value: string, label: string) {
+  return value ? null : `${label} requerida`;
+}
+
 export function useFinanzasController() {
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
@@ -46,6 +58,11 @@ export function useFinanzasController() {
       comprobante_url: '',
       fecha: new Date().toISOString().split('T')[0],
     },
+    validate: {
+      descripcion: validateDescripcion,
+      monto: validateMonto,
+      categoria: (value) => validateRequiredOption(value, 'Categoria'),
+    },
   });
 
   const editCategoryForm = useForm({
@@ -62,6 +79,11 @@ export function useFinanzasController() {
       pagador: '',
       comprobante_url: '',
       fecha: new Date().toISOString().split('T')[0],
+    },
+    validate: {
+      descripcion: validateDescripcion,
+      monto: validateMonto,
+      fuente: (value) => validateRequiredOption(value, 'Fuente'),
     },
   });
 
