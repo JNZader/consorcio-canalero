@@ -34,6 +34,9 @@ import { useEffect, useState } from 'react';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
 
+const COLLISION_THRESHOLD_PX = 40;
+const MIN_ZOOM_TO_SHOW_ALL = 14;
+
 export interface MeasurementLabelsProps {
   readonly map: maplibregl.Map | null;
   readonly measurements: readonly MeasurementEntry[];
@@ -42,6 +45,46 @@ export interface MeasurementLabelsProps {
 interface PixelPosition {
   readonly x: number;
   readonly y: number;
+}
+
+function getVisibleMeasurements(
+  measurements: readonly MeasurementEntry[],
+  positions: Record<string, PixelPosition>,
+  zoom: number
+): readonly MeasurementEntry[] {
+  if (zoom >= MIN_ZOOM_TO_SHOW_ALL) return measurements;
+
+  const sorted = [...measurements].sort((a, b) => {
+    if (a.kind === 'area' && b.kind !== 'area') return -1;
+    if (a.kind !== 'area' && b.kind === 'area') return 1;
+    return b.value - a.value;
+  });
+
+  const visible: MeasurementEntry[] = [];
+  const keptPositions: PixelPosition[] = [];
+
+  for (const m of sorted) {
+    const pos = positions[m.id];
+    if (!pos) continue;
+
+    let collides = false;
+    for (const kept of keptPositions) {
+      const dx = pos.x - kept.x;
+      const dy = pos.y - kept.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < COLLISION_THRESHOLD_PX) {
+        collides = true;
+        break;
+      }
+    }
+
+    if (!collides) {
+      visible.push(m);
+      keptPositions.push(pos);
+    }
+  }
+
+  return visible;
 }
 
 export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps) {
@@ -62,13 +105,18 @@ export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps)
     // Seed positions immediately so the first paint doesn't flash at (0,0).
     update();
     map.on('move', update);
+    map.on('zoom', update);
 
     return () => {
       map.off('move', update);
+      map.off('zoom', update);
     };
   }, [map, measurements]);
 
   if (!map) return null;
+
+  const zoom = map.getZoom();
+  const visible = getVisibleMeasurements(measurements, positions, zoom);
 
   return (
     <div
@@ -79,7 +127,7 @@ export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps)
         zIndex: 15,
       }}
     >
-      {measurements.map((m) => {
+      {visible.map((m) => {
         const pos = positions[m.id];
         if (!pos) return null;
         const text = m.kind === 'distance' ? formatDistance(m.value) : formatArea(m.value);
