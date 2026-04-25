@@ -27,7 +27,7 @@ from app.domains.geo.schemas import (
     GeoLayerListResponse,
     GeoLayerResponse,
 )
-from app.domains.geo.service import dispatch_job
+from app.domains.geo.service import GeoJobDispatchError, dispatch_job
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -45,11 +45,14 @@ def submit_geo_job(
     The job is created in PENDING state. A Celery task is
     dispatched to the geo-worker for actual processing.
     """
-    job = dispatch_job(
-        db,
-        tipo=payload.tipo,
-        parametros=payload.parametros,
-    )
+    try:
+        job = dispatch_job(
+            db,
+            tipo=payload.tipo,
+            parametros=payload.parametros,
+        )
+    except GeoJobDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return job
 
 
@@ -238,14 +241,17 @@ def trigger_dem_pipeline(
     """
     from app.domains.geo.models import TipoGeoJob
 
-    job = dispatch_job(
-        db,
-        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
-        parametros={
-            "area_id": payload.area_id,
-            "min_basin_area_ha": payload.min_basin_area_ha,
-        },
-    )
+    try:
+        job = dispatch_job(
+            db,
+            tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+            parametros={
+                "area_id": payload.area_id,
+                "min_basin_area_ha": payload.min_basin_area_ha,
+            },
+        )
+    except GeoJobDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return DemPipelineResponse(
         job_id=job.id,
         tipo=job.tipo,

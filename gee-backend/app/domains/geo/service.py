@@ -24,6 +24,10 @@ logger = get_logger(__name__)
 repo = GeoRepository()
 
 
+class GeoJobDispatchError(RuntimeError):
+    """Raised when a GeoJob was created but its Celery task could not be queued."""
+
+
 # ---------------------------------------------------------------------------
 # Task dispatch map (lazy imports to avoid circular deps at module level)
 # ---------------------------------------------------------------------------
@@ -113,7 +117,21 @@ def dispatch_job(
     task_launcher = dispatch_map.get(tipo)
 
     if task_launcher is not None:
-        result = task_launcher({**parametros, "job_id": str(job.id)})
+        try:
+            result = task_launcher({**parametros, "job_id": str(job.id)})
+        except Exception as exc:
+            db.rollback()
+            logger.exception(
+                "dispatch_job.task_dispatch_failed",
+                tipo=tipo,
+                job_id=str(job.id),
+                error=str(exc),
+            )
+            raise GeoJobDispatchError(
+                "No se pudo encolar el trabajo geoespacial. "
+                "Revisá Redis/Celery y el worker correspondiente."
+            ) from exc
+
         repo.update_job_status(db, job.id, celery_task_id=result.id)
     else:
         logger.warning("dispatch_job.no_task_mapping", tipo=tipo, job_id=str(job.id))

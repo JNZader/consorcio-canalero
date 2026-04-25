@@ -72,4 +72,23 @@ describe('api core', () => {
     });
     await expect(apiFetch('/stats')).rejects.toThrow('Payload invalido');
   });
+
+  it('maps generic backend error envelopes to user-facing messages', async () => {
+    mockGetAccessToken.mockResolvedValue(null);
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Error interno del servidor',
+          details: {},
+        },
+      }),
+    });
+
+    const { apiFetch } = await import('../../src/lib/api/core');
+
+    await expect(apiFetch('/geo/dem-pipeline')).rejects.toThrow('Error interno del servidor');
+  });
 });

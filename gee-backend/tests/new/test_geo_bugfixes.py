@@ -94,16 +94,17 @@ class TestDispatchJobMapping:
         mock_celery_result = MagicMock()
         mock_celery_result.id = "celery-task-id-5678"
 
-        with patch(
-            "app.domains.geo.service._get_task_dispatch_map"
-        ) as mock_map:
+        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
             mock_launcher = MagicMock(return_value=mock_celery_result)
             mock_map.return_value = {TipoGeoJob.SLOPE: mock_launcher}
 
-            result = dispatch_job(
+            dispatch_job(
                 mock_db,
                 tipo=TipoGeoJob.SLOPE,
-                parametros={"dem_path": "/tmp/dem.tif", "output_path": "/tmp/slope.tif"},
+                parametros={
+                    "dem_path": "/tmp/dem.tif",
+                    "output_path": "/tmp/slope.tif",
+                },
             )
 
         # Job was created
@@ -125,12 +126,10 @@ class TestDispatchJobMapping:
         mock_job.id = "test-uuid"
         mock_repo.create_job.return_value = mock_job
 
-        with patch(
-            "app.domains.geo.service._get_task_dispatch_map"
-        ) as mock_map:
+        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
             mock_map.return_value = {}  # empty map
 
-            result = dispatch_job(
+            dispatch_job(
                 mock_db,
                 tipo="nonexistent_tipo",
                 parametros={},
@@ -138,6 +137,31 @@ class TestDispatchJobMapping:
 
         mock_repo.create_job.assert_called_once()
         # No task dispatched, so update_job_status should NOT be called
+        mock_repo.update_job_status.assert_not_called()
+
+    @patch("app.domains.geo.service.repo")
+    def test_dispatch_job_rolls_back_when_task_queue_fails(self, mock_repo):
+        """Broker/Celery failures should not leave a stale pending job."""
+        from app.domains.geo.models import TipoGeoJob
+        from app.domains.geo.service import GeoJobDispatchError, dispatch_job
+
+        mock_db = MagicMock()
+        mock_job = MagicMock()
+        mock_job.id = "test-uuid"
+        mock_repo.create_job.return_value = mock_job
+
+        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
+            mock_launcher = MagicMock(side_effect=ConnectionError("redis down"))
+            mock_map.return_value = {TipoGeoJob.DEM_FULL_PIPELINE: mock_launcher}
+
+            with pytest.raises(GeoJobDispatchError):
+                dispatch_job(
+                    mock_db,
+                    tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+                    parametros={"area_id": "zona_principal"},
+                )
+
+        mock_db.rollback.assert_called_once()
         mock_repo.update_job_status.assert_not_called()
 
 
@@ -173,7 +197,9 @@ class TestComputeHandTaskSignature:
         mock_processing = MagicMock()
         mock_processing.compute_hand.return_value = "/tmp/hand.tif"
 
-        with patch("app.domains.geo.tasks._get_processing", return_value=mock_processing):
+        with patch(
+            "app.domains.geo.tasks._get_processing", return_value=mock_processing
+        ):
             result = task_fn(
                 dem_path="/tmp/dem.tif",
                 flow_dir_path="/tmp/flow_dir.tif",

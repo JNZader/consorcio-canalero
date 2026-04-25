@@ -162,7 +162,11 @@ async def health():
         "alembic": alembic_health,
     }
 
-    is_healthy = db_health["status"] == "healthy"
+    is_healthy = (
+        db_health["status"] == "healthy"
+        and redis_health["status"] == "healthy"
+        and alembic_health["status"] == "healthy"
+    )
 
     return {
         "status": "healthy" if is_healthy else "degraded",

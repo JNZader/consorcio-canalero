@@ -73,6 +73,24 @@ function hasItemsArray<T>(data: unknown): data is { items: T[] } {
   );
 }
 
+function getApiErrorMessage(error: unknown, status: number): string {
+  if (typeof error !== 'object' || error === null) {
+    return `API Error: ${status}`;
+  }
+
+  const payload = error as {
+    detail?: unknown;
+    message?: unknown;
+    error?: { message?: unknown };
+  };
+
+  if (typeof payload.detail === 'string') return payload.detail;
+  if (typeof payload.message === 'string') return payload.message;
+  if (typeof payload.error?.message === 'string') return payload.error.message;
+
+  return `API Error: ${status}`;
+}
+
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
@@ -129,7 +147,7 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
         throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
       }
 
-      throw new Error(error.detail || `API Error: ${response.status}`);
+      throw new Error(getApiErrorMessage(error, response.status));
     }
 
     return response.json();
