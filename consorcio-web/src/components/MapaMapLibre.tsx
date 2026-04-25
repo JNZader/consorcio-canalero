@@ -578,7 +578,7 @@ export default function MapaMapLibre() {
             customItems={activeLegendItems}
             embedded
             data-testid="map-2d-external-leyenda-panel"
-            style={{ maxHeight: 'none', overflowY: 'visible' }}
+            style={{ maxHeight: 'min(320px, 42vh)', overflowY: 'auto' }}
             pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
             pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
             pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
