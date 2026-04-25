@@ -33,6 +33,9 @@ interface PasswordFormValues {
   confirmPassword: string;
 }
 
+const PROFILE_NEW_PASSWORD_ERROR_ID = 'profile-new-password-error';
+const PROFILE_CONFIRM_PASSWORD_ERROR_ID = 'profile-confirm-password-error';
+
 function ProfileContent() {
   const { user, profile, loading } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -230,7 +233,7 @@ function ProfileContent() {
 
         {/* Change Password Form */}
         <Paper shadow="sm" p="lg" radius="md" withBorder>
-          <form onSubmit={passwordForm.onSubmit(handlePasswordSubmit)}>
+          <form onSubmit={passwordForm.onSubmit(handlePasswordSubmit)} noValidate>
             <Stack gap="md">
               <Title order={3}>Cambiar Contrasena</Title>
 
@@ -238,12 +241,24 @@ function ProfileContent() {
                 label="Nueva contrasena"
                 placeholder="Minimo 6 caracteres"
                 {...passwordForm.getInputProps('newPassword')}
+                aria-invalid={passwordForm.errors.newPassword ? 'true' : undefined}
+                errorProps={{
+                  id: PROFILE_NEW_PASSWORD_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
 
               <PasswordInput
                 label="Confirmar contrasena"
                 placeholder="Repite la nueva contrasena"
                 {...passwordForm.getInputProps('confirmPassword')}
+                aria-invalid={passwordForm.errors.confirmPassword ? 'true' : undefined}
+                errorProps={{
+                  id: PROFILE_CONFIRM_PASSWORD_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
 
               <Group justify="flex-end">

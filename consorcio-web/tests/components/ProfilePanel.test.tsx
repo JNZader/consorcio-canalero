@@ -209,6 +209,7 @@ describe('ProfilePanel', () => {
 
     it('should validate password length', async () => {
       const user = userEvent.setup();
+      const { updatePassword } = await import('../../src/lib/auth');
       renderWithMantine(<ProfilePanel />);
 
       const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
@@ -220,10 +221,13 @@ describe('ProfilePanel', () => {
       const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
       await user.click(changeBtn);
 
-      // Form should not submit with short password
       await waitFor(() => {
-        expect(inputs[0]).toHaveValue('123');
+        expect(inputs[0]).toHaveAttribute('aria-invalid', 'true');
+        expect(inputs[0].getAttribute('aria-describedby')).toContain('profile-new-password-error');
       });
+
+      expect(screen.getByText(/al menos 6 caracteres/i)).toHaveAttribute('role', 'alert');
+      expect(updatePassword).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -250,6 +254,7 @@ describe('ProfilePanel', () => {
 
     it('should validate password match', async () => {
       const user = userEvent.setup();
+      const { updatePassword } = await import('../../src/lib/auth');
       renderWithMantine(<ProfilePanel />);
 
       const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
@@ -258,9 +263,18 @@ describe('ProfilePanel', () => {
       const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
       await user.type(confirmInputs[0], 'differentPassword123');
 
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      await user.click(changeBtn);
+
       await waitFor(() => {
-        expect(inputs[0]).toHaveValue('newPassword123');
+        expect(confirmInputs[0]).toHaveAttribute('aria-invalid', 'true');
+        expect(confirmInputs[0].getAttribute('aria-describedby')).toContain(
+          'profile-confirm-password-error'
+        );
       });
+
+      expect(screen.getByText(/no coinciden/i)).toHaveAttribute('role', 'alert');
+      expect(updatePassword).not.toHaveBeenCalled();
     });
 
     it('should call updatePassword on valid submit', async () => {
