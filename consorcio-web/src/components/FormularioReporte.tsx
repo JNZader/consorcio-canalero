@@ -16,7 +16,7 @@ import { StepHeader } from './report-form/StepHeader';
 import { getErrorString } from './report-form/reportFormUtils';
 import { useReportFormSubmission } from './report-form/useReportFormSubmission';
 import { useReportLocation } from './report-form/useReportLocation';
-import { LiveRegionProvider, useLiveRegion } from './ui/accessibility';
+import { LiveRegionProvider, VisuallyHidden, useLiveRegion } from './ui/accessibility';
 import { IconBuildingBridge, IconDroplet, IconFileDescription, IconRoad } from './ui/icons';
 import { ContactVerificationSection } from './verification';
 
@@ -104,6 +104,11 @@ function FormularioContenido() {
   return (
     <Paper shadow="md" p="xl" radius="md" pos="relative">
       <LoadingOverlay visible={enviando} />
+      {enviando && (
+        <VisuallyHidden as="p" role="status" aria-live="polite">
+          Enviando reporte, por favor espera.
+        </VisuallyHidden>
+      )}
 
       <Title order={2} mb="md">
         Nuevo Reporte

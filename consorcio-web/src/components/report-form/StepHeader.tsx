@@ -36,7 +36,9 @@ export function StepHeader({
           {subtitle}
         </Text>
       </Box>
-      {showCheckIcon && <IconShieldCheck size={20} color="var(--mantine-color-green-6)" />}
+      {showCheckIcon && (
+        <IconShieldCheck size={20} color="var(--mantine-color-green-6)" aria-hidden="true" />
+      )}
     </Group>
   );
 }

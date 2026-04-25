@@ -41,6 +41,14 @@ vi.mock('../../src/components/verification', () => ({
 vi.mock('../../src/components/ui/accessibility', () => ({
   LiveRegionProvider: ({ children }: { children: React.ReactNode }) => children,
   useLiveRegion: () => ({ announce: vi.fn() }),
+  VisuallyHidden: ({
+    children,
+    as: Component = 'span',
+    ...props
+  }: {
+    children: React.ReactNode;
+    as?: React.ElementType;
+  }) => <Component {...props}>{children}</Component>,
   CoordinatesInput: ({ onCoordinatesChange }: { onCoordinatesChange: (lat: number, lng: number) => void }) => (
     <button type="button" onClick={() => onCoordinatesChange(-32.6, -62.7)}>
       set-coordinates
@@ -177,6 +185,24 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
       expect(publicApi.createReport).toHaveBeenCalled();
+    });
+
+    it('announces submission progress while the report is being sent', async () => {
+      vi.mocked(publicApi.createReport).mockReturnValue(new Promise(() => {}));
+
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripcion/i),
+        'Canal desbordado por lluvias intensas en el sector norte'
+      );
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      expect(await screen.findByRole('status')).toHaveTextContent(/enviando reporte/i);
     });
   });
 
