@@ -222,6 +222,28 @@ describe('ReunionesPanel', () => {
     expect(await screen.findByText(/1\. nuevo tema operativo/i)).toBeInTheDocument();
   });
 
+  it('connects agenda topic title validation error to the field', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('Reuniones de Comision');
+    await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
+
+    const titleInput = await screen.findByLabelText(/titulo del tema/i);
+    await user.click(screen.getByRole('button', { name: /anadir tema/i }));
+
+    await waitFor(() => {
+      expect(titleInput).toHaveAttribute('aria-invalid', 'true');
+      expect(titleInput.getAttribute('aria-describedby')).toContain('agenda-topic-title-error');
+    });
+
+    expect(screen.getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/reuniones/r1/agenda',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
   it('shows error notification when creating reunion fails', async () => {
     const user = userEvent.setup();
 

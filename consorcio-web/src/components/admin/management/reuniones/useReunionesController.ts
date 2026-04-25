@@ -30,6 +30,9 @@ export function useReunionesController() {
       descripcion: '',
       referencias: [] as string[],
     },
+    validate: {
+      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
+    },
   });
 
   const reunionForm = useForm({

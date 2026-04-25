@@ -17,6 +17,8 @@ import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
 import type { AgendaItem, EntityOption, Reunion } from '../reunionesTypes';
 import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
 
+const AGENDA_TOPIC_TITLE_ERROR_ID = 'agenda-topic-title-error';
+
 export interface AgendaFormValues {
   titulo: string;
   descripcion: string;
@@ -129,15 +131,22 @@ export function AgendaModal({
             <Text fw={600} size="sm" mb="sm">
               Agregar Tema a la Agenda
             </Text>
-            <form onSubmit={form.onSubmit(onAddTopic)}>
+            <form onSubmit={form.onSubmit(onAddTopic)} noValidate>
               <Stack gap="xs">
                 <TextInput
+                  label="Titulo del tema"
                   placeholder="Titulo del tema (Ej: Reparacion Puente FFCC)"
                   size="sm"
                   required
                   {...form.getInputProps('titulo')}
+                  errorProps={{
+                    id: AGENDA_TOPIC_TITLE_ERROR_ID,
+                    role: 'alert',
+                    'aria-live': 'assertive',
+                  }}
                 />
                 <Textarea
+                  label="Descripcion"
                   placeholder="Descripcion o puntos a discutir..."
                   size="sm"
                   {...form.getInputProps('descripcion')}
