@@ -3,6 +3,13 @@ import type { ReactNode } from 'react';
 import { IconCheck } from '../ui/icons';
 import { getStepBackgroundColor } from './suggestionFormUtils';
 
+function getStepText(step: number | ReactNode): string {
+  if (typeof step === 'number' || typeof step === 'string') {
+    return step.toString();
+  }
+  return '';
+}
+
 export function SuggestionStepIndicator({
   step,
   isComplete,
@@ -16,9 +23,16 @@ export function SuggestionStepIndicator({
   label: string;
   badge?: ReactNode;
 }>) {
+  const status = isComplete ? 'completado' : isDisabled ? 'bloqueado' : 'pendiente';
+  const stepText = getStepText(step);
+  const accessibleLabel = stepText
+    ? `Paso ${stepText}: ${label}, ${status}`
+    : `${label}, ${status}`;
+
   return (
-    <Group gap="xs" mb="md">
+    <Group gap="xs" mb="md" role="group" aria-label={accessibleLabel}>
       <Box
+        aria-hidden="true"
         style={{
           width: 24,
           height: 24,
@@ -32,7 +46,7 @@ export function SuggestionStepIndicator({
           fontWeight: 600,
         }}
       >
-        {isComplete ? <IconCheck size={14} /> : step}
+        {isComplete ? <IconCheck size={14} aria-hidden="true" /> : step}
       </Box>
       <Text fw={600} size="sm" c={isDisabled ? 'dimmed' : undefined}>
         {label}

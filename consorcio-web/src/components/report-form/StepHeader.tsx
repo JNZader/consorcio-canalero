@@ -22,10 +22,12 @@ export function StepHeader({
   const isPrimary = variant === 'primary';
   const badgeVariant = getBadgeVariant(isPrimary, isComplete);
   const badgeColor = getBadgeColor(isPrimary, isComplete);
+  const status =
+    showCheckIcon && isComplete ? 'completado' : isComplete ? 'disponible' : 'pendiente';
 
   return (
-    <Group gap="sm" mb="md">
-      <Badge size="lg" radius="xl" variant={badgeVariant} color={badgeColor}>
+    <Group gap="sm" mb="md" role="group" aria-label={`Paso ${step}: ${title}, ${status}`}>
+      <Badge size="lg" radius="xl" variant={badgeVariant} color={badgeColor} aria-hidden="true">
         {step}
       </Badge>
       <Box>
