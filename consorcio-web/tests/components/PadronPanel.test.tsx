@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PadronPanel from '../../src/components/admin/management/PadronPanel';
 import { apiFetch } from '../../src/lib/api';
+import { isValidCUIT } from '../../src/lib/validators';
 
 vi.mock('../../src/lib/api', () => ({
   apiFetch: vi.fn(),
@@ -29,6 +30,7 @@ const renderPanel = () => render(<MantineProvider><PadronPanel /></MantineProvid
 describe('PadronPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(isValidCUIT).mockReturnValue(true);
     vi.mocked(apiFetch).mockImplementation(async (path: string) => {
       if (path.startsWith('/padron?search=')) {
         return [
@@ -80,6 +82,40 @@ describe('PadronPanel', () => {
         })
       );
     });
+  });
+
+  it('connects new consorcista validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    vi.mocked(isValidCUIT).mockReturnValue(false);
+
+    renderPanel();
+    await screen.findByText('Padrón de Consorcistas');
+
+    await user.click(screen.getByRole('button', { name: /nuevo consorcista/i }));
+    const dialog = await screen.findByRole('dialog', { name: /registrar nuevo consorcista/i });
+
+    await user.click(within(dialog).getByRole('button', { name: /guardar en padrón/i }));
+
+    const nombre = within(dialog).getByLabelText(/nombre/i);
+    const apellido = within(dialog).getByLabelText(/apellido/i);
+    const cuit = within(dialog).getByLabelText(/cuit/i);
+
+    await waitFor(() => {
+      expect(nombre).toHaveAttribute('aria-invalid', 'true');
+      expect(nombre.getAttribute('aria-describedby')).toContain('padron-nombre-error');
+      expect(apellido).toHaveAttribute('aria-invalid', 'true');
+      expect(apellido.getAttribute('aria-describedby')).toContain('padron-apellido-error');
+      expect(cuit).toHaveAttribute('aria-invalid', 'true');
+      expect(cuit.getAttribute('aria-describedby')).toContain('padron-cuit-error');
+    });
+
+    expect(within(dialog).getByText(/nombre requerido/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/apellido requerido/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/cuit invalido/i)).toHaveAttribute('role', 'alert');
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/padron',
+      expect.objectContaining({ method: 'POST' })
+    );
   });
 
   it('creates a new consorcista from modal form', async () => {

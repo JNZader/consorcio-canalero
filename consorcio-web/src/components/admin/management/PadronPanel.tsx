@@ -28,6 +28,10 @@ import { isValidCUIT } from '../../../lib/validators';
 import { LoadingState } from '../../ui/LoadingState';
 import { IconCreditCard, IconPlus, IconSearch, IconUser } from '../../ui/icons';
 
+const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
+const PADRON_APELLIDO_ERROR_ID = 'padron-apellido-error';
+const PADRON_CUIT_ERROR_ID = 'padron-cuit-error';
+
 // Types for this panel
 interface Consorcista {
   id: string;
@@ -315,19 +319,29 @@ export default function PadronPanel() {
 
       {/* Modal Nuevo Consorcista */}
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Consorcista" size="lg">
-        <form onSubmit={form.onSubmit(handleCreate)}>
+        <form onSubmit={form.onSubmit(handleCreate)} noValidate>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <TextInput
               label="Nombre"
               placeholder="Ej: Juan"
               required
               {...form.getInputProps('nombre')}
+              errorProps={{
+                id: PADRON_NOMBRE_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
             <TextInput
               label="Apellido"
               placeholder="Ej: Perez"
               required
               {...form.getInputProps('apellido')}
+              errorProps={{
+                id: PADRON_APELLIDO_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
           </SimpleGrid>
           <TextInput
@@ -336,6 +350,11 @@ export default function PadronPanel() {
             required
             mt="sm"
             {...form.getInputProps('cuit')}
+            errorProps={{
+              id: PADRON_CUIT_ERROR_ID,
+              role: 'alert',
+              'aria-live': 'assertive',
+            }}
           />
           <TextInput
             label="En representación de..."
