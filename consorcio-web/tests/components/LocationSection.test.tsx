@@ -149,4 +149,37 @@ describe('<LocationSection />', () => {
       'true',
     );
   });
+
+  it('does not submit the parent report form from location helper actions', async () => {
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());
+    const onObtenerGPS = vi.fn();
+    const onToggleInputManual = vi.fn();
+    const onClearLocation = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithMantine(
+      <form onSubmit={onSubmit}>
+        <LocationSection
+          {...baseProps}
+          ubicacion={{ lat: -32.61234, lng: -62.74567 }}
+          onObtenerGPS={onObtenerGPS}
+          onToggleInputManual={onToggleInputManual}
+          onClearLocation={onClearLocation}
+        />
+      </form>,
+    );
+
+    await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
+    await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+    await user.click(
+      screen.getByRole('button', {
+        name: /limpiar ubicación seleccionada -32\.61234, -62\.74567/i,
+      }),
+    );
+
+    expect(onObtenerGPS).toHaveBeenCalledTimes(1);
+    expect(onToggleInputManual).toHaveBeenCalledTimes(1);
+    expect(onClearLocation).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

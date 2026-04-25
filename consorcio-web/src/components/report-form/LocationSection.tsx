@@ -133,6 +133,7 @@ export function LocationSection({
     <>
       <Group gap="sm" mb="sm">
         <Button
+          type="button"
           onClick={onObtenerGPS}
           loading={obteniendoUbicacion}
           variant="light"
@@ -143,6 +144,7 @@ export function LocationSection({
           Usar mi ubicacion GPS
         </Button>
         <Button
+          type="button"
           onClick={onToggleInputManual}
           variant="subtle"
           size="sm"
@@ -157,6 +159,7 @@ export function LocationSection({
               {selectedCoordinatesLabel}
             </Badge>
             <Button
+              type="button"
               size="xs"
               variant="subtle"
               color="red"

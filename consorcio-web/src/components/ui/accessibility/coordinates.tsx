@@ -110,7 +110,7 @@ export function CoordinatesInput({
             style={{ flex: 1 }}
             inputMode="decimal"
           />
-          <Button onClick={handleManualSubmit} variant="light">
+          <Button type="button" onClick={handleManualSubmit} variant="light">
             Establecer
           </Button>
         </Group>
@@ -139,10 +139,13 @@ export function CoordinatesInput({
               aria-label="Direccion a buscar"
               style={{ flex: 1 }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') handleAddressSearch();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAddressSearch();
+                }
               }}
             />
-            <Button onClick={handleAddressSearch} loading={searching} variant="light">
+            <Button type="button" onClick={handleAddressSearch} loading={searching} variant="light">
               Buscar
             </Button>
           </Group>

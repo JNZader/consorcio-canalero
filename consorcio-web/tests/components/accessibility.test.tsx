@@ -92,6 +92,39 @@ describe('accessibility helpers', () => {
     expect(onCoordinatesChange).toHaveBeenCalledWith(-32.63, -62.6);
   });
 
+  it('does not submit parent forms from coordinate helper actions', async () => {
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());
+    const onCoordinatesChange = vi.fn();
+    const onAddressSearch = vi.fn().mockResolvedValue({ lat: -32.7, lng: -62.5 });
+
+    render(
+      <Wrapper>
+        <form onSubmit={onSubmit}>
+          <CoordinatesInput
+            onCoordinatesChange={onCoordinatesChange}
+            onAddressSearch={onAddressSearch}
+          />
+        </form>
+      </Wrapper>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/latitud/i), '-32.63');
+    await userEvent.type(screen.getByLabelText(/longitud/i), '-62.6');
+    await userEvent.click(screen.getByRole('button', { name: /establecer/i }));
+
+    const addressInput = screen.getByLabelText(/direccion a buscar/i);
+    await userEvent.type(addressInput, 'Bell Ville');
+    await userEvent.click(screen.getByRole('button', { name: /buscar/i }));
+    await waitFor(() => expect(onAddressSearch).toHaveBeenCalledWith('Bell Ville'));
+
+    addressInput.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(onAddressSearch).toHaveBeenCalledTimes(2));
+
+    expect(onCoordinatesChange).toHaveBeenCalledWith(-32.63, -62.6);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('supports address search success and not found states', async () => {
     const onCoordinatesChange = vi.fn();
     const onAddressSearch = vi
