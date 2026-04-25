@@ -9,7 +9,9 @@
  *   - Default state: expanded (`defaultOpen={true}`).
  *   - State is LOCAL (`useState`). No persistence, no Zustand.
  *   - Clicking the title row OR pressing Enter/Space toggles the body.
- *   - The title row carries `role="button"`, `aria-expanded`, `tabIndex=0`.
+ *   - The title row carries `role="button"`, `aria-expanded`, `aria-controls`,
+ *     and `tabIndex=0`.
+ *   - The body carries `role="region"` and is labelled by the title row.
  *   - A chevron icon on the right swaps between `up` (open) and `down`
  *     (closed). Users can ALSO use the `rightAccessory` slot for a count
  *     badge or another affordance; clicks on the accessory bubble up unless
@@ -23,7 +25,7 @@
 
 import { Box, Group, Text } from '@mantine/core';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 
 import { IconChevronDown, IconChevronUp } from './icons';
 
@@ -66,6 +68,10 @@ export function CollapsibleSection({
   style,
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const generatedId = useId();
+  const sectionId = testId ?? `collapsible-section-${generatedId}`;
+  const headerId = `${sectionId}-header`;
+  const bodyId = `${sectionId}-body`;
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
@@ -83,8 +89,10 @@ export function CollapsibleSection({
     <Box data-testid={testId} style={style}>
       <Group
         data-testid={testId ? `${testId}-header` : undefined}
+        id={headerId}
         role="button"
         aria-expanded={open}
+        aria-controls={bodyId}
         tabIndex={0}
         onClick={toggle}
         onKeyDown={handleKeyDown}
@@ -105,7 +113,13 @@ export function CollapsibleSection({
         </Group>
       </Group>
       {open && (
-        <Box data-testid={testId ? `${testId}-body` : undefined} mt={6}>
+        <Box
+          data-testid={testId ? `${testId}-body` : undefined}
+          id={bodyId}
+          role="region"
+          aria-labelledby={headerId}
+          mt={6}
+        >
           {children}
         </Box>
       )}

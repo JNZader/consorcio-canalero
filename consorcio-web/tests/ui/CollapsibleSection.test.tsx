@@ -6,12 +6,14 @@
  *
  * Contract:
  *   1. Children render by default (expanded).
- *   2. Title row carries `role="button"`, `aria-expanded`, `tabIndex=0`.
- *   3. Clicking the title row toggles visibility and flips `aria-expanded`.
- *   4. Pressing Enter or Space on the focused title row toggles.
- *   5. `defaultOpen={false}` renders collapsed on first render.
- *   6. Chevron icon swaps (up when open, down when closed).
- *   7. `rightAccessory` renders inside the title row without eating clicks.
+ *   2. Title row carries `role="button"`, `aria-expanded`, `aria-controls`,
+ *      and `tabIndex=0`.
+ *   3. Body region is labelled by the title row.
+ *   4. Clicking the title row toggles visibility and flips `aria-expanded`.
+ *   5. Pressing Enter or Space on the focused title row toggles.
+ *   6. `defaultOpen={false}` renders collapsed on first render.
+ *   7. Chevron icon swaps (up when open, down when closed).
+ *   8. `rightAccessory` renders inside the title row without eating clicks.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -37,7 +39,7 @@ describe('<CollapsibleSection />', () => {
     expect(screen.getByTestId('content')).toBeInTheDocument();
   });
 
-  it('gives the title row role=button with aria-expanded=true when open', () => {
+  it('connects the title row button to the labelled body region when open', () => {
     renderWithMantine(
       <CollapsibleSection title="Capas" testId="capas">
         <p>contenido</p>
@@ -47,7 +49,12 @@ describe('<CollapsibleSection />', () => {
     const header = screen.getByTestId('capas-header');
     expect(header).toHaveAttribute('role', 'button');
     expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(header).toHaveAttribute('aria-controls', 'capas-body');
     expect(header).toHaveAttribute('tabindex', '0');
+
+    const region = screen.getByRole('region', { name: /capas/i });
+    expect(region).toHaveAttribute('id', 'capas-body');
+    expect(region).toHaveAttribute('aria-labelledby', 'capas-header');
   });
 
   it('hides children after clicking the title row and flips aria-expanded to false', () => {
