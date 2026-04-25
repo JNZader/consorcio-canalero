@@ -22,7 +22,8 @@
  *        the measurement value (meters for lines, m² for polygons) via
  *        Turf, compute the label anchor (line midpoint or polygon
  *        center-of-mass), and push a new `MeasurementEntry`.
- *        `state.mode` resets to `'idle'` so the toolbar goes inactive.
+ *        `state.mode` stays active so consecutive measurements feel
+ *        continuous; `cancel()` / `clear()` exit measuring mode explicitly.
  *
  *   3. `clear()` calls `draw.deleteAll()` + resets state.
  *      `cancel()` flips back to `simple_select` WITHOUT saving.
@@ -44,7 +45,7 @@
 import type { Feature, LineString, Point, Polygon } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import type MapboxDraw from '@mapbox/mapbox-gl-draw';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import area from '@turf/area';
 import centerOfMass from '@turf/center-of-mass';
@@ -77,6 +78,8 @@ export interface MeasurementState {
   mode: MeasurementMode;
   measurements: MeasurementEntry[];
 }
+
+type MeasurementStateUpdater = MeasurementState | ((prev: MeasurementState) => MeasurementState);
 
 export interface UseMeasurementReturn {
   state: MeasurementState;
@@ -127,7 +130,24 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     mode: 'idle',
     measurements: [],
   });
+  const modeRef = useRef<MeasurementMode>('idle');
   const drawRef = useRef<MapboxDraw | null>(null);
+
+  const setMeasurementState = useCallback((updater: MeasurementStateUpdater) => {
+    setState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      modeRef.current = next.mode;
+      return next;
+    });
+  }, []);
+
+  const setMeasurementCursor = useCallback(
+    (active: boolean) => {
+      if (!map) return;
+      map.getCanvas().style.cursor = active ? 'crosshair' : '';
+    },
+    [map]
+  );
 
   useEffect(() => {
     if (!map) return;
@@ -144,6 +164,8 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
     const handleCreate = (event: unknown) => {
       const features = (event as { features?: Feature[] })?.features ?? [];
+      const entries: MeasurementEntry[] = [];
+
       for (const feature of features) {
         const geom = feature.geometry;
         const featureId = coerceId(
@@ -161,10 +183,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
             value: meters,
             labelPosition,
           };
-          setState((prev) => ({
-            mode: 'idle',
-            measurements: [...prev.measurements, entry],
-          }));
+          entries.push(entry);
         } else if (geom.type === 'Polygon') {
           const poly = feature as Feature<Polygon>;
           const m2 = area(poly);
@@ -175,11 +194,27 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
             value: m2,
             labelPosition,
           };
-          setState((prev) => ({
-            mode: 'idle',
-            measurements: [...prev.measurements, entry],
-          }));
+          entries.push(entry);
         }
+      }
+
+      if (entries.length === 0) return;
+
+      const currentMode = modeRef.current;
+      const nextMode =
+        currentMode === 'measuring-distance' || currentMode === 'measuring-area'
+          ? currentMode
+          : 'idle';
+
+      setMeasurementState((prev) => ({
+        mode: nextMode,
+        measurements: [...prev.measurements, ...entries],
+      }));
+
+      if (nextMode === 'measuring-distance') {
+        draw.changeMode('draw_line_string');
+      } else if (nextMode === 'measuring-area') {
+        draw.changeMode('draw_polygon');
       }
     };
 
@@ -195,35 +230,40 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
       } catch {
         // ignore — removal can race with map teardown
       }
+      setMeasurementCursor(false);
       removeMapboxDrawArtifacts(map);
       drawRef.current = null;
     };
-  }, [map]);
+  }, [map, setMeasurementCursor, setMeasurementState]);
 
   const startDistance = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('draw_line_string');
-    setState((prev) => ({ ...prev, mode: 'measuring-distance' }));
+    setMeasurementCursor(true);
+    setMeasurementState((prev) => ({ ...prev, mode: 'measuring-distance' }));
   };
 
   const startArea = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('draw_polygon');
-    setState((prev) => ({ ...prev, mode: 'measuring-area' }));
+    setMeasurementCursor(true);
+    setMeasurementState((prev) => ({ ...prev, mode: 'measuring-area' }));
   };
 
   const clear = () => {
     const draw = drawRef.current;
     if (draw) draw.deleteAll();
+    setMeasurementCursor(false);
     // NOTE: this ONLY clears the measurement draw instance. LineDrawControl
     // uses its own independent MapboxDraw — canales are untouched.
-    setState({ mode: 'idle', measurements: [] });
+    setMeasurementState({ mode: 'idle', measurements: [] });
   };
 
   const cancel = () => {
     const draw = drawRef.current;
     if (draw) draw.changeMode('simple_select');
-    setState((prev) => ({ ...prev, mode: 'idle' }));
+    setMeasurementCursor(false);
+    setMeasurementState((prev) => ({ ...prev, mode: 'idle' }));
   };
 
   return { state, startDistance, startArea, clear, cancel };

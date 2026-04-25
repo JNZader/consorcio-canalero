@@ -73,6 +73,7 @@ import { useMeasurement } from '@/components/map2d/measurement/useMeasurement';
 
 function createMapMock() {
   const handlers = new Map<string, Array<(payload: unknown) => void>>();
+  const canvas = { style: { cursor: '' } };
 
   const map = {
     on: vi.fn((event: string, handler: (payload: unknown) => void) => {
@@ -92,9 +93,10 @@ function createMapMock() {
     getSource: vi.fn(() => null),
     removeSource: vi.fn(),
     removeLayer: vi.fn(),
+    getCanvas: vi.fn(() => canvas),
   };
 
-  return { map, handlers };
+  return { map, handlers, canvas };
 }
 
 function buildLineFeature(): Feature<LineString> {
@@ -166,7 +168,7 @@ describe('useMeasurement', () => {
   });
 
   it('startDistance() switches draw into draw_line_string and mode into measuring-distance', () => {
-    const { map } = createMapMock();
+    const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
@@ -174,10 +176,11 @@ describe('useMeasurement', () => {
 
     expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string');
     expect(result.current.state.mode).toBe('measuring-distance');
+    expect(canvas.style.cursor).toBe('crosshair');
   });
 
   it('startArea() switches draw into draw_polygon and mode into measuring-area', () => {
-    const { map } = createMapMock();
+    const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
@@ -185,9 +188,10 @@ describe('useMeasurement', () => {
 
     expect(drawChangeMode).toHaveBeenCalledWith('draw_polygon');
     expect(result.current.state.mode).toBe('measuring-area');
+    expect(canvas.style.cursor).toBe('crosshair');
   });
 
-  it('records a distance entry with midpoint anchor on draw.create with a LineString feature', () => {
+  it('records a distance entry and keeps distance mode active for consecutive measurements', () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -197,6 +201,7 @@ describe('useMeasurement', () => {
     const createHandler = handlers.get('draw.create')?.[0];
     expect(createHandler).toBeTruthy();
 
+    drawChangeMode.mockClear();
     act(() => createHandler?.({ features: [buildLineFeature()] }));
 
     expect(result.current.state.measurements).toHaveLength(1);
@@ -204,10 +209,11 @@ describe('useMeasurement', () => {
     expect(entry.kind).toBe('distance');
     expect(entry.value).toBe(123.4);
     expect(entry.labelPosition).toEqual([-62.5, -32.5]); // from @turf/midpoint mock
-    expect(result.current.state.mode).toBe('idle');
+    expect(result.current.state.mode).toBe('measuring-distance');
+    expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string');
   });
 
-  it('records an area entry with center-of-mass anchor on draw.create with a Polygon feature', () => {
+  it('records an area entry and keeps area mode active for consecutive measurements', () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -217,6 +223,7 @@ describe('useMeasurement', () => {
     const createHandler = handlers.get('draw.create')?.[0];
     expect(createHandler).toBeTruthy();
 
+    drawChangeMode.mockClear();
     act(() => createHandler?.({ features: [buildPolygonFeature()] }));
 
     expect(result.current.state.measurements).toHaveLength(1);
@@ -224,7 +231,8 @@ describe('useMeasurement', () => {
     expect(entry.kind).toBe('area');
     expect(entry.value).toBe(4567.8);
     expect(entry.labelPosition).toEqual([-62.6, -32.6]); // from @turf/center-of-mass mock
-    expect(result.current.state.mode).toBe('idle');
+    expect(result.current.state.mode).toBe('measuring-area');
+    expect(drawChangeMode).toHaveBeenCalledWith('draw_polygon');
   });
 
   it('assigns stable ids from the draw feature id (no randomness in the pipeline)', () => {
@@ -240,7 +248,7 @@ describe('useMeasurement', () => {
   });
 
   it('clear() calls draw.deleteAll and empties the measurements list', () => {
-    const { map, handlers } = createMapMock();
+    const { map, handlers, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
@@ -254,10 +262,12 @@ describe('useMeasurement', () => {
 
     expect(drawDeleteAll).toHaveBeenCalledTimes(1);
     expect(result.current.state.measurements).toEqual([]);
+    expect(result.current.state.mode).toBe('idle');
+    expect(canvas.style.cursor).toBe('');
   });
 
   it('cancel() exits draw mode into simple_select WITHOUT appending a measurement', () => {
-    const { map } = createMapMock();
+    const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
@@ -270,6 +280,7 @@ describe('useMeasurement', () => {
     expect(drawChangeMode).toHaveBeenCalledWith('simple_select');
     expect(result.current.state.mode).toBe('idle');
     expect(result.current.state.measurements).toEqual([]);
+    expect(canvas.style.cursor).toBe('');
   });
 
   it('removes the draw control on unmount and cleans up event listeners', () => {

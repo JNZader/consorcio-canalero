@@ -313,10 +313,26 @@ export default function MapaMapLibre() {
     setMapReady,
   });
 
+  /* ---------------------------------------------------------------------- */
+  /*  Measurement tools (SDD map-measurement-tools)                          */
+  /* ---------------------------------------------------------------------- */
+  // `useMeasurement` owns a DEDICATED MapboxDraw instance so its `clear()`
+  // never touches LineDrawControl features. We pass `mapReady ? map : null`
+  // so the hook's `useEffect` re-runs once the map finishes loading (the
+  // bare ref would never re-trigger React on its own).
+  const measurementMap = mapReady ? mapRef.current : null;
+  const {
+    state: measurementState,
+    startDistance: startMeasureDistance,
+    startArea: startMeasureArea,
+    clear: clearMeasurements,
+  } = useMeasurement(measurementMap);
+
   useMapInteractionEffects({
     mapRef,
     mapReady,
     markingMode,
+    measurementMode: measurementState.mode,
     setNewPoint,
     setSelectedFeatures,
     showSuggestedZonesPanel,
@@ -446,21 +462,6 @@ export default function MapaMapLibre() {
   // Draw controls are mounted as React components that receive the map instance
   // after it's ready. The actual integration happens via the DrawControl component
   // which uses map.addControl() imperatively (see DrawControl.tsx).
-
-  /* ---------------------------------------------------------------------- */
-  /*  Measurement tools (SDD map-measurement-tools)                          */
-  /* ---------------------------------------------------------------------- */
-  // `useMeasurement` owns a DEDICATED MapboxDraw instance so its `clear()`
-  // never touches LineDrawControl features. We pass `mapReady ? map : null`
-  // so the hook's `useEffect` re-runs once the map finishes loading (the
-  // bare ref would never re-trigger React on its own).
-  const measurementMap = mapReady ? mapRef.current : null;
-  const {
-    state: measurementState,
-    startDistance: startMeasureDistance,
-    startArea: startMeasureArea,
-    clear: clearMeasurements,
-  } = useMeasurement(measurementMap);
 
   // ── KMZ export data sources ────────────────────────────────────────────
   // Keys MUST match `kmzLayerRegistry` entries. Missing/null slots are

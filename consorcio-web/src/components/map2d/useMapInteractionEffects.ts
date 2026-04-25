@@ -2,11 +2,13 @@ import type { Feature } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
+import type { MeasurementMode } from './measurement/useMeasurement';
 
 interface UseMapInteractionEffectsParams {
   mapRef: React.RefObject<maplibregl.Map | null>;
   mapReady: boolean;
   markingMode: boolean;
+  measurementMode: MeasurementMode;
   setNewPoint: (value: { lat: number; lng: number } | null) => void;
   /**
    * Receives the FULL list of overlapping features MapLibre returned at the
@@ -74,6 +76,7 @@ export function useMapInteractionEffects({
   mapRef,
   mapReady,
   markingMode,
+  measurementMode,
   setNewPoint,
   setSelectedFeatures,
   showSuggestedZonesPanel,
@@ -91,6 +94,11 @@ export function useMapInteractionEffects({
         return;
       }
 
+      if (measurementMode !== 'idle') {
+        setSelectedFeatures([]);
+        return;
+      }
+
       const features = map.queryRenderedFeatures(event.point, {
         layers: clickableLayers.filter((id) => map.getLayer(id)),
       });
@@ -105,13 +113,15 @@ export function useMapInteractionEffects({
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapReady, mapRef, markingMode, setNewPoint, setSelectedFeatures]);
+  }, [mapReady, mapRef, markingMode, measurementMode, setNewPoint, setSelectedFeatures]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !showSuggestedZonesPanel) return;
 
     const handleBasinClick = (event: maplibregl.MapMouseEvent) => {
+      if (measurementMode !== 'idle') return;
+
       const features = map.queryRenderedFeatures(event.point, {
         layers: [`${SOURCE_IDS.BASINS}-fill`, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`].filter((id) =>
           map.getLayer(id)
@@ -129,5 +139,5 @@ export function useMapInteractionEffects({
     return () => {
       map.off('click', handleBasinClick);
     };
-  }, [mapReady, mapRef, setSelectedDraftBasinId, showSuggestedZonesPanel]);
+  }, [mapReady, mapRef, measurementMode, setSelectedDraftBasinId, showSuggestedZonesPanel]);
 }

@@ -43,6 +43,7 @@ describe('useMapInteractionEffects', () => {
         mapRef: { current: map } as any,
         mapReady: true,
         markingMode: false,
+        measurementMode: 'idle',
         setNewPoint,
         setSelectedFeatures,
         showSuggestedZonesPanel: false,
@@ -78,6 +79,7 @@ describe('useMapInteractionEffects', () => {
           mapRef: { current: map } as any,
           mapReady: true,
           markingMode: props.markingMode,
+          measurementMode: 'idle',
           setNewPoint,
           setSelectedFeatures,
           showSuggestedZonesPanel: props.showSuggestedZonesPanel,
@@ -104,5 +106,37 @@ describe('useMapInteractionEffects', () => {
 
     expect(setSelectedDraftBasinId).toHaveBeenCalledWith('basin-1');
     expect(setSelectedFeatures).not.toHaveBeenCalled();
+  });
+
+  it('does not query/select underlying features while measurement mode is active', () => {
+    const { map, handlers } = createMapMock();
+    const setNewPoint = vi.fn();
+    const setSelectedFeatures = vi.fn();
+    const setSelectedDraftBasinId = vi.fn();
+
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        markingMode: false,
+        measurementMode: 'measuring-distance',
+        setNewPoint,
+        setSelectedFeatures,
+        showSuggestedZonesPanel: true,
+        setSelectedDraftBasinId,
+      }),
+    );
+
+    for (const clickHandler of handlers.get('click') ?? []) {
+      clickHandler({
+        point: { x: 12, y: 12 },
+        lngLat: { lat: -32.63, lng: -62.63 },
+      });
+    }
+
+    expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+    expect(setSelectedFeatures).toHaveBeenCalledWith([]);
+    expect(setSelectedDraftBasinId).not.toHaveBeenCalled();
+    expect(setNewPoint).not.toHaveBeenCalled();
   });
 });
