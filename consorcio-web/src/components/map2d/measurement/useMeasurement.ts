@@ -218,11 +218,23 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
       }
     };
 
+    const handleContextLost = () => {
+      removeMapboxDrawArtifacts(map);
+    };
+
     map.on('draw.create', handleCreate);
+    map.on('webglcontextlost', handleContextLost);
 
     return () => {
       map.off('draw.create', handleCreate);
+      map.off('webglcontextlost', handleContextLost);
       try {
+        // Remove draw layers/sources before calling MapboxDraw's onRemove.
+        // After WebGL context loss MapboxDraw can lose track of its suffixed
+        // custom style layer IDs and try to remove the shared sources first,
+        // which MapLibre rejects while measurement layers still reference
+        // them.
+        removeMapboxDrawArtifacts(map);
         const control = draw as unknown as maplibregl.IControl;
         if (map.hasControl(control)) {
           map.removeControl(control);

@@ -145,8 +145,13 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
         map.off('draw.delete', handleDelete);
         map.off('draw.update', handleUpdate);
         map.off('webglcontextlost', handleContextLost);
-        if (map.hasControl(draw as unknown as maplibregl.IControl)) {
-          map.removeControl(draw as unknown as maplibregl.IControl);
+        try {
+          removeMapboxDrawArtifacts(map);
+          if (map.hasControl(draw as unknown as maplibregl.IControl)) {
+            map.removeControl(draw as unknown as maplibregl.IControl);
+          }
+        } catch {
+          // ignore — removal can race with WebGL context restore / map teardown
         }
         removeMapboxDrawArtifacts(map);
         drawRef.current = null;

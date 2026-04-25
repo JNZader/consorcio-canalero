@@ -119,8 +119,13 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
       map.off('draw.update', emitCurrent);
       map.off('draw.delete', emitCurrent);
       map.off('webglcontextlost', handleContextLost);
-      if (map.hasControl(draw as unknown as import('maplibre-gl').IControl)) {
-        map.removeControl(draw as unknown as import('maplibre-gl').IControl);
+      try {
+        removeMapboxDrawArtifacts(map);
+        if (map.hasControl(draw as unknown as import('maplibre-gl').IControl)) {
+          map.removeControl(draw as unknown as import('maplibre-gl').IControl);
+        }
+      } catch {
+        // ignore — removal can race with WebGL context restore / map teardown
       }
       removeMapboxDrawArtifacts(map);
       drawRef.current = null;
