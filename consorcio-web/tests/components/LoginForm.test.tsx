@@ -48,7 +48,9 @@ async function switchToRegister(user: ReturnType<typeof userEvent.setup>) {
 }
 
 function getPasswordInputs() {
-  return screen.getAllByLabelText(/contrasena/i);
+  return screen
+    .getAllByLabelText(/contrasena/i)
+    .filter((element) => element.tagName === 'INPUT');
 }
 
 async function submitLogin(user: ReturnType<typeof userEvent.setup>, email: string, password: string) {
@@ -105,6 +107,59 @@ describe('LoginForm', () => {
     expect(await screen.findByText(/email invalido/i)).toBeInTheDocument();
     expect(screen.getByText(/al menos 8 caracteres/i)).toBeInTheDocument();
     expect(signInWithEmail).not.toHaveBeenCalled();
+  });
+
+  it('connects login validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByRole('button', { name: /iniciar sesion/i }));
+
+    const email = screen.getByLabelText(/email/i);
+    const password = screen.getByPlaceholderText('Tu contrasena');
+
+    await waitFor(() => {
+      expect(email).toHaveAttribute('aria-invalid', 'true');
+      expect(email.getAttribute('aria-describedby')).toContain('login-email-error');
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      expect(password.getAttribute('aria-describedby')).toContain('login-password-error');
+    });
+
+    expect(screen.getByText(/el email es requerido/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/al menos 8 caracteres/i)).toHaveAttribute('role', 'alert');
+    expect(signInWithEmail).not.toHaveBeenCalled();
+  });
+
+  it('connects register validation errors to required fields', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await switchToRegister(user);
+    await user.type(screen.getByLabelText(/email/i), 'test@example.com');
+    const passwordInputs = getPasswordInputs();
+    await user.type(passwordInputs[0], 'password');
+    await user.type(passwordInputs[1], 'different');
+    await user.click(screen.getByRole('button', { name: /crear cuenta/i }));
+
+    const name = screen.getByLabelText(/nombre/i);
+    const password = screen.getByPlaceholderText('Tu contrasena');
+    const confirmPassword = screen.getByPlaceholderText('Repite tu contrasena');
+
+    await waitFor(() => {
+      expect(name).toHaveAttribute('aria-invalid', 'true');
+      expect(name.getAttribute('aria-describedby')).toContain('login-name-error');
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      expect(password.getAttribute('aria-describedby')).toContain('login-password-error');
+      expect(confirmPassword).toHaveAttribute('aria-invalid', 'true');
+      expect(confirmPassword.getAttribute('aria-describedby')).toContain(
+        'login-confirm-password-error'
+      );
+    });
+
+    expect(screen.getByText(/ingresa tu nombre/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/al menos un numero/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/no coinciden/i)).toHaveAttribute('role', 'alert');
+    expect(signUpWithEmail).not.toHaveBeenCalled();
   });
 
   it('logs in successfully and redirects to admin', async () => {

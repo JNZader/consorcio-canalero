@@ -22,6 +22,11 @@ import { logger } from '../lib/logger';
 import { validateEmail } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
 
+const LOGIN_NAME_ERROR_ID = 'login-name-error';
+const LOGIN_EMAIL_ERROR_ID = 'login-email-error';
+const LOGIN_PASSWORD_ERROR_ID = 'login-password-error';
+const LOGIN_CONFIRM_PASSWORD_ERROR_ID = 'login-confirm-password-error';
+
 /**
  * LoginFormContent - Contenido interno del formulario de login.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
@@ -196,7 +201,7 @@ export function LoginFormContent() {
           </Alert>
         )}
 
-        <form onSubmit={form.onSubmit(handleSubmit)}>
+        <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="md">
             {mode === 'register' && (
               <TextInput
@@ -204,6 +209,11 @@ export function LoginFormContent() {
                 placeholder="Tu nombre"
                 {...form.getInputProps('nombre')}
                 required
+                errorProps={{
+                  id: LOGIN_NAME_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
             )}
 
@@ -212,6 +222,11 @@ export function LoginFormContent() {
               placeholder="tu@email.com"
               {...form.getInputProps('email')}
               required
+              errorProps={{
+                id: LOGIN_EMAIL_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
 
             <PasswordInput
@@ -219,6 +234,12 @@ export function LoginFormContent() {
               placeholder="Tu contrasena"
               {...form.getInputProps('password')}
               required
+              aria-invalid={form.errors.password ? 'true' : undefined}
+              errorProps={{
+                id: LOGIN_PASSWORD_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
             />
 
             {mode === 'register' && (
@@ -227,6 +248,12 @@ export function LoginFormContent() {
                 placeholder="Repite tu contrasena"
                 {...form.getInputProps('confirmPassword')}
                 required
+                aria-invalid={form.errors.confirmPassword ? 'true' : undefined}
+                errorProps={{
+                  id: LOGIN_CONFIRM_PASSWORD_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
             )}
 
