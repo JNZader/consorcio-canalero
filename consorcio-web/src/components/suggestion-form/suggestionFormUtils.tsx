@@ -133,12 +133,18 @@ export function FormFieldWithSkeleton({
   if (isVerified) {
     return <>{children}</>;
   }
+  const accessibleLabel = label
+    ? `${label} bloqueado hasta verificar contacto`
+    : 'Accion bloqueada hasta verificar contacto';
+
   return (
-    <Box>
-      <Text size="sm" fw={500} mb="xs">
-        {label}
-      </Text>
-      <Skeleton height={skeletonHeight} radius="sm" />
+    <Box role="status" aria-live="polite" aria-busy="true" aria-label={accessibleLabel}>
+      {label && (
+        <Text size="sm" fw={500} mb="xs">
+          {label}
+        </Text>
+      )}
+      <Skeleton height={skeletonHeight} radius="sm" aria-hidden="true" />
     </Box>
   );
 }

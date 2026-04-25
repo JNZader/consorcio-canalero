@@ -13,6 +13,25 @@ export interface TipoDenunciaOption {
   icon?: ReactNode;
 }
 
+function BlockedFieldSkeleton({
+  label,
+  children,
+}: Readonly<{
+  label: string;
+  children: ReactNode;
+}>) {
+  return (
+    <Box
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={`${label} bloqueado hasta verificar identidad`}
+    >
+      {children}
+    </Box>
+  );
+}
+
 interface TipoProblemaFieldProps {
   contactoVerificado: boolean;
   value: string;
@@ -44,16 +63,16 @@ export function TipoProblemaField({
   }
 
   return (
-    <Box>
+    <BlockedFieldSkeleton label="Tipo de problema">
       <Text fw={500} size="sm" mb="xs">
         Tipo de problema *
       </Text>
       <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
         {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} height={70} radius="md" />
+          <Skeleton key={i} height={70} radius="md" aria-hidden="true" />
         ))}
       </SimpleGrid>
-    </Box>
+    </BlockedFieldSkeleton>
   );
 }
 
@@ -89,12 +108,12 @@ export function DescripcionField({
   }
 
   return (
-    <Box>
+    <BlockedFieldSkeleton label="Descripcion">
       <Text size="sm" fw={500} mb="xs">
         Descripcion *
       </Text>
-      <Skeleton height={100} radius="sm" />
-    </Box>
+      <Skeleton height={100} radius="sm" aria-hidden="true" />
+    </BlockedFieldSkeleton>
   );
 }
 
@@ -144,12 +163,12 @@ export function UbicacionField({
           defaultZoom={defaultZoom}
         />
       ) : (
-        <>
-          <Skeleton height={36} width={180} radius="sm" mb="sm" />
+        <BlockedFieldSkeleton label="Ubicacion del incidente">
+          <Skeleton height={36} width={180} radius="sm" mb="sm" aria-hidden="true" />
           <Box style={{ minHeight: 360 }}>
-            <Skeleton height="100%" radius="md" />
+            <Skeleton height="100%" radius="md" aria-hidden="true" />
           </Box>
-        </>
+        </BlockedFieldSkeleton>
       )}
     </Box>
   );
@@ -176,7 +195,9 @@ export function FotoField({
       {contactoVerificado ? (
         <PhotoSection fotoPreview={fotoPreview} onDrop={onDrop} onRemove={onRemove} />
       ) : (
-        <Skeleton height={120} radius="md" />
+        <BlockedFieldSkeleton label="Foto">
+          <Skeleton height={120} radius="md" aria-hidden="true" />
+        </BlockedFieldSkeleton>
       )}
     </Box>
   );
@@ -195,5 +216,9 @@ export function SubmitButton({ contactoVerificado, disabled }: Readonly<SubmitBu
       </Button>
     );
   }
-  return <Skeleton height={50} radius="md" />;
+  return (
+    <BlockedFieldSkeleton label="Enviar reporte">
+      <Skeleton height={50} radius="md" aria-hidden="true" />
+    </BlockedFieldSkeleton>
+  );
 }
