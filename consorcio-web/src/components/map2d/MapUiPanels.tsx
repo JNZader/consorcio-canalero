@@ -141,6 +141,12 @@ export interface MapUiPanelsProps {
   readonly onExportIncludeLegendChange: (value: boolean) => void;
   readonly onExportIncludeMetadataChange: (value: boolean) => void;
   readonly onExportPng: () => void;
+  /**
+   * When false, the layer selector and static legend are rendered by the parent
+   * outside the map canvas. Overlay-only mode keeps quick actions, raster
+   * legends, info panels and modals inside the map.
+   */
+  readonly showEmbeddedMapControls?: boolean;
 }
 
 export const MapUiPanels = memo(function MapUiPanels({
@@ -221,6 +227,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportIncludeLegendChange,
   onExportIncludeMetadataChange,
   onExportPng,
+  showEmbeddedMapControls = true,
 }: MapUiPanelsProps) {
   return (
     <>
@@ -246,70 +253,72 @@ export const MapUiPanels = memo(function MapUiPanels({
         RasterLegend (bottom-right) and InfoPanel (top-right) remain
         unchanged.
       */}
-      <Box
-        data-testid="map-2d-top-left-panels"
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          zIndex: 16,
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          gap: 8,
-          maxHeight: 'calc(100vh - 180px)',
-          overflowY: 'auto',
-          overflowX: 'hidden',
-        }}
-      >
-        <LayerControlsPanel
-          baseLayer={baseLayer}
-          onBaseLayerChange={onBaseLayerChange}
-          viewModePanel={
-            baseLayer === 'satellite' ? (
-              <ViewModePanel
-                viewMode={viewMode}
-                onViewModeChange={onViewModeChange}
-                hasSingleImage={hasSingleImage}
-                hasComparison={hasComparison}
-                singleImageInfo={singleImageInfo}
-                comparisonInfo={comparisonInfo}
-              />
-            ) : null
-          }
-          layerItems={layerItems}
-          vectorVisibility={vectorVisibility}
-          onLayerVisibilityChange={onLayerVisibilityChange}
-          showIGNOverlay={showIGNOverlay}
-          onShowIGNOverlayChange={onShowIGNOverlayChange}
-          demEnabled={demEnabled}
-          showDemOverlay={showDemOverlay}
-          onShowDemOverlayChange={onShowDemOverlayChange}
-          activeDemLayerId={activeDemLayerId}
-          onActiveDemLayerIdChange={onActiveDemLayerIdChange}
-          demOptions={demOptions}
-        />
-        {showLegend && (
-          <LeyendaPanel
-            consorcios={consorcios}
-            customItems={activeLegendItems}
-            embedded
-            width={260}
-            data-testid="map-2d-leyenda-panel"
-            style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
-            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-            pilarVerdePorcentajeForestacionVisible={
-              !!vectorVisibility.pilar_verde_porcentaje_forestacion
+      {showEmbeddedMapControls && (
+        <Box
+          data-testid="map-2d-top-left-panels"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            zIndex: 16,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 8,
+            maxHeight: 'calc(100vh - 180px)',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
+          <LayerControlsPanel
+            baseLayer={baseLayer}
+            onBaseLayerChange={onBaseLayerChange}
+            viewModePanel={
+              baseLayer === 'satellite' ? (
+                <ViewModePanel
+                  viewMode={viewMode}
+                  onViewModeChange={onViewModeChange}
+                  hasSingleImage={hasSingleImage}
+                  hasComparison={hasComparison}
+                  singleImageInfo={singleImageInfo}
+                  comparisonInfo={comparisonInfo}
+                />
+              ) : null
             }
-            pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
-            pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
-            pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+            layerItems={layerItems}
+            vectorVisibility={vectorVisibility}
+            onLayerVisibilityChange={onLayerVisibilityChange}
+            showIGNOverlay={showIGNOverlay}
+            onShowIGNOverlayChange={onShowIGNOverlayChange}
+            demEnabled={demEnabled}
+            showDemOverlay={showDemOverlay}
+            onShowDemOverlayChange={onShowDemOverlayChange}
+            activeDemLayerId={activeDemLayerId}
+            onActiveDemLayerIdChange={onActiveDemLayerIdChange}
+            demOptions={demOptions}
           />
-        )}
-      </Box>
+          {showLegend && (
+            <LeyendaPanel
+              consorcios={consorcios}
+              customItems={activeLegendItems}
+              embedded
+              width={260}
+              data-testid="map-2d-leyenda-panel"
+              style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
+              pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+              pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+              pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+              pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+              pilarVerdePorcentajeForestacionVisible={
+                !!vectorVisibility.pilar_verde_porcentaje_forestacion
+              }
+              pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
+              pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
+              pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+            />
+          )}
+        </Box>
+      )}
 
       <MapActionsPanel
         isOperator={isOperator}

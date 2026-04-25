@@ -42,9 +42,11 @@ import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
+import { LayerControlsPanel } from './map2d/LayerControlsPanel';
+import { LeyendaPanel } from './map2d/LeyendaPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import type { ViewMode } from './map2d/ViewModePanel';
+import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
@@ -257,6 +259,20 @@ export default function MapaMapLibre() {
     }
     prevSelectedImageRef.current = selectedImage;
   }, [selectedImage]);
+
+  useEffect(() => {
+    const mapContainer = sliderContainerRef.current;
+    const map = mapRef.current;
+    if (!mapReady || !mapContainer || !map || !globalThis.ResizeObserver) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.resize();
+      comparisonMapRef.current?.resize();
+    });
+    resizeObserver.observe(mapContainer);
+
+    return () => resizeObserver.disconnect();
+  }, [mapReady]);
 
   useMapLayerEffects({
     mapRef,
@@ -522,161 +538,220 @@ export default function MapaMapLibre() {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <Box
-      className={styles.mapWrapper}
-      role="application"
-      aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
-      style={{ position: 'relative', height: '100%' }}
-    >
-      {/* Map container */}
-      <div ref={sliderContainerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-        {viewMode === 'comparison' && comparison?.left && comparison.right && (
-          <div
-            ref={comparisonContainerRef}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 10,
-              clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
-            }}
+    <Box className={styles.mapWorkspace} data-testid="map-workspace">
+      <Box
+        component="aside"
+        className={styles.mapSidebar}
+        aria-label="Controles y leyendas del mapa"
+        data-testid="map-external-sidebar"
+      >
+        <LayerControlsPanel
+          baseLayer={baseLayer}
+          onBaseLayerChange={setBaseLayer}
+          viewModePanel={
+            baseLayer === 'satellite' ? (
+              <ViewModePanel
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                hasSingleImage={hasSingleImage}
+                hasComparison={hasComparison}
+                singleImageInfo={singleImageInfo}
+                comparisonInfo={comparisonInfo}
+              />
+            ) : null
+          }
+          layerItems={vectorLayerItems}
+          vectorVisibility={vectorVisibility}
+          onLayerVisibilityChange={toggleLayer}
+          showIGNOverlay={showIGNOverlay}
+          onShowIGNOverlayChange={setShowIGNOverlay}
+          demEnabled={demLayers.length > 0}
+          showDemOverlay={showDemOverlay}
+          onShowDemOverlayChange={setShowDemOverlay}
+          activeDemLayerId={activeDemLayerId}
+          onActiveDemLayerIdChange={setActiveDemLayerId}
+          demOptions={demLayerOptions}
+        />
+        {showLegend && (
+          <LeyendaPanel
+            consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+            customItems={activeLegendItems}
+            embedded
+            data-testid="map-2d-external-leyenda-panel"
+            style={{ maxHeight: 'none', overflowY: 'visible' }}
+            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+            pilarVerdePorcentajeForestacionVisible={
+              !!vectorVisibility.pilar_verde_porcentaje_forestacion
+            }
+            pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
+            pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
+            pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
           />
         )}
-        <MapViewportOverlay
-          viewMode={viewMode}
-          sliderPosition={sliderPosition}
-          mapReady={mapReady}
-          onSliderMouseDown={handleSliderMouseDown}
+      </Box>
+
+      <Box
+        className={styles.mapCanvasWrapper}
+        role="application"
+        aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
+      >
+        {/* Map container */}
+        <div
+          ref={sliderContainerRef}
+          style={{ width: '100%', height: '100%', position: 'relative' }}
+        >
+          <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+          {viewMode === 'comparison' && comparison?.left && comparison.right && (
+            <div
+              ref={comparisonContainerRef}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                zIndex: 10,
+                clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
+              }}
+            />
+          )}
+          <MapViewportOverlay
+            viewMode={viewMode}
+            sliderPosition={sliderPosition}
+            mapReady={mapReady}
+            onSliderMouseDown={handleSliderMouseDown}
+          />
+        </div>
+
+        {/* Draw controls (attached to map after load) */}
+        {mapReady && mapRef.current && isOperator && (
+          <LineDrawControl map={mapRef.current} value={drawnLine} onChange={setDrawnLine} />
+        )}
+
+        {/* Measurement tools: floating toolbar + HTML label overlay. */}
+        <MeasurementToolbar
+          mode={measurementState.mode}
+          hasMeasurements={measurementState.measurements.length > 0}
+          onStartDistance={startMeasureDistance}
+          onStartArea={startMeasureArea}
+          onClear={clearMeasurements}
         />
-      </div>
+        <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
 
-      {/* Draw controls (attached to map after load) */}
-      {mapReady && mapRef.current && isOperator && (
-        <LineDrawControl map={mapRef.current} value={drawnLine} onChange={setDrawnLine} />
-      )}
-
-      {/* Measurement tools: floating toolbar + HTML label overlay. */}
-      <MeasurementToolbar
-        mode={measurementState.mode}
-        hasMeasurements={measurementState.measurements.length > 0}
-        onStartDistance={startMeasureDistance}
-        onStartArea={startMeasureArea}
-        onClear={clearMeasurements}
-      />
-      <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
-
-      <MapUiPanels
-        baseLayer={baseLayer}
-        onBaseLayerChange={setBaseLayer}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        hasSingleImage={hasSingleImage}
-        hasComparison={hasComparison}
-        singleImageInfo={singleImageInfo}
-        comparisonInfo={comparisonInfo}
-        layerItems={vectorLayerItems}
-        vectorVisibility={vectorVisibility}
-        onLayerVisibilityChange={toggleLayer}
-        showIGNOverlay={showIGNOverlay}
-        onShowIGNOverlayChange={setShowIGNOverlay}
-        demEnabled={demLayers.length > 0}
-        showDemOverlay={showDemOverlay}
-        onShowDemOverlayChange={setShowDemOverlay}
-        activeDemLayerId={activeDemLayerId}
-        onActiveDemLayerIdChange={setActiveDemLayerId}
-        demOptions={demLayerOptions}
-        isOperator={isOperator}
-        markingMode={markingMode}
-        onToggleMarkingMode={() => {
-          setMarkingMode(!markingMode);
-          setNewPoint(null);
-        }}
-        canManageZoning={canManageZoning}
-        showSuggestedZonesPanel={showSuggestedZonesPanel}
-        hasApprovedZones={hasApprovedZones}
-        onToggleSuggestedZonesPanel={() => setShowSuggestedZonesPanel((prev) => !prev)}
-        onOpenExportPng={() => setExportPngModalOpen(true)}
-        onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
-        onExportKmz={handleExportKmz}
-        showLegend={showLegend}
-        consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
-        activeLegendItems={activeLegendItems}
-        visibleRasterLayers={visibleRasterLayers}
-        hiddenClasses={hiddenClasses}
-        hiddenRanges={hiddenRanges}
-        onClassToggle={(layerType, classIndex, visible) =>
-          setHiddenClasses((prev) => {
-            const curr = prev[layerType] ?? [];
-            const next = visible ? curr.filter((i) => i !== classIndex) : [...curr, classIndex];
-            return { ...prev, [layerType]: next };
-          })
-        }
-        onRangeToggle={(layerType, rangeIndex, visible) =>
-          setHiddenRanges((prev) => {
-            const curr = prev[layerType] ?? [];
-            const next = visible ? curr.filter((i) => i !== rangeIndex) : [...curr, rangeIndex];
-            return { ...prev, [layerType]: next };
-          })
-        }
-        suggestedZoneSummaries={suggestedZoneSummaries}
-        suggestedZoneNames={suggestedZoneNames}
-        onZoneNameChange={(id, value) =>
-          setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
-        }
-        selectedDraftBasinName={selectedDraftBasinName}
-        selectedDraftBasinZoneId={selectedDraftBasinZoneId}
-        draftDestinationZoneId={draftDestinationZoneId}
-        onDestinationZoneChange={setDraftDestinationZoneId}
-        onApplyBasinMove={handleApplyBasinMove}
-        approvedAt={approvedAt}
-        approvedVersion={approvedVersion}
-        approvedZonesHistory={approvedZonesHistory}
-        approvalName={approvalName}
-        approvalNotes={approvalNotes}
-        onApprovalNameChange={setApprovalName}
-        onApprovalNotesChange={setApprovalNotes}
-        onCloseSuggestedZonesPanel={() => setShowSuggestedZonesPanel(false)}
-        onApproveZones={handleApproveZones}
-        onClearApprovedZones={handleClearApprovedZones}
-        onRestoreVersion={async (id) => {
-          try {
-            await restoreApprovedZonesVersion(id);
-            notifications.show({
-              title: 'Versión restaurada',
-              message: 'Zonificación restaurada',
-              color: 'green',
-            });
-          } catch (_err) {
-            notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
+        <MapUiPanels
+          baseLayer={baseLayer}
+          onBaseLayerChange={setBaseLayer}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          hasSingleImage={hasSingleImage}
+          hasComparison={hasComparison}
+          singleImageInfo={singleImageInfo}
+          comparisonInfo={comparisonInfo}
+          layerItems={vectorLayerItems}
+          vectorVisibility={vectorVisibility}
+          onLayerVisibilityChange={toggleLayer}
+          showIGNOverlay={showIGNOverlay}
+          onShowIGNOverlayChange={setShowIGNOverlay}
+          demEnabled={demLayers.length > 0}
+          showDemOverlay={showDemOverlay}
+          onShowDemOverlayChange={setShowDemOverlay}
+          activeDemLayerId={activeDemLayerId}
+          onActiveDemLayerIdChange={setActiveDemLayerId}
+          demOptions={demLayerOptions}
+          isOperator={isOperator}
+          markingMode={markingMode}
+          onToggleMarkingMode={() => {
+            setMarkingMode(!markingMode);
+            setNewPoint(null);
+          }}
+          canManageZoning={canManageZoning}
+          showSuggestedZonesPanel={showSuggestedZonesPanel}
+          hasApprovedZones={hasApprovedZones}
+          onToggleSuggestedZonesPanel={() => setShowSuggestedZonesPanel((prev) => !prev)}
+          onOpenExportPng={() => setExportPngModalOpen(true)}
+          onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+          onExportKmz={handleExportKmz}
+          showLegend={showLegend}
+          consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+          activeLegendItems={activeLegendItems}
+          visibleRasterLayers={visibleRasterLayers}
+          hiddenClasses={hiddenClasses}
+          hiddenRanges={hiddenRanges}
+          onClassToggle={(layerType, classIndex, visible) =>
+            setHiddenClasses((prev) => {
+              const curr = prev[layerType] ?? [];
+              const next = visible ? curr.filter((i) => i !== classIndex) : [...curr, classIndex];
+              return { ...prev, [layerType]: next };
+            })
           }
-        }}
-        onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
-        selectedFeatures={selectedFeatures}
-        onCloseInfoPanel={() => setSelectedFeatures([])}
-        bpaEnriched={pilarVerde?.bpaEnriched}
-        bpaHistory={pilarVerde?.bpaHistory}
-        newPoint={newPoint}
-        onCloseAssetPointModal={() => {
-          setNewPoint(null);
-          form.reset();
-          setMarkingMode(false);
-        }}
-        onSubmitAssetPointModal={form.onSubmit(handleSaveAsset)}
-        isSubmitting={isSubmitting}
-        nameInputProps={form.getInputProps('nombre')}
-        typeInputProps={form.getInputProps('tipo')}
-        descriptionInputProps={form.getInputProps('descripcion')}
-        exportPngModalOpen={exportPngModalOpen}
-        onCloseExportPngModal={() => setExportPngModalOpen(false)}
-        exportTitle={exportTitle}
-        exportIncludeLegend={exportIncludeLegend}
-        exportIncludeMetadata={exportIncludeMetadata}
-        onExportTitleChange={setExportTitle}
-        onExportIncludeLegendChange={setExportIncludeLegend}
-        onExportIncludeMetadataChange={setExportIncludeMetadata}
-        onExportPng={handleExportPng}
-      />
+          onRangeToggle={(layerType, rangeIndex, visible) =>
+            setHiddenRanges((prev) => {
+              const curr = prev[layerType] ?? [];
+              const next = visible ? curr.filter((i) => i !== rangeIndex) : [...curr, rangeIndex];
+              return { ...prev, [layerType]: next };
+            })
+          }
+          suggestedZoneSummaries={suggestedZoneSummaries}
+          suggestedZoneNames={suggestedZoneNames}
+          onZoneNameChange={(id, value) =>
+            setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
+          }
+          selectedDraftBasinName={selectedDraftBasinName}
+          selectedDraftBasinZoneId={selectedDraftBasinZoneId}
+          draftDestinationZoneId={draftDestinationZoneId}
+          onDestinationZoneChange={setDraftDestinationZoneId}
+          onApplyBasinMove={handleApplyBasinMove}
+          approvedAt={approvedAt}
+          approvedVersion={approvedVersion}
+          approvedZonesHistory={approvedZonesHistory}
+          approvalName={approvalName}
+          approvalNotes={approvalNotes}
+          onApprovalNameChange={setApprovalName}
+          onApprovalNotesChange={setApprovalNotes}
+          onCloseSuggestedZonesPanel={() => setShowSuggestedZonesPanel(false)}
+          onApproveZones={handleApproveZones}
+          onClearApprovedZones={handleClearApprovedZones}
+          onRestoreVersion={async (id) => {
+            try {
+              await restoreApprovedZonesVersion(id);
+              notifications.show({
+                title: 'Versión restaurada',
+                message: 'Zonificación restaurada',
+                color: 'green',
+              });
+            } catch (_err) {
+              notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
+            }
+          }}
+          onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
+          selectedFeatures={selectedFeatures}
+          onCloseInfoPanel={() => setSelectedFeatures([])}
+          bpaEnriched={pilarVerde?.bpaEnriched}
+          bpaHistory={pilarVerde?.bpaHistory}
+          newPoint={newPoint}
+          onCloseAssetPointModal={() => {
+            setNewPoint(null);
+            form.reset();
+            setMarkingMode(false);
+          }}
+          onSubmitAssetPointModal={form.onSubmit(handleSaveAsset)}
+          isSubmitting={isSubmitting}
+          nameInputProps={form.getInputProps('nombre')}
+          typeInputProps={form.getInputProps('tipo')}
+          descriptionInputProps={form.getInputProps('descripcion')}
+          exportPngModalOpen={exportPngModalOpen}
+          onCloseExportPngModal={() => setExportPngModalOpen(false)}
+          exportTitle={exportTitle}
+          exportIncludeLegend={exportIncludeLegend}
+          exportIncludeMetadata={exportIncludeMetadata}
+          onExportTitleChange={setExportTitle}
+          onExportIncludeLegendChange={setExportIncludeLegend}
+          onExportIncludeMetadataChange={setExportIncludeMetadata}
+          onExportPng={handleExportPng}
+          showEmbeddedMapControls={false}
+        />
+      </Box>
     </Box>
   );
 }
