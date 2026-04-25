@@ -6,6 +6,8 @@ import { LocationSection } from './LocationSection';
 import { PhotoSection } from './PhotoSection';
 import type { Ubicacion } from './reportFormTypes';
 
+const DESCRIPCION_ERROR_ID = 'descripcion-error';
+
 export interface TipoDenunciaOption {
   value: string;
   label: string;
@@ -89,21 +91,15 @@ export function DescripcionField({
 }: Readonly<DescripcionFieldProps>) {
   if (contactoVerificado) {
     return (
-      <Box>
-        <Textarea
-          label="Descripcion"
-          placeholder="Describe el problema con el mayor detalle posible..."
-          minRows={4}
-          {...getInputProps('descripcion')}
-          required
-          aria-describedby={error ? 'descripcion-error' : undefined}
-        />
-        {error && (
-          <Text id="descripcion-error" size="xs" c="red" mt="xs" role="alert">
-            {error}
-          </Text>
-        )}
-      </Box>
+      <Textarea
+        label="Descripcion"
+        placeholder="Describe el problema con el mayor detalle posible..."
+        minRows={4}
+        {...getInputProps('descripcion')}
+        required
+        error={error}
+        errorProps={{ id: DESCRIPCION_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
+      />
     );
   }
 
