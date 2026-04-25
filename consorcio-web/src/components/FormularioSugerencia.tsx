@@ -30,6 +30,9 @@ import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState
 import { LiveRegionProvider, VisuallyHidden } from './ui/accessibility';
 import { ContactVerificationSection } from './verification';
 
+const SUGGESTION_TITLE_ERROR_ID = 'suggestion-title-error';
+const SUGGESTION_DESCRIPTION_ERROR_ID = 'suggestion-description-error';
+
 function FormularioContenido() {
   const form = useForm({
     initialValues: {
@@ -180,6 +183,11 @@ function FormularioContenido() {
                 maxLength={MAX_LENGTHS.TITULO}
                 description={`Maximo ${MAX_LENGTHS.TITULO} caracteres`}
                 {...form.getInputProps('titulo')}
+                errorProps={{
+                  id: SUGGESTION_TITLE_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
             </FormFieldWithSkeleton>
 
@@ -212,6 +220,11 @@ function FormularioContenido() {
                 maxLength={MAX_LENGTHS.DESCRIPCION}
                 description={`Maximo ${MAX_LENGTHS.DESCRIPCION} caracteres`}
                 {...form.getInputProps('descripcion')}
+                errorProps={{
+                  id: SUGGESTION_DESCRIPTION_ERROR_ID,
+                  role: 'alert',
+                  'aria-live': 'assertive',
+                }}
               />
             </FormFieldWithSkeleton>
 
