@@ -18,8 +18,9 @@
  *     + a conditional `<PropuestasEtapasFilter>` that UNMOUNTS when the
  *     propuestos master is OFF (matches 2D spec).
  *
- * Per-canal (43) checkboxes are EXPLICITLY NOT rendered in 3D v1 — the 3D
- * chrome is 280px wide and 43 rows would overflow. Power users switch to 2D.
+ * Per-canal (43) checkboxes are now rendered in 3D v2 — the 3D chrome is
+ * 280px wide and scroll is enabled (maxHeight + overflowY: auto), so all
+ * rows fit. Power users no longer need to switch to 2D for per-canal control.
  */
 
 import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
@@ -72,6 +73,8 @@ interface TerrainLayerTogglesPanelProps {
    * `mapLayerSyncStore.setEtapaVisible`.
    */
   readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
+  readonly canalesRelevadosItems?: readonly { id: string; label: string }[];
+  readonly canalesPropuestosItems?: readonly { id: string; label: string }[];
 }
 
 export function TerrainLayerTogglesPanel({
@@ -87,6 +90,8 @@ export function TerrainLayerTogglesPanel({
   hasApprovedZones,
   etapasVisibility,
   onSetEtapaVisible,
+  canalesRelevadosItems,
+  canalesPropuestosItems,
 }: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
@@ -96,6 +101,7 @@ export function TerrainLayerTogglesPanel({
     ? [selectedImageOption, ...rasterOptions]
     : rasterOptions;
 
+  const relevadosMasterOn = !!vectorLayerVisibility.canales_relevados;
   const propuestosMasterOn = !!vectorLayerVisibility.canales_propuestos;
 
   // Mirror the 2D `LayerControlsPanel` attribution footer — when a layer
@@ -270,11 +276,27 @@ export function TerrainLayerTogglesPanel({
               <Checkbox
                 size="xs"
                 label="Canales relevados"
-                checked={!!vectorLayerVisibility.canales_relevados}
+                checked={relevadosMasterOn}
                 onChange={(event) =>
                   onVectorLayerToggle('canales_relevados', event.currentTarget.checked)
                 }
               />
+              {canalesRelevadosItems && canalesRelevadosItems.length > 0 && (
+                <Stack gap={2} pl="md">
+                  {canalesRelevadosItems.map((item) => (
+                    <Checkbox
+                      key={item.id}
+                      size="xs"
+                      label={item.label}
+                      checked={vectorLayerVisibility[item.id] ?? true}
+                      onChange={(event) =>
+                        onVectorLayerToggle(item.id, event.currentTarget.checked)
+                      }
+                      disabled={!relevadosMasterOn}
+                    />
+                  ))}
+                </Stack>
+              )}
               <Checkbox
                 size="xs"
                 label="Canales propuestos"
@@ -283,6 +305,22 @@ export function TerrainLayerTogglesPanel({
                   onVectorLayerToggle('canales_propuestos', event.currentTarget.checked)
                 }
               />
+              {canalesPropuestosItems && canalesPropuestosItems.length > 0 && (
+                <Stack gap={2} pl="md">
+                  {canalesPropuestosItems.map((item) => (
+                    <Checkbox
+                      key={item.id}
+                      size="xs"
+                      label={item.label}
+                      checked={vectorLayerVisibility[item.id] ?? true}
+                      onChange={(event) =>
+                        onVectorLayerToggle(item.id, event.currentTarget.checked)
+                      }
+                      disabled={!propuestosMasterOn}
+                    />
+                  ))}
+                </Stack>
+              )}
               {propuestosMasterOn && etapasVisibility && onSetEtapaVisible && (
                 <PropuestasEtapasFilter
                   masterOn={propuestosMasterOn}

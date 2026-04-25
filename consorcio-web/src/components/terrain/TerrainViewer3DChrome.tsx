@@ -2,6 +2,11 @@ import { Box, Button, Group, Loader, Paper, Slider, Stack, Text, Title } from '@
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
+
+interface LayerItem {
+  id: string;
+  label: string;
+}
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
 import { InfoPanel } from '../map2d/InfoPanel';
@@ -69,6 +74,8 @@ interface TerrainViewer3DChromeProps {
   porcentajeForestacionVisible?: boolean;
   canalesRelevadosVisible?: boolean;
   canalesPropuestosVisible?: boolean;
+  canalesRelevadosItems?: readonly LayerItem[];
+  canalesPropuestosItems?: readonly LayerItem[];
   /**
    * Phase 5 (Batch F) — click-driven InfoPanel overlay. Renders
    * absolutely-positioned above the terrain chrome via the shared
@@ -117,6 +124,8 @@ export function TerrainViewer3DChrome({
   porcentajeForestacionVisible,
   canalesRelevadosVisible,
   canalesPropuestosVisible,
+  canalesRelevadosItems,
+  canalesPropuestosItems,
   selectedFeatures,
   onCloseInfoPanel,
   bpaEnriched,
@@ -213,6 +222,8 @@ export function TerrainViewer3DChrome({
               hasApprovedZones={hasApprovedZones}
               etapasVisibility={etapasVisibility}
               onSetEtapaVisible={onSetEtapaVisible}
+              canalesRelevadosItems={canalesRelevadosItems}
+              canalesPropuestosItems={canalesPropuestosItems}
             />
           </>
         )}

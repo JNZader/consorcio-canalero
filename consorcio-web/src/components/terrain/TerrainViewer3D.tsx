@@ -128,6 +128,22 @@ export default function TerrainViewer3D({
     propuestas: canalesPropuestas,
     index: canalesIndex,
   } = useCanales();
+  const canalesRelevadosItems = useMemo(
+    () =>
+      canalesIndex?.relevados.map((r) => ({
+        id: `canal_relevado_${r.id.replace(/-/g, '_')}`,
+        label: r.nombre,
+      })) ?? [],
+    [canalesIndex]
+  );
+  const canalesPropuestosItems = useMemo(
+    () =>
+      canalesIndex?.propuestas.map((p) => ({
+        id: `canal_propuesto_${p.id.replace(/-/g, '_')}`,
+        label: p.nombre,
+      })) ?? [],
+    [canalesIndex]
+  );
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
@@ -543,6 +559,8 @@ export default function TerrainViewer3D({
         porcentajeForestacionVisible={!!vectorLayerVisibility.pilar_verde_porcentaje_forestacion}
         canalesRelevadosVisible={!!vectorLayerVisibility.canales_relevados}
         canalesPropuestosVisible={!!vectorLayerVisibility.canales_propuestos}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
         // Phase 5 (Batch F) — click → InfoPanel overlay. `bpaEnriched` and
         // `bpaHistory` are destructured from `pilarVerde` so `<BpaCard>` can
         // render the "En BPA" histórico footer for catastro-only features
