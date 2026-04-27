@@ -44,6 +44,7 @@ import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
+import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
@@ -557,12 +558,11 @@ export default function MapaMapLibre() {
   return (
     <Box className={styles.mapWorkspace} data-testid="map-workspace">
       <Box
-        component="aside"
-        className={styles.mapSidebar}
-        aria-label="Controles y leyendas del mapa"
-        data-testid="map-external-sidebar"
+        className={styles.mapTopBar}
+        aria-label="Selector de capa base y vista satelital"
+        data-testid="map-top-bar"
       >
-        <LayerControlsPanel
+        <MapBaseSelectorPanel
           baseLayer={baseLayer}
           onBaseLayerChange={setBaseLayer}
           viewModePanel={
@@ -577,37 +577,7 @@ export default function MapaMapLibre() {
               />
             ) : null
           }
-          layerItems={vectorLayerItems}
-          vectorVisibility={vectorVisibility}
-          onLayerVisibilityChange={toggleLayer}
-          showIGNOverlay={showIGNOverlay}
-          onShowIGNOverlayChange={setShowIGNOverlay}
-          demEnabled={demLayers.length > 0}
-          showDemOverlay={showDemOverlay}
-          onShowDemOverlayChange={setShowDemOverlay}
-          activeDemLayerId={activeDemLayerId}
-          onActiveDemLayerIdChange={setActiveDemLayerId}
-          demOptions={demLayerOptions}
         />
-        {showLegend && (
-          <LeyendaPanel
-            consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
-            customItems={activeLegendItems}
-            embedded
-            data-testid="map-2d-external-leyenda-panel"
-            style={{ maxHeight: 'min(320px, 42vh)', overflowY: 'auto' }}
-            pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-            pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-            pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-            pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-            pilarVerdePorcentajeForestacionVisible={
-              !!vectorVisibility.pilar_verde_porcentaje_forestacion
-            }
-            pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
-            pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
-            pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
-          />
-        )}
       </Box>
 
       <Box
@@ -770,6 +740,50 @@ export default function MapaMapLibre() {
           onExportPng={handleExportPng}
           showEmbeddedMapControls={false}
         />
+      </Box>
+
+      <Box
+        className={styles.mapBottomBar}
+        aria-label="Capas y leyenda del mapa"
+        data-testid="map-bottom-bar"
+      >
+        <Box className={styles.mapBottomBarItem} data-testid="map-bottom-bar-toggles">
+          <LayerControlsPanel
+            layerItems={vectorLayerItems}
+            vectorVisibility={vectorVisibility}
+            onLayerVisibilityChange={toggleLayer}
+            showIGNOverlay={showIGNOverlay}
+            onShowIGNOverlayChange={setShowIGNOverlay}
+            demEnabled={demLayers.length > 0}
+            showDemOverlay={showDemOverlay}
+            onShowDemOverlayChange={setShowDemOverlay}
+            activeDemLayerId={activeDemLayerId}
+            onActiveDemLayerIdChange={setActiveDemLayerId}
+            demOptions={demLayerOptions}
+            canalesRelevadosItems={canalesRelevadosItems}
+            canalesPropuestosItems={canalesPropuestosItems}
+          />
+        </Box>
+        {showLegend && (
+          <Box className={styles.mapBottomBarItem} data-testid="map-bottom-bar-leyenda">
+            <LeyendaPanel
+              consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+              customItems={activeLegendItems}
+              embedded
+              data-testid="map-2d-external-leyenda-panel"
+              pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+              pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+              pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+              pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+              pilarVerdePorcentajeForestacionVisible={
+                !!vectorVisibility.pilar_verde_porcentaje_forestacion
+              }
+              pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
+              pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
+              pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+            />
+          </Box>
+        )}
       </Box>
     </Box>
   );

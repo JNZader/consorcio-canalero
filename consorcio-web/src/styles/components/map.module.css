@@ -8,29 +8,40 @@
 
 .mapWorkspace {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(460px, 1fr) auto;
   gap: var(--mantine-spacing-md);
   width: 100%;
-  aspect-ratio: 16/9;
-  min-height: 460px;
-  max-height: 760px;
 }
 
-.mapSidebar {
+.mapTopBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mantine-spacing-sm);
+  align-items: flex-start;
+}
+
+.mapBottomBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--mantine-spacing-md);
+  align-items: stretch;
+}
+
+.mapBottomBarItem {
   display: flex;
   flex-direction: column;
   gap: var(--mantine-spacing-sm);
-  min-height: 0;
-  max-height: 100%;
+  min-width: 0;
+  max-height: 60vh;
   overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 2px;
 }
 
 .mapCanvasWrapper {
   position: relative;
   min-width: 0;
-  min-height: 0;
+  min-height: 460px;
+  max-height: 760px;
   height: 100%;
   overflow: hidden;
   border-radius: var(--mantine-radius-md);
@@ -38,20 +49,20 @@
 
 @media (max-width: 62em) {
   .mapWorkspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(420px, 1fr);
-    aspect-ratio: auto;
-    min-height: 0;
-    max-height: none;
+    grid-template-rows: auto minmax(420px, 1fr) auto;
   }
 
-  .mapSidebar {
-    max-height: 340px;
-    padding-right: 0;
+  .mapBottomBar {
+    grid-template-columns: 1fr;
+  }
+
+  .mapBottomBarItem {
+    max-height: 50vh;
   }
 
   .mapCanvasWrapper {
     min-height: 420px;
+    max-height: none;
   }
 }
 

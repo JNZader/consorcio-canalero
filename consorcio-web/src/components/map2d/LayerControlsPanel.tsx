@@ -27,8 +27,13 @@ interface SelectItem {
 }
 
 interface LayerControlsPanelProps {
-  readonly baseLayer: 'osm' | 'satellite';
-  readonly onBaseLayerChange: (value: 'osm' | 'satellite') => void;
+  /**
+   * Selector "Capa base" + slot `viewModePanel`. When BOTH are omitted
+   * (typical when the parent renders a separate `MapBaseSelectorPanel`
+   * above the map), the first Paper is suppressed.
+   */
+  readonly baseLayer?: 'osm' | 'satellite';
+  readonly onBaseLayerChange?: (value: 'osm' | 'satellite') => void;
   readonly viewModePanel?: ReactNode;
   readonly layerItems: LayerItem[];
   readonly vectorVisibility: Record<string, boolean>;
@@ -132,31 +137,33 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
         overflowX: 'hidden',
       }}
     >
-      <Paper
-        shadow="md"
-        p="xs"
-        radius="md"
-        style={{
-          background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        <Stack gap={4}>
-          <Text size="xs" fw={600} c="dimmed">
-            Capa base
-          </Text>
-          <SegmentedControl
-            size="xs"
-            aria-label="Seleccionar capa base"
-            value={baseLayer}
-            onChange={(value) => onBaseLayerChange(value as 'osm' | 'satellite')}
-            data={[
-              { value: 'osm', label: 'OSM' },
-              { value: 'satellite', label: 'Satélite' },
-            ]}
-          />
-        </Stack>
-      </Paper>
+      {baseLayer !== undefined && onBaseLayerChange && (
+        <Paper
+          shadow="md"
+          p="xs"
+          radius="md"
+          style={{
+            background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <Stack gap={4}>
+            <Text size="xs" fw={600} c="dimmed">
+              Capa base
+            </Text>
+            <SegmentedControl
+              size="xs"
+              aria-label="Seleccionar capa base"
+              value={baseLayer}
+              onChange={(value) => onBaseLayerChange(value as 'osm' | 'satellite')}
+              data={[
+                { value: 'osm', label: 'OSM' },
+                { value: 'satellite', label: 'Satélite' },
+              ]}
+            />
+          </Stack>
+        </Paper>
+      )}
 
       {viewModePanel}
 
