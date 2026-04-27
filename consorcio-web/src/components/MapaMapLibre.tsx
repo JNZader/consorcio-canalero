@@ -42,6 +42,7 @@ import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
 import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
+import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
@@ -739,6 +740,7 @@ export default function MapaMapLibre() {
           onExportIncludeMetadataChange={setExportIncludeMetadata}
           onExportPng={handleExportPng}
           showEmbeddedMapControls={false}
+          showEmbeddedRasterLegend={false}
         />
       </Box>
 
@@ -782,6 +784,32 @@ export default function MapaMapLibre() {
               pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
               pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
             />
+            {visibleRasterLayers.length > 0 && (
+              <RasterLegend
+                layers={visibleRasterLayers}
+                hiddenClasses={hiddenClasses}
+                hiddenRanges={hiddenRanges}
+                floating={false}
+                onClassToggle={(layerType, classIndex, visible) =>
+                  setHiddenClasses((prev) => {
+                    const curr = prev[layerType] ?? [];
+                    const next = visible
+                      ? curr.filter((i) => i !== classIndex)
+                      : [...curr, classIndex];
+                    return { ...prev, [layerType]: next };
+                  })
+                }
+                onRangeToggle={(layerType, rangeIndex, visible) =>
+                  setHiddenRanges((prev) => {
+                    const curr = prev[layerType] ?? [];
+                    const next = visible
+                      ? curr.filter((i) => i !== rangeIndex)
+                      : [...curr, rangeIndex];
+                    return { ...prev, [layerType]: next };
+                  })
+                }
+              />
+            )}
           </Box>
         )}
       </Box>

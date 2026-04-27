@@ -145,10 +145,17 @@ export interface MapUiPanelsProps {
   readonly onExportPng: () => void;
   /**
    * When false, the layer selector and static legend are rendered by the parent
-   * outside the map canvas. Overlay-only mode keeps quick actions, raster
-   * legends, info panels and modals inside the map.
+   * outside the map canvas. Overlay-only mode keeps quick actions, info panels
+   * and modals inside the map.
    */
   readonly showEmbeddedMapControls?: boolean;
+  /**
+   * When false, the raster legend is NOT rendered inside the map canvas. The
+   * parent is expected to render `<RasterLegend floating={false} />` somewhere
+   * outside the map (typically in a bottom bar next to `LeyendaPanel`).
+   * Defaults to `true` to preserve the floating bottom-right behavior.
+   */
+  readonly showEmbeddedRasterLegend?: boolean;
 }
 
 export const MapUiPanels = memo(function MapUiPanels({
@@ -232,6 +239,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportIncludeMetadataChange,
   onExportPng,
   showEmbeddedMapControls = true,
+  showEmbeddedRasterLegend = true,
 }: MapUiPanelsProps) {
   return (
     <>
@@ -339,7 +347,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         onExportKmz={onExportKmz}
       />
 
-      {visibleRasterLayers.length > 0 && (
+      {showEmbeddedRasterLegend && visibleRasterLayers.length > 0 && (
         <RasterLegend
           layers={visibleRasterLayers}
           hiddenClasses={hiddenClasses}
