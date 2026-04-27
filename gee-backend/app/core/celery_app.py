@@ -22,6 +22,7 @@ celery_app = Celery(
     include=[
         "app.domains.geo.tasks",
         "app.domains.geo.gee_tasks",
+        "app.domains.geo.gee_tasks_warming",
         "app.domains.geo.intelligence.tasks",
     ],
 )

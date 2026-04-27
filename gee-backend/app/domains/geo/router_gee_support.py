@@ -4,10 +4,17 @@ from datetime import date
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.core.cache import get_cache
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# Cache TTLs (seconds) — see README for justification.
+GEE_LAYER_TTL = 24 * 60 * 60          # 24 h — vector layers rarely change
+GEE_CAMINOS_TTL = 6 * 60 * 60         # 6 h — road status updated occasionally
+GEE_SENTINEL2_TTL = 60 * 60           # 1 h — image-by-date tiles
 
 
 async def _run_blocking(func, *args, **kwargs):
@@ -140,12 +147,21 @@ async def get_caminos_por_nombre_consorcio_impl(
 
 
 async def get_caminos_coloreados_impl(*, ensure_gee) -> JSONResponse:
+    cache = get_cache()
+    cache_key = "gee:caminos:coloreados"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return JSONResponse(
+            content=cached,
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+        )
     svc = ensure_gee()
     try:
         result = await _run_blocking(svc["get_caminos_con_colores"])
+        await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo caminos coloreados", error=str(e))
@@ -157,12 +173,21 @@ async def get_caminos_coloreados_impl(*, ensure_gee) -> JSONResponse:
 
 
 async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
+    cache = get_cache()
+    cache_key = "gee:caminos:estadisticas"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return JSONResponse(
+            content=cached,
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+        )
     svc = ensure_gee()
     try:
         result = await _run_blocking(svc["get_estadisticas_consorcios"])
+        await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo estadisticas de consorcios", error=str(e))
@@ -174,12 +199,21 @@ async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
 
 
 async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
+    cache = get_cache()
+    cache_key = f"gee:layer:{layer_name}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return JSONResponse(
+            content=cached,
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+        )
     svc = ensure_gee()
     try:
         geojson = await _run_blocking(svc["get_layer_geojson"], layer_name)
+        await cache.set(cache_key, geojson, ttl_seconds=GEE_LAYER_TTL)
         return JSONResponse(
             content=geojson,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
         )
     except ValueError as e:
         raise NotFoundError(
@@ -237,6 +271,13 @@ async def get_sentinel2_image_impl(
     visualization: str,
     ensure_gee,
 ):
+    cache = get_cache()
+    cache_key = (
+        f"gee:s2:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
+    )
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
     svc = ensure_gee()
     try:
         explorer = svc["get_image_explorer"]()
@@ -252,6 +293,7 @@ async def get_sentinel2_image_impl(
                 message=result.get("error", "Imagen no encontrada"),
                 code="SENTINEL2_NOT_FOUND",
             )
+        await cache.set(cache_key, result, ttl_seconds=GEE_SENTINEL2_TTL)
         return result
     except AppException:
         raise

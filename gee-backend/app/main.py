@@ -3,6 +3,7 @@ Main entry point for FastAPI application.
 Consorcio Canalero Backend — v2.
 """
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -55,6 +56,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Rate limiter Redis failed, using in-memory", error=str(e))
 
+    # Pre-warm the slow GEE layer endpoints so the first user doesn't pay
+    # the cold-cache cost (~30 s to 2 min). The task is queued with a small
+    # countdown so the backend is listening on :8000 before the worker
+    # starts hitting it. Failures here MUST NOT block startup — if the
+    # broker is unreachable we just skip warming.
+    if os.getenv("DISABLE_GEE_CACHE_WARMING", "").lower() not in ("1", "true", "yes"):
+        try:
+            from app.domains.geo.gee_tasks_warming import task_warm_gee_layers
+
+            task_warm_gee_layers.apply_async(countdown=10)
+            logger.info("Queued GEE cache warming task (countdown=10s)")
+        except Exception as e:
+            logger.warning("Could not queue cache warming task", error=str(e))
+
     yield
 
     # Cleanup
@@ -64,6 +79,12 @@ async def lifespan(app: FastAPI):
         await rate_limiter.close()
     except Exception as e:
         logger.warning("Error closing rate limiter", error=str(e))
+    try:
+        from app.core.cache import get_cache
+
+        await get_cache().close()
+    except Exception as e:
+        logger.warning("Error closing JSON cache", error=str(e))
     logger.info("Shutdown complete")
 
 
