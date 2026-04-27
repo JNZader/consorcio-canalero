@@ -239,7 +239,7 @@ gee-backend/
 │   │   ├── base.py                   # Base, UUIDMixin, TimestampMixin
 │   │   ├── session.py                # Engine + SessionLocal
 │   │   └── migrations/               # Alembic versions
-│   ├── domains/                      # 11 dominios (Screaming Architecture)
+│   ├── domains/                      # 10 dominios (Screaming Architecture)
 │   │   ├── padron/
 │   │   ├── denuncias/
 │   │   ├── tramites/

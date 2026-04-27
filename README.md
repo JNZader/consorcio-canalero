@@ -285,7 +285,7 @@ consorcio-canalero/
 │   │   ├── api/v2/             # Aggregator de routers v2
 │   │   ├── auth/               # fastapi-users (JWT + OAuth)
 │   │   ├── db/                 # Base, session, Alembic migrations
-│   │   ├── domains/            # 11 dominios (Screaming Architecture)
+│   │   ├── domains/            # 10 dominios (Screaming Architecture)
 │   │   ├── core/               # Logging, exceptions, rate limiting
 │   │   └── shared/             # Utilidades cross-domain
 │   ├── tests/new/              # Tests de la nueva arquitectura
