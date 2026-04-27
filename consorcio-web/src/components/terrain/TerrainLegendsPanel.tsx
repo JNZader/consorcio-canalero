@@ -52,6 +52,12 @@ interface TerrainLegendsPanelProps {
   readonly canalesRelevadosVisible?: boolean;
   /** 5-chip DASHED block, one per etapa (Alta → Largo plazo). */
   readonly canalesPropuestosVisible?: boolean;
+  /**
+   * When `true`, renders inline (no `position: absolute`, no fixed width /
+   * maxHeight). Used by the parent to place the panel inside a layout grid
+   * below the map. Defaults to `false` (legacy floating overlay).
+   */
+  readonly embedded?: boolean;
 }
 
 /**
@@ -200,6 +206,7 @@ export function TerrainLegendsPanel({
   porcentajeForestacionVisible = false,
   canalesRelevadosVisible = false,
   canalesPropuestosVisible = false,
+  embedded = false,
 }: TerrainLegendsPanelProps) {
   const hasRasterLegend = !!activeRasterType;
   const hasSoilLegend = !!vectorLayerVisibility.soil;
@@ -230,17 +237,24 @@ export function TerrainLegendsPanel({
       p="sm"
       radius="md"
       data-testid="terrain-3d-legends-panel"
-      style={{
-        position: 'absolute',
-        top: 56,
-        right: 308, // toggles panel is 280 wide at right:12 → sit 16px left of it
-        zIndex: 15,
-        width: 260,
-        maxHeight: 'calc(100vh - 96px)',
-        overflowY: 'auto',
-        background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-        backdropFilter: 'blur(6px)',
-      }}
+      style={
+        embedded
+          ? {
+              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
+              backdropFilter: 'blur(6px)',
+            }
+          : {
+              position: 'absolute',
+              top: 56,
+              right: 308, // toggles panel is 280 wide at right:12 → sit 16px left of it
+              zIndex: 15,
+              width: 260,
+              maxHeight: 'calc(100vh - 96px)',
+              overflowY: 'auto',
+              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
+              backdropFilter: 'blur(6px)',
+            }
+      }
     >
       <CollapsibleSection
         title="Leyendas"

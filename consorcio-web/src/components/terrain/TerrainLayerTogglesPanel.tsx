@@ -47,6 +47,12 @@ const PILAR_VERDE_ITEMS = [
   { id: 'pilar_verde_porcentaje_forestacion', label: '% Forestación obligatoria' },
 ] as const;
 
+/**
+ * When `true`, the panel renders WITHOUT the absolute-positioning styles
+ * (top/right/width/maxHeight) so the parent can place it inline (e.g. in a
+ * bottom bar grid below the map). When `false` (default) the panel keeps
+ * the legacy floating overlay behavior.
+ */
 interface TerrainLayerTogglesPanelProps {
   readonly rasterLayers: GeoLayerInfo[];
   readonly selectedImageOption?: {
@@ -59,7 +65,8 @@ interface TerrainLayerTogglesPanelProps {
   readonly onOverlayOpacityChange: (value: number) => void;
   readonly vectorLayerVisibility: Record<string, boolean>;
   readonly onVectorLayerToggle: (layerId: string, visible: boolean) => void;
-  readonly onClose: () => void;
+  /** Optional — when omitted, no close button is rendered (used in embedded mode). */
+  readonly onClose?: () => void;
   readonly hasApprovedZones: boolean;
   /**
    * 5-key record sourced from `mapLayerSyncStore.propuestasEtapasVisibility`.
@@ -75,6 +82,12 @@ interface TerrainLayerTogglesPanelProps {
   readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
   readonly canalesRelevadosItems?: readonly { id: string; label: string }[];
   readonly canalesPropuestosItems?: readonly { id: string; label: string }[];
+  /**
+   * When `true`, the panel renders inline (no `position: absolute`, no fixed
+   * width/maxHeight). The parent is expected to place it inside a layout
+   * grid below the map. Defaults to `false` (legacy floating overlay).
+   */
+  readonly embedded?: boolean;
 }
 
 export function TerrainLayerTogglesPanel({
@@ -92,6 +105,7 @@ export function TerrainLayerTogglesPanel({
   onSetEtapaVisible,
   canalesRelevadosItems,
   canalesPropuestosItems,
+  embedded = false,
 }: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
@@ -123,17 +137,24 @@ export function TerrainLayerTogglesPanel({
       p="sm"
       radius="md"
       data-testid="terrain-3d-toggles-panel"
-      style={{
-        position: 'absolute',
-        top: 56,
-        right: 12,
-        zIndex: 15,
-        width: 280,
-        maxHeight: 'calc(100vh - 96px)',
-        overflowY: 'auto',
-        background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-        backdropFilter: 'blur(6px)',
-      }}
+      style={
+        embedded
+          ? {
+              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
+              backdropFilter: 'blur(6px)',
+            }
+          : {
+              position: 'absolute',
+              top: 56,
+              right: 12,
+              zIndex: 15,
+              width: 280,
+              maxHeight: 'calc(100vh - 96px)',
+              overflowY: 'auto',
+              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
+              backdropFilter: 'blur(6px)',
+            }
+      }
     >
       <CollapsibleSection
         title="Capas 3D"
@@ -141,17 +162,19 @@ export function TerrainLayerTogglesPanel({
         titleSize="sm"
         titleWeight={600}
         rightAccessory={
-          <CloseButton
-            size="sm"
-            onClick={(event) => {
-              // Prevent the click from bubbling to the collapse toggle — the
-              // close button owns its own behavior (the user closes the
-              // chrome entirely, it is NOT a collapse gesture).
-              event.stopPropagation();
-              onClose();
-            }}
-            aria-label="Cerrar panel 3D"
-          />
+          onClose ? (
+            <CloseButton
+              size="sm"
+              onClick={(event) => {
+                // Prevent the click from bubbling to the collapse toggle — the
+                // close button owns its own behavior (the user closes the
+                // chrome entirely, it is NOT a collapse gesture).
+                event.stopPropagation();
+                onClose();
+              }}
+              aria-label="Cerrar panel 3D"
+            />
+          ) : null
         }
       >
         <Stack gap="sm">

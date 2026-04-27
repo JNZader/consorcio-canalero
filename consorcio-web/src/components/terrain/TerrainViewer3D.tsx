@@ -86,7 +86,6 @@ export default function TerrainViewer3D({
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
     textureLayerId ?? demLayerId ?? null
   );
@@ -528,8 +527,6 @@ export default function TerrainViewer3D({
         maxExaggeration={MAX_EXAGGERATION}
         height={height}
         mapContainerRef={mapContainer}
-        showLayerPanel={showLayerPanel}
-        onToggleLayerPanel={() => setShowLayerPanel((prev) => !prev)}
         rasterLayers={rasterLayers}
         selectedImageOption={selectedImageOption}
         activeRasterType={activeRasterType}

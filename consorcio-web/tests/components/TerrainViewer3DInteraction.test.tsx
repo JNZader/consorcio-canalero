@@ -211,15 +211,6 @@ function resetMapStub() {
   };
 }
 
-function openLayerPanel() {
-  // Chrome renders the toggles+legends panels inside a collapsible
-  // `{showLayerPanel && ...}` block. The click handler + InfoPanel overlay
-  // live in the outer Paper so they do NOT require the panel to be open —
-  // but opening it is useful for the z-index visual assertion.
-  const btn = screen.getByRole('button', { name: /Ver capas y overlays 3D/i });
-  return userEvent.click(btn);
-}
-
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -527,9 +518,9 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     });
 
     expect(screen.getByTestId('canal-card')).toBeTruthy();
-    // Panel can still be opened — button coexists with InfoPanel overlay.
-    await openLayerPanel();
-    // No assertion on specific panel content — the test succeeds if the
-    // toggle click doesn't throw, proving the two overlays don't interfere.
+    // The toggles+legends panel is now ALWAYS visible in the bottom bar
+    // (no toggle button). The fact that `canal-card` renders confirms the
+    // InfoPanel overlay coexists with the embedded panels without breaking.
+    expect(screen.getByTestId('terrain-3d-bottom-bar-toggles')).toBeTruthy();
   });
 });

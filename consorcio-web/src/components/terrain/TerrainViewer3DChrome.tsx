@@ -1,4 +1,4 @@
-import { Box, Button, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
+import { Box, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
@@ -9,6 +9,7 @@ interface LayerItem {
 }
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
+import styles from '../../styles/components/map.module.css';
 import { InfoPanel } from '../map2d/InfoPanel';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
@@ -30,8 +31,6 @@ interface TerrainViewer3DChromeProps {
   maxExaggeration: number;
   height: number | string;
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
-  showLayerPanel: boolean;
-  onToggleLayerPanel: () => void;
   rasterLayers: GeoLayerInfo[];
   selectedImageOption: SelectedImageOption | null;
   activeRasterType?: string;
@@ -97,8 +96,6 @@ export function TerrainViewer3DChrome({
   maxExaggeration,
   height,
   mapContainerRef,
-  showLayerPanel,
-  onToggleLayerPanel,
   rasterLayers,
   selectedImageOption,
   activeRasterType,
@@ -169,65 +166,6 @@ export function TerrainViewer3DChrome({
       >
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-        <Paper
-          shadow="md"
-          p="xs"
-          radius="md"
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            zIndex: 16,
-            background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-            backdropFilter: 'blur(6px)',
-          }}
-        >
-          <Button size="xs" variant="light" onClick={onToggleLayerPanel}>
-            {showLayerPanel ? 'Ocultar capas y overlays 3D' : 'Ver capas y overlays 3D'}
-          </Button>
-        </Paper>
-
-        {showLayerPanel && (
-          <>
-            {/*
-              Phase 8 Fix 5/6 — legends moved OUT of the toggles panel into a
-              sibling. Rendered side-by-side so layer toggles (right) and
-              legends (left-of-toggles) no longer compete for vertical space.
-            */}
-            <TerrainLegendsPanel
-              activeRasterType={activeRasterType}
-              hiddenClasses={hiddenClasses}
-              onClassToggle={onClassToggle}
-              hiddenRanges={hiddenRanges}
-              onRangeToggle={onRangeToggle}
-              vectorLayerVisibility={vectorLayerVisibility}
-              bpaHistoricoVisible={bpaHistoricoVisible}
-              agroAceptadaVisible={agroAceptadaVisible}
-              agroPresentadaVisible={agroPresentadaVisible}
-              agroZonasVisible={agroZonasVisible}
-              porcentajeForestacionVisible={porcentajeForestacionVisible}
-              canalesRelevadosVisible={canalesRelevadosVisible}
-              canalesPropuestosVisible={canalesPropuestosVisible}
-            />
-            <TerrainLayerTogglesPanel
-              rasterLayers={rasterLayers}
-              selectedImageOption={selectedImageOption}
-              activeRasterLayerId={activeRasterLayerId}
-              onActiveRasterLayerChange={onActiveRasterLayerChange}
-              overlayOpacity={overlayOpacity}
-              onOverlayOpacityChange={onOverlayOpacityChange}
-              vectorLayerVisibility={vectorLayerVisibility}
-              onVectorLayerToggle={onVectorLayerToggle}
-              onClose={onToggleLayerPanel}
-              hasApprovedZones={hasApprovedZones}
-              etapasVisibility={etapasVisibility}
-              onSetEtapaVisible={onSetEtapaVisible}
-              canalesRelevadosItems={canalesRelevadosItems}
-              canalesPropuestosItems={canalesPropuestosItems}
-            />
-          </>
-        )}
-
         {!ready && (
           <Box
             style={{
@@ -291,6 +229,49 @@ export function TerrainViewer3DChrome({
           </Text>
         </Box>
       </Paper>
+
+      <Box
+        className={styles.mapBottomBar}
+        aria-label="Capas y leyenda del visor 3D"
+        data-testid="terrain-3d-bottom-bar"
+      >
+        <Box className={styles.mapBottomBarItem} data-testid="terrain-3d-bottom-bar-toggles">
+          <TerrainLayerTogglesPanel
+            rasterLayers={rasterLayers}
+            selectedImageOption={selectedImageOption}
+            activeRasterLayerId={activeRasterLayerId}
+            onActiveRasterLayerChange={onActiveRasterLayerChange}
+            overlayOpacity={overlayOpacity}
+            onOverlayOpacityChange={onOverlayOpacityChange}
+            vectorLayerVisibility={vectorLayerVisibility}
+            onVectorLayerToggle={onVectorLayerToggle}
+            hasApprovedZones={hasApprovedZones}
+            etapasVisibility={etapasVisibility}
+            onSetEtapaVisible={onSetEtapaVisible}
+            canalesRelevadosItems={canalesRelevadosItems}
+            canalesPropuestosItems={canalesPropuestosItems}
+            embedded
+          />
+        </Box>
+        <Box className={styles.mapBottomBarItem} data-testid="terrain-3d-bottom-bar-legends">
+          <TerrainLegendsPanel
+            activeRasterType={activeRasterType}
+            hiddenClasses={hiddenClasses}
+            onClassToggle={onClassToggle}
+            hiddenRanges={hiddenRanges}
+            onRangeToggle={onRangeToggle}
+            vectorLayerVisibility={vectorLayerVisibility}
+            bpaHistoricoVisible={bpaHistoricoVisible}
+            agroAceptadaVisible={agroAceptadaVisible}
+            agroPresentadaVisible={agroPresentadaVisible}
+            agroZonasVisible={agroZonasVisible}
+            porcentajeForestacionVisible={porcentajeForestacionVisible}
+            canalesRelevadosVisible={canalesRelevadosVisible}
+            canalesPropuestosVisible={canalesPropuestosVisible}
+            embedded
+          />
+        </Box>
+      </Box>
     </>
   );
 }
