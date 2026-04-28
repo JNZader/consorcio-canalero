@@ -128,15 +128,27 @@ export function buildWaterwaysCollection(waterways: WaterwayLike[]): FeatureColl
  *
  * MUST mirror the 2D `buildClickableLayers()` z-order invariant:
  *   - Pilar Verde BPA-fill FIRST so it wins on overlap (BpaCard branch).
- *   - Canales line layers BEFORE `catastro-fill` so line-over-parcel clicks
- *     resolve to the canal (user feedback — hydraulic context wins).
+ *   - Canales line layers BEFORE catastro so line-over-parcel clicks resolve
+ *     to the canal (user feedback — hydraulic context wins).
  *   - Agro aceptada/presentada are clickable too (legacy BPA-lite branch).
  *   - Agro zonas / porcentaje_forestacion are context-only (NOT clickable).
  *
- * Per Batch F design decision, the ids ARE the 2D ids (no `terrain_` prefix)
- * because the two map instances never coexist in one MapLibre
- * context — reusing ids simplifies sharing paint factories + filter
- * builders between 2D and 3D.
+ * IDs come from TWO different sources:
+ *   - Pilar Verde + Canales: registered via SHARED `mapLayerEffectHelpers`
+ *     (used by both 2D and 3D), so they keep the bare id from
+ *     `SOURCE_IDS.PILAR_VERDE_*` / `SOURCE_IDS.CANALES_*` (no prefix).
+ *   - Base vectors (basins / soil / roads / waterways / approved-zones /
+ *     catastro): registered via `terrainVectorLayerEffects.ts` with the
+ *     `terrain-vector-*` prefix from `TERRAIN_SOURCE_IDS`. The 2D viewer
+ *     uses `map2d-*` prefixed ids for the same data — DIFFERENT prefix.
+ *
+ * IMPORTANT: an earlier version of this list used 2D-style bare ids
+ * (`'soil-fill'`, `'basins-fill'`, …) which DO NOT EXIST on the 3D map.
+ * `filterExistingLayers` would silently drop them and clicks on basins,
+ * soil, roads, waterways, approved-zones, catastro produced an empty
+ * `queryRenderedFeatures` result → the InfoPanel never opened. The fix is
+ * to import the actual ids from the registration module — no more bare-id
+ * guesses, no more silent drops.
  *
  * Consumers MUST filter the result with `map.getLayer(id)` before passing
  * to `queryRenderedFeatures` — MapLibre throws if any id in the `layers`
@@ -147,20 +159,26 @@ export function buildWaterwaysCollection(waterways: WaterwayLike[]): FeatureColl
  */
 export function buildClickableLayers3D(): string[] {
   return [
-    // Pilar Verde — BPA topmost on overlap
+    // Pilar Verde — BPA topmost on overlap. Bare ids (shared sync helpers).
     'pilar_verde_bpa_historico-fill',
     'pilar_verde_agro_aceptada-fill',
     'pilar_verde_agro_presentada-fill',
-    // Canales (Pilar Azul) — above parcels for hydraulic context
-    'canales-propuestos-line',
-    'canales-relevados-line',
-    // Base vectors (generic whitelist branch via InfoPanel)
-    'soil-fill',
-    'catastro-fill',
-    'roads-line',
-    'waterways-line',
-    'basins-fill',
-    'approved-zones-fill',
+    // Canales (Pilar Azul) — above parcels for hydraulic context. Bare ids
+    // come from `SOURCE_IDS.CANALES_{PROPUESTOS,RELEVADOS}` which use
+    // underscore separators (`canales_propuestos`, NOT `canales-propuestos`).
+    'canales_propuestos-line',
+    'canales_relevados-line',
+    // Base vectors — registered with the `terrain-vector-*` prefix in
+    // `terrainVectorLayerEffects.ts`. Catastro in 3D is line-only (no fill);
+    // soil + basins + approved-zones are fill-clickable. The strings are
+    // duplicated from `TERRAIN_SOURCE_IDS` to avoid a circular import
+    // (terrainVectorLayerEffects.ts already imports from this module).
+    'terrain-vector-soil-fill',
+    'terrain-vector-catastro-line',
+    'terrain-vector-roads-line',
+    'terrain-vector-waterways-line',
+    'terrain-vector-basins-fill',
+    'terrain-vector-approved-zones-fill',
     // NOTE: `zona-fill` was removed — the 3D viewer no longer registers any
     // zona layer (the 3D mesh IS the consorcio area). The click-target
     // whitelist tracks reality, so there is nothing to click against.

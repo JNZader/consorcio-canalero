@@ -204,9 +204,11 @@ function resetMapStub() {
       // exist on the map. For the bbox/layers assertions we simulate the
       // canales + BPA fills being present so they survive the
       // `map.getLayer(id)` filter inside the handler.
+      // Canales ids use UNDERSCORE separators (`canales_propuestos`), not
+      // hyphens — they come from `SOURCE_IDS.CANALES_*` in `map2dConfig.ts`.
       'pilar_verde_bpa_historico-fill',
-      'canales-propuestos-line',
-      'canales-relevados-line',
+      'canales_propuestos-line',
+      'canales_relevados-line',
     ]),
   };
 }
@@ -278,16 +280,16 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     expect(optionsArg.layers).toEqual(
       expect.arrayContaining([
         'pilar_verde_bpa_historico-fill',
-        'canales-propuestos-line',
-        'canales-relevados-line',
+        'canales_propuestos-line',
+        'canales_relevados-line',
       ]),
     );
-    // And NO id we marked as missing leaks through — we did NOT seed
-    // `soil-fill`, `catastro-fill`, or `roads-line`, so they must not be in
-    // the array.
-    expect(optionsArg.layers).not.toContain('soil-fill');
-    expect(optionsArg.layers).not.toContain('catastro-fill');
-    expect(optionsArg.layers).not.toContain('roads-line');
+    // And NO id we marked as missing leaks through — we did NOT seed the
+    // 3D-prefixed base-vector ids (`terrain-vector-*`), so they must not
+    // be in the array.
+    expect(optionsArg.layers).not.toContain('terrain-vector-soil-fill');
+    expect(optionsArg.layers).not.toContain('terrain-vector-catastro-line');
+    expect(optionsArg.layers).not.toContain('terrain-vector-roads-line');
   });
 
   // -------------------------------------------------------------------------
