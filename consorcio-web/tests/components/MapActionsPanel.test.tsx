@@ -64,6 +64,10 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
     hasApprovedZones: false,
     onToggleSuggestedZonesPanel: noop,
     onOpenExportPng: noop,
+    // canManageZoning + showSuggestedZonesPanel + onToggleSuggestedZonesPanel
+    // belong to MapUiPanels (it still renders the SuggestedZonesPanel in the
+    // background, just unreachable now without the toggle button). They are
+    // NOT MapActionsPanel props anymore.
     onExportApprovedZonesPdf: noop,
     showLegend: false,
     consorcios: [],
@@ -109,37 +113,12 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
 }
 
 describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
-  it('exposes expanded state for map action toggles', () => {
-    renderWithMantine(
-      <MapActionsPanel
-        canManageZoning
-        showSuggestedZonesPanel
-        hasApprovedZones
-        onToggleSuggestedZonesPanel={() => {}}
-        onOpenExportPng={() => {}}
-        onExportApprovedZonesPdf={() => {}}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: /ocultar zonificación/i })).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    );
-    expect(screen.getByRole('button', { name: /ocultar zonificación/i })).toHaveAttribute(
-      'aria-controls',
-      'map-suggested-zones-panel'
-    );
-  });
-
   it('renders the "Exportar KMZ" menu item inside the Export dropdown when onExportKmz is provided', async () => {
     const user = userEvent.setup();
 
     renderWithMantine(
       <MapActionsPanel
-        canManageZoning={false}
-        showSuggestedZonesPanel={false}
         hasApprovedZones={false}
-        onToggleSuggestedZonesPanel={() => {}}
         onOpenExportPng={() => {}}
         onExportApprovedZonesPdf={() => {}}
         onExportKmz={() => {}}
@@ -159,10 +138,7 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        canManageZoning={false}
-        showSuggestedZonesPanel={false}
         hasApprovedZones={false}
-        onToggleSuggestedZonesPanel={() => {}}
         onOpenExportPng={() => {}}
         onExportApprovedZonesPdf={() => {}}
         onExportKmz={onExportKmz}
@@ -183,10 +159,7 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        canManageZoning={false}
-        showSuggestedZonesPanel={false}
         hasApprovedZones={false}
-        onToggleSuggestedZonesPanel={() => {}}
         onOpenExportPng={() => {}}
         onExportApprovedZonesPdf={() => {}}
       />
@@ -205,10 +178,7 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        canManageZoning={false}
-        showSuggestedZonesPanel={false}
         hasApprovedZones={false}
-        onToggleSuggestedZonesPanel={() => {}}
         onOpenExportPng={() => {}}
         onExportApprovedZonesPdf={() => {}}
         onExportKmz={() => {}}

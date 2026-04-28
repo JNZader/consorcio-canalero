@@ -18,11 +18,12 @@
  *   controls.
  *
  * Placement:
- * - Absolute, `top: 150, right: 10` — sits right-aligned, directly below
+ * - Absolute, `top: 220, right: 10` — sits right-aligned, directly below
  *   the MapLibre `top-right` control stack (NavigationControl ~110px +
- *   FullscreenControl ~30px + margin). See `useMapInitialization.ts` for
- *   the controls that define the stack. Horizontal layout (`Group`) so
- *   the row doesn't clash visually with the fullscreen button.
+ *   FullscreenControl ~30px) AND the `MapActionsPanel` Export icon at
+ *   `top: 175` (added 2026-04-28 when the standalone "Marcar punto" /
+ *   "Ver zonificación" panel was retired). Horizontal layout (`Group`)
+ *   so the row doesn't clash visually with the fullscreen button.
  * - `zIndex: 16` matches `MapActionsPanel`'s layer so we're above the
  *   map canvas but below modals/menus.
  *
@@ -70,7 +71,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
       radius="md"
       style={{
         position: 'absolute',
-        top: 150,
+        top: 220,
         right: 10,
         zIndex: 16,
         background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',

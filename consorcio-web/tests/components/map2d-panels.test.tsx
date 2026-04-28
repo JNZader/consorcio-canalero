@@ -80,7 +80,6 @@ describe('map2d extracted panels', () => {
     const onLayerVisibilityChange = vi.fn();
     const onShowIGNOverlayChange = vi.fn();
     const onShowDemOverlayChange = vi.fn();
-    const onToggleSuggestedZonesPanel = vi.fn();
     const onOpenExportPng = vi.fn();
 
     renderWithMantine(
@@ -129,10 +128,7 @@ describe('map2d extracted panels', () => {
           demOptions={[{ value: 'dem-1', label: 'Pendiente' }]}
         />
         <MapActionsPanel
-          canManageZoning
-          showSuggestedZonesPanel={false}
           hasApprovedZones
-          onToggleSuggestedZonesPanel={onToggleSuggestedZonesPanel}
           onOpenExportPng={onOpenExportPng}
           onExportApprovedZonesPdf={() => {}}
         />
@@ -144,14 +140,6 @@ describe('map2d extracted panels', () => {
     expect(document.getElementById('map-suggested-zones-panel')).toHaveAttribute(
       'aria-label',
       'Panel de zonificación'
-    );
-    expect(screen.getByRole('button', { name: /ver zonificación/i })).toHaveAttribute(
-      'aria-controls',
-      'map-suggested-zones-panel'
-    );
-    expect(screen.getByRole('button', { name: /ver zonificación/i })).toHaveAttribute(
-      'aria-expanded',
-      'false'
     );
 
     await user.click(screen.getByRole('button', { name: /aprobar esta zonificación/i }));
@@ -171,9 +159,6 @@ describe('map2d extracted panels', () => {
 
     await user.click(screen.getByRole('checkbox', { name: /^capa dem$/i }));
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
-
-    await user.click(screen.getByRole('button', { name: /ver zonificación/i }));
-    expect(onToggleSuggestedZonesPanel).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('button', { name: /exportar/i }));
     fireEvent.click(screen.getByText(/exportar png/i).closest('button') as HTMLButtonElement);

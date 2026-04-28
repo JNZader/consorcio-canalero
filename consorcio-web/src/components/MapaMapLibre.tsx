@@ -42,7 +42,6 @@ import { useCanAccess } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
-import LineDrawControl, { type DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
@@ -84,7 +83,6 @@ const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
 export default function MapaMapLibre() {
   // ── Config & auth ─────────────────────────────────────────────────────────
   const config = useConfigStore((state) => state.config);
-  const isOperator = useCanAccess(['admin', 'operador']);
   const canManageZoning = useCanAccess(['admin', 'operador']);
   const isAdmin = useCanAccess(['admin']);
   const _mapInstanceId = useId();
@@ -129,7 +127,6 @@ export default function MapaMapLibre() {
   const [draftBasinAssignments, setDraftBasinAssignments] = useState<Record<string, string>>({});
   const [selectedDraftBasinId, setSelectedDraftBasinId] = useState<string | null>(null);
   const [draftDestinationZoneId, setDraftDestinationZoneId] = useState<string | null>(null);
-  const [drawnLine, setDrawnLine] = useState<DrawnLineFeatureCollection | null>(null);
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
@@ -643,11 +640,6 @@ export default function MapaMapLibre() {
             onSliderMouseDown={handleSliderMouseDown}
           />
         </div>
-
-        {/* Draw controls (attached to map after load) */}
-        {mapReady && mapRef.current && isOperator && (
-          <LineDrawControl map={mapRef.current} value={drawnLine} onChange={setDrawnLine} />
-        )}
 
         {/* Measurement tools: floating toolbar + HTML label overlay. */}
         <MeasurementToolbar

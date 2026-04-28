@@ -314,10 +314,7 @@ export const MapUiPanels = memo(function MapUiPanels({
       )}
 
       <MapActionsPanel
-        canManageZoning={canManageZoning}
-        showSuggestedZonesPanel={showSuggestedZonesPanel}
         hasApprovedZones={hasApprovedZones}
-        onToggleSuggestedZonesPanel={onToggleSuggestedZonesPanel}
         onOpenExportPng={onOpenExportPng}
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
         onExportKmz={onExportKmz}
