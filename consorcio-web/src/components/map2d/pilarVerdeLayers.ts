@@ -244,10 +244,11 @@ export function buildAgroZonasFillPaint(): FillPaint {
       PILAR_VERDE_COLORS.agroZonaTortugas,
       PILAR_VERDE_COLORS.agroZonaRioTercero,
     ],
-    // Opacity raised 0.20 → 0.30 after the cool→warm palette swap: pale warm
-    // hues (amber-300) looked washed out at 0.20 and the 3 systems need to
-    // stay distinguishable when layered over soil/catastro.
-    'fill-opacity': 0.3,
+    // Opacity raised 0.30 → 0.45 (2026-04-28) — user feedback: the 3 warm
+    // hues still blended together over satélite background at 0.30. Bumping
+    // gives each zone a clearly distinct fill while staying transparent
+    // enough to read the basemap underneath.
+    'fill-opacity': 0.45,
   };
 }
 

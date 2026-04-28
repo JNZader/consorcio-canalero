@@ -243,16 +243,39 @@ function FeatureSection({
 
   return (
     <Stack gap={4} data-testid="info-panel-feature-section">
-      {displayable.map(({ key, label, value }) => (
-        <Group key={key} gap="xs" wrap="nowrap">
-          <Badge size="xs" variant="light" color="gray">
-            {label}
-          </Badge>
-          <Text size="xs" truncate>
-            {String(value)}
-          </Text>
-        </Group>
-      ))}
+      {displayable.map(({ key, label, value, formatted }) => {
+        // Pre-formatted array → render as a vertical bullet list under the
+        // label (used for `member_basin_names` in the approved-zones panel).
+        if (Array.isArray(formatted)) {
+          return (
+            <Stack key={key} gap={2}>
+              <Badge size="xs" variant="light" color="gray" style={{ alignSelf: 'flex-start' }}>
+                {label}
+              </Badge>
+              <Stack gap={1} pl="xs">
+                {formatted.map((item, idx) => (
+                  <Text key={`${key}-${idx}`} size="xs">
+                    · {item}
+                  </Text>
+                ))}
+              </Stack>
+            </Stack>
+          );
+        }
+        // Single line — use the formatted string when present, else fall
+        // back to the raw value.
+        const display = typeof formatted === 'string' ? formatted : String(value);
+        return (
+          <Group key={key} gap="xs" wrap="nowrap">
+            <Badge size="xs" variant="light" color="gray">
+              {label}
+            </Badge>
+            <Text size="xs" truncate>
+              {display}
+            </Text>
+          </Group>
+        );
+      })}
     </Stack>
   );
 }

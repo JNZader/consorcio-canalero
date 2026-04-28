@@ -143,11 +143,11 @@ describe('pilarVerdeLayers · paint factories', () => {
     expect(paint['line-width']).toBe(1);
   });
 
-  it('agro zonas fill: match expression on `leyenda` with 3 per-zone colors @ 0.30 opacity', () => {
+  it('agro zonas fill: match expression on `leyenda` with 3 per-zone colors @ 0.45 opacity', () => {
     const paint = buildAgroZonasFillPaint();
-    // Opacity raised 0.20 → 0.30 after the cool→warm palette swap: pale warm
-    // hues (amber-300) looked washed out at 0.20.
-    expect(paint['fill-opacity']).toBe(0.3);
+    // Opacity bumped 0.30 → 0.45 (2026-04-28): user feedback that the 3
+    // warm hues still blended at 0.30 over satélite background.
+    expect(paint['fill-opacity']).toBe(0.45);
 
     const fillColor = paint['fill-color'] as unknown as unknown[];
     expect(Array.isArray(fillColor)).toBe(true);

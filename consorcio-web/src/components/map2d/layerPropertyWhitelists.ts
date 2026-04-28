@@ -12,6 +12,7 @@
  * This module exposes:
  *   - A small per-layer whitelist of keys (in display order)
  *   - A label map (key → Rioplatense Spanish label)
+ *   - Optional per-key formatters (number → "22.603,1 ha", array → list)
  *   - `getDisplayableProperties(layerId, props)` — returns the rows to render
  *
  * Layers not listed fall back to "show every key that doesn't start with
@@ -54,6 +55,26 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
     'nomenclatura',
     'tipo_parcela',
   ],
+
+  /**
+   * Sub-cuencas (basins) — `map2d-basins-*` layers. Hides the UUID `id`
+   * since it adds no operator value.
+   */
+  basins: ['nombre', 'cuenca', 'superficie_ha'],
+
+  /**
+   * Cuencas zonificadas / "Cuencas" approved zones — `map2d-approved-zones-*`
+   * layers. Hides workflow / debugging fields (`zone_id` UUID, `family`,
+   * `status`, `source`, raw `member_basin_ids` UUID array) and keeps only
+   * what an operator actually reads.
+   */
+  'approved-zones': [
+    'nombre',
+    'cuenca',
+    'superficie_ha',
+    'basin_count',
+    'member_basin_names',
+  ],
 } as const;
 
 /**
@@ -79,6 +100,52 @@ export const LAYER_PROPERTY_LABELS: Record<string, Record<string, string>> = {
     nomenclatura: 'Nomenclatura',
     tipo_parcela: 'Tipo',
   },
+  basins: {
+    nombre: 'Nombre',
+    cuenca: 'Cuenca',
+    superficie_ha: 'Superficie',
+  },
+  'approved-zones': {
+    nombre: 'Nombre',
+    cuenca: 'Cuenca',
+    superficie_ha: 'Superficie',
+    basin_count: 'Sub-cuencas',
+    member_basin_names: 'Compone',
+  },
+} as const;
+
+/**
+ * Optional per-key formatter. When defined, its return value is used
+ * instead of `String(value)` in the InfoPanel render.
+ *
+ *   - `string` → rendered as a single line (Mantine `<Text>`).
+ *   - `string[]` → rendered as a bullet list (one `<Text>` per item).
+ */
+type FormatResult = string | readonly string[];
+export type LayerValueFormatter = (value: unknown) => FormatResult;
+
+function formatHectares(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ha`;
+}
+
+function formatStringList(value: unknown): FormatResult {
+  if (Array.isArray(value)) {
+    const items = value.map((v) => (typeof v === 'string' ? v : String(v))).filter((s) => s.length > 0);
+    return items;
+  }
+  return String(value);
+}
+
+export const LAYER_PROPERTY_FORMATTERS: Record<string, Record<string, LayerValueFormatter>> = {
+  basins: {
+    superficie_ha: formatHectares,
+  },
+  'approved-zones': {
+    superficie_ha: formatHectares,
+    member_basin_names: formatStringList,
+  },
 } as const;
 
 /**
@@ -94,6 +161,13 @@ export function resolveLayerWhitelistKey(layerId: string | undefined | null): st
   if (layerId === `${SOURCE_IDS.ROADS}-line`) return 'caminos';
   if (layerId === `${SOURCE_IDS.CATASTRO}-fill` || layerId === `${SOURCE_IDS.CATASTRO}-line`)
     return 'catastro';
+  if (layerId === `${SOURCE_IDS.BASINS}-fill` || layerId === `${SOURCE_IDS.BASINS}-line`)
+    return 'basins';
+  if (
+    layerId === `${SOURCE_IDS.APPROVED_ZONES}-fill` ||
+    layerId === `${SOURCE_IDS.APPROVED_ZONES}-line`
+  )
+    return 'approved-zones';
   return null;
 }
 
@@ -101,11 +175,15 @@ export interface DisplayableProperty {
   readonly key: string;
   readonly label: string;
   readonly value: unknown;
+  /** Pre-formatted display value. When present InfoPanel uses this instead
+   *  of `String(value)`. `string[]` renders as a bullet list. */
+  readonly formatted?: string | readonly string[];
 }
 
 function isEmpty(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string' && value.trim().length === 0) return true;
+  if (Array.isArray(value) && value.length === 0) return true;
   return false;
 }
 
@@ -114,7 +192,7 @@ function isEmpty(value: unknown): boolean {
  *
  *   - If the layer has a whitelist: filter to those keys (in the
  *     documented order), drop keys whose value is null/undefined/empty,
- *     humanize labels.
+ *     humanize labels, apply per-key formatters when defined.
  *   - Otherwise: return every non-`__`-prefixed property in insertion
  *     order, with the raw key as its own label.
  */
@@ -127,11 +205,14 @@ export function getDisplayableProperties(
   if (whitelistKey !== null) {
     const keys = LAYER_PROPERTY_WHITELISTS[whitelistKey] ?? [];
     const labels = LAYER_PROPERTY_LABELS[whitelistKey] ?? {};
+    const formatters = LAYER_PROPERTY_FORMATTERS[whitelistKey] ?? {};
     const rows: DisplayableProperty[] = [];
     for (const key of keys) {
       const value = props[key];
       if (isEmpty(value)) continue;
-      rows.push({ key, label: labels[key] ?? key, value });
+      const formatter = formatters[key];
+      const formatted = formatter ? formatter(value) : undefined;
+      rows.push({ key, label: labels[key] ?? key, value, formatted });
     }
     return rows;
   }
