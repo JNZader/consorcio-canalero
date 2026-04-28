@@ -5,7 +5,6 @@ import { useImageComparison } from '../../../hooks/useImageComparison';
 import { useSelectedImage } from '../../../hooks/useSelectedImage';
 import { API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import { useConfigStore } from '../../../stores/configStore';
 import {
   type ImageResultLike,
   buildVisualizationOptions,
@@ -57,7 +56,6 @@ function normalizeUniqueDates(values: unknown): string[] {
 const API_BASE = `${API_URL}/api/v2/geo/gee/images`;
 
 export function useImageExplorerController() {
-  const config = useConfigStore((state) => state.config);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const now = new Date();
 
@@ -69,9 +67,11 @@ export function useImageExplorerController() {
   const [calendarMonth, setCalendarMonth] = useState(now.getMonth());
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [maxCloud, setMaxCloud] = useState<string>(
-    config?.analysis.default_max_cloud?.toString() || '80'
-  );
+  // Panel admin/images: el operador necesita ver MÁS imágenes disponibles
+  // (incluyendo días parcialmente nubosos) para tener más fechas elegibles.
+  // El default global de `config.analysis.default_max_cloud` (20) es para
+  // análisis automatizados — acá lo ignoramos a propósito.
+  const [maxCloud, setMaxCloud] = useState<string>('80');
   const [visualization, setVisualization] = useState<string>('rgb');
   const [sensor, setSensor] = useState<'sentinel2' | 'sentinel1'>('sentinel2');
   const [visualizations, setVisualizations] = useState<Visualization[]>([]);
