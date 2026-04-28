@@ -53,6 +53,7 @@ import distance from '@turf/distance';
 import length from '@turf/length';
 import midpoint from '@turf/midpoint';
 
+import { useMapboxDrawSlot } from '../../../stores/mapboxDrawSlot';
 import { removeMapboxDrawArtifacts } from '../../map/mapboxDrawShared';
 import { createMeasurementDraw } from './measurementDrawModes';
 
@@ -178,20 +179,78 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     [map]
   );
 
-  useEffect(() => {
-    if (!map) return;
+  // Refs holding the listeners so `mountDraw` can register them once and
+  // `unmountDraw` can off them by reference.
+  const handleCreateRef = useRef<((event: unknown) => void) | null>(null);
+  const handleContextLostRef = useRef<(() => void) | null>(null);
+
+  // ── Lazy mount/unmount of the MapboxDraw control ─────────────────────
+  //
+  // We INTENTIONALLY do NOT mount MapboxDraw on the hook's mount. The bug
+  // we fix (`Source "mapbox-gl-draw-cold" already exists`) happens because
+  // both `LineDrawControl` and this hook used to call `addControl(new
+  // MapboxDraw)` on the SAME map, and MapboxDraw hard-codes its source IDs.
+  //
+  // Now we mount MapboxDraw only when the user enters a measuring mode,
+  // and acquire the global `mapboxDrawSlot` so `LineDrawControl` knows to
+  // unmount itself first. On `clear()` / `cancel()` we tear it down and
+  // release the slot, letting `LineDrawControl` re-mount.
+  const mountDraw = useCallback((): MapboxDraw | null => {
+    if (!map) return null;
+    if (drawRef.current) return drawRef.current;
+
+    useMapboxDrawSlot.getState().acquire('measurement');
 
     const draw = createMeasurementDraw();
     drawRef.current = draw;
 
-    // Same defensive cleanup as LineDrawControl — WebGL context lost+restored
-    // can leave orphan `gl-draw-*` layers behind.
+    // Defensive: clean any leftover gl-draw-* layers/sources from a prior
+    // owner before we add ours. Idempotent.
     removeMapboxDrawArtifacts(map);
 
-    // MapboxDraw targets the same GL control API as maplibre-gl.
     map.addControl(draw as unknown as maplibregl.IControl);
 
-    const handleCreate = (event: unknown) => {
+    const handleCreate = handleCreateRef.current;
+    const handleContextLost = handleContextLostRef.current;
+    if (handleCreate) map.on('draw.create', handleCreate);
+    if (handleContextLost) map.on('webglcontextlost', handleContextLost);
+
+    return draw;
+  }, [map]);
+
+  const unmountDraw = useCallback(() => {
+    if (!map) return;
+    const draw = drawRef.current;
+
+    const handleCreate = handleCreateRef.current;
+    const handleContextLost = handleContextLostRef.current;
+    if (handleCreate) map.off('draw.create', handleCreate);
+    if (handleContextLost) map.off('webglcontextlost', handleContextLost);
+
+    if (draw) {
+      try {
+        removeMapboxDrawArtifacts(map);
+        const control = draw as unknown as maplibregl.IControl;
+        if (map.hasControl(control)) {
+          map.removeControl(control);
+        }
+      } catch {
+        // ignore — removal can race with map teardown
+      }
+      removeMapboxDrawArtifacts(map);
+    }
+
+    drawRef.current = null;
+    setMeasurementCursor(false);
+    useMapboxDrawSlot.getState().release('measurement');
+  }, [map, setMeasurementCursor]);
+
+  // The handlers don't depend on any reactive state — they read mode via
+  // `modeRef` and only ever push entries via the stable `setMeasurementState`.
+  // We register them once in stable refs so `mountDraw` / `unmountDraw` can
+  // attach/detach them without re-running this effect.
+  useEffect(() => {
+    handleCreateRef.current = (event: unknown) => {
       const features = (event as { features?: Feature[] })?.features ?? [];
       const entries: MeasurementEntry[] = [];
 
@@ -206,24 +265,12 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
           const line = feature as Feature<LineString>;
           const meters = length(line, { units: 'meters' });
           const labelPosition = computeLineLabelAnchor(line);
-          const entry: MeasurementEntry = {
-            id: featureId,
-            kind: 'distance',
-            value: meters,
-            labelPosition,
-          };
-          entries.push(entry);
+          entries.push({ id: featureId, kind: 'distance', value: meters, labelPosition });
         } else if (geom.type === 'Polygon') {
           const poly = feature as Feature<Polygon>;
           const m2 = area(poly);
           const labelPosition = computePolygonLabelAnchor(poly);
-          const entry: MeasurementEntry = {
-            id: featureId,
-            kind: 'area',
-            value: m2,
-            labelPosition,
-          };
-          entries.push(entry);
+          entries.push({ id: featureId, kind: 'area', value: m2, labelPosition });
         }
       }
 
@@ -240,70 +287,51 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
         measurements: [...prev.measurements, ...entries],
       }));
 
-      if (nextMode === 'measuring-distance') {
+      const draw = drawRef.current;
+      if (draw && nextMode === 'measuring-distance') {
         draw.changeMode('draw_line_string');
-      } else if (nextMode === 'measuring-area') {
+      } else if (draw && nextMode === 'measuring-area') {
         draw.changeMode('draw_polygon');
       }
     };
 
-    const handleContextLost = () => {
-      removeMapboxDrawArtifacts(map);
+    handleContextLostRef.current = () => {
+      if (map) removeMapboxDrawArtifacts(map);
     };
+  }, [map, setMeasurementState]);
 
-    map.on('draw.create', handleCreate);
-    map.on('webglcontextlost', handleContextLost);
-
+  // Tear down on unmount: release the slot so LineDrawControl can re-mount.
+  useEffect(() => {
     return () => {
-      map.off('draw.create', handleCreate);
-      map.off('webglcontextlost', handleContextLost);
-      try {
-        // Remove draw layers/sources before calling MapboxDraw's onRemove.
-        // After WebGL context loss MapboxDraw can lose track of its suffixed
-        // custom style layer IDs and try to remove the shared sources first,
-        // which MapLibre rejects while measurement layers still reference
-        // them.
-        removeMapboxDrawArtifacts(map);
-        const control = draw as unknown as maplibregl.IControl;
-        if (map.hasControl(control)) {
-          map.removeControl(control);
-        }
-      } catch {
-        // ignore — removal can race with map teardown
-      }
-      setMeasurementCursor(false);
-      removeMapboxDrawArtifacts(map);
-      drawRef.current = null;
+      unmountDraw();
     };
-  }, [map, setMeasurementCursor, setMeasurementState]);
+  }, [unmountDraw]);
 
   const startDistance = () => {
-    const draw = drawRef.current;
+    const draw = mountDraw();
     if (draw) draw.changeMode('draw_line_string');
     setMeasurementCursor(true);
     setMeasurementState((prev) => ({ ...prev, mode: 'measuring-distance' }));
   };
 
   const startArea = () => {
-    const draw = drawRef.current;
+    const draw = mountDraw();
     if (draw) draw.changeMode('draw_polygon');
     setMeasurementCursor(true);
     setMeasurementState((prev) => ({ ...prev, mode: 'measuring-area' }));
   };
 
   const clear = () => {
-    const draw = drawRef.current;
-    if (draw) draw.deleteAll();
-    setMeasurementCursor(false);
-    // NOTE: this ONLY clears the measurement draw instance. LineDrawControl
-    // uses its own independent MapboxDraw — canales are untouched.
+    // Tearing down the draw releases the slot and removes its layers/sources
+    // — LineDrawControl will re-mount and restore its features from props.
+    unmountDraw();
     setMeasurementState({ mode: 'idle', measurements: [] });
   };
 
   const cancel = () => {
-    const draw = drawRef.current;
-    if (draw) draw.changeMode('simple_select');
-    setMeasurementCursor(false);
+    // Same reasoning as `clear`: drop the draw + release the slot. The user
+    // cancelled before saving, so there's nothing to preserve.
+    unmountDraw();
     setMeasurementState((prev) => ({ ...prev, mode: 'idle' }));
   };
 

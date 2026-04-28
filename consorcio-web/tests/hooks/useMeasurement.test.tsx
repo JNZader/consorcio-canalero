@@ -158,10 +158,18 @@ describe('useMeasurement', () => {
     expect(drawInstances).toHaveLength(0);
   });
 
-  it('adds a draw control to the map on mount (dedicated instance)', () => {
+  it('does NOT create a draw instance on mount — only on startDistance/startArea (lazy)', () => {
     const { map } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
-    renderHook(() => useMeasurement(map as any));
+    const { result } = renderHook(() => useMeasurement(map as any));
+
+    // Hook mounted but no MapboxDraw yet: this avoids colliding with
+    // LineDrawControl's MapboxDraw on the SAME map (both use the hardcoded
+    // `mapbox-gl-draw-cold/hot` source ids).
+    expect(drawInstances).toHaveLength(0);
+    expect(map.addControl).not.toHaveBeenCalled();
+
+    act(() => result.current.startDistance());
 
     expect(drawInstances).toHaveLength(1);
     expect(map.addControl).toHaveBeenCalledTimes(1);
@@ -208,7 +216,14 @@ describe('useMeasurement', () => {
     const [entry] = result.current.state.measurements;
     expect(entry.kind).toBe('distance');
     expect(entry.value).toBe(123.4);
-    expect(entry.labelPosition).toEqual([-62.5, -32.5]); // from @turf/midpoint mock
+    // labelPosition path for 3+ vertices uses real turf/distance walk-along
+    // (NOT @turf/midpoint), so we assert the shape and rough range, not the
+    // exact (-62.5, -32.5) — that mock only fires for 2-vertex lines.
+    expect(entry.labelPosition).toHaveLength(2);
+    expect(entry.labelPosition[0]).toBeGreaterThan(-63);
+    expect(entry.labelPosition[0]).toBeLessThan(-62);
+    expect(entry.labelPosition[1]).toBeGreaterThan(-33);
+    expect(entry.labelPosition[1]).toBeLessThan(-32);
     expect(result.current.state.mode).toBe('measuring-distance');
     expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string');
   });
@@ -247,7 +262,7 @@ describe('useMeasurement', () => {
     expect(result.current.state.measurements[0].id).toBe('line-1');
   });
 
-  it('clear() calls draw.deleteAll and empties the measurements list', () => {
+  it('clear() removes the draw control and empties the measurements list', () => {
     const { map, handlers, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -257,16 +272,20 @@ describe('useMeasurement', () => {
     act(() => createHandler?.({ features: [buildLineFeature()] }));
     expect(result.current.state.measurements).toHaveLength(1);
 
-    drawDeleteAll.mockClear();
+    map.removeControl.mockClear();
     act(() => result.current.clear());
 
-    expect(drawDeleteAll).toHaveBeenCalledTimes(1);
+    // The draw control is fully torn down (not just `deleteAll`), so the
+    // mutex slot is released and LineDrawControl can re-mount.
+    expect(map.removeControl).toHaveBeenCalledTimes(1);
     expect(result.current.state.measurements).toEqual([]);
     expect(result.current.state.mode).toBe('idle');
     expect(canvas.style.cursor).toBe('');
+    // listeners were detached when unmountDraw ran
+    expect(handlers.get('draw.create')?.length ?? 0).toBe(0);
   });
 
-  it('cancel() exits draw mode into simple_select WITHOUT appending a measurement', () => {
+  it('cancel() tears the draw down WITHOUT appending a measurement', () => {
     const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -274,10 +293,11 @@ describe('useMeasurement', () => {
     act(() => result.current.startDistance());
     expect(result.current.state.mode).toBe('measuring-distance');
 
-    drawChangeMode.mockClear();
+    map.removeControl.mockClear();
     act(() => result.current.cancel());
 
-    expect(drawChangeMode).toHaveBeenCalledWith('simple_select');
+    // No leftover MapboxDraw — same path as `clear()` minus the state reset.
+    expect(map.removeControl).toHaveBeenCalledTimes(1);
     expect(result.current.state.mode).toBe('idle');
     expect(result.current.state.measurements).toEqual([]);
     expect(canvas.style.cursor).toBe('');
@@ -286,8 +306,10 @@ describe('useMeasurement', () => {
   it('removes the draw control on unmount and cleans up event listeners', () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
-    const { unmount } = renderHook(() => useMeasurement(map as any));
+    const { result, unmount } = renderHook(() => useMeasurement(map as any));
 
+    // Lazy mount: trigger startDistance so the draw + listeners actually exist
+    act(() => result.current.startDistance());
     expect(handlers.get('draw.create')?.length ?? 0).toBeGreaterThan(0);
 
     unmount();

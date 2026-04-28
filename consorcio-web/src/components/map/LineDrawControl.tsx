@@ -43,6 +43,7 @@ interface LineDrawControlProps {
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { useEffect, useRef } from 'react';
+import { useMapboxDrawSlot } from '../../stores/mapboxDrawSlot';
 import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
 import { MAPBOX_DRAW_LINE_STYLES, removeMapboxDrawArtifacts } from './mapboxDrawShared';
 
@@ -51,7 +52,26 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  // Slot mutex — measurement takes precedence. When `slotOwner === 'measurement'`
+  // we skip the entire mount (no MapboxDraw, no event listeners). Once the
+  // user finishes measuring and the slot returns to null, this effect re-runs
+  // and we mount normally; the value-sync effect below restores the saved
+  // features from props.
+  const slotOwner = useMapboxDrawSlot((s) => s.owner);
+  const acquire = useMapboxDrawSlot((s) => s.acquire);
+  const release = useMapboxDrawSlot((s) => s.release);
+
   useEffect(() => {
+    if (slotOwner === 'measurement') {
+      // Measurement is active — yield the slot. We'll re-mount when it releases.
+      return;
+    }
+    if (!acquire('line-draw')) {
+      // Defensive: another non-measurement owner — should not happen today
+      // but the API allows for it. Skip the mount cleanly.
+      return;
+    }
+
     ensureMapboxDrawCompatibility(map);
 
     const draw = new MapboxDraw({
@@ -129,8 +149,9 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
       }
       removeMapboxDrawArtifacts(map);
       drawRef.current = null;
+      release('line-draw');
     };
-  }, [map]);
+  }, [map, slotOwner, acquire, release]);
 
   // Sync external value → draw control (controlled component pattern)
   useEffect(() => {
