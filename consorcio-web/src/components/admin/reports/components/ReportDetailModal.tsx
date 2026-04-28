@@ -15,8 +15,42 @@ import {
   Title,
 } from '@mantine/core';
 import { CATEGORY_OPTIONS, STATUS_OPTIONS } from '../../../../constants';
+import { API_URL } from '../../../../lib/api';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
+
+/**
+ * Resolve a server-relative photo URL (e.g. `/uploads/denuncias/<id>.png`,
+ * the form `LocalPhotoStorage` stores in the DB) into an absolute URL the
+ * browser can load. We persist the relative form on the backend so swaps
+ * of the public host don't require a DB rewrite, but the `<Image>` tag
+ * needs the full origin or the browser resolves it against the FRONTEND
+ * origin and 404s — this was the "no se ve la foto" bug.
+ */
+function resolvePhotoUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = API_URL.replace(/\/$/, '');
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${base}${path}`;
+}
+
+/**
+ * Coalesce the two ways the API exposes citizen photos:
+ * - `foto_url` (string|null) — the canonical field that the public
+ *   denuncia create / photo upload endpoints write.
+ * - `imagenes` (string[]) — legacy multi-photo array some old reports
+ *   carry. We accept both so existing data keeps rendering.
+ */
+function gatherPhotoUrls(report: Report): string[] {
+  const out: string[] = [];
+  if (report.imagenes && report.imagenes.length > 0) {
+    out.push(...report.imagenes);
+  }
+  if (report.foto_url) {
+    out.push(report.foto_url);
+  }
+  return out.map(resolvePhotoUrl);
+}
 import { IconHistory } from '../../../ui/icons';
 import type { SeguimientoEntry } from '../reportsPanelTypes';
 
@@ -95,14 +129,17 @@ export function ReportDetailModal({
             </Paper>
           </div>
 
-          {selectedReport.ubicacion_texto && (
+          {(selectedReport.ubicacion_texto ||
+            (selectedReport.latitud != null && selectedReport.longitud != null)) && (
             <div>
               <Text size="sm" fw={500}>
                 Ubicacion
               </Text>
-              <Text size="sm" c="gray.6">
-                {selectedReport.ubicacion_texto}
-              </Text>
+              {selectedReport.ubicacion_texto && (
+                <Text size="sm" c="gray.6">
+                  {selectedReport.ubicacion_texto}
+                </Text>
+              )}
               {selectedReport.latitud != null && selectedReport.longitud != null && (
                 <Text size="xs" c="gray.6">
                   Coordenadas: {selectedReport.latitud}, {selectedReport.longitud}
@@ -111,25 +148,29 @@ export function ReportDetailModal({
             </div>
           )}
 
-          {selectedReport.imagenes && selectedReport.imagenes.length > 0 && (
-            <div>
-              <Text size="sm" fw={500} mb="xs" id="imagenes-label">
-                Imagenes adjuntas
-              </Text>
-              <SimpleGrid cols={3} aria-labelledby="imagenes-label">
-                {selectedReport.imagenes.map((url) => (
-                  <Card key={url} padding={0} radius="sm">
-                    <Image
-                      src={url}
-                      alt={`Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicacion no especificada'}`}
-                      height={100}
-                      fit="cover"
-                    />
-                  </Card>
-                ))}
-              </SimpleGrid>
-            </div>
-          )}
+          {(() => {
+            const photoUrls = gatherPhotoUrls(selectedReport);
+            if (photoUrls.length === 0) return null;
+            return (
+              <div>
+                <Text size="sm" fw={500} mb="xs" id="imagenes-label">
+                  Imagenes adjuntas
+                </Text>
+                <SimpleGrid cols={3} aria-labelledby="imagenes-label">
+                  {photoUrls.map((url) => (
+                    <Card key={url} padding={0} radius="sm">
+                      <Image
+                        src={url}
+                        alt={`Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicacion no especificada'}`}
+                        height={100}
+                        fit="cover"
+                      />
+                    </Card>
+                  ))}
+                </SimpleGrid>
+              </div>
+            );
+          })()}
 
           {(selectedReport.contacto_nombre || selectedReport.contacto_telefono) && (
             <div>

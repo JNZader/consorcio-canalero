@@ -68,6 +68,7 @@ import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
+import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
 /* -------------------------------------------------------------------------- */
@@ -352,6 +353,11 @@ export default function MapaMapLibre() {
     showSuggestedZonesPanel,
     setSelectedDraftBasinId,
   });
+
+  // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
+  // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
+  // marker is auto-popped and the user can close it.
+  useReportHighlight({ mapRef, mapReady });
 
   useEffect(() => {
     const baseMap = mapRef.current;
