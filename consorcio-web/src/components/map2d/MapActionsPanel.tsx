@@ -42,7 +42,10 @@ export const MapActionsPanel = memo(function MapActionsPanel({
     <Box
       style={{
         position: 'absolute',
-        top: 12,
+        // Temporarily moved down (was top: 12) so the right-side MapLibre
+        // controls (zoom + compass + trash + fullscreen + measurement) are
+        // fully visible while we audit which ones to keep.
+        top: 240,
         right: 48,
         zIndex: 16,
         display: 'flex',
