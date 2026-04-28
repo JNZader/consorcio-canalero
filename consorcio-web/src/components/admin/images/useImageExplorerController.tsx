@@ -70,7 +70,7 @@ export function useImageExplorerController() {
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [maxCloud, setMaxCloud] = useState<string>(
-    config?.analysis.default_max_cloud?.toString() || '40'
+    config?.analysis.default_max_cloud?.toString() || '80'
   );
   const [visualization, setVisualization] = useState<string>('rgb');
   const [sensor, setSensor] = useState<'sentinel2' | 'sentinel1'>('sentinel2');

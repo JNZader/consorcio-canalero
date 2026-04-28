@@ -12,7 +12,9 @@
 import { Box } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import type { Feature } from 'geojson';
+import type { Feature, FeatureCollection } from 'geojson';
+
+import { ALL_ETAPAS } from '../types/canales';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
@@ -50,7 +52,14 @@ import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
-import { syncRoadLayers, syncWaterwayLayers } from './map2d/mapLayerEffectHelpers';
+import {
+  syncApprovedZoneLayers,
+  syncBasinLayers,
+  syncCanalesLayers,
+  syncEscuelasLayer,
+  syncRoadLayers,
+  syncWaterwayLayers,
+} from './map2d/mapLayerEffectHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
@@ -420,8 +429,53 @@ export default function MapaMapLibre() {
     };
 
     const syncOverlayVectors = () => {
+      // Mirror the same vector layers the user has visible on the main map
+      // so the comparison slider's left half doesn't blank out the
+      // non-raster context (sub-cuencas, cuencas, canales, escuelas, etc.).
       syncWaterwayLayers(overlayMap, WATERWAY_DEFS, !!vectorVisibility.waterways);
       syncRoadLayers(overlayMap, roadsCollection, !!vectorVisibility.roads);
+      syncBasinLayers(overlayMap, basins ?? null, !!vectorVisibility.basins);
+      syncApprovedZoneLayers(
+        overlayMap,
+        approvedZonesCollection ?? null,
+        !!vectorVisibility.approved_zones
+      );
+      syncEscuelasLayer(
+        overlayMap,
+        (escuelasCollection ?? null) as FeatureCollection<
+          GeoJSON.Point,
+          import('../types/escuelas').EscuelaFeatureProperties
+        > | null,
+        !!vectorVisibility.escuelas
+      );
+      // Per-canal visibility derives from the same store the main map uses,
+      // so toggles in the bottom-bar Capas panel apply to both halves.
+      const storeState = useMapLayerSyncStore.getState();
+      const allRelevadoSlugs = (canalesIndex?.relevados ?? []).map((r) => r.id);
+      const visibleRelevadoIds = allRelevadoSlugs.filter((slug) => {
+        const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
+        return storeState.map2d.visibleVectors[key] !== false;
+      });
+      const visiblePropuestaIds = storeState.getVisiblePropuestaIds('map2d');
+      const etapasState = storeState.propuestasEtapasVisibility;
+      const activeEtapas = (Object.entries(etapasState) as [import('../types/canales').Etapa, boolean][])
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      syncCanalesLayers(overlayMap, {
+        relevados: (canalesRelevados ?? null) as FeatureCollection<
+          GeoJSON.LineString,
+          import('../types/canales').CanalFeatureProperties
+        > | null,
+        propuestas: (canalesPropuestas ?? null) as FeatureCollection<
+          GeoJSON.LineString,
+          import('../types/canales').CanalFeatureProperties
+        > | null,
+        relevadosVisible: !!vectorVisibility.canales_relevados,
+        propuestasVisible: !!vectorVisibility.canales_propuestos,
+        visibleRelevadoIds,
+        visiblePropuestaIds,
+        activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
+      });
     };
 
     const syncView = () => {
