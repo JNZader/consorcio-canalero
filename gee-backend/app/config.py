@@ -55,6 +55,13 @@ class Settings(BaseSettings):
         ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
     )
 
+    # Photo upload storage (LocalPhotoStorage for now — drop-in swap to S3/MinIO).
+    # The directory is mounted as a Docker volume in compose so files survive
+    # container rebuilds. The public_base is what we prefix into `foto_url`
+    # when persisting; `app.mount("/uploads", StaticFiles(...))` serves it.
+    uploads_root: str = "/app/uploads"
+    uploads_public_base: str = "/uploads"
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Retorna lista de origenes CORS permitidos."""

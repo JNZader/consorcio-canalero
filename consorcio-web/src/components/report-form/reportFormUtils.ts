@@ -50,14 +50,23 @@ export function handleGeoError(
   );
 }
 
+/**
+ * Upload the citizen's photo and attach it to an EXISTING denuncia.
+ *
+ * The denuncia must be created first because the upload endpoint needs
+ * its ID in the URL — see `useReportFormSubmission` for the orchestration.
+ * Failures here are non-fatal: the denuncia stays saved, we just notify
+ * the user that the photo didn't make it (matches the previous UX).
+ */
 export async function uploadPhotoIfExists(
+  denunciaId: string,
   foto: File | null,
   _announce: (msg: string) => void
 ): Promise<string | undefined> {
   if (!foto) return undefined;
 
   try {
-    const uploadResult = await publicApi.uploadPhoto(foto);
+    const uploadResult = await publicApi.uploadPhoto(denunciaId, foto);
     return uploadResult.photo_url;
   } catch (error) {
     logger.error('Error subiendo foto:', error);

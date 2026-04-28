@@ -41,9 +41,23 @@ export function LocationSection({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+
+  // Refs for everything the map's `click` handler needs to read AT CLICK
+  // TIME instead of at setup time. The setup effect runs ONLY ONCE on
+  // mount (deps `[]`); pulling these into refs avoids the previous bug
+  // where any change in `caminosGeoJson` / `waterways` / etc. tore the
+  // map down (`map.remove()`) and rebuilt it on every parent re-render —
+  // that's what was making the form "reset" when the user typed in
+  // descripcion or picked a tipo, and what threw the cascade of
+  // `WebGL context was lost` errors.
   const onLocationSelectRef = useRef(onLocationSelect);
   onLocationSelectRef.current = onLocationSelect;
   const { zonaGeoJson, caminosGeoJson, waterways } = useFormMapLayers();
+  const zonaGeoJsonRef = useRef(zonaGeoJson);
+  zonaGeoJsonRef.current = zonaGeoJson;
+  const initialCenterRef = useRef(defaultCenter);
+  const initialZoomRef = useRef(defaultZoom);
+
   const selectedCoordinatesLabel = ubicacion
     ? `${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`
     : null;
@@ -53,6 +67,9 @@ export function LocationSection({
 
     const SATELLITE_TILES =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+    const initialCenter = initialCenterRef.current;
+    const initialZoom = initialZoomRef.current;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -68,15 +85,18 @@ export function LocationSection({
         },
         layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
       },
-      center: [defaultCenter[1], defaultCenter[0]],
-      zoom: defaultZoom,
+      center: [initialCenter[1], initialCenter[0]],
+      zoom: initialZoom,
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
     });
 
     map.on('click', (e) => {
       const { lng, lat } = e.lngLat;
-      if (!isInsideZona(zonaGeoJson, [lng, lat])) {
+      // Read zonaGeoJson via ref so we always validate against the
+      // latest data, even though the click handler was registered once
+      // at mount time when the data wasn't loaded yet.
+      if (!isInsideZona(zonaGeoJsonRef.current, [lng, lat])) {
         notifications.show({
           title: 'Fuera del área',
           message: 'La ubicación seleccionada está fuera del área del consorcio.',
@@ -87,10 +107,6 @@ export function LocationSection({
       onLocationSelectRef.current(lat, lng);
     });
 
-    map.on('load', () => {
-      addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
-    });
-
     mapInstanceRef.current = map;
 
     return () => {
@@ -98,12 +114,23 @@ export function LocationSection({
       mapInstanceRef.current = null;
       markerRef.current = null;
     };
-  }, [caminosGeoJson, defaultCenter, defaultZoom, waterways, zonaGeoJson]);
+    // Setup runs ONCE per mount. Reference layers (zona / caminos /
+    // waterways) are painted by the dedicated effect below as soon as
+    // both the map style AND the data are ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
+    if (!map) return;
+    const paint = () => {
+      addReferenceLayers(map, { zonaGeoJson, caminosGeoJson, waterways });
+    };
+    if (map.isStyleLoaded()) {
+      paint();
+    } else {
+      map.once('load', paint);
+    }
   }, [zonaGeoJson, caminosGeoJson, waterways]);
 
   useEffect(() => {
@@ -126,7 +153,16 @@ export function LocationSection({
         .addTo(map);
     }
 
-    map.flyTo({ center: [ubicacion.lng, ubicacion.lat], zoom: Math.max(map.getZoom(), 14) });
+    // Only animate to the new spot if it's outside the current viewport.
+    // When the user clicks the map, the point is by definition INSIDE
+    // the viewport — animating there is jarring and was the user's main
+    // complaint ("se mueve el mapa"). When the source is GPS or manual
+    // input, the point may be off-screen and we DO want to bring it in.
+    const bounds = map.getBounds();
+    const inView = bounds.contains([ubicacion.lng, ubicacion.lat]);
+    if (!inView) {
+      map.flyTo({ center: [ubicacion.lng, ubicacion.lat], zoom: Math.max(map.getZoom(), 14) });
+    }
   }, [ubicacion]);
 
   return (

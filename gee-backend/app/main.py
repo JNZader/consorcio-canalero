@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.api.v2.router import api_router as api_v2_router
@@ -153,6 +154,22 @@ app.add_middleware(
 # ===========================================
 
 app.include_router(api_v2_router, prefix="/api/v2")
+
+
+# ===========================================
+# STATIC FILES (citizen photo uploads)
+# ===========================================
+# `LocalPhotoStorage` writes to `settings.uploads_root` (default `/app/uploads`,
+# mounted as the `denuncia-uploads` Docker volume in compose). The matching
+# StaticFiles mount serves them back at `settings.uploads_public_base`
+# (default `/uploads`). When swapping to S3/MinIO, this mount becomes
+# unnecessary — drop it together with `LocalPhotoStorage`.
+os.makedirs(settings.uploads_root, exist_ok=True)
+app.mount(
+    settings.uploads_public_base,
+    StaticFiles(directory=settings.uploads_root),
+    name="uploads",
+)
 
 
 # ===========================================

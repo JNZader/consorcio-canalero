@@ -44,6 +44,7 @@ services:
       - ./gee-backend/credentials:/app/credentials:ro
       - backend-cache:/app/.cache
       - geo-data:/data/geo
+      - denuncia-uploads:/app/uploads
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-true}
@@ -268,3 +269,5 @@ volumes:
     name: consorcio-frontend-node-modules
   geo-data:
     name: consorcio-geo-data
+  denuncia-uploads:
+    name: consorcio-denuncia-uploads

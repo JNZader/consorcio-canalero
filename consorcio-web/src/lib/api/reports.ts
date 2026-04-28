@@ -131,11 +131,23 @@ export const publicApi = {
     }),
 
   /**
-   * Subir foto para denuncia.
-   * TODO: v2 does not have a dedicated upload-photo endpoint.
-   * Photos should be sent as base64 in the denuncia payload or via multipart to /public/denuncias.
+   * Attach a photo to a previously-created denuncia.
+   *
+   * Two-step flow because the photo path needs the denuncia's ID:
+   *   1) `createReport(...)`  → returns `{id}`.
+   *   2) `uploadPhoto(id, file)` → multipart upload, server stores it in
+   *      the `denuncia-uploads` Docker volume and updates `foto_url`.
+   *
+   * If step 2 fails, the denuncia is still saved (no orphan rollback) —
+   * the form just notifies the user and moves on. The previous version
+   * of this hit the wrong endpoint with no `{id}` parameter and exploded
+   * with a 500 + CORS error; the comment-only TODO that lived here is
+   * gone because the feature is now actually wired.
    */
-  uploadPhoto: async (file: File): Promise<{ photo_url: string; filename: string }> => {
+  uploadPhoto: async (
+    denunciaId: string,
+    file: File
+  ): Promise<{ photo_url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -143,12 +155,14 @@ export const publicApi = {
     const timeoutId = setTimeout(() => controller.abort(), LONG_TIMEOUT);
 
     try {
-      // TODO: Replace with v2 photo upload mechanism when available
-      const response = await fetch(`${API_URL}${API_PREFIX}/public/denuncias`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        `${API_URL}${API_PREFIX}/public/denuncias/${denunciaId}/photo`,
+        {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));

@@ -62,17 +62,20 @@ export function useReportFormSubmission({
       announce('Enviando denuncia...');
 
       try {
-        const fotoUrl = await uploadPhotoIfExists(values.foto, announce);
-
+        // Two-step flow: create the denuncia FIRST, then attach the photo.
+        // The previous order (upload then create) was impossible because
+        // the upload endpoint needs the denuncia's id in the URL. Photo
+        // failure is non-fatal — denuncia still saves.
         const result = await publicApi.createReport({
           tipo: values.tipo,
           descripcion: values.descripcion,
           latitud: ubicacion.lat,
           longitud: ubicacion.lng,
-          foto_url: fotoUrl,
           contacto_email: userEmail,
           contacto_nombre: userName || undefined,
         });
+
+        await uploadPhotoIfExists(result.id, values.foto, announce);
 
         showNotification(
           'Denuncia enviada',
