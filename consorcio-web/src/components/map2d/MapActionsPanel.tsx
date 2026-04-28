@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Menu, Tooltip } from '@mantine/core';
+import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 
@@ -26,11 +26,14 @@ interface MapActionsPanelProps {
 }
 
 /**
- * Floating "Exportar" trigger docked to the right edge of the map. The
- * button mimics the visual weight of the MapLibre native controls
- * (`NavigationControl`, `FullscreenControl`) — 29×29 white square with
- * the same subtle shadow — so the right-side toolbar reads as one
- * coherent column instead of a stack of mismatched widgets.
+ * Floating "Exportar" trigger docked to the right edge of the map.
+ *
+ * The wrapper reuses MapLibre's own `maplibregl-ctrl maplibregl-ctrl-group`
+ * CSS classes so the button inherits the EXACT visual treatment of
+ * `NavigationControl` and `FullscreenControl` (29×29 white square, 4px
+ * radius, the same `0 0 0 2px rgba(0,0,0,.1)` shadow). That guarantees the
+ * right-side toolbar reads as one coherent column without us having to
+ * keep our hand-rolled style in sync with upstream MapLibre changes.
  *
  * Position: `top: 144, right: 10` puts it directly under the
  * FullscreenControl (which lands around 110–135px) and above the
@@ -44,29 +47,33 @@ export const MapActionsPanel = memo(function MapActionsPanel({
 }: MapActionsPanelProps) {
   return (
     <Box
+      className="maplibregl-ctrl maplibregl-ctrl-group"
       style={{
         position: 'absolute',
         top: 144,
         right: 10,
         zIndex: 16,
+        margin: 0,
       }}
     >
       <Menu shadow="md" width={200}>
         <Menu.Target>
           <Tooltip label="Exportar" position="left" withArrow>
-            <ActionIcon
+            <UnstyledButton
+              type="button"
               aria-label="Exportar"
-              size={29}
-              radius={4}
-              variant="default"
               style={{
-                background: '#fff',
+                width: 29,
+                height: 29,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
                 color: '#333',
-                boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
               }}
             >
               <IconDownload size={16} />
-            </ActionIcon>
+            </UnstyledButton>
           </Tooltip>
         </Menu.Target>
         <Menu.Dropdown>

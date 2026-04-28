@@ -41,7 +41,7 @@
  *   "Exportar PDF" menu entry is gated inside `MapActionsPanel`.
  */
 
-import { ActionIcon, Box, Group, Menu, Tooltip } from '@mantine/core';
+import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 
 import { IconPolygon, IconRuler, IconTrash } from '../../ui/icons';
@@ -66,30 +66,35 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
 
   return (
     <Box
+      className="maplibregl-ctrl maplibregl-ctrl-group"
       style={{
         position: 'absolute',
         top: 180,
         right: 10,
         zIndex: 16,
+        margin: 0,
       }}
     >
-      <Group gap={4} wrap="nowrap">
+      <Group gap={0} wrap="nowrap" style={{ flexDirection: 'column' }}>
         <Menu shadow="md" width={200}>
           <Menu.Target>
             <Tooltip label="Medir" position="left" withArrow>
-              <ActionIcon
+              <UnstyledButton
+                type="button"
                 aria-label="Medir"
-                size={29}
-                radius={4}
-                variant="default"
                 style={{
-                  background: isMeasuring ? '#fb923c' : '#fff',
+                  width: 29,
+                  height: 29,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  background: isMeasuring ? '#fb923c' : 'transparent',
                   color: isMeasuring ? '#fff' : '#333',
-                  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
                 }}
               >
                 <IconRuler size={16} />
-              </ActionIcon>
+              </UnstyledButton>
             </Tooltip>
           </Menu.Target>
           <Menu.Dropdown>
@@ -104,20 +109,22 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
 
         {hasMeasurements && (
           <Tooltip label="Limpiar mediciones" position="left" withArrow>
-            <ActionIcon
+            <UnstyledButton
+              type="button"
               aria-label="Limpiar mediciones"
-              size={29}
-              radius={4}
-              variant="default"
               onClick={onClear}
               style={{
-                background: '#fff',
+                width: 29,
+                height: 29,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
                 color: '#dc2626',
-                boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
               }}
             >
               <IconTrash size={16} />
-            </ActionIcon>
+            </UnstyledButton>
           </Tooltip>
         )}
       </Group>
