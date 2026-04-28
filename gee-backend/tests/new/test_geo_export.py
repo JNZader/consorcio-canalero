@@ -26,7 +26,7 @@ class TestQGISProjectGeneratorBuild:
         from app.domains.geo.qgis_export import QGISProjectGenerator
 
         if source_ids is None:
-            source_ids = ["vt_canales", "vt_parcelas", "vt_infraestructura", "vt_zonas"]
+            source_ids = ["vt_canales", "vt_parcelas", "vt_zonas"]
         return QGISProjectGenerator.build(source_ids, martin_url)
 
     def test_build_returns_bytes(self):
@@ -61,13 +61,13 @@ class TestQGISProjectGeneratorBuild:
 
     # Phase 4.1 — 4 maplayer elements for 4 source_ids
     def test_maplayer_count_matches_source_ids(self):
-        source_ids = ["vt_canales", "vt_parcelas", "vt_infraestructura", "vt_zonas"]
+        source_ids = ["vt_canales", "vt_parcelas", "vt_zonas"]
         result = self._build(source_ids=source_ids)
         with zipfile.ZipFile(io.BytesIO(result)) as zf:
             xml_bytes = zf.read("project.qgs")
         root = ET.fromstring(xml_bytes)
         maplayers = root.findall(".//maplayer[@type='vectortile']")
-        assert len(maplayers) == 4
+        assert len(maplayers) == 3
 
     # Phase 4.1 — datasource URLs contain correct martin_public_url prefix
     def test_datasource_urls_contain_martin_public_url(self):

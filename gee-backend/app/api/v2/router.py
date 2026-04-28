@@ -12,7 +12,6 @@ from app.api.v2.admin_invitations import router as admin_invitations_router
 from app.api.v2.public import admin_publish_router, public_router
 from app.auth.router import router as auth_router
 from app.domains.denuncias.router import router as denuncias_router
-from app.domains.infraestructura.router import router as infraestructura_router
 from app.domains.padron.router import router as padron_router
 from app.domains.finanzas.router import router as finanzas_router
 from app.domains.reuniones.router import router as reuniones_router
@@ -30,7 +29,6 @@ api_router.include_router(auth_router)
 
 # Domain routers — each already carries its own prefix (/denuncias, etc.)
 api_router.include_router(denuncias_router)
-api_router.include_router(infraestructura_router)
 api_router.include_router(padron_router)
 api_router.include_router(finanzas_router)
 api_router.include_router(tramites_router)

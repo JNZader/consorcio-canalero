@@ -19,8 +19,7 @@ export function normalizeArrayResponse<T>(payload: unknown): T[] {
 
 export function buildReferrableOptions(
   reports: Array<{ id: string; tipo: string; ubicacion_texto?: string }>,
-  tramites: Array<{ id: string; titulo: string; numero_expediente?: string }>,
-  assets: Array<{ id: string; nombre: string; tipo: string }>
+  tramites: Array<{ id: string; titulo: string; numero_expediente?: string }>
 ): EntityOption[] {
   return [
     ...reports.map((report) => ({
@@ -34,12 +33,6 @@ export function buildReferrableOptions(
       label: `${tramite.titulo} (${tramite.numero_expediente || 'S/N'})`,
       group: 'Tramites',
       type: 'tramite',
-    })),
-    ...assets.map((asset) => ({
-      value: asset.id,
-      label: `${asset.nombre} (${asset.tipo})`,
-      group: 'Infraestructura',
-      type: 'infraestructura',
     })),
   ];
 }

@@ -6,9 +6,6 @@ import { IconDownload, IconFileZip, IconLayers, IconMap, IconPhoto } from '../ui
 export const SUGGESTED_ZONES_PANEL_ID = 'map-suggested-zones-panel';
 
 interface MapActionsPanelProps {
-  readonly isOperator: boolean;
-  readonly markingMode: boolean;
-  readonly onToggleMarkingMode: () => void;
   readonly canManageZoning: boolean;
   readonly showSuggestedZonesPanel: boolean;
   readonly hasApprovedZones: boolean;
@@ -32,9 +29,6 @@ interface MapActionsPanelProps {
 }
 
 export const MapActionsPanel = memo(function MapActionsPanel({
-  isOperator,
-  markingMode,
-  onToggleMarkingMode,
   canManageZoning,
   showSuggestedZonesPanel,
   hasApprovedZones,
@@ -91,18 +85,6 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               )}
             </Menu.Dropdown>
           </Menu>
-
-          {isOperator && (
-            <Button
-              size="xs"
-              variant={markingMode ? 'filled' : 'light'}
-              color={markingMode ? 'red' : undefined}
-              onClick={onToggleMarkingMode}
-              aria-pressed={markingMode}
-            >
-              {markingMode ? 'Cancelar marcado' : 'Marcar punto'}
-            </Button>
-          )}
 
           {canManageZoning && (
             <Button

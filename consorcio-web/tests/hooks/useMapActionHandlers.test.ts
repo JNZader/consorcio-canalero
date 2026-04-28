@@ -3,7 +3,6 @@ import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  useAssetCreationHandler,
   useMapExportHandlers,
   useZoningHandlers,
 } from '../../src/components/map2d/useMapActionHandlers';
@@ -712,42 +711,6 @@ describe('useMapActionHandlers', () => {
       );
       expect(greenCalls.length).toBeGreaterThanOrEqual(1);
     });
-  });
-
-  it('creates infrastructure assets and resets state on success', async () => {
-    const createAsset = vi.fn().mockResolvedValue({});
-    const setIsSubmitting = vi.fn();
-    const setNewPoint = vi.fn();
-    const setMarkingMode = vi.fn();
-    const resetForm = vi.fn();
-
-    const { result } = renderHook(() =>
-      useAssetCreationHandler({
-        newPoint: { lat: -32.6, lng: -62.6 },
-        createAsset,
-        setIsSubmitting,
-        setNewPoint,
-        setMarkingMode,
-        resetForm,
-      }),
-    );
-
-    await act(async () => {
-      await result.current({ nombre: 'Puente 1', tipo: 'puente', descripcion: '' });
-    });
-
-    expect(createAsset).toHaveBeenCalledWith(
-      expect.objectContaining({
-        nombre: 'Puente 1',
-        tipo: 'puente',
-        latitud: -32.6,
-        longitud: -62.6,
-        estado_actual: 'bueno',
-      }),
-    );
-    expect(setNewPoint).toHaveBeenCalledWith(null);
-    expect(setMarkingMode).toHaveBeenCalledWith(false);
-    expect(resetForm).toHaveBeenCalled();
   });
 
   it('approves, clears and reapplies zoning assignments', async () => {

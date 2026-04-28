@@ -10,7 +10,6 @@
  */
 
 import { Box } from '@mantine/core';
-import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection } from 'geojson';
 
@@ -32,8 +31,8 @@ import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
+import { useConflictos } from '../hooks/useConflictos';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
-import { useInfrastructure } from '../hooks/useInfrastructure';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
@@ -65,11 +64,7 @@ import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
 import { useComparisonSlider } from './map2d/useComparisonSlider';
-import {
-  useAssetCreationHandler,
-  useMapExportHandlers,
-  useZoningHandlers,
-} from './map2d/useMapActionHandlers';
+import { useMapExportHandlers, useZoningHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
@@ -124,9 +119,6 @@ export default function MapaMapLibre() {
   const [showIGNOverlay, setShowIGNOverlay] = useState(false);
   const [showDemOverlay, setShowDemOverlay] = useState(false);
   const [activeDemLayerId, setActiveDemLayerId] = useState<string | null>(null);
-  const [markingMode, setMarkingMode] = useState(false);
-  const [newPoint, setNewPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [exportPngModalOpen, setExportPngModalOpen] = useState(false);
   const [exportIncludeLegend, setExportIncludeLegend] = useState(true);
   const [exportIncludeMetadata, setExportIncludeMetadata] = useState(true);
@@ -141,11 +133,6 @@ export default function MapaMapLibre() {
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
-
-  const form = useForm({
-    initialValues: { nombre: '', tipo: 'alcantarilla', descripcion: '', cuenca: '' },
-    validate: { nombre: (value) => (value.length < 3 ? 'Nombre demasiado corto' : null) },
-  });
 
   // ── Layer sync store ──────────────────────────────────────────────────────
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
@@ -176,7 +163,7 @@ export default function MapaMapLibre() {
   // ── Data hooks ────────────────────────────────────────────────────────────
   const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
   const { caminos, consorcios } = useCaminosColoreados();
-  const { intersections, createAsset } = useInfrastructure();
+  const { conflictos } = useConflictos();
   const { soilMap } = useSoilMap();
   const { basins } = useBasins();
   const { suggestedZones } = useSuggestedZones();
@@ -265,7 +252,7 @@ export default function MapaMapLibre() {
     comparison,
     vectorVisibility,
     hasApprovedZones,
-    intersectionsLength: intersections?.features?.length ?? 0,
+    intersectionsLength: conflictos?.features?.length ?? 0,
     isAdmin,
     pilarVerde,
     canales: canalesData,
@@ -363,9 +350,7 @@ export default function MapaMapLibre() {
   useMapInteractionEffects({
     mapRef,
     mapReady,
-    markingMode,
     measurementMode: measurementState.mode,
-    setNewPoint,
     setSelectedFeatures,
     showSuggestedZonesPanel,
     setSelectedDraftBasinId,
@@ -584,18 +569,6 @@ export default function MapaMapLibre() {
       vectorVisibility.canales_relevados && !!canalesRelevados ? canalesRelevados : null,
   });
 
-  /* ---------------------------------------------------------------------- */
-  /*  Infrastructure asset creation                                          */
-  /* ---------------------------------------------------------------------- */
-  const handleSaveAsset = useAssetCreationHandler<typeof form.values>({
-    newPoint,
-    createAsset,
-    setIsSubmitting,
-    setNewPoint,
-    setMarkingMode,
-    resetForm: form.reset,
-  });
-
   const { handleApproveZones, handleClearApprovedZones, handleApplyBasinMove } = useZoningHandlers({
     suggestedZonesDisplay,
     effectiveBasinAssignments,
@@ -709,12 +682,6 @@ export default function MapaMapLibre() {
           demOptions={demLayerOptions}
           canalesRelevadosItems={canalesRelevadosItems}
           canalesPropuestosItems={canalesPropuestosItems}
-          isOperator={isOperator}
-          markingMode={markingMode}
-          onToggleMarkingMode={() => {
-            setMarkingMode(!markingMode);
-            setNewPoint(null);
-          }}
           canManageZoning={canManageZoning}
           showSuggestedZonesPanel={showSuggestedZonesPanel}
           hasApprovedZones={hasApprovedZones}
@@ -779,17 +746,6 @@ export default function MapaMapLibre() {
           onCloseInfoPanel={() => setSelectedFeatures([])}
           bpaEnriched={pilarVerde?.bpaEnriched}
           bpaHistory={pilarVerde?.bpaHistory}
-          newPoint={newPoint}
-          onCloseAssetPointModal={() => {
-            setNewPoint(null);
-            form.reset();
-            setMarkingMode(false);
-          }}
-          onSubmitAssetPointModal={form.onSubmit(handleSaveAsset)}
-          isSubmitting={isSubmitting}
-          nameInputProps={form.getInputProps('nombre')}
-          typeInputProps={form.getInputProps('tipo')}
-          descriptionInputProps={form.getInputProps('descripcion')}
           exportPngModalOpen={exportPngModalOpen}
           onCloseExportPngModal={() => setExportPngModalOpen(false)}
           exportTitle={exportTitle}

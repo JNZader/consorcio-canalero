@@ -446,64 +446,6 @@ export function useMapExportHandlers({
   };
 }
 
-interface UseAssetCreationHandlerParams<TFormValues> {
-  newPoint: { lat: number; lng: number } | null;
-  createAsset: (
-    payload: TFormValues & {
-      latitud: number;
-      longitud: number;
-      estado_actual: 'bueno' | 'regular' | 'malo' | 'critico';
-      tipo: 'alcantarilla' | 'puente' | 'canal' | 'otro';
-    }
-  ) => Promise<unknown>;
-  setIsSubmitting: (value: boolean) => void;
-  setNewPoint: (value: { lat: number; lng: number } | null) => void;
-  setMarkingMode: (value: boolean) => void;
-  resetForm: () => void;
-}
-
-export function useAssetCreationHandler<TFormValues extends { nombre: string; tipo: string }>({
-  newPoint,
-  createAsset,
-  setIsSubmitting,
-  setNewPoint,
-  setMarkingMode,
-  resetForm,
-}: UseAssetCreationHandlerParams<TFormValues>) {
-  return useCallback(
-    async (values: TFormValues) => {
-      if (!newPoint) return;
-      setIsSubmitting(true);
-      try {
-        await createAsset({
-          ...values,
-          latitud: newPoint.lat,
-          longitud: newPoint.lng,
-          estado_actual: 'bueno',
-          tipo: values.tipo as 'alcantarilla' | 'puente' | 'canal' | 'otro',
-        });
-        notifications.show({
-          title: 'Punto registrado',
-          message: `${values.nombre} guardado exitosamente`,
-          color: 'green',
-        });
-        setNewPoint(null);
-        setMarkingMode(false);
-        resetForm();
-      } catch (_error) {
-        notifications.show({
-          title: 'Error',
-          message: 'No se pudo guardar el punto',
-          color: 'red',
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [createAsset, newPoint, resetForm, setIsSubmitting, setMarkingMode, setNewPoint]
-  );
-}
-
 interface UseZoningHandlersParams {
   suggestedZonesDisplay: FeatureCollection | null;
   effectiveBasinAssignments: Record<string, string>;

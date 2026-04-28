@@ -24,7 +24,6 @@ logger = get_logger(__name__)
 FALLBACK_LAYERS: list[str] = [
     "vt_canales",
     "vt_parcelas",
-    "vt_infraestructura",
     "vt_zonas",
 ]
 

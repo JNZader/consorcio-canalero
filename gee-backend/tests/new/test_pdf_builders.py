@@ -15,7 +15,6 @@ import pytest
 
 from app.shared.pdf.base import BrandedPDF, BrandingInfo, get_pdf_styles
 from app.shared.pdf.builders import (
-    build_asset_pdf,
     build_finanzas_pdf,
     build_reunion_pdf,
     build_tramite_pdf,
@@ -55,31 +54,6 @@ class MockTramite:
     fecha_resolucion: Optional[date] = None
     resolucion: Optional[str] = None
     seguimiento: list = field(default_factory=lambda: [MockSeguimiento()])
-
-
-@dataclass
-class MockMantenimiento:
-    fecha_trabajo: date = date(2026, 2, 20)
-    tipo_trabajo: str = "Limpieza"
-    descripcion: str = "Limpieza general del canal"
-    realizado_por: str = "Equipo Tecnico"
-    costo: float = 15000.50
-
-
-@dataclass
-class MockAsset:
-    id: str = "a-001"
-    nombre: str = "Canal Norte Principal"
-    tipo: str = "canal"
-    estado_actual: str = "bueno"
-    latitud: float = -33.75
-    longitud: float = -63.85
-    material: str = "Hormigon"
-    anio_construccion: int = 1998
-    longitud_km: float = 12.5
-    responsable: str = "Ing. Garcia"
-    descripcion: str = "Canal principal de riego zona norte"
-    mantenimientos: list = field(default_factory=lambda: [MockMantenimiento()])
 
 
 @dataclass
@@ -181,35 +155,6 @@ class TestTramitePDF:
         ]
         tramite = MockTramite(seguimiento=seguimientos)
         result = build_tramite_pdf(tramite, _branding())
-        _assert_valid_pdf(result)
-
-
-class TestAssetPDF:
-    """Tests for build_asset_pdf."""
-
-    def test_produces_valid_pdf(self):
-        result = build_asset_pdf(MockAsset(), _branding())
-        _assert_valid_pdf(result)
-
-    def test_with_no_mantenimientos(self):
-        asset = MockAsset(mantenimientos=[])
-        result = build_asset_pdf(asset, _branding())
-        _assert_valid_pdf(result)
-
-    def test_with_optional_fields_missing(self):
-        asset = MockAsset(
-            material=None,
-            anio_construccion=None,
-            longitud_km=None,
-            responsable=None,
-        )
-        result = build_asset_pdf(asset, _branding())
-        _assert_valid_pdf(result)
-
-    def test_with_zero_cost_maintenance(self):
-        mant = MockMantenimiento(costo=0)
-        asset = MockAsset(mantenimientos=[mant])
-        result = build_asset_pdf(asset, _branding())
         _assert_valid_pdf(result)
 
 

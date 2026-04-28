@@ -1,10 +1,9 @@
 import { Box } from '@mantine/core';
 import type { Feature } from 'geojson';
-import { type FormEvent, memo } from 'react';
+import { memo } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import { RasterLegend } from '../RasterLegend';
-import { AssetPointModal } from './AssetPointModal';
 import { ExportPngModal } from './ExportPngModal';
 import { InfoPanel } from './InfoPanel';
 import { LayerControlsPanel } from './LayerControlsPanel';
@@ -68,9 +67,6 @@ export interface MapUiPanelsProps {
   readonly demOptions: DemOption[];
   readonly canalesRelevadosItems?: readonly LayerItem[];
   readonly canalesPropuestosItems?: readonly LayerItem[];
-  readonly isOperator: boolean;
-  readonly markingMode: boolean;
-  readonly onToggleMarkingMode: () => void;
   readonly canManageZoning: boolean;
   readonly showSuggestedZonesPanel: boolean;
   readonly hasApprovedZones: boolean;
@@ -127,13 +123,6 @@ export interface MapUiPanelsProps {
   readonly bpaEnriched?: BpaEnrichedFile | null;
   /** Optional Pilar Verde historical BPA lookup — powers the BpaCard histórico footer. */
   readonly bpaHistory?: BpaHistoryFile | null;
-  readonly newPoint: { lat: number; lng: number } | null;
-  readonly onCloseAssetPointModal: () => void;
-  readonly onSubmitAssetPointModal: (event?: FormEvent<HTMLFormElement>) => void;
-  readonly isSubmitting: boolean;
-  readonly nameInputProps: object;
-  readonly typeInputProps: object;
-  readonly descriptionInputProps: object;
   readonly exportPngModalOpen: boolean;
   readonly onCloseExportPngModal: () => void;
   readonly exportTitle: string;
@@ -180,9 +169,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
-  isOperator,
-  markingMode,
-  onToggleMarkingMode,
   canManageZoning,
   showSuggestedZonesPanel,
   hasApprovedZones,
@@ -222,13 +208,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   onCloseInfoPanel,
   bpaEnriched,
   bpaHistory,
-  newPoint,
-  onCloseAssetPointModal,
-  onSubmitAssetPointModal,
-  isSubmitting,
-  nameInputProps,
-  typeInputProps,
-  descriptionInputProps,
   exportPngModalOpen,
   onCloseExportPngModal,
   exportTitle,
@@ -335,9 +314,6 @@ export const MapUiPanels = memo(function MapUiPanels({
       )}
 
       <MapActionsPanel
-        isOperator={isOperator}
-        markingMode={markingMode}
-        onToggleMarkingMode={onToggleMarkingMode}
         canManageZoning={canManageZoning}
         showSuggestedZonesPanel={showSuggestedZonesPanel}
         hasApprovedZones={hasApprovedZones}
@@ -392,17 +368,6 @@ export const MapUiPanels = memo(function MapUiPanels({
           bpaHistory={bpaHistory}
         />
       )}
-
-      <AssetPointModal
-        opened={!!newPoint}
-        coordinates={newPoint}
-        onClose={onCloseAssetPointModal}
-        onSubmit={onSubmitAssetPointModal}
-        isSubmitting={isSubmitting}
-        nameInputProps={nameInputProps}
-        typeInputProps={typeInputProps}
-        descriptionInputProps={descriptionInputProps}
-      />
 
       <ExportPngModal
         opened={exportPngModalOpen}

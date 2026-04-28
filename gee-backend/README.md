@@ -90,9 +90,6 @@ Reportes ciudadanos públicos con foto adjunta y geolocalización. Estados (abie
 ### `tramites`
 Expedientes administrativos internos con tipo, prioridad y estado. Sistema de **seguimiento cronológico** con comentarios de cada operador. **Exportación a PDF** del expediente completo.
 
-### `infraestructura`
-Inventario georreferenciado de activos hidráulicos (compuertas, diques, alcantarillas, canales, obras). Estados de servicio, **bitácora de mantenimiento** por activo y **ficha técnica exportable a PDF**.
-
 ### `finanzas`
 Contabilidad anual: ingresos por categoría, gastos por rubro, presupuesto anual, **análisis de ejecución** (proyectado vs. real) y **resumen anual exportable a PDF**.
 
@@ -103,7 +100,7 @@ Calendario de asambleas y reuniones de directorio con **agenda colaborativa**, v
 CRUD de capas raster/vector mostradas en el visor. Distinción **públicas vs. operador**, reordenamiento drag-and-drop. Las capas pueden originarse en GEE, archivos estáticos o tablas PostGIS.
 
 ### `monitoring`
-Sugerencias ciudadanas públicas + **dashboard integrado** con KPIs cruzados (denuncias, trámites, finanzas, infraestructura) + tracking persistente de análisis GEE ejecutados.
+Sugerencias ciudadanas públicas + **dashboard integrado** con KPIs cruzados (denuncias, trámites, finanzas) + tracking persistente de análisis GEE ejecutados.
 
 ### `settings`
 Configuración por deployment (general, branding, territorio, análisis, contacto). **Endpoint público de branding** (sin auth) para que el viewer cargue logo + colores. Persistencia de imagen satelital seleccionada del visor y comparador antes/después.
@@ -243,7 +240,6 @@ gee-backend/
 │   │   ├── padron/
 │   │   ├── denuncias/
 │   │   ├── tramites/
-│   │   ├── infraestructura/
 │   │   ├── finanzas/
 │   │   ├── reuniones/
 │   │   ├── capas/
@@ -418,7 +414,6 @@ Todos los endpoints bajo `/api/v2`. Documentación interactiva:
 | `/api/v2/padron/*` | Padrón | Operador+ |
 | `/api/v2/denuncias/*` | Denuncias | Público (POST) / Operador+ |
 | `/api/v2/finanzas/*` | Finanzas | Operador+ |
-| `/api/v2/infraestructura/*` | Infraestructura + mantenimiento | Operador+ |
 | `/api/v2/tramites/*` | Trámites + seguimiento | Operador+ |
 | `/api/v2/reuniones/*` | Reuniones + agenda | Operador+ |
 | `/api/v2/capas/*` | Capas del mapa | Operador+ |
@@ -458,7 +453,6 @@ python scripts/etl_canales.py
 ReportLab se usa para generar:
 
 - Trámites (con seguimiento cronológico).
-- Fichas técnicas de infraestructura (con bitácora).
 - Órdenes del día de reuniones.
 - Resúmenes financieros anuales.
 

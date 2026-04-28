@@ -7,9 +7,7 @@ import type { MeasurementMode } from './measurement/useMeasurement';
 interface UseMapInteractionEffectsParams {
   mapRef: React.RefObject<maplibregl.Map | null>;
   mapReady: boolean;
-  markingMode: boolean;
   measurementMode: MeasurementMode;
-  setNewPoint: (value: { lat: number; lng: number } | null) => void;
   /**
    * Receives the FULL list of overlapping features MapLibre returned at the
    * click point (top-most first, per z-order). Empty array clears the panel.
@@ -75,9 +73,7 @@ export function buildClickableLayers(): string[] {
 export function useMapInteractionEffects({
   mapRef,
   mapReady,
-  markingMode,
   measurementMode,
-  setNewPoint,
   setSelectedFeatures,
   showSuggestedZonesPanel,
   setSelectedDraftBasinId,
@@ -89,11 +85,6 @@ export function useMapInteractionEffects({
     const clickableLayers = buildClickableLayers();
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
-      if (markingMode) {
-        setNewPoint({ lat: event.lngLat.lat, lng: event.lngLat.lng });
-        return;
-      }
-
       if (measurementMode !== 'idle') {
         setSelectedFeatures([]);
         return;
@@ -113,7 +104,7 @@ export function useMapInteractionEffects({
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapReady, mapRef, markingMode, measurementMode, setNewPoint, setSelectedFeatures]);
+  }, [mapReady, mapRef, measurementMode, setSelectedFeatures]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -33,7 +33,6 @@ consorcio-canalero/
 │   │   │   ├── finanzas/       # Finance (ingresos, gastos, presupuestos)
 │   │   │   ├── geo/            # Geo processing + GEE + intelligence
 │   │   │   │   └── hydrology/  # Flood flow estimation (Kirpich + Método Racional)
-│   │   │   ├── infraestructura/# Assets + maintenance logs
 │   │   │   ├── monitoring/     # Sugerencias + GEE analysis tracking
 │   │   │   ├── padron/         # Consorcista registry
 │   │   │   ├── settings/       # System settings (per-deployment config)
@@ -134,7 +133,6 @@ All new endpoints are under `/api/v2`. Key route groups:
 | `/api/v2/padron/*` | Consorcista registry | Operator+ |
 | `/api/v2/denuncias/*` | Citizen reports | Operator+ |
 | `/api/v2/finanzas/*` | Finance management | Operator+ |
-| `/api/v2/infraestructura/*` | Assets + maintenance | Operator+ |
 | `/api/v2/tramites/*` | Procedures | Operator+ |
 | `/api/v2/capas/*` | Map layers | Operator+ |
 | `/api/v2/geo/*` | Geo processing + GEE | Operator+ |

@@ -179,11 +179,10 @@ class MonitoringRepository:
         """
         Cross-domain read-only aggregation for the admin dashboard.
 
-        Queries denuncias, infraestructura assets, tramites, sugerencias,
-        and finanzas tables to produce summary counts.
+        Queries denuncias, tramites, sugerencias, and finanzas tables to
+        produce summary counts.
         """
         from app.domains.denuncias.models import Denuncia
-        from app.domains.infraestructura.models import Asset
         from app.domains.tramites.models import Tramite
         from app.domains.finanzas.models import Gasto, Ingreso
 
@@ -193,11 +192,6 @@ class MonitoringRepository:
         ).all()
         denuncias_por_estado = {row[0]: row[1] for row in denuncia_rows}
         total_denuncias = sum(denuncias_por_estado.values())
-
-        # Assets total
-        total_assets: int = db.execute(
-            select(func.count()).select_from(Asset)
-        ).scalar_one()
 
         # Tramites total
         total_tramites: int = db.execute(
@@ -225,7 +219,6 @@ class MonitoringRepository:
                 "por_estado": denuncias_por_estado,
                 "total": total_denuncias,
             },
-            "total_assets": total_assets,
             "total_tramites": total_tramites,
             "total_sugerencias": total_sugerencias,
             "resumen_financiero": {

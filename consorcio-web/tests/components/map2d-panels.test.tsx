@@ -5,7 +5,6 @@ import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AssetPointModal } from '../../src/components/map2d/AssetPointModal';
 import { ExportPngModal } from '../../src/components/map2d/ExportPngModal';
 import { InfoPanel } from '../../src/components/map2d/InfoPanel';
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
@@ -81,7 +80,6 @@ describe('map2d extracted panels', () => {
     const onLayerVisibilityChange = vi.fn();
     const onShowIGNOverlayChange = vi.fn();
     const onShowDemOverlayChange = vi.fn();
-    const onToggleMarkingMode = vi.fn();
     const onToggleSuggestedZonesPanel = vi.fn();
     const onOpenExportPng = vi.fn();
 
@@ -131,9 +129,6 @@ describe('map2d extracted panels', () => {
           demOptions={[{ value: 'dem-1', label: 'Pendiente' }]}
         />
         <MapActionsPanel
-          isOperator
-          markingMode={false}
-          onToggleMarkingMode={onToggleMarkingMode}
           canManageZoning
           showSuggestedZonesPanel={false}
           hasApprovedZones
@@ -149,10 +144,6 @@ describe('map2d extracted panels', () => {
     expect(document.getElementById('map-suggested-zones-panel')).toHaveAttribute(
       'aria-label',
       'Panel de zonificación'
-    );
-    expect(screen.getByRole('button', { name: /marcar punto/i })).toHaveAttribute(
-      'aria-pressed',
-      'false'
     );
     expect(screen.getByRole('button', { name: /ver zonificación/i })).toHaveAttribute(
       'aria-controls',
@@ -181,9 +172,6 @@ describe('map2d extracted panels', () => {
     await user.click(screen.getByRole('checkbox', { name: /^capa dem$/i }));
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
 
-    await user.click(screen.getByRole('button', { name: /marcar punto/i }));
-    expect(onToggleMarkingMode).toHaveBeenCalledTimes(1);
-
     await user.click(screen.getByRole('button', { name: /ver zonificación/i }));
     expect(onToggleSuggestedZonesPanel).toHaveBeenCalledTimes(1);
 
@@ -194,7 +182,6 @@ describe('map2d extracted panels', () => {
 
   it('renders modals and viewport overlay interactions', async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn((event?: Event) => event?.preventDefault());
     const onTitleChange = vi.fn();
     const onIncludeLegendChange = vi.fn();
     const onIncludeMetadataChange = vi.fn();
@@ -203,16 +190,6 @@ describe('map2d extracted panels', () => {
 
     renderWithMantine(
       <>
-        <AssetPointModal
-          opened
-          coordinates={{ lat: -32.62543, lng: -62.68421 }}
-          onClose={() => {}}
-          onSubmit={onSubmit}
-          isSubmitting={false}
-          nameInputProps={{ value: 'Puente norte', onChange: () => {} }}
-          typeInputProps={{ value: 'puente', onChange: () => {} }}
-          descriptionInputProps={{ value: 'Descripción inicial', onChange: () => {} }}
-        />
         <ExportPngModal
           opened
           title="Mapa operativo"
@@ -233,7 +210,6 @@ describe('map2d extracted panels', () => {
       </>
     );
 
-    expect(screen.getByText(/coordenadas: -32.62543, -62.68421/i)).toBeInTheDocument();
     expect(screen.getByDisplayValue('Mapa operativo')).toBeInTheDocument();
     expect(screen.getByText(/cargando mapa/i)).toBeInTheDocument();
 
@@ -249,39 +225,13 @@ describe('map2d extracted panels', () => {
     await user.click(screen.getByRole('button', { name: /descargar png/i }));
     expect(onExport).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: /guardar punto/i }));
-    expect(onSubmit).toHaveBeenCalled();
-
     fireEvent.mouseDown(screen.getByRole('separator', { name: /divisor de comparación/i }));
     expect(onSliderMouseDown).toHaveBeenCalledTimes(1);
-  });
-
-  it('connects asset point name validation error to the field', () => {
-    renderWithMantine(
-      <AssetPointModal
-        opened
-        coordinates={{ lat: -32.62543, lng: -62.68421 }}
-        onClose={() => {}}
-        onSubmit={(event) => event?.preventDefault()}
-        isSubmitting={false}
-        nameInputProps={{ value: '', onChange: () => {}, error: 'Nombre demasiado corto' }}
-        typeInputProps={{ value: 'puente', onChange: () => {} }}
-        descriptionInputProps={{ value: '', onChange: () => {} }}
-      />
-    );
-
-    const nameInput = screen.getByRole('textbox', { name: /nombre/i });
-
-    expect(nameInput.closest('form')).toHaveAttribute('novalidate');
-    expect(nameInput).toHaveAttribute('aria-invalid', 'true');
-    expect(nameInput.getAttribute('aria-describedby')).toContain('asset-point-name-error');
-    expect(screen.getByText(/nombre demasiado corto/i)).toHaveAttribute('role', 'alert');
   });
 
   it('composes the extracted panels through MapUiPanels', async () => {
     const user = userEvent.setup();
     const onBaseLayerChange = vi.fn();
-    const onToggleMarkingMode = vi.fn();
     const onCloseSuggestedZonesPanel = vi.fn();
     const onCloseInfoPanel = vi.fn();
 
@@ -312,9 +262,6 @@ describe('map2d extracted panels', () => {
         activeDemLayerId={null}
         onActiveDemLayerIdChange={() => {}}
         demOptions={[]}
-        isOperator
-        markingMode={false}
-        onToggleMarkingMode={onToggleMarkingMode}
         canManageZoning
         showSuggestedZonesPanel
         hasApprovedZones={false}
@@ -351,13 +298,6 @@ describe('map2d extracted panels', () => {
         onExportApprovedZonesGeoJSON={() => {}}
         selectedFeatures={[feature]}
         onCloseInfoPanel={onCloseInfoPanel}
-        newPoint={null}
-        onCloseAssetPointModal={() => {}}
-        onSubmitAssetPointModal={() => {}}
-        isSubmitting={false}
-        nameInputProps={{}}
-        typeInputProps={{}}
-        descriptionInputProps={{}}
         exportPngModalOpen={false}
         onCloseExportPngModal={() => {}}
         exportTitle="Mapa"
@@ -377,9 +317,6 @@ describe('map2d extracted panels', () => {
 
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
-
-    await user.click(screen.getByRole('button', { name: /marcar punto/i }));
-    expect(onToggleMarkingMode).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('button', { name: /cerrar panel de zonificación/i }));
     expect(onCloseSuggestedZonesPanel).toHaveBeenCalledTimes(1);

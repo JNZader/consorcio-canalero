@@ -58,7 +58,7 @@ export const queryKeys = {
   // Generic public-data cache key prefix used by useCatastroMap / useSoilMap
   // (the standalone usePublicLayers hook was removed in the cleanup pass).
   publicLayers: () => ['public-layers'] as const,
-  infrastructure: () => ['infrastructure'] as const,
+  conflictos: () => ['conflictos'] as const,
   martinCatalog: () => ['martin-catalog'] as const,
 } as const;
 

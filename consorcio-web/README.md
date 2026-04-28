@@ -52,7 +52,7 @@ Aplicación React 19 con visor cartográfico interactivo, panel de administraci�
 ### Visor cartográfico
 
 - Mapa 2D interactivo con MapLibre GL.
-- Capas vectoriales: cuencas, canales (relevados + propuestas), caminos, escuelas, infraestructura, alertas, conflictos, suelos.
+- Capas vectoriales: cuencas, canales (relevados + propuestas), caminos, escuelas, alertas, conflictos, suelos.
 - Capas raster derivadas de DEM: hillshade, slope, TWI, HAND, flow accumulation.
 - **Toggle 2D / 3D terrain**.
 - Capa **PMTiles** servida desde Martin para tiles vectoriales eficientes.
@@ -62,7 +62,7 @@ Aplicación React 19 con visor cartográfico interactivo, panel de administraci�
 
 ### Panel de administración
 
-Dashboard unificado con KPIs cruzados de denuncias, trámites, finanzas e infraestructura. Subpáginas:
+Dashboard unificado con KPIs cruzados de denuncias, trámites y finanzas. Subpáginas:
 
 - **Padrón** — CRUD de consorcistas con búsqueda, filtros y **importación CSV/XLSX**.
 - **Denuncias** — gestión de reportes ciudadanos: estados, asignación, respuesta, historial.

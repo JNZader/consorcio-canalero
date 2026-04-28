@@ -59,9 +59,6 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
     activeDemLayerId: null,
     onActiveDemLayerIdChange: noop,
     demOptions: [],
-    isOperator: false,
-    markingMode: false,
-    onToggleMarkingMode: noop,
     canManageZoning: false,
     showSuggestedZonesPanel: false,
     hasApprovedZones: false,
@@ -98,13 +95,6 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
     onExportApprovedZonesGeoJSON: noop,
     selectedFeatures: [],
     onCloseInfoPanel: noop,
-    newPoint: null,
-    onCloseAssetPointModal: noop,
-    onSubmitAssetPointModal: noop,
-    isSubmitting: false,
-    nameInputProps: {},
-    typeInputProps: {},
-    descriptionInputProps: {},
     exportPngModalOpen: false,
     onCloseExportPngModal: noop,
     exportTitle: '',
@@ -119,12 +109,9 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
 }
 
 describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
-  it('exposes pressed and expanded state for map action toggles', () => {
+  it('exposes expanded state for map action toggles', () => {
     renderWithMantine(
       <MapActionsPanel
-        isOperator
-        markingMode
-        onToggleMarkingMode={() => {}}
         canManageZoning
         showSuggestedZonesPanel
         hasApprovedZones
@@ -134,10 +121,6 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /cancelar marcado/i })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
     expect(screen.getByRole('button', { name: /ocultar zonificación/i })).toHaveAttribute(
       'aria-expanded',
       'true'
@@ -153,9 +136,6 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        isOperator={false}
-        markingMode={false}
-        onToggleMarkingMode={() => {}}
         canManageZoning={false}
         showSuggestedZonesPanel={false}
         hasApprovedZones={false}
@@ -179,9 +159,6 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        isOperator={false}
-        markingMode={false}
-        onToggleMarkingMode={() => {}}
         canManageZoning={false}
         showSuggestedZonesPanel={false}
         hasApprovedZones={false}
@@ -206,9 +183,6 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        isOperator={false}
-        markingMode={false}
-        onToggleMarkingMode={() => {}}
         canManageZoning={false}
         showSuggestedZonesPanel={false}
         hasApprovedZones={false}
@@ -231,9 +205,6 @@ describe('<MapActionsPanel /> — Exportar KMZ menu item', () => {
 
     renderWithMantine(
       <MapActionsPanel
-        isOperator={false}
-        markingMode={false}
-        onToggleMarkingMode={() => {}}
         canManageZoning={false}
         showSuggestedZonesPanel={false}
         hasApprovedZones={false}

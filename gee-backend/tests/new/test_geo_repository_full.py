@@ -15,7 +15,6 @@ import app.auth.models  # noqa: F401 — users table (geo_jobs.usuario_id FK)
 import app.domains.geo.intelligence.models  # noqa: F401 — zonas_operativas (flood_labels.zona_id FK)
 import app.domains.capas.models  # noqa: F401
 import app.domains.denuncias.models  # noqa: F401
-import app.domains.infraestructura.models  # noqa: F401
 import app.domains.monitoring.models  # noqa: F401
 import app.domains.padron.models  # noqa: F401
 import app.domains.settings.models  # noqa: F401

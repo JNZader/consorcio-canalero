@@ -93,65 +93,6 @@ def build_tramite_pdf(tramite: Any, branding: BrandingInfo) -> io.BytesIO:
     return pdf.build(story, title=f"Tramite - {getattr(tramite, 'titulo', '')}")
 
 
-# ── Asset PDF ─────────────────────────────────────────────
-
-
-def build_asset_pdf(asset: Any, branding: BrandingInfo) -> io.BytesIO:
-    """Build a ficha tecnica PDF for an infrastructure asset."""
-    pdf = BrandedPDF(branding)
-    styles = get_pdf_styles(branding)
-    story: list = []
-
-    # Title
-    story.append(Paragraph("Ficha Tecnica de Infraestructura", styles["title"]))
-    story.append(Spacer(1, 2 * mm))
-
-    # Info table
-    lat = getattr(asset, "latitud", None)
-    lon = getattr(asset, "longitud", None)
-    ubicacion = f"{lat}, {lon}" if lat is not None and lon is not None else "—"
-
-    info_data = [
-        ("Nombre", getattr(asset, "nombre", "")),
-        ("Tipo", getattr(asset, "tipo", "")),
-        ("Estado Actual", getattr(asset, "estado_actual", "")),
-        ("Ubicacion (lat/lon)", ubicacion),
-        ("Material", getattr(asset, "material", None) or "—"),
-        ("Anio Construccion", str(getattr(asset, "anio_construccion", None) or "—")),
-        ("Longitud (km)", str(getattr(asset, "longitud_km", None) or "—")),
-        ("Responsable", getattr(asset, "responsable", None) or "—"),
-    ]
-    story.append(build_info_table(info_data, branding))
-    story.append(Spacer(1, 4 * mm))
-
-    # Descripcion
-    descripcion = getattr(asset, "descripcion", None)
-    if descripcion:
-        story.append(Paragraph("Descripcion", styles["subtitle"]))
-        story.append(Paragraph(str(descripcion), styles["body"]))
-        story.append(Spacer(1, 3 * mm))
-
-    # Mantenimiento history
-    mantenimientos = getattr(asset, "mantenimientos", None) or []
-    if mantenimientos:
-        story.append(Paragraph("Historial de Mantenimiento", styles["subtitle"]))
-        headers = ["Fecha", "Tipo Trabajo", "Descripcion", "Realizado Por", "Costo"]
-        rows = []
-        for m in mantenimientos:
-            rows.append(
-                [
-                    fmt_date(getattr(m, "fecha_trabajo", None)),
-                    getattr(m, "tipo_trabajo", ""),
-                    getattr(m, "descripcion", ""),
-                    getattr(m, "realizado_por", ""),
-                    fmt_money(getattr(m, "costo", None)),
-                ]
-            )
-        story.append(build_data_table(headers, rows, branding))
-
-    return pdf.build(story, title=f"Asset - {getattr(asset, 'nombre', '')}")
-
-
 # ── Reunion PDF ───────────────────────────────────────────
 
 

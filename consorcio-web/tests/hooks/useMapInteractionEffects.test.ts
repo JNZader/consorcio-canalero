@@ -28,7 +28,6 @@ function createMapMock() {
 describe('useMapInteractionEffects', () => {
   it('registers click handler and selects a rendered feature', () => {
     const { map, handlers } = createMapMock();
-    const setNewPoint = vi.fn();
     const setSelectedFeatures = vi.fn();
     const setSelectedDraftBasinId = vi.fn();
     const selectedFeature: Feature = {
@@ -42,9 +41,7 @@ describe('useMapInteractionEffects', () => {
       useMapInteractionEffects({
         mapRef: { current: map } as any,
         mapReady: true,
-        markingMode: false,
         measurementMode: 'idle',
-        setNewPoint,
         setSelectedFeatures,
         showSuggestedZonesPanel: false,
         setSelectedDraftBasinId,
@@ -62,40 +59,25 @@ describe('useMapInteractionEffects', () => {
     // Phase 8 — hook now forwards the FULL feature array (top-most first)
     // instead of the single first element; InfoPanel stacks them.
     expect(setSelectedFeatures).toHaveBeenCalledWith([selectedFeature]);
-    expect(setNewPoint).not.toHaveBeenCalled();
   });
 
-  it('creates a new point in marking mode and captures basin id in zoning mode', () => {
+  it('captures basin id in zoning mode', () => {
     const { map, handlers } = createMapMock();
-    const setNewPoint = vi.fn();
     const setSelectedFeatures = vi.fn();
     const setSelectedDraftBasinId = vi.fn();
 
     map.queryRenderedFeatures.mockReturnValue([{ properties: { id: 'basin-1' } }]);
 
-    const { rerender } = renderHook(
-      (props: { markingMode: boolean; showSuggestedZonesPanel: boolean }) =>
-        useMapInteractionEffects({
-          mapRef: { current: map } as any,
-          mapReady: true,
-          markingMode: props.markingMode,
-          measurementMode: 'idle',
-          setNewPoint,
-          setSelectedFeatures,
-          showSuggestedZonesPanel: props.showSuggestedZonesPanel,
-          setSelectedDraftBasinId,
-        }),
-      { initialProps: { markingMode: true, showSuggestedZonesPanel: false } },
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        measurementMode: 'idle',
+        setSelectedFeatures,
+        showSuggestedZonesPanel: true,
+        setSelectedDraftBasinId,
+      }),
     );
-
-    const firstClickHandler = handlers.get('click')?.[0];
-    firstClickHandler?.({
-      point: { x: 10, y: 10 },
-      lngLat: { lat: -32.61, lng: -62.61 },
-    });
-    expect(setNewPoint).toHaveBeenCalledWith({ lat: -32.61, lng: -62.61 });
-
-    rerender({ markingMode: false, showSuggestedZonesPanel: true });
 
     const clickHandlers = handlers.get('click') ?? [];
     const basinClickHandler = clickHandlers.at(-1);
@@ -105,12 +87,10 @@ describe('useMapInteractionEffects', () => {
     });
 
     expect(setSelectedDraftBasinId).toHaveBeenCalledWith('basin-1');
-    expect(setSelectedFeatures).not.toHaveBeenCalled();
   });
 
   it('does not query/select underlying features while measurement mode is active', () => {
     const { map, handlers } = createMapMock();
-    const setNewPoint = vi.fn();
     const setSelectedFeatures = vi.fn();
     const setSelectedDraftBasinId = vi.fn();
 
@@ -118,9 +98,7 @@ describe('useMapInteractionEffects', () => {
       useMapInteractionEffects({
         mapRef: { current: map } as any,
         mapReady: true,
-        markingMode: false,
         measurementMode: 'measuring-distance',
-        setNewPoint,
         setSelectedFeatures,
         showSuggestedZonesPanel: true,
         setSelectedDraftBasinId,
@@ -137,6 +115,5 @@ describe('useMapInteractionEffects', () => {
     expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
     expect(setSelectedFeatures).toHaveBeenCalledWith([]);
     expect(setSelectedDraftBasinId).not.toHaveBeenCalled();
-    expect(setNewPoint).not.toHaveBeenCalled();
   });
 });

@@ -28,7 +28,7 @@ Self-hosted, clone-and-deploy ready. Pensado para que un consorcio pueda operar 
 
 La plataforma cubre cuatro grandes áreas de trabajo:
 
-1. **Operación administrativa** — padrón de consorcistas, finanzas (ingresos/gastos/presupuesto/ejecución), trámites con seguimiento, agenda de reuniones, infraestructura con bitácora de mantenimiento.
+1. **Operación administrativa** — padrón de consorcistas, finanzas (ingresos/gastos/presupuesto/ejecución), trámites con seguimiento, agenda de reuniones.
 2. **Participación ciudadana** — denuncias públicas con foto y geolocalización, sugerencias vinculables a la próxima reunión, viewer público sin login.
 3. **Inteligencia geoespacial** — visor cartográfico interactivo, análisis con Google Earth Engine (Sentinel-1 SAR + Sentinel-2 multiespectral), modelado hidrológico, dashboard de inteligencia con índice de criticidad hídrica (HCI), zonificación automática y detección de conflictos.
 4. **Configuración y branding** — settings por deployment (nombre, logo, colores, parámetros analíticos), selección de imagen satelital del visor, comparador antes/después.
@@ -83,14 +83,6 @@ El backend usa **Screaming Architecture**: cada dominio bajo `gee-backend/app/do
 - **Exportación a PDF** del expediente completo con su historial.
 - Filtros por estado, tipo y prioridad.
 
-### `infraestructura` — Activos hidráulicos
-
-- Inventario georreferenciado de compuertas, diques, alcantarillas, canales y obras.
-- Estados de servicio: funcionando · en mantenimiento · fuera de servicio.
-- **Bitácora de mantenimiento** por activo (registros con fecha, operario, descripción).
-- **Ficha técnica exportable a PDF** con datos del activo + historial.
-- Estadísticas: activos por tipo, por estado, próximos mantenimientos.
-
 ### `finanzas` — Contabilidad anual
 
 - Registro de **ingresos** (cuotas, subsidios, transferencias) por categoría y año.
@@ -118,7 +110,7 @@ El backend usa **Screaming Architecture**: cada dominio bajo `gee-backend/app/do
 - **Sugerencias ciudadanas** públicas (sin auth) con categorización.
 - Endpoint para listar sugerencias agendadas a la próxima reunión.
 - Marcado de sugerencias incorporadas como obras concretas.
-- **Dashboard integrado** con KPIs cruzados de denuncias, trámites, finanzas, infraestructura.
+- **Dashboard integrado** con KPIs cruzados de denuncias, trámites y finanzas.
 - Historial persistente de análisis GEE ejecutados.
 
 ### `settings` — Configuración por deployment
@@ -378,7 +370,6 @@ Todos los endpoints nuevos están bajo `/api/v2`. Documentación interactiva en 
 | `/api/v2/padron/*` | Padrón de consorcistas | Operador+ |
 | `/api/v2/denuncias/*` | Reportes ciudadanos | Público (POST) / Operador+ |
 | `/api/v2/finanzas/*` | Ingresos, gastos, presupuesto | Operador+ |
-| `/api/v2/infraestructura/*` | Activos + mantenimiento | Operador+ |
 | `/api/v2/tramites/*` | Trámites + seguimiento | Operador+ |
 | `/api/v2/reuniones/*` | Reuniones + agenda | Operador+ |
 | `/api/v2/capas/*` | Capas del mapa | Operador+ |

@@ -30,7 +30,7 @@ class ZonalStatsRequest(BaseModel):
     )
     zona_source: str = Field(
         default="zonas_operativas",
-        description="Source table for zones: zonas_operativas, assets, or denuncias",
+        description="Source table for zones: zonas_operativas or denuncias",
     )
     area_id: str | None = Field(
         default=None,
@@ -89,18 +89,6 @@ def compute_zonal_statistics(
             ST_AsText(ZonaOperativa.geometria),
             ZonaOperativa.nombre,
         ).all()
-    elif body.zona_source == "assets":
-        from app.domains.infraestructura.models import Asset
-
-        rows = (
-            db.query(
-                Asset.id,
-                ST_AsText(Asset.geom),
-                Asset.nombre,
-            )
-            .filter(Asset.geom.isnot(None))
-            .all()
-        )
     elif body.zona_source == "denuncias":
         from app.domains.denuncias.models import Denuncia
 
