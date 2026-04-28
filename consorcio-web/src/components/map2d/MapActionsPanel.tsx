@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Menu, Paper, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Menu, Tooltip } from '@mantine/core';
 import { memo } from 'react';
 import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 
@@ -26,13 +26,15 @@ interface MapActionsPanelProps {
 }
 
 /**
- * Tiny floating panel that exposes the "Exportar" dropdown (PNG/PDF/KMZ).
+ * Floating "Exportar" trigger docked to the right edge of the map. The
+ * button mimics the visual weight of the MapLibre native controls
+ * (`NavigationControl`, `FullscreenControl`) — 29×29 white square with
+ * the same subtle shadow — so the right-side toolbar reads as one
+ * coherent column instead of a stack of mismatched widgets.
  *
- * Position: docked to the right edge of the map, between the MapLibre
- * `FullscreenControl` (~top 140px) and the `MeasurementToolbar` (top 220px),
- * so it visually belongs to the right-side toolbar column instead of
- * floating in the corner. The "Ver zonificación" button + the
- * `<LineDrawControl>` were retired in the 2026-04-28 cleanup pass.
+ * Position: `top: 144, right: 10` puts it directly under the
+ * FullscreenControl (which lands around 110–135px) and above the
+ * MeasurementToolbar at `top: 180`.
  */
 export const MapActionsPanel = memo(function MapActionsPanel({
   hasApprovedZones,
@@ -44,45 +46,45 @@ export const MapActionsPanel = memo(function MapActionsPanel({
     <Box
       style={{
         position: 'absolute',
-        top: 175,
+        top: 144,
         right: 10,
         zIndex: 16,
       }}
     >
-      <Paper
-        shadow="md"
-        p={4}
-        radius="md"
-        style={{
-          background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        <Menu shadow="md" width={200}>
-          <Menu.Target>
-            <Tooltip label="Exportar" position="left" withArrow>
-              <ActionIcon aria-label="Exportar" size="md" variant="light">
-                <IconDownload size={14} />
-              </ActionIcon>
-            </Tooltip>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
-              Exportar PNG
+      <Menu shadow="md" width={200}>
+        <Menu.Target>
+          <Tooltip label="Exportar" position="left" withArrow>
+            <ActionIcon
+              aria-label="Exportar"
+              size={29}
+              radius={4}
+              variant="default"
+              style={{
+                background: '#fff',
+                color: '#333',
+                boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+              }}
+            >
+              <IconDownload size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
+            Exportar PNG
+          </Menu.Item>
+          {hasApprovedZones && (
+            <Menu.Item leftSection={<IconMap size={14} />} onClick={onExportApprovedZonesPdf}>
+              Exportar PDF
             </Menu.Item>
-            {hasApprovedZones && (
-              <Menu.Item leftSection={<IconMap size={14} />} onClick={onExportApprovedZonesPdf}>
-                Exportar PDF
-              </Menu.Item>
-            )}
-            {onExportKmz && (
-              <Menu.Item leftSection={<IconFileZip size={14} />} onClick={onExportKmz}>
-                Exportar KMZ
-              </Menu.Item>
-            )}
-          </Menu.Dropdown>
-        </Menu>
-      </Paper>
+          )}
+          {onExportKmz && (
+            <Menu.Item leftSection={<IconFileZip size={14} />} onClick={onExportKmz}>
+              Exportar KMZ
+            </Menu.Item>
+          )}
+        </Menu.Dropdown>
+      </Menu>
     </Box>
   );
 });

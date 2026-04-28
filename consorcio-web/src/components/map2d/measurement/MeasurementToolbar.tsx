@@ -41,7 +41,7 @@
  *   "Exportar PDF" menu entry is gated inside `MapActionsPanel`.
  */
 
-import { ActionIcon, Group, Menu, Paper, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Group, Menu, Tooltip } from '@mantine/core';
 import { memo } from 'react';
 
 import { IconPolygon, IconRuler, IconTrash } from '../../ui/icons';
@@ -65,30 +65,30 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   const isMeasuring = mode !== 'idle';
 
   return (
-    <Paper
-      shadow="md"
-      p={4}
-      radius="md"
+    <Box
       style={{
         position: 'absolute',
-        top: 220,
+        top: 180,
         right: 10,
         zIndex: 16,
-        background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-        backdropFilter: 'blur(6px)',
       }}
     >
       <Group gap={4} wrap="nowrap">
         <Menu shadow="md" width={200}>
           <Menu.Target>
-            <Tooltip label="Medir" position="bottom" withArrow>
+            <Tooltip label="Medir" position="left" withArrow>
               <ActionIcon
                 aria-label="Medir"
-                size="lg"
-                variant={isMeasuring ? 'filled' : 'subtle'}
-                color="orange"
+                size={29}
+                radius={4}
+                variant="default"
+                style={{
+                  background: isMeasuring ? '#fb923c' : '#fff',
+                  color: isMeasuring ? '#fff' : '#333',
+                  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+                }}
               >
-                <IconRuler size={18} />
+                <IconRuler size={16} />
               </ActionIcon>
             </Tooltip>
           </Menu.Target>
@@ -103,19 +103,24 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
         </Menu>
 
         {hasMeasurements && (
-          <Tooltip label="Limpiar mediciones" position="bottom" withArrow>
+          <Tooltip label="Limpiar mediciones" position="left" withArrow>
             <ActionIcon
               aria-label="Limpiar mediciones"
-              size="lg"
-              variant="subtle"
-              color="red"
+              size={29}
+              radius={4}
+              variant="default"
               onClick={onClear}
+              style={{
+                background: '#fff',
+                color: '#dc2626',
+                boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+              }}
             >
-              <IconTrash size={18} />
+              <IconTrash size={16} />
             </ActionIcon>
           </Tooltip>
         )}
       </Group>
-    </Paper>
+    </Box>
   );
 });
