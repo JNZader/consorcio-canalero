@@ -74,6 +74,13 @@ export interface MeasurementEntry {
    * - Area: polygon center-of-mass.
    */
   labelPosition: [number, number];
+  /**
+   * Persisted geometry of the shape the user drew. Stored on the entry so
+   * `<MeasurementShapes>` can render the line/polygon as a plain MapLibre
+   * layer that survives the unmount of the temporary MapboxDraw instance
+   * (which otherwise wipes its features when we release the slot mutex).
+   */
+  geometry: LineString | Polygon;
 }
 
 export interface MeasurementState {
@@ -265,12 +272,24 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
           const line = feature as Feature<LineString>;
           const meters = length(line, { units: 'meters' });
           const labelPosition = computeLineLabelAnchor(line);
-          entries.push({ id: featureId, kind: 'distance', value: meters, labelPosition });
+          entries.push({
+            id: featureId,
+            kind: 'distance',
+            value: meters,
+            labelPosition,
+            geometry: line.geometry,
+          });
         } else if (geom.type === 'Polygon') {
           const poly = feature as Feature<Polygon>;
           const m2 = area(poly);
           const labelPosition = computePolygonLabelAnchor(poly);
-          entries.push({ id: featureId, kind: 'area', value: m2, labelPosition });
+          entries.push({
+            id: featureId,
+            kind: 'area',
+            value: m2,
+            labelPosition,
+            geometry: poly.geometry,
+          });
         }
       }
 

@@ -61,6 +61,7 @@ import {
   syncWaterwayLayers,
 } from './map2d/mapLayerEffectHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
+import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
 import { useComparisonSlider } from './map2d/useComparisonSlider';
@@ -680,6 +681,7 @@ export default function MapaMapLibre() {
           onClear={clearMeasurements}
         />
         <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
+        <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 
         <MapUiPanels
           baseLayer={baseLayer}
