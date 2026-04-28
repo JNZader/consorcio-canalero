@@ -13,7 +13,7 @@ created in `v6q3r4s5t482_add_vector_tile_views` is dropped here too with
 `IF EXISTS`, so re-running upgrade on a clean DB never resurrects it.
 
 Revision ID: zz_drop_infra
-Revises: zz_mgmt_indexes
+Revises: 37d3912d8013
 Create Date: 2026-04-28
 """
 
@@ -23,7 +23,11 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "zz_drop_infra"
-down_revision: Union[str, None] = "zz_mgmt_indexes"
+# Originally written against `zz_mgmt_indexes`, which produced a parallel
+# branch in the Alembic DAG — `37d3912d8013` (drop duplicate management
+# indexes) was actually the latest head. Repointed so the timeline is
+# linear and `alembic upgrade head` works without an explicit branch.
+down_revision: Union[str, None] = "37d3912d8013"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

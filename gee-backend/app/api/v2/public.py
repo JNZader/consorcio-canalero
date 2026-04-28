@@ -293,7 +293,14 @@ async def upload_denuncia_photo(
             ),
         )
 
-    photo_url = await storage.save(file, make_denuncia_photo_key(denuncia_id))
+    # If a previous photo exists for this denuncia, drop it first so we
+    # don't accumulate orphan files when the citizen re-uploads with a
+    # different format (e.g. PNG → JPG would otherwise leave the .png on
+    # disk forever — `foto_url` only ever points to one of them).
+    storage_key = make_denuncia_photo_key(denuncia_id)
+    await storage.delete(storage_key)
+
+    photo_url = await storage.save(file, storage_key)
 
     denuncia.foto_url = photo_url
     db.commit()
