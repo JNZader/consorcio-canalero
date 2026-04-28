@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -18,7 +19,21 @@ GEE_SENTINEL2_TTL = 60 * 60           # 1 h — image-by-date tiles
 
 
 async def _run_blocking(func, *args, **kwargs):
-    return func(*args, **kwargs)
+    """Run a synchronous, potentially-slow function in a worker thread so it
+    does NOT block the uvicorn event loop.
+
+    Why this matters
+    ----------------
+    The GEE service calls in this module make blocking network requests to
+    Google Earth Engine that can take 30 s to 2 min. Without offloading to a
+    thread, awaiting them stalls the entire event loop — every other endpoint
+    queues behind them, which is what produced the 21–161 s tail latency on
+    `/basins/approved-zones/current` (a totally unrelated PostGIS endpoint).
+
+    `asyncio.to_thread` propagates the current contextvars (request id,
+    structlog binding, etc.) so logging stays consistent.
+    """
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 
 HISTORIC_FLOODS = [
