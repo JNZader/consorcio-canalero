@@ -132,4 +132,68 @@ describe('getDisplayableProperties', () => {
     expect(getDisplayableProperties(`${SOURCE_IDS.ROADS}-line`, {})).toEqual([]);
     expect(getDisplayableProperties(undefined, {})).toEqual([]);
   });
+
+  // ── approved-zones / cuencas: formatters ──────────────────────────────
+
+  it('formats approved-zones superficie_ha as es-AR with " ha" suffix', () => {
+    const rows = getDisplayableProperties(`${SOURCE_IDS.APPROVED_ZONES}-fill`, {
+      nombre: 'Candil',
+      superficie_ha: 22603.1,
+    });
+    const sup = rows.find((r) => r.key === 'superficie_ha');
+    expect(sup?.formatted).toBe('22.603,1 ha');
+  });
+
+  it('formats member_basin_names as a string[] for bullet rendering', () => {
+    const rows = getDisplayableProperties(`${SOURCE_IDS.APPROVED_ZONES}-fill`, {
+      nombre: 'Candil',
+      member_basin_names: ['Sub-cuenca 13', 'Sub-cuenca 7'],
+    });
+    const compone = rows.find((r) => r.key === 'member_basin_names');
+    expect(compone?.formatted).toEqual(['Sub-cuenca 13', 'Sub-cuenca 7']);
+  });
+
+  it('parses MapLibre-serialised JSON-string arrays back into bullet lists', () => {
+    // MapLibre's GeoJSON source stringifies array properties — what arrives
+    // at the click handler is the literal string, not a JS array. The
+    // formatter must defend against this so the InfoPanel never shows a raw
+    // JSON dump in the "Compone" row.
+    const rows = getDisplayableProperties(`${SOURCE_IDS.APPROVED_ZONES}-fill`, {
+      nombre: 'Monte Leña',
+      member_basin_names: '["Sub-cuenca 15 (ml)","Sub-cuenca 4 (ml)"]',
+    });
+    const compone = rows.find((r) => r.key === 'member_basin_names');
+    expect(compone?.formatted).toEqual(['Sub-cuenca 15 (ml)', 'Sub-cuenca 4 (ml)']);
+  });
+
+  it('hides debug fields (zone_id, status, source, member_basin_ids) on approved-zones', () => {
+    const rows = getDisplayableProperties(`${SOURCE_IDS.APPROVED_ZONES}-fill`, {
+      zone_id: 'draft-zone-candil',
+      nombre: 'Candil',
+      status: 'approved-draft',
+      source: 'suggested-zones-editor',
+      family: 'candil',
+      member_basin_ids: '["uuid1","uuid2"]',
+    });
+    const keys = rows.map((r) => r.key);
+    expect(keys).not.toContain('zone_id');
+    expect(keys).not.toContain('status');
+    expect(keys).not.toContain('source');
+    expect(keys).not.toContain('member_basin_ids');
+    expect(keys).toContain('nombre');
+  });
+
+  // ── basins / sub-cuencas ──────────────────────────────────────────────
+
+  it('hides the UUID id on basins and formats superficie_ha', () => {
+    const rows = getDisplayableProperties(`${SOURCE_IDS.BASINS}-fill`, {
+      id: '997b93a6-b4eb-4e56-9be0-7bb3229ee28e',
+      nombre: 'Sub-cuenca 4 (ml)',
+      cuenca: 'Monte Leña',
+      superficie_ha: 7652.7,
+    });
+    const keys = rows.map((r) => r.key);
+    expect(keys).toEqual(['nombre', 'cuenca', 'superficie_ha']);
+    expect(rows.find((r) => r.key === 'superficie_ha')?.formatted).toBe('7.652,7 ha');
+  });
 });

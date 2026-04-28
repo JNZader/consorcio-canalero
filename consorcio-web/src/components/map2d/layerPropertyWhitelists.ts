@@ -131,8 +131,26 @@ function formatHectares(value: unknown): string {
 }
 
 function formatStringList(value: unknown): FormatResult {
-  if (Array.isArray(value)) {
-    const items = value.map((v) => (typeof v === 'string' ? v : String(v))).filter((s) => s.length > 0);
+  // MapLibre serialises object/array properties to JSON strings as they pass
+  // through `addSource({type:'geojson'})` — so a feature whose original
+  // GeoJSON had `member_basin_names: ["a","b"]` arrives at
+  // `queryRenderedFeatures` as the literal string `'["a","b"]'`. Parse
+  // defensively so the formatter handles both shapes.
+  let arr: unknown = value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        arr = JSON.parse(trimmed);
+      } catch {
+        // Not actually JSON — fall through and stringify.
+      }
+    }
+  }
+  if (Array.isArray(arr)) {
+    const items = arr
+      .map((v) => (typeof v === 'string' ? v : String(v)))
+      .filter((s) => s.length > 0);
     return items;
   }
   return String(value);
