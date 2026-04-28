@@ -199,7 +199,7 @@ describe('useMeasurement', () => {
     expect(canvas.style.cursor).toBe('crosshair');
   });
 
-  it('records a distance entry and keeps distance mode active for consecutive measurements', () => {
+  it('records a distance entry and returns to idle (no auto-restart of next shape)', () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -224,11 +224,15 @@ describe('useMeasurement', () => {
     expect(entry.labelPosition[0]).toBeLessThan(-62);
     expect(entry.labelPosition[1]).toBeGreaterThan(-33);
     expect(entry.labelPosition[1]).toBeLessThan(-32);
-    expect(result.current.state.mode).toBe('measuring-distance');
-    expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string');
+    // Critical: after the shape is finished we go back to idle so the
+    // double-click that ended the line does NOT start a phantom new line.
+    expect(result.current.state.mode).toBe('idle');
+    // And we do NOT reentrantly call changeMode from inside draw.create —
+    // that reentrancy was the source of the "too much recursion" prod crash.
+    expect(drawChangeMode).not.toHaveBeenCalled();
   });
 
-  it('records an area entry and keeps area mode active for consecutive measurements', () => {
+  it('records an area entry and returns to idle (no auto-restart of next shape)', () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -246,8 +250,9 @@ describe('useMeasurement', () => {
     expect(entry.kind).toBe('area');
     expect(entry.value).toBe(4567.8);
     expect(entry.labelPosition).toEqual([-62.6, -32.6]); // from @turf/center-of-mass mock
-    expect(result.current.state.mode).toBe('measuring-area');
-    expect(drawChangeMode).toHaveBeenCalledWith('draw_polygon');
+    // Same rule as distance — after a polygon completes, return to idle.
+    expect(result.current.state.mode).toBe('idle');
+    expect(drawChangeMode).not.toHaveBeenCalled();
   });
 
   it('assigns stable ids from the draw feature id (no randomness in the pipeline)', () => {
@@ -262,7 +267,7 @@ describe('useMeasurement', () => {
     expect(result.current.state.measurements[0].id).toBe('line-1');
   });
 
-  it('clear() removes the draw control and empties the measurements list', () => {
+  it('clear() empties the measurements list and ensures the slot is released', () => {
     const { map, handlers, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -272,17 +277,39 @@ describe('useMeasurement', () => {
     act(() => createHandler?.({ features: [buildLineFeature()] }));
     expect(result.current.state.measurements).toHaveLength(1);
 
-    map.removeControl.mockClear();
+    // Completing the shape already returned us to idle, which auto-unmounts
+    // the draw via the reactive effect — `removeControl` was called there.
+    expect(map.removeControl).toHaveBeenCalledTimes(1);
+    // listeners were detached as part of the auto-unmount
+    expect(handlers.get('draw.create')?.length ?? 0).toBe(0);
+
     act(() => result.current.clear());
 
-    // The draw control is fully torn down (not just `deleteAll`), so the
-    // mutex slot is released and LineDrawControl can re-mount.
+    // `clear()` only resets state; the draw was already gone, so no extra
+    // removeControl call.
     expect(map.removeControl).toHaveBeenCalledTimes(1);
     expect(result.current.state.measurements).toEqual([]);
     expect(result.current.state.mode).toBe('idle');
     expect(canvas.style.cursor).toBe('');
-    // listeners were detached when unmountDraw ran
-    expect(handlers.get('draw.create')?.length ?? 0).toBe(0);
+  });
+
+  it('clear() while still drawing tears the draw down explicitly', () => {
+    const { map, canvas } = createMapMock();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
+    const { result } = renderHook(() => useMeasurement(map as any));
+
+    // Start a measurement but DO NOT complete it — draw is mounted, no entry yet.
+    act(() => result.current.startDistance());
+    expect(result.current.state.measurements).toEqual([]);
+    expect(map.addControl).toHaveBeenCalledTimes(1);
+
+    map.removeControl.mockClear();
+    act(() => result.current.clear());
+
+    // `clear()` MUST tear down the in-flight draw + release the slot.
+    expect(map.removeControl).toHaveBeenCalledTimes(1);
+    expect(result.current.state.mode).toBe('idle');
+    expect(canvas.style.cursor).toBe('');
   });
 
   it('cancel() tears the draw down WITHOUT appending a measurement', () => {

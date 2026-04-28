@@ -276,23 +276,22 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
       if (entries.length === 0) return;
 
-      const currentMode = modeRef.current;
-      const nextMode =
-        currentMode === 'measuring-distance' || currentMode === 'measuring-area'
-          ? currentMode
-          : 'idle';
-
+      // After each successful measurement, return to 'idle'. The user has to
+      // click "Medir distancia / área" again to start another shape. Two
+      // wins from this:
+      //   1. UX: the double-click that ends a shape stops on the last vertex
+      //      instead of starting a phantom new line from that same point.
+      //   2. Stability: we no longer call `draw.changeMode(...)` from inside
+      //      MapboxDraw's `draw.create` handler. That reentrancy fired
+      //      MapboxDraw's `onStop` recursively and produced
+      //      "InternalError: too much recursion" in production.
+      // The unmount of the MapboxDraw control is handled by the
+      // `state.mode === 'idle'` reactive effect below — doing it here would
+      // re-enter the very event loop we are currently inside.
       setMeasurementState((prev) => ({
-        mode: nextMode,
+        mode: 'idle',
         measurements: [...prev.measurements, ...entries],
       }));
-
-      const draw = drawRef.current;
-      if (draw && nextMode === 'measuring-distance') {
-        draw.changeMode('draw_line_string');
-      } else if (draw && nextMode === 'measuring-area') {
-        draw.changeMode('draw_polygon');
-      }
     };
 
     handleContextLostRef.current = () => {
@@ -300,7 +299,23 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     };
   }, [map, setMeasurementState]);
 
-  // Tear down on unmount: release the slot so LineDrawControl can re-mount.
+  // Reactive teardown: whenever the mode flips back to 'idle' (because a
+  // measurement just completed inside `handleCreate`, or because the user
+  // pressed `clear/cancel`), drop the MapboxDraw control + release the
+  // mutex slot so LineDrawControl can re-mount.
+  //
+  // We do this in an effect (not directly in `handleCreate`) so the unmount
+  // runs OUTSIDE of MapboxDraw's `draw.create` event loop — calling
+  // `removeControl` from inside an event fired by MapboxDraw was the source
+  // of the "too much recursion" crash.
+  useEffect(() => {
+    if (state.mode === 'idle' && drawRef.current) {
+      unmountDraw();
+    }
+  }, [state.mode, unmountDraw]);
+
+  // Tear down on full unmount: release the slot so LineDrawControl can
+  // re-mount.
   useEffect(() => {
     return () => {
       unmountDraw();
