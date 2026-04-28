@@ -150,6 +150,10 @@ export default function MapaMapLibre() {
   // ── Layer sync store ──────────────────────────────────────────────────────
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
+  const propuestasEtapasVisibility = useMapLayerSyncStore(
+    (state) => state.propuestasEtapasVisibility
+  );
+  const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
 
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)
   const [vectorVisibility, setVectorVisibility] = useState<Record<string, boolean>>(
@@ -839,6 +843,8 @@ export default function MapaMapLibre() {
               pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
               pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
               pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+              propuestasEtapasVisibility={propuestasEtapasVisibility}
+              onSetEtapaVisible={setEtapaVisible}
             />
             {visibleRasterLayers.length > 0 && (
               <RasterLegend

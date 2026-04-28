@@ -10,19 +10,20 @@
  *     `vectorVisibility`).
  *   - Per-canal sub-checkboxes for each master, disabled + tooltipped when
  *     the master is OFF.
- *   - The `<PropuestasEtapasFilter>` subsection, which UNMOUNTS when the
- *     propuestos master is OFF.
  *
- * See spec `sdd/canales-relevados-y-propuestas/spec` §LayerControlsPanel.
+ * The propuestos etapas filter (Alta → Largo plazo) used to live here as a
+ * `<PropuestasEtapasFilter>` subsection, but moved to `LeyendaPanel` as
+ * interactive checkboxes (single source of truth). Its tests live with the
+ * standalone component (`PropuestasEtapasFilter.test.tsx`) and with the
+ * legend (covered by visual QA — the legend tests stay light by design).
  */
 
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
-import { ALL_ETAPAS } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider>{ui}</MantineProvider>);
@@ -52,14 +53,6 @@ const canalesPropuestosItems = [
   { id: 'canal_propuesto_ampliacion', label: 'Ampliación' },
 ];
 
-const defaultEtapasVisibility = {
-  Alta: true,
-  'Media-Alta': true,
-  Media: true,
-  Opcional: true,
-  'Largo plazo': true,
-} as const;
-
 describe('<LayerControlsPanel /> — Canales section', () => {
   it('renders a "Canales" collapsible section with both master checkboxes', () => {
     renderWithMantine(
@@ -69,8 +62,6 @@ describe('<LayerControlsPanel /> — Canales section', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -87,8 +78,6 @@ describe('<LayerControlsPanel /> — Canales section', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -105,8 +94,6 @@ describe('<LayerControlsPanel /> — Canales section', () => {
         onLayerVisibilityChange={onLayerVisibilityChange}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -142,8 +129,6 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -170,8 +155,6 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -193,8 +176,6 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -216,8 +197,6 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -245,8 +224,6 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
         onLayerVisibilityChange={onLayerVisibilityChange}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
       />,
     );
 
@@ -255,40 +232,3 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
   });
 });
 
-describe('<LayerControlsPanel /> — PropuestasEtapasFilter subsection', () => {
-  it('renders PropuestasEtapasFilter when the propuestos master is ON', () => {
-    renderWithMantine(
-      <LayerControlsPanel
-        {...baseProps}
-        vectorVisibility={{ canales_relevados: true, canales_propuestos: true }}
-        onLayerVisibilityChange={() => {}}
-        canalesRelevadosItems={canalesRelevadosItems}
-        canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
-      />,
-    );
-
-    expect(screen.getByTestId('propuestas-etapas-filter')).toBeInTheDocument();
-    for (const etapa of ALL_ETAPAS) {
-      const row = within(screen.getByTestId('propuestas-etapas-filter'));
-      expect(row.getByLabelText(etapa)).toBeInTheDocument();
-    }
-  });
-
-  it('UNMOUNTS PropuestasEtapasFilter when the propuestos master is OFF', () => {
-    renderWithMantine(
-      <LayerControlsPanel
-        {...baseProps}
-        vectorVisibility={{ canales_relevados: true, canales_propuestos: false }}
-        onLayerVisibilityChange={() => {}}
-        canalesRelevadosItems={canalesRelevadosItems}
-        canalesPropuestosItems={canalesPropuestosItems}
-        propuestasEtapasVisibility={defaultEtapasVisibility}
-        onSetEtapaVisible={() => {}}
-      />,
-    );
-
-    expect(screen.queryByTestId('propuestas-etapas-filter')).not.toBeInTheDocument();
-  });
-});

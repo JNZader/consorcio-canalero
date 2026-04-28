@@ -4,8 +4,7 @@
  * Phase 3 (Batch D) of `pilar-verde-y-canales-3d` — extends the 3D toggles
  * panel with a "Pilar Verde" CollapsibleSection (5 checkboxes, all default
  * OFF per `PILAR_VERDE_DEFAULT_VISIBILITY`) and a "Canales" CollapsibleSection
- * with 2 master toggles + a conditional `<PropuestasEtapasFilter>` that
- * UNMOUNTS when the propuestos master is OFF (matches 2D spec).
+ * with 2 master toggles.
  *
  * Tests assert:
  *   1. "Pilar Verde" section renders with 5 checkboxes in canonical order,
@@ -16,12 +15,12 @@
  *      propuestos default OFF — matches `PILAR_AZUL_DEFAULT_VISIBILITY`).
  *   4. Clicking "Canales propuestos" calls
  *      `onVectorLayerToggle('canales_propuestos', true)`.
- *   5. `<PropuestasEtapasFilter>` is NOT in the DOM when
- *      `vectorLayerVisibility.canales_propuestos === false`.
- *   6. `<PropuestasEtapasFilter>` IS in the DOM when
- *      `vectorLayerVisibility.canales_propuestos === true`, renders 5 etapa
- *      checkboxes reflecting `etapasVisibility`, and clicking one calls
- *      `onSetEtapaVisible(etapa, bool)`.
+ *
+ * The propuestos etapas filter (Alta → Largo plazo) used to mount in the
+ * Canales section here, but moved to `TerrainLegendsPanel` as interactive
+ * checkboxes (single source of truth — same chip both displays the color
+ * and toggles its etapa). Its tests live with the standalone component
+ * (`PropuestasEtapasFilter.test.tsx`).
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -30,25 +29,14 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { TerrainLayerTogglesPanel } from '../../src/components/terrain/TerrainLayerTogglesPanel';
-import { ALL_ETAPAS, type Etapa } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider>{ui}</MantineProvider>);
 }
 
-const defaultEtapasVisibility: Record<Etapa, boolean> = {
-  Alta: true,
-  'Media-Alta': true,
-  Media: true,
-  Opcional: true,
-  'Largo plazo': true,
-};
-
 function makeBaseProps(overrides?: {
   vectorLayerVisibility?: Record<string, boolean>;
-  etapasVisibility?: Record<Etapa, boolean>;
   onVectorLayerToggle?: ReturnType<typeof vi.fn>;
-  onSetEtapaVisible?: ReturnType<typeof vi.fn>;
 }) {
   return {
     rasterLayers: [],
@@ -70,8 +58,6 @@ function makeBaseProps(overrides?: {
     onVectorLayerToggle: overrides?.onVectorLayerToggle ?? vi.fn(),
     onClose: vi.fn(),
     hasApprovedZones: false,
-    etapasVisibility: overrides?.etapasVisibility ?? defaultEtapasVisibility,
-    onSetEtapaVisible: overrides?.onSetEtapaVisible ?? vi.fn(),
   };
 }
 
@@ -145,85 +131,3 @@ describe('<TerrainLayerTogglesPanel /> — Canales section', () => {
   });
 });
 
-describe('<TerrainLayerTogglesPanel /> — PropuestasEtapasFilter conditional mount', () => {
-  it('does NOT mount the etapas filter when propuestos master is OFF', () => {
-    renderWithMantine(<TerrainLayerTogglesPanel {...makeBaseProps()} />);
-
-    // The filter renders a Stack with data-testid="propuestas-etapas-filter".
-    expect(screen.queryByTestId('propuestas-etapas-filter')).not.toBeInTheDocument();
-    // And its heading "Etapas propuestas" must not be present.
-    expect(screen.queryByText(/Etapas propuestas/i)).not.toBeInTheDocument();
-  });
-
-  it('mounts the etapas filter with 5 etapa checkboxes when propuestos master is ON', () => {
-    const props = makeBaseProps({
-      vectorLayerVisibility: {
-        pilar_verde_bpa_historico: false,
-        pilar_verde_agro_aceptada: false,
-        pilar_verde_agro_presentada: false,
-        pilar_verde_agro_zonas: false,
-        pilar_verde_porcentaje_forestacion: false,
-        canales_relevados: true,
-        canales_propuestos: true,
-      },
-    });
-    renderWithMantine(<TerrainLayerTogglesPanel {...props} />);
-
-    expect(screen.getByTestId('propuestas-etapas-filter')).toBeInTheDocument();
-    // Anchor each regex to avoid "Alta" matching inside "Media-Alta" — the
-    // checkboxes render the etapa string as the ONLY text content of the
-    // label (after the color dot span), so `^Etapa$` is safe.
-    for (const etapa of ALL_ETAPAS) {
-      // Escape regex-special chars in the etapa string (e.g. "-").
-      const escaped = etapa.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      expect(screen.getByLabelText(new RegExp(`^${escaped}$`, 'i'))).toBeInTheDocument();
-    }
-  });
-
-  it('reflects etapasVisibility in the etapa checkbox state', () => {
-    const props = makeBaseProps({
-      vectorLayerVisibility: {
-        pilar_verde_bpa_historico: false,
-        pilar_verde_agro_aceptada: false,
-        pilar_verde_agro_presentada: false,
-        pilar_verde_agro_zonas: false,
-        pilar_verde_porcentaje_forestacion: false,
-        canales_relevados: true,
-        canales_propuestos: true,
-      },
-      etapasVisibility: {
-        Alta: false,
-        'Media-Alta': true,
-        Media: true,
-        Opcional: true,
-        'Largo plazo': true,
-      },
-    });
-    renderWithMantine(<TerrainLayerTogglesPanel {...props} />);
-
-    expect(screen.getByLabelText(/^Alta$/i)).not.toBeChecked();
-    expect(screen.getByLabelText(/^Media-Alta$/i)).toBeChecked();
-  });
-
-  it('calls onSetEtapaVisible when an etapa checkbox is clicked', () => {
-    const onSetEtapaVisible = vi.fn();
-    const props = makeBaseProps({
-      vectorLayerVisibility: {
-        pilar_verde_bpa_historico: false,
-        pilar_verde_agro_aceptada: false,
-        pilar_verde_agro_presentada: false,
-        pilar_verde_agro_zonas: false,
-        pilar_verde_porcentaje_forestacion: false,
-        canales_relevados: true,
-        canales_propuestos: true,
-      },
-      onSetEtapaVisible,
-    });
-    renderWithMantine(<TerrainLayerTogglesPanel {...props} />);
-
-    // Click 'Alta' — it was TRUE in defaults, click should flip to FALSE.
-    fireEvent.click(screen.getByLabelText(/^Alta$/i));
-
-    expect(onSetEtapaVisible).toHaveBeenCalledWith('Alta', false);
-  });
-});

@@ -14,21 +14,22 @@
  *
  * Phase 3 (Batch D) of `pilar-verde-y-canales-3d` — extends the panel with:
  *   - "Pilar Verde" CollapsibleSection: 5 checkboxes (one per PV layer).
- *   - "Canales" CollapsibleSection: 2 master toggles (relevados + propuestos)
- *     + a conditional `<PropuestasEtapasFilter>` that UNMOUNTS when the
- *     propuestos master is OFF (matches 2D spec).
+ *   - "Canales" CollapsibleSection: 2 master toggles (relevados + propuestos).
  *
  * Per-canal (43) checkboxes are now rendered in 3D v2 — the 3D chrome is
  * 280px wide and scroll is enabled (maxHeight + overflowY: auto), so all
  * rows fit. Power users no longer need to switch to 2D for per-canal control.
+ *
+ * NOTE: The propuestos etapas filter (Alta → Largo plazo) used to live here
+ * as a `<PropuestasEtapasFilter>` subsection. It moved to the legend
+ * (`TerrainLegendsPanel`) as interactive checkboxes — single source of truth
+ * for both the swatch colors AND the toggle controls.
  */
 
 import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
 import { useMemo } from 'react';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
-import type { Etapa } from '../../types/canales';
-import { PropuestasEtapasFilter } from '../map2d/PropuestasEtapasFilter';
 import { getActiveAttributions } from '../map2d/layerAttributions';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
@@ -68,18 +69,6 @@ interface TerrainLayerTogglesPanelProps {
   /** Optional — when omitted, no close button is rendered (used in embedded mode). */
   readonly onClose?: () => void;
   readonly hasApprovedZones: boolean;
-  /**
-   * 5-key record sourced from `mapLayerSyncStore.propuestasEtapasVisibility`.
-   * Required by the conditional `<PropuestasEtapasFilter>` that mounts inside
-   * the Canales section when the propuestos master is ON. Optional so legacy
-   * tests/pages that don't care about Pilar Azul can skip it.
-   */
-  readonly etapasVisibility?: Readonly<Record<Etapa, boolean>>;
-  /**
-   * Parent-owned setter for a single etapa. Typically delegates to
-   * `mapLayerSyncStore.setEtapaVisible`.
-   */
-  readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
   readonly canalesRelevadosItems?: readonly { id: string; label: string }[];
   readonly canalesPropuestosItems?: readonly { id: string; label: string }[];
   /**
@@ -101,8 +90,6 @@ export function TerrainLayerTogglesPanel({
   onVectorLayerToggle,
   onClose,
   hasApprovedZones,
-  etapasVisibility,
-  onSetEtapaVisible,
   canalesRelevadosItems,
   canalesPropuestosItems,
   embedded = false,
@@ -281,13 +268,13 @@ export function TerrainLayerTogglesPanel({
           </CollapsibleSection>
 
           {/*
-            Canales section — 2 master toggles + a conditional etapas filter.
-            Per-canal (43) checkboxes are DEFERRED to v2 per spec; users who
-            want per-canal control switch to the 2D viewer. The etapas filter
-            UNMOUNTS (not CSS-hides) when the propuestos master is OFF — the
-            shared `propuestasEtapasVisibility` slice preserves state across
-            unmounts, so toggling the master back ON restores the user's
-            previous etapa selection.
+            Canales section — 2 master toggles only. Per-canal (43) checkboxes
+            are DEFERRED to v2 per spec; users who want per-canal control
+            switch to the 2D viewer. The etapas filter (Alta → Largo plazo)
+            now lives EXCLUSIVELY in the LeyendaPanel as interactive
+            checkboxes — see `<TerrainLegendsPanel propuestasEtapasVisibility />`
+            for the single source of truth. This collapses what used to be
+            a duplicated subsection (filter here + chips in legend) into one.
           */}
           <CollapsibleSection
             title="Canales"
@@ -343,13 +330,6 @@ export function TerrainLayerTogglesPanel({
                     />
                   ))}
                 </Stack>
-              )}
-              {propuestosMasterOn && etapasVisibility && onSetEtapaVisible && (
-                <PropuestasEtapasFilter
-                  masterOn={propuestosMasterOn}
-                  propuestasEtapasVisibility={etapasVisibility}
-                  onSetEtapaVisible={onSetEtapaVisible}
-                />
               )}
             </Stack>
           </CollapsibleSection>

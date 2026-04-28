@@ -246,8 +246,6 @@ export function TerrainViewer3DChrome({
             vectorLayerVisibility={vectorLayerVisibility}
             onVectorLayerToggle={onVectorLayerToggle}
             hasApprovedZones={hasApprovedZones}
-            etapasVisibility={etapasVisibility}
-            onSetEtapaVisible={onSetEtapaVisible}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
             embedded
@@ -268,6 +266,8 @@ export function TerrainViewer3DChrome({
             porcentajeForestacionVisible={porcentajeForestacionVisible}
             canalesRelevadosVisible={canalesRelevadosVisible}
             canalesPropuestosVisible={canalesPropuestosVisible}
+            propuestasEtapasVisibility={etapasVisibility}
+            onSetEtapaVisible={onSetEtapaVisible}
             embedded
           />
         </Box>

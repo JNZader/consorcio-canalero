@@ -18,7 +18,7 @@
  * user has all layers off.
  */
 
-import { Box, Divider, Group, Paper, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, Divider, Group, Paper, Stack, Text } from '@mantine/core';
 
 import {
   SOIL_CAPABILITY_COLORS,
@@ -52,6 +52,15 @@ interface TerrainLegendsPanelProps {
   readonly canalesRelevadosVisible?: boolean;
   /** 5-chip DASHED block, one per etapa (Alta → Largo plazo). */
   readonly canalesPropuestosVisible?: boolean;
+  /**
+   * Optional per-etapa visibility map. When provided together with
+   * `onSetEtapaVisible`, the propuestos legend block renders as INTERACTIVE
+   * checkboxes — collapses the duplication between the toggles panel filter
+   * and the legend chips into a single source of truth (the legend itself).
+   */
+  readonly propuestasEtapasVisibility?: Readonly<Record<Etapa, boolean>>;
+  /** Per-etapa visibility setter. See `propuestasEtapasVisibility`. */
+  readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
   /**
    * When `true`, renders inline (no `position: absolute`, no fixed width /
    * maxHeight). Used by the parent to place the panel inside a layout grid
@@ -192,6 +201,59 @@ function CanalDashedLineChip({
   );
 }
 
+/**
+ * Interactive variant of `CanalDashedLineChip` — wraps the dashed-line swatch
+ * in a Mantine Checkbox so a single legend row both DISPLAYS the etapa color
+ * and CONTROLS its visibility. Used when the parent passes
+ * `propuestasEtapasVisibility` + `onSetEtapaVisible`.
+ */
+function CanalDashedLineCheckbox({
+  color,
+  label,
+  testId,
+  checked,
+  onChange,
+}: {
+  readonly color: string;
+  readonly label: string;
+  readonly testId: string;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Checkbox
+      size="xs"
+      checked={checked}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+      data-testid={testId}
+      data-color={color}
+      data-dashed="true"
+      label={
+        <Group gap="xs" wrap="nowrap">
+          <svg
+            width={18}
+            height={3}
+            role="img"
+            aria-label={label}
+            style={{ display: 'inline-block' }}
+          >
+            <line
+              x1={0}
+              y1={1.5}
+              x2={18}
+              y2={1.5}
+              stroke={color}
+              strokeWidth={2}
+              strokeDasharray="4,2"
+            />
+          </svg>
+          <Text size="xs">{label}</Text>
+        </Group>
+      }
+    />
+  );
+}
+
 export function TerrainLegendsPanel({
   activeRasterType,
   hiddenClasses,
@@ -206,6 +268,8 @@ export function TerrainLegendsPanel({
   porcentajeForestacionVisible = false,
   canalesRelevadosVisible = false,
   canalesPropuestosVisible = false,
+  propuestasEtapasVisibility,
+  onSetEtapaVisible,
   embedded = false,
 }: TerrainLegendsPanelProps) {
   const hasRasterLegend = !!activeRasterType;
@@ -405,14 +469,25 @@ export function TerrainLegendsPanel({
               <Text fw={500} size="xs">
                 Canales propuestos
               </Text>
-              {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) => (
-                <CanalDashedLineChip
-                  key={etapa}
-                  color={color}
-                  label={etapa}
-                  testId={`terrain-3d-canales-propuestos-chip-${etapa}`}
-                />
-              ))}
+              {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) =>
+                propuestasEtapasVisibility && onSetEtapaVisible ? (
+                  <CanalDashedLineCheckbox
+                    key={etapa}
+                    color={color}
+                    label={etapa}
+                    testId={`terrain-3d-canales-propuestos-chip-${etapa}`}
+                    checked={!!propuestasEtapasVisibility[etapa]}
+                    onChange={(checked) => onSetEtapaVisible(etapa, checked)}
+                  />
+                ) : (
+                  <CanalDashedLineChip
+                    key={etapa}
+                    color={color}
+                    label={etapa}
+                    testId={`terrain-3d-canales-propuestos-chip-${etapa}`}
+                  />
+                )
+              )}
             </Stack>
           )}
         </Stack>

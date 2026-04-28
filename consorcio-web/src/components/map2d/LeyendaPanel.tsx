@@ -1,4 +1,4 @@
-import { Box, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
@@ -139,6 +139,61 @@ function CanalDashedLineChip({
 }
 
 /**
+ * Interactive variant of `CanalDashedLineChip` — wraps the dashed-line swatch
+ * in a Mantine Checkbox so a single legend row both DISPLAYS the etapa color
+ * and CONTROLS its visibility. Used when the parent passes
+ * `propuestasEtapasVisibility` + `onSetEtapaVisible` so the legend doubles
+ * as the etapas filter (replaces the duplicated `<PropuestasEtapasFilter>`
+ * that previously lived inside the Capas panel).
+ */
+function CanalDashedLineCheckbox({
+  color,
+  label,
+  testId,
+  checked,
+  onChange,
+}: {
+  readonly color: string;
+  readonly label: string;
+  readonly testId: string;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Checkbox
+      size="xs"
+      checked={checked}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+      data-testid={testId}
+      data-color={color}
+      data-dashed="true"
+      label={
+        <Group gap="xs" wrap="nowrap">
+          <svg
+            width={18}
+            height={3}
+            role="img"
+            aria-label={label}
+            style={{ display: 'inline-block' }}
+          >
+            <line
+              x1={0}
+              y1={1.5}
+              x2={18}
+              y2={1.5}
+              stroke={color}
+              strokeWidth={2}
+              strokeDasharray="4,2"
+            />
+          </svg>
+          <Text size="xs">{label}</Text>
+        </Group>
+      }
+    />
+  );
+}
+
+/**
  * Color + label pairs for the propuestos legend — ordered by priority
  * (Alta → Largo plazo) to match the map paint and the filter UI.
  */
@@ -213,6 +268,20 @@ interface LeyendaPanelProps {
    */
   readonly pilarAzulCanalesPropuestosVisible?: boolean;
   /**
+   * Optional per-etapa visibility map. When provided together with
+   * `onSetEtapaVisible`, the propuestos legend block renders as INTERACTIVE
+   * checkboxes (each row toggles its etapa). When omitted (or the handler
+   * is missing), the block stays read-only with the original dashed chips.
+   * This collapses the previous duplication between Capas (filter) and
+   * Leyenda (chips) into a single source of truth.
+   */
+  readonly propuestasEtapasVisibility?: Readonly<Record<Etapa, boolean>>;
+  /**
+   * Per-etapa visibility setter. Typically delegates to
+   * `mapLayerSyncStore.setEtapaVisible`. See `propuestasEtapasVisibility`.
+   */
+  readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
+  /**
    * Render the "Escuela rural" single-chip block (blue circle swatch +
    * label). Enable when the `escuelas` master toggle is ON. The swatch
    * mirrors the MapLibre `circle` paint on the `escuelas-symbol` layer
@@ -239,6 +308,8 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarAzulCanalesRelevadosVisible = false,
   pilarAzulCanalesPropuestosVisible = false,
   pilarAzulEscuelasVisible = false,
+  propuestasEtapasVisibility,
+  onSetEtapaVisible,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
 
@@ -451,14 +522,25 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               <Text fw={500} size="xs">
                 Canales Propuestos
               </Text>
-              {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) => (
-                <CanalDashedLineChip
-                  key={etapa}
-                  color={color}
-                  label={etapa}
-                  testId={`canal-propuesto-chip-${etapa}`}
-                />
-              ))}
+              {PROPUESTOS_LEGEND_ROWS.map(({ etapa, color }) =>
+                propuestasEtapasVisibility && onSetEtapaVisible ? (
+                  <CanalDashedLineCheckbox
+                    key={etapa}
+                    color={color}
+                    label={etapa}
+                    testId={`canal-propuesto-chip-${etapa}`}
+                    checked={!!propuestasEtapasVisibility[etapa]}
+                    onChange={(checked) => onSetEtapaVisible(etapa, checked)}
+                  />
+                ) : (
+                  <CanalDashedLineChip
+                    key={etapa}
+                    color={color}
+                    label={etapa}
+                    testId={`canal-propuesto-chip-${etapa}`}
+                  />
+                )
+              )}
             </Stack>
           )}
           {pilarAzulEscuelasVisible && (

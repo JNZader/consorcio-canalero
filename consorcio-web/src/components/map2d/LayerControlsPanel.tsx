@@ -11,9 +11,7 @@ import {
 } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { memo, useCallback, useEffect, useMemo } from 'react';
-import type { Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { PropuestasEtapasFilter } from './PropuestasEtapasFilter';
 import { getActiveAttributions } from './layerAttributions';
 
 interface LayerItem {
@@ -54,17 +52,6 @@ interface LayerControlsPanelProps {
    */
   readonly canalesRelevadosItems?: readonly LayerItem[];
   readonly canalesPropuestosItems?: readonly LayerItem[];
-  /**
-   * 5-key record sourced from `mapLayerSyncStore.propuestasEtapasVisibility`.
-   * Required only when the Canales section is active AND the propuestos
-   * master is ON — the filter subsection reads it directly.
-   */
-  readonly propuestasEtapasVisibility?: Readonly<Record<Etapa, boolean>>;
-  /**
-   * Parent-owned setter for a single etapa. Typically delegates to
-   * `mapLayerSyncStore.setEtapaVisible`.
-   */
-  readonly onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
 }
 
 export const LayerControlsPanel = memo(function LayerControlsPanel({
@@ -84,8 +71,6 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
-  propuestasEtapasVisibility,
-  onSetEtapaVisible,
 }: LayerControlsPanelProps) {
   const showCanalesSection =
     (canalesRelevadosItems?.length ?? 0) > 0 || (canalesPropuestosItems?.length ?? 0) > 0;
@@ -322,18 +307,10 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
                     })}
                   </Stack>
                   {/*
-                    PropuestasEtapasFilter UNMOUNTS when the master is OFF — spec
-                    requirement "Section unmounts when master toggled off". When
-                    the caller did not supply etapas state (e.g. test fixtures
-                    without canales), we also bail to keep the render hole clean.
+                    The propuestos etapas filter (Alta → Largo plazo) lives in
+                    `LeyendaPanel` as interactive checkboxes — single source of
+                    truth for both swatch colors AND toggle controls.
                   */}
-                  {propuestasEtapasVisibility && onSetEtapaVisible && (
-                    <PropuestasEtapasFilter
-                      masterOn={propuestosMaster}
-                      propuestasEtapasVisibility={propuestasEtapasVisibility}
-                      onSetEtapaVisible={onSetEtapaVisible}
-                    />
-                  )}
                 </Stack>
               )}
             </Stack>
