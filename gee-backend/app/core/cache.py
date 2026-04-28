@@ -77,14 +77,20 @@ class JSONCache:
         try:
             raw = await client.get(self._full_key(key))
         except Exception as exc:
-            logger.warning("Redis GET failed, treating as miss", key=key, error=str(exc))
+            logger.warning(
+                "Redis GET failed, treating as miss", key=key, error=str(exc)
+            )
             return None
         if raw is None:
             return None
         try:
             return json.loads(raw)
         except json.JSONDecodeError as exc:
-            logger.warning("Cached value is not valid JSON, treating as miss", key=key, error=str(exc))
+            logger.warning(
+                "Cached value is not valid JSON, treating as miss",
+                key=key,
+                error=str(exc),
+            )
             return None
 
     async def set(self, key: str, value: Any, ttl_seconds: int) -> bool:
@@ -97,7 +103,11 @@ class JSONCache:
         try:
             payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
         except (TypeError, ValueError) as exc:
-            logger.warning("Value is not JSON-serialisable, skipping cache", key=key, error=str(exc))
+            logger.warning(
+                "Value is not JSON-serialisable, skipping cache",
+                key=key,
+                error=str(exc),
+            )
             return False
         try:
             await client.setex(self._full_key(key), ttl_seconds, payload)

@@ -13,9 +13,9 @@ logger = get_logger(__name__)
 
 
 # Cache TTLs (seconds) — see README for justification.
-GEE_LAYER_TTL = 24 * 60 * 60          # 24 h — vector layers rarely change
-GEE_CAMINOS_TTL = 6 * 60 * 60         # 6 h — road status updated occasionally
-GEE_SENTINEL2_TTL = 60 * 60           # 1 h — image-by-date tiles
+GEE_LAYER_TTL = 24 * 60 * 60  # 24 h — vector layers rarely change
+GEE_CAMINOS_TTL = 6 * 60 * 60  # 6 h — road status updated occasionally
+GEE_SENTINEL2_TTL = 60 * 60  # 1 h — image-by-date tiles
 
 
 async def _run_blocking(func, *args, **kwargs):

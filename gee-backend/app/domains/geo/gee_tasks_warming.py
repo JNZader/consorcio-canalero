@@ -51,7 +51,9 @@ def _backend_base_url() -> str:
     Defaults to the docker-compose service name. Override with
     ``BACKEND_INTERNAL_URL`` for local/dev runs.
     """
-    return os.getenv("BACKEND_INTERNAL_URL", "http://consorcio-backend:8000").rstrip("/")
+    return os.getenv("BACKEND_INTERNAL_URL", "http://consorcio-backend:8000").rstrip(
+        "/"
+    )
 
 
 @celery_app.task(name="geo.warm_gee_layers", bind=True, max_retries=0)
