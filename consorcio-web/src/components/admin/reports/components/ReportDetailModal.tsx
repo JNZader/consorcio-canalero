@@ -234,16 +234,13 @@ export function ReportDetailModal({
                     key={entry.id}
                     title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
                   >
-                    <Text size="xs" fw={500}>
-                      {entry.comentario_publico}
-                    </Text>
-                    {entry.comentario_interno && (
-                      <Text size="xs" c="blue" fs="italic">
-                        Interno: {entry.comentario_interno}
+                    {entry.comentario && (
+                      <Text size="xs" fs="italic">
+                        {entry.comentario}
                       </Text>
                     )}
                     <Text size="xs" c="dimmed" mt={2}>
-                      {formatDate(entry.fecha, { includeTime: true })}
+                      {formatDate(entry.created_at, { includeTime: true })}
                     </Text>
                   </Timeline.Item>
                 ))}

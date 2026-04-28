@@ -72,14 +72,18 @@ export default function ReportsPanel() {
     loadReports();
   }, [loadReports]);
 
+  /**
+   * Pull the audit log for a denuncia. The backend returns it nested
+   * inside `GET /denuncias/{id}.historial` — there is NO separate
+   * `/management/seguimiento` endpoint (that one only existed in an
+   * old OpenAPI snapshot left in `schema.d.ts`; calling it returned 404
+   * and the modal showed an empty timeline forever).
+   */
   const loadHistory = async (id: string) => {
     setLoadingHistory(true);
     try {
-      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(
-        `/management/seguimiento/reporte/${id}`
-      );
-      const data = Array.isArray(response) ? response : (response.items ?? []);
-      setHistory(data);
+      const denuncia = await apiFetch<{ historial?: SeguimientoEntry[] }>(`/denuncias/${id}`);
+      setHistory(denuncia.historial ?? []);
     } catch (err) {
       logger.error('Error loading report history:', err);
     } finally {
@@ -96,21 +100,32 @@ export default function ReportsPanel() {
     openDetail();
   };
 
+  /**
+   * Update a denuncia's estado / respuesta via `PATCH /denuncias/{id}`.
+   * The previous version POSTed to `/management/seguimiento` (404) with a
+   * payload shaped for an `entidad_tipo`/`entidad_id` audit row that the
+   * current backend does not have — that's what was throwing the
+   * "Error al actualizar reporte: Not Found" toast.
+   *
+   * Mapping:
+   *   newStatus      → estado
+   *   publicComment  → respuesta   (visible to the citizen on /reportes/<id>)
+   *   adminNotes     → comentario  (free-text note saved into the historial entry)
+   *
+   * The backend records the historial entry automatically when estado
+   * changes (see `denuncias.service.update`).
+   */
   const handleUpdateStatus = async () => {
     if (!selectedReport) return;
 
     setUpdating(true);
     try {
-      // 1. Create tracking entry (this also updates report status in backend)
-      await apiFetch('/management/seguimiento', {
-        method: 'POST',
+      await apiFetch(`/denuncias/${selectedReport.id}`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          entidad_tipo: 'reporte',
-          entidad_id: selectedReport.id,
-          estado_anterior: selectedReport.estado,
-          estado_nuevo: newStatus,
-          comentario_interno: adminNotes,
-          comentario_publico: publicComment,
+          estado: newStatus,
+          respuesta: publicComment || undefined,
+          comentario: adminNotes || undefined,
         }),
       });
 
