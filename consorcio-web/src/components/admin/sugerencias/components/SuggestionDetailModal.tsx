@@ -14,7 +14,7 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
+import { DatePicker } from '@mantine/dates';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconHistory, IconTrash } from '../../../ui/icons';
@@ -249,38 +249,64 @@ export function SuggestionDetailModal({
               }}
               radius="md"
             >
-              <Text size="sm" fw={600} mb="md">
-                Agendar para Reunión
-              </Text>
-              <Group>
-                <DatePickerInput
-                  label="Fecha de reunión"
-                  placeholder="Elegí una fecha"
-                  description="Formato dd/mm/aaaa. Solo fechas futuras."
-                  value={agendarFecha}
-                  onChange={setAgendarFecha}
-                  minDate={new Date()}
-                  // Argentina locale + readable format. Mantine's DatePickerInput
-                  // accepts a `valueFormat` for the displayed text and a `locale`
-                  // that controls the calendar headers (Lun/Mar/Mié...).
-                  locale="es"
-                  valueFormat="DD/MM/YYYY"
-                  firstDayOfWeek={1}
-                  weekendDays={[0, 6]}
-                  clearable
-                  popoverProps={{ withArrow: true }}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  color="violet"
-                  onClick={onAgendar}
-                  loading={agendando}
-                  disabled={!agendarFecha}
-                  mt={24}
-                >
-                  Agendar
-                </Button>
+              <Group justify="space-between" mb="sm">
+                <Text size="sm" fw={600}>
+                  Agendar para Reunión
+                </Text>
+                {agendarFecha && (
+                  <Text size="xs" c="violet.7" fw={600}>
+                    {formatDate(agendarFecha.toISOString().split('T')[0])}
+                  </Text>
+                )}
               </Group>
+              <Text size="xs" c="dimmed" mb="xs">
+                Tocá un día del calendario y luego "Agendar". Sólo fechas futuras.
+              </Text>
+              {/*
+                Stack vertical: el DatePicker centrado arriba (con su
+                tamaño natural — el modal lg le da espacio cómodo) y los
+                botones en una fila al pie. Antes el layout era
+                horizontal con un Stack `flex: 1` al costado, lo que
+                dejaba un huecazo vertical y hacía ver los botones
+                "deformes". Inline > popover acá: mostrar el mes
+                completo es la única operación útil del panel y no hay
+                otro contenido que compita por el espacio.
+              */}
+              <Stack gap="md">
+                <Group justify="center">
+                  <DatePicker
+                    value={agendarFecha}
+                    onChange={(value) =>
+                      setAgendarFecha(value ? new Date(value as unknown as string) : null)
+                    }
+                    minDate={new Date()}
+                    size="sm"
+                    styles={{
+                      calendarHeader: { marginBottom: 8 },
+                      day: { borderRadius: 'var(--mantine-radius-sm)' },
+                    }}
+                  />
+                </Group>
+                <Group grow gap="xs">
+                  {agendarFecha && (
+                    <Button
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setAgendarFecha(null)}
+                    >
+                      Limpiar
+                    </Button>
+                  )}
+                  <Button
+                    color="violet"
+                    onClick={onAgendar}
+                    loading={agendando}
+                    disabled={!agendarFecha}
+                  >
+                    Agendar
+                  </Button>
+                </Group>
+              </Stack>
             </Paper>
           )}
 
