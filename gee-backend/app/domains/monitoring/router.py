@@ -32,6 +32,13 @@ def _require_operator():
     return require_admin_or_operator
 
 
+def _require_user():
+    """Any authenticated user (citizen / operador / admin)."""
+    from app.auth import require_authenticated
+
+    return require_authenticated
+
+
 # ──────────────────────────────────────────────
 # SUGERENCIAS — PUBLIC
 # ──────────────────────────────────────────────
@@ -76,6 +83,39 @@ def list_sugerencias(
     )
     return {
         "items": [SugerenciaListResponse.model_validate(s) for s in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+# ──────────────────────────────────────────────
+# SUGERENCIAS — CITIZEN-OWNED
+# ──────────────────────────────────────────────
+
+
+@router.get(
+    "/sugerencias/mine",
+    response_model=dict,
+    tags=["sugerencias"],
+)
+def list_my_sugerencias(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    user=Depends(_require_user()),
+):
+    """
+    Lista paginada de sugerencias del ciudadano logueado, con todo el
+    detalle. Mirror de `/denuncias/mine` — usado en la sección
+    "Mis sugerencias" del `/perfil`.
+    """
+    items, total = service.list_sugerencias_by_user(
+        db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit
+    )
+    return {
+        "items": [SugerenciaResponse.model_validate(s) for s in items],
         "total": total,
         "page": page,
         "limit": limit,

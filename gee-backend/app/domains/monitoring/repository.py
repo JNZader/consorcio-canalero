@@ -53,6 +53,31 @@ class MonitoringRepository:
 
         return items, total
 
+    def get_all_sugerencias_by_user(
+        self,
+        db: Session,
+        *,
+        user_id: uuid.UUID,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[list[Sugerencia], int]:
+        """
+        Paginated list of sugerencias owned by a single citizen, ordered
+        most recent first. Mirrors `get_all_by_user` in denuncias.
+        """
+        base = select(Sugerencia).where(Sugerencia.usuario_id == user_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total: int = db.execute(count_stmt).scalar_one()
+
+        offset = (page - 1) * limit
+        items_stmt = (
+            base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
+        )
+        items = list(db.execute(items_stmt).scalars().all())
+
+        return items, total
+
     def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
         sugerencia = Sugerencia(
             titulo=data.titulo,

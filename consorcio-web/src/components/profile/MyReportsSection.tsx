@@ -84,7 +84,7 @@ export function MyReportsSection() {
         setTotal(data.total);
       } catch (err) {
         if (cancelled) return;
-        logger.error('Error al cargar Mis denuncias:', err);
+        logger.error('Error al cargar Mis reportes:', err);
         setError('No se pudieron cargar tus denuncias.');
       } finally {
         if (!cancelled) setLoading(false);
@@ -102,10 +102,10 @@ export function MyReportsSection() {
     <Paper shadow="sm" p="lg" radius="md" withBorder>
       <Stack gap="md">
         <Group justify="space-between" align="center">
-          <Title order={3}>Mis denuncias</Title>
+          <Title order={3}>Mis reportes</Title>
           {total > 0 && (
             <Badge variant="light" color="gray" size="lg">
-              {total} {total === 1 ? 'denuncia' : 'denuncias'}
+              {total} {total === 1 ? 'reporte' : 'reportes'}
             </Badge>
           )}
         </Group>
@@ -124,7 +124,7 @@ export function MyReportsSection() {
 
         {!loading && !error && reports.length === 0 && (
           <Text c="dimmed" size="sm">
-            Todavía no enviaste ninguna denuncia. Cuando reportes un problema en{' '}
+            Todavía no enviaste ningún reporte. Cuando reportes un problema en{' '}
             <Text component="a" href="/reportes" fw={600} c="institucional" inherit>
               /reportes
             </Text>

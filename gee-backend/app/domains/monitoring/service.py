@@ -156,6 +156,19 @@ class MonitoringService:
             categoria_filter=categoria,
         )
 
+    def list_sugerencias_by_user(
+        self,
+        db: Session,
+        *,
+        user_id: uuid.UUID,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[list[Sugerencia], int]:
+        """Citizen-owned paginated list — used by `GET /sugerencias/mine`."""
+        return self.repo.get_all_sugerencias_by_user(
+            db, user_id=user_id, page=page, limit=limit
+        )
+
     def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
         sugerencia = self.repo.create_sugerencia(db, data)
         db.commit()
