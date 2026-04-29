@@ -18,7 +18,7 @@ import { DatePickerInput } from '@mantine/dates';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconHistory, IconTrash } from '../../../ui/icons';
-import { CATEGORIA_OPTIONS, ESTADO_OPTIONS } from '../constants';
+import { CATEGORIA_OPTIONS, ESTADO_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
 import type { SeguimientoEntry } from '../sugerenciasPanelTypes';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
 
@@ -304,9 +304,19 @@ export function SuggestionDetailModal({
             <Stack gap="sm">
               <Select
                 label="Cambiar Estado"
-                data={ESTADO_OPTIONS}
+                description={
+                  String(selectedSugerencia.estado) === 'implementada' ||
+                  String(selectedSugerencia.estado) === 'descartada'
+                    ? 'La sugerencia está cerrada — no admite más cambios de estado.'
+                    : undefined
+                }
+                data={[...getAllowedNextEstadosSugerencia(String(selectedSugerencia.estado))]}
                 value={newEstado}
-                onChange={(v) => setNewEstado(v || 'pendiente')}
+                onChange={(v) => setNewEstado(v || String(selectedSugerencia.estado))}
+                disabled={
+                  String(selectedSugerencia.estado) === 'implementada' ||
+                  String(selectedSugerencia.estado) === 'descartada'
+                }
               />
               <Textarea
                 label="Comentario Público"
