@@ -116,33 +116,40 @@ export const reportsApi = {
 };
 
 /**
- * Public API (No auth required) for reports and verification.
+ * Citizen-facing denuncias API. The endpoints here ALL require the user
+ * to be authenticated — anonymous denuncias were retired on 2026-04-28
+ * as an anti-spam measure (the form already gated the UI behind a Google
+ * login but the backend was happily accepting unauth POSTs from curl;
+ * now both layers agree).
+ *
+ * Naming kept as `publicApi` for now to minimise touch surface; consider
+ * renaming to `citizenApi` in a follow-up rename pass.
  */
 export const publicApi = {
   /**
-   * Crear denuncia publica (sin autenticacion).
-   * Requiere contacto verificado.
+   * Crear una denuncia (requiere user logueado).
+   *
+   * The server auto-fills `user_id` and `contacto_email` from the JWT —
+   * the payload only needs the stuff the citizen typed into the form.
    */
   createReport: (data: PublicReportCreate): Promise<PublicReportResponse> =>
-    apiFetch('/public/denuncias', {
+    apiFetch('/denuncias', {
       method: 'POST',
       body: JSON.stringify(data),
-      skipAuth: true,
     }),
 
   /**
-   * Attach a photo to a previously-created denuncia.
-   *
-   * Two-step flow because the photo path needs the denuncia's ID:
+   * Attach a photo to a previously-created denuncia. Two-step flow:
    *   1) `createReport(...)`  → returns `{id}`.
-   *   2) `uploadPhoto(id, file)` → multipart upload, server stores it in
-   *      the `denuncia-uploads` Docker volume and updates `foto_url`.
+   *   2) `uploadPhoto(id, file)` → multipart upload to `/denuncias/{id}/photo`.
    *
-   * If step 2 fails, the denuncia is still saved (no orphan rollback) —
-   * the form just notifies the user and moves on. The previous version
-   * of this hit the wrong endpoint with no `{id}` parameter and exploded
-   * with a 500 + CORS error; the comment-only TODO that lived here is
-   * gone because the feature is now actually wired.
+   * The server checks ownership (the JWT user must own the denuncia) so
+   * we forward the auth token explicitly via `getAuthToken()` — this
+   * codepath bypasses `apiFetch` because Mantine-FileInput / FormData
+   * needs the raw `fetch` to keep the multipart boundary intact.
+   *
+   * Photo failure is non-fatal in the form: the denuncia stays saved
+   * and the user gets a yellow toast.
    */
   uploadPhoto: async (
     denunciaId: string,
@@ -155,12 +162,14 @@ export const publicApi = {
     const timeoutId = setTimeout(() => controller.abort(), LONG_TIMEOUT);
 
     try {
+      const token = await getAuthToken();
       const response = await fetch(
-        `${API_URL}${API_PREFIX}/public/denuncias/${denunciaId}/photo`,
+        `${API_URL}${API_PREFIX}/denuncias/${denunciaId}/photo`,
         {
           method: 'POST',
           body: formData,
           signal: controller.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         }
       );
 
@@ -179,6 +188,19 @@ export const publicApi = {
       clearTimeout(timeoutId);
     }
   },
+
+  /**
+   * Lista paginada de denuncias del ciudadano logueado. Backend keeps
+   * the response shape symmetric with the operator list endpoint, but
+   * the items here are the user's OWN denuncias and include the full
+   * detail (`respuesta`, `historial`, `foto_url`) so the "Mis denuncias"
+   * tab in `/perfil` doesn't need a second fetch per row.
+   */
+  listMyReports: (
+    page = 1,
+    limit = 10
+  ): Promise<{ items: Report[]; total: number; page: number; limit: number }> =>
+    apiFetch(`/denuncias/mine?page=${page}&limit=${limit}`),
 };
 
 /**

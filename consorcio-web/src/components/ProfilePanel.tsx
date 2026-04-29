@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
+import { MyReportsSection } from './profile/MyReportsSection';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
 interface ProfileFormValues {
@@ -271,6 +272,8 @@ function ProfileContent() {
         </Paper>
 
         <Divider />
+
+        <MyReportsSection />
 
         {/* Account Actions */}
         <Paper shadow="sm" p="lg" radius="md" withBorder>

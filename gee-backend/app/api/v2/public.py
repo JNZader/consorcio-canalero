@@ -10,8 +10,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -30,18 +29,10 @@ from app.db.session import get_db
 from app.domains.capas.models import Capa
 from app.domains.capas.repository import CapasRepository
 from app.domains.denuncias.models import Denuncia
-from app.domains.denuncias.schemas import DenunciaCreate, DenunciaCreateResponse
 from app.domains.denuncias.service import DenunciaService
 from app.domains.monitoring.models import Sugerencia
 from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaResponse
 from app.domains.monitoring.service import MonitoringService
-from app.shared.storage import (
-    ALLOWED_PHOTO_MIME_TYPES,
-    MAX_PHOTO_BYTES,
-    PhotoStorage,
-    get_photo_storage,
-    make_denuncia_photo_key,
-)
 
 # ──────────────────────────────────────────────
 # ROUTERS
@@ -222,91 +213,15 @@ def get_public_stats(
 # ══════════════════════════════════════════════
 # EXTERNAL REPORTING ENDPOINTS (no auth)
 # ══════════════════════════════════════════════
-
-
-@public_router.post(
-    "/denuncias", response_model=DenunciaCreateResponse, status_code=201
-)
-def create_anonymous_denuncia(
-    payload: DenunciaCreate,
-    db: Session = Depends(get_db),
-    service: DenunciaService = Depends(_get_denuncia_service),
-):
-    """
-    Create an anonymous denuncia (citizen report).
-
-    Re-exposes the denuncias domain creation under /public
-    for a cleaner public-facing API surface.
-    """
-    denuncia = service.create(db, payload)
-    return DenunciaCreateResponse(
-        id=denuncia.id,
-        message="Denuncia creada exitosamente. Gracias por colaborar.",
-        estado=denuncia.estado,
-    )
-
-
-class PublicDenunciaPhotoResponse(BaseModel):
-    """Response from POST /public/denuncias/{id}/photo."""
-
-    photo_url: str
-
-
-@public_router.post(
-    "/denuncias/{denuncia_id}/photo",
-    response_model=PublicDenunciaPhotoResponse,
-    status_code=201,
-)
-async def upload_denuncia_photo(
-    denuncia_id: uuid.UUID,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    storage: PhotoStorage = Depends(get_photo_storage),
-):
-    """
-    Attach a photo to an existing denuncia (citizen flow, no auth).
-
-    The denuncia is created first via POST /public/denuncias; the client
-    then uploads the photo to this endpoint with the returned ID. We don't
-    require auth because the denuncia ID itself is the capability — only
-    someone who just created the denuncia knows it.
-
-    Validation:
-    - Content-Type must be image/jpeg | image/png | image/webp.
-    - Body size enforced incrementally inside `storage.save()` (10 MB cap).
-    - The denuncia must exist (404 otherwise).
-
-    On success the denuncia's `foto_url` column is updated to the public
-    URL and the URL is echoed back in the response.
-    """
-    denuncia = db.get(Denuncia, denuncia_id)
-    if denuncia is None:
-        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
-
-    content_type = (file.content_type or "").lower()
-    if content_type not in ALLOWED_PHOTO_MIME_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Tipo de archivo no permitido: {content_type or 'desconocido'}. "
-                f"Use JPG, PNG o WebP. Tamaño máximo: {MAX_PHOTO_BYTES // (1024 * 1024)} MB."
-            ),
-        )
-
-    # If a previous photo exists for this denuncia, drop it first so we
-    # don't accumulate orphan files when the citizen re-uploads with a
-    # different format (e.g. PNG → JPG would otherwise leave the .png on
-    # disk forever — `foto_url` only ever points to one of them).
-    storage_key = make_denuncia_photo_key(denuncia_id)
-    await storage.delete(storage_key)
-
-    photo_url = await storage.save(file, storage_key)
-
-    denuncia.foto_url = photo_url
-    db.commit()
-    db.refresh(denuncia)
-
-    return PublicDenunciaPhotoResponse(photo_url=photo_url)
+#
+# The previous anonymous denuncia create + photo upload + status check
+# endpoints lived here. They were retired on 2026-04-28 — we now require
+# the citizen to be logged in (anti-spam) and route them through:
+#   POST  /api/v2/denuncias                  (auth, auto-fills user_id)
+#   POST  /api/v2/denuncias/{id}/photo       (auth + ownership check)
+#   GET   /api/v2/denuncias/mine             (citizen's own list)
+# Sugerencias keep their anonymous create below — the threat model is
+# different and getting addressed separately.
 
 
 @public_router.post("/sugerencias", response_model=SugerenciaResponse, status_code=201)
@@ -327,6 +242,7 @@ def create_anonymous_sugerencia(
 @public_router.get(
     "/denuncias/{denuncia_id}/status",
     response_model=PublicDenunciaStatusResponse,
+    deprecated=True,
 )
 def check_denuncia_status(
     denuncia_id: uuid.UUID,

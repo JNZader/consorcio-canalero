@@ -45,6 +45,17 @@ class DenunciaService:
             cuenca_filter=cuenca,
         )
 
+    def list_by_user(
+        self,
+        db: Session,
+        *,
+        user_id: uuid.UUID,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[list[Denuncia], int]:
+        """Citizen-owned paginated list — used by `GET /denuncias/mine`."""
+        return self.repo.get_all_by_user(db, user_id=user_id, page=page, limit=limit)
+
     def get_stats(self, db: Session) -> dict:
         return self.repo.get_stats(db)
 

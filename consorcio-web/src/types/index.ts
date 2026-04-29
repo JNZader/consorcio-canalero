@@ -122,7 +122,12 @@ export interface ReportHistory {
 }
 
 /**
- * Public report creation payload.
+ * Citizen-side denuncia creation payload sent to `POST /api/v2/denuncias`.
+ * The endpoint requires auth — `user_id` and `contacto_email` are
+ * auto-filled from the JWT, so the form does NOT include them here.
+ * `contacto_telefono` is still optional (we may add a profile-side
+ * phone field later); `contacto_nombre` was removed because the model
+ * has no such column and the backend was discarding it silently.
  */
 export interface PublicReportCreate {
   tipo: string;
@@ -131,9 +136,7 @@ export interface PublicReportCreate {
   longitud: number;
   cuenca?: string;
   foto_url?: string;
-  contacto_email?: string;
   contacto_telefono?: string;
-  contacto_nombre?: string;
 }
 
 /**

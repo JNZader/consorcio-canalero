@@ -63,16 +63,14 @@ export function useReportFormSubmission({
 
       try {
         // Two-step flow: create the denuncia FIRST, then attach the photo.
-        // The previous order (upload then create) was impossible because
-        // the upload endpoint needs the denuncia's id in the URL. Photo
-        // failure is non-fatal — denuncia still saves.
+        // The endpoint needs the denuncia's id in the URL for step 2.
+        // The server fills `user_id` + `contacto_email` from the JWT —
+        // we only pass the form fields. Photo failure is non-fatal.
         const result = await publicApi.createReport({
           tipo: values.tipo,
           descripcion: values.descripcion,
           latitud: ubicacion.lat,
           longitud: ubicacion.lng,
-          contacto_email: userEmail,
-          contacto_nombre: userName || undefined,
         });
 
         await uploadPhotoIfExists(result.id, values.foto, announce);

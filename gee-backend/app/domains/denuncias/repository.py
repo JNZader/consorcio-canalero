@@ -63,6 +63,35 @@ class DenunciaRepository:
 
         return items, total
 
+    def get_all_by_user(
+        self,
+        db: Session,
+        *,
+        user_id: uuid.UUID,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[list[Denuncia], int]:
+        """
+        Paginated list of denuncias owned by a single user, ordered most
+        recent first. Includes the historial because the citizen view
+        renders the timeline alongside the operator's `respuesta`.
+        """
+        base = select(Denuncia).where(Denuncia.user_id == user_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total: int = db.execute(count_stmt).scalar_one()
+
+        offset = (page - 1) * limit
+        items_stmt = (
+            base.options(selectinload(Denuncia.historial))
+            .order_by(Denuncia.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = list(db.execute(items_stmt).scalars().all())
+
+        return items, total
+
     # ── WRITE ─────────────────────────────────
 
     def create(
