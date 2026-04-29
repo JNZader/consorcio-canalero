@@ -127,7 +127,6 @@ export const MAX_LENGTHS = {
   DESCRIPCION: 5000,
   NOMBRE: 100,
   TELEFONO: 20,
-  RESOLUCION: 2000,
 } as const;
 
 /**
@@ -160,7 +159,6 @@ export const validators = {
   titulo: createLengthValidator(5, MAX_LENGTHS.TITULO, 'El titulo'),
   descripcion: createLengthValidator(10, MAX_LENGTHS.DESCRIPCION, 'La descripcion'),
   nombre: createLengthValidator(2, MAX_LENGTHS.NOMBRE, 'El nombre'),
-  resolucion: createLengthValidator(5, MAX_LENGTHS.RESOLUCION, 'La resolucion'),
 };
 
 // ===========================================

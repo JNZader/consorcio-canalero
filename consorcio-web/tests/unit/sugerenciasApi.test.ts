@@ -13,38 +13,35 @@ describe('sugerenciasApi', () => {
     vi.mocked(apiFetch).mockResolvedValue({} as unknown as never);
   });
 
-  it('sends public suggestion with skipAuth enabled', async () => {
-    await sugerenciasApi.createPublic({
+  it('sends authenticated suggestion through /sugerencias', async () => {
+    // Mirror del flujo de denuncias: el create de sugerencias exige
+    // login (anti-spam + ownership). El backend autollena
+    // `usuario_id` y `contacto_email` desde el JWT, así que el cliente
+    // ya no necesita mandar `contacto_verificado`/`skipAuth`.
+    await sugerenciasApi.create({
       titulo: 'Canal obstruido',
       descripcion: 'Hay maleza en la compuerta principal',
-      contacto_verificado: true,
-      contacto_email: 'vecino@example.com',
     });
 
     expect(apiFetch).toHaveBeenCalledWith(
-      '/public/sugerencias',
+      '/sugerencias',
       expect.objectContaining({
         method: 'POST',
-        skipAuth: true,
       })
     );
+    // No `skipAuth` y no `/public/sugerencias` — esos vectores se
+    // retiraron junto con el flujo anónimo.
+    const [, options] = vi.mocked(apiFetch).mock.calls[0];
+    expect(options).not.toHaveProperty('skipAuth');
   });
 
-  // checkLimit is a documented no-op stub in production
-  // (see TODO: v2 rate limit endpoint pending). When the endpoint is built,
-  // these tests should revert to the legacy network-call style.
-  it('checkLimit returns stub RateLimitInfo when contact params are provided', async () => {
-    const result = await sugerenciasApi.checkLimit('vecino@example.com', '3534000000');
+  it('checkLimit hits the real backend endpoint', async () => {
+    // Antes era un stub que devolvía `{remaining: 3}` hardcodeado y no
+    // hacía request. Ahora el backend cuenta sobre la base
+    // (`GET /sugerencias/rate-limit`).
+    await sugerenciasApi.checkLimit();
 
-    expect(result).toEqual({ remaining: 3, limit: 3, reset_hours: 24 });
-    expect(apiFetch).not.toHaveBeenCalled();
-  });
-
-  it('checkLimit returns stub RateLimitInfo when contact is missing', async () => {
-    const result = await sugerenciasApi.checkLimit();
-
-    expect(result).toEqual({ remaining: 3, limit: 3, reset_hours: 24 });
-    expect(apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).toHaveBeenCalledWith('/sugerencias/rate-limit');
   });
 
   it('builds admin list query with provided filters only', async () => {
@@ -55,30 +52,22 @@ describe('sugerenciasApi', () => {
 
   it('calls detail and mutation endpoints with expected payloads', async () => {
     await sugerenciasApi.get('sug-1');
-    await sugerenciasApi.getHistorial('sug-1');
-    await sugerenciasApi.update('sug-1', { estado: 'en_agenda' });
+    await sugerenciasApi.update('sug-1', { estado: 'revisada' });
     await sugerenciasApi.agendar('sug-1', '2026-03-20');
-    await sugerenciasApi.resolver('sug-1', 'Tema tratado en comision');
     await sugerenciasApi.delete('sug-1');
 
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/sugerencias/sug-1');
-    expect(apiFetch).toHaveBeenNthCalledWith(2, '/sugerencias/sug-1/historial');
     expect(apiFetch).toHaveBeenNthCalledWith(
-      3,
+      2,
       '/sugerencias/sug-1',
       expect.objectContaining({ method: 'PATCH' })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
-      4,
+      3,
       '/sugerencias/sug-1/agendar',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      5,
-      '/sugerencias/sug-1/resolver',
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(apiFetch).toHaveBeenNthCalledWith(6, '/sugerencias/sug-1', { method: 'DELETE' });
+    expect(apiFetch).toHaveBeenNthCalledWith(4, '/sugerencias/sug-1', { method: 'DELETE' });
   });
 
   it('calls stats and meeting endpoints', async () => {
@@ -97,5 +86,11 @@ describe('sugerenciasApi', () => {
       '/sugerencias/interna',
       expect.objectContaining({ method: 'POST' })
     );
+  });
+
+  it('listMine paginates citizen-owned sugerencias', async () => {
+    await sugerenciasApi.listMine(2, 5);
+
+    expect(apiFetch).toHaveBeenCalledWith('/sugerencias/mine?page=2&limit=5');
   });
 });

@@ -78,7 +78,13 @@ class MonitoringRepository:
 
         return items, total
 
-    def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
+    def create_sugerencia(
+        self,
+        db: Session,
+        data: SugerenciaCreate,
+        *,
+        usuario_id: Optional[uuid.UUID] = None,
+    ) -> Sugerencia:
         sugerencia = Sugerencia(
             titulo=data.titulo,
             descripcion=data.descripcion,
@@ -87,6 +93,7 @@ class MonitoringRepository:
             contacto_email=data.contacto_email,
             contacto_nombre=data.contacto_nombre,
             geometry=data.geometry,
+            usuario_id=usuario_id,
         )
         db.add(sugerencia)
         db.flush()

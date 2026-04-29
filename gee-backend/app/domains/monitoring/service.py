@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 from app.domains.monitoring.models import AnalisisGee, Sugerencia
 from app.domains.monitoring.repository import MonitoringRepository
 from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaUpdate
+from app.shared.submission_limit import (
+    enforce_submission_limit,
+    get_submission_status,
+)
 
 
 class MonitoringService:
@@ -170,11 +174,33 @@ class MonitoringService:
             db, user_id=user_id, page=page, limit=limit
         )
 
-    def create_sugerencia(self, db: Session, data: SugerenciaCreate) -> Sugerencia:
-        sugerencia = self.repo.create_sugerencia(db, data)
+    def create_sugerencia(
+        self,
+        db: Session,
+        data: SugerenciaCreate,
+        *,
+        usuario_id: Optional[uuid.UUID] = None,
+    ) -> Sugerencia:
+        if usuario_id is not None:
+            enforce_submission_limit(
+                db,
+                model=Sugerencia,
+                user_id_attr=Sugerencia.usuario_id,
+                user_id=usuario_id,
+            )
+        sugerencia = self.repo.create_sugerencia(db, data, usuario_id=usuario_id)
         db.commit()
         db.refresh(sugerencia)
         return sugerencia
+
+    def get_rate_limit_status(self, db: Session, user_id: uuid.UUID) -> dict:
+        """Quota left for a citizen — used by `GET /sugerencias/rate-limit`."""
+        return get_submission_status(
+            db,
+            model=Sugerencia,
+            user_id_attr=Sugerencia.usuario_id,
+            user_id=user_id,
+        )
 
     def update_sugerencia(
         self,

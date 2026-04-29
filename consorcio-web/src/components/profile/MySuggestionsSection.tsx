@@ -161,9 +161,9 @@ export function MySuggestionsSection() {
                           {formatDate(sug.created_at, { includeTime: true })}
                         </Text>
                       )}
-                      {sug.resolucion && (
+                      {sug.respuesta && (
                         <Text size="sm" c="green.7" mt={6} lineClamp={2}>
-                          Respuesta: {sug.resolucion}
+                          Respuesta: {sug.respuesta}
                         </Text>
                       )}
                     </Box>
@@ -236,7 +236,7 @@ function SuggestionDetailModal({ sugerencia, onClose }: SuggestionDetailModalPro
           </Box>
         )}
 
-        {sugerencia.resolucion && (
+        {sugerencia.respuesta && (
           <Paper
             p="md"
             radius="md"
@@ -250,7 +250,7 @@ function SuggestionDetailModal({ sugerencia, onClose }: SuggestionDetailModalPro
               Respuesta de la comisión
             </Text>
             <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-              {sugerencia.resolucion}
+              {sugerencia.respuesta}
             </Text>
           </Paper>
         )}

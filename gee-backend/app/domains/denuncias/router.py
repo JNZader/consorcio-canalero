@@ -186,6 +186,21 @@ def list_my_denuncias(
     }
 
 
+@router.get("/rate-limit", response_model=dict)
+def get_denuncia_rate_limit(
+    db: Session = Depends(get_db),
+    service: DenunciaService = Depends(get_service),
+    user=Depends(_require_user()),
+):
+    """
+    Cupo restante del ciudadano para crear denuncias (5 cada 24 h
+    rolling, source-of-truth = base de datos). Devuelve
+    `{remaining, limit, reset_seconds}`. El form lo usa para mostrar el
+    badge "Te quedan N" antes de que el usuario llene el formulario.
+    """
+    return service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
+
+
 # ──────────────────────────────────────────────
 # PROTECTED (operator+)
 # ──────────────────────────────────────────────

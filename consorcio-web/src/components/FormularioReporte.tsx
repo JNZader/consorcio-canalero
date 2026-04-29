@@ -1,9 +1,23 @@
-import { Box, Divider, LoadingOverlay, Overlay, Paper, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Box,
+  Divider,
+  Group,
+  LoadingOverlay,
+  Overlay,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useContactVerification } from '../hooks/useContactVerification';
+import { publicApi } from '../lib/api';
+import { logger } from '../lib/logger';
 import { useConfigStore } from '../stores/configStore';
 import {
   DescripcionField,
@@ -39,6 +53,9 @@ function FormularioContenido() {
     : MAP_CENTER;
   const defaultZoom = config?.map.zoom ? config.map.zoom + 1 : 12;
   const [enviando, setEnviando] = useState(false);
+  // `null` = no consultado todavía (sin login). El backend rechazaría
+  // /denuncias/rate-limit con 401 — sólo pegamos cuando hay JWT.
+  const [remainingToday, setRemainingToday] = useState<number | null>(null);
   const { announce } = useLiveRegion();
 
   const form = useForm({
@@ -89,6 +106,32 @@ function FormularioContenido() {
     },
   });
 
+  // Pull initial quota when the user logs in. Espejo del flujo de
+  // sugerencias — `null` mientras no haya JWT, número real luego.
+  useEffect(() => {
+    if (!userEmail) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const limit = await publicApi.checkLimit();
+        if (!cancelled) setRemainingToday(limit.remaining);
+      } catch (error) {
+        logger.error('Error checking report rate limit:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail]);
+
+  const handleSubmitSuccess = useCallback(() => {
+    setRemainingToday((prev) => (prev === null ? null : Math.max(0, prev - 1)));
+  }, []);
+
+  const handleLimitReached = useCallback(() => {
+    setRemainingToday(0);
+  }, []);
+
   const handleSubmit = useReportFormSubmission({
     contactoVerificado,
     userEmail,
@@ -99,6 +142,9 @@ function FormularioContenido() {
     setEnviando,
     setUbicacion,
     setFotoPreview,
+    remainingToday,
+    onSubmitSuccess: handleSubmitSuccess,
+    onLimitReached: handleLimitReached,
   });
 
   return (
@@ -164,6 +210,20 @@ function FormularioContenido() {
           variant="secondary"
         />
 
+        {contactoVerificado && remainingToday !== null && (
+          <Group justify="flex-end" mb="xs">
+            <Badge color={remainingToday > 0 ? 'blue' : 'red'} size="sm" variant="light">
+              {remainingToday} {remainingToday === 1 ? 'restante' : 'restantes'}
+            </Badge>
+          </Group>
+        )}
+
+        {remainingToday === 0 && contactoVerificado && (
+          <Alert color="red" variant="light" mb="md" role="alert" aria-live="assertive">
+            Llegaste al limite de 5 reportes cada 24 horas. Volvé más tarde.
+          </Alert>
+        )}
+
         <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="lg">
             <TipoProblemaField
@@ -201,7 +261,10 @@ function FormularioContenido() {
               onRemove={handleRemoveFoto}
             />
 
-            <SubmitButton contactoVerificado={contactoVerificado} disabled={!ubicacion} />
+            <SubmitButton
+              contactoVerificado={contactoVerificado}
+              disabled={!ubicacion || remainingToday === 0}
+            />
           </Stack>
         </form>
       </Box>

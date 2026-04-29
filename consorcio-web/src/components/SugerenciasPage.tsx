@@ -32,9 +32,9 @@ export function SugerenciasContent() {
           <Alert color="blue" title="Como funciona" icon={<IconInfoCircle size={20} />}>
             <List size="sm" spacing="xs">
               <List.Item>
-                Verifica tu contacto (email o WhatsApp) para enviar sugerencias.
+                Iniciá sesión con tu email para enviar sugerencias.
               </List.Item>
-              <List.Item>Puedes enviar hasta 3 sugerencias por dia.</List.Item>
+              <List.Item>Podés enviar hasta 5 sugerencias cada 24 horas.</List.Item>
               <List.Item>
                 Las sugerencias son revisadas por la comision en sus reuniones periodicas.
               </List.Item>

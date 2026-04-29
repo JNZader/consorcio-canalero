@@ -23,6 +23,12 @@ interface UseReportFormSubmissionParams {
   setEnviando: (value: boolean) => void;
   setUbicacion: (value: Ubicacion | null) => void;
   setFotoPreview: (value: string | null) => void;
+  /** Cupo restante del usuario (`null` = no consultado todavía). */
+  remainingToday: number | null;
+  /** Llamado tras un create exitoso — decremento local. */
+  onSubmitSuccess: () => void;
+  /** Llamado si el server devuelve 429 — fija remaining=0. */
+  onLimitReached: () => void;
 }
 
 export function useReportFormSubmission({
@@ -35,6 +41,9 @@ export function useReportFormSubmission({
   setEnviando,
   setUbicacion,
   setFotoPreview,
+  remainingToday,
+  onSubmitSuccess,
+  onLimitReached,
 }: Readonly<UseReportFormSubmissionParams>) {
   return useCallback(
     async (values: ReportFormValues) => {
@@ -55,6 +64,19 @@ export function useReportFormSubmission({
           'orange'
         );
         announce('Debes seleccionar una ubicacion para la denuncia', 'assertive');
+        return;
+      }
+
+      // Frontend gate ANTES de pegarle al backend — el server enforce
+      // el mismo límite (HTTPException 429), pero evitar el round-trip
+      // hace la UX mucho más rápida y permite mostrar mensajes claros.
+      if (remainingToday !== null && remainingToday <= 0) {
+        showNotification(
+          'Limite alcanzado',
+          'Llegaste al limite de 5 reportes cada 24 horas. Volve mas tarde.',
+          'orange'
+        );
+        announce('Llegaste al limite de reportes por 24 horas', 'assertive');
         return;
       }
 
@@ -81,6 +103,7 @@ export function useReportFormSubmission({
           'green'
         );
         announce('Denuncia enviada exitosamente. Gracias por colaborar.');
+        onSubmitSuccess();
 
         form.reset();
         setUbicacion(null);
@@ -91,6 +114,14 @@ export function useReportFormSubmission({
           error instanceof Error
             ? error.message
             : 'No se pudo enviar la denuncia. Intenta nuevamente.';
+        // 429 → backend dice que llegaste al límite. Sincronizamos UI.
+        if (
+          message.includes('429') ||
+          message.toLowerCase().includes('límite') ||
+          message.toLowerCase().includes('limite')
+        ) {
+          onLimitReached();
+        }
         showNotification('Error', message, 'red');
         announce('Error al enviar la denuncia. Intenta nuevamente.', 'assertive');
       } finally {
@@ -101,6 +132,9 @@ export function useReportFormSubmission({
       announce,
       contactoVerificado,
       form,
+      onLimitReached,
+      onSubmitSuccess,
+      remainingToday,
       setEnviando,
       setFotoPreview,
       setUbicacion,

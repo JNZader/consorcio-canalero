@@ -49,12 +49,47 @@ class SugerenciaUpdate(BaseModel):
 
     estado: Optional[str] = None
     respuesta: Optional[str] = None
+    notas_internas: Optional[str] = None
     categoria: Optional[str] = None
     geometry: Optional[dict[str, Any]] = None
 
 
 class SugerenciaResponse(BaseModel):
-    """Full sugerencia response."""
+    """
+    Full sugerencia response — includes `notas_internas`, the comisión's
+    private discussion notes. ONLY return this from operator endpoints
+    (`GET /sugerencias`, `GET /sugerencias/{id}`, `PATCH ...`).
+
+    For citizen-owned listings (`GET /sugerencias/mine`) use
+    `SugerenciaCitizenResponse`, which deliberately omits the field so
+    the private notes never leak into a citizen's HTTP response body.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    titulo: str
+    descripcion: str
+    categoria: Optional[str] = None
+    estado: str
+    contacto_email: Optional[str] = None
+    contacto_nombre: Optional[str] = None
+    geometry: Optional[dict[str, Any]] = None
+    respuesta: Optional[str] = None
+    notas_internas: Optional[str] = None
+    fecha_reunion: Optional[date] = None
+    usuario_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SugerenciaCitizenResponse(BaseModel):
+    """
+    Citizen-facing sugerencia response — same as `SugerenciaResponse`
+    minus `notas_internas`. Used by `GET /sugerencias/mine` so the
+    private comisión notes never travel to a citizen's browser, even if
+    they open devtools.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 

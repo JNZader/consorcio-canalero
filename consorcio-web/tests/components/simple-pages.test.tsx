@@ -119,14 +119,20 @@ describe('SugerenciasPage', () => {
     expect(screen.getByText('Como funciona')).toBeInTheDocument();
   });
 
-  it('should render verification step', () => {
+  it('should render login step (auth required, anti-spam)', () => {
+    // Antes el copy hablaba de "verifica tu contacto" cuando había
+    // verificación por email/WhatsApp opcional. Ahora es login real
+    // (Google + magic link) — espejo del flujo de denuncias.
     render(<SugerenciasContent />, { wrapper: Wrapper });
-    expect(screen.getByText(/verifica tu contacto/i)).toBeInTheDocument();
+    expect(screen.getByText(/iniciá sesión/i)).toBeInTheDocument();
   });
 
-  it('should render daily limit info', () => {
+  it('should render daily limit info (5/24h)', () => {
+    // Antes: "hasta 3 sugerencias por dia" (stub frontend).
+    // Ahora: "hasta 5 sugerencias cada 24 horas" — backend enforce
+    // el límite por user_id sobre la base.
     render(<SugerenciasContent />, { wrapper: Wrapper });
-    expect(screen.getByText(/hasta 3 sugerencias por dia/i)).toBeInTheDocument();
+    expect(screen.getByText(/hasta 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
   });
 
   it('should render commission review info', () => {

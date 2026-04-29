@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.domains.monitoring.schemas import (
     AnalisisGeeResponse,
     SugerenciaAgendarRequest,
+    SugerenciaCitizenResponse,
     SugerenciaCreate,
     SugerenciaListResponse,
     SugerenciaResponse,
@@ -41,7 +42,7 @@ def _require_user():
 
 
 # ──────────────────────────────────────────────
-# SUGERENCIAS — PUBLIC
+# SUGERENCIAS — CITIZEN-OWNED CREATE
 # ──────────────────────────────────────────────
 
 
@@ -55,14 +56,26 @@ def create_sugerencia(
     payload: SugerenciaCreate,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
+    user=Depends(_require_user()),
 ):
     """
-    Crear una sugerencia publica.
+    Crear una sugerencia (requiere ciudadano autenticado).
 
-    No requiere autenticacion — cualquier ciudadano puede enviar
-    sugerencias o comentarios al consorcio.
+    Anti-spam: se retiró el create anónimo (espejo del flujo de
+    denuncias). El `usuario_id` y el `contacto_email` se autollenan
+    desde el JWT — cualquier `contacto_*` en el body se ignora
+    deliberadamente; el server confía en el token, no en el cliente.
+    Esto también es lo que permite que la sugerencia aparezca después
+    en `GET /sugerencias/mine`.
     """
-    return service.create_sugerencia(db, payload)
+    payload_data = payload.model_copy(
+        update={
+            "contacto_email": user.email,
+        }
+    )
+    return service.create_sugerencia(
+        db, payload_data, usuario_id=uuid.UUID(str(user.id))
+    )
 
 
 @router.get(
@@ -115,12 +128,33 @@ def list_my_sugerencias(
     items, total = service.list_sugerencias_by_user(
         db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit
     )
+    # `SugerenciaCitizenResponse` (no `notas_internas`) en lugar de la
+    # full operator response — las notas internas del consorcio no
+    # tienen que viajar al ciudadano nunca, ni siquiera ocultas en el
+    # JSON.
     return {
-        "items": [SugerenciaResponse.model_validate(s) for s in items],
+        "items": [SugerenciaCitizenResponse.model_validate(s) for s in items],
         "total": total,
         "page": page,
         "limit": limit,
     }
+
+
+@router.get(
+    "/sugerencias/rate-limit",
+    response_model=dict,
+    tags=["sugerencias"],
+)
+def get_sugerencia_rate_limit(
+    db: Session = Depends(get_db),
+    service: MonitoringService = Depends(get_service),
+    user=Depends(_require_user()),
+):
+    """
+    Cupo restante del ciudadano para crear sugerencias (5 cada 24 h
+    rolling, espejo del flujo de `/denuncias/rate-limit`).
+    """
+    return service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
 
 
 # ──────────────────────────────────────────────

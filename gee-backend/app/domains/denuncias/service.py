@@ -12,6 +12,10 @@ from app.domains.denuncias.models import (
 )
 from app.domains.denuncias.repository import DenunciaRepository
 from app.domains.denuncias.schemas import DenunciaCreate, DenunciaUpdate
+from app.shared.submission_limit import (
+    enforce_submission_limit,
+    get_submission_status,
+)
 
 
 class DenunciaService:
@@ -68,10 +72,26 @@ class DenunciaService:
         user_id: Optional[uuid.UUID] = None,
     ) -> Denuncia:
         """Create a denuncia and commit."""
+        if user_id is not None:
+            enforce_submission_limit(
+                db,
+                model=Denuncia,
+                user_id_attr=Denuncia.user_id,
+                user_id=user_id,
+            )
         denuncia = self.repo.create(db, data, user_id=user_id)
         db.commit()
         db.refresh(denuncia)
         return denuncia
+
+    def get_rate_limit_status(self, db: Session, user_id: uuid.UUID) -> dict:
+        """Quota left for a citizen — used by `GET /denuncias/rate-limit`."""
+        return get_submission_status(
+            db,
+            model=Denuncia,
+            user_id_attr=Denuncia.user_id,
+            user_id=user_id,
+        )
 
     def update(
         self,

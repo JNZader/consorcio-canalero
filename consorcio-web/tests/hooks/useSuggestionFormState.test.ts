@@ -11,7 +11,7 @@ vi.mock('@mantine/notifications', () => ({
 vi.mock('../../src/lib/api', () => ({
   sugerenciasApi: {
     checkLimit: vi.fn(),
-    createPublic: vi.fn(),
+    create: vi.fn(),
   },
 }));
 
@@ -22,12 +22,24 @@ vi.mock('../../src/lib/logger', () => ({
 describe('useSuggestionFormState', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining: 2, limit: 3, reset_hours: 24 });
-    vi.mocked(sugerenciasApi.createPublic).mockResolvedValue({
-      id: 'sug-1',
-      message: 'ok',
-      remaining_today: 1,
+    // checkLimit ahora pega contra `/sugerencias/rate-limit` (auth) y
+    // devuelve `{remaining, limit, reset_seconds}` — el campo
+    // `reset_hours` legacy ya no existe.
+    vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({
+      remaining: 4,
+      limit: 5,
+      reset_seconds: 86400,
     });
+    vi.mocked(sugerenciasApi.create).mockResolvedValue({
+      id: 'sug-1',
+      titulo: 'Titulo',
+      descripcion: 'Descripcion',
+      estado: 'pendiente',
+      tipo: 'ciudadana',
+      prioridad: 'normal',
+      created_at: '2026-04-29T00:00:00Z',
+      updated_at: '2026-04-29T00:00:00Z',
+    } as never);
   });
 
   it('checks rate limit when pending flag is enabled', async () => {
@@ -46,8 +58,10 @@ describe('useSuggestionFormState', () => {
     );
 
     await waitFor(() => {
-      expect(sugerenciasApi.checkLimit).toHaveBeenCalledWith('vecino@example.com');
-      expect(result.current.remainingToday).toBe(2);
+      // Sin args — el endpoint identifica al usuario por el JWT, no
+      // por email, así que el cliente no necesita pasar nada.
+      expect(sugerenciasApi.checkLimit).toHaveBeenCalledWith();
+      expect(result.current.remainingToday).toBe(4);
     });
     expect(onRateLimitChecked).toHaveBeenCalled();
   });
@@ -75,7 +89,7 @@ describe('useSuggestionFormState', () => {
       });
     });
 
-    expect(sugerenciasApi.createPublic).toHaveBeenCalled();
+    expect(sugerenciasApi.create).toHaveBeenCalled();
     expect(reset).toHaveBeenCalled();
     expect(result.current.enviado).toBe(true);
 
@@ -85,7 +99,11 @@ describe('useSuggestionFormState', () => {
     expect(resetVerificacion).toHaveBeenCalled();
   });
 
-  it('blocks submit when daily limit is exhausted', async () => {
+  it('shows the error notification when create fails (e.g. 429 limit)', async () => {
+    vi.mocked(sugerenciasApi.create).mockRejectedValueOnce(
+      new Error('429 Llegaste al límite de 5 envíos cada 24 horas.')
+    );
+
     const { result } = renderHook(() =>
       useSuggestionFormState({
         contactoVerificado: true,
@@ -105,20 +123,11 @@ describe('useSuggestionFormState', () => {
       });
     });
 
-    expect(sugerenciasApi.createPublic).toHaveBeenCalledTimes(1);
-
-    vi.mocked(sugerenciasApi.createPublic).mockRejectedValueOnce(new Error('limite diario alcanzado'));
-
-    await act(async () => {
-      await result.current.handleSubmit({
-        titulo: 'Titulo',
-        descripcion: 'Descripcion amplia',
-        categoria: 'ambiental',
-      });
-    });
-
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Error', color: 'red' })
     );
+    // El hook reflejó el 429 forzando remaining=0 para que el botón
+    // se deshabilite localmente en vez de seguir pegándole al server.
+    expect(result.current.remainingToday).toBe(0);
   });
 });

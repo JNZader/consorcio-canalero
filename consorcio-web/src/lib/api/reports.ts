@@ -201,7 +201,21 @@ export const publicApi = {
     limit = 10
   ): Promise<{ items: Report[]; total: number; page: number; limit: number }> =>
     apiFetch(`/denuncias/mine?page=${page}&limit=${limit}`),
+
+  /**
+   * Cuota restante del ciudadano para crear denuncias (5 cada 24 h
+   * rolling). Espejo del flujo `sugerenciasApi.checkLimit` — el
+   * backend cuenta sobre la base, no sobre Redis.
+   */
+  checkLimit: (): Promise<ReportRateLimitInfo> =>
+    apiFetch('/denuncias/rate-limit'),
 };
+
+export interface ReportRateLimitInfo {
+  remaining: number;
+  limit: number;
+  reset_seconds: number;
+}
 
 /**
  * Stats API for dashboard and export.

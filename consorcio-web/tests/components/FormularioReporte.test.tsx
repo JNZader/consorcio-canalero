@@ -321,12 +321,20 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /attach-photo/i }));
       await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
-      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
+      // El flujo real es: createReport PRIMERO (sin foto_url, devuelve
+      // un id), después uploadPhoto(id, file) — NO al revés. El test
+      // viejo se escribió contra un flujo legacy que ya no existe.
+      // Ahora verificamos: la denuncia se crea con los campos del form
+      // (sin foto_url), y la foto se intenta subir DESPUÉS.
       expect(publicApi.createReport).toHaveBeenCalledWith(
         expect.objectContaining({
-          foto_url: undefined,
+          tipo: expect.any(String),
+          descripcion: expect.any(String),
+          latitud: expect.any(Number),
+          longitud: expect.any(Number),
         })
       );
+      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ color: 'yellow' })
       );
@@ -348,12 +356,15 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /attach-photo/i }));
       await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
-      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
+      // Mismo razonamiento: el flujo es createReport → uploadPhoto, no
+      // un único POST con `foto_url` ya resuelto.
       expect(publicApi.createReport).toHaveBeenCalledWith(
         expect.objectContaining({
-          foto_url: undefined,
+          tipo: expect.any(String),
+          descripcion: expect.any(String),
         })
       );
+      expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Aviso', color: 'yellow' })
       );

@@ -31,8 +31,6 @@ from app.domains.capas.repository import CapasRepository
 from app.domains.denuncias.models import Denuncia
 from app.domains.denuncias.service import DenunciaService
 from app.domains.monitoring.models import Sugerencia
-from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaResponse
-from app.domains.monitoring.service import MonitoringService
 
 # ──────────────────────────────────────────────
 # ROUTERS
@@ -53,10 +51,6 @@ def _get_capas_repo() -> CapasRepository:
 
 def _get_denuncia_service() -> DenunciaService:
     return DenunciaService()
-
-
-def _get_monitoring_service() -> MonitoringService:
-    return MonitoringService()
 
 
 def _require_admin():
@@ -214,29 +208,15 @@ def get_public_stats(
 # EXTERNAL REPORTING ENDPOINTS (no auth)
 # ══════════════════════════════════════════════
 #
-# The previous anonymous denuncia create + photo upload + status check
-# endpoints lived here. They were retired on 2026-04-28 — we now require
-# the citizen to be logged in (anti-spam) and route them through:
+# The previous anonymous denuncia + sugerencia create endpoints lived
+# here. They were retired (denuncias on 2026-04-28, sugerencias on
+# 2026-04-28) — we now require the citizen to be logged in (anti-spam +
+# ownership tracking). The new flows route through:
 #   POST  /api/v2/denuncias                  (auth, auto-fills user_id)
 #   POST  /api/v2/denuncias/{id}/photo       (auth + ownership check)
 #   GET   /api/v2/denuncias/mine             (citizen's own list)
-# Sugerencias keep their anonymous create below — the threat model is
-# different and getting addressed separately.
-
-
-@public_router.post("/sugerencias", response_model=SugerenciaResponse, status_code=201)
-def create_anonymous_sugerencia(
-    payload: SugerenciaCreate,
-    db: Session = Depends(get_db),
-    service: MonitoringService = Depends(_get_monitoring_service),
-):
-    """
-    Create an anonymous suggestion.
-
-    Re-exposes the monitoring domain creation under /public
-    for a cleaner public-facing API surface.
-    """
-    return service.create_sugerencia(db, payload)
+#   POST  /api/v2/sugerencias                (auth, auto-fills usuario_id)
+#   GET   /api/v2/sugerencias/mine           (citizen's own list)
 
 
 @public_router.get(

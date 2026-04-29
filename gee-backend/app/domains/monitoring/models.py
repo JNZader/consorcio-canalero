@@ -60,6 +60,12 @@ class Sugerencia(UUIDMixin, TimestampMixin, Base):
     contacto_nombre: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     geometry: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     respuesta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Operator-only notes about the comisión's internal discussion
+    # (presupuesto, votación, contexto que el ciudadano NO debe ver).
+    # Surfaced in the admin panel's "Notas Internas" textarea but
+    # excluded from `/sugerencias/mine` responses by using a separate
+    # citizen-facing schema.
+    notas_internas: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Optional. When the comisión decides to take a sugerencia to a
     # reunión, an operator picks a date in the admin panel via
     # `POST /sugerencias/{id}/agendar`. Cleared by setting null in the

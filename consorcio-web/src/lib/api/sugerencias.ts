@@ -32,8 +32,21 @@ export interface Sugerencia {
   estado: 'pendiente' | 'revisada' | 'implementada' | 'descartada';
   prioridad: 'baja' | 'normal' | 'alta' | 'urgente';
   fecha_reunion?: string;
-  notas_comision?: string;
-  resolucion?: string;
+  /**
+   * Comentario público que el operador escribe para el ciudadano. Se
+   * muestra en `MySuggestionsSection`. Antes el frontend usaba
+   * `resolucion`, que NO ES UN CAMPO REAL del backend — Pydantic lo
+   * descartaba silenciosamente y nada se persistía. Ahora ambos lados
+   * usan `respuesta`, que es lo único que existe en el modelo.
+   */
+  respuesta?: string;
+  /**
+   * Notas internas de la comisión (privadas). Sólo viaja al frontend
+   * en respuestas de endpoints de operador (`SugerenciaResponse`); el
+   * endpoint citizen `/sugerencias/mine` usa `SugerenciaCitizenResponse`
+   * que NO incluye este campo.
+   */
+  notas_internas?: string;
   cuenca_id?: string;
   created_at: string;
   updated_at: string;
@@ -54,15 +67,15 @@ export interface SugerenciaCreate {
     }>;
   } | null;
   contacto_nombre?: string;
-  contacto_email?: string;
-  contacto_telefono?: string;
-  contacto_verificado: boolean; // Debe ser true para aceptar
 }
 
 export interface RateLimitInfo {
+  /** Cuántos envíos le quedan al usuario en la ventana actual. */
   remaining: number;
+  /** Tope absoluto (5/24h por usuario). */
   limit: number;
-  reset_hours: number;
+  /** Segundos hasta que el envío más viejo del usuario salga de la ventana de 24h. */
+  reset_seconds: number;
 }
 
 export interface SugerenciaInternaCreate {
@@ -99,27 +112,24 @@ export interface HistorialEntry {
 
 export const sugerenciasApi = {
   /**
-   * Crear sugerencia publica (sin auth).
-   * Requiere contacto verificado.
+   * Crear sugerencia. Requiere ciudadano autenticado — el backend
+   * autollena `usuario_id` y `contacto_email` desde el JWT (espejo
+   * exacto del flujo `POST /denuncias`). Esto es lo que permite que
+   * la sugerencia aparezca después en `GET /sugerencias/mine`.
    */
-  createPublic: (
-    data: SugerenciaCreate
-  ): Promise<{ id: string; message: string; remaining_today: number }> =>
-    apiFetch('/public/sugerencias', {
+  create: (data: SugerenciaCreate): Promise<Sugerencia> =>
+    apiFetch('/sugerencias', {
       method: 'POST',
       body: JSON.stringify(data),
-      skipAuth: true,
     }),
 
   /**
-   * Verificar limite de sugerencias para un contacto.
-   * TODO: v2 does not have a dedicated rate limit check endpoint yet.
+   * Cuota restante del usuario logueado (5 cada 24 h rolling).
+   * Backed by `GET /sugerencias/rate-limit` — la base es source-of-truth,
+   * NO un stub. El backend cuenta sugerencias creadas por este usuario
+   * en las últimas 24h y devuelve `limit - count`.
    */
-  checkLimit: async (_email?: string, _telefono?: string): Promise<RateLimitInfo> => ({
-    remaining: 3,
-    limit: 3,
-    reset_hours: 24,
-  }),
+  checkLimit: (): Promise<RateLimitInfo> => apiFetch('/sugerencias/rate-limit'),
 
   /**
    * Listar sugerencias (requiere auth).
@@ -193,15 +203,6 @@ export const sugerenciasApi = {
     apiFetch(`/sugerencias/${id}/agendar`, {
       method: 'POST',
       body: JSON.stringify({ fecha_reunion: fecha }),
-    }),
-
-  /**
-   * Marcar como tratado/resuelto.
-   */
-  resolver: (id: string, resolucion: string): Promise<Sugerencia> =>
-    apiFetch(`/sugerencias/${id}/resolver`, {
-      method: 'POST',
-      body: JSON.stringify({ resolucion }),
     }),
 
   /**

@@ -4,7 +4,6 @@ import { logger } from '../../lib/logger';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import {
   buildSugerenciaPayload,
-  getContactForRateLimit,
   showSuggestionNotification,
 } from './suggestionFormUtils';
 
@@ -41,17 +40,19 @@ export function useSuggestionFormState({
   const [geometry, setGeometry] = useState<DrawnLineFeatureCollection | null>(null);
 
   const checkRateLimit = useCallback(async () => {
-    const { email } = getContactForRateLimit(userEmail);
-    if (!email) return;
+    // El endpoint exige auth — si el usuario no verificó contacto/login
+    // todavía, simplemente no consultamos el cupo (el backend rechazaría
+    // con 401). El badge muestra `null` hasta que haya login real.
+    if (!userEmail) return;
 
     try {
-      const limit = await sugerenciasApi.checkLimit(email);
+      const limit = await sugerenciasApi.checkLimit();
       setRemainingToday(limit.remaining);
 
       if (limit.remaining <= 0) {
         showSuggestionNotification(
           'Limite alcanzado',
-          'Has alcanzado el limite de 3 sugerencias por dia. Intenta manana.',
+          'Llegaste al limite de 5 sugerencias cada 24 horas. Volve mas tarde.',
           'orange'
         );
       }
@@ -86,7 +87,7 @@ export function useSuggestionFormState({
       if (remainingToday !== null && remainingToday <= 0) {
         showSuggestionNotification(
           'Limite alcanzado',
-          'Has alcanzado el limite de sugerencias por dia',
+          'Llegaste al limite de 5 sugerencias cada 24 horas',
           'orange'
         );
         return;
@@ -95,17 +96,32 @@ export function useSuggestionFormState({
       setEnviando(true);
 
       try {
-        const result = await sugerenciasApi.createPublic(
+        await sugerenciasApi.create(
           buildSugerenciaPayload(values, userEmail, userName, geometry)
         );
-        showSuggestionNotification('Sugerencia enviada', result.message, 'green');
-        setRemainingToday(result.remaining_today);
+        showSuggestionNotification(
+          'Sugerencia enviada',
+          'Tu propuesta fue recibida. La comisión la verá en su próxima reunión.',
+          'green'
+        );
+        // Decrement locally — la base sigue siendo source of truth, pero
+        // refrescar con un GET extra es desperdicio: el delta es siempre
+        // -1. Si el usuario refresca la página, el badge se sincroniza
+        // contra el endpoint real en el `useEffect` de abajo.
+        setRemainingToday((prev) => (prev === null ? null : Math.max(0, prev - 1)));
         setEnviado(true);
         form.reset();
         setGeometry(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo enviar la sugerencia';
-        if (message.includes('limite')) {
+        // 429 → backend dice "te quedaste sin cupo". Reflejamos en UI
+        // forzando `remainingToday=0` para que el badge muestre "0
+        // restantes" y el botón quede deshabilitado.
+        if (
+          message.includes('429') ||
+          message.toLowerCase().includes('límite') ||
+          message.toLowerCase().includes('limite')
+        ) {
           setRemainingToday(0);
         }
         showSuggestionNotification('Error', message, 'red');

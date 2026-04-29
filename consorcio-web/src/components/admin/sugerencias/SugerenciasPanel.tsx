@@ -191,8 +191,12 @@ export default function SugerenciasPanel() {
       const merged = { ...sug, ...full };
       setSelectedSugerencia(merged);
       setNewEstado(merged.estado);
-      setAdminNotes('');
-      setPublicComment('');
+      // Precargar lo guardado: si el operador entra al modal por
+      // segunda vez, ve lo que escribió antes — antes los textareas
+      // arrancaban vacíos aunque la base tuviera contenido (otra cara
+      // del bug del schema mismatch).
+      setAdminNotes(merged.notas_internas ?? '');
+      setPublicComment(merged.respuesta ?? '');
       setAgendarFecha(merged.fecha_reunion ? new Date(merged.fecha_reunion) : null);
       setHistorial([]);
       setShowHistorial(false);
@@ -213,14 +217,18 @@ export default function SugerenciasPanel() {
 
     setUpdating(true);
     try {
-      // 1. Create tracking entry (this updates suggestion status in backend via universal management service)
-      // In v2, update sugerencia status via PATCH /sugerencias/{id}
+      // PATCH /sugerencias/{id}. El backend acepta `respuesta` (público,
+      // visible al ciudadano) y `notas_internas` (privado, sólo operador).
+      // Antes mandábamos `resolucion` y `notas_comision` que NO EXISTEN
+      // en el schema — Pydantic los descartaba en silencio y la "gestión"
+      // no se persistía nunca. Por eso el ciudadano veía vacío en
+      // `/perfil > Mis sugerencias`.
       await apiFetch(`/sugerencias/${selectedSugerencia.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           estado: newEstado,
-          notas_comision: adminNotes,
-          resolucion: publicComment,
+          notas_internas: adminNotes,
+          respuesta: publicComment,
         }),
       });
 

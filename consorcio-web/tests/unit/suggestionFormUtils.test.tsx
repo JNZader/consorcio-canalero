@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { notifications } from '@mantine/notifications';
 import {
   buildSugerenciaPayload,
-  getContactForRateLimit,
   getStep2Badge,
   getStepBackgroundColor,
   showSuggestionNotification,
@@ -23,34 +22,33 @@ describe('suggestionFormUtils', () => {
     expect(getStepBackgroundColor(false, false)).toBe('var(--mantine-color-blue-6)');
   });
 
-  it('builds a public suggestion payload', () => {
+  it('builds an authenticated suggestion payload (no contact email — JWT fills it)', () => {
     const geometry = {
       type: 'FeatureCollection',
       features: [],
     } as const;
 
-    expect(
-      buildSugerenciaPayload(
-        { titulo: 'Titulo', descripcion: 'Descripcion', categoria: 'ambiental' },
-        'vecino@example.com',
-        'Vecino',
-        geometry as never
-      )
-    ).toEqual(
+    const payload = buildSugerenciaPayload(
+      { titulo: 'Titulo', descripcion: 'Descripcion', categoria: 'ambiental' },
+      'vecino@example.com',
+      'Vecino',
+      geometry as never
+    );
+
+    expect(payload).toEqual(
       expect.objectContaining({
         titulo: 'Titulo',
         descripcion: 'Descripcion',
         categoria: 'ambiental',
         contacto_nombre: 'Vecino',
-        contacto_email: 'vecino@example.com',
         geometry,
       })
     );
-  });
-
-  it('returns email only when present for rate limit checks', () => {
-    expect(getContactForRateLimit('vecino@example.com')).toEqual({ email: 'vecino@example.com' });
-    expect(getContactForRateLimit(null)).toEqual({});
+    // El backend autollena `contacto_email` desde el JWT — el cliente
+    // ya no lo manda en el body. Mantenemos `userEmail` en la firma
+    // por simetría con el caller, pero no debe filtrarse al payload.
+    expect(payload).not.toHaveProperty('contacto_email');
+    expect(payload).not.toHaveProperty('contacto_verificado');
   });
 
   it('shows notifications through Mantine', () => {

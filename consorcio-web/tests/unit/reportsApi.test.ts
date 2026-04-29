@@ -55,7 +55,7 @@ describe('reportsApi', () => {
     );
   });
 
-  it('calls get, getStats and public create endpoints', async () => {
+  it('calls get, getStats and authed citizen create endpoints', async () => {
     await reportsApi.get('rep-1');
     await reportsApi.getStats();
     await publicApi.createReport({
@@ -63,17 +63,24 @@ describe('reportsApi', () => {
       descripcion: 'Detalle del incidente',
       latitud: -32.1,
       longitud: -62.4,
-      contacto_email: 'vecino@example.com',
-      contacto_verificado: true,
     });
 
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/denuncias/rep-1');
     expect(apiFetch).toHaveBeenNthCalledWith(2, '/denuncias/stats');
+    // Citizen creates moved from `/public/denuncias` (anonymous) to
+    // the auth-protected `/denuncias` endpoint — `skipAuth` is gone.
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
-      '/public/denuncias',
-      expect.objectContaining({ method: 'POST', skipAuth: true })
+      '/denuncias',
+      expect.objectContaining({ method: 'POST' })
     );
+    const [, options] = vi.mocked(apiFetch).mock.calls[2];
+    expect(options).not.toHaveProperty('skipAuth');
+  });
+
+  it('checkLimit hits the real /denuncias/rate-limit endpoint', async () => {
+    await publicApi.checkLimit();
+    expect(apiFetch).toHaveBeenCalledWith('/denuncias/rate-limit');
   });
 
   it('uploads public photo and returns parsed payload', async () => {

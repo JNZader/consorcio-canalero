@@ -21,7 +21,7 @@ vi.mock('../../src/components/verification', () => ({
 vi.mock('../../src/lib/api', () => ({
   sugerenciasApi: {
     checkLimit: vi.fn(),
-    createPublic: vi.fn(),
+    create: vi.fn(),
   },
   API_URL: 'http://localhost:8000',
 }));
@@ -84,12 +84,25 @@ const verifiedContactState = {
 describe('FormularioSugerencia', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining: 2, limit: 3, reset_hours: 24 });
-    vi.mocked(sugerenciasApi.createPublic).mockResolvedValue({
-      id: 'sug-1',
-      message: 'ok',
-      remaining_today: 1,
+    // Nuevo shape del rate-limit (5/24h rolling, source-of-truth = base):
+    // `reset_seconds` reemplaza al viejo `reset_hours`. El response del
+    // create ya no devuelve `remaining_today` — el frontend decremento
+    // local y el cupo se refleja en `checkLimit` posterior.
+    vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({
+      remaining: 4,
+      limit: 5,
+      reset_seconds: 86400,
     });
+    vi.mocked(sugerenciasApi.create).mockResolvedValue({
+      id: 'sug-1',
+      titulo: 'Titulo',
+      descripcion: 'Descripcion',
+      estado: 'pendiente',
+      tipo: 'ciudadana',
+      prioridad: 'normal',
+      created_at: '2026-04-29T00:00:00Z',
+      updated_at: '2026-04-29T00:00:00Z',
+    } as never);
   });
 
   describe('Verification State Handling', () => {
@@ -134,7 +147,7 @@ describe('FormularioSugerencia', () => {
         logout: vi.fn(),
         resetVerificacion: vi.fn(),
       });
-      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining, limit: 3, reset_hours: 24 });
+      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining, limit: 5, reset_seconds: 86400 });
 
       renderForm();
 
@@ -159,18 +172,18 @@ describe('FormularioSugerencia', () => {
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
 
       await waitFor(() => {
-        expect(sugerenciasApi.createPublic).toHaveBeenCalled();
+        expect(sugerenciasApi.create).toHaveBeenCalled();
         expect(screen.getByRole('status')).toHaveTextContent(/Gracias por tu sugerencia/i);
       });
     });
 
     it('announces submission progress while the suggestion is being sent', async () => {
       useContactVerificationMock.mockReturnValue(verifiedContactState);
-      let resolveCreatePublic!: (value: { id: string; message: string; remaining_today: number }) => void;
-      vi.mocked(sugerenciasApi.createPublic).mockReturnValue(
+      let resolveCreate!: (value: { id: string; titulo: string }) => void;
+      vi.mocked(sugerenciasApi.create).mockReturnValue(
         new Promise((resolve) => {
-          resolveCreatePublic = resolve;
-        })
+          resolveCreate = resolve as never;
+        }) as never
       );
 
       const user = userEvent.setup();
@@ -185,7 +198,7 @@ describe('FormularioSugerencia', () => {
 
       expect(screen.getByRole('status')).toHaveTextContent(/enviando sugerencia/i);
 
-      resolveCreatePublic({ id: 'sug-1', message: 'ok', remaining_today: 1 });
+      resolveCreate({ id: 'sug-1', titulo: 'Mejorar drenaje principal' });
       await screen.findByText(/Gracias por tu sugerencia/i);
     });
 
@@ -220,7 +233,7 @@ describe('FormularioSugerencia', () => {
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
 
       await waitFor(() => {
-        expect(sugerenciasApi.createPublic).toHaveBeenCalled();
+        expect(sugerenciasApi.create).toHaveBeenCalled();
       });
     });
   });
@@ -246,21 +259,21 @@ describe('FormularioSugerencia', () => {
           resetVerificacion: vi.fn(),
         };
       });
-      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining: 0, limit: 3, reset_hours: 24 });
+      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining: 0, limit: 5, reset_seconds: 86400 });
 
       renderForm();
 
       await waitFor(() => {
-        expect(screen.getByText(/Has alcanzado el limite de sugerencias por hoy/i)).toBeInTheDocument();
+        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeDisabled();
       });
     });
 
     it.each([
-      { remaining: 0, resetHours: 24, name: 'no remaining, 24 hour reset' },
-      { remaining: 0, resetHours: 12, name: 'no remaining, 12 hour reset' },
-      { remaining: 0, resetHours: 1, name: 'no remaining, 1 hour reset' },
-    ])('shows limit message with reset info ($name)', async ({ remaining, resetHours }) => {
+      { remaining: 0, resetSeconds: 86400, name: 'no remaining, 24 hour reset' },
+      { remaining: 0, resetSeconds: 43200, name: 'no remaining, 12 hour reset' },
+      { remaining: 0, resetSeconds: 3600, name: 'no remaining, 1 hour reset' },
+    ])('shows limit message with reset info ($name)', async ({ remaining, resetSeconds }) => {
       useContactVerificationMock.mockImplementation(({ onVerified }) => {
         queueMicrotask(() => {
           void onVerified?.();
@@ -280,12 +293,16 @@ describe('FormularioSugerencia', () => {
           resetVerificacion: vi.fn(),
         };
       });
-      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining, limit: 3, reset_hours: resetHours });
+      vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({
+        remaining,
+        limit: 5,
+        reset_seconds: resetSeconds,
+      });
 
       renderForm();
 
       await waitFor(() => {
-        expect(screen.getByText(/Has alcanzado el limite de sugerencias por hoy/i)).toBeInTheDocument();
+        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
         const submitButton = screen.getByRole('button', { name: /enviar sugerencia/i });
         expect(submitButton).toBeDisabled();
       });
@@ -306,7 +323,7 @@ describe('FormularioSugerencia', () => {
         logout: vi.fn(),
         resetVerificacion: vi.fn(),
       });
-      vi.mocked(sugerenciasApi.createPublic).mockRejectedValue(new Error('limite diario alcanzado'));
+      vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error('limite diario alcanzado'));
 
       const user = userEvent.setup();
       renderForm();
@@ -322,7 +339,7 @@ describe('FormularioSugerencia', () => {
         expect(notifications.show).toHaveBeenCalledWith(
           expect.objectContaining({ title: 'Error', color: 'red' })
         );
-        expect(screen.getByText(/Has alcanzado el limite de sugerencias por hoy/i)).toBeInTheDocument();
+        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
       });
     });
   });
@@ -343,7 +360,7 @@ describe('FormularioSugerencia', () => {
         logout: vi.fn(),
         resetVerificacion: vi.fn(),
       });
-      vi.mocked(sugerenciasApi.createPublic).mockRejectedValue(new Error('Server error'));
+      vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error('Server error'));
 
       const user = userEvent.setup();
       renderForm();
@@ -381,7 +398,7 @@ describe('FormularioSugerencia', () => {
         logout: vi.fn(),
         resetVerificacion: vi.fn(),
       });
-      vi.mocked(sugerenciasApi.createPublic).mockRejectedValue(new Error(error));
+      vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error(error));
 
       const user = userEvent.setup();
       renderForm();

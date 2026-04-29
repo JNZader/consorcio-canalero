@@ -329,8 +329,12 @@ describe('API Client', () => {
         const result = await publicApi.createReport(reportData);
 
         expect(result).toEqual(mockResponse);
+        // Citizen creates were retired from `/public/denuncias` and now
+        // hit the auth-protected `/denuncias` endpoint — same body
+        // shape, the server fills `user_id` + `contacto_email` from the
+        // JWT instead of trusting the client.
         expect(mockFetch).toHaveBeenCalledWith(
-          'http://localhost:8000/api/v2/public/denuncias',
+          'http://localhost:8000/api/v2/denuncias',
           expect.objectContaining({
             method: 'POST',
             body: JSON.stringify(reportData),

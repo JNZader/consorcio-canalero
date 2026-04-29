@@ -149,7 +149,7 @@ function FormularioContenido() {
           onLoginWithGoogle={loginWithGoogle}
           onSendMagicLink={sendMagicLink}
           onLogout={handleCambiarContacto}
-          verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Limite: 3 sugerencias por dia."
+          verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Limite: 5 sugerencias cada 24 horas."
         />
       </Box>
 
@@ -178,7 +178,7 @@ function FormularioContenido() {
           <Stack gap="md">
             {remainingToday === 0 && contactoVerificado && (
               <Alert color="red" variant="light" role="alert" aria-live="assertive">
-                Has alcanzado el limite de sugerencias por hoy. Vuelve manana.
+                Llegaste al limite de 5 sugerencias cada 24 horas. Volvé más tarde.
               </Alert>
             )}
 

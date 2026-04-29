@@ -19,18 +19,16 @@ export function getStepBackgroundColor(isComplete: boolean, isDisabled?: boolean
   return 'var(--mantine-color-blue-6)';
 }
 
-export function getContactForRateLimit(email: string | null): { email?: string } {
-  if (email) return { email };
-  return {};
-}
-
 export function buildSugerenciaPayload(
   values: {
     titulo: string;
     descripcion: string;
     categoria: string;
   },
-  userEmail: string | null,
+  // userEmail kept in the signature for symmetry with the form caller,
+  // but it's no longer sent in the payload — el backend lo autollena
+  // desde el JWT (espejo del flujo de denuncias).
+  _userEmail: string | null,
   userName: string | null,
   geometry: DrawnLineFeatureCollection | null
 ) {
@@ -40,8 +38,6 @@ export function buildSugerenciaPayload(
     categoria: values.categoria || undefined,
     geometry: geometry ?? undefined,
     contacto_nombre: userName || undefined,
-    contacto_email: userEmail || undefined,
-    contacto_verificado: true,
   };
 }
 
@@ -59,7 +55,7 @@ export function getStep2Badge(
   if (remainingToday === null) return undefined;
   return (
     <Badge color={remainingToday > 0 ? 'blue' : 'red'} size="sm" variant="light">
-      {remainingToday} restantes hoy
+      {remainingToday} {remainingToday === 1 ? 'restante' : 'restantes'}
     </Badge>
   );
 }
@@ -85,7 +81,8 @@ export function SuccessScreen({
         </Text>
         {showRemainingBadge && (
           <Badge color="blue" size="lg">
-            Puedes enviar {remainingToday} sugerencia{remainingToday > 1 ? 's' : ''} mas hoy
+            Te {remainingToday === 1 ? 'queda' : 'quedan'} {remainingToday}{' '}
+            sugerencia{remainingToday === 1 ? '' : 's'} en las próximas 24 horas
           </Badge>
         )}
         <Button onClick={onReset}>Enviar otra sugerencia</Button>
