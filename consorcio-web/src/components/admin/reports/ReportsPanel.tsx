@@ -95,7 +95,10 @@ export default function ReportsPanel() {
     setSelectedReport(report);
     setNewStatus(report.estado);
     setAdminNotes('');
-    setPublicComment('');
+    // Pre-fill the public comment textarea with whatever the operator has
+    // already published as `respuesta` so editing means SEEING the prior
+    // answer instead of typing into a blank field. Empty if none yet.
+    setPublicComment(report.respuesta ?? '');
     loadHistory(report.id);
     openDetail();
   };

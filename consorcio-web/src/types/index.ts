@@ -94,6 +94,12 @@ export interface Report {
   asignado_a?: string;
   notas_admin?: string;
   notas_internas?: string;
+  /**
+   * Operator-written public answer surfaced to the citizen on the public
+   * status page. Stored in `denuncias.respuesta` and updated through
+   * `PATCH /denuncias/{id}` with `{ respuesta }`.
+   */
+  respuesta?: string | null;
   contacto_nombre?: string;
   contacto_telefono?: string;
   created_at: string;

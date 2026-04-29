@@ -184,6 +184,25 @@ export function ReportDetailModal({
             </div>
           )}
 
+          {selectedReport.respuesta && (
+            <Paper
+              p="md"
+              radius="md"
+              withBorder
+              style={{
+                background: 'light-dark(var(--mantine-color-green-0), var(--mantine-color-dark-5))',
+                borderColor: 'var(--mantine-color-green-4)',
+              }}
+            >
+              <Text size="sm" fw={600} c="green.7" mb={4}>
+                Respuesta pública actual
+              </Text>
+              <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                {selectedReport.respuesta}
+              </Text>
+            </Paper>
+          )}
+
           <Paper
             p="md"
             style={{
