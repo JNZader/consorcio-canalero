@@ -377,7 +377,9 @@ class TestMonitoringRepository:
         stats = repo.get_dashboard_stats(db)
 
         assert "denuncias" in stats
-        assert "total_assets" in stats
+        # `total_assets` se retiró junto con el dominio Infraestructura
+        # (ver memoria QA 2026-04-28 — la sección "Ver zonificación" y
+        # las maquinarias/equipamiento se sacaron completos).
         assert "total_tramites" in stats
         assert "total_sugerencias" in stats
         assert stats["total_sugerencias"] >= 1

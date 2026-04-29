@@ -31,6 +31,7 @@ interface MapMock {
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     project: ReturnType<typeof vi.fn>;
+    getZoom: ReturnType<typeof vi.fn>;
   };
   handlers: Map<string, Handler[]>;
   emit: (event: string) => void;
@@ -58,7 +59,13 @@ function createMapMock(): MapMock {
     return { x: lng * 10 + 1000, y: lat * -10 + 1000 };
   });
 
-  const map = { on, off, project };
+  // El componente lee `map.getZoom()` y a zooms < 14 entra en
+  // collision-detection (descarta labels que se solapan en pixeles).
+  // El test verifica que CADA medición rinde su texto, así que
+  // forzamos zoom >= MIN_ZOOM_TO_SHOW_ALL para saltar esa lógica.
+  const getZoom = vi.fn(() => 16);
+
+  const map = { on, off, project, getZoom };
 
   return {
     map,

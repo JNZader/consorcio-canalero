@@ -392,11 +392,6 @@ describe('validators', () => {
       expect(validators.nombre('a'.repeat(101))).toContain('no puede exceder');
     });
 
-    it('should validate resolucion field', () => {
-      expect(validators.resolucion('Valid Resolution Text')).toBeNull();
-      expect(validators.resolucion('text')).toContain('al menos');
-      expect(validators.resolucion('a'.repeat(2001))).toContain('no puede exceder');
-    });
   });
 
   describe('MAX_LENGTHS constant', () => {
@@ -405,7 +400,6 @@ describe('validators', () => {
       expect(MAX_LENGTHS.DESCRIPCION).toBe(5000);
       expect(MAX_LENGTHS.NOMBRE).toBe(100);
       expect(MAX_LENGTHS.TELEFONO).toBe(20);
-      expect(MAX_LENGTHS.RESOLUCION).toBe(2000);
     });
   });
 

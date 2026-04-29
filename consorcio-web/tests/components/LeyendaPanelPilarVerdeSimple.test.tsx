@@ -92,7 +92,11 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
 
     it('chip color matches PILAR_VERDE_COLORS.agroAceptadaFill (single source of truth)', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroAceptadaVisible />);
-      const chip = screen.getByLabelText(LABEL_ACEPTADA);
+      // El chip de color es decorativo (`aria-hidden="true"`) — el
+      // texto al lado anuncia la semántica al lector de pantalla. Por
+      // eso `getByLabelText` no lo encuentra; lo localizamos por el
+      // testId del contenedor y bajamos al span con `data-color`.
+      const chip = screen.getByTestId(TESTID_ACEPTADA).querySelector('[data-color]');
       expect(chip).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroAceptadaFill);
     });
 
@@ -111,7 +115,7 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
 
     it('chip color matches PILAR_VERDE_COLORS.agroPresentadaFill (single source of truth)', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroPresentadaVisible />);
-      const chip = screen.getByLabelText(LABEL_PRESENTADA);
+      const chip = screen.getByTestId(TESTID_PRESENTADA).querySelector('[data-color]');
       expect(chip).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroPresentadaFill);
     });
 
@@ -143,18 +147,15 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
 
     it('each chip color comes from PILAR_VERDE_COLORS (single source of truth — no hardcoded hex)', () => {
       renderWithMantine(<LeyendaPanel pilarVerdeAgroZonasVisible />);
-      expect(screen.getByLabelText(LABEL_ZONA_RIO_TERCERO)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.agroZonaRioTercero,
-      );
-      expect(screen.getByLabelText(LABEL_ZONA_CARCARANA)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.agroZonaCarcarana,
-      );
-      expect(screen.getByLabelText(LABEL_ZONA_TORTUGAS)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.agroZonaTortugas,
-      );
+      expect(
+        screen.getByTestId(TESTID_ZONA_RIO_TERCERO).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroZonaRioTercero);
+      expect(
+        screen.getByTestId(TESTID_ZONA_CARCARANA).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroZonaCarcarana);
+      expect(
+        screen.getByTestId(TESTID_ZONA_TORTUGAS).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.agroZonaTortugas);
     });
 
     it('is hidden when only other flags are on', () => {
@@ -188,18 +189,15 @@ describe('<LeyendaPanel /> — simple Pilar Verde legends (agro + porcentaje)', 
 
     it('each chip color comes from PILAR_VERDE_COLORS (single source of truth — no hardcoded hex)', () => {
       renderWithMantine(<LeyendaPanel pilarVerdePorcentajeForestacionVisible />);
-      expect(screen.getByLabelText(LABEL_PORCENTAJE_BAJA)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.porcentajeForestacionBaja,
-      );
-      expect(screen.getByLabelText(LABEL_PORCENTAJE_MEDIA)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.porcentajeForestacionMedia,
-      );
-      expect(screen.getByLabelText(LABEL_PORCENTAJE_ALTA)).toHaveAttribute(
-        'data-color',
-        PILAR_VERDE_COLORS.porcentajeForestacionAlta,
-      );
+      expect(
+        screen.getByTestId(TESTID_PORCENTAJE_BAJA).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.porcentajeForestacionBaja);
+      expect(
+        screen.getByTestId(TESTID_PORCENTAJE_MEDIA).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.porcentajeForestacionMedia);
+      expect(
+        screen.getByTestId(TESTID_PORCENTAJE_ALTA).querySelector('[data-color]')
+      ).toHaveAttribute('data-color', PILAR_VERDE_COLORS.porcentajeForestacionAlta);
     });
 
     it('is hidden when only other flags are on', () => {

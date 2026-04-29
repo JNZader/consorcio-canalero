@@ -31,6 +31,19 @@ const { addReferenceLayersMock, mapInstances, MockMap, MockMarker } = vi.hoisted
     getZoom() {
       return 12;
     }
+
+    // El componente real lee `map.getBounds().contains(...)` para
+    // decidir si hace `flyTo` (sólo cuando el punto está fuera del
+    // viewport). Devolvemos un bounds que dice "todo está adentro" —
+    // así el mock no dispara `flyTo` y los assertions del test no
+    // dependen del estado de la cámara.
+    getBounds() {
+      return { contains: () => true };
+    }
+
+    flyTo() {
+      // no-op
+    }
   }
 
   class MockMarker {

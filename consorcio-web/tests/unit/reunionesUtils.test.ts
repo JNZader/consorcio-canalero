@@ -19,16 +19,17 @@ describe('reunionesUtils', () => {
   });
 
   it('builds referrable options and references', () => {
+    // El dominio "Infraestructura" se retiró completo (ver memoria de
+    // QA 2026-04-28). `buildReferrableOptions` ahora acepta sólo
+    // reports y tramites — el tercer arg de assets ya no existe.
     const options = buildReferrableOptions(
       [{ id: 'r1', tipo: 'rotura_canal', ubicacion_texto: 'Canal Norte' }],
       [{ id: 't1', titulo: 'Expediente', numero_expediente: '123' }],
-      [{ id: 'a1', nombre: 'Bomba', tipo: 'maquinaria' }],
     );
 
     expect(options).toEqual([
       { value: 'r1', label: 'rotura canal - Canal Norte', group: 'Reportes', type: 'reporte' },
       { value: 't1', label: 'Expediente (123)', group: 'Tramites', type: 'tramite' },
-      { value: 'a1', label: 'Bomba (maquinaria)', group: 'Infraestructura', type: 'infraestructura' },
     ]);
 
     expect(buildAgendaReferences(['r1'], options)).toEqual([

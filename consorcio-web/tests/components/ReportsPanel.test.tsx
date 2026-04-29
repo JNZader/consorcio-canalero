@@ -68,22 +68,28 @@ describe('ReportsPanel', () => {
       page: 1,
     });
 
+    // El endpoint `/management/seguimiento` se retiró. El historial
+    // ahora viaja DENTRO del response de `GET /denuncias/{id}` y los
+    // updates van a `PATCH /denuncias/{id}` — ver
+    // `reportsPanelTypes.ts` y `ReportsPanel.tsx:loadHistory`.
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/seguimiento/reporte/rep-1') {
-        return [
-          {
-            id: 'seg-1',
-            estado_anterior: 'pendiente',
-            estado_nuevo: 'en_revision',
-            comentario_publico: 'Se agenda visita tecnica',
-            comentario_interno: 'Notificar a cuadrilla',
-            fecha: '2026-03-02T10:00:00Z',
-          },
-        ];
+      if (path === '/denuncias/rep-1' && (!options || options.method === undefined || options.method === 'GET')) {
+        return {
+          ...baseReport,
+          historial: [
+            {
+              id: 'seg-1',
+              estado_anterior: 'pendiente',
+              estado_nuevo: 'en_revision',
+              comentario: 'Se agenda visita tecnica',
+              created_at: '2026-03-02T10:00:00Z',
+            },
+          ],
+        };
       }
 
-      if (path === '/management/seguimiento' && options?.method === 'POST') {
-        return { id: 'seg-2' };
+      if (path === '/denuncias/rep-1' && options?.method === 'PATCH') {
+        return { ...baseReport };
       }
 
       return [];
@@ -131,8 +137,11 @@ describe('ReportsPanel', () => {
     const modal = await screen.findByRole('dialog', { name: /detalle de denuncia/i });
     expect(within(modal).getByText('Canal desbordado en zona norte')).toBeInTheDocument();
     expect(within(modal).getByText(/historial de seguimiento/i)).toBeInTheDocument();
+    // El historial unificó `comentario_publico`/`comentario_interno` en
+    // un único `comentario` (free-text del operador). Ya no hay
+    // separación pública/interna en la pantalla del admin — solo el
+    // texto que el operador escribió.
     expect(within(modal).getByText(/se agenda visita tecnica/i)).toBeInTheDocument();
-    expect(within(modal).getByText(/interno: notificar a cuadrilla/i)).toBeInTheDocument();
   });
 
   it('registers a management update, shows success feedback and refreshes the list', async () => {
@@ -146,24 +155,26 @@ describe('ReportsPanel', () => {
     await user.type(within(modal).getByLabelText(/notas internas/i), 'Asignar maquinaria');
     await user.click(within(modal).getByRole('button', { name: /registrar gestion/i }));
 
+    // PATCH /denuncias/{id} con el shape nuevo:
+    // - `respuesta` = comentario público (visible al ciudadano)
+    // - `comentario` = nota interna (entra al historial)
+    // El POST a `/management/seguimiento` se retiró — devolvía 404 en
+    // prod desde antes (`ReportsPanel.tsx:108-111`).
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        '/management/seguimiento',
-        expect.objectContaining({ method: 'POST' })
+        '/denuncias/rep-1',
+        expect.objectContaining({ method: 'PATCH' })
       );
     });
 
-    const postCall = vi.mocked(apiFetch).mock.calls.find(
-      ([path, options]) => path === '/management/seguimiento' && options?.method === 'POST'
+    const patchCall = vi.mocked(apiFetch).mock.calls.find(
+      ([path, options]) => path === '/denuncias/rep-1' && options?.method === 'PATCH'
     );
-    expect(postCall).toBeDefined();
-    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
-      entidad_tipo: 'reporte',
-      entidad_id: 'rep-1',
-      estado_anterior: 'pendiente',
-      estado_nuevo: 'pendiente',
-      comentario_publico: 'Inspeccion programada',
-      comentario_interno: 'Asignar maquinaria',
+    expect(patchCall).toBeDefined();
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({
+      estado: 'pendiente',
+      respuesta: 'Inspeccion programada',
+      comentario: 'Asignar maquinaria',
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
@@ -195,10 +206,10 @@ describe('ReportsPanel', () => {
   it('shows an error notification when the management update fails', async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/management/seguimiento/reporte/rep-1') {
-        return [];
+      if (path === '/denuncias/rep-1' && (!options || options.method === undefined || options.method === 'GET')) {
+        return { ...baseReport, historial: [] };
       }
-      if (path === '/management/seguimiento' && options?.method === 'POST') {
+      if (path === '/denuncias/rep-1' && options?.method === 'PATCH') {
         throw new Error('failed update');
       }
       return [];

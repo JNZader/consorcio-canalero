@@ -162,12 +162,19 @@ describe('<MeasurementToolbar />', () => {
     );
 
     const medirBtn = screen.getByRole('button', { name: /medir/i });
-    // Mantine renders `variant="filled"` with the `mantine-ActionIcon-root`
-    // data attribute `data-variant="filled"`.
-    expect(medirBtn).toHaveAttribute('data-variant', 'filled');
+    // El componente migró de Mantine ActionIcon (`data-variant="filled"`)
+    // a un UnstyledButton con `style.background` directo. La señal de
+    // "activo" hoy es el color de fondo naranja `#fb923c` en vez del
+    // data-attribute. Verificamos el style — el contrato externo (chip
+    // de naranja al medir) es el mismo.
+    // El componente setea `style.background` inline; JSDOM expone el
+// valor crudo via `getAttribute('style')`. No usamos `toHaveStyle`
+// porque su normalización con shorthand `background` vs longhand
+// `backgroundColor` es inconsistente entre Mantine y JSDOM.
+expect(medirBtn.getAttribute('style') ?? '').toContain('#fb923c');
   });
 
-  it('marks the Medir trigger as active (variant="filled") when mode is measuring-area', () => {
+  it('marks the Medir trigger as active (orange background) when mode is measuring-area', () => {
     renderWithMantine(
       <MeasurementToolbar
         mode="measuring-area"
@@ -179,7 +186,11 @@ describe('<MeasurementToolbar />', () => {
     );
 
     const medirBtn = screen.getByRole('button', { name: /medir/i });
-    expect(medirBtn).toHaveAttribute('data-variant', 'filled');
+    // El componente setea `style.background` inline; JSDOM expone el
+// valor crudo via `getAttribute('style')`. No usamos `toHaveStyle`
+// porque su normalización con shorthand `background` vs longhand
+// `backgroundColor` es inconsistente entre Mantine y JSDOM.
+expect(medirBtn.getAttribute('style') ?? '').toContain('#fb923c');
   });
 
   it('does NOT mark the Medir trigger as filled when mode is idle', () => {

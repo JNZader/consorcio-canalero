@@ -1,5 +1,6 @@
 """Tests for the public module — viewer, external reports, and publication workflow."""
 
+import os
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -661,6 +662,13 @@ class TestMartinCatalogHandler:
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    not os.environ.get("TEST_LIVE_MARTIN"),
+    reason=(
+        "Requires Martin tile server running at localhost:3000 — "
+        "set TEST_LIVE_MARTIN=1 inside the docker compose stack to run."
+    ),
+)
 class TestMartinCatalogIntegration:
     """Integration tests — require real Martin running at localhost:3000."""
 

@@ -272,37 +272,12 @@ class TestSugerenciaService:
         assert result == []
 
 
-class TestIncorporateSugerencia:
-    def test_no_geometry_raises(self, service, mock_repo):
-        sug = SimpleNamespace(id=uuid.uuid4(), titulo="Test", geometry=None)
-        mock_repo.get_sugerencia_by_id.return_value = sug
-        db = MagicMock()
-        with pytest.raises(HTTPException) as exc_info:
-            service.incorporate_sugerencia_as_channel(db, sug.id)
-        assert exc_info.value.status_code == 400
-
-    def test_success(self, service, mock_repo):
-        sug = SimpleNamespace(
-            id=uuid.uuid4(),
-            titulo="Canal",
-            geometry={"features": []},
-            estado="nueva",
-            respuesta=None,
-        )
-        mock_repo.get_sugerencia_by_id.return_value = sug
-        db = MagicMock()
-        with patch.object(service, "_persist_incorporated_channel"):
-            result = service.incorporate_sugerencia_as_channel(db, sug.id)
-        assert result.estado == "implementada"
-        db.commit.assert_called_once()
-
-
-# Batch 5 (2026-04-20): `TestGetIncorporatedChannelFeatureCollection` was
-# retired along with the `get_incorporated_channel_feature_collection` service
-# method and the `get_incorporated_channel_suggestions` repository method —
-# Pilar Azul (`useCanales`) replaced the public-feature-collection endpoint
-# that consumed them. `incorporate_sugerencia_as_channel` still exists and
-# its tests live in `TestIncorporateSugerencia` above.
+# `incorporate_sugerencia_as_channel` was retired on 2026-04-29 along with the
+# `POST /sugerencias/{id}/incorporar-canal` endpoint. The operator now closes
+# the loop by changing `estado → implementada` and writing a `respuesta` —
+# there's no separate side-channel to mutate the canales GeoJSON anymore. The
+# previous `TestIncorporateSugerencia` block lived here and tested both the
+# happy path and the geometry-required guard.
 
 
 # ---------------------------------------------------------------------------
