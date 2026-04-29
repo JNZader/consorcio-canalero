@@ -29,9 +29,17 @@ async function fetchGeoJson(url: string): Promise<FeatureCollection | null> {
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
+// Frozen module-level constant — passing an inline `['zona']` array each
+// render gave `useGEELayers` a new `layerNames` reference every time,
+// which `useGEELayers.useQuery` then incorporated into `queryKey`. Even
+// though TanStack hashes the key by value, the OBJECT identity change
+// fed downstream `useEffect`s that compared via reference, contributing
+// to the render cascade that locked up `/sugerencias` in Firefox.
+const FORM_MAP_LAYER_NAMES = ['zona'] as const;
+
 export function useFormMapLayers() {
   const { waterways } = useWaterways();
-  const { layers: geeLayers } = useGEELayers({ layerNames: ['zona'] });
+  const { layers: geeLayers } = useGEELayers({ layerNames: FORM_MAP_LAYER_NAMES });
 
   const caminosQuery = useQuery({
     queryKey: ['form-map', 'caminos'],

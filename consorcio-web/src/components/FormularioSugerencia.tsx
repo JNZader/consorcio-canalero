@@ -15,7 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { MAX_LENGTHS, validators } from '../lib/validators';
 import { SuggestionGeometrySection } from './suggestion-form/SuggestionGeometrySection';
@@ -48,10 +48,22 @@ function FormularioContenido() {
 
   const [pendingRateLimitCheck, setPendingRateLimitCheck] = useState(false);
 
+  // useCallback both callbacks because they're consumed by `useEffect`
+  // dep arrays inside `useContactVerification` and `useSuggestionFormState`.
+  // Inline arrow functions get a fresh reference EVERY render — those
+  // hooks's effects then run on every render, hitting setState calls
+  // that trigger more renders. The page would lock up Firefox while the
+  // map's WebGL canvas got destroyed and rebuilt repeatedly.
+  const handleVerified = useCallback(() => {
+    setPendingRateLimitCheck(true);
+  }, []);
+
+  const handleRateLimitChecked = useCallback(() => {
+    setPendingRateLimitCheck(false);
+  }, []);
+
   const verification = useContactVerification({
-    onVerified: () => {
-      setPendingRateLimitCheck(true);
-    },
+    onVerified: handleVerified,
   });
 
   const {
@@ -77,7 +89,7 @@ function FormularioContenido() {
     logout,
     form,
     pendingRateLimitCheck,
-    onRateLimitChecked: () => setPendingRateLimitCheck(false),
+    onRateLimitChecked: handleRateLimitChecked,
   });
 
   const {
