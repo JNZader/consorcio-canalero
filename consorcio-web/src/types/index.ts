@@ -214,7 +214,7 @@ export interface DenunciasResumen {
   pendiente: number;
   en_revision: number;
   resuelto: number;
-  rechazado: number;
+  descartado: number;
   total: number;
 }
 

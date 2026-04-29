@@ -46,13 +46,17 @@ export const CUENCA_IDS = CUENCAS.map((c) => c.id) as CuencaId[];
 // ===========================================
 
 /**
- * Available status options for reports/denuncias.
+ * Available status options for reports/denuncias. Values must match the
+ * backend `EstadoDenuncia` enum exactly — the previous `'rechazado'`
+ * value was a frontend-only invention and made `PATCH /denuncias/{id}`
+ * fail with 400 because the backend doesn't recognise that string.
+ * The label stays human-friendly; the value is what travels on the wire.
  */
 export const STATUS_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente', color: 'yellow' },
   { value: 'en_revision', label: 'En Revision', color: 'blue' },
   { value: 'resuelto', label: 'Resuelto', color: 'green' },
-  { value: 'rechazado', label: 'Rechazado', color: 'red' },
+  { value: 'descartado', label: 'Descartado', color: 'red' },
 ] as const;
 
 /**
@@ -62,13 +66,48 @@ export const STATUS_CONFIG = {
   pendiente: { color: 'yellow', label: 'Pendiente' },
   en_revision: { color: 'blue', label: 'En revision' },
   resuelto: { color: 'green', label: 'Resuelto' },
-  rechazado: { color: 'red', label: 'Rechazado' },
+  descartado: { color: 'red', label: 'Descartado' },
 } as const;
 
 /**
  * Report/Denuncia status type.
  */
 export type EstadoDenuncia = (typeof STATUS_OPTIONS)[number]['value'];
+
+/**
+ * Valid state transitions — MUST mirror `VALID_TRANSITIONS` in
+ * `gee-backend/app/domains/denuncias/models.py`. The Select in the admin
+ * modal filters its options through this so operators can never pick a
+ * transition the backend would reject (e.g. `pendiente → resuelto` or
+ * `en_revision → ANY-from-terminal`).
+ *
+ * Terminal states (`resuelto`, `descartado`) intentionally have an empty
+ * array — once a denuncia is closed there is no way out from the UI;
+ * the citizen would file a new one.
+ */
+export const VALID_DENUNCIA_TRANSITIONS: Record<EstadoDenuncia, ReadonlyArray<EstadoDenuncia>> = {
+  pendiente: ['en_revision', 'descartado'],
+  en_revision: ['resuelto', 'descartado', 'pendiente'],
+  resuelto: [],
+  descartado: [],
+};
+
+/**
+ * Return the list of states an operator can move INTO from `current`,
+ * INCLUDING `current` itself so the Select always has the active value
+ * preselected (Mantine errors otherwise). Pass-through for unknown
+ * states keeps the UI permissive in case the backend grows new states
+ * before the frontend learns about them.
+ */
+export function getAllowedNextEstados(
+  current: EstadoDenuncia | string
+): ReadonlyArray<{ value: string; label: string; color: string }> {
+  const allowed = new Set<string>([current]);
+  const next = VALID_DENUNCIA_TRANSITIONS[current as EstadoDenuncia];
+  if (next) for (const value of next) allowed.add(value);
+  // Filter STATUS_OPTIONS preserving the canonical display order.
+  return STATUS_OPTIONS.filter((opt) => allowed.has(opt.value));
+}
 
 // ===========================================
 // TIPOS DE DENUNCIA (Report Types)

@@ -14,7 +14,7 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { CATEGORY_OPTIONS, STATUS_OPTIONS } from '../../../../constants';
+import { CATEGORY_OPTIONS, STATUS_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import { API_URL } from '../../../../lib/api';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
@@ -197,9 +197,19 @@ export function ReportDetailModal({
             <Stack gap="sm" aria-labelledby="admin-section-label">
               <Select
                 label="Cambiar Estado"
-                data={STATUS_OPTIONS}
+                description={
+                  selectedReport.estado === 'resuelto' ||
+                  selectedReport.estado === 'descartado'
+                    ? 'La denuncia está cerrada — no admite más cambios de estado.'
+                    : undefined
+                }
+                data={[...getAllowedNextEstados(selectedReport.estado)]}
                 value={newStatus}
-                onChange={(v) => setNewStatus(v || 'pendiente')}
+                onChange={(v) => setNewStatus(v || selectedReport.estado)}
+                disabled={
+                  selectedReport.estado === 'resuelto' ||
+                  selectedReport.estado === 'descartado'
+                }
               />
               <Textarea
                 label="Comentario Publico"
