@@ -15,3 +15,10 @@ import '@mantine/notifications/styles.css';
 
 // Estilos de dropzone (usado en formularios de archivos)
 import '@mantine/dropzone/styles.css';
+
+// Estilos del paquete de fechas (DatePicker, DatePickerInput,
+// DateTimePicker). Sin esto los chevrones del header del calendario se
+// renderizan a tamaño SVG natural (gigantes) y la grilla queda
+// desalineada — visible a ojo en SuggestionDetailModal cuando se abre
+// "Agendar para Reunión".
+import '@mantine/dates/styles.css';
