@@ -72,7 +72,6 @@ export default function SugerenciasPanel() {
   const [publicComment, setPublicComment] = useState('');
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [incorporating, setIncorporating] = useState(false);
 
   // Agendar state
   const [agendarFecha, setAgendarFecha] = useState<Date | null>(null);
@@ -172,20 +171,18 @@ export default function SugerenciasPanel() {
     loadProximaReunion();
   }, [loadSugerencias, loadStats, loadProximaReunion]);
 
-  const loadHistory = async (id: string) => {
-    setLoadingHistorial(true);
-    try {
-      // TODO: v2 uses sugerencias/{id} with historial included, or a dedicated historial endpoint
-      const response = await apiFetch<SeguimientoEntry[] | { items: SeguimientoEntry[] }>(
-        `/sugerencias/${id}/historial`
-      ).catch(() => [] as SeguimientoEntry[]);
-      const data = Array.isArray(response) ? response : (response.items ?? []);
-      setHistorial(data);
-    } catch (err) {
-      logger.error('Failed to load suggestion history', err);
-    } finally {
-      setLoadingHistorial(false);
-    }
+  const loadHistory = async (_id: string) => {
+    // NOTE: the v2 backend does NOT expose a `/sugerencias/{id}/historial`
+    // endpoint and the `Sugerencia` model has no `historial` relationship
+    // either. The audit-log feature was retired from the schema; the
+    // operator's actions are tracked indirectly via `respuesta` and
+    // `fecha_reunion`. This stub keeps the modal's section in a stable
+    // empty state instead of firing a 404 every time a sugerencia opens.
+    // To restore: add a `SugerenciaHistorial` model + relationship +
+    // include it inside `GET /sugerencias/{id}` (the same shape we use
+    // for denuncias).
+    setLoadingHistorial(false);
+    setHistorial([]);
   };
 
   const handleViewDetail = async (sug: Sugerencia) => {
@@ -300,33 +297,11 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const handleIncorporateChannel = async () => {
-    if (!selectedSugerencia) return;
-
-    setIncorporating(true);
-    try {
-      const updated = await sugerenciasApi.incorporateChannel(selectedSugerencia.id);
-      const merged = { ...selectedSugerencia, ...updated };
-      setSelectedSugerencia(merged);
-      setNewEstado('tratado');
-      notifications.show({
-        title: 'Canal incorporado',
-        message: 'La geometría ya se suma visualmente a la capa de Canales existentes',
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
-      refreshAll();
-    } catch (error) {
-      logger.error('Error incorporating suggestion channel:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo incorporar la sugerencia a Canales existentes',
-        color: 'red',
-      });
-    } finally {
-      setIncorporating(false);
-    }
-  };
+  // The "Incorporar a Canales existentes" workflow was retired on
+  // 2026-04-29: it mutated a static GeoJSON file at runtime and the
+  // operator can express the same intent by setting estado=implementada
+  // + writing a respuesta. The state setter `setIncorporating` and the
+  // related backend endpoint were removed in the same pass.
 
   const handleCreateInternal = async () => {
     const validationErrors = {
@@ -475,8 +450,6 @@ export default function SugerenciasPanel() {
           setAgendarFecha={setAgendarFecha}
           onAgendar={handleAgendar}
           agendando={agendando}
-          onIncorporateChannel={handleIncorporateChannel}
-          incorporating={incorporating}
           onDelete={handleDelete}
           deleting={deleting}
           onUpdate={handleUpdate}

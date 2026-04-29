@@ -26,7 +26,10 @@ export interface Sugerencia {
   contacto_email?: string;
   contacto_telefono?: string;
   autor_id?: string;
-  estado: 'pendiente' | 'en_agenda' | 'tratado' | 'descartado';
+  // Values mirror the backend `EstadoSugerencia` enum exactly. The
+  // previous typing had invented states (`en_agenda`, `tratado`) that
+  // the backend rejected with a 500 — see commit 53161da.
+  estado: 'pendiente' | 'revisada' | 'implementada' | 'descartada';
   prioridad: 'baja' | 'normal' | 'alta' | 'urgente';
   fecha_reunion?: string;
   notas_comision?: string;
@@ -141,6 +144,16 @@ export const sugerenciasApi = {
   },
 
   /**
+   * Listar las sugerencias del ciudadano logueado (auth required).
+   * Mirror de `/denuncias/mine`. Backend filtra por usuario_id del JWT.
+   */
+  listMine: (
+    page = 1,
+    limit = 10
+  ): Promise<{ items: Sugerencia[]; total: number; page: number; limit: number }> =>
+    apiFetch(`/sugerencias/mine?page=${page}&limit=${limit}`),
+
+  /**
    * Obtener estadisticas.
    */
   getStats: (): Promise<SugerenciasStats> => apiFetch('/sugerencias/stats'),
@@ -163,11 +176,6 @@ export const sugerenciasApi = {
    * Obtener detalle de sugerencia.
    */
   get: (id: string): Promise<Sugerencia> => apiFetch(`/sugerencias/${id}`),
-
-  /**
-   * Obtener historial de cambios de una sugerencia.
-   */
-  getHistorial: (id: string): Promise<HistorialEntry[]> => apiFetch(`/sugerencias/${id}/historial`),
 
   /**
    * Actualizar sugerencia.
@@ -194,11 +202,6 @@ export const sugerenciasApi = {
     apiFetch(`/sugerencias/${id}/resolver`, {
       method: 'POST',
       body: JSON.stringify({ resolucion }),
-    }),
-
-  incorporateChannel: (id: string): Promise<Sugerencia> =>
-    apiFetch(`/sugerencias/${id}/incorporar-canal`, {
-      method: 'POST',
     }),
 
   /**

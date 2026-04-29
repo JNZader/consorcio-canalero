@@ -67,9 +67,21 @@ class SugerenciaResponse(BaseModel):
     contacto_nombre: Optional[str] = None
     geometry: Optional[dict[str, Any]] = None
     respuesta: Optional[str] = None
+    fecha_reunion: Optional[date] = None
     usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
+
+
+class SugerenciaAgendarRequest(BaseModel):
+    """
+    Body for `POST /sugerencias/{id}/agendar`. Pass `null` to clear the
+    previously assigned date — the endpoint is idempotent overwrite, not
+    a toggle, so the operator can move a sugerencia to a different
+    reunión without an extra "unassign" step.
+    """
+
+    fecha_reunion: Optional[date] = None
 
 
 class SugerenciaListResponse(BaseModel):
@@ -85,6 +97,7 @@ class SugerenciaListResponse(BaseModel):
     contacto_email: Optional[str] = None
     contacto_nombre: Optional[str] = None
     geometry: Optional[dict[str, Any]] = None
+    fecha_reunion: Optional[date] = None
     created_at: datetime
 
 

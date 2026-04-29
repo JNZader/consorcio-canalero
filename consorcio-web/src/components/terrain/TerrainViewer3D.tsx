@@ -57,6 +57,15 @@ const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 /*  Main component                                                             */
 /* -------------------------------------------------------------------------- */
 
+// Frozen module-level constant. Passing an inline `['candil','ml','noroeste','norte']`
+// per render gave `useGEELayers` a fresh `layerNames` reference each time,
+// which trickled into TanStack Query's `queryKey` array and downstream
+// hook deps, contributing to the cascade that lost the MapLibre WebGL
+// context every time `/mapa` was opened in 3D mode (3 context losses
+// in 3 seconds during QA). Matches the same fix applied in
+// `useFormMapLayers.ts`.
+const TERRAIN_GEE_LAYER_NAMES = ['candil', 'ml', 'noroeste', 'norte'] as const;
+
 interface TerrainViewer3DProps {
   /** UUID of the DEM layer for terrain-RGB tiles */
   readonly demLayerId?: string;
@@ -104,7 +113,7 @@ export default function TerrainViewer3D({
   // IS the consorcio area, so the outline was redundant). Only the 4 GEE
   // sub-cuencas (Candil / ML / Noroeste / Norte) feed the cuencas build.
   const { layers: geeLayers } = useGEELayers({
-    layerNames: ['candil', 'ml', 'noroeste', 'norte'],
+    layerNames: TERRAIN_GEE_LAYER_NAMES,
   });
   const { basins } = useBasins();
   const { approvedZones } = useApprovedZones();

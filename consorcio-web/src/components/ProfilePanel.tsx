@@ -21,6 +21,7 @@ import { apiFetch } from '../lib/api';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import { MyReportsSection } from './profile/MyReportsSection';
+import { MySuggestionsSection } from './profile/MySuggestionsSection';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 
 interface ProfileFormValues {
@@ -274,6 +275,8 @@ function ProfileContent() {
         <Divider />
 
         <MyReportsSection />
+
+        <MySuggestionsSection />
 
         {/* Account Actions */}
         <Paper shadow="sm" p="lg" radius="md" withBorder>

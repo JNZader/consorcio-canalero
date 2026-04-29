@@ -5,12 +5,20 @@
  */
 
 import { MantineProvider } from '@mantine/core';
+import { DatesProvider } from '@mantine/dates';
 import { Notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import { StrictMode, type ReactNode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
+
+// Configure dayjs (used by @mantine/dates) with Spanish locale + Argentina
+// timezone-friendly defaults so DatePickerInputs across the app render
+// "Lunes / Martes / ..." and accept dd/mm/yyyy without per-component setup.
+dayjs.locale('es');
 
 import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
@@ -98,10 +106,12 @@ function App() {
           defaultColorScheme="auto"
           colorSchemeManager={sharedColorSchemeManager}
         >
-          <Notifications position="top-right" zIndex={10002} />
-          <AuthInitializer>
-            <RouterProvider router={router} />
-          </AuthInitializer>
+          <DatesProvider settings={{ locale: 'es', firstDayOfWeek: 1 }}>
+            <Notifications position="top-right" zIndex={10002} />
+            <AuthInitializer>
+              <RouterProvider router={router} />
+            </AuthInitializer>
+          </DatesProvider>
         </MantineProvider>
       </QueryClientProvider>
     </HelmetProvider>

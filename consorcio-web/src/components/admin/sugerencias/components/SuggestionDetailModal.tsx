@@ -43,8 +43,6 @@ export function SuggestionDetailModal({
   setAgendarFecha,
   onAgendar,
   agendando,
-  onIncorporateChannel,
-  incorporating,
   onDelete,
   deleting,
   onUpdate,
@@ -80,8 +78,6 @@ export function SuggestionDetailModal({
   setAgendarFecha: (value: Date | null) => void;
   onAgendar: () => void;
   agendando: boolean;
-  onIncorporateChannel: () => void;
-  incorporating: boolean;
   onDelete: () => void;
   deleting: boolean;
   onUpdate: () => void;
@@ -175,19 +171,6 @@ export function SuggestionDetailModal({
                 Línea sugerida en violeta. Los canales relevados se muestran como referencia en azul
                 oscuro.
               </Text>
-              <Group mt="sm">
-                <Button
-                  size="xs"
-                  color="teal"
-                  onClick={onIncorporateChannel}
-                  loading={incorporating}
-                  disabled={String(selectedSugerencia.estado) === 'implementada'}
-                >
-                  {String(selectedSugerencia.estado) === 'implementada'
-                    ? 'Ya incorporada a Canales existentes'
-                    : 'Incorporar a Canales existentes'}
-                </Button>
-              </Group>
             </div>
           ) : null}
 
@@ -267,15 +250,25 @@ export function SuggestionDetailModal({
               radius="md"
             >
               <Text size="sm" fw={600} mb="md">
-                Agendar para Reunion
+                Agendar para Reunión
               </Text>
               <Group>
                 <DatePickerInput
-                  label="Fecha de reunion"
-                  placeholder="Seleccionar fecha"
+                  label="Fecha de reunión"
+                  placeholder="Elegí una fecha"
+                  description="Formato dd/mm/aaaa. Solo fechas futuras."
                   value={agendarFecha}
                   onChange={setAgendarFecha}
                   minDate={new Date()}
+                  // Argentina locale + readable format. Mantine's DatePickerInput
+                  // accepts a `valueFormat` for the displayed text and a `locale`
+                  // that controls the calendar headers (Lun/Mar/Mié...).
+                  locale="es"
+                  valueFormat="DD/MM/YYYY"
+                  firstDayOfWeek={1}
+                  weekendDays={[0, 6]}
+                  clearable
+                  popoverProps={{ withArrow: true }}
                   style={{ flex: 1 }}
                 />
                 <Button

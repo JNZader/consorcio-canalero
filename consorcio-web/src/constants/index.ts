@@ -192,13 +192,16 @@ export type Prioridad = (typeof PRIORITY_OPTIONS)[number]['value'];
 // ===========================================
 
 /**
- * Status options for sugerencias.
+ * Status options for sugerencias. Mirrors the backend `EstadoSugerencia`
+ * enum exactly — see also `src/components/admin/sugerencias/constants.ts`
+ * which is the canonical place for this list (this top-level export is
+ * legacy, kept for any code still importing from `constants/index.ts`).
  */
 export const SUGERENCIA_ESTADO_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente', color: 'yellow' },
-  { value: 'en_agenda', label: 'En Agenda', color: 'blue' },
-  { value: 'tratado', label: 'Tratado', color: 'green' },
-  { value: 'descartado', label: 'Descartado', color: 'gray' },
+  { value: 'revisada', label: 'Revisada', color: 'blue' },
+  { value: 'implementada', label: 'Implementada', color: 'green' },
+  { value: 'descartada', label: 'Descartada', color: 'gray' },
 ] as const;
 
 /**

@@ -3,6 +3,7 @@
 import json
 import os
 import uuid
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
@@ -194,25 +195,31 @@ class MonitoringService:
     def get_proxima_reunion(self, db: Session) -> list[Sugerencia]:
         return self.repo.get_proxima_reunion(db)
 
-    def incorporate_sugerencia_as_channel(
-        self, db: Session, sugerencia_id: uuid.UUID
+    def agendar_sugerencia(
+        self,
+        db: Session,
+        sugerencia_id: uuid.UUID,
+        *,
+        fecha_reunion: Optional[date],
     ) -> Sugerencia:
+        """
+        Set or clear `Sugerencia.fecha_reunion`. Idempotent overwrite —
+        passing `None` clears the field, which is how the admin UI
+        "unschedules" a sugerencia. Other fields are left untouched.
+        """
         sugerencia = self.get_sugerencia(db, sugerencia_id)
-        if not sugerencia.geometry:
-            raise HTTPException(
-                status_code=400,
-                detail="La sugerencia no tiene geometría para incorporar",
-            )
-
-        self._persist_incorporated_channel(sugerencia)
-        sugerencia.estado = "implementada"
-        sugerencia.respuesta = (
-            "Incorporada manualmente a la capa oficial de canales existentes"
-        )
+        sugerencia.fecha_reunion = fecha_reunion
         db.flush()
         db.commit()
         db.refresh(sugerencia)
         return sugerencia
+
+    # The previous `incorporate_sugerencia_as_channel` workflow lived
+    # here together with the matching `POST /sugerencias/{id}/incorporar-canal`
+    # endpoint. It was retired on 2026-04-29 — the operator handles
+    # implementation tracking by changing `estado → implementada` and
+    # writing a `respuesta`, no need for a side-channel that mutated
+    # the GeoJSON file at runtime.
 
     # ── ANALYSES ───────────────────────────────
 

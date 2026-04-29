@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.monitoring.schemas import (
     AnalisisGeeResponse,
+    SugerenciaAgendarRequest,
     SugerenciaCreate,
     SugerenciaListResponse,
     SugerenciaResponse,
@@ -187,18 +188,29 @@ def update_sugerencia(
 
 
 @router.post(
-    "/sugerencias/{sugerencia_id}/incorporar-canal",
+    "/sugerencias/{sugerencia_id}/agendar",
     response_model=SugerenciaResponse,
     tags=["sugerencias"],
 )
-def incorporate_sugerencia_as_channel(
+def agendar_sugerencia(
     sugerencia_id: uuid.UUID,
+    payload: SugerenciaAgendarRequest,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
 ):
-    """Marcar sugerencia geométrica como incorporada a canales existentes."""
-    return service.incorporate_sugerencia_as_channel(db, sugerencia_id)
+    """
+    Asignar (o limpiar) la fecha de reunión de una sugerencia.
+
+    The admin SugerenciasPanel exposes a "Agendar para Reunion" button
+    with a DatePicker; this endpoint persists the chosen date into
+    `Sugerencia.fecha_reunion`. The same endpoint clears it when the
+    payload `fecha_reunion` is null (operator changed their mind), so
+    the UI stays a single button instead of two.
+    """
+    return service.agendar_sugerencia(
+        db, sugerencia_id, fecha_reunion=payload.fecha_reunion
+    )
 
 
 # ──────────────────────────────────────────────
