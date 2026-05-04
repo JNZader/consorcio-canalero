@@ -303,7 +303,7 @@ async def proxy_tile(
     try:
         client = _get_tile_client()
         resp = await client.get(upstream_url, params=params)
-    except (httpx.ConnectError, httpx.TimeoutException):
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
         return Response(status_code=204, headers=_cors)
 
     if resp.status_code == 204:
