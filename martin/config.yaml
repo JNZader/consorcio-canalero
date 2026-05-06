@@ -4,7 +4,9 @@
 listen_addresses: '0.0.0.0:3000'
 
 postgres:
-  connection_string: postgresql://consorcio:consorcio_dev@postgres:5432/consorcio
+  # Sourced from the env_file gee-backend/.env so credential rotations stay
+  # in one place. Martin v0.14.2 supports ${VAR} interpolation in config.
+  connection_string: ${DATABASE_URL}
 
   # Auto-discover all tables and views with geometry columns
   auto_publish:

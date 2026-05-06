@@ -181,6 +181,12 @@ services:
     # if you genuinely need host-side access (e.g. local debugging).
     expose:
       - "3000"
+    # Pull DATABASE_URL (the real rotated postgres password) from the same
+    # env_file the backend uses. Without this, martin's config.yaml falls
+    # back to the hardcoded `consorcio:consorcio_dev` default which no
+    # longer matches the postgres data volume after credential rotation.
+    env_file:
+      - ./gee-backend/.env
     volumes:
       - ./martin/config.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
