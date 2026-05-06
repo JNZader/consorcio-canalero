@@ -174,8 +174,13 @@ services:
     image: ghcr.io/maplibre/martin:v0.14.2
     container_name: consorcio-martin
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:3000:3000"
+    # No host port published — Martin is reached via the consorcio-network
+    # docker network only (frontend/backend resolve `martin:3000` internally).
+    # Host port 3000 is taken by other stacks on this box (biogas-backend),
+    # so publishing here causes startup conflicts. Add it back via override
+    # if you genuinely need host-side access (e.g. local debugging).
+    expose:
+      - "3000"
     volumes:
       - ./martin/config.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
