@@ -1,312 +1,164 @@
+<div align="center">
+
 # Consorcio Canalero 10 de Mayo
 
-Plataforma integral de gestión, monitoreo y análisis hídrico para el **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
+### Plataforma integral de gestión, monitoreo y análisis hídrico
 
-Self-hosted, clone-and-deploy ready. Pensado para que un consorcio pueda operar de manera autónoma su infraestructura de drenaje, su padrón de afiliados, sus finanzas y su comunicación con la ciudadanía, todo desde un solo sistema.
+**GIS-powered water management system** for the Consorcio Canalero 10 de Mayo — Bell Ville, Córdoba, Argentina. Self-hosted, clone-and-deploy ready. One system for drainage infrastructure, member registry, finances, citizen engagement, and geospatial intelligence.
 
----
+<!-- TODO: Add hero screenshot here — dashboard with map visible -->
+![Dashboard Preview](#)
 
-## Índice
+[![Live Demo](https://img.shields.io/badge/demo-live-success?style=flat-square)](https://consorcio-canalero.pages.dev)
+[![Stack: Python](https://img.shields.io/badge/backend-Python%203.11-blue?style=flat-square)](https://fastapi.tiangolo.com/)
+[![Stack: React](https://img.shields.io/badge/frontend-React%2019-61dafb?style=flat-square)](https://react.dev/)
+[![Stack: PostgreSQL](https://img.shields.io/badge/db-PostgreSQL%20%2B%20PostGIS-336791?style=flat-square)](https://www.postgresql.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-- [Visión general](#visión-general)
-- [Stack](#stack)
-- [Funcionalidades por dominio](#funcionalidades-por-dominio)
-- [Capacidades geoespaciales](#capacidades-geoespaciales)
-- [Sistema de exportación y reportes](#sistema-de-exportación-y-reportes)
-- [Auth y roles](#auth-y-roles)
-- [Background jobs](#background-jobs)
-- [Estructura del proyecto](#estructura-del-proyecto)
-- [Inicio rápido](#inicio-rápido)
-- [API](#api)
-- [Tests](#tests)
-- [Deploy](#deploy)
-- [Licencia](#licencia)
+[🌐 Live Demo](https://consorcio-canalero.pages.dev) · [🚀 Quick Start](#quick-start) · [📚 API Docs](#api)
+
+</div>
 
 ---
 
-## Visión general
+## ✨ Key Features
 
-La plataforma cubre cuatro grandes áreas de trabajo:
+<details>
+<summary><b>🗺️ GIS Monitoring & Intelligence</b></summary>
 
-1. **Operación administrativa** — padrón de consorcistas, finanzas (ingresos/gastos/presupuesto/ejecución), trámites con seguimiento, agenda de reuniones.
-2. **Participación ciudadana** — denuncias públicas con foto y geolocalización, sugerencias vinculables a la próxima reunión, viewer público sin login.
-3. **Inteligencia geoespacial** — visor cartográfico interactivo, análisis con Google Earth Engine (Sentinel-1 SAR + Sentinel-2 multiespectral), modelado hidrológico, dashboard de inteligencia con índice de criticidad hídrica (HCI), zonificación automática y detección de conflictos.
-4. **Configuración y branding** — settings por deployment (nombre, logo, colores, parámetros analíticos), selección de imagen satelital del visor, comparador antes/después.
+- Interactive map viewer with MapLibre GL + PMTiles + PostGIS vector layers
+- Google Earth Engine integration: Sentinel-1 SAR, Sentinel-2 multispectral, DEM analysis
+- **HCI (Hydric Criticality Index)** — composite risk score per zone with configurable weights
+- Automated flood detection, runoff simulation (Rational Method), and conflict detection
+- 3D terrain rendering (PyVista) + fly-over animation export
+- Before/after satellite comparison and NDVI/water-index tiles
 
----
+<!-- TODO: Add screenshot/GIF of GIS map viewer here -->
 
-## Stack
+</details>
 
-| Componente | Tecnología |
-|------------|------------|
-| **Frontend** | React 19 · TypeScript · Vite 7 · Mantine v8 · TanStack Router · TanStack Query · Zustand · MapLibre GL · PMTiles · Turf.js |
-| **Backend** | FastAPI · Python 3.11+ · SQLAlchemy 2.0 · Alembic · Pydantic v2 |
-| **Auth** | fastapi-users · JWT · Google OAuth (opcional) |
-| **Base de datos** | PostgreSQL · PostGIS · GeoAlchemy2 |
-| **Geo / Imágenes** | Google Earth Engine · Shapely · Rasterio · WhiteboxTools · GDAL |
-| **3D / Visualización** | PyVista · Mapbox GL (capa terrain hybrid) |
-| **Background jobs** | Celery · Redis |
-| **PDFs** | ReportLab |
-| **Logging** | structlog (estructurado) |
-| **Tests** | Pytest · Vitest · Playwright (E2E) · Stryker (mutation) |
-| **Lint / Format** | Ruff (Python) · Biome (TypeScript) |
-| **CI/CD** | GitHub Actions · Docker Compose |
-| **Deploy** | Coolify on Hetzner (backend) · Cloudflare Pages (frontend) · Martin (PMTiles server) |
+<details>
+<summary><b>📋 Citizen Reports (Denuncias)</b></summary>
 
----
+- Public endpoint — no login required to submit a report
+- **Photo upload + map-pin geolocation** on every submission
+- State machine: open → in progress → resolved / rejected
+- Full audit trail (who changed what, when)
+- Operator dashboard with filters, zone heatmaps, and response-time KPIs
 
-## Funcionalidades por dominio
+<!-- TODO: Add screenshot of citizen report form here -->
 
-El backend usa **Screaming Architecture**: cada dominio bajo `gee-backend/app/domains/` tiene su propio `models.py`, `schemas.py`, `repository.py`, `service.py` y `router.py`.
+</details>
 
-### `padron` — Registro de consorcistas
+<details>
+<summary><b>⚙️ Admin Workflows</b></summary>
 
-- CRUD completo de consorcistas con CUIT, fracciones, derechos de agua, cuotas.
-- Categorización: pequeño propietario, empresa, institución.
-- Estados: activo, suspendido, al día, deudor.
-- **Importación en lote desde CSV/XLSX** con validación automática.
-- Estadísticas agregadas (total afiliados, deuda acumulada, distribución por categoría).
+- **Padrón** — member registry with CUIT, water rights, fractions, bulk CSV/XLSX import
+- **Trámites** — administrative proceedings with priority tracking + PDF export
+- **Finanzas** — annual budget, income/expense tracking, execution analysis, PDF summaries
+- **Reuniones** — meetings + collaborative agenda + automatic citizen-suggestion linking
+- **Settings** — per-deployment branding (logo, colors, parameters), public branding endpoint
 
-### `denuncias` — Reportes ciudadanos
+<!-- TODO: Add screenshot of admin panel here -->
 
-- Endpoint público sin auth para que cualquier ciudadano reporte un problema.
-- **Adjuntar fotos** + **selección de ubicación en mapa**.
-- Sistema de estados: abierta · en progreso · resuelta · rechazada.
-- Historial completo de cambios (quién, cuándo, qué).
-- Filtros por estado y por cuenca geográfica.
-- Estadísticas para operador (denuncias por mes, por zona, tiempo promedio de respuesta).
+</details>
 
-### `tramites` — Expedientes administrativos
+<details>
+<summary><b>📄 PDF & Data Export</b></summary>
 
-- Registro de trámites internos con tipo, prioridad, estado.
-- Sistema de seguimiento con comentarios cronológicos (cada operador puede agregar update).
-- **Exportación a PDF** del expediente completo con su historial.
-- Filtros por estado, tipo y prioridad.
+- Branded PDFs: proceeding records, meeting agendas, financial summaries, asset data sheets
+- KMZ exports for Google Earth with automatic PII stripping
+- CSV, GeoJSON, QGIS project (.qgs), Cloud-Optimized GeoTIFF
+- All exports respect branding settings (logo, colors, name)
 
-### `finanzas` — Contabilidad anual
+<!-- TODO: Add screenshot of PDF export here -->
 
-- Registro de **ingresos** (cuotas, subsidios, transferencias) por categoría y año.
-- Registro de **gastos** (personal, operación, infraestructura) por rubro y año.
-- **Presupuesto anual** con líneas presupuestarias.
-- **Análisis de ejecución**: proyectado vs. real por rubro.
-- **Resumen anual** con balance ingresos − gastos, **exportable a PDF**.
+</details>
 
-### `reuniones` — Asambleas y directorio
+<details>
+<summary><b>🔒 Auth & Roles</b></summary>
 
-- Calendario de reuniones con tipo (asamblea, directorio, comisión).
-- **Agenda colaborativa** con temas propuestos.
-- **Vinculación automática de sugerencias** ciudadanas a la próxima reunión.
-- **Orden del día exportable a PDF** con branding del consorcio.
+| Role | Access |
+|------|--------|
+| `admin` | All domains + settings + delete + invitations |
+| `operador` | CRUD on main domains, read settings |
+| `ciudadano` | Public reports & suggestions (no auth required) |
 
-### `capas` — Gestión de capas del mapa
+- JWT via fastapi-users (httpOnly cookie, auto-refresh)
+- Optional Google OAuth as second identity factor
+- Invitation system with 24 h activation token
 
-- CRUD de capas raster/vector mostradas en el visor.
-- Distinción **públicas vs. operador**: el viewer público solo ve las marcadas como tales.
-- Reordenamiento drag-and-drop del orden de visualización.
-- Origen de capa: GEE, archivo estático, tabla PostGIS.
-
-### `monitoring` — Sugerencias y tracking de análisis
-
-- **Sugerencias ciudadanas** públicas (sin auth) con categorización.
-- Endpoint para listar sugerencias agendadas a la próxima reunión.
-- Marcado de sugerencias incorporadas como obras concretas.
-- **Dashboard integrado** con KPIs cruzados de denuncias, trámites y finanzas.
-- Historial persistente de análisis GEE ejecutados.
-
-### `settings` — Configuración por deployment
-
-- Configuración categorizada: general, branding, territorio, análisis, contacto.
-- **Endpoint público de branding** (`/api/v2/public/settings/branding`) para que el viewer cargue logo y colores sin requerir auth.
-- Persistencia de la **imagen satelital seleccionada** del visor (Sentinel-2 + fecha).
-- **Imagen de comparación temporal** (antes/después) para análisis visual.
-- Pesos y umbrales configurables para los modelos de análisis.
-
-### `geo` — Procesamiento geoespacial e inteligencia
-
-El dominio más amplio. Se subdivide en cinco áreas:
-
-#### Capas e imágenes GEE
-- Listado dinámico de **capas disponibles en Google Earth Engine**.
-- **Tiles Sentinel-2** parametrizables por fecha (visualización true color, NDVI, índices de agua).
-- **Imágenes Sentinel-1 SAR** para detección sin nubes — útil en zonas de alta nubosidad.
-- **Comparador SAR** entre dos fechas para detectar inundaciones.
-- Listado de **fechas disponibles** por colección.
-- Tiles históricos de eventos de inundación archivados.
-- **Caminos coloreados por estado de servicio** + estadísticas de la red vial.
-
-#### Análisis GEE
-- Submission de análisis (flood detection, classification supervisada, etc.).
-- Cola de procesamiento con estado (`pending`, `running`, `completed`, `failed`).
-- Detalle de cada análisis con resultados y referencias a tiles generados.
-
-#### Inteligencia (`/intelligence/*`)
-- **Dashboard de inteligencia** con resumen de alertas, riesgo hídrico y conflictos.
-- **HCI (Hydric Criticality Index)** — score de criticidad hídrica por zona, calculado a partir de slope, flow accumulation, TWI, proximidad a canal e historial de inundación. Pesos configurables.
-- **Detección automática de conflictos** geoespaciales (solapamientos entre infraestructura, propiedades y zonas de riesgo).
-- **Simulación de escorrentía** desde un punto del mapa con Método Racional: caudal, tiempo de concentración, coeficiente de escorrentía.
-- **Generación automática de zonificación** desde DEM + threshold (tarea async).
-- **Sistema de alertas** activables/desactivables con condiciones evaluables.
-- **Análisis composite** (flood risk + drainage need) y comparación con baseline.
-- Vistas materializadas para acelerar consultas pesadas, refrescables on-demand.
-
-#### Renderizado 3D (`/render/*`)
-- PNG 3D de **terreno + cuencas**.
-- PNG de **escorrentía** con lluvia parametrizable.
-- PNG de **zonas de riesgo hidráulico** coloreadas.
-- **MP4 de animación fly-over** del terreno.
-
-#### Export
-- **Proyecto QGIS (.qgs)** descargable con todas las capas configuradas.
+</details>
 
 ---
 
-## Capacidades geoespaciales
+## 🛠️ Tech Stack
 
-### Capas vectoriales del visor
+| Layer | Technologies |
+|-------|-------------|
+| **Backend** | FastAPI · Python 3.11+ · SQLAlchemy 2.0 · Alembic · Pydantic v2 · Celery · Redis · ReportLab |
+| **Frontend** | React 19 · TypeScript · Vite 7 · Mantine v8 · TanStack Router/Query · Zustand · MapLibre GL |
+| **GIS** | PostGIS · GeoAlchemy2 · Google Earth Engine · Rasterio · GDAL · WhiteboxTools · Shapely · PMTiles (Martin) |
+| **Auth** | fastapi-users · JWT · Google OAuth |
+| **Testing** | Pytest · Vitest · Playwright (E2E) · Stryker (mutation) |
+| **Infra** | Docker Compose · PostgreSQL+PostGIS · Nginx · Coolify (Hetzner) · Cloudflare Pages · GitHub Actions |
 
-- Cuencas hidrográficas
-- Canales relevados (red existente del consorcio)
-- Canales propuestos (con prioridad y código)
-- Caminos rurales con codificación por estado de servicio
-- Escuelas rurales
-- Capas de pilar verde (agroforestación, BPA, porcentaje de forestación, zona ampliada)
-- Zonas operativas y de conflicto
-- Alertas activas
-- Suelos catastrados
-
-### Capas raster y derivados de DEM
-
-- DEM SRTM 30 m
-- HAND (Height Above Nearest Drainage)
-- Slope (pendiente)
-- Flow accumulation
-- TWI (Topographic Wetness Index)
-- NDVI desde Sentinel-2
-- SAR desde Sentinel-1
-
-### Análisis disponibles
-
-- **Detección de inundaciones SAR** — comparación Sentinel-1 antes/después, sin requerir cobertura óptica libre de nubes.
-- **Modelado hidrológico** — Kirpich (tiempo de concentración) + Método Racional (caudal pico).
-- **Clasificación supervisada** sobre GEE (cobertura, suelos, extensión de inundación).
-- **HCI** — índice de criticidad hídrica por zona.
-- **TWI** — predisposición a saturación de agua.
-- **Detección de conflictos** geoespaciales automatizada.
-
-### Integraciones GEE
-
-- Colecciones: `COPERNICUS/S2`, `COPERNICUS/S1_GRD`, `USGS/SRTM/90_V4`.
-- Procesamiento: NDVI, MNDWI, clasificación SAR.
-- Tiles MVT para visualización web eficiente.
-- Exportación COG / VRT.
+> Built with **Screaming Architecture** — each domain has its own `models · schemas · repository · service · router`.
 
 ---
 
-## Sistema de exportación y reportes
+## 🗺️ Geospatial Capabilities
 
-### PDFs generados
+### Vector Layers
 
-| Documento | Contenido |
-|-----------|-----------|
-| Trámite | Datos del expediente + seguimiento cronológico |
-| Ficha técnica de activo | Datos del activo + bitácora de mantenimiento |
-| Orden del día de reunión | Agenda con temas propuestos |
-| Resumen financiero anual | Balance ingresos − gastos por rubro |
+Watersheds · canals (surveyed + proposed) · rural roads · schools · green-pillar zones · operational/conflict areas · active alerts · cadastral soils
 
-Todos respetan el branding (logo, colores, nombre del consorcio) configurado en `settings`.
+### Raster & DEM Products
 
-### KMZ exportables
+SRTM 30 m DEM · HAND · Slope · Flow accumulation · TWI · Sentinel-2 NDVI · Sentinel-1 SAR
 
-- KMZ de capas del consorcio para abrir en Google Earth.
-- **PII strip automático**: se remueven datos sensibles del padrón antes de exportar.
-- Estilos KML personalizados por tipo de capa.
+### Analyses
 
-### Otros formatos
+- **SAR flood detection** — before/after comparison, cloud-free
+- **Hydrological modeling** — Kirpich concentration time + Rational Method peak flow
+- **Supervised classification** (land cover, flood extent)
+- **HCI** — hydric criticality index per zone
+- **TWI** — water saturation predisposition
+- **Automated conflict detection** — geometric overlap between infrastructure, properties, and risk zones
 
-- CSV — padrón de consorcistas, historial de trámites.
-- GeoJSON — zonas, cuencas, puntos de conflicto (para SIG externos).
-- Proyecto QGIS (.qgs) con todas las capas.
-- COG (Cloud-Optimized GeoTIFF) para análisis avanzado offline.
+### GEE Integrations
+
+Collections: `COPERNICUS/S2`, `COPERNICUS/S1_GRD`, `USGS/SRTM/90_V4`. MVT tiles, COG/VRT export.
 
 ---
 
-## Auth y roles
-
-### Roles
-
-| Rol | Permisos |
-|-----|----------|
-| `admin` | Todos los dominios + settings + delete + invitaciones |
-| `operador` | CRUD en dominios principales · lectura de settings |
-| `ciudadano` | Crear denuncias y sugerencias (sin auth requerida) |
-
-### Mecanismos
-
-- **JWT** vía fastapi-users en httpOnly cookie con refresh automático antes de expirar.
-- **Google OAuth** opcional como segundo factor de identidad.
-- **Sistema de invitaciones**: el admin invita operadores por email con token de activación de 24 h.
-
----
-
-## Background jobs
-
-Tareas Celery + worker GEE corren en su propio servicio Docker.
-
-### Tareas registradas
-
-- `task_dem_pipeline_full` — pipeline DEM → HAND → Slope → TWI.
-- `task_export_geo_bundle` — empaquetado de capas para descarga.
-- `task_generate_zonification` — zonificación operativa desde DEM + threshold.
-- `task_calculate_hci_all_zones` — cálculo HCI batch para todas las zonas.
-- `task_detect_all_conflicts` — detección masiva de solapamientos geométricos.
-- `task_composite_analysis_task` — análisis composite flood risk + drainage need.
-
-### Tracking
-
-Cada tarea registra su estado en BD; el frontend hace polling de `/api/v2/geo/analysis/{id}` para mostrar progreso.
-
----
-
-## Estructura del proyecto
+## 🏗️ Project Structure
 
 ```
 consorcio-canalero/
 ├── consorcio-web/              # React frontend (Vite 7)
 ├── gee-backend/                # FastAPI backend
-│   ├── app/
-│   │   ├── api/v2/             # Aggregator de routers v2
-│   │   ├── auth/               # fastapi-users (JWT + OAuth)
-│   │   ├── db/                 # Base, session, Alembic migrations
-│   │   ├── domains/            # 10 dominios (Screaming Architecture)
-│   │   ├── core/               # Logging, exceptions, rate limiting
-│   │   └── shared/             # Utilidades cross-domain
-│   ├── tests/new/              # Tests de la nueva arquitectura
-│   └── alembic.ini
-├── scripts/                    # ETLs y utilities
-│   ├── etl_canales/            # ETL de canales relevados + propuestas (KMZ → GeoJSON)
-│   ├── etl_pilar_verde/        # ETL de capas de agroforestación
-│   └── etl_escuelas/           # ETL de escuelas rurales
-├── gee/                        # Scripts de Google Earth Engine
+│   └── app/
+│       ├── api/v2/             # Router aggregator
+│       ├── auth/               # JWT + OAuth
+│       ├── db/                 # Base, session, Alembic migrations
+│       ├── domains/            # 10 domains (Screaming Architecture)
+│       ├── core/               # Logging, exceptions, rate limiting
+│       └── shared/             # Cross-domain utilities
+├── scripts/                   # ETLs (canales, pilar verde, escuelas)
+├── gee/                        # Google Earth Engine scripts
 ├── nginx/                      # Reverse proxy config
 ├── martin/                     # PMTiles server config
-├── docs/                       # Documentación
-├── openspec/                   # Specs SDD
-├── docker-compose.yml          # Stack completo dev
-├── docker-compose.prod.yml     # Stack producción
-├── docker-compose.deploy.yml   # Config específica de deploy
-├── martin-config.deploy.yaml   # Config Martin (tiles)
-├── Makefile
-├── setup.sh                    # Script clone-and-deploy
-├── DEPLOY.md
-├── CONTRIBUTING.md
-└── LICENSE
+└── docker-compose.yml          # Full dev stack
 ```
+
+Each domain: `models.py → schemas.py → repository.py → service.py → router.py`
 
 ---
 
-## Inicio rápido
+## 🚀 Quick Start
 
-### Con `setup.sh` (recomendado)
+### `setup.sh` (recommended)
 
 ```bash
 git clone https://github.com/JNZader/consorcio-canalero.git
@@ -321,84 +173,65 @@ cd consorcio-canalero
 cd gee-backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env  # Editar con valores reales
+cp .env.example .env        # Fill in real values
 alembic upgrade head
 uvicorn app.main:app --reload
 
-# Frontend (en otra terminal)
+# Frontend (another terminal)
 cd consorcio-web
 npm install
-cp .env.example .env  # VITE_API_URL apuntando al backend
+cp .env.example .env         # VITE_API_URL → backend
 npm run dev
 ```
 
 ### Docker
 
 ```bash
-docker compose up -d                    # Stack completo
-docker compose up -d postgres redis     # Solo dependencias
-docker compose logs -f backend          # Seguir logs del backend
+docker compose up -d                        # Full stack
+docker compose up -d postgres redis          # Dependencies only
 ```
 
-### Variables de entorno mínimas
+### Minimum env vars
 
-**Backend** (`gee-backend/.env`):
-```env
-DATABASE_URL=postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
-JWT_SECRET=<openssl rand -hex 32>
-REDIS_URL=redis://localhost:6379/0
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-GEE_SERVICE_ACCOUNT=<email-cuenta-servicio>
-GEE_PRIVATE_KEY_PATH=/path/to/key.json
-```
+**Backend** (`gee-backend/.env`): `DATABASE_URL`, `JWT_SECRET`, `REDIS_URL`, `CORS_ORIGINS`, `GEE_SERVICE_ACCOUNT`, `GEE_PRIVATE_KEY_PATH`
 
-**Frontend** (`consorcio-web/.env`):
-```env
-VITE_API_URL=http://localhost:8000
-VITE_MARTIN_URL=http://localhost:3001  # opcional
-```
+**Frontend** (`consorcio-web/.env`): `VITE_API_URL`, `VITE_MARTIN_URL` (optional)
 
 ---
 
-## API
+## 📡 API
 
-Todos los endpoints nuevos están bajo `/api/v2`. Documentación interactiva en `/docs` (Swagger UI) y `/redoc`.
+All endpoints under `/api/v2`. Interactive docs at `/docs` (Swagger) and `/redoc`.
 
-| Prefijo | Dominio | Auth |
-|---------|---------|------|
-| `/api/v2/auth/*` | Login, registro, perfil de usuario | Variable |
-| `/api/v2/padron/*` | Padrón de consorcistas | Operador+ |
-| `/api/v2/denuncias/*` | Reportes ciudadanos | Público (POST) / Operador+ |
-| `/api/v2/finanzas/*` | Ingresos, gastos, presupuesto | Operador+ |
-| `/api/v2/tramites/*` | Trámites + seguimiento | Operador+ |
-| `/api/v2/reuniones/*` | Reuniones + agenda | Operador+ |
-| `/api/v2/capas/*` | Capas del mapa | Operador+ |
-| `/api/v2/geo/*` | Procesamiento geoespacial + GEE | Operador+ |
-| `/api/v2/monitoring/*` | Sugerencias + análisis tracking | Variable |
-| `/api/v2/settings/*` | Configuración del sistema | Operador+ (read) / Admin (write) |
-| `/api/v2/public/*` | Viewer público + branding | Sin auth |
-| `/api/v2/admin/publish/*` | Publicación de capas | Admin |
-| `/api/v2/admin/users/*` | Gestión de usuarios | Admin |
-| `/api/v2/admin/invitations/*` | Invitaciones | Admin |
+| Prefix | Domain | Auth |
+|--------|--------|------|
+| `/api/v2/auth/*` | Login, register, user profile | Variable |
+| `/api/v2/padron/*` | Consorcista registry | Operator+ |
+| `/api/v2/denuncias/*` | Citizen reports | Public (POST) / Operator+ |
+| `/api/v2/finanzas/*` | Income, expenses, budget | Operator+ |
+| `/api/v2/tramites/*` | Proceedings + tracking | Operator+ |
+| `/api/v2/reuniones/*` | Meetings + agenda | Operator+ |
+| `/api/v2/capas/*` | Map layers | Operator+ |
+| `/api/v2/geo/*` | Geo processing + GEE | Operator+ |
+| `/api/v2/monitoring/*` | Suggestions + analysis tracking | Variable |
+| `/api/v2/settings/*` | System config | Operator+ (read) / Admin (write) |
+| `/api/v2/public/*` | Public viewer + branding | No auth |
+| `/api/v2/admin/*` | Users, invitations, publishing | Admin |
 
 ---
 
-## Tests
+## 🧪 Testing
 
 ```bash
 # Backend
 cd gee-backend && source venv/bin/activate
-pytest tests/new/ -v
-pytest tests/new/ -v --cov=app
+pytest tests/new/ -v                 # Run tests
+pytest tests/new/ -v --cov=app       # With coverage
 
 # Frontend
 cd consorcio-web
-npm run test
-npm run test:coverage
-
-# E2E
-cd consorcio-web
-npx playwright test
+npm run test                         # Unit (Vitest)
+npx playwright test                  # E2E
 
 # Lint
 cd gee-backend && ruff check . && ruff format --check .
@@ -407,34 +240,26 @@ cd consorcio-web && npm run lint
 
 ---
 
-## Deploy
+## 🚢 Deploy
 
-### Backend — Coolify on Hetzner
+| Component | Platform | Details |
+|-----------|----------|---------|
+| Backend | **Coolify on Hetzner** | FastAPI + PostgreSQL + PostGIS + Redis + Celery + Martin |
+| Frontend | **Cloudflare Pages** | Build: `npm run build`, output: `dist/` |
+| CI/CD | GitHub Actions | test → build → deploy on push to `main` |
 
-- Build desde `docker-compose.deploy.yml`
-- Servicios: backend FastAPI, PostgreSQL+PostGIS, Redis, Celery worker, Martin tile server.
-- Variables de entorno gestionadas desde Coolify UI.
-
-### Frontend — Cloudflare Pages
-
-- Build directory: `consorcio-web`
-- Build command: `npm run build`
-- Output: `dist`
-- Headers de seguridad y cache definidos en `consorcio-web/public/_headers`.
-- SPA fallback en `consorcio-web/public/_redirects`.
-
-### CI/CD
-
-- GitHub Actions: test → build → deploy en cada push a `main`.
-
-Detalles completos en [DEPLOY.md](DEPLOY.md).
+Full details in [DEPLOY.md](DEPLOY.md).
 
 ---
 
-## Licencia
+## 📄 License
 
-MIT License — ver [LICENSE](LICENSE).
+MIT License — see [LICENSE](LICENSE).
 
 ---
 
-Desarrollado para el **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
+<div align="center">
+
+Built for **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
+
+</div>
