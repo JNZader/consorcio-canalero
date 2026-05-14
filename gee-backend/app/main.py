@@ -158,7 +158,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
     expose_headers=["X-Total-Count", "X-Page", "X-Per-Page", "X-Request-Id"],
-    max_age=600,
+    # 24h preflight cache — the map page fires ~25 cross-origin requests on
+    # every navigation; with max_age=600 the browser kept re-issuing OPTIONS
+    # preflights that cost 800 ms (warm) to 8 s (cold) each.
+    max_age=86400,
 )
 
 # ===========================================
