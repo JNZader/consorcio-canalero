@@ -57,6 +57,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Rate limiter Redis failed, using in-memory", error=str(e))
 
+    # Pre-initialize Earth Engine so the first user request does not pay the
+    # 2-5 s OAuth handshake. Runs in a thread executor (sync ee.Initialize is
+    # blocking) and must NOT abort startup — if GEE auth is broken, endpoints
+    # that need it surface 503 individually instead of taking the API down.
+    try:
+        from app.domains.geo.gee_service import ensure_initialized_async
+
+        await ensure_initialized_async()
+        logger.info("Earth Engine pre-initialized")
+    except Exception as e:
+        logger.warning("Earth Engine pre-init failed", error=str(e))
+
     # Pre-warm the slow GEE layer endpoints so the first user doesn't pay
     # the cold-cache cost (~30 s to 2 min). The task is queued with a small
     # countdown so the backend is listening on :8000 before the worker
