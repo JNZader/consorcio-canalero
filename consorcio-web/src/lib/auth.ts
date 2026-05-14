@@ -1,6 +1,5 @@
 /**
  * Authentication helper functions.
- * Now backed by the JWT auth adapter instead of Supabase.
  */
 
 import { type UserRole, useAuthStore } from '../stores/authStore';
@@ -132,7 +131,6 @@ export async function signOut(): Promise<AuthResult> {
 
 /**
  * Obtener el rol del usuario actual con validacion en tiempo de ejecucion.
- * Now reads from the auth store profile instead of querying Supabase directly.
  */
 export async function getUserRole(_userId: string): Promise<UserRole | null> {
   const profile = useAuthStore.getState().profile;

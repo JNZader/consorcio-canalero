@@ -296,10 +296,8 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
     });
 
     // Reset store to clean state: etapas all ON, masters ON for both canales
-    // layers. `initializedViews.map3d = true` tells the viewer to SKIP the
-    // `seedViewFromOther('map3d', 'map2d')` effect — otherwise the viewer
-    // would overwrite our `canales_propuestos: true` with the 2D default
-    // (false) on mount.
+    // layers. The runtime 3D default keeps canales OFF for a lighter startup,
+    // so these sync tests opt both masters in explicitly.
     const storeModule = await import('../../src/stores/mapLayerSyncStore');
     storeModule.useMapLayerSyncStore.setState((prev) => ({
       ...prev,

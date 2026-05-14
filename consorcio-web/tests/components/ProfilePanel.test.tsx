@@ -9,6 +9,14 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import ProfilePanel from '../../src/components/ProfilePanel';
 
+vi.mock('../../src/components/profile/MyReportsSection', () => ({
+  MyReportsSection: () => <div data-testid="my-reports-section" />,
+}));
+
+vi.mock('../../src/components/profile/MySuggestionsSection', () => ({
+  MySuggestionsSection: () => <div data-testid="my-suggestions-section" />,
+}));
+
 // Mock auth
 vi.mock('../../src/lib/auth', () => ({
   useAuth: vi.fn(() => ({
@@ -27,20 +35,20 @@ vi.mock('../../src/lib/auth', () => ({
   updatePassword: vi.fn(),
 }));
 
+// Mock API call made by profile edit form
+vi.mock('../../src/lib/api', () => ({
+  API_URL: 'http://localhost:8000',
+  apiFetch: vi.fn((endpoint: string) => {
+    if (endpoint === '/users/me') {
+      return Promise.resolve({});
+    }
+    return Promise.resolve({});
+  }),
+}));
+
 // Mock basePath
 vi.mock('../../src/lib/basePath', () => ({
   withBasePath: (path: string) => path,
-}));
-
-// Mock supabase
-vi.mock('../../src/lib/supabase', () => ({
-  getSupabaseClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      update: vi.fn(() => ({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      })),
-    })),
-  })),
 }));
 
 // Mock notifications

@@ -8,9 +8,9 @@ Quick reference for the Consorcio Canalero platform rewrite.
 
 ### Stack
 
-- **Frontend**: React 19, TypeScript, Vite, Mantine UI, Leaflet (`consorcio-web/`)
+- **Frontend**: React 19, TypeScript, Vite, Mantine UI, MapLibre GL (`consorcio-web/`)
 - **Backend**: FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic, fastapi-users (`gee-backend/`)
-- **Database**: PostgreSQL + PostGIS (direct, no Supabase dependency)
+- **Database**: PostgreSQL + PostGIS
 - **Auth**: JWT (fastapi-users) + optional Google OAuth
 - **Geo**: Google Earth Engine integration, GDAL-based geo worker
 - **Testing**: Pytest (backend), Vitest (frontend)
@@ -172,9 +172,6 @@ DATABASE_URL=postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
 JWT_SECRET=<openssl rand -hex 32>
 REDIS_URL=redis://localhost:6379/0
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-# Legacy Supabase vars still required during migration
-SUPABASE_URL=http://localhost:54321
-SUPABASE_KEY=dummy-key
 ```
 
 Frontend: `consorcio-web/.env.example` — just `VITE_API_URL`.

@@ -1,14 +1,11 @@
 /**
  * terrainViewer3DDefaultVisibility.test.ts
  *
- * Phase 0 (Batch A) of `pilar-verde-y-canales-3d` — STRICT MIRROR of 2D
- * Pilar Verde + Canales defaults inside `TerrainViewer3D`.
+ * Phase 0 (Batch A) of `pilar-verde-y-canales-3d` — 3D terrain defaults.
  *
- * The 3D `TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY` MUST be derived from the
- * SHARED constants exported by `mapLayerSyncStore` (PILAR_VERDE_DEFAULT_VISIBILITY
- * + PILAR_AZUL_DEFAULT_VISIBILITY) — never a literal duplicate. This test
- * pins that contract so a future store-default change cannot silently drift
- * the 3D viewer out of sync with the 2D viewer.
+ * The 3D `TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY` derives shared layer ids
+ * from `mapLayerSyncStore`, then applies a lightweight 3D startup policy:
+ * expensive vector families stay off until the user enables them.
  *
  * Companion to Task 0.5 (smoke test for the `mapLayerSyncStore.map3d` slice
  * shape) — both share this single suite to avoid spinning up two near-empty
@@ -30,7 +27,7 @@ import {
   useMapLayerSyncStore,
 } from '../../src/stores/mapLayerSyncStore';
 
-describe('TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY (derived from store constants)', () => {
+describe('TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY', () => {
   it('mirrors every Pilar Verde default from the shared store constant', () => {
     for (const layerId of PILAR_VERDE_LAYER_IDS) {
       expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY).toHaveProperty(layerId);
@@ -40,17 +37,15 @@ describe('TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY (derived from store constants)
     }
   });
 
-  it('mirrors every Pilar Azul (Canales) default from the shared store constant', () => {
+  it('contains every Pilar Azul (Canales) master key from the shared store constant', () => {
     for (const layerId of PILAR_AZUL_LAYER_IDS) {
       expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY).toHaveProperty(layerId);
-      expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY[layerId]).toBe(
-        PILAR_AZUL_DEFAULT_VISIBILITY[layerId],
-      );
     }
   });
 
-  it('keeps the canonical 2D defaults (relevados ON, propuestos OFF, all 5 PV OFF)', () => {
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_relevados).toBe(true);
+  it('starts in lightweight 3D mode (Canales and all 5 PV layers OFF)', () => {
+    expect(PILAR_AZUL_DEFAULT_VISIBILITY.canales_relevados).toBe(true);
+    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_relevados).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_propuestos).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_bpa_historico).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_agro_aceptada).toBe(false);
@@ -105,7 +100,7 @@ describe('buildClickableLayers3D (click-target whitelist)', () => {
 });
 
 describe('mapLayerSyncStore — map3d slice shape (Phase 0 smoke)', () => {
-  it('seeds the 5 Pilar Verde keys + 2 Canales master keys with the expected defaults', () => {
+  it('seeds the 5 Pilar Verde keys + 2 Canales master keys with lightweight 3D defaults', () => {
     // Read directly from the live store so we exercise the actual `defaultVisibleVectors`
     // value the 3D viewer will see at first mount (empty localStorage path).
     const visible = useMapLayerSyncStore.getState().map3d.visibleVectors;
@@ -117,7 +112,9 @@ describe('mapLayerSyncStore — map3d slice shape (Phase 0 smoke)', () => {
 
     for (const layerId of PILAR_AZUL_LAYER_IDS) {
       expect(visible).toHaveProperty(layerId);
-      expect(visible[layerId]).toBe(PILAR_AZUL_DEFAULT_VISIBILITY[layerId]);
     }
+
+    expect(visible.canales_relevados).toBe(false);
+    expect(visible.canales_propuestos).toBe(false);
   });
 });

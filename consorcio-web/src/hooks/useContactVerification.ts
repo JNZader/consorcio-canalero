@@ -5,7 +5,6 @@
  * - Google OAuth (1 click) via JWT adapter
  * - Magic Link (disabled — requires backend support)
  *
- * Simplified from the former Supabase-backed version.
  */
 
 import { notifications } from '@mantine/notifications';

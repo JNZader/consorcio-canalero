@@ -1,48 +1,32 @@
 /**
  * Hooks test setup - Provides mocks for:
  * - Zustand stores (useAuthStore)
- * - Supabase client
- * - Leaflet map
+ * - Auth adapter
+ * - MapLibre-compatible map surface
  * - API client (apiFetch)
  * - GEE/API endpoints
  */
 
 import { beforeEach, vi } from 'vitest';
-import type { Session, User } from '@supabase/supabase-js';
-import type { Map } from 'leaflet';
+import type { AuthSession, AuthUser } from '../../src/lib/auth/types';
 
 // ============================================
-// Mock Supabase Auth Types
+// Mock Auth Types
 // ============================================
 
-export const mockSupabaseUser = (overrides?: Partial<User>): User => ({
+export const mockAuthUser = (overrides?: Partial<AuthUser>): AuthUser => ({
   id: 'test-user-id',
-  aud: 'authenticated',
-  role: 'authenticated',
   email: 'test@example.com',
-  email_confirmed_at: new Date().toISOString(),
-  phone: null,
-  confirmed_at: new Date().toISOString(),
-  last_sign_in_at: new Date().toISOString(),
-  app_metadata: { provider: 'email' },
-  user_metadata: {
-    full_name: 'Test User',
-    name: 'Test User',
-  },
-  identities: [],
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-  is_anonymous: false,
+  nombre: 'Test',
+  apellido: 'User',
+  telefono: '+543531234567',
+  role: 'ciudadano',
   ...overrides,
 });
 
-export const mockSupabaseSession = (overrides?: Partial<Session>): Session => ({
+export const mockAuthSession = (overrides?: Partial<AuthSession>): AuthSession => ({
   access_token: 'test-access-token',
-  token_type: 'bearer',
-  expires_in: 3600,
-  expires_at: Math.floor(Date.now() / 1000) + 3600,
-  refresh_token: 'test-refresh-token',
-  user: mockSupabaseUser(),
+  user: mockAuthUser(),
   ...overrides,
 });
 
@@ -51,8 +35,8 @@ export const mockSupabaseSession = (overrides?: Partial<Session>): Session => ({
 // ============================================
 
 export interface MockAuthStoreState {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  session: AuthSession | null;
   profile: any | null;
   loading: boolean;
   error: string | null;
@@ -102,10 +86,10 @@ export const createMockAuthStore = (initialState?: Partial<MockAuthStoreState>) 
 };
 
 // ============================================
-// Mock Leaflet Map
+// Mock MapLibre-compatible Map
 // ============================================
 
-export const createMockLeafletMap = (): Partial<Map> => ({
+export const createMockMapLibreMap = () => ({
   invalidateSize: vi.fn(),
   getContainer: vi.fn().mockReturnValue(document.createElement('div')),
   on: vi.fn(),
@@ -125,37 +109,19 @@ export const createMockApiClient = () => ({
 });
 
 // ============================================
-// Mock Supabase Client
+// Mock Auth Adapter
 // ============================================
 
-export const createMockSupabaseClient = (overrides?: any) => ({
-  auth: {
-    onAuthStateChange: vi.fn((callback) => {
-      return () => {}; // unsubscribe function
-    }),
-    getSession: vi.fn().mockResolvedValue({
-      data: { session: mockSupabaseSession() },
-    }),
-    signInWithEmail: vi.fn().mockResolvedValue({
-      data: { user: mockSupabaseUser(), session: mockSupabaseSession() },
-    }),
-    signInWithPassword: vi.fn().mockResolvedValue({
-      data: { user: mockSupabaseUser(), session: mockSupabaseSession() },
-    }),
-    signUp: vi.fn().mockResolvedValue({
-      data: { user: mockSupabaseUser(), session: mockSupabaseSession() },
-    }),
-    signOut: vi.fn().mockResolvedValue({ error: null }),
-    signInWithOAuth: vi.fn().mockResolvedValue({ error: null }),
-    signInWithOtp: vi.fn().mockResolvedValue({ error: null }),
-    ...overrides?.auth,
-  },
-  from: vi.fn((table: string) => ({
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    ...overrides?.from?.[table],
-  })),
+export const createMockAuthAdapter = (overrides?: Partial<Record<string, unknown>>) => ({
+  getSession: vi.fn().mockResolvedValue(mockAuthSession()),
+  getAccessToken: vi.fn().mockResolvedValue('test-access-token'),
+  login: vi.fn().mockResolvedValue(mockAuthSession()),
+  register: vi.fn().mockResolvedValue(mockAuthSession()),
+  loginWithGoogle: vi.fn().mockResolvedValue(undefined),
+  logout: vi.fn().mockResolvedValue(undefined),
+  clearTokens: vi.fn(),
+  onAuthStateChange: vi.fn(() => () => {}),
+  ...overrides,
 });
 
 // ============================================

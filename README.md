@@ -298,7 +298,8 @@ Role model:
 
 Auth mechanisms:
 
-- JWT via `fastapi-users`, typically delivered through secure cookies.
+- JWT via `fastapi-users` bearer tokens. The current frontend adapter stores the
+  session in `sessionStorage` and sends `Authorization: Bearer ...` to `/api/v2/*`.
 - Optional Google OAuth.
 - Invitation-based operator onboarding with activation tokens.
 - FastAPI dependencies such as `require_admin`, `require_admin_or_operator`, and authenticated-user guards.

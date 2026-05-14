@@ -1,6 +1,5 @@
 /**
  * Auth adapter interface — abstracts authentication provider.
- * Allows swapping between Supabase, JWT, or any other auth backend.
  */
 
 export interface AuthUser {

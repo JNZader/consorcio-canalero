@@ -35,6 +35,7 @@ export const TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY = {
   ...TERRAIN_BASE_VECTOR_LAYER_VISIBILITY,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
+  canales_relevados: false,
 } as const;
 
 export type TerrainVectorLayerVisibility = Record<

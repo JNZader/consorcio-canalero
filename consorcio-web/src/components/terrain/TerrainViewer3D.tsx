@@ -48,8 +48,8 @@ const DEFAULT_CENTER: [number, number] = [MAP_CENTER[1], MAP_CENTER[0]];
 const DEFAULT_ZOOM = 12;
 
 const MIN_EXAGGERATION = 1;
-const MAX_EXAGGERATION = 100;
-const DEFAULT_EXAGGERATION = 5;
+const MAX_EXAGGERATION = 200;
+const DEFAULT_EXAGGERATION = 100;
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v2';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 
@@ -155,10 +155,8 @@ export default function TerrainViewer3D({
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
-  const is3DViewInitialized = useMapLayerSyncStore((state) => state.initializedViews.map3d);
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
-  const seedViewFromOther = useMapLayerSyncStore((state) => state.seedViewFromOther);
   // Pilar Azul etapas filter — the 5 etapas record + single-etapa setter are
   // shared between 2D and 3D via the same `mapLayerSyncStore` slice, so
   // flipping an etapa here updates both viewers simultaneously. The
@@ -221,11 +219,6 @@ export default function TerrainViewer3D({
       setActiveRasterLayerId(activeRasterLayer?.id ?? textureLayerId ?? demLayerId ?? null);
     }
   }, [activeRasterLayer?.id, activeRasterLayerId, demLayerId, selectedImage, textureLayerId]);
-
-  useEffect(() => {
-    if (is3DViewInitialized) return;
-    seedViewFromOther('map3d', 'map2d');
-  }, [is3DViewInitialized, seedViewFromOther]);
 
   // Idempotent — 2D can also register; shared guard in store
   // (`if (!(key in seedMap2d))` inside `registerPilarAzul`) makes the dual

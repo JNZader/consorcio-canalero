@@ -32,9 +32,9 @@ Aplicación React 19 con visor cartográfico interactivo, panel de administraci�
 | **State** | Zustand + TanStack Query |
 | **UI** | Mantine v8 |
 | **Mapas** | MapLibre GL + PMTiles |
-| **3D** | Mapbox GL (capa terrain hybrid) |
+| **3D** | Terrain integrado en MapLibre + backend geo/render para PNG/MP4 |
 | **Geo cálculos** | Turf.js (`@turf/*`) |
-| **Drawing tools** | `@mapbox/mapbox-gl-draw` |
+| **Drawing tools** | `@mapbox/mapbox-gl-draw` con compatibilidad sobre MapLibre |
 | **Charts** | Recharts |
 | **Formularios** | Mantine Form + Zod (validación) |
 | **HTTP** | Fetch nativo + interceptors |
@@ -134,7 +134,7 @@ consorcio-web/
 │   ├── components/
 │   │   ├── admin/                    # Paneles de administración
 │   │   ├── auth/                     # Login, registro, OAuth
-│   │   ├── map/                      # Visor 3D legacy (Mapbox)
+│   │   ├── map/                      # Controles de dibujo/compatibilidad MapLibre
 │   │   ├── map2d/                    # Visor 2D principal (MapLibre)
 │   │   ├── report-form/              # Formulario de denuncia
 │   │   ├── suggestion-form/          # Formulario de sugerencia

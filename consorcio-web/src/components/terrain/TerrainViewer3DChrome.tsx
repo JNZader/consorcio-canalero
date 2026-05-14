@@ -147,8 +147,8 @@ export function TerrainViewer3DChrome({
               label={(val) => `${val}x`}
               marks={[
                 { value: 1, label: '1x' },
-                { value: 50, label: '50x' },
                 { value: 100, label: '100x' },
+                { value: 200, label: '200x' },
               ]}
             />
           </Box>

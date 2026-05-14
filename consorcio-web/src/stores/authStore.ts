@@ -22,7 +22,6 @@ export type UserRole = 'ciudadano' | 'operador' | 'admin';
 
 /**
  * Lightweight user object stored in the auth state.
- * Replaces the former Supabase User type.
  */
 export interface StoreUser {
   id: string;

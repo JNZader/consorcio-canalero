@@ -1632,7 +1632,7 @@ export interface paths {
      * @description Detailed health check for deployment platforms.
      *
      *     Checks connectivity to all external services:
-     *     - Supabase (database)
+     *     - PostgreSQL/PostGIS (database)
      *     - Redis (rate limiting/caching)
      *     - Google Earth Engine (satellite analysis)
      */

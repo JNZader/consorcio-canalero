@@ -12,33 +12,6 @@ import {
   cleanupAuthListener,
 } from '../../src/stores/authStore';
 
-// Mock Supabase client
-vi.mock('../../src/lib/supabase', () => ({
-  getSupabaseClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn().mockResolvedValue({ data: null, error: null }),
-        })),
-      })),
-      insert: vi.fn(() => ({
-        select: vi.fn(() => ({
-          single: vi.fn().mockResolvedValue({ data: null, error: null }),
-        })),
-      })),
-    })),
-    auth: {
-      getSession: vi.fn().mockResolvedValue({
-        data: { session: null },
-        error: null,
-      }),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      })),
-    },
-  })),
-}));
-
 describe('authStore', () => {
   beforeEach(() => {
     // Reset store state before each test

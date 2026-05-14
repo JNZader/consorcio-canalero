@@ -9,8 +9,8 @@
 .mapWorkspace {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(460px, 1fr) auto;
-  gap: var(--mantine-spacing-md);
+  grid-template-rows: auto minmax(560px, 1fr) auto;
+  gap: var(--mantine-spacing-sm);
   width: 100%;
 }
 
@@ -40,16 +40,15 @@
 .mapCanvasWrapper {
   position: relative;
   min-width: 0;
-  min-height: 460px;
-  max-height: 760px;
-  height: 100%;
+  min-height: 560px;
+  height: clamp(560px, calc(100dvh - 250px), 980px);
   overflow: hidden;
   border-radius: var(--mantine-radius-md);
 }
 
 @media (max-width: 62em) {
   .mapWorkspace {
-    grid-template-rows: auto minmax(420px, 1fr) auto;
+    grid-template-rows: auto minmax(500px, 1fr) auto;
   }
 
   .mapBottomBar {
@@ -61,8 +60,8 @@
   }
 
   .mapCanvasWrapper {
-    min-height: 420px;
-    max-height: none;
+    min-height: 500px;
+    height: clamp(500px, calc(100dvh - 220px), 860px);
   }
 }
 

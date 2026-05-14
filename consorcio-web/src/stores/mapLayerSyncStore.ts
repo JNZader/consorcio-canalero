@@ -14,7 +14,6 @@ interface SharedMapLayerActions {
   setActiveRasterType: (view: MapViewKey, tipo: string | null) => void;
   setVectorVisibility: (view: MapViewKey, layerId: string, visible: boolean) => void;
   hydrateViewState: (view: MapViewKey, payload: Partial<SharedMapLayerState>) => void;
-  seedViewFromOther: (target: MapViewKey, source: MapViewKey) => void;
   markViewInitialized: (view: MapViewKey) => void;
 }
 
@@ -122,6 +121,19 @@ const defaultVisibleVectors: Record<string, boolean> = {
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
 
+const defaultMap3dVisibleVectors: Record<string, boolean> = {
+  ...defaultVisibleVectors,
+  roads: false,
+  waterways: false,
+  waterways_rio_tercero: false,
+  waterways_canal_desviador: false,
+  waterways_canal_litin_tortugas: false,
+  waterways_arroyo_algodon: false,
+  waterways_arroyo_las_mojarras: false,
+  canales_relevados: false,
+  canales_propuestos: false,
+};
+
 const inMemoryStorage = {
   getItem: (_name: string) => null,
   setItem: (_name: string, _value: string) => undefined,
@@ -133,9 +145,14 @@ const storage = createJSONStorage(() => {
   return window.localStorage;
 });
 
-const DEFAULT_LAYER_STATE: SharedMapLayerState = {
+const DEFAULT_MAP2D_LAYER_STATE: SharedMapLayerState = {
   activeRasterType: null,
   visibleVectors: defaultVisibleVectors,
+};
+
+const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
+  activeRasterType: null,
+  visibleVectors: defaultMap3dVisibleVectors,
 };
 
 interface MapLayerSyncStoreState {
@@ -185,8 +202,8 @@ export const useMapLayerSyncStore = create<
 >()(
   persist(
     (set, get) => ({
-      map2d: DEFAULT_LAYER_STATE,
-      map3d: DEFAULT_LAYER_STATE,
+      map2d: DEFAULT_MAP2D_LAYER_STATE,
+      map3d: DEFAULT_MAP3D_LAYER_STATE,
       initializedViews: { map2d: false, map3d: false },
       canalesPropuestasPrioridad: {},
       propuestasEtapasVisibility: { ...PROPUESTAS_ETAPAS_DEFAULTS },
@@ -218,14 +235,6 @@ export const useMapLayerSyncStore = create<
               : state[view].visibleVectors,
           },
           initializedViews: { ...state.initializedViews, [view]: true },
-        })),
-      seedViewFromOther: (target, source) =>
-        set((state) => ({
-          [target]: {
-            activeRasterType: state[source].activeRasterType,
-            visibleVectors: { ...state[source].visibleVectors },
-          },
-          initializedViews: { ...state.initializedViews, [target]: true },
         })),
       markViewInitialized: (view) =>
         set((state) => ({

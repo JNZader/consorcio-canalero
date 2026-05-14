@@ -193,7 +193,7 @@ El dominio más amplio. Subdivido en cinco áreas:
 
 ### Mecanismos
 
-- **JWT** con fastapi-users en httpOnly cookie + refresh automático.
+- **JWT bearer** con fastapi-users (`Authorization: Bearer ...` desde el frontend).
 - **OAuth2 (Google)** opcional como segundo método de identidad.
 - **Sistema de invitaciones**: admin invita operadores por email con token de 24 h.
 - Dependencias de auth con **lazy import** para evitar circular dependencies.

@@ -1,7 +1,6 @@
 /**
  * Tests for src/lib/auth.ts
  * Tests authentication helper functions: role checking, permissions, etc.
- * Auth now uses Zustand store (useAuthStore) instead of Supabase.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

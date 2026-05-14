@@ -88,15 +88,20 @@ describe('mapLayerSyncStore — startup defaults', () => {
     });
   });
 
-  describe('map3d initial visibleVectors (mirrors map2d)', () => {
+  describe('map3d initial visibleVectors (lightweight startup)', () => {
     const initial = useMapLayerSyncStore.getState().map3d.visibleVectors;
 
-    it.each(INITIAL_ON_VECTORS)('%s starts visible on map3d', (id) => {
-      expect(initial[id]).toBe(true);
+    it.each(INITIAL_ON_VECTORS)('%s starts hidden on map3d', (id) => {
+      expect(initial[id]).toBe(false);
     });
 
     it.each(INITIAL_OFF_VECTORS)('%s starts hidden on map3d', (id) => {
       expect(initial[id]).toBe(false);
+    });
+
+    it('starts Canales hidden on map3d until the user enables them', () => {
+      expect(initial.canales_relevados).toBe(false);
+      expect(initial.canales_propuestos).toBe(false);
     });
   });
 

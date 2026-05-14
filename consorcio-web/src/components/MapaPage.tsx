@@ -74,18 +74,18 @@ export function MapaContent() {
       mih="100vh"
     >
       {/* Header */}
-      <Paper shadow="xs" p="md" mb={0}>
-        <Container size="xl">
+      <Paper shadow="xs" p="sm" mb={0}>
+        <Container fluid px={{ base: 'sm', md: 'md' }}>
           <Title order={2}>Mapa Interactivo</Title>
           <Text c="gray.6">Explora las cuencas, caminos e infraestructura del consorcio</Text>
         </Container>
       </Paper>
 
-      <Container size="xl" py="md">
+      <Container fluid px={{ base: 'xs', md: 'md' }} py="sm">
         {/* Controles */}
-        <Paper shadow="sm" p="md" mb="md" radius="md">
-          <Group justify="space-between" wrap="wrap" gap="md">
-            <Group gap="md" wrap="wrap">
+        <Paper shadow="sm" p="sm" mb="sm" radius="md">
+          <Group justify="space-between" wrap="wrap" gap="sm">
+            <Group gap="sm" wrap="wrap">
               {/* Selected satellite image info */}
               {selectedImage ? (
                 <Group gap="xs">
@@ -127,7 +127,7 @@ export function MapaContent() {
               )}
             </Group>
 
-            <Group gap="md">
+            <Group gap="sm">
               {/* 2D / 3D toggle */}
               <SegmentedControl
                 size="sm"
@@ -181,7 +181,7 @@ export function MapaContent() {
         </Paper>
 
         {/* Mapa 2D o Terreno 3D */}
-        <Paper shadow="sm" radius="md" style={{ overflow: 'hidden' }} mb="md">
+        <Paper shadow="sm" radius="md" style={{ overflow: 'hidden' }} mb="sm">
           {mapViewMode === '2d' ? (
             <MapaContenido />
           ) : (
@@ -205,7 +205,10 @@ export function MapaContent() {
                 </Box>
               }
             >
-              <TerrainViewer3D demLayerId={demRawLayer?.id} height={600} />
+              <TerrainViewer3D
+                demLayerId={demRawLayer?.id}
+                height="clamp(560px, calc(100dvh - 250px), 980px)"
+              />
             </Suspense>
           )}
         </Paper>
