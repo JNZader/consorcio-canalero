@@ -1,8 +1,10 @@
 """Google Earth Engine service entrypoints and compatibility wrappers."""
 
+import asyncio
 import ee
 import json
 import logging as _logging
+import threading
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -43,6 +45,10 @@ from app.domains.geo.gee_service_support import (
 
 _gee_initialized = False
 _gee_init_error: str | None = None
+# Guard against the thundering-herd cold-start: N concurrent requests
+# entering _ensure_initialized at once would all call ee.Initialize()
+# (a 2-5 s blocking OAuth handshake) in parallel and stall the event loop.
+_gee_init_lock = threading.Lock()
 
 
 def _assets_base() -> str:
@@ -79,68 +85,91 @@ def _empty_feature_collection() -> Any:
 
 
 def _ensure_initialized() -> None:
-    """Lazy-init GEE on first call. Raises RuntimeError if init failed before."""
+    """Lazy-init GEE on first call. Raises RuntimeError if init failed before.
+
+    Thread-safe via _gee_init_lock with double-checked locking so concurrent
+    callers do not all execute the blocking ee.Initialize() handshake.
+    """
     global _gee_initialized, _gee_init_error
 
+    # Fast path — no lock when already initialized
     if _gee_initialized:
         return
 
     if _gee_init_error:
         raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
 
-    try:
-        # Option 1: key file on disk
-        if settings.gee_key_file_path:
-            key_path = Path(settings.gee_key_file_path)
-            if key_path.exists():
+    with _gee_init_lock:
+        # Re-check inside the lock — another caller may have completed init
+        # while we were waiting on the mutex.
+        if _gee_initialized:
+            return
+        if _gee_init_error:
+            raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+
+        try:
+            # Option 1: key file on disk
+            if settings.gee_key_file_path:
+                key_path = Path(settings.gee_key_file_path)
+                if key_path.exists():
+                    credentials = ee.ServiceAccountCredentials(
+                        email=None,
+                        key_file=str(key_path),
+                    )
+                    ee.Initialize(credentials, project=settings.gee_project_id)
+                    _gee_initialized = True
+                    return
+
+            # Option 2: JSON string in env var
+            if settings.gee_service_account_key:
+                key_json = settings.gee_service_account_key.strip()
+                try:
+                    key_data = json.loads(key_json)
+                except json.JSONDecodeError:
+                    # .env files often mangle JSON — double quotes get stripped
+                    # by shell expansion or dotenv parsers. Fix unquoted keys/values:
+                    import re
+
+                    fixed = re.sub(
+                        r"(?<=\{|,)\s*(\w+)\s*:",
+                        r' "\1":',
+                        key_json,
+                    )
+                    fixed = re.sub(
+                        r':\s*([^",\{\}\[\]\d][^,\}\]]*?)(?=[,\}])',
+                        lambda m: f': "{m.group(1).strip()}"',
+                        fixed,
+                    )
+                    key_data = json.loads(fixed)
+                    key_json = fixed
                 credentials = ee.ServiceAccountCredentials(
-                    email=None,
-                    key_file=str(key_path),
+                    email=key_data["client_email"],
+                    key_data=key_json,
                 )
                 ee.Initialize(credentials, project=settings.gee_project_id)
                 _gee_initialized = True
                 return
 
-        # Option 2: JSON string in env var
-        if settings.gee_service_account_key:
-            key_json = settings.gee_service_account_key.strip()
-            try:
-                key_data = json.loads(key_json)
-            except json.JSONDecodeError:
-                # .env files often mangle JSON — double quotes get stripped
-                # by shell expansion or dotenv parsers. Fix unquoted keys/values:
-                import re
-
-                fixed = re.sub(
-                    r"(?<=\{|,)\s*(\w+)\s*:",
-                    r' "\1":',
-                    key_json,
-                )
-                fixed = re.sub(
-                    r':\s*([^",\{\}\[\]\d][^,\}\]]*?)(?=[,\}])',
-                    lambda m: f': "{m.group(1).strip()}"',
-                    fixed,
-                )
-                key_data = json.loads(fixed)
-                key_json = fixed
-            credentials = ee.ServiceAccountCredentials(
-                email=key_data["client_email"],
-                key_data=key_json,
-            )
-            ee.Initialize(credentials, project=settings.gee_project_id)
+            # Option 3: default auth (local development)
+            ee.Initialize(project=settings.gee_project_id)
             _gee_initialized = True
-            return
 
-        # Option 3: default auth (local development)
-        ee.Initialize(project=settings.gee_project_id)
-        _gee_initialized = True
+        except Exception as exc:
+            _gee_init_error = str(exc)
+            raise ValueError(
+                "No se pudo inicializar GEE. "
+                "Verifica credenciales o conectividad del servicio"
+            ) from exc
 
-    except Exception as exc:
-        _gee_init_error = str(exc)
-        raise ValueError(
-            "No se pudo inicializar GEE. "
-            "Verifica credenciales o conectividad del servicio"
-        ) from exc
+
+async def ensure_initialized_async() -> None:
+    """Async wrapper for _ensure_initialized — runs the blocking init in a
+    thread executor so the event loop stays responsive while the OAuth
+    handshake completes."""
+    if _gee_initialized:
+        return
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _ensure_initialized)
 
 
 def is_initialized() -> bool:
