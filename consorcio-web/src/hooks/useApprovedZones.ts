@@ -97,13 +97,16 @@ export function useApprovedZones() {
   const query = useQuery({
     queryKey: queryKeys.approvedZones(),
     queryFn: fetchApprovedZones,
-    staleTime: 1000 * 60,
+    // Approved zones change only via admin save mutations (which invalidate
+    // the cache explicitly). 5 min is the same window used by the rest of
+    // the map data hooks.
+    staleTime: 1000 * 60 * 5,
   });
 
   const historyQuery = useQuery({
     queryKey: queryKeys.approvedZonesHistory(),
     queryFn: fetchApprovedZonesHistory,
-    staleTime: 1000 * 60,
+    staleTime: 1000 * 60 * 5,
   });
 
   const saveMutation = useMutation({
