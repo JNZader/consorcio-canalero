@@ -50,7 +50,13 @@ const DEFAULT_ZOOM = 12;
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
 const DEFAULT_EXAGGERATION = 200;
-const TERRAIN_SMOOTHING_METHOD = 'despike15';
+/** Backend smoothing methods, keyed by store-side threshold. Must stay in
+ * sync with ``tile_service_support._SMOOTHING_PARAMS``. */
+const TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD = {
+  low: 'despike_low',
+  med: 'despike_med',
+  high: 'despike_high',
+} as const;
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v3';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 
@@ -94,7 +100,6 @@ export default function TerrainViewer3D({
   const overlayOpacityRef = useRef(0.7);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
-  const [terrainSmoothingEnabled, setTerrainSmoothingEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
@@ -166,6 +171,22 @@ export default function TerrainViewer3D({
   // master is ON (the `<PropuestasEtapasFilter>` UNMOUNTS otherwise, per spec).
   const etapasVisibility = useMapLayerSyncStore((state) => state.propuestasEtapasVisibility);
   const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
+  // 3D terrain smoothing toggle — persisted in the same store as every other
+  // map preference. Switching it on/off updates the `terrain-rgb` source's
+  // tile URL via `setTiles()` in a dedicated effect, so we never remount the
+  // whole `maplibregl.Map` instance.
+  const terrainSmoothingEnabled = useMapLayerSyncStore(
+    (state) => state.terrainSmoothingEnabled
+  );
+  const setTerrainSmoothingEnabled = useMapLayerSyncStore(
+    (state) => state.setTerrainSmoothingEnabled
+  );
+  const terrainSmoothingThreshold = useMapLayerSyncStore(
+    (state) => state.terrainSmoothingThreshold
+  );
+  const setTerrainSmoothingThreshold = useMapLayerSyncStore(
+    (state) => state.setTerrainSmoothingThreshold
+  );
   const rasterLayers = useMemo(() => getSupported3DRasterLayers(allGeoLayers), [allGeoLayers]);
   const selectedImageOption = selectedImage
     ? {
@@ -292,13 +313,42 @@ export default function TerrainViewer3D({
     });
   };
 
+  // Build the terrain-rgb URL on the fly from the latest store value. The
+  // map-init effect only runs once per `demLayerId` change, so a separate
+  // effect below picks up smoothing toggles via `setTiles()` without
+  // re-creating the map (preserves viewport, vector layer state, etc.).
+  //
+  // The `v=${TERRAIN_TILE_CACHE_BUSTER}` query param is the only currently
+  // wired cache invalidation knob. Today the backend lives behind a single
+  // Hetzner reverse proxy that honours query strings, so this is enough.
+  // If a CDN (Cloudflare proxy, etc.) is ever placed in front of the API,
+  // make sure its cache key includes the query string, or move the version
+  // into the URL path (e.g. `.../tiles/v3/{z}/{x}/{y}.png`).
+  const buildTerrainRgbUrl = useCallback(
+    (smoothingEnabled: boolean, threshold: 'low' | 'med' | 'high') => {
+      const base = `${API_URL}/api/v2/geo/layers/${demLayerId}/tiles/{z}/{x}/{y}.png?encoding=terrain-rgb&v=${TERRAIN_TILE_CACHE_BUSTER}`;
+      if (!smoothingEnabled) return base;
+      return `${base}&terrain_smoothing=${TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD[threshold]}`;
+    },
+    [demLayerId]
+  );
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || !demLayerId) return;
 
-    const terrainRgbUrl = `${API_URL}/api/v2/geo/layers/${demLayerId}/tiles/{z}/{x}/{y}.png?encoding=terrain-rgb&v=${TERRAIN_TILE_CACHE_BUSTER}${
-      terrainSmoothingEnabled ? `&terrain_smoothing=${TERRAIN_SMOOTHING_METHOD}` : ''
-    }`;
+    // Read smoothing preference once at init; subsequent flips are handled
+    // by a separate effect via `setTiles()` so we never remount the map.
+    const initialState = useMapLayerSyncStore.getState();
+    const terrainRgbUrl = buildTerrainRgbUrl(
+      initialState.terrainSmoothingEnabled,
+      initialState.terrainSmoothingThreshold
+    );
+    // The overlay raster URL can be null on first render (texture layer
+    // resolves async). Falling back to the terrain URL prevents MapLibre
+    // from issuing a burst of 404s against an empty-string source while the
+    // first render of `activeRasterTileUrl` propagates.
+    const initialTextureUrl = activeRasterTileUrlRef.current || terrainRgbUrl;
 
     setReady(false);
     setErrorMessage(null);
@@ -312,11 +362,16 @@ export default function TerrainViewer3D({
             type: 'raster-dem',
             tiles: [terrainRgbUrl],
             tileSize: 256,
+            // Cap the DEM source zoom — the COG resolution does not warrant
+            // requests past z=14, MapLibre would otherwise upsample by
+            // default (assumes 22). Vector layers above can still use higher
+            // zooms; only the terrain source is capped.
+            maxzoom: 14,
             encoding: 'mapbox',
           },
           'terrain-texture': {
             type: 'raster',
-            tiles: [activeRasterTileUrlRef.current ?? ''],
+            tiles: [initialTextureUrl],
             tileSize: 256,
           },
           satellite: {
@@ -354,8 +409,16 @@ export default function TerrainViewer3D({
       pitch: 60,
       bearing: -20,
       maxPitch: 85,
-      antialias: true,
-      fadeDuration: 0,
+      // antialias intentionally left unset. MapLibre defaults to
+      // ``antialias: false`` (no MSAA at all), which keeps the viewer
+      // usable on older GPUs — multisampling is expensive and the 3D
+      // terrain is the heaviest paint on this page. Pitched terrain at
+      // 200× exaggeration will alias on retina screens; if a "Calidad
+      // alta" toggle is ever needed, flip this on only when the user
+      // opts in.
+      // fadeDuration also stays at default — overriding it to 0 silences
+      // vector layer transitions and causes LOD flicker between zoom
+      // levels.
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left');
@@ -395,7 +458,20 @@ export default function TerrainViewer3D({
       mapRef.current = null;
       setReady(false);
     };
-  }, [demLayerId, center, terrainSmoothingEnabled, zoom]);
+  }, [buildTerrainRgbUrl, center, demLayerId, zoom]);
+
+  // Smoothing toggle / threshold change — swap the terrain-rgb source's
+  // tile URL via `setTiles()` instead of recreating the entire map. The
+  // user keeps their current viewport, opened panels, and selected canales.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource('terrain-rgb') as maplibregl.RasterTileSource | undefined;
+    if (!source || typeof source.setTiles !== 'function') return;
+    source.setTiles([
+      buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold),
+    ]);
+  }, [buildTerrainRgbUrl, terrainSmoothingEnabled, terrainSmoothingThreshold, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -542,6 +618,8 @@ export default function TerrainViewer3D({
         onOverlayOpacityChange={setOverlayOpacity}
         terrainSmoothingEnabled={terrainSmoothingEnabled}
         onTerrainSmoothingChange={setTerrainSmoothingEnabled}
+        terrainSmoothingThreshold={terrainSmoothingThreshold}
+        onTerrainSmoothingThresholdChange={setTerrainSmoothingThreshold}
         hiddenClasses={hiddenClasses}
         onClassToggle={handleClassToggle}
         hiddenRanges={hiddenRanges}

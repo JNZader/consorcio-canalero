@@ -1,4 +1,15 @@
-import { Box, Checkbox, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
+import {
+  Box,
+  Checkbox,
+  Group,
+  Loader,
+  Paper,
+  SegmentedControl,
+  Slider,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
@@ -40,6 +51,13 @@ interface TerrainViewer3DChromeProps {
   onOverlayOpacityChange: (value: number) => void;
   terrainSmoothingEnabled: boolean;
   onTerrainSmoothingChange: (value: boolean) => void;
+  /**
+   * Despike threshold for the 3D smoothing. Maps to the backend's
+   * despike_low / despike_med / despike_high methods (0.5 / 1.5 / 3.0 m
+   * positive-spike cutoff). Only rendered when smoothing is enabled.
+   */
+  terrainSmoothingThreshold: 'low' | 'med' | 'high';
+  onTerrainSmoothingThresholdChange: (value: 'low' | 'med' | 'high') => void;
   hiddenClasses: Record<string, number[]>;
   onClassToggle: (layerType: string, classIndex: number, visible: boolean) => void;
   hiddenRanges: Record<string, number[]>;
@@ -107,6 +125,8 @@ export function TerrainViewer3DChrome({
   onOverlayOpacityChange,
   terrainSmoothingEnabled,
   onTerrainSmoothingChange,
+  terrainSmoothingThreshold,
+  onTerrainSmoothingThresholdChange,
   hiddenClasses,
   onClassToggle,
   hiddenRanges,
@@ -143,6 +163,22 @@ export function TerrainViewer3DChrome({
             onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
             label="Suavizar terreno"
           />
+          {terrainSmoothingEnabled && (
+            <SegmentedControl
+              size="xs"
+              value={terrainSmoothingThreshold}
+              onChange={(value) =>
+                onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
+              }
+              data={[
+                { value: 'low', label: 'Suave' },
+                { value: 'med', label: 'Medio' },
+                { value: 'high', label: 'Fuerte' },
+              ]}
+              aria-label="Intensidad del suavizado"
+              title="Cuán agresivo es el aplanado de árboles y construcciones"
+            />
+          )}
           <Text size="xs" c="dimmed">
             Exageracion vertical:
           </Text>

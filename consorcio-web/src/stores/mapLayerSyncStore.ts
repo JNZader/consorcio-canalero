@@ -167,11 +167,33 @@ interface MapLayerSyncStoreState {
   canalesPropuestasPrioridad: Record<string, Etapa | null>;
   /** 5-key record — `true` means "show this etapa". */
   propuestasEtapasVisibility: Record<Etapa, boolean>;
+  /**
+   * Whether the 3D terrain viewer should request smoothed elevation tiles.
+   * When ON, the per-tile request URL gets a `terrain_smoothing` query param
+   * and the backend despikes DSM artefacts (trees, buildings) before
+   * encoding to terrain-RGB. Persisted in localStorage so the preference
+   * survives reloads — consistent with every other map toggle in this store.
+   */
+  terrainSmoothingEnabled: boolean;
+  /**
+   * Despike threshold used when smoothing is on. Maps 1-to-1 onto the
+   * backend's despike_low / despike_med / despike_high methods (0.5, 1.5,
+   * 3.0 m positive-spike threshold respectively). Default is `med` —
+   * balances DSM artefact removal against preservation of canal-edge
+   * micro-relief.
+   */
+  terrainSmoothingThreshold: 'low' | 'med' | 'high';
 }
+
+export type TerrainSmoothingThreshold = 'low' | 'med' | 'high';
 
 interface PilarAzulActions {
   /** Toggle a single propuestas etapa on/off. */
   setEtapaVisible: (etapa: Etapa, visible: boolean) => void;
+  /** Toggle 3D terrain smoothing on/off (persisted). */
+  setTerrainSmoothingEnabled: (enabled: boolean) => void;
+  /** Pick the despike threshold for 3D terrain smoothing (persisted). */
+  setTerrainSmoothingThreshold: (threshold: 'low' | 'med' | 'high') => void;
   /**
    * Bootstrap dynamic per-canal ids from the live `index.json`. Idempotent:
    * never clobbers a persisted user-flipped value — existing entries keep
@@ -207,6 +229,8 @@ export const useMapLayerSyncStore = create<
       initializedViews: { map2d: false, map3d: false },
       canalesPropuestasPrioridad: {},
       propuestasEtapasVisibility: { ...PROPUESTAS_ETAPAS_DEFAULTS },
+      terrainSmoothingEnabled: false,
+      terrainSmoothingThreshold: 'med' as const,
       setActiveRasterType: (view, tipo) =>
         set((state) => ({
           [view]: {
@@ -248,6 +272,8 @@ export const useMapLayerSyncStore = create<
             [etapa]: visible,
           },
         })),
+      setTerrainSmoothingEnabled: (enabled) => set({ terrainSmoothingEnabled: enabled }),
+      setTerrainSmoothingThreshold: (threshold) => set({ terrainSmoothingThreshold: threshold }),
       registerPilarAzul: (index) =>
         set((state) => {
           // Seed new per-canal entries to `true`, preserve any existing
@@ -363,6 +389,8 @@ export const useMapLayerSyncStore = create<
         initializedViews: state.initializedViews,
         canalesPropuestasPrioridad: state.canalesPropuestasPrioridad,
         propuestasEtapasVisibility: state.propuestasEtapasVisibility,
+        terrainSmoothingEnabled: state.terrainSmoothingEnabled,
+        terrainSmoothingThreshold: state.terrainSmoothingThreshold,
       }),
     }
   )
