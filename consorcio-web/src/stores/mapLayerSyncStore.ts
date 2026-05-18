@@ -370,6 +370,27 @@ export const useMapLayerSyncStore = create<
     {
       name: 'cc-map-layer-sync-v2',
       storage,
+      // Persist schema version. Bump this whenever you change a default that
+      // existing users in production should pick up automatically — the
+      // `migrate` callback below patches the persisted state before it
+      // rehydrates the store, so we don't have to ask users to clear
+      // localStorage by hand.
+      //
+      // Migration history:
+      //   v1 → v2 (2026-05-18): force `terrainSmoothingEnabled = true` so
+      //   the 3D viewer launches with the despike pipeline on by default.
+      version: 2,
+      migrate: (persistedState, fromVersion) => {
+        const state = (persistedState as Partial<MapLayerSyncStoreState>) ?? {};
+        if (fromVersion < 2) {
+          return {
+            ...state,
+            terrainSmoothingEnabled: true,
+            terrainSmoothingThreshold: state.terrainSmoothingThreshold ?? 'med',
+          };
+        }
+        return state;
+      },
       partialize: (state) => ({
         map2d: {
           ...state.map2d,

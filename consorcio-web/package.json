@@ -5,7 +5,8 @@
   "scripts": {
     "postinstall": "patch-package",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "node scripts/gen-version.mjs && tsc && vite build",
+    "gen:version": "node scripts/gen-version.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "lint": "biome lint ./src",

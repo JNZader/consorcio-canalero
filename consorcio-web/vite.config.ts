@@ -49,6 +49,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
         globIgnores: [
           'data/suelos_cu.geojson',
+          // version.json is the freshness probe — never precache it,
+          // otherwise the SW happily serves the build's own SHA forever
+          // and the in-app "Reload to update" banner never fires.
+          'version.json',
           '**/vendor-maplibre-*.js',
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
@@ -56,8 +60,15 @@ export default defineConfig({
           '**/vendor-mantine-extras-*.js',
         ],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/health/, /^\/version\.json$/],
         runtimeCaching: [
+          // version.json — always go to network, never cached. The SW must
+          // not interpose any cache layer on this file or `useVersionCheck`
+          // is dead in the water.
+          {
+            urlPattern: /\/version\.json(\?.*)?$/i,
+            handler: 'NetworkOnly',
+          },
           // Geo raster tiles — NetworkOnly to avoid mixing stale DEM/PNG tiles
           // across backend rendering changes (critical for MapLibre raster-dem).
           {

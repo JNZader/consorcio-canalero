@@ -20,6 +20,7 @@ import { HelmetProvider } from 'react-helmet-async';
 // "Lunes / Martes / ..." and accept dd/mm/yyyy without per-component setup.
 dayjs.locale('es');
 
+import { UpdateBanner } from './components/UpdateBanner';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
 import { mantineTheme } from './lib/theme';
@@ -108,6 +109,7 @@ function App() {
         >
           <DatesProvider settings={{ locale: 'es', firstDayOfWeek: 1 }}>
             <Notifications position="top-right" zIndex={10002} />
+            <UpdateBanner />
             <AuthInitializer>
               <RouterProvider router={router} />
             </AuthInitializer>

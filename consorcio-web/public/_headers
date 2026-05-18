@@ -1,4 +1,22 @@
 # Cloudflare Pages headers. Vite copies this file to dist/_headers at build time.
+
+# index.html must NEVER be cached aggressively — it is the single document the
+# user requests on every navigation, and it references the hashed JS/CSS
+# bundles by name. If the browser reuses a stale index.html, the user keeps
+# pointing at chunks that no longer exist on the CDN after a redeploy.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# version.json is polled at runtime by useVersionCheck to detect when a newer
+# build is available. It MUST always reflect the latest deploy, never a cached
+# response, otherwise the "Reload to update" prompt never fires.
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/json
+
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
