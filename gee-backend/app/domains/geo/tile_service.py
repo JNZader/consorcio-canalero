@@ -25,6 +25,9 @@ from app.domains.geo.tile_service_support import (
     ELEVATION_TYPES,
     LOG_SCALE_TYPES,
     RANGE_CONFIGS,
+    TERRAIN_SMOOTHING_BUFFER_PX,
+    TERRAIN_SMOOTHING_METHODS_DESCRIPTION,
+    crop_center as _crop_center,
     get_elevation_baseline as _get_elevation_baseline,
     read_categorical_tile as _read_categorical_tile,
     read_elevation_tile as _read_elevation_tile,
@@ -99,13 +102,50 @@ def get_tile(
     ),
     terrain_smoothing: Optional[str] = Query(
         default=None,
-        description="Visualization-only DEM smoothing for terrain-rgb tiles: median3 or median5",
+        description=TERRAIN_SMOOTHING_METHODS_DESCRIPTION,
     ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
 
     Returns 204 for tiles outside the layer's bounds (empty tiles).
     """
+    from app.core.cache import get_bytes_cache
+
+    def _normalise_csv(value: Optional[str]) -> str:
+        """Order-independent normalisation for set-style CSV params.
+
+        ``hide_classes`` / ``hide_ranges`` are parsed as sets downstream, so
+        ``"1,2"`` and ``"2,1"`` produce identical renders. Cache them under
+        the same key by sorting before stringification.
+        """
+        if not value:
+            return "-"
+        parts = sorted({p.strip() for p in value.split(",") if p.strip()})
+        return ",".join(parts) if parts else "-"
+
+    # Build a cache key that fully describes the rendered output. Every
+    # parameter that influences the bytes must appear here, otherwise we'd
+    # serve a cached tile from a different request shape.
+    cache_key = (
+        f"v1:{layer_id}:{z}:{x}:{y}"
+        f":enc={encoding or '-'}"
+        f":cmap={colormap or '-'}"
+        f":hc={_normalise_csv(hide_classes)}"
+        f":hr={_normalise_csv(hide_ranges)}"
+        f":smooth={terrain_smoothing or '-'}"
+    )
+    bytes_cache = get_bytes_cache()
+    cached = bytes_cache.get(cache_key)
+    if cached is not None:
+        return Response(
+            content=cached,
+            media_type="image/png",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Cache": "HIT",
+            },
+        )
+
     layer = _get_layer(layer_id)
     if layer is None:
         raise HTTPException(status_code=404, detail="Geo layer no encontrado")
@@ -147,10 +187,21 @@ def get_tile(
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
 
     if encoding == "terrain-rgb":
-        tile_data = _read_elevation_tile(file_path, x, y, z, tilesize=256)
+        # Read with a buffer halo only when smoothing is requested, so that
+        # the kernel filter sees the neighbouring tile's elevations and the
+        # seam between tiles disappears. The halo is cropped before render.
+        buffer_px = TERRAIN_SMOOTHING_BUFFER_PX if terrain_smoothing else 0
+        tile_data = _read_elevation_tile(
+            file_path, x, y, z, tilesize=256, buffer_px=buffer_px
+        )
         if tile_data is None:
             content = _render_flat_terrain_rgb_png(tilesize=256, elevation=0.0)
-            return Response(content=content, media_type="image/png")
+            bytes_cache.set(cache_key, content, ttl_seconds=24 * 3600)
+            return Response(
+                content=content,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+            )
 
         elevation, valid_mask = tile_data
         baseline = _get_elevation_baseline(str(file_path))
@@ -160,6 +211,10 @@ def get_tile(
             valid_mask,
             terrain_smoothing,
         )
+        # Crop the buffer halo back so the rendered tile is exactly 256×256.
+        if buffer_px:
+            normalized_elevation = _crop_center(normalized_elevation, buffer_px)
+            valid_mask = _crop_center(valid_mask, buffer_px)
         try:
             content = _render_terrain_rgb_png(normalized_elevation, valid_mask)
         except ValueError:
@@ -229,11 +284,15 @@ def get_tile(
                 )
                 content = img.render(img_format="PNG")
 
+    # Cache the rendered bytes for 24h — every tunable parameter is in the
+    # key, so different requests for the same tile never collide.
+    bytes_cache.set(cache_key, content, ttl_seconds=24 * 3600)
     return Response(
         content=content,
         media_type="image/png",
         headers={
             "Cache-Control": "public, max-age=3600",
+            "X-Cache": "MISS",
         },
     )
 

@@ -19,6 +19,10 @@ rasterstats>=0.20.0
 torch>=2.0.0
 segmentation-models-pytorch>=0.3.0
 scipy>=1.11.0
+# OpenCV — 5-10× faster than scipy for small-kernel median filters used in
+# `tile_service_support.smooth_elevation_tile`. Optional: the module falls
+# back to scipy if cv2 is missing, so the headless tile worker stays usable.
+opencv-python-headless>=4.9.0
 
 # Temporal analysis
 xarray>=2024.1.0
