@@ -49,7 +49,8 @@ const DEFAULT_ZOOM = 12;
 
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
-const DEFAULT_EXAGGERATION = 100;
+const DEFAULT_EXAGGERATION = 200;
+const TERRAIN_SMOOTHING_METHOD = 'median5';
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v2';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 
@@ -93,6 +94,7 @@ export default function TerrainViewer3D({
   const overlayOpacityRef = useRef(0.7);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  const [terrainSmoothingEnabled, setTerrainSmoothingEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
@@ -294,9 +296,9 @@ export default function TerrainViewer3D({
   useEffect(() => {
     if (!mapContainer.current || !demLayerId) return;
 
-    const terrainRgbUrl =
-      `${API_URL}/api/v2/geo/layers/${demLayerId}/tiles/{z}/{x}/{y}.png` +
-      `?encoding=terrain-rgb&v=${TERRAIN_TILE_CACHE_BUSTER}`;
+    const terrainRgbUrl = `${API_URL}/api/v2/geo/layers/${demLayerId}/tiles/{z}/{x}/{y}.png?encoding=terrain-rgb&v=${TERRAIN_TILE_CACHE_BUSTER}${
+      terrainSmoothingEnabled ? `&terrain_smoothing=${TERRAIN_SMOOTHING_METHOD}` : ''
+    }`;
 
     setReady(false);
     setErrorMessage(null);
@@ -352,6 +354,8 @@ export default function TerrainViewer3D({
       pitch: 60,
       bearing: -20,
       maxPitch: 85,
+      antialias: true,
+      fadeDuration: 0,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left');
@@ -391,7 +395,7 @@ export default function TerrainViewer3D({
       mapRef.current = null;
       setReady(false);
     };
-  }, [demLayerId, center, zoom]);
+  }, [demLayerId, center, terrainSmoothingEnabled, zoom]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -536,6 +540,8 @@ export default function TerrainViewer3D({
         onActiveRasterLayerChange={setActiveRasterLayerId}
         overlayOpacity={overlayOpacity}
         onOverlayOpacityChange={setOverlayOpacity}
+        terrainSmoothingEnabled={terrainSmoothingEnabled}
+        onTerrainSmoothingChange={setTerrainSmoothingEnabled}
         hiddenClasses={hiddenClasses}
         onClassToggle={handleClassToggle}
         hiddenRanges={hiddenRanges}

@@ -177,6 +177,7 @@ async def proxy_tile(
     encoding: Optional[str] = None,
     hide_classes: Optional[str] = None,
     hide_ranges: Optional[str] = None,
+    terrain_smoothing: Optional[str] = None,
 ):
     from app.config import settings
 
@@ -187,6 +188,7 @@ async def proxy_tile(
             "encoding": encoding,
             "hide_classes": hide_classes,
             "hide_ranges": hide_ranges,
+            "terrain_smoothing": terrain_smoothing,
         }.items()
         if v
     }

@@ -15,6 +15,7 @@ from pyproj import CRS
 from rasterio.enums import Resampling
 from rasterio.transform import from_bounds
 from rasterio.warp import reproject, transform_bounds
+from scipy.ndimage import median_filter
 
 logger = logging.getLogger(__name__)
 
@@ -279,6 +280,40 @@ def read_elevation_tile(
             resampling=Resampling.bilinear,
         )
     return tile, np.isfinite(tile)
+
+
+def smooth_elevation_tile(
+    elevation: np.ndarray,
+    valid_mask: np.ndarray,
+    method: str | None,
+) -> np.ndarray:
+    """Return a visualization-only smoothed elevation tile.
+
+    Used for MapLibre terrain-rgb tiles when exaggerated terrain (e.g. 200x)
+    makes local DSM spikes from trees/buildings dominate the visual reading.
+    The source DEM is untouched; smoothing is applied only to the rendered tile.
+    """
+    if method in (None, "", "none"):
+        return elevation
+
+    kernel_by_method = {
+        "median3": 3,
+        "median5": 5,
+    }
+    kernel_size = kernel_by_method.get(method)
+    if kernel_size is None:
+        logger.warning("Unknown terrain_smoothing method: %s", method)
+        return elevation
+
+    if not np.any(valid_mask):
+        return elevation
+
+    # scipy's median_filter is not NaN-aware. Fill invalid pixels with the
+    # median of valid elevations, filter, then restore invalid cells.
+    valid_median = float(np.nanmedian(elevation[valid_mask]))
+    filled = np.where(valid_mask, elevation, valid_median).astype(np.float32)
+    smoothed = median_filter(filled, size=kernel_size, mode="nearest")
+    return np.where(valid_mask, smoothed, elevation).astype(np.float32)
 
 
 def render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:

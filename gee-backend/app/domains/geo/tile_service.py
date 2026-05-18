@@ -32,6 +32,7 @@ from app.domains.geo.tile_service_support import (
     render_continuous_with_ranges as _render_continuous_with_ranges,
     render_flat_terrain_rgb_png as _render_flat_terrain_rgb_png,
     render_terrain_rgb_png as _render_terrain_rgb_png,
+    smooth_elevation_tile as _smooth_elevation_tile,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,10 @@ def get_tile(
         description="Comma-separated range indices to hide (e.g. '0,2'). "
         "Only applies to continuous layers with RANGE_CONFIGS.",
     ),
+    terrain_smoothing: Optional[str] = Query(
+        default=None,
+        description="Visualization-only DEM smoothing for terrain-rgb tiles: median3 or median5",
+    ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
 
@@ -150,6 +155,11 @@ def get_tile(
         elevation, valid_mask = tile_data
         baseline = _get_elevation_baseline(str(file_path))
         normalized_elevation = np.where(valid_mask, elevation - baseline, 0.0)
+        normalized_elevation = _smooth_elevation_tile(
+            normalized_elevation,
+            valid_mask,
+            terrain_smoothing,
+        )
         try:
             content = _render_terrain_rgb_png(normalized_elevation, valid_mask)
         except ValueError:

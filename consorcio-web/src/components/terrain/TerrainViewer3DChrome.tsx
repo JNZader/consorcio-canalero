@@ -1,4 +1,4 @@
-import { Box, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
+import { Box, Checkbox, Group, Loader, Paper, Slider, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
@@ -38,6 +38,8 @@ interface TerrainViewer3DChromeProps {
   onActiveRasterLayerChange: (value: string | null) => void;
   overlayOpacity: number;
   onOverlayOpacityChange: (value: number) => void;
+  terrainSmoothingEnabled: boolean;
+  onTerrainSmoothingChange: (value: boolean) => void;
   hiddenClasses: Record<string, number[]>;
   onClassToggle: (layerType: string, classIndex: number, visible: boolean) => void;
   hiddenRanges: Record<string, number[]>;
@@ -103,6 +105,8 @@ export function TerrainViewer3DChrome({
   onActiveRasterLayerChange,
   overlayOpacity,
   onOverlayOpacityChange,
+  terrainSmoothingEnabled,
+  onTerrainSmoothingChange,
   hiddenClasses,
   onClassToggle,
   hiddenRanges,
@@ -133,6 +137,12 @@ export function TerrainViewer3DChrome({
       <Group justify="space-between" align="flex-end">
         <Title order={5}>Vista 3D del Terreno</Title>
         <Group gap="xs" align="center">
+          <Checkbox
+            size="xs"
+            checked={terrainSmoothingEnabled}
+            onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
+            label="Suavizar terreno"
+          />
           <Text size="xs" c="dimmed">
             Exageracion vertical:
           </Text>
@@ -219,6 +229,11 @@ export function TerrainViewer3DChrome({
           <Text size="xs" c="gray.4">
             Exageracion: {exaggeration}x
           </Text>
+          {terrainSmoothingEnabled && (
+            <Text size="xs" c="gray.4">
+              Terreno suavizado: reduce picos de arboles/construcciones
+            </Text>
+          )}
           {selectedImage && (
             <Text size="xs" c="gray.4">
               Imagen seleccionada: {selectedImage.sensor} {selectedImage.target_date}
