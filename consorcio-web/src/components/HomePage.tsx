@@ -12,19 +12,21 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { memo } from 'react';
 import type { ReactNode } from 'react';
+import { useLandingStats } from '../hooks/useLandingStats';
 import { withBasePath } from '../lib/basePath';
 import styles from '../styles/components/home.module.css';
 import { IconInfoCircle } from './ui/icons';
 import { IconChartBar, IconClipboardList, IconLightbulb, IconMap } from './ui/icons';
 
-const STATS = [
-  { value: '88,277', label: 'Hectareas', sublabel: 'Area total del consorcio' },
-  { value: '749', label: 'Kilometros', sublabel: 'Red de caminos rurales', hasTooltip: true },
-];
+function formatNumber(n: number, opts: { decimals?: number } = {}): string {
+  return n.toLocaleString('es-AR', {
+    minimumFractionDigits: opts.decimals ?? 0,
+    maximumFractionDigits: opts.decimals ?? 0,
+  });
+}
 
-// Desglose de km por consorcio caminero (actualizado desde API)
+// Desglose de km por consorcio caminero (estatico — viene de la APRHI, no del geojson local)
 const KM_POR_CONSORCIO = [
   { nombre: 'San Marcos Sud', codigo: 'CC269', km: 219 },
   { nombre: 'Bell Ville', codigo: 'CC135', km: 136 },
@@ -52,6 +54,27 @@ const KilometrosTooltip = (
     ))}
   </Stack>
 );
+
+function CanalesTooltipContent({ rows }: { rows: { label: string; tramos: number; km: number }[] }) {
+  return (
+    <Stack gap={4}>
+      <Text size="xs" fw={600} mb={4}>
+        Km por canal:
+      </Text>
+      {rows.map((r) => (
+        <Group key={r.label} justify="space-between" gap="xl" wrap="nowrap">
+          <Text size="xs" lineClamp={1} style={{ maxWidth: 220 }}>
+            {r.label}
+            {r.tramos > 1 ? ` · ${r.tramos} tramos` : ''}
+          </Text>
+          <Text size="xs" fw={600}>
+            {r.km.toFixed(1)} km
+          </Text>
+        </Group>
+      ))}
+    </Stack>
+  );
+}
 
 const FEATURES: Array<{ icon: ReactNode; title: string; description: string; href: string }> = [
   {
@@ -87,9 +110,38 @@ const FEATURES: Array<{ icon: ReactNode; title: string; description: string; hre
 /**
  * HomeContent - Contenido interno de la pagina de inicio.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
- * Memoizado porque es completamente estatico (no tiene props ni state).
+ *
+ * Stats (area, caminos km, canales km) are derived at runtime from the
+ * shipped geojson assets via `useLandingStats`. Numbers update automatically
+ * when the ETL regenerates the data files — no hardcoded values to drift.
  */
-export const HomeContent = memo(function HomeContent() {
+export function HomeContent() {
+  const stats = useLandingStats();
+  const STATS: Array<{
+    value: string;
+    label: string;
+    sublabel: string;
+    tooltip?: ReactNode;
+  }> = [
+    {
+      value: formatNumber(stats.areaHa),
+      label: 'Hectareas',
+      sublabel: 'Area total del consorcio',
+    },
+    {
+      value: stats.caminosKm == null ? '—' : formatNumber(stats.caminosKm),
+      label: 'Kilometros',
+      sublabel: 'Red de caminos rurales',
+      tooltip: KilometrosTooltip,
+    },
+    {
+      value: stats.canalesKm == null ? '—' : formatNumber(stats.canalesKm),
+      label: 'Kilometros',
+      sublabel: 'Canales existentes relevados',
+      tooltip: <CanalesTooltipContent rows={stats.canalesByGroup} />,
+    },
+  ];
+
   return (
     <Box>
       {/* Hero Section */}
@@ -137,21 +189,21 @@ export const HomeContent = memo(function HomeContent() {
       {/* Stats Section */}
       <Container size="lg" className={styles.statsSection}>
         <SimpleGrid
-          cols={{ base: 1, sm: 2 }}
+          cols={{ base: 1, sm: 3 }}
           spacing="xl"
-          style={{ maxWidth: 600, margin: '0 auto' }}
+          style={{ maxWidth: 860, margin: '0 auto' }}
         >
           {STATS.map((stat) => {
+            const hasTooltip = !!stat.tooltip;
             const cardContent = (
               <Card
-                key={stat.label}
                 padding="lg"
                 radius="md"
                 shadow="sm"
                 style={{
                   background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
                   borderLeft: '4px solid var(--mantine-color-institucional-6)',
-                  cursor: 'hasTooltip' in stat && stat.hasTooltip ? 'help' : 'default',
+                  cursor: hasTooltip ? 'help' : 'default',
                 }}
               >
                 <Stack align="center" gap="xs">
@@ -162,7 +214,7 @@ export const HomeContent = memo(function HomeContent() {
                     <Text size="lg" fw={600}>
                       {stat.label}
                     </Text>
-                    {'hasTooltip' in stat && stat.hasTooltip && (
+                    {hasTooltip && (
                       <IconInfoCircle size={16} color="var(--mantine-color-gray-5)" />
                     )}
                   </Group>
@@ -173,22 +225,22 @@ export const HomeContent = memo(function HomeContent() {
               </Card>
             );
 
-            if ('hasTooltip' in stat && stat.hasTooltip) {
+            if (hasTooltip) {
               return (
                 <Tooltip
-                  key={stat.label}
-                  label={KilometrosTooltip}
+                  key={stat.sublabel}
+                  label={stat.tooltip}
                   position="bottom"
                   withArrow
                   multiline
-                  w={220}
+                  w={280}
                 >
                   {cardContent}
                 </Tooltip>
               );
             }
 
-            return cardContent;
+            return <Box key={stat.sublabel}>{cardContent}</Box>;
           })}
         </SimpleGrid>
       </Container>
@@ -266,7 +318,7 @@ export const HomeContent = memo(function HomeContent() {
       </Box>
     </Box>
   );
-});
+}
 
 /**
  * HomePage - Page component (MantineProvider is provided by main.tsx).
