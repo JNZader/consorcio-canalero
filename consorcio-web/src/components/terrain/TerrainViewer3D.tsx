@@ -106,6 +106,15 @@ export default function TerrainViewer3D({
     textureLayerId ?? demLayerId ?? null
   );
   activeRasterLayerIdRef.current = activeRasterLayerId;
+  // Tracks whether the user has explicitly picked a raster from the chrome
+  // selector. Until that happens, the auto-default-to-Sentinel effect below
+  // is allowed to flip the active layer; once the user picks something, we
+  // stop second-guessing them.
+  const userPickedRasterRef = useRef(false);
+  const handleActiveRasterLayerChange = useCallback((value: string | null) => {
+    userPickedRasterRef.current = true;
+    setActiveRasterLayerId(value);
+  }, []);
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
@@ -227,6 +236,18 @@ export default function TerrainViewer3D({
   }, [overlayOpacity]);
 
   useEffect(() => {
+    // Preferred default: the user-selected Sentinel image. As soon as it's
+    // available, switch to it — but only if the user hasn't already picked
+    // a different raster manually from the chrome selector.
+    if (
+      !userPickedRasterRef.current &&
+      selectedImage &&
+      activeRasterLayerId !== SELECTED_IMAGE_LAYER_ID
+    ) {
+      setActiveRasterLayerId(SELECTED_IMAGE_LAYER_ID);
+      return;
+    }
+
     if (!activeRasterLayerId && selectedImage) {
       setActiveRasterLayerId(SELECTED_IMAGE_LAYER_ID);
       return;
@@ -613,7 +634,7 @@ export default function TerrainViewer3D({
         selectedImageOption={selectedImageOption}
         activeRasterType={activeRasterType}
         activeRasterLayerId={activeRasterLayerId ?? undefined}
-        onActiveRasterLayerChange={setActiveRasterLayerId}
+        onActiveRasterLayerChange={handleActiveRasterLayerChange}
         overlayOpacity={overlayOpacity}
         onOverlayOpacityChange={setOverlayOpacity}
         terrainSmoothingEnabled={terrainSmoothingEnabled}
