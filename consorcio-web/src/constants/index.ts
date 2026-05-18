@@ -263,14 +263,16 @@ export type RolUsuario = (typeof USER_ROLES)[number]['value'];
 // ===========================================
 
 /**
- * Total area of the consorcio in hectares.
+ * Total area of the consorcio in hectares — computed from the corrected
+ * polygon `gee/zona_cc_ampliada/CC 10 de mayo ampliado2.kml` (642 vertices,
+ * 88,484 ha by geodesic area). Was 88,277 (declared in legacy metadata).
  */
-export const CONSORCIO_AREA_HA = 88277;
+export const CONSORCIO_AREA_HA = 88484;
 
 /**
  * Formatted consorcio area for display.
  */
-export const CONSORCIO_AREA_DISPLAY = '88,277 ha';
+export const CONSORCIO_AREA_DISPLAY = '88,484 ha';
 
 /**
  * Total kilometers of rural roads maintained.
