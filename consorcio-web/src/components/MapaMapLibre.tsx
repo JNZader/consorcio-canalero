@@ -14,6 +14,7 @@ import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection } from 'geojson';
 
 import { ALL_ETAPAS } from '../types/canales';
+import { groupCanalesByFolder } from './map2d/groupCanales';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
@@ -192,19 +193,11 @@ export default function MapaMapLibre() {
     index: canalesIndex,
   };
   const canalesRelevadosItems = useMemo(
-    () =>
-      canalesIndex?.relevados.map((r) => ({
-        id: `canal_relevado_${r.id.replace(/-/g, '_')}`,
-        label: r.nombre,
-      })) ?? [],
+    () => groupCanalesByFolder(canalesIndex?.relevados ?? [], 'relevado'),
     [canalesIndex]
   );
   const canalesPropuestosItems = useMemo(
-    () =>
-      canalesIndex?.propuestas.map((p) => ({
-        id: `canal_propuesto_${p.id.replace(/-/g, '_')}`,
-        label: p.nombre,
-      })) ?? [],
+    () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
   );
   const { collection: escuelasCollection } = useEscuelas();

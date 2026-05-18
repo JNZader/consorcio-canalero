@@ -286,10 +286,16 @@ export const useMapLayerSyncStore = create<
         const etapas = state.propuestasEtapasVisibility;
         const prioridadIndex = state.canalesPropuestasPrioridad;
 
+        // "Show all when nothing is explicitly selected" — see `isCanalVisible`.
+        const anyOn = Object.entries(visibleVectors).some(
+          ([k, v]) => k.startsWith('canal_propuesto_') && v === true
+        );
+
         const out: string[] = [];
         for (const [slug, prioridad] of Object.entries(prioridadIndex)) {
           const key = perCanalKey('propuesto', slug);
-          if (visibleVectors[key] === false) continue;
+          const passesIndividual = anyOn ? visibleVectors[key] === true : true;
+          if (!passesIndividual) continue;
           // `null` prioridad → always visible (v1 policy — spec §Etapas Filter).
           if (prioridad !== null && etapas[prioridad] === false) continue;
           out.push(slug);
@@ -300,11 +306,26 @@ export const useMapLayerSyncStore = create<
         const state = get();
         const vv = state[view].visibleVectors;
         if (id.startsWith('canal_relevado_')) {
-          return !!vv.canales_relevados && vv[id] !== false;
+          if (!vv.canales_relevados) return false;
+          // "Show all when nothing is explicitly selected" — if no per-canal
+          // relevado is in `true`, the master toggle alone is enough to show
+          // every canal. As soon as the user marks even one individually,
+          // gating reverts to "only the marked ones".
+          const anyOn = Object.entries(vv).some(
+            ([k, v]) => k.startsWith('canal_relevado_') && v === true
+          );
+          if (!anyOn) return true;
+          return vv[id] === true;
         }
         if (id.startsWith('canal_propuesto_')) {
           if (!vv.canales_propuestos) return false;
-          if (vv[id] === false) return false;
+          // Same policy as relevados — show all when nothing is explicitly
+          // selected, otherwise gate by per-canal flag.
+          const anyOn = Object.entries(vv).some(
+            ([k, v]) => k.startsWith('canal_propuesto_') && v === true
+          );
+          const passesIndividual = anyOn ? vv[id] === true : true;
+          if (!passesIndividual) return false;
           // Etapa gate — decode slug → prioridad via the cached index.
           const slug = id.replace(/^canal_propuesto_/, '').replace(/_/g, '-');
           const prioridad = state.canalesPropuestasPrioridad[slug] ?? null;
