@@ -296,15 +296,6 @@ def smooth_elevation_tile(
     if method in (None, "", "none"):
         return elevation
 
-    kernel_by_method = {
-        "median3": 3,
-        "median5": 5,
-    }
-    kernel_size = kernel_by_method.get(method)
-    if kernel_size is None:
-        logger.warning("Unknown terrain_smoothing method: %s", method)
-        return elevation
-
     if not np.any(valid_mask):
         return elevation
 
@@ -312,8 +303,31 @@ def smooth_elevation_tile(
     # median of valid elevations, filter, then restore invalid cells.
     valid_median = float(np.nanmedian(elevation[valid_mask]))
     filled = np.where(valid_mask, elevation, valid_median).astype(np.float32)
-    smoothed = median_filter(filled, size=kernel_size, mode="nearest")
-    return np.where(valid_mask, smoothed, elevation).astype(np.float32)
+
+    kernel_by_method = {
+        "median3": 3,
+        "median5": 5,
+        "median9": 9,
+        "median15": 15,
+    }
+    if method in kernel_by_method:
+        smoothed = median_filter(filled, size=kernel_by_method[method], mode="nearest")
+        return np.where(valid_mask, smoothed, elevation).astype(np.float32)
+
+    if method == "despike15":
+        local_median = median_filter(filled, size=15, mode="nearest")
+        # DSM artefacts from trees/buildings are mostly positive, localized
+        # spikes. At 200x exaggeration even 1 m dominates the scene, so replace
+        # local peaks while preserving broader low-frequency terrain shape.
+        positive_spikes = valid_mask & ((filled - local_median) > 0.75)
+        despiked = np.where(positive_spikes, local_median, filled)
+        # A light final pass removes single-pixel leftovers without flattening
+        # the whole tile as much as a full median15 replacement would.
+        despiked = median_filter(despiked.astype(np.float32), size=3, mode="nearest")
+        return np.where(valid_mask, despiked, elevation).astype(np.float32)
+
+    logger.warning("Unknown terrain_smoothing method: %s", method)
+    return elevation
 
 
 def render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:

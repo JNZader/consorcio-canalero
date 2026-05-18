@@ -50,8 +50,8 @@ const DEFAULT_ZOOM = 12;
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
 const DEFAULT_EXAGGERATION = 200;
-const TERRAIN_SMOOTHING_METHOD = 'median5';
-const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v2';
+const TERRAIN_SMOOTHING_METHOD = 'despike15';
+const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v3';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 
 /* -------------------------------------------------------------------------- */
