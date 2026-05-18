@@ -496,29 +496,45 @@ export default function TerrainViewer3D({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !activeRasterTileUrl || !map.isStyleLoaded()) return;
+    // Wait for `setReady(true)` (fired by `map.on('load')`) before touching
+    // sources. The old `!map.isStyleLoaded()` guard would early-return on
+    // first render and never re-trigger, leaving the overlay frozen on the
+    // initial raster even after the user picked a different layer.
+    if (!map || !activeRasterTileUrl || !ready) return;
 
+    const source = map.getSource('terrain-texture') as
+      | maplibregl.RasterTileSource
+      | undefined;
+    if (source && typeof source.setTiles === 'function') {
+      // Hot-swap the tile URL — preserves viewport, requested tiles, and
+      // anything else MapLibre has cached for this source.
+      source.setTiles([activeRasterTileUrl]);
+      if (map.getLayer('dem-overlay')) {
+        map.setPaintProperty('dem-overlay', 'raster-opacity', overlayOpacity);
+      }
+      return;
+    }
+
+    // Defensive fallback: the style declares `terrain-texture` at init time,
+    // but if it somehow disappeared (e.g. style reload) we recreate it.
     if (map.getLayer('dem-overlay')) {
       map.removeLayer('dem-overlay');
     }
-
     if (map.getSource('terrain-texture')) {
       map.removeSource('terrain-texture');
     }
-
     map.addSource('terrain-texture', {
       type: 'raster',
       tiles: [activeRasterTileUrl],
       tileSize: 256,
     });
-
     map.addLayer({
       id: 'dem-overlay',
       type: 'raster',
       source: 'terrain-texture',
       paint: { 'raster-opacity': overlayOpacity },
     });
-  }, [activeRasterTileUrl, overlayOpacity]);
+  }, [activeRasterTileUrl, overlayOpacity, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
