@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-04-27T07:31:37Z",
+  "generated_at": "2026-05-18T18:36:52Z",
   "counts": {
-    "relevados": 23,
+    "relevados": 41,
     "propuestas": 19,
-    "total": 42
+    "total": 60
   },
   "relevados": [
     {
@@ -13,7 +13,8 @@
       "codigo": null,
       "longitud_m": 8218.1,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-legua-monte-lena-sin-intervencion",
@@ -21,7 +22,8 @@
       "codigo": null,
       "longitud_m": 8627.8,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-viejo-sin-intervencion",
@@ -29,7 +31,8 @@
       "codigo": null,
       "longitud_m": 16051.3,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "candil-tramo-se-no-sin-intervencion",
@@ -37,7 +40,8 @@
       "codigo": null,
       "longitud_m": 1899.7,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "s1-canal-chico-este-san-marcos-sud-readecuacion",
@@ -45,7 +49,8 @@
       "codigo": "S1",
       "longitud_m": 6054.1,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-existente-operativo-sin-intervencion",
@@ -53,7 +58,8 @@
       "codigo": null,
       "longitud_m": 1001.3,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-existente-sin-intervencion",
@@ -61,7 +67,8 @@
       "codigo": null,
       "longitud_m": 3006.5,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-existente-operativo-sin-intervencion-0",
@@ -69,15 +76,8 @@
       "codigo": null,
       "longitud_m": 3176.1,
       "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "canal-existente-sin-intervencion-0",
-      "nombre": "Canal existente (sin intervención)",
-      "codigo": null,
-      "longitud_m": 3555.4,
-      "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "n4-readecuacion-tramo-inicial-colector-norte",
@@ -85,7 +85,8 @@
       "codigo": "N4",
       "longitud_m": 1351.6,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "e9-colector-norte-sin-intervencion-en-esta-etapa",
@@ -93,47 +94,17 @@
       "codigo": "E9",
       "longitud_m": 19418.9,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-existente-sin-intervencion-1",
       "nombre": "Canal existente (sin intervención)",
       "codigo": null,
-      "longitud_m": 3512.0,
+      "longitud_m": 2063.3,
       "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "canal-existente-sin-intervencion-2",
-      "nombre": "Canal existente (sin intervención)",
-      "codigo": null,
-      "longitud_m": 2469.0,
-      "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "red-receptora-habilitada-por-n4-tramo-1-de-3",
-      "nombre": "Red receptora habilitada por N4 (tramo 1 de 3)",
-      "codigo": null,
-      "longitud_m": 1348.6,
-      "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "red-receptora-habilitada-por-n4-tramo-2-de-3",
-      "nombre": "Red receptora habilitada por N4 (tramo 2 de 3)",
-      "codigo": null,
-      "longitud_m": 8140.7,
-      "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "red-receptora-habilitada-por-n4-tramo-3-de-3",
-      "nombre": "Red receptora habilitada por N4 (tramo 3 de 3)",
-      "codigo": null,
-      "longitud_m": 1040.4,
-      "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "n1-incorporacion-de-e15-al-sistema-oficial-via-alternativa-de-descarga-al-litin-tortugas",
@@ -141,7 +112,8 @@
       "codigo": "N1",
       "longitud_m": 2017.1,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-sin-control-caso-a-normalizar",
@@ -149,7 +121,8 @@
       "codigo": null,
       "longitud_m": 4285.6,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "canal-sin-control-caso-a-normalizar-0",
@@ -157,31 +130,8 @@
       "codigo": null,
       "longitud_m": 1316.1,
       "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "canal-existente-sin-intervencion-3",
-      "nombre": "Canal existente (sin intervención)",
-      "codigo": null,
-      "longitud_m": 6720.7,
-      "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "continuacion-canal-san-marcos-monte-lena-sin-intervencion",
-      "nombre": "Continuación canal San Marcos–Monte Leña (sin intervención)",
-      "codigo": null,
-      "longitud_m": 13270.5,
-      "featured": false,
-      "estado": "relevado"
-    },
-    {
-      "id": "e21-canal-monte-lena-tramo-sin-intervencion",
-      "nombre": "Canal Monte Leña (tramo) · sin intervención",
-      "codigo": "E21",
-      "longitud_m": 3894.7,
-      "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
     },
     {
       "id": "s2-nucleo-candil-tramo-no-so-readecuacion",
@@ -189,7 +139,242 @@
       "codigo": null,
       "longitud_m": 3258.8,
       "featured": false,
-      "estado": "relevado"
+      "estado": "relevado",
+      "tramo_folder": null
+    },
+    {
+      "id": "cgic-zona_norte_bell_ville",
+      "nombre": "Canal zona norte de Bell Ville",
+      "codigo": null,
+      "longitud_m": 6619.7,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_zona_norte_bell_ville"
+    },
+    {
+      "id": "cgic-canal_10_de_mayo",
+      "nombre": "Canal 10 de Mayo (Cuenca Nor-Noreste San Marcos Sud)",
+      "codigo": null,
+      "longitud_m": 20759.6,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_canal_10_de_mayo"
+    },
+    {
+      "id": "cgic-cuenca_nor_noreste",
+      "nombre": "Sistematización Cuenca Nor-Noreste San Marcos Sud",
+      "codigo": null,
+      "longitud_m": 3538.2,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_cuenca_nor_noreste"
+    },
+    {
+      "id": "cgic-monte_castillo_oeste",
+      "nombre": "Limpieza y refuncionalización Canal Monte Castillo Oeste 1",
+      "codigo": null,
+      "longitud_m": 4822.9,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_castillo_oeste"
+    },
+    {
+      "id": "cgic-la_sara_litin-01",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 1 de 6)",
+      "codigo": null,
+      "longitud_m": 1368.5,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-la_sara_litin-02",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 2 de 6)",
+      "codigo": null,
+      "longitud_m": 1079.5,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-la_sara_litin-03",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 3 de 6)",
+      "codigo": null,
+      "longitud_m": 1539.4,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-la_sara_litin-04",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 4 de 6)",
+      "codigo": null,
+      "longitud_m": 757.2,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-la_sara_litin-05",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 5 de 6)",
+      "codigo": null,
+      "longitud_m": 1331.7,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-la_sara_litin-06",
+      "nombre": "Visación planos Establecimiento La Sara (Pedanía Litin) (tramo 6 de 6)",
+      "codigo": null,
+      "longitud_m": 3062.8,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_la_sara_litin"
+    },
+    {
+      "id": "cgic-monte_lena_norte-01",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 1 de 12)",
+      "codigo": null,
+      "longitud_m": 1046.8,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-02",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 2 de 12)",
+      "codigo": null,
+      "longitud_m": 1522.0,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-03",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 3 de 12)",
+      "codigo": null,
+      "longitud_m": 990.7,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-04",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 4 de 12)",
+      "codigo": null,
+      "longitud_m": 679.4,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-05",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 5 de 12)",
+      "codigo": null,
+      "longitud_m": 442.1,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-06",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 6 de 12)",
+      "codigo": null,
+      "longitud_m": 120.0,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-07",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 7 de 12)",
+      "codigo": null,
+      "longitud_m": 269.9,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-08",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 8 de 12)",
+      "codigo": null,
+      "longitud_m": 412.4,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-09",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 9 de 12)",
+      "codigo": null,
+      "longitud_m": 320.6,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-10",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 10 de 12)",
+      "codigo": null,
+      "longitud_m": 17245.3,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-11",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 11 de 12)",
+      "codigo": null,
+      "longitud_m": 675.8,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-monte_lena_norte-12",
+      "nombre": "Sistematización excedentes norte Monte Leña (tramo 12 de 12)",
+      "codigo": null,
+      "longitud_m": 334.8,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_monte_lena_norte"
+    },
+    {
+      "id": "cgic-campomaggi-01",
+      "nombre": "Sistematización Cuenca Campomaggi (tramo 1 de 3)",
+      "codigo": null,
+      "longitud_m": 462.8,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_campomaggi"
+    },
+    {
+      "id": "cgic-campomaggi-02",
+      "nombre": "Sistematización Cuenca Campomaggi (tramo 2 de 3)",
+      "codigo": null,
+      "longitud_m": 75.7,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_campomaggi"
+    },
+    {
+      "id": "cgic-campomaggi-03",
+      "nombre": "Sistematización Cuenca Campomaggi (tramo 3 de 3)",
+      "codigo": null,
+      "longitud_m": 4934.0,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_campomaggi"
+    },
+    {
+      "id": "cgic-campo_bojanich",
+      "nombre": "Sistematización escurrimientos Campo Bojanich",
+      "codigo": null,
+      "longitud_m": 3963.7,
+      "featured": false,
+      "estado": "relevado",
+      "tramo_folder": "cgic_campo_bojanich"
     }
   ],
   "propuestas": [
@@ -197,172 +382,191 @@
       "id": "n3-tramo-faltante-de-interconexion",
       "nombre": "Tramo faltante de interconexión",
       "codigo": "N3",
-      "prioridad": "Alta",
       "longitud_m": 685.5,
       "featured": true,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Alta"
     },
     {
       "id": "n2-canal-interno-achalay-tramo-1-de-2",
       "nombre": "Canal interno Achalay (tramo 1 de 2)",
       "codigo": "N2",
-      "prioridad": "Alta",
       "longitud_m": 3142.5,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Alta"
     },
     {
       "id": "n2-canal-interno-achalay-tramo-2-de-2",
       "nombre": "Canal interno Achalay (tramo 2 de 2)",
       "codigo": "N2",
-      "prioridad": "Alta",
       "longitud_m": 3210.4,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Alta"
     },
     {
       "id": "n5-extension-zona-noroeste-primer-ramal",
       "nombre": "Extensión zona Noroeste primer ramal",
       "codigo": "N5",
-      "prioridad": "Media-Alta",
       "longitud_m": 2511.7,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "n8-alternativa-zona-noroeste-depende-de-n1-ejecutada",
       "nombre": "Alternativa zona Noroeste (depende de N1 ejecutada)",
       "codigo": "N8",
-      "prioridad": "Opcional",
       "longitud_m": 8399.6,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Opcional"
     },
     {
       "id": "n9-alternativa-zona-noroeste-depende-de-n8-ejecutada",
       "nombre": "Alternativa zona Noroeste (depende de N8 ejecutada)",
       "codigo": "N9",
-      "prioridad": "Opcional",
       "longitud_m": 6555.3,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Opcional"
     },
     {
       "id": "n6-extension-zona-noroeste-ramal-norte",
       "nombre": "Extensión zona Noroeste ramal norte",
       "codigo": "N6",
-      "prioridad": "Media",
       "longitud_m": 3204.7,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media"
     },
     {
       "id": "n7-extension-zona-noroeste-ramal-sur",
       "nombre": "Extensión zona Noroeste ramal sur",
       "codigo": "N7",
-      "prioridad": "Media",
       "longitud_m": 2879.7,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media"
     },
     {
       "id": "s3-control-derrames-monte-lena-colector-p8",
       "nombre": "Control derrames Monte Leña (colector P8)",
       "codigo": "S3",
-      "prioridad": "Media",
       "longitud_m": 2407.6,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media"
     },
     {
       "id": "s3-control-derrames-monte-lena-colector-p9",
       "nombre": "Control derrames Monte Leña (colector P9)",
       "codigo": "S3",
-      "prioridad": "Media",
       "longitud_m": 1935.4,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media"
     },
     {
       "id": "s4-captador-centro-oeste",
       "nombre": "Captador centro-oeste",
       "codigo": "S4",
-      "prioridad": "Media-Alta",
       "longitud_m": 10073.4,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "s7-extension-monte-lena-oeste",
       "nombre": "Extensión Monte Leña oeste",
       "codigo": "S7",
-      "prioridad": "Largo plazo",
       "longitud_m": 6283.5,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Largo plazo"
     },
     {
       "id": "p13-s2-alternativa-b-o-c-p13",
       "nombre": "S2 alternativa b o c (P13)",
       "codigo": "P13",
-      "prioridad": "Media-Alta",
       "longitud_m": 5359.9,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "p14a-s2-alternativa-a-o-c-p14a-norte",
       "nombre": "S2 alternativa a o c (P14a norte)",
       "codigo": "P14a",
-      "prioridad": "Media-Alta",
       "longitud_m": 3109.7,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "p15-s2-alternativa-c-p15",
       "nombre": "S2 alternativa c (P15)",
       "codigo": "P15",
-      "prioridad": "Media-Alta",
       "longitud_m": 2357.1,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "s6-vision-integral-largo-plazo",
       "nombre": "Visión integral largo plazo",
       "codigo": "S6",
-      "prioridad": "Largo plazo",
       "longitud_m": 7013.0,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Largo plazo"
     },
     {
       "id": "s5-conexion-cantera-vaso-retencion",
       "nombre": "Conexión cantera (vaso retención)",
       "codigo": "S5",
-      "prioridad": "Media-Alta",
       "longitud_m": 469.3,
       "featured": true,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "s2-nucleo-tramo-norte-centro-este",
       "nombre": "S2 núcleo · Tramo norte centro-este",
       "codigo": null,
-      "prioridad": "Media-Alta",
       "longitud_m": 1065.2,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     },
     {
       "id": "p14b-s2-alternativa-a-solamente-p14b-sur",
       "nombre": "S2 alternativa a solamente (P14b sur)",
       "codigo": "P14b",
-      "prioridad": "Media-Alta",
       "longitud_m": 2027.1,
       "featured": false,
-      "estado": "propuesto"
+      "estado": "propuesto",
+      "tramo_folder": null,
+      "prioridad": "Media-Alta"
     }
   ]
 }

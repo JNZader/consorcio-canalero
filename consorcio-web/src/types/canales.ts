@@ -126,6 +126,8 @@ export interface CanalMetadata {
   featured: boolean;
   /** Discriminant duplicated from the source FeatureCollection for convenience. */
   estado?: CanalEstado;
+  /** Parent folder (groups tramos of the same project — drives collapsible UI). */
+  tramo_folder?: string | null;
 }
 
 /**
