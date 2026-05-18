@@ -229,7 +229,11 @@ export const useMapLayerSyncStore = create<
       initializedViews: { map2d: false, map3d: false },
       canalesPropuestasPrioridad: {},
       propuestasEtapasVisibility: { ...PROPUESTAS_ETAPAS_DEFAULTS },
-      terrainSmoothingEnabled: false,
+      // Smoothing arranca ON: a 200× de exageración los picos de árboles y
+      // edificios del DSM dominan visualmente y entorpecen lo que el
+      // usuario va a leer (canales, depresiones, surcos). Si quiere ver el
+      // DSM crudo, lo apaga desde el panel.
+      terrainSmoothingEnabled: true,
       terrainSmoothingThreshold: 'med' as const,
       setActiveRasterType: (view, tipo) =>
         set((state) => ({
