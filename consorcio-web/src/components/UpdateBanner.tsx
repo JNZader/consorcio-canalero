@@ -75,29 +75,33 @@ export function UpdateBanner() {
       <Paper
         shadow="lg"
         radius="md"
-        p="md"
+        p="sm"
         withBorder
         role="alert"
         aria-live="polite"
         data-testid="update-banner"
         style={{
+          // ``position: fixed`` + ``bottom`` + a translate-anchored centre
+          // works fine on desktop, but on phones the safe-area inset eats
+          // bottom space (especially in PWA-installed mode), so we anchor
+          // a few extra pixels up and let the maxWidth shrink with the
+          // viewport so the banner never overflows.
           position: 'fixed',
-          bottom: 24,
+          bottom: 'max(16px, env(safe-area-inset-bottom, 0px) + 16px)',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 10001,
-          minWidth: 320,
-          maxWidth: 'calc(100vw - 32px)',
+          width: 'min(440px, calc(100vw - 24px))',
           background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
           borderLeft: '4px solid var(--mantine-color-acento-5)',
         }}
       >
-        <Group justify="space-between" wrap="nowrap" gap="md">
-          <Text size="sm" fw={500}>
-            Nueva versión disponible — recargá para actualizar.
+        <Group justify="space-between" wrap="nowrap" gap="xs" align="center">
+          <Text size="sm" fw={500} style={{ flex: 1, minWidth: 0 }}>
+            Nueva versión disponible
           </Text>
           <Button
-            size="xs"
+            size="compact-sm"
             color="acento"
             c="dark.9"
             onClick={() => {
