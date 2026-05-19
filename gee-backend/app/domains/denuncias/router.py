@@ -224,8 +224,9 @@ def list_denuncias(
     cuenca: Optional[str] = None,
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar denuncias con paginacion y filtros."""
+    """Listar denuncias con paginacion y filtros (requiere operador)."""
     items, total = service.list_denuncias(
         db, page=page, limit=limit, estado=estado, cuenca=cuenca
     )
@@ -242,8 +243,9 @@ def get_denuncia(
     denuncia_id: uuid.UUID,
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Obtener detalle de una denuncia con historial."""
+    """Obtener detalle de una denuncia con historial (requiere operador)."""
     return service.get_by_id(db, denuncia_id)
 
 
