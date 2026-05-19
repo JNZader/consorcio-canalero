@@ -565,17 +565,35 @@ export default function TerrainViewer3D({
     };
   }, [buildTerrainRgbUrl, center, demLayerId, zoom]);
 
-  // Smoothing toggle / threshold change — swap the terrain-rgb source's
-  // tile URL via `setTiles()` instead of recreating the entire map. The
-  // user keeps their current viewport, opened panels, and selected canales.
+  // Smoothing toggle / threshold change — rebuild the ``terrain-rgb``
+  // source so MapLibre fetches the new tiles immediately. ``setTiles()``
+  // alone updates the template URL but keeps the already-loaded tiles in
+  // memory, so the elevation mesh keeps rendering the previous despike
+  // setting until the user pans/zooms enough to trigger new fetches.
+  // Removing + re-adding the source forces a full reload of the in-view
+  // pyramid; we re-bind ``setTerrain`` afterwards to keep the 3D mesh
+  // wired to the new source.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const source = map.getSource('terrain-rgb') as maplibregl.RasterTileSource | undefined;
-    if (!source || typeof source.setTiles !== 'function') return;
-    source.setTiles([
-      buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold),
-    ]);
+    if (!map.getSource('terrain-rgb')) return;
+    const newUrl = buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold);
+
+    // Capture the active terrain config (exaggeration, etc.) so we can
+    // re-apply it after replacing the source.
+    const terrainConfig = map.getTerrain();
+    map.setTerrain(null);
+    map.removeSource('terrain-rgb');
+    map.addSource('terrain-rgb', {
+      type: 'raster-dem',
+      tiles: [newUrl],
+      tileSize: 256,
+      maxzoom: 14,
+      encoding: 'mapbox',
+    });
+    if (terrainConfig) {
+      map.setTerrain(terrainConfig);
+    }
   }, [buildTerrainRgbUrl, terrainSmoothingEnabled, terrainSmoothingThreshold, ready]);
 
   // Hide the world-imagery base layer when the active raster overlay is
