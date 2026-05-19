@@ -73,6 +73,24 @@ export function useVersionCheck(intervalMs: number = DEFAULT_INTERVAL_MS): Versi
         setInitialSha(info.sha);
       }
       setLatestSha(info.sha);
+      // Kick the service worker to check for a new ``sw.js`` whenever we
+      // detect a fresh ``version.json``. Without this, the SW only re-checks
+      // when the browser decides (can take 24 h), so when the user clicks
+      // "Actualizar" the new SW might still be the old one in cache and the
+      // banner-reload cycle keeps serving stale assets — the very thing
+      // forcing a Ctrl+Shift+R bypass.
+      if (
+        info.sha !== initialShaRef.current &&
+        typeof navigator !== 'undefined' &&
+        'serviceWorker' in navigator
+      ) {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) await reg.update();
+        } catch (err) {
+          logger.debug('[version-check] reg.update() failed', err);
+        }
+      }
     };
 
     void tick();
@@ -95,11 +113,61 @@ export function useVersionCheck(intervalMs: number = DEFAULT_INTERVAL_MS): Versi
     initialSha,
     latestSha,
     updateAvailable,
-    reload: () => {
-      // Hash-route apps benefit from a hard reload — the bundled module
-      // graph in memory references the previous deploy's chunks, which may
-      // no longer exist on the CDN once the new deploy goes live.
-      window.location.reload();
-    },
+    reload: forceUpdate,
   };
+}
+
+/**
+ * Activate the new service worker (if one is waiting) and reload.
+ *
+ * vite-plugin-pwa runs with ``registerType: 'autoUpdate'`` — the new SW
+ * downloads in the background but stays in the ``waiting`` state until
+ * every tab is closed. A plain ``window.location.reload()`` therefore
+ * keeps serving cached assets from the OLD SW, which is exactly why
+ * users were hitting Ctrl+Shift+R to see updates.
+ *
+ * Flow:
+ *   1. Ask the active registration to re-check for updates (in case the
+ *      ``waiting`` slot isn't populated yet when the user clicks).
+ *   2. POST ``SKIP_WAITING`` to the waiting SW (vite-plugin-pwa's SW
+ *      handles this message and calls ``self.skipWaiting()``).
+ *   3. Wait for the ``controllerchange`` event — that's the moment the
+ *      new SW takes over the page.
+ *   4. ``location.reload()`` to pick up the fresh bundle, now served
+ *      by the new SW.
+ *
+ * A 3 s timeout falls back to a plain reload in case the SW doesn't
+ * respond — never leave the user stuck on the "Actualizar" button.
+ */
+async function forceUpdate(): Promise<void> {
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        try {
+          await reg.update();
+        } catch {
+          // ``update()`` can throw offline — ignore and continue.
+        }
+        const waitingSW = reg.waiting ?? reg.installing;
+        if (waitingSW) {
+          waitingSW.postMessage({ type: 'SKIP_WAITING' });
+          await new Promise<void>((resolve) => {
+            const timeoutId = window.setTimeout(resolve, 3000);
+            navigator.serviceWorker.addEventListener(
+              'controllerchange',
+              () => {
+                window.clearTimeout(timeoutId);
+                resolve();
+              },
+              { once: true }
+            );
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('[version-check] forceUpdate fell through to plain reload', err);
+    }
+  }
+  window.location.reload();
 }
