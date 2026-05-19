@@ -53,7 +53,11 @@ export default defineConfig({
           // otherwise the SW happily serves the build's own SHA forever
           // and the in-app "Reload to update" banner never fires.
           'version.json',
-          '**/vendor-maplibre-*.js',
+          // ``vendor-maplibre`` was intentionally precached (~500 kb) so the
+          // 3D viewer doesn't pay a cold network fetch the first time the
+          // user opens it — the entire app is map-centric, the trade-off
+          // pays back immediately. The remaining heavy vendor chunks stay
+          // in runtime CacheFirst because they're only used on niche pages.
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
           '**/vendor-charts-*.js',

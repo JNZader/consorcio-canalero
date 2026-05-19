@@ -53,7 +53,14 @@ export function getSoilColor(capability?: string | null): string {
   return SOIL_CAPABILITY_COLORS[match?.[1] ?? ''] ?? '#8d6e63';
 }
 
-export function useSoilMap() {
+export interface UseSoilMapOptions {
+  /**
+   * Skip the GeoJSON fetch until the soil toggle is on. Default eager.
+   */
+  enabled?: boolean;
+}
+
+export function useSoilMap(options: UseSoilMapOptions = {}) {
   const query = useQuery({
     queryKey: [...queryKeys.publicLayers(), 'soil-map'],
     queryFn: async () => {
@@ -64,6 +71,7 @@ export function useSoilMap() {
       return (await response.json()) as FeatureCollection;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    enabled: options.enabled ?? true,
   });
 
   return {

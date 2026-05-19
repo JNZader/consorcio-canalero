@@ -174,8 +174,26 @@ export default function TerrainViewer3D({
   const { approvedZones } = useApprovedZones();
   const { caminos } = useCaminosColoreados();
   const { waterways } = useWaterways();
-  const { catastroMap } = useCatastroMap();
-  const { soilMap } = useSoilMap();
+  // Lazy-load the heaviest static layers: only fetch when something on the
+  // map3d side actually asks for them. The visibility flags live in the
+  // shared store, so the moment the user toggles a Pilar Verde sub-layer
+  // (or the catastro/soil layer) on, ``enabled`` flips to true and the
+  // query runs. Default 2D callers keep eager behaviour by omitting the
+  // option (see hook signatures).
+  const sharedMap3dVectors = useMapLayerSyncStore(
+    (state) => state.map3d.visibleVectors
+  );
+  const pilarVerdeNeeded = !!(
+    sharedMap3dVectors.pilar_verde_bpa_historico ||
+    sharedMap3dVectors.pilar_verde_agro_aceptada ||
+    sharedMap3dVectors.pilar_verde_agro_presentada ||
+    sharedMap3dVectors.pilar_verde_agro_zonas ||
+    sharedMap3dVectors.pilar_verde_porcentaje_forestacion
+  );
+  const { catastroMap } = useCatastroMap({
+    enabled: !!sharedMap3dVectors.catastro,
+  });
+  const { soilMap } = useSoilMap({ enabled: !!sharedMap3dVectors.soil });
   // Pilar Verde + Pilar Azul (Canales) — strict mirror of 2D MapaMapLibre
   // wiring. The hooks share TanStack cache keys with the 2D viewer, so when
   // both viewers mount in the same session the static GeoJSON assets are
@@ -185,7 +203,7 @@ export default function TerrainViewer3D({
   // `pilarVerde?.bpaEnriched`, `pilarVerde?.bpaHistory`. Canales hook
   // exposes `relevados`, `propuestas`, `index` directly; subsequent batches
   // (Phase 1+) wire these into the 3D layer sync effects.
-  const { data: pilarVerde } = usePilarVerde();
+  const { data: pilarVerde } = usePilarVerde({ enabled: pilarVerdeNeeded });
   const {
     relevados: canalesRelevados,
     propuestas: canalesPropuestas,
@@ -383,11 +401,22 @@ export default function TerrainViewer3D({
     setSharedActiveRasterType('map3d', next);
   }, [activeRasterType, selectedImageIsActive, setSharedActiveRasterType, sharedActiveRasterType]);
 
+  // Memoize collections so identity is stable across renders. Without this
+  // each render produced fresh FeatureCollection objects, making every
+  // downstream ``useEffect`` / memo that lists them as a dep re-run on every
+  // single state change of TerrainViewer3D (a lot — opacity sliders,
+  // exaggeration slider, ready flag, etc.).
   const approvedZonesCollection = approvedZones;
-  const cuencasCollection = buildCuencasCollection(geeLayers);
+  const cuencasCollection = useMemo(
+    () => buildCuencasCollection(geeLayers),
+    [geeLayers]
+  );
   const roadsCollection = caminos;
-  const soilCollection = buildSoilCollection(soilMap);
-  const waterwaysCollection = buildWaterwaysCollection(waterways);
+  const soilCollection = useMemo(() => buildSoilCollection(soilMap), [soilMap]);
+  const waterwaysCollection = useMemo(
+    () => buildWaterwaysCollection(waterways),
+    [waterways]
+  );
   const catastroCollection = catastroMap;
 
   const handleClassToggle = (layerType: string, classIndex: number, visible: boolean) => {
@@ -464,6 +493,11 @@ export default function TerrainViewer3D({
             // default (assumes 22). Vector layers above can still use higher
             // zooms; only the terrain source is capped.
             maxzoom: 14,
+            // Disable lookahead prefetch: with the default ``prefetchZoomDelta
+            // = 4`` each viewport change requests ~20-25 tiles (visible +
+            // lookahead), which saturates the backend threadpool during a
+            // cold-cache burst. We're happy paying for visible tiles only.
+            prefetchZoomDelta: 0,
             encoding: 'mapbox',
           },
           'terrain-texture': {
@@ -513,7 +547,16 @@ export default function TerrainViewer3D({
       maxBounds: MAP_MAX_BOUNDS,
       pitch: 60,
       bearing: -20,
-      maxPitch: 85,
+      // 75° still gives a clear pitched view but drastically reduces
+      // overdraw in the horizon band: at 85° the fragment count of the
+      // terrain mesh balloons because almost every distant tile takes
+      // up only a few pixels each. -25% overdraw across pan/zoom.
+      maxPitch: 75,
+      // Bound the tile cache so panning around doesn't keep hundreds of
+      // raster-dem + texture tiles in GPU memory. Default is unbounded;
+      // 50 fits the typical viewport pyramid + a small history without
+      // letting the cache grow into 150-250 MB on long sessions.
+      maxTileCacheSize: 50,
       // antialias intentionally left unset. MapLibre defaults to
       // ``antialias: false`` (no MSAA at all), which keeps the viewer
       // usable on older GPUs — multisampling is expensive and the 3D
@@ -573,26 +616,45 @@ export default function TerrainViewer3D({
   // Removing + re-adding the source forces a full reload of the in-view
   // pyramid; we re-bind ``setTerrain`` afterwards to keep the 3D mesh
   // wired to the new source.
+  // Re-entrancy guard: if the user spams the threshold selector
+  // (Suave→Medio→Fuerte→Suave in <100 ms), React can batch the state
+  // changes and the effect runs once with the final value — but if the
+  // updates come from outside the React batch (custom events, tests), we
+  // could overlap two ``setTerrain(null) → removeSource → addSource``
+  // sequences and leave the map without a terrain source. The ref makes
+  // the second concurrent run a no-op; the latest threshold is honoured by
+  // the next render's effect run.
+  const terrainRebuildInProgressRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     if (!map.getSource('terrain-rgb')) return;
-    const newUrl = buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold);
+    if (terrainRebuildInProgressRef.current) return;
+    terrainRebuildInProgressRef.current = true;
+    try {
+      const newUrl = buildTerrainRgbUrl(
+        terrainSmoothingEnabled,
+        terrainSmoothingThreshold
+      );
 
-    // Capture the active terrain config (exaggeration, etc.) so we can
-    // re-apply it after replacing the source.
-    const terrainConfig = map.getTerrain();
-    map.setTerrain(null);
-    map.removeSource('terrain-rgb');
-    map.addSource('terrain-rgb', {
-      type: 'raster-dem',
-      tiles: [newUrl],
-      tileSize: 256,
-      maxzoom: 14,
-      encoding: 'mapbox',
-    });
-    if (terrainConfig) {
-      map.setTerrain(terrainConfig);
+      // Capture the active terrain config (exaggeration, etc.) so we can
+      // re-apply it after replacing the source.
+      const terrainConfig = map.getTerrain();
+      map.setTerrain(null);
+      map.removeSource('terrain-rgb');
+      map.addSource('terrain-rgb', {
+        type: 'raster-dem',
+        tiles: [newUrl],
+        tileSize: 256,
+        maxzoom: 14,
+        prefetchZoomDelta: 0,
+        encoding: 'mapbox',
+      });
+      if (terrainConfig) {
+        map.setTerrain(terrainConfig);
+      }
+    } finally {
+      terrainRebuildInProgressRef.current = false;
     }
   }, [buildTerrainRgbUrl, terrainSmoothingEnabled, terrainSmoothingThreshold, ready]);
 

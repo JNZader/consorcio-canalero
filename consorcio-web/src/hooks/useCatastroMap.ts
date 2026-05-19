@@ -13,7 +13,15 @@ export interface CatastroFeatureProperties {
   Nro_Cuenta?: string | null;
 }
 
-export function useCatastroMap() {
+export interface UseCatastroMapOptions {
+  /**
+   * Defer the (multi-MB) GeoJSON fetch until the user actually toggles the
+   * catastro layer on. Default ``true`` keeps existing callers eager.
+   */
+  enabled?: boolean;
+}
+
+export function useCatastroMap(options: UseCatastroMapOptions = {}) {
   const query = useQuery({
     queryKey: [...queryKeys.publicLayers(), 'catastro-rural-map'],
     queryFn: async () => {
@@ -24,6 +32,7 @@ export function useCatastroMap() {
       return (await response.json()) as FeatureCollection;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    enabled: options.enabled ?? true,
   });
 
   return {

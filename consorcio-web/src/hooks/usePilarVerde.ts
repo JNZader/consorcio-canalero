@@ -130,11 +130,22 @@ export interface UsePilarVerdeResult {
   error: string | null;
 }
 
-export function usePilarVerde(): UsePilarVerdeResult {
+export interface UsePilarVerdeOptions {
+  /**
+   * Skip the fetch entirely when nothing in the UI needs the data. Used by
+   * the 3D viewer to defer ~5 GeoJSON downloads until the user actually
+   * toggles a Pilar Verde sub-layer on. Default ``true`` keeps existing
+   * 2D-side callers behaving exactly as before.
+   */
+  enabled?: boolean;
+}
+
+export function usePilarVerde(options: UsePilarVerdeOptions = {}): UsePilarVerdeResult {
   const query = useQuery({
     queryKey: [...queryKeys.publicLayers(), 'pilar-verde'] as const,
     queryFn: loadAllPilarVerde,
     staleTime: Number.POSITIVE_INFINITY,
+    enabled: options.enabled ?? true,
   });
   return {
     data: query.data ?? null,
