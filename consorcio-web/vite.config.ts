@@ -17,7 +17,11 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        orientation: 'portrait-primary',
+        // ``any`` so tablet users (Marcos Juárez inspectors using
+        // iPads in the field) aren't force-rotated. Phone defaults
+        // still display portrait via the device's own orientation
+        // rules.
+        orientation: 'any',
         theme_color: '#2d9970',
         background_color: '#0f1f1a',
         lang: 'es-AR',
@@ -41,13 +45,25 @@ export default defineConfig({
             name: 'Reportar Incidente',
             short_name: 'Reportar',
             description: 'Reportar un incidente en los canales',
-            url: '/denuncias',
+            // ``/reportes`` is the actual route name in routeTree.gen.tsx;
+            // ``/denuncias`` was the legacy URL that never existed in
+            // the router and made the shortcut 404 on every install.
+            url: '/reportes',
           },
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
+        // ``geojson`` removed from precache pattern — those files are
+        // 0.5–3 MB each and only loaded by users who actually open the
+        // map. PWA precache used to bloat every install by ~7 MB on
+        // first visit, including users who only use the form / admin
+        // routes and never touch the map.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
         globIgnores: [
+          // Belt-and-braces — any new ``.geojson`` that lands in the
+          // build directory also stays out of precache. Runtime loads
+          // them on demand via the public viewer hooks.
+          '**/*.geojson',
           'data/suelos_cu.geojson',
           // version.json is the freshness probe — never precache it,
           // otherwise the SW happily serves the build's own SHA forever
