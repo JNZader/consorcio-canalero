@@ -9,14 +9,15 @@ Consorcio Canalero Backend — v2.
 import app._sentry_bootstrap  # noqa: F401 — import-side-effect only
 
 import os
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.api.v2.router import api_router as api_v2_router
@@ -50,6 +51,13 @@ def _admin_dep():
     from app.auth import require_admin_or_operator
 
     return require_admin_or_operator
+
+
+def _authenticated_dep():
+    """Lazy ``require_authenticated`` import — any logged-in user."""
+    from app.auth import require_authenticated
+
+    return require_authenticated
 
 
 configure_structlog(
@@ -196,19 +204,102 @@ app.include_router(api_v2_router, prefix="/api/v2")
 
 
 # ===========================================
-# STATIC FILES (citizen photo uploads)
+# CITIZEN PHOTO UPLOADS — authenticated download endpoint
 # ===========================================
-# `LocalPhotoStorage` writes to `settings.uploads_root` (default `/app/uploads`,
-# mounted as the `denuncia-uploads` Docker volume in compose). The matching
-# StaticFiles mount serves them back at `settings.uploads_public_base`
-# (default `/uploads`). When swapping to S3/MinIO, this mount becomes
-# unnecessary — drop it together with `LocalPhotoStorage`.
+# ``LocalPhotoStorage`` writes to ``settings.uploads_root`` (default
+# ``/app/uploads``, mounted as the ``denuncia-uploads`` Docker volume).
+#
+# Previously this directory was served by a public StaticFiles mount —
+# any client with the URL could fetch any denuncia photo, including
+# operators' phone numbers / faces / license plates that citizens
+# included in the report. We now require auth + ownership / operator
+# role to download a denuncia photo (Phase 2 / item F2-F).
+#
+# When swapping to S3/MinIO, this endpoint becomes unnecessary — drop
+# it together with ``LocalPhotoStorage`` and switch the frontend to
+# signed URLs the storage backend mints.
 os.makedirs(settings.uploads_root, exist_ok=True)
-app.mount(
-    settings.uploads_public_base,
-    StaticFiles(directory=settings.uploads_root),
-    name="uploads",
+
+
+_DENUNCIA_FILENAME_RE = re.compile(
+    r"^(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"\.(?:jpg|jpeg|png|webp)$",
+    re.IGNORECASE,
 )
+
+
+@app.get(
+    f"{settings.uploads_public_base}/denuncias/{{filename}}",
+    response_class=Response,
+    include_in_schema=False,
+)
+async def get_denuncia_photo(
+    filename: str,
+    request: Request,
+    user=Depends(_authenticated_dep()),
+):
+    """Serve a denuncia photo to the owner or any operator+.
+
+    Returns 404 (not 403) when the caller isn't authorised, so the
+    endpoint doesn't leak whether the file exists.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy.orm import Session as _Session
+
+    from app.db.session import get_db as _get_db
+    from app.domains.denuncias.models import Denuncia
+    from app.auth.models import UserRole
+
+    match = _DENUNCIA_FILENAME_RE.match(filename)
+    if match is None:
+        # Either an attempt at path traversal or just a bad URL — both
+        # respond 404 so the surface stays uniform.
+        return Response(status_code=404)
+    denuncia_id = _uuid.UUID(match.group("uuid"))
+
+    # We need a DB session here but the dependency tree above didn't
+    # give us one. Open a short-lived session manually rather than
+    # leaning on a request-scoped one — this endpoint is hit once per
+    # photo render, no need for the full Depends machinery.
+    db_gen = _get_db()
+    db: _Session = next(db_gen)
+    try:
+        denuncia = db.get(Denuncia, denuncia_id)
+        if denuncia is None:
+            return Response(status_code=404)
+        is_operator = getattr(user, "role", None) in {UserRole.ADMIN, UserRole.OPERADOR}
+        is_owner = denuncia.user_id is not None and str(denuncia.user_id) == str(
+            getattr(user, "id", None)
+        )
+        if not (is_operator or is_owner):
+            return Response(status_code=404)
+    finally:
+        db_gen.close()
+
+    photo_path = Path(settings.uploads_root) / "denuncias" / filename
+    if not photo_path.is_file():
+        return Response(status_code=404)
+
+    # Map extension → content type. ``image/webp`` is the only one
+    # the FastAPI/uvicorn default doesn't infer reliably.
+    ext = photo_path.suffix.lower().lstrip(".")
+    media_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+
+    return Response(
+        content=photo_path.read_bytes(),
+        media_type=media_type,
+        headers={
+            # Photos are immutable once uploaded — cache aggressively
+            # but require revalidation when the client is offline.
+            "Cache-Control": "private, max-age=3600, must-revalidate",
+        },
+    )
 
 
 # ===========================================
