@@ -151,11 +151,45 @@ def configure_structlog(
     root_logger.addHandler(handler)
     root_logger.setLevel(getattr(logging, log_level.upper()))
 
+    # Optional second handler — ship logs off-box to BetterStack (Logtail)
+    # when the token is set. Local stdout is preserved either way, so a
+    # BetterStack outage doesn't blackhole observability. Imported lazily
+    # so the dependency isn't required for installs that don't enable it.
+    betterstack_handler = _maybe_logtail_handler()
+    if betterstack_handler is not None:
+        root_logger.addHandler(betterstack_handler)
+
     # Also configure uvicorn loggers
     for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.addHandler(handler)
+        if betterstack_handler is not None:
+            uvicorn_logger.addHandler(betterstack_handler)
+
+
+def _maybe_logtail_handler() -> Optional[logging.Handler]:
+    """Return a configured Logtail (BetterStack) handler, or ``None``.
+
+    Returns ``None`` when ``settings.betterstack_token`` is empty so
+    nothing ships off-box on dev / unconfigured installs. The handler
+    is constructed lazily so the dependency import doesn't run for
+    installs that don't use it.
+    """
+    from app.config import settings
+
+    if not settings.betterstack_token:
+        return None
+    try:
+        from logtail import LogtailHandler  # type: ignore[import-untyped]
+    except ImportError:
+        # Lib not installed in this environment; fall back silently.
+        return None
+
+    kwargs: dict[str, Any] = {"source_token": settings.betterstack_token}
+    if settings.betterstack_host:
+        kwargs["host"] = settings.betterstack_host
+    return LogtailHandler(**kwargs)
 
 
 def get_logger(name: str = "app") -> structlog.stdlib.BoundLogger:

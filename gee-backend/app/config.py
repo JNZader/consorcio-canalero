@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = 0.0  # 0.0 = no transaction tracing
     sentry_environment: str = ""  # falls back to settings.environment
 
+    # Centralised logs (BetterStack / Logtail) — empty = disabled.
+    # Wired in app/core/logging.py. When set, the LogtailHandler is
+    # attached to the root logger so every structlog event also ships
+    # off-box. Free tier: 1 GB/mes at logtail.com.
+    betterstack_token: str = ""
+    # Optional override for the ingest endpoint. BetterStack's EU vs US
+    # regions have different hostnames; leave empty for the default.
+    betterstack_host: str = ""
+
     # App
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     api_prefix: str = "/api/v2"

@@ -50,3 +50,7 @@ structlog>=24.1.0
 
 # Error tracking (init only fires when SENTRY_DSN is set — see app/main.py)
 sentry-sdk[fastapi,celery,sqlalchemy]>=2.0.0
+
+# Centralised log shipping — opt-in. Active only when BETTERSTACK_TOKEN
+# is set (see app/core/logging.py). Free tier ships 1 GB/mes.
+logtail-python>=0.3.0
