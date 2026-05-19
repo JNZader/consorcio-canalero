@@ -49,10 +49,19 @@ import { useTerrainPilarVerdeEffects } from './useTerrainPilarVerdeEffects';
 
 const DEFAULT_CENTER: [number, number] = [MAP_CENTER[1], MAP_CENTER[0]];
 // Initial zoom for the 3D viewer. The consorcio polygon spans roughly
-// 50 km × 33 km; at zoom 12 only the central third of the jurisdiction
-// fit inside the typical viewport. Zoom 11 leaves the entire area
-// visible at first paint and the user zooms in as they explore.
-const DEFAULT_ZOOM = 11;
+// 50 km × 33 km; at zoom 12 only the central third fits in the typical
+// viewport. On desktop, zoom 11 frames the whole jurisdiction with a bit
+// of breathing room. On phones (≤ 768 px wide) the same content needs
+// one extra zoom step out so the East-West axis still fits.
+const DEFAULT_ZOOM_DESKTOP = 11;
+const DEFAULT_ZOOM_MOBILE = 10;
+const MOBILE_BREAKPOINT_PX = 768;
+function getDefaultZoom(): number {
+  if (typeof window === 'undefined') return DEFAULT_ZOOM_DESKTOP;
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX
+    ? DEFAULT_ZOOM_MOBILE
+    : DEFAULT_ZOOM_DESKTOP;
+}
 
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
@@ -123,7 +132,7 @@ export default function TerrainViewer3D({
   demLayerId,
   textureLayerId,
   center = DEFAULT_CENTER,
-  zoom = DEFAULT_ZOOM,
+  zoom = getDefaultZoom(),
   height = 500,
 }: TerrainViewer3DProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
