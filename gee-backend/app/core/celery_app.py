@@ -67,6 +67,14 @@ celery_app.conf.update(
             "schedule": crontab(minute="15", hour="4"),
             "options": {"queue": "celery"},
         },
+        # Phase 4 / F4-K: hard-delete denuncias the owner asked to
+        # cancel more than 1 year ago. Runs daily at 04:30 UTC so it
+        # doesn't overlap with the refresh-token purge.
+        "purge-soft-deleted-denuncias": {
+            "task": "denuncias.purge_soft_deleted_denuncias",
+            "schedule": crontab(minute="30", hour="4"),
+            "options": {"queue": "celery"},
+        },
     },
 )
 
@@ -92,6 +100,25 @@ def purge_stale_refresh_tokens_task() -> int:
     async def _run() -> int:
         async with AsyncSessionLocal() as session:
             return await purge_stale_refresh_tokens(session)
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="denuncias.purge_soft_deleted_denuncias")
+def purge_soft_deleted_denuncias_task() -> int:
+    """Hard-delete denuncia rows that have been soft-deleted for >1y.
+
+    See the prefork-pool note on the refresh-token task above —
+    same constraint applies here for the same reason.
+    """
+    import asyncio
+
+    from app.auth.cleanup_tasks import purge_soft_deleted_denuncias
+    from app.db.session import AsyncSessionLocal
+
+    async def _run() -> int:
+        async with AsyncSessionLocal() as session:
+            return await purge_soft_deleted_denuncias(session)
 
     return asyncio.run(_run())
 

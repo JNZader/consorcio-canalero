@@ -21,11 +21,17 @@ class DenunciaRepository:
     # ── READ ──────────────────────────────────
 
     def get_by_id(self, db: Session, denuncia_id: uuid.UUID) -> Optional[Denuncia]:
-        """Return a single denuncia with its historial, or None."""
+        """Return a single denuncia with its historial, or None.
+
+        Soft-deleted rows (``deleted_at IS NOT NULL``) are excluded from
+        all read paths. ARCO deletion of a denuncia takes effect for
+        every reader immediately while the row stays around for the
+        1-year audit window before the cron purges it.
+        """
         stmt = (
             select(Denuncia)
             .options(selectinload(Denuncia.historial))
-            .where(Denuncia.id == denuncia_id)
+            .where(Denuncia.id == denuncia_id, Denuncia.deleted_at.is_(None))
         )
         return db.execute(stmt).scalar_one_or_none()
 
@@ -43,7 +49,7 @@ class DenunciaRepository:
 
         Returns (items, total_count).
         """
-        base = select(Denuncia)
+        base = select(Denuncia).where(Denuncia.deleted_at.is_(None))
 
         if estado_filter:
             base = base.where(Denuncia.estado == estado_filter)
@@ -76,7 +82,9 @@ class DenunciaRepository:
         recent first. Includes the historial because the citizen view
         renders the timeline alongside the operator's `respuesta`.
         """
-        base = select(Denuncia).where(Denuncia.user_id == user_id)
+        base = select(Denuncia).where(
+            Denuncia.user_id == user_id, Denuncia.deleted_at.is_(None)
+        )
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total: int = db.execute(count_stmt).scalar_one()

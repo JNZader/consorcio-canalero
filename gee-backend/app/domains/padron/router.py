@@ -3,7 +3,7 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -90,12 +90,29 @@ def list_consorcistas(
 @router.get("/{consorcista_id}", response_model=ConsorcistaResponse)
 def get_consorcista(
     consorcista_id: uuid.UUID,
+    request: Request,
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
-    _user=Depends(_require_operator()),
+    user=Depends(_require_operator()),
 ):
-    """Obtener detalle de un consorcista (requiere operador)."""
-    return service.get_by_id(db, consorcista_id)
+    """Obtener detalle de un consorcista (requiere operador).
+
+    Audited (Phase 4 / F4-H): each detail read is logged to
+    ``audit_log`` so a future ARCO request from the consorcista can
+    list who accessed their record.
+    """
+    from app.shared.audit_log import write_audit_entry_sync
+
+    result = service.get_by_id(db, consorcista_id)
+    write_audit_entry_sync(
+        db,
+        user_id=user.id,
+        action="padron.get",
+        resource=f"consorcista_id={consorcista_id}",
+        client_ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return result
 
 
 # ──────────────────────────────────────────────

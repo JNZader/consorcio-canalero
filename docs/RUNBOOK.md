@@ -229,6 +229,51 @@ SPF/DKIM/DMARC.
    API (Brevo, Resend, SES all have a transactional API alongside
    SMTP) which doesn't leave the token in a stored body.
 
+### 1.7 Registro del banco de datos en AAIP (Phase 4 / F4-L)
+
+Trámite **obligatorio** bajo la Ley 25.326 si tratamos datos
+personales (que sí hacemos: padrón, denuncias, fotos). Es gratuito
+y se hace una sola vez; las modificaciones posteriores también son
+gratuitas. La AAIP audita más a empresas grandes que a consorcios,
+pero no inscribir el banco es multa formal y dificulta cualquier
+reclamo del consorcio ante otras entidades que sí cumplen.
+
+**Pasos**:
+
+1. Ingresar a <https://www.argentina.gob.ar/aaip/datospersonales/inscribite>
+   con clave fiscal AFIP de la persona jurídica del consorcio (o de
+   la persona física responsable).
+2. Completar el formulario "RNBD" (Registro Nacional de Bases de
+   Datos). Datos clave a tener a mano:
+   - Razón social / denominación del consorcio
+   - CUIT del consorcio (o del responsable persona física)
+   - Domicilio físico + electrónico (``contacto@consorcio10demayo.gob.ar``)
+   - Responsable de la base: nombre completo del titular
+     administrativo + email
+   - Categorías de datos (marcar todas las que apliquen):
+     identificación (nombre, DNI), patrimoniales (parcela, hectáreas),
+     contacto (teléfono, email), académicos (no aplica), laborales
+     (no aplica)
+   - Finalidad declarada: "Gestión administrativa del padrón de
+     consorcistas, recepción de denuncias ciudadanas, planificación
+     operativa territorial."
+   - Cesiones: solo a autoridades públicas competentes con
+     requerimiento legal escrito (marcar el casillero correspondiente).
+3. Subir la política de privacidad publicada en ``/privacidad`` como
+   adjunto (PDF generado desde el navegador con "Imprimir → Guardar
+   como PDF" alcanza).
+4. Esperar el número de inscripción (normalmente 5-15 días hábiles).
+   Anotarlo en la sección "Banco de Datos N.º …" al pie de la
+   política de privacidad.
+5. Cuando llegue el N.º, editar
+   ``consorcio-web/src/components/PrivacyPolicyPage.tsx`` (última
+   línea, ``inscripto ante el Registro Nacional de Bases de Datos —
+   AAIP``) y reemplazar el placeholder por el número real, después
+   ``git push``.
+
+**Renovación / actualización**: solo cuando cambien la finalidad, el
+responsable o las categorías de datos. Anual no es obligatorio.
+
 ### 1.6 Things that look weird but are by design
 
 See **[docs/KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)** for the full

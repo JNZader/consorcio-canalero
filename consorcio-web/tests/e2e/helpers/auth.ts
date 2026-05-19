@@ -37,15 +37,20 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 
   const user = await userRes.json();
 
-  // 3. Navegar para que localStorage esté disponible en el dominio
+  // 3. Navegar para que sessionStorage esté disponible en el dominio
   await page.goto('/');
   await page.waitForTimeout(500);
 
-  // 4. Inyectar token y user en localStorage — exactamente como lo hace jwt-adapter.ts
+  // 4. Inyectar token y user en sessionStorage — exactamente como lo
+  // hace jwt-adapter.ts. Phase 4 / F4-E: la app pasó a sessionStorage
+  // hace varias fases; el helper E2E siguió usando localStorage y los
+  // tests pasaban porque la sesión real arrancaba a través de /login,
+  // pero la inyección directa quedaba huérfana — el flujo "ya logueado
+  // sin pasar por login" no funcionaba realmente.
   await page.evaluate(
     ({ tokenKey, userKey, token, user }) => {
-      window.localStorage.setItem(tokenKey, token);
-      window.localStorage.setItem(userKey, JSON.stringify(user));
+      window.sessionStorage.setItem(tokenKey, token);
+      window.sessionStorage.setItem(userKey, JSON.stringify(user));
     },
     { tokenKey: TOKEN_KEY, userKey: USER_KEY, token, user }
   );

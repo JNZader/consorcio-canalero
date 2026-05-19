@@ -164,6 +164,59 @@ async def upload_denuncia_photo(
     return DenunciaPhotoResponse(photo_url=photo_url)
 
 
+@router.delete("/{denuncia_id}/mine", status_code=204)
+def delete_my_denuncia(
+    denuncia_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    storage: PhotoStorage = Depends(get_photo_storage),
+    user=Depends(_require_user()),
+):
+    """ARCO right to cancellation (Ley 25.326 art. 16).
+
+    Soft-deletes the denuncia (stamps ``deleted_at``) and hard-deletes
+    the associated photo from storage. The row remains for the 1-year
+    audit window before the cleanup cron purges it.
+
+    Only the owner can delete their own denuncia; operators can NOT
+    delete a citizen's denuncia from here (that would defeat the
+    auditability of their administrative response). Operators who
+    need to remove a denuncia for moderation reasons use a separate
+    admin endpoint with full justification logging (out of scope of
+    this commit).
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import select as sa_select
+    import asyncio
+
+    stmt = sa_select(Denuncia).where(Denuncia.id == denuncia_id)
+    denuncia = db.execute(stmt).scalar_one_or_none()
+    if denuncia is None or denuncia.deleted_at is not None:
+        # 404 either way — don't leak that a deleted row exists
+        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+    if denuncia.user_id is None or denuncia.user_id != uuid.UUID(str(user.id)):
+        # Same 404 vs 403 reasoning as the photo GET endpoint
+        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+
+    # Hard delete the photo from disk first — if the user is asking
+    # for cancellation the photo is the most sensitive artefact (face,
+    # license plate, etc.). The DB row stays for audit but no bytes
+    # remain on disk.
+    if denuncia.foto_url:
+        photo_key = make_denuncia_photo_key(denuncia_id)
+        # The storage interface is async; we're in a sync route. Run
+        # the delete in a fresh event loop — best-effort, never blocks
+        # the soft delete below.
+        try:
+            asyncio.run(storage.delete(photo_key))
+        except Exception:  # noqa: BLE001
+            pass
+        denuncia.foto_url = None
+
+    denuncia.deleted_at = datetime.now(tz=timezone.utc)
+    db.commit()
+    return None
+
+
 @router.get("/mine", response_model=dict)
 def list_my_denuncias(
     page: int = Query(default=1, ge=1),

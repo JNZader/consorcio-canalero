@@ -48,6 +48,9 @@ export const FooterContent = memo(function FooterContent() {
                   <Text component={Link} to="/admin" c="gray.3" size="sm">
                     Admin
                   </Text>
+                  <Text component={Link} to="/privacidad" c="gray.3" size="sm">
+                    Privacidad
+                  </Text>
                 </Stack>
               </nav>
 

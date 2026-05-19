@@ -26,6 +26,11 @@ from app.auth.models import RefreshToken
 
 EXPIRED_GRACE = timedelta(days=7)
 REVOKED_GRACE = timedelta(days=30)
+# Phase 4 / F4-K: ARCO soft-delete audit window. A user-requested
+# deletion keeps the row for 1 year so the consorcio can demonstrate
+# that the operator handled their request (audit trail) before the
+# row is finally purged.
+DELETED_DENUNCIA_GRACE = timedelta(days=365)
 
 
 async def purge_stale_refresh_tokens(session: AsyncSession) -> int:
@@ -49,6 +54,25 @@ async def purge_stale_refresh_tokens(session: AsyncSession) -> int:
                 & (RefreshToken.revoked_at.is_not(None))
                 & (RefreshToken.revoked_at < now - REVOKED_GRACE),
             )
+        )
+    )
+    await session.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def purge_soft_deleted_denuncias(session: AsyncSession) -> int:
+    """Hard-delete denuncia rows soft-deleted more than 1 year ago.
+
+    Phase 4 / F4-K. Mirrors the refresh-token cleanup. Returns the
+    number of rows removed.
+    """
+    from app.domains.denuncias.models import Denuncia
+
+    now = datetime.now(tz=timezone.utc)
+    result = await session.execute(
+        delete(Denuncia).where(
+            Denuncia.deleted_at.is_not(None),
+            Denuncia.deleted_at < now - DELETED_DENUNCIA_GRACE,
         )
     )
     await session.commit()

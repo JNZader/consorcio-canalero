@@ -36,6 +36,7 @@ const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
 const SugerenciasPage = lazy(() => import('./components/SugerenciasPage'));
 const ForgotPasswordForm = lazy(() => import('./components/auth/ForgotPasswordForm'));
 const ResetPasswordForm = lazy(() => import('./components/auth/ResetPasswordForm'));
+const PrivacyPolicyPage = lazy(() => import('./components/PrivacyPolicyPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
 // Admin components - lazy load only the content, not the layout
@@ -139,6 +140,21 @@ const loginRoute = createRoute({
     >
       <Suspense fallback={<PageLoader />}>
         <LoginForm />
+      </Suspense>
+    </RootLayout>
+  ),
+});
+
+const privacyPolicyRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/privacidad',
+  component: () => (
+    <RootLayout
+      title="Política de privacidad"
+      description="Política de protección de datos personales del Consorcio Canalero 10 de Mayo (Ley 25.326)."
+    >
+      <Suspense fallback={<PageLoader />}>
+        <PrivacyPolicyPage />
       </Suspense>
     </RootLayout>
   ),
@@ -590,6 +606,7 @@ export const routeTree = rootRouteWithComponent.addChildren([
   // Public
   indexRoute,
   loginRoute,
+  privacyPolicyRoute,
   forgotPasswordRoute,
   resetPasswordRoute,
   mapaRoute,

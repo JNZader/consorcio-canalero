@@ -7,6 +7,7 @@ from typing import Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    DateTime,
     Enum,
     Float,
     ForeignKey,
@@ -76,6 +77,15 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     respuesta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Phase 4 / F4-K: soft delete for ARCO (Ley 25.326 art. 16).
+    # The owner can request deletion; we stamp ``deleted_at`` and the
+    # photo is hard-deleted from disk synchronously. The row stays for
+    # 1 year (audit trail) then a periodic celery task purges it
+    # (``auth.purge_stale_refresh_tokens`` pattern). All read endpoints
+    # filter ``deleted_at IS NULL``.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     # Relationships
     historial: Mapped[list["DenunciaHistorial"]] = relationship(
