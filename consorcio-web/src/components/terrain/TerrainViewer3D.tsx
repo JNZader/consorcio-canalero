@@ -498,11 +498,6 @@ export default function TerrainViewer3D({
             // default (assumes 22). Vector layers above can still use higher
             // zooms; only the terrain source is capped.
             maxzoom: 14,
-            // Disable lookahead prefetch: with the default ``prefetchZoomDelta
-            // = 4`` each viewport change requests ~20-25 tiles (visible +
-            // lookahead), which saturates the backend threadpool during a
-            // cold-cache burst. We're happy paying for visible tiles only.
-            prefetchZoomDelta: 0,
             encoding: 'mapbox',
           },
           'terrain-texture': {
@@ -589,6 +584,10 @@ export default function TerrainViewer3D({
       // raster-dem + texture tiles in GPU memory. Default is unbounded;
       // 50 fits the typical viewport pyramid + a small history without
       // letting the cache grow into 150-250 MB on long sessions.
+      // ``maxTileCacheSize: 50`` keeps the in-flight pyramid bounded —
+      // it also naturally caps prefetch lookahead, so we don't need to
+      // touch ``prefetchZoomDelta`` (which isn't exposed in this
+      // MapLibre version's types anyway).
       maxTileCacheSize: 50,
       // antialias intentionally left unset. MapLibre defaults to
       // ``antialias: false`` (no MSAA at all), which keeps the viewer
@@ -680,7 +679,6 @@ export default function TerrainViewer3D({
         tiles: [newUrl],
         tileSize: 256,
         maxzoom: 14,
-        prefetchZoomDelta: 0,
         encoding: 'mapbox',
       });
       if (terrainConfig) {

@@ -9,7 +9,7 @@ import {
   Text,
 } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
