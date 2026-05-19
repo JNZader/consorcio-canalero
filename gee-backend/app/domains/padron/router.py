@@ -68,8 +68,9 @@ def list_consorcistas(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar consorcistas con paginacion, filtros y busqueda."""
+    """Listar consorcistas con paginacion, filtros y busqueda (requiere operador)."""
     items, total = service.list_consorcistas(
         db,
         page=page,
@@ -91,8 +92,9 @@ def get_consorcista(
     consorcista_id: uuid.UUID,
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Obtener detalle de un consorcista."""
+    """Obtener detalle de un consorcista (requiere operador)."""
     return service.get_by_id(db, consorcista_id)
 
 
