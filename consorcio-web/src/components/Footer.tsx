@@ -26,7 +26,7 @@ export const FooterContent = memo(function FooterContent() {
                 Consorcio Canalero 10 de Mayo
               </Text>
               <Text size="sm" c="gray.3">
-                Gestion de cuencas hidricas en Bell Ville, Cordoba
+                Gestión de cuencas hídricas en Marcos Juárez, Córdoba
               </Text>
             </div>
 
@@ -56,7 +56,7 @@ export const FooterContent = memo(function FooterContent() {
                   Contacto
                 </Text>
                 <Text size="sm" c="gray.3">
-                  Bell Ville, Cordoba
+                  Marcos Juárez, Córdoba
                 </Text>
                 <Text size="sm" c="gray.3">
                   Argentina

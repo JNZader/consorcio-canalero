@@ -184,7 +184,7 @@ export function LoginFormContent() {
             </Text>
           </Group>
           <Text c="gray.6" size="sm">
-            10 de Mayo - Bell Ville
+            10 de Mayo - Marcos Juárez
           </Text>
         </Box>
 

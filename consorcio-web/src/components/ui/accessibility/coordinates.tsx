@@ -133,7 +133,7 @@ export function CoordinatesInput({
           </Text>
           <Group gap="sm">
             <TextInput
-              placeholder="Ej: Ruta 9 km 312, Bell Ville, Cordoba"
+              placeholder="Ej: Ruta 9 km 459, Marcos Juárez, Córdoba"
               value={searchAddress}
               onChange={(event) => setSearchAddress(event.target.value)}
               aria-label="Direccion a buscar"

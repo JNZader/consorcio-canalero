@@ -14,7 +14,7 @@ Visuals coming soon. The strongest differentiator in this project is the GIS wor
 
 ## Quick Portfolio Snapshot
 
-- Built for a real canal consortium in Bell Ville, Cordoba, Argentina.
+- Built for a real canal consortium in Marcos Juárez, Cordoba, Argentina.
 - Combines administrative management with geospatial intelligence instead of treating GIS as an isolated viewer.
 - Covers padrón, denuncias, tramites, finanzas, reuniones, capas, monitoring, settings, and geo in one deployable system.
 - Uses PostGIS, Google Earth Engine, Martin/PMTiles, and background workers for terrain, imagery, and risk analysis.
@@ -540,4 +540,4 @@ At a high level:
 
 MIT License. See [LICENSE](LICENSE).
 
-Built for **Consorcio Canalero 10 de Mayo** in Bell Ville, Cordoba, Argentina.
+Built for **Consorcio Canalero 10 de Mayo** in Marcos Juárez, Cordoba, Argentina.

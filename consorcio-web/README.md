@@ -1,6 +1,6 @@
 # Consorcio Canalero 10 de Mayo · Web
 
-Frontend del sistema de gestión y monitoreo del **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
+Frontend del sistema de gestión y monitoreo del **Consorcio Canalero 10 de Mayo** — Marcos Juárez, Córdoba, Argentina.
 
 Aplicación React 19 con visor cartográfico interactivo, panel de administración y formularios públicos de participación ciudadana.
 
@@ -300,4 +300,4 @@ El backend (`gee-backend/`) provee:
 
 ---
 
-Desarrollado para el **Consorcio Canalero 10 de Mayo** — Bell Ville, Córdoba, Argentina.
+Desarrollado para el **Consorcio Canalero 10 de Mayo** — Marcos Juárez, Córdoba, Argentina.

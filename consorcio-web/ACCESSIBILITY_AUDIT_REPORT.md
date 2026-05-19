@@ -224,7 +224,7 @@
     </Text>
     <Group gap="sm">
       <TextInput
-        placeholder="Ej: Ruta 9 km 312, Bell Ville"
+        placeholder="Ej: Ruta 9 km 312, Marcos Juarez"
         value={searchAddress}
         onChange={(e) => setSearchAddress(e.target.value)}
         aria-label="Buscar direccion"
@@ -911,7 +911,7 @@ export function IconMap({ size = 24, ...props }: IconProps) {
 // src/components/Footer.tsx
 // Cambiar de gray.4 a gray.3 para mejor contraste
 <Text size="sm" c="gray.3">
-  Gestion de cuencas hidricas en Bell Ville, Cordoba
+  Gestion de cuencas hidricas en Marcos Juarez, Cordoba
 </Text>
 
 // O usar variables CSS personalizadas:
@@ -1036,7 +1036,7 @@ function MapaContenido() {
           <Stack gap="md">
             <Box>
               <Text fw={600}>Ubicacion Central:</Text>
-              <Text>Bell Ville, Cordoba, Argentina (Latitud: -32.63, Longitud: -62.68)</Text>
+              <Text>Marcos Juarez, Cordoba, Argentina (Latitud: -32.63, Longitud: -62.68)</Text>
             </Box>
 
             <Box>

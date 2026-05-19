@@ -149,7 +149,7 @@ export function HomeContent() {
         <Container size="lg">
           <Stack align="center" gap="xl">
             <Badge size="lg" variant="light" color="white">
-              Bell Ville, Cordoba
+              Marcos Juárez, Córdoba
             </Badge>
             <Title order={1} ta="center" c="white" size={48} style={{ maxWidth: 700 }}>
               Consorcio Canalero 10 de Mayo

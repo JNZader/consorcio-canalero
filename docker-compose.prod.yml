@@ -50,7 +50,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      # GEE auth + lazy imports add 5–15 s before /health responds. 20 s was
+      # enough most of the time, but cold deploys on a loaded host sometimes
+      # tripped the retries and marked the container unhealthy before it
+      # could answer. 60 s gives comfortable margin.
+      start_period: 60s
     depends_on:
       geo-worker:
         condition: service_started
