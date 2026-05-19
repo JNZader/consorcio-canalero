@@ -28,6 +28,30 @@ export default defineConfig({
         dir: 'ltr',
         categories: ['utilities', 'productivity', 'government'],
         icons: [
+          // Phase 3 / F3-F: 192 + 512 + 512-maskable PNGs.
+          // Generated programmatically (placeholder design with the
+          // consorcio's primary green + "CC" mark). Operators can
+          // replace the three files under ``public/icons/`` with a
+          // real design without touching this manifest — the PNG
+          // paths stay stable.
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/icons/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
           {
             src: '/favicon.ico',
             sizes: '48x48 72x72 96x96 128x128 256x256',
@@ -89,11 +113,27 @@ export default defineConfig({
             urlPattern: /\/version\.json(\?.*)?$/i,
             handler: 'NetworkOnly',
           },
-          // Geo raster tiles — NetworkOnly to avoid mixing stale DEM/PNG tiles
-          // across backend rendering changes (critical for MapLibre raster-dem).
+          // Geo raster tiles — Phase 3 / F3-H. Was NetworkOnly which
+          // gave a black map on flaky mobile / offline; the original
+          // concern (stale tiles after a backend rendering change)
+          // resolves naturally because each backend-pipeline change
+          // also bumps the layer SHA in the tile URL, so the cache
+          // misses for the new SHA and revalidates against network.
+          // StaleWhileRevalidate gives the user an immediate render
+          // from cache while the new tile fetches in the background.
           {
             urlPattern: /\/api\/v2\/geo\/layers\/[^/]+\/tiles\/.*/i,
-            handler: 'NetworkOnly',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'geo-raster-tiles',
+              expiration: {
+                maxEntries: 1500,  // ~3 zoom levels of a small AOI
+                maxAgeSeconds: 60 * 60 * 24 * 14,  // 14 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
           },
           // Static assets from CDNs — CacheFirst (long-lived, rarely change)
           {
