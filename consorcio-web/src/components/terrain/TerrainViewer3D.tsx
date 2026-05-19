@@ -48,7 +48,11 @@ import { useTerrainPilarVerdeEffects } from './useTerrainPilarVerdeEffects';
 /* -------------------------------------------------------------------------- */
 
 const DEFAULT_CENTER: [number, number] = [MAP_CENTER[1], MAP_CENTER[0]];
-const DEFAULT_ZOOM = 12;
+// Initial zoom for the 3D viewer. The consorcio polygon spans roughly
+// 50 km × 33 km; at zoom 12 only the central third of the jurisdiction
+// fit inside the typical viewport. Zoom 11 leaves the entire area
+// visible at first paint and the user zooms in as they explore.
+const DEFAULT_ZOOM = 11;
 
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
