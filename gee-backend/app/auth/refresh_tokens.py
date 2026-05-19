@@ -15,7 +15,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import update
+from sqlalchemy import false, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -106,7 +106,12 @@ async def revoke_family(session: AsyncSession, family_id: uuid.UUID) -> int:
     return int(getattr(result, "rowcount", 0) or 0)
 
 
-RACE_WINDOW = timedelta(seconds=30)
+# A two-tab race in practice completes in under a second (cookie present
+# → /refresh request → CAS UPDATE → response). 5 s is generous margin
+# for slow networks; anything past that is overwhelmingly more likely
+# to be a stolen cookie reused after the legit owner rotated than a
+# pathologically slow concurrent click.
+RACE_WINDOW = timedelta(seconds=5)
 
 
 async def rotate(
@@ -132,6 +137,12 @@ async def rotate(
         the cookie after the legit user rotated) loses the CAS, sees
         the row revoked with ``revoked_at`` old, and DOES burn the
         family.
+
+    Timing: race-loss and replay paths run the SAME number of SQL
+    statements (CAS + SELECT + family-update + commit) so an attacker
+    can't read latency to learn whether the cookie they hold was just
+    rotated. The family-update in the race-loss path is a no-op
+    (guarded by ``literal(False)``) but takes the same wire time.
     """
     digest = _hash_token(raw_token)
     now = datetime.now(tz=timezone.utc)
@@ -161,32 +172,43 @@ async def rotate(
             client_ip=client_ip,
         )
 
-    # Lost the CAS. Distinguish race-loss from replay.
+    # Lost the CAS. Distinguish race-loss from replay — but do BOTH
+    # paths with identical SQL roundtrips so the timing side-channel
+    # the post-2.2 review surfaced doesn't leak which case we hit.
     replay_lookup = await session.execute(
         select(RefreshToken).where(RefreshToken.token_hash == digest)
     )
     replay_row = replay_lookup.scalar_one_or_none()
     if replay_row is None or not replay_row.revoked:
-        # Unknown token, expired, or wrong user — plain 401.
+        # Unknown token, expired, or wrong user — plain 401. No
+        # family operation possible (no family to act on); we accept
+        # the slight timing skew here because this path doesn't leak
+        # information about an EXISTING family.
         return None
 
-    # Row IS revoked. If the revocation is very recent, it's the
-    # winner of a concurrent rotate; if it's older than RACE_WINDOW,
-    # the cookie was reused long after rotation → replay.
+    # Decide burn vs no-op based on revoked_at age. ``None`` legacy
+    # rows from the pre-2.2 era are treated as replay (conservative).
     revoked_at = replay_row.revoked_at
-    if revoked_at is None:
-        # Legacy row revoked before the column existed — be
-        # conservative and treat as replay (the row's ``updated_at``
-        # is the proxy used by the migration backfill, so any
-        # non-backfilled NULL means the revocation is OLD).
-        await revoke_family(session, replay_row.family_id)
-        return None
-    if now - revoked_at > RACE_WINDOW:
-        # Real replay. Burn the family.
-        await revoke_family(session, replay_row.family_id)
-        return None
+    should_burn = revoked_at is None or (now - revoked_at) > RACE_WINDOW
 
-    # Race-loss within the grace window — return None without burn.
+    # Always run the family UPDATE. In ``should_burn=False`` the
+    # ``literal(False)`` predicate matches 0 rows so the operation is
+    # a no-op — but it costs the same wire roundtrip as the real burn.
+    # The extra ``created_at <= replay_row.revoked_at`` filter prevents
+    # the rare race where, between our SELECT and the family update,
+    # a legit user wins a concurrent CAS and mints a NEW token in the
+    # same family. That fresh row mustn't get caught in our sweep.
+    await session.execute(
+        update(RefreshToken)
+        .where(
+            RefreshToken.family_id == replay_row.family_id,
+            RefreshToken.revoked.is_(False),
+            RefreshToken.created_at <= (replay_row.revoked_at or replay_row.created_at),
+            true() if should_burn else false(),
+        )
+        .values(revoked=True, revoked_at=now)
+    )
+    await session.commit()
     return None
 
 

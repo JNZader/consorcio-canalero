@@ -120,7 +120,11 @@ services:
       test:
         - "CMD-SHELL"
         - >-
-          HOST="$${HEALTHCHECK_HOST:-$$(echo "$${API_BASE_URL:?API_BASE_URL is required for the healthcheck Host header}" | sed -E 's|https?://([^/]+).*|\1|')}";
+          if [ -z "$${HEALTHCHECK_HOST:-}$${API_BASE_URL:-}" ]; then
+            echo "healthcheck: neither HEALTHCHECK_HOST nor API_BASE_URL is set" >&2;
+            exit 1;
+          fi;
+          HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
           curl -sf --resolve "$$HOST:8000:127.0.0.1" "http://$$HOST:8000/live" || exit 1
       interval: 30s
       timeout: 10s

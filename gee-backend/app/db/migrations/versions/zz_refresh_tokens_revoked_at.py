@@ -24,10 +24,25 @@ def upgrade() -> None:
         "refresh_tokens",
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # Backfill: any row currently revoked gets its ``updated_at`` as a
-    # conservative proxy for when the revocation happened. New rows
-    # populated by the application going forward set ``revoked_at``
-    # explicitly during the CAS UPDATE.
+    # Backfill caveat: pre-2.2 revocations used SQLAlchemy Core
+    # ``update(...).values(revoked=True)`` which does NOT trigger the
+    # ORM-level ``TimestampMixin.onupdate`` for ``updated_at``. So for
+    # most legacy revoked rows, ``updated_at == created_at`` — meaning
+    # this backfill effectively sets ``revoked_at = created_at``, NOT
+    # the real revocation time. Two practical consequences:
+    #
+    #   1. ``cleanup_tasks.purge_stale_refresh_tokens`` may delete
+    #      legacy revoked rows up to (token-lifetime) days earlier
+    #      than the intended 30-day forensic window. Acceptable —
+    #      forensic data on pre-2.2 revocations is already low-fidelity.
+    #
+    #   2. ``refresh_tokens.rotate()`` will see legacy rows as
+    #      ``now - revoked_at >> RACE_WINDOW`` and treat any replay
+    #      attempt against them as a real replay (conservative).
+    #
+    # New revocations (post-2.2) populate ``revoked_at`` synchronously
+    # with ``revoked=True`` in the CAS UPDATE, so this caveat applies
+    # only to the one-time backfill.
     op.execute(
         "UPDATE refresh_tokens SET revoked_at = updated_at "
         "WHERE revoked = TRUE AND revoked_at IS NULL"
