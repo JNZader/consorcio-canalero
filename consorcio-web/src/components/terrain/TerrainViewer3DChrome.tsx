@@ -163,22 +163,25 @@ export function TerrainViewer3DChrome({
             onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
             label="Suavizar terreno"
           />
-          {terrainSmoothingEnabled && (
-            <SegmentedControl
-              size="xs"
-              value={terrainSmoothingThreshold}
-              onChange={(value) =>
-                onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
-              }
-              data={[
-                { value: 'low', label: 'Suave' },
-                { value: 'med', label: 'Medio' },
-                { value: 'high', label: 'Fuerte' },
-              ]}
-              aria-label="Intensidad del suavizado"
-              title="Cuán agresivo es el aplanado de árboles y construcciones"
-            />
-          )}
+          <SegmentedControl
+            size="xs"
+            value={terrainSmoothingThreshold}
+            onChange={(value) =>
+              onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
+            }
+            disabled={!terrainSmoothingEnabled}
+            data={[
+              { value: 'low', label: 'Suave' },
+              { value: 'med', label: 'Medio' },
+              { value: 'high', label: 'Fuerte' },
+            ]}
+            aria-label="Intensidad del suavizado"
+            title={
+              terrainSmoothingEnabled
+                ? 'Cuán agresivo es el aplanado de árboles y construcciones'
+                : "Activá 'Suavizar terreno' para elegir la intensidad"
+            }
+          />
           <Text size="xs" c="dimmed">
             Exageracion vertical:
           </Text>
