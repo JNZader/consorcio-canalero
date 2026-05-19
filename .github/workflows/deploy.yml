@@ -24,10 +24,40 @@ jobs:
   quality-backend:
     name: Backend quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: gee-backend
+    services:
+      # Phase 4 / F4-A: real PostGIS so the full ``tests/new/`` suite
+      # runs in CI with the coverage gate. testcontainers can't spin
+      # Docker-in-Docker on the default runner; using GH services
+      # gets us the same image with zero local plumbing.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_consorcio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test_consorcio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_consorcio
+      REDIS_URL: redis://localhost:6379/1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,6 +76,15 @@ jobs:
       # builds. No DB required — every assertion runs at the middleware
       # / dependency layer.
       - run: python3 -m pytest tests/new/test_auth_gates.py -q --no-header
+      # Phase 4 / F4-A: backend coverage gate at 60% on the full
+      # ``tests/new/`` suite. The .coveragerc omits the geo-worker
+      # modules (composites / processing / tile_service /
+      # water_detection / gee_service*) — they live in the geo-worker
+      # container with GDAL + WhiteboxTools + Earth Engine the backend
+      # CI does NOT have, so their tests skip here. Local measurement
+      # at the time of landing this gate: 65.9% on the non-skipped
+      # surface; the 60% floor gives us a regression cushion.
+      - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short
 
   build-backend:
     name: Build Backend Image

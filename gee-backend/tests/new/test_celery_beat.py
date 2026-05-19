@@ -69,15 +69,33 @@ class TestBothTasksScheduled:
 
         assert "refresh-mat-views-periodic" in celery_app.conf.beat_schedule
 
-    def test_both_use_geo_queue(self):
+    def test_geo_tasks_route_to_geo_queue(self):
+        """Geo-bound periodic tasks must run on the geo worker.
+
+        Non-geo beat entries (auth token cleanup, ARCO purges)
+        intentionally route to the default ``celery`` queue — they
+        run on the regular backend worker, NOT the geo worker which
+        has GDAL / Earth Engine deps the cleanup jobs don't need.
+        """
         from app.core.celery_app import celery_app
 
         schedule = celery_app.conf.beat_schedule
+        geo_entries = {
+            "evaluate-alerts-periodic",
+            "refresh-mat-views-periodic",
+        }
         for name, entry in schedule.items():
             options = entry.get("options", {})
-            assert options.get("queue") == "geo", (
-                f"Beat entry '{name}' should route to 'geo' queue"
-            )
+            queue = options.get("queue")
+            if name in geo_entries:
+                assert queue == "geo", (
+                    f"Beat entry '{name}' should route to 'geo' queue, got {queue!r}"
+                )
+            else:
+                assert queue != "geo", (
+                    f"Beat entry '{name}' should NOT route to 'geo' queue "
+                    f"(reserved for tasks needing the geo worker); got {queue!r}"
+                )
 
 
 # ── Env var configuration ──────────────────────────

@@ -1,0 +1,54 @@
+[run]
+source = app
+branch = false
+omit =
+    # ─── Geo-worker-only modules ────────────────────────────────────────
+    # These run inside the dedicated geo-worker container which ships
+    # GDAL + WhiteboxTools + Google Earth Engine credentials. The main
+    # backend CI does not have any of those, so their tests are
+    # skipped (``pytest.importorskip`` / explicit ``pytest.skip``).
+    # Counting them against the backend coverage gate would force us
+    # to either lie (artificially mark them green) or never raise the
+    # bar. Their coverage is enforced separately inside the
+    # geo-worker image build (out of scope for the backend deploy
+    # workflow).
+    app/domains/geo/composites.py
+    app/domains/geo/composites_support.py
+    app/domains/geo/gee_service.py
+    app/domains/geo/gee_service_analytics_support.py
+    app/domains/geo/gee_service_imagery_support.py
+    app/domains/geo/gee_service_layers_support.py
+    app/domains/geo/gee_service_support.py
+    app/domains/geo/gee_tasks.py
+    app/domains/geo/gee_tasks_support.py
+    app/domains/geo/gee_tasks_warming.py
+    app/domains/geo/processing.py
+    app/domains/geo/processing_common_support.py
+    app/domains/geo/processing_raster_support.py
+    app/domains/geo/processing_support.py
+    app/domains/geo/processing_wbt_support.py
+    app/domains/geo/tile_service.py
+    app/domains/geo/tile_service_support.py
+    app/domains/geo/water_detection.py
+    app/domains/geo/zonal_stats.py
+    # Alembic migrations — declarative SQL DDL, not behaviour code.
+    app/db/migrations/*
+    */migrations/*
+    # Test scaffolding
+    */tests/*
+    */__pycache__/*
+
+[report]
+# Lines we never need to assert on
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+show_missing = true
+precision = 1
+
+[html]
+directory = htmlcov
