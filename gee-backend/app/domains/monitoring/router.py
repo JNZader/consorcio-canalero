@@ -90,8 +90,9 @@ def list_sugerencias(
     categoria: Optional[str] = None,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar sugerencias con paginacion y filtros."""
+    """Listar sugerencias con paginacion y filtros (requiere operador)."""
     items, total = service.list_sugerencias(
         db, page=page, limit=limit, estado=estado, categoria=categoria
     )
