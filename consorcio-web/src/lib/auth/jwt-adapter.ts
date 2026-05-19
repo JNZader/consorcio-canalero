@@ -15,6 +15,7 @@ import type {
   RegisterCredentials,
 } from './types';
 import {
+  clearApiServiceWorkerCaches,
   clearAuthStorage,
   getStoredAccessToken,
   getStoredAuthSession,
@@ -172,6 +173,10 @@ export class JWTAuthAdapter implements AuthAdapter {
 
   private clearStorage(): void {
     clearAuthStorage();
+    // Drop service-worker API caches in the background so the next
+    // user of a shared device can't pop PII out of the SW cache.
+    // Fire-and-forget; logout already completed regardless of result.
+    void clearApiServiceWorkerCaches();
   }
 
   private notifyListeners(

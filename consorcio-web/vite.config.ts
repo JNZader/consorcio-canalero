@@ -118,25 +118,49 @@ export default defineConfig({
               },
             },
           },
-          // API calls — NetworkFirst (try network, fall back to cache when offline)
+          // PII-sensitive API surface — NEVER cache. The service worker
+          // used to cache every /api/v2/* response NetworkFirst, which
+          // means denuncia bodies, padron rows, finanzas, auth responses
+          // stayed in the user's localStorage for 24 hours after logout.
+          // On a shared device (phone in a kiosk, household laptop) the
+          // next user could pop them out of the SW cache.
+          //
+          // The auth / admin / PII routes go NetworkOnly. The few routes
+          // that legitimately benefit from offline caching (the public
+          // viewer surface) are listed explicitly below.
           {
-            urlPattern: /\/api\/v2\/.*/i,
+            urlPattern: /\/api\/v2\/(auth|admin|padron|denuncias|finanzas|tramites|reuniones|monitoring|users|capas)\b/i,
+            handler: 'NetworkOnly',
+          },
+          // Public viewer endpoints — cacheable. These are intentionally
+          // unauthenticated (catalog of public layers, branding, etc.)
+          // and the user benefits from offline mode on a flaky mobile
+          // connection.
+          {
+            urlPattern: /\/api\/v2\/public\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-responses',
+              cacheName: 'api-public',
               networkTimeoutSeconds: 10,
               expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 6, // 6 hours
               },
               cacheableResponse: {
                 statuses: [0, 200],
               },
             },
           },
+          // Anything else under /api/v2/* not covered above also goes
+          // NetworkOnly. Better to ship a 503 on offline than risk
+          // leaking PII via a stale cached response.
+          {
+            urlPattern: /\/api\/v2\/.*/i,
+            handler: 'NetworkOnly',
+          },
           // Health check — NetworkOnly (never cache, just check connectivity)
           {
-            urlPattern: /\/health$/,
+            urlPattern: /\/(health|live|ready)$/,
             handler: 'NetworkOnly',
           },
         ],

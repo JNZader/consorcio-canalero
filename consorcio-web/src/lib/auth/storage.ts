@@ -79,3 +79,31 @@ export function clearAuthStorage(): void {
   storage?.removeItem(AUTH_USER_KEY);
   clearLegacyLocalAuth();
 }
+
+/**
+ * Best-effort purge of every service-worker cache holding API responses.
+ *
+ * Called on logout so the next user of a shared device can't pop
+ * cached padron / denuncias / finanzas bodies out of the SW caches.
+ * Safe in environments without service workers (silent no-op).
+ *
+ * Currently we drop every cache whose name starts with ``api-``
+ * (matches both ``api-public`` and any future named cache). The
+ * ``app-shell`` precache is left intact — its contents are public
+ * static assets, no PII risk.
+ */
+export async function clearApiServiceWorkerCaches(): Promise<void> {
+  if (typeof window === 'undefined' || !('caches' in window)) {
+    return;
+  }
+  try {
+    const names = await window.caches.keys();
+    await Promise.all(
+      names
+        .filter((name) => name.startsWith('api-'))
+        .map((name) => window.caches.delete(name)),
+    );
+  } catch {
+    // SW disabled or storage quota error — best-effort, no fallback needed.
+  }
+}
