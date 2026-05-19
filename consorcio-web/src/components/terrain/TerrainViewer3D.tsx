@@ -59,6 +59,32 @@ const TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD = {
 } as const;
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v3';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
+/**
+ * localStorage key written by ``useSelectedImageListener``. Reading it
+ * synchronously lets us pick Sentinel as the initial active layer at first
+ * render, instead of mounting with the DEM and then swapping on the next
+ * effect tick (which produced a visible flash from DEM → Sentinel).
+ */
+const SELECTED_IMAGE_STORAGE_KEY = 'consorcio_selected_image';
+
+function readPersistedSentinelTileUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = window.localStorage.getItem(SELECTED_IMAGE_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { tile_url?: unknown } | null;
+    if (parsed && typeof parsed.tile_url === 'string' && parsed.tile_url.length > 0) {
+      return parsed.tile_url;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hasPersistedSentinelImage(): boolean {
+  return readPersistedSentinelTileUrl() !== null;
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Main component                                                             */
@@ -108,7 +134,15 @@ export default function TerrainViewer3D({
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
-    textureLayerId ?? demLayerId ?? null
+    // Lazy initialiser: pick Sentinel synchronously when the user already has
+    // a selected image in localStorage. Without this we would start with the
+    // DEM raster and only swap to Sentinel once ``useSelectedImageListener``
+    // hydrated on the next tick — the swap was visible to the user as a
+    // brief DEM→Sentinel flash.
+    () =>
+      hasPersistedSentinelImage()
+        ? SELECTED_IMAGE_LAYER_ID
+        : (textureLayerId ?? demLayerId ?? null)
   );
   activeRasterLayerIdRef.current = activeRasterLayerId;
   // Tracks whether the user has explicitly picked a raster from the chrome
@@ -208,7 +242,30 @@ export default function TerrainViewer3D({
         label: `${selectedImage.sensor} (${selectedImage.target_date})`,
       }
     : null;
-  const selectedImageIsActive = activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !!selectedImage;
+  // Synchronously read the most recent Sentinel tile URL from localStorage on
+  // mount. While ``useSelectedImageListener`` is still hydrating (its
+  // setState runs on the next tick), this value gives the overlay a real
+  // tile URL to render on the FIRST paint — no DEM flash. The fallback is
+  // dropped as soon as the listener resolves (or after a 1 s safety
+  // timeout if the listener never produces an image).
+  const [bootstrapSentinelUrl, setBootstrapSentinelUrl] = useState(() =>
+    readPersistedSentinelTileUrl()
+  );
+  useEffect(() => {
+    if (selectedImage) {
+      setBootstrapSentinelUrl(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setBootstrapSentinelUrl(null), 1000);
+    return () => window.clearTimeout(timer);
+  }, [selectedImage]);
+
+  // "Active Sentinel" means: the user wants the Sentinel image, AND we know
+  // a tile URL for it. Either the hook already hydrated (``selectedImage``
+  // is truthy) or we can fall back to the URL persisted in localStorage.
+  const sentinelTileUrl = selectedImage?.tile_url ?? bootstrapSentinelUrl;
+  const selectedImageIsActive =
+    activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !!sentinelTileUrl;
   const activeRasterLayer =
     (!selectedImageIsActive
       ? rasterLayers.find((layer: GeoLayerInfo) => layer.id === activeRasterLayerId)
@@ -218,7 +275,7 @@ export default function TerrainViewer3D({
     rasterLayers[0];
   const activeRasterType = selectedImageIsActive ? undefined : activeRasterLayer?.tipo;
   const activeRasterTileUrl = selectedImageIsActive
-    ? selectedImage.tile_url
+    ? (sentinelTileUrl as string)
     : activeRasterLayer
       ? buildTileUrl(activeRasterLayer.id, {
           hideClasses:
@@ -264,10 +321,24 @@ export default function TerrainViewer3D({
   }, [activeRasterLayer, activeRasterLayerId, selectedImage]);
 
   useEffect(() => {
-    if (activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !selectedImage) {
+    // Don't revert while the bootstrap fallback is still in play —
+    // ``useSelectedImageListener`` may still be mid-hydration with a real
+    // image in localStorage.
+    if (
+      activeRasterLayerId === SELECTED_IMAGE_LAYER_ID &&
+      !selectedImage &&
+      !bootstrapSentinelUrl
+    ) {
       setActiveRasterLayerId(activeRasterLayer?.id ?? textureLayerId ?? demLayerId ?? null);
     }
-  }, [activeRasterLayer?.id, activeRasterLayerId, demLayerId, selectedImage, textureLayerId]);
+  }, [
+    activeRasterLayer?.id,
+    activeRasterLayerId,
+    bootstrapSentinelUrl,
+    demLayerId,
+    selectedImage,
+    textureLayerId,
+  ]);
 
   // Idempotent — 2D can also register; shared guard in store
   // (`if (!(key in seedMap2d))` inside `registerPilarAzul`) makes the dual
