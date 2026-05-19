@@ -5,7 +5,8 @@
  * map feature belongs to the historical BPA series (Phase 7 refinement).
  *
  * Simplified layout per user feedback (post Phase 6 verification):
- *   Header   n_explotacion + "Cuenta {nro_cuenta} · {superficie} ha · Activa 2025"
+ *   Header   "Cuenta {nro_cuenta}" + "{superficie} ha · Activa 2025"
+ *            (producer name was removed from public assets — Ley 25.326)
  *   History  "Hizo BPA: 2019, 2020, 2025 (3 años)"
  *   Pilares  4 colored axis badges (Persona / Planeta / Prosperidad / Alianza)
  *            (only rendered when `bpa` is provided — historical-only parcels
@@ -63,7 +64,12 @@ const EJE_LABEL_BY_KEY: Record<BpaEjeKey, string> = {
 };
 
 export interface BpaCardProps {
-  /** Display name — either 2025 `n_explotacion` or historical fallback. */
+  /**
+   * Display name. Always passed as `""` since the PII strip removed
+   * `n_explotacion` from public assets; the card falls back to
+   * "Cuenta {cuenta}" as the title. Kept on the prop API so an
+   * authenticated source can wire it back in without a signature change.
+   */
   readonly nombre: string;
   readonly cuenta: string;
   readonly superficie_ha?: number | null;

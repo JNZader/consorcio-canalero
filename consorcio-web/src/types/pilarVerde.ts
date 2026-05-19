@@ -20,7 +20,7 @@
  *     properties — normalize at the consumer hook layer if needed.
  *   - GeoJSON `bpa_2025` properties are FLAT (`eje_persona`, `eje_planeta`, …),
  *     they are NOT nested under an `ejes` object the way bpa_enriched.json is.
- *   - `valuacion`, `superficie_ha`, `nomenclatura`, `pedania` may be `null` in
+ *   - `superficie_ha`, `nomenclatura`, `pedania` may be `null` in
  *     bpa_enriched.json (catastro source rows occasionally lack these).
  *   - `agro_aceptada.geojson` features can have `geometry.type === 'Polygon'` OR
  *     `'MultiPolygon'` — the same is true for `agro_presentada.geojson`.
@@ -137,12 +137,13 @@ export type BpaEjesRecord = Record<BpaEjeKey, BpaPracticeFlag>;
  * The `bpa_2025` block in `bpa_enriched.json`.
  * NOTE: `bpa_total` is a string because the IDECor source publishes it that way.
  * NOTE: `activa` is a boolean because the ETL normalizes the IDECor "1"/"0" → bool.
+ * PII strip (Ley 25.326): `n_explotacion` (producer name) and
+ * `id_explotacion` (IDECor internal owner id) were removed from the
+ * public asset; only aggregate BPA signals survive here.
  */
 export interface Bpa2025EnrichedRecord {
-  n_explotacion: string;
   superficie_bpa: number;
   bpa_total: string;
-  id_explotacion: string;
   activa: boolean;
   ejes: BpaEjesRecord;
   practicas: BpaPracticesRecord;
@@ -151,6 +152,8 @@ export interface Bpa2025EnrichedRecord {
 /**
  * One row of `bpa_enriched.json::parcels[]`.
  * `bpa_2025` is `null` exactly when no BPA 2025 record matched the parcel.
+ * PII strip: `valuacion` (per-parcel fiscal valuation tied to the owner)
+ * was removed from the public asset.
  */
 export interface ParcelEnriched {
   nro_cuenta: string;
@@ -158,11 +161,10 @@ export interface ParcelEnriched {
   departamento: string | null;
   pedania: string | null;
   superficie_ha: number | null;
-  valuacion: number | null;
   ley_forestal: LeyForestalStatus;
   bpa_2025: Bpa2025EnrichedRecord | null;
-  /** Map of year → `n_explotacion`. Empty object if no historical record exists. */
-  bpa_historico: Record<string, string>;
+  /** Map of year → `true`. Empty object if no historical record exists. */
+  bpa_historico: Record<string, true>;
   // ── Phase 7 — commitment-depth (schema 1.2) ──
   /** Count of BPA years (2019..2025) the parcel participated in. 0..7. */
   años_bpa: number;
@@ -184,8 +186,12 @@ export interface BpaEnrichedFile {
 export interface BpaHistoryFile {
   schema_version: '1.0';
   generated_at: string;
-  /** key = nro_cuenta, value = { yyyy: n_explotacion } */
-  history: Record<string, Record<string, string>>;
+  /**
+   * key = nro_cuenta, value = { yyyy: true }
+   * PII strip: the value was previously the producer's `n_explotacion`
+   * name — now just a presence flag.
+   */
+  history: Record<string, Record<string, true>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,14 +274,14 @@ export type ZonaAmpliadaFeatureCollection = FeatureCollection<Polygon, ZonaAmpli
  * `bpa_2025.geojson` properties — FLAT (no nested `ejes`/`practicas`).
  * `activa` and `bpa_total` are STRINGS in the GeoJSON (vs. boolean/string in
  * the enriched JSON). Consumer is responsible for any normalization.
+ * PII strip (Ley 25.326): `n_explotacion` (producer name) and
+ * `id_explotacion` (IDECor internal owner id) are no longer published.
  */
 export type Bpa2025FeatureProperties = {
-  n_explotacion: string;
   cuenta: string;
   superficie: number;
   superficie_bpa: number;
   bpa_total: string;
-  id_explotacion: string;
   activa: string;
   eje_persona: BpaPracticeFlag;
   eje_planeta: BpaPracticeFlag;
@@ -340,8 +346,6 @@ export interface BpaHistoricoFeatureProperties {
   años_bpa: number;
   /** Sorted ASC list of BPA year strings present for this parcel. */
   años_lista: string[];
-  /** Most recent ``n_explotacion`` (2025 name if active, else last historical). */
-  n_explotacion_ultima: string;
   /** True iff the parcel appears in `bpa_2025`. */
   bpa_activa_2025: boolean;
 }

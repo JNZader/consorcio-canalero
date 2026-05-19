@@ -111,6 +111,26 @@ FORESTACION_KEEP_PROPS: Final[frozenset[str]] = frozenset(
     {"nro_cuenta", "forest_obligatoria"}
 )
 
+# PII whitelist (Ley 25.326) — properties allowed on the PUBLIC bpa_2025
+# layer served from Cloudflare Pages. Everything outside this set (notably
+# ``n_explotacion`` and ``id_explotacion``) is producer-identifying and
+# must be dropped before the file leaves the ETL.
+BPA_2025_KEEP_PROPS: Final[frozenset[str]] = frozenset(
+    {
+        "cuenta",
+        "superficie",
+        "superficie_bpa",
+        "bpa_total",
+        "activa",
+        # Per-eje + per-practica boolean indicators are not PII — they
+        # are aggregate BPA registry signals tied to the parcel, not the
+        # producer's identity. Listed explicitly so future schema drift
+        # can't sneak new PII in.
+        *(f"eje_{eje}" for eje in BPA_EJES),
+        *BPA_PRACTICAS,
+    }
+)
+
 # ---------------------------------------------------------------------------
 # Schema version / metadata
 # ---------------------------------------------------------------------------

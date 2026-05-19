@@ -74,8 +74,12 @@ interface InfoPanelProps {
    */
   readonly bpaEnriched?: BpaEnrichedFile | null;
   /**
-   * Pilar Verde historical BPA record lookup — optional. Drives the "En BPA"
-   * years footer inside `<BpaCard>`.
+   * Pilar Verde historical BPA record lookup — kept on the API for
+   * backwards compatibility with callers that still pass it. After the
+   * Ley 25.326 PII strip the historical map carries no producer name
+   * either, so the InfoPanel no longer consumes this prop. Will be
+   * reintroduced when an authenticated /api/v2/pilar-verde/productor
+   * endpoint lands.
    */
   readonly bpaHistory?: BpaHistoryFile | null;
 }
@@ -128,8 +132,7 @@ interface BpaDetection {
 
 function detectBpa(
   properties: Record<string, unknown>,
-  bpaEnriched: BpaEnrichedFile | null | undefined,
-  bpaHistory: BpaHistoryFile | null | undefined
+  bpaEnriched: BpaEnrichedFile | null | undefined
 ): BpaDetection {
   // Path (A): flat bpa_total on the feature itself (legacy bpa_2025 layer).
   const bpaFromFeature = normalizeBpaFlat(properties);
@@ -148,18 +151,11 @@ function detectBpa(
   const lista = featureLista ?? parcel?.años_lista ?? (bpa ? ['2025'] : []);
   const activa2025 = featureActiva2025 ?? (bpa !== null && bpa !== undefined);
 
-  const nombreFromFeature =
-    typeof properties.n_explotacion_ultima === 'string'
-      ? (properties.n_explotacion_ultima as string)
-      : null;
-  const nombreFrom2025 = bpa?.n_explotacion ?? null;
-  const historico = cuenta ? (bpaHistory?.history?.[cuenta] ?? parcel?.bpa_historico) : undefined;
-  let nombreFromHistorico: string | null = null;
-  if (historico && Object.keys(historico).length > 0) {
-    const lastYear = Object.keys(historico).sort().reverse()[0];
-    nombreFromHistorico = lastYear ? (historico[lastYear] ?? null) : null;
-  }
-  const nombre = nombreFrom2025 ?? nombreFromFeature ?? nombreFromHistorico ?? '';
+  // PII strip (Ley 25.326): producer name is no longer published in
+  // public assets. The card now leads with a generic "Productor BPA"
+  // label — operators who need the name will query an authenticated
+  // endpoint in a later phase.
+  const nombre = '';
 
   const superficie =
     parcel?.superficie_ha ??
@@ -175,19 +171,17 @@ function detectBpa(
 function FeatureSection({
   feature,
   bpaEnriched,
-  bpaHistory,
 }: {
   readonly feature: Feature;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
-  readonly bpaHistory: BpaHistoryFile | null | undefined;
 }) {
   const withLayer = feature as FeatureWithLayer;
   const properties: Record<string, unknown> =
     (feature.properties as Record<string, unknown> | null) ?? {};
 
   const detection = useMemo(
-    () => detectBpa(properties, bpaEnriched, bpaHistory),
-    [properties, bpaEnriched, bpaHistory]
+    () => detectBpa(properties, bpaEnriched),
+    [properties, bpaEnriched]
   );
 
   const displayable = useMemo(
@@ -285,7 +279,6 @@ export const InfoPanel = memo(function InfoPanel({
   feature,
   onClose,
   bpaEnriched,
-  bpaHistory,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -308,7 +301,7 @@ export const InfoPanel = memo(function InfoPanel({
         {resolved.map((feat, idx) => (
           <div key={idx}>
             {idx > 0 && <Divider mb="sm" />}
-            <FeatureSection feature={feat} bpaEnriched={bpaEnriched} bpaHistory={bpaHistory} />
+            <FeatureSection feature={feat} bpaEnriched={bpaEnriched} />
           </div>
         ))}
       </Stack>

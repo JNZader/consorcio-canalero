@@ -102,7 +102,9 @@ def normalize_cuenta(raw: Any) -> str | None:
     return text
 
 
-def _index_by_cuenta(features: list[dict[str, Any]], key: str) -> dict[str, dict[str, Any]]:
+def _index_by_cuenta(
+    features: list[dict[str, Any]], key: str
+) -> dict[str, dict[str, Any]]:
     """Build ``normalized_cuenta -> feature`` index, warning on collisions."""
     index: dict[str, dict[str, Any]] = {}
     for feature in features:
@@ -120,15 +122,19 @@ def _index_by_cuenta(features: list[dict[str, Any]], key: str) -> dict[str, dict
 
 
 def _extract_bpa_block(feature: dict[str, Any]) -> dict[str, Any]:
-    """Pull the bpa_2025 sub-object that lives on each enriched parcel."""
+    """Pull the bpa_2025 sub-object that lives on each enriched parcel.
+
+    PII strip (Ley 25.326): ``n_explotacion`` is the producer's real
+    name and ``id_explotacion`` is IDECor's internal owner identifier;
+    neither belongs in a public static asset served by Cloudflare
+    Pages. The aggregate signal that survives is the parcel's BPA
+    commitment — superficie, ejes, prácticas, total — which is what
+    the public map actually needs.
+    """
     props = feature.get("properties") or {}
     return {
-        "n_explotacion": props.get("n_explotacion"),
         "superficie_bpa": props.get("superficie_bpa"),
         "bpa_total": props.get("bpa_total"),
-        "id_explotacion": str(props.get("id_explotacion"))
-        if props.get("id_explotacion") is not None
-        else None,
         "activa": bool(props.get("activa", False)),
         "ejes": {eje: props.get(f"eje_{eje}") for eje in BPA_EJES},
         "practicas": {practica: props.get(practica) for practica in BPA_PRACTICAS},
@@ -154,18 +160,17 @@ def join_bpa(
     presentada_set = set(_index_by_cuenta(presentada, key="lista_cuenta").keys())
     history_by_year = history_by_year or {}
 
-    # Per-cuenta map: year -> n_explotacion
-    historico_index: dict[str, dict[str, str]] = {}
+    # Per-cuenta map: year -> True (presence only — the actual
+    # ``n_explotacion`` name was the producer's PII and is no longer
+    # propagated to public outputs).
+    historico_index: dict[str, dict[str, bool]] = {}
     for year, features in history_by_year.items():
         for feature in features:
             props = feature.get("properties") or {}
             cuenta = normalize_cuenta(props.get("cuenta"))
             if cuenta is None:
                 continue
-            name = props.get("n_explotacion")
-            if name is None:
-                continue
-            historico_index.setdefault(cuenta, {})[str(year)] = str(name)
+            historico_index.setdefault(cuenta, {})[str(year)] = True
 
     parcels: list[dict[str, Any]] = []
     for feature in catastro:
@@ -181,7 +186,9 @@ def join_bpa(
         else:
             ley_forestal = "no_inscripta"
 
-        bpa_block = _extract_bpa_block(bpa_index[cuenta]) if cuenta in bpa_index else None
+        bpa_block = (
+            _extract_bpa_block(bpa_index[cuenta]) if cuenta in bpa_index else None
+        )
         historico = historico_index.get(cuenta, {})
         has_2025 = bpa_block is not None
 
@@ -193,7 +200,9 @@ def join_bpa(
                 "pedania": props.get("pedania"),
                 # IDECor publishes this field in m² despite the name — convert.
                 "superficie_ha": _m2_to_ha(props.get("Superficie_Tierra_Rural")),
-                "valuacion": props.get("Valuacion_Tierra_Rural"),
+                # ``valuacion`` (Valuacion_Tierra_Rural) was a per-parcel fiscal
+                # value tied to the owner — paired with ``nomenclatura`` it
+                # functioned as a wealth fingerprint. Stripped on PII review.
                 "ley_forestal": ley_forestal,
                 "bpa_2025": bpa_block,
                 "bpa_historico": historico,
@@ -209,13 +218,18 @@ def join_bpa(
 
 def build_bpa_history(
     all_bpa_by_year: dict[int, list[dict[str, Any]]],
-) -> dict[str, dict[str, str]]:
-    """Flatten per-year BPA fetches to ``{cuenta: {year: n_explotacion}}``.
+) -> dict[str, dict[str, bool]]:
+    """Flatten per-year BPA fetches to ``{cuenta: {year: True}}``.
 
     Only keys where at least one year has a record appear.  2025 is excluded —
     it belongs to ``bpa_enriched.json`` (spec §bpa_history.json).
+
+    PII strip (Ley 25.326): the original value was the producer's
+    ``n_explotacion`` (full name). It now carries presence only — the
+    fact that the parcel had a BPA registered in that year — which is
+    the only signal the public map needed.
     """
-    history: dict[str, dict[str, str]] = {}
+    history: dict[str, dict[str, bool]] = {}
     for year, features in all_bpa_by_year.items():
         if year == 2025:
             continue
@@ -224,8 +238,5 @@ def build_bpa_history(
             cuenta = normalize_cuenta(props.get("cuenta"))
             if cuenta is None:
                 continue
-            name = props.get("n_explotacion")
-            if name is None:
-                continue
-            history.setdefault(cuenta, {})[str(year)] = str(name)
+            history.setdefault(cuenta, {})[str(year)] = True
     return history

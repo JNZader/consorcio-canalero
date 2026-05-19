@@ -40,6 +40,7 @@ from scripts.etl_pilar_verde.constants import (
     AGRO_PRESENTADA,
     AGRO_ZONAS,
     AGRO_ZONAS_SIMPLIFY_TOLERANCE,
+    BPA_2025_KEEP_PROPS,
     BPA_ENRICHED_SCHEMA_VERSION,
     BPA_LAYERS,
     CATASTRO_SOURCE,
@@ -61,7 +62,6 @@ from scripts.etl_pilar_verde.kml import kml_to_geojson
 from scripts.etl_pilar_verde.wfs import fetch_layer
 from scripts.etl_pilar_verde.writers import (
     build_bpa_historico_features,
-    geojson_bbox,
     simplify_features,
     thin_properties,
     write_geojson,
@@ -228,9 +228,7 @@ def run_etl(
     bpa_block = compute_bpa_kpis(enriched_parcels, zona_superficie_ha=zona_ha)
     # Use whatever the fetch phase staged (may be [] if fetch_grilla=False).
     grilla_block = compute_grilla_aggregates(staging.get("agro_grilla") or None)
-    zonas_block = compute_zonas_agroforestales_intersect(
-        staging["agro_zonas"], zona
-    )
+    zonas_block = compute_zonas_agroforestales_intersect(staging["agro_zonas"], zona)
 
     aggregates_payload = {
         "zona": {"nombre": "CC 10 de Mayo Ampliada", "superficie_ha": zona_ha},
@@ -245,6 +243,10 @@ def run_etl(
         staging["agro_zonas"], tolerance=AGRO_ZONAS_SIMPLIFY_TOLERANCE
     )
     forestacion_thinned = thin_properties(staging["porcentaje_forestacion"])
+    # PII strip — drop producer name + IDECor internal id from the public
+    # bpa_2025 layer. The aggregate BPA signal (ejes, prácticas, total,
+    # ``activa``) survives because that's what the map actually renders.
+    bpa_2025_public = thin_properties(staging["bpa_2025"], keep=BPA_2025_KEEP_PROPS)
 
     # 7. Write outputs — ONLY after all gates passed.
     # Zona ampliada also needs writing (target 9 files).
@@ -256,8 +258,11 @@ def run_etl(
     )
     write_geojson(
         outputs["bpa_2025"],
-        staging["bpa_2025"],
-        source=f"IDECor WFS {BPA_LAYERS[2025]}",
+        bpa_2025_public,
+        source=(
+            f"IDECor WFS {BPA_LAYERS[2025]} (PII-stripped to "
+            "{ejes, prácticas, superficies, bpa_total, activa, cuenta})"
+        ),
         generated_at=generated_at,
     )
     write_geojson(

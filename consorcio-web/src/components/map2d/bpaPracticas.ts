@@ -156,10 +156,8 @@ export function normalizeBpaFlat(
   }
 
   return {
-    n_explotacion: String(props.n_explotacion ?? ''),
     superficie_bpa: typeof props.superficie_bpa === 'number' ? props.superficie_bpa : 0,
     bpa_total: String(rawTotal),
-    id_explotacion: String(props.id_explotacion ?? ''),
     activa: normalizeActiva(props.activa),
     ejes,
     practicas,
