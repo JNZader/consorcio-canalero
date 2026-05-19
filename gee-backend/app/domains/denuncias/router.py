@@ -17,6 +17,7 @@ from app.domains.denuncias.schemas import (
     DenunciaUpdate,
 )
 from app.domains.denuncias.service import DenunciaService
+from app.shared.pagination import PaginatedResponse
 from app.shared.storage import (
     ALLOWED_PHOTO_MIME_TYPES,
     MAX_PHOTO_BYTES,
@@ -271,7 +272,7 @@ def get_stats(
     return service.get_stats(db)
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=PaginatedResponse[DenunciaListResponse])
 def list_denuncias(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -280,17 +281,17 @@ def list_denuncias(
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[DenunciaListResponse]:
     """Listar denuncias con paginacion y filtros (requiere operador)."""
     items, total = service.list_denuncias(
         db, page=page, limit=limit, estado=estado, cuenca=cuenca
     )
-    return {
-        "items": [DenunciaListResponse.model_validate(d) for d in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[DenunciaListResponse].create(
+        items=[DenunciaListResponse.model_validate(d) for d in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/{denuncia_id}", response_model=DenunciaResponse)

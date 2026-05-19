@@ -75,6 +75,10 @@ os.environ.update(
         "CORS_ORIGINS": "http://localhost:3000,http://localhost:5173",
         "DEBUG": "true",
         "FRONTEND_URL": "http://localhost:5173",
+        # Phase 4 / F4-D: writable photo path for the TestClient-based
+        # auth-gate tests. The production default ``/app/uploads`` is
+        # not writable from a local dev shell.
+        "UPLOADS_ROOT": "/tmp/consorcio-test-uploads",
     }
 )
 

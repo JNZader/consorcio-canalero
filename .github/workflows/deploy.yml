@@ -39,6 +39,13 @@ jobs:
       - run: ruff check .
       - run: mypy app/auth app/domains/padron app/domains/denuncias  # mypy.ini strict scope
       - run: python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q
+      # Phase 4 / F4-D: auth-gate regression test. ANY commit that
+      # accidentally drops a Depends() from a sensitive endpoint
+      # (padron / denuncias / finanzas / monitoring / uploads /
+      # admin) blocks the deploy at this step before the Docker image
+      # builds. No DB required — every assertion runs at the middleware
+      # / dependency layer.
+      - run: python3 -m pytest tests/new/test_auth_gates.py -q --no-header
 
   build-backend:
     name: Build Backend Image

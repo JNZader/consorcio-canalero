@@ -15,6 +15,7 @@ from app.domains.padron.schemas import (
     CsvImportResponse,
 )
 from app.domains.padron.service import PadronService
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/padron", tags=["padron"])
 
@@ -59,7 +60,7 @@ def get_stats(
 # ──────────────────────────────────────────────
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=PaginatedResponse[ConsorcistaListResponse])
 def list_consorcistas(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -69,7 +70,7 @@ def list_consorcistas(
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[ConsorcistaListResponse]:
     """Listar consorcistas con paginacion, filtros y busqueda (requiere operador)."""
     items, total = service.list_consorcistas(
         db,
@@ -79,12 +80,12 @@ def list_consorcistas(
         categoria=categoria,
         search=search,
     )
-    return {
-        "items": [ConsorcistaListResponse.model_validate(c) for c in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[ConsorcistaListResponse].create(
+        items=[ConsorcistaListResponse.model_validate(c) for c in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/{consorcista_id}", response_model=ConsorcistaResponse)
