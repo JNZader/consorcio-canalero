@@ -23,10 +23,16 @@ dayjs.locale('es');
 import { UpdateBanner } from './components/UpdateBanner';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
+import { initSentry } from './lib/sentry';
 import { mantineTheme } from './lib/theme';
 import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
+
+// Initialise error tracking as early as possible (before the router or
+// any other module-load code can throw). Silent no-op when
+// ``VITE_SENTRY_DSN`` is unset.
+initSentry();
 
 // Mantine styles first, then global overrides.
 import './styles/mantine-imports';

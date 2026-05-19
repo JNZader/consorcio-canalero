@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     # the env var can't reopen the bypass after the fail-fast check below.
     rate_limit_disabled: bool = False
 
+    # Error tracking (Sentry) — wired in app/main.py only when sentry_dsn
+    # is non-empty. Leaving it empty silently disables the integration
+    # (zero overhead, no network), which is the right default for dev
+    # and for installs that don't want to ship errors off-box.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0  # 0.0 = no transaction tracing
+    sentry_environment: str = ""  # falls back to settings.environment
+
     # App
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     api_prefix: str = "/api/v2"

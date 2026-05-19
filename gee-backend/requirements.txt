@@ -47,3 +47,6 @@ reportlab>=4.2.0
 
 # Structured Logging
 structlog>=24.1.0
+
+# Error tracking (init only fires when SENTRY_DSN is set — see app/main.py)
+sentry-sdk[fastapi,celery,sqlalchemy]>=2.0.0

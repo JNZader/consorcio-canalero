@@ -36,6 +36,34 @@ from app.core.health import (
 
 APP_VERSION = "2.0.0"
 
+
+def _init_sentry() -> None:
+    """Lazy Sentry init — only fires when SENTRY_DSN is set.
+
+    Off by default so dev and self-hosted operators that don't want to
+    ship errors off-box pay zero overhead. The integration list mirrors
+    the ``sentry-sdk[fastapi,celery,sqlalchemy]`` extras we install: the
+    FastAPI integration adds request context to every exception, Celery
+    catches worker errors, SQLAlchemy reports slow queries (sampled).
+    """
+    if not settings.sentry_dsn:
+        return
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment or settings.environment,
+        release=APP_VERSION,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        # PII off — we already redact reset tokens etc. and the audit
+        # explicitly avoids producer names in public surfaces. Sending
+        # cookies/IPs to Sentry would walk that back.
+        send_default_pii=False,
+    )
+
+
+_init_sentry()
+
 configure_structlog(
     json_format=not settings.debug,
     log_level="DEBUG" if settings.debug else "INFO",
