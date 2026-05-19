@@ -4,10 +4,19 @@ Carga variables de entorno y define settings.
 """
 
 import logging
+import os
 from pydantic_settings import BaseSettings
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Tokens / values we MUST refuse to start with when running outside of dev.
+# Detected via a fail-fast check on application boot (see bottom of file).
+INSECURE_DEFAULTS = {
+    "jwt_secret": {"CHANGE-ME-IN-PRODUCTION", ""},
+    "redis_password": {"changeme", ""},
+}
+MIN_JWT_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -29,6 +38,11 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+    # ``redis_password`` is the bare password used by Coolify / docker-compose
+    # for the Redis instance. Only read directly here for the fail-fast check
+    # below; runtime code consumes the full ``redis_url`` (which embeds the
+    # password in the URL form).
+    redis_password: str = ""
 
     # Geo Worker tile service (internal URL within Docker network)
     geo_worker_tile_url: str = "http://geo-worker:8001"
@@ -50,6 +64,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v2"
     debug: bool = False
     enable_docs: bool = True
+    environment: str = "development"  # "production" | "staging" | "development"
     frontend_url: str = "http://localhost:5173"
     api_base_url: str = (
         ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
@@ -84,6 +99,68 @@ class Settings(BaseSettings):
 
 # Instancia global de settings
 settings = Settings()  # type: ignore[call-arg]
+
+
+def _is_production_env(environment: str) -> bool:
+    """Treat ``staging`` as production for the safety checks."""
+    return environment.lower() in {"production", "prod", "staging"}
+
+
+def _enforce_production_secrets(s: Settings) -> None:
+    """Refuse to start in production with placeholder secrets.
+
+    Catches three high-impact misconfigurations the audit flagged:
+      - ``JWT_SECRET`` left at ``"CHANGE-ME-IN-PRODUCTION"`` or too short.
+      - ``REDIS_PASSWORD`` left at the well-known ``"changeme"``.
+      - ``RATE_LIMIT_DISABLED`` set to a truthy value (rate-limit off is
+        only acceptable in dev where the threat model is "me at my laptop").
+
+    Any of these in production is an instant security incident; failing
+    loud at startup is much safer than letting the app run with them.
+    """
+    if not _is_production_env(s.environment):
+        return
+
+    problems: list[str] = []
+
+    if s.jwt_secret in INSECURE_DEFAULTS["jwt_secret"]:
+        problems.append(
+            "JWT_SECRET is missing or set to the placeholder default; "
+            "generate a 32+ char random value (e.g. `openssl rand -hex 32`)."
+        )
+    elif len(s.jwt_secret) < MIN_JWT_SECRET_LENGTH:
+        problems.append(
+            f"JWT_SECRET is too short ({len(s.jwt_secret)} chars); "
+            f"must be at least {MIN_JWT_SECRET_LENGTH} characters."
+        )
+
+    if s.redis_password in INSECURE_DEFAULTS["redis_password"]:
+        # Empty is allowed in environments where Redis isn't password-
+        # protected at all (e.g. inside a private docker network and not
+        # reachable externally) — but ``changeme`` is never OK.
+        if s.redis_password == "changeme":
+            problems.append(
+                "REDIS_PASSWORD is set to the placeholder 'changeme'; "
+                "rotate it to a real secret."
+            )
+
+    rate_limit_disabled = os.getenv("RATE_LIMIT_DISABLED", "").strip().lower()
+    if rate_limit_disabled in {"1", "true", "yes", "on"}:
+        problems.append(
+            "RATE_LIMIT_DISABLED is truthy in a production environment; "
+            "unset it or set it to 'false'."
+        )
+
+    if problems:
+        message = (
+            "Refusing to start with insecure configuration:\n  - "
+            + "\n  - ".join(problems)
+        )
+        raise RuntimeError(message)
+
+
+_enforce_production_secrets(settings)
+
 
 if not settings.martin_public_url:
     logger.warning(

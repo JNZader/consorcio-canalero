@@ -79,6 +79,8 @@ services:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro
       - ./credentials:/app/credentials:ro
+      # Persist denuncia photos so they survive container rebuilds.
+      - denuncia-uploads:/app/uploads
     networks:
       - proxy
       - consorcio-internal
@@ -217,3 +219,5 @@ volumes:
     name: consorcio-postgres-data
   geo-data:
     name: consorcio-geo-data
+  denuncia-uploads:
+    name: consorcio-denuncia-uploads

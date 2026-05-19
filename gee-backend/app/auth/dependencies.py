@@ -1,5 +1,6 @@
 """Auth dependencies — user manager, backends, and role guards."""
 
+import hashlib
 import logging
 import uuid
 from typing import Annotated
@@ -42,15 +43,25 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     ) -> None:
         """Handle forgot-password token generation.
 
-        When SMTP is configured, this should send the reset email.
-        For now, we build the reset URL and log it so the admin
-        can manually deliver it or test the flow.
+        SECURITY: never log the token or the reset URL. The token is a
+        valid one-shot credential that lets ANYONE with read-access to
+        the logs reset this account's password. Until SMTP is wired,
+        operators can manually request a token via the admin panel (or
+        via a CLI command) for the user — never via the application log.
         """
-        reset_url = f"{settings.frontend_url}/reset-password?token={token}"
+        # Build the reset URL but do NOT log it. Use the hashed token id
+        # so the log entry still helps correlate "user X requested reset
+        # at time T" with any later support ticket, without leaking the
+        # secret itself.
+        token_fingerprint = hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
         logger.info(
-            "Password reset requested for %s — reset URL: %s",
-            user.email,
-            reset_url,
+            "Password reset requested",
+            extra={
+                "user_email_hash": hashlib.sha256(
+                    user.email.lower().encode("utf-8")
+                ).hexdigest()[:12],
+                "token_fingerprint": token_fingerprint,
+            },
         )
         # TODO: Send email via SMTP when configured.
         # See PENDIENTES.md: "Necesita configurar envio de email (SMTP o servicio)"

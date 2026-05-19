@@ -37,6 +37,10 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - geo-data:/data/geo
+      # User-uploaded denuncia photos live here. Without a named volume the
+      # files vanish on every `docker compose up -d --pull` (image rebuild),
+      # which is exactly what happened in past deploys.
+      - denuncia-uploads:/app/uploads
     networks:
       - proxy
       - backend
@@ -164,3 +168,7 @@ networks:
 volumes:
   geo-data:
     name: consorcio-geo-data
+  # Named volume so denuncia photos survive `docker compose up -d` and
+  # image rebuilds. Back up with `docker run --rm -v consorcio-denuncia-uploads:/data ...`.
+  denuncia-uploads:
+    name: consorcio-denuncia-uploads
