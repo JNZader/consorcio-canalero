@@ -144,15 +144,24 @@ export default defineConfig({
                 // covers ~2 zoom levels of the AOI and stays within
                 // the strictest mobile budget.
                 maxEntries: 800,
-                maxAgeSeconds: 60 * 60 * 24 * 14,  // 14 days
+                // 3 days — the ETL re-runs weekly, plus SWR keeps
+                // serving stale tiles without re-rendering after the
+                // background refresh, so a longer TTL would carry
+                // bad-deploy tiles forward for too long. Three days
+                // catches the next weekly cycle.
+                maxAgeSeconds: 60 * 60 * 24 * 3,
               },
               cacheableResponse: {
                 // Drop the ``0`` opaque-response status — these tiles
-                // are SAME-origin so they always come back as 200 or
-                // an error. Allowing ``0`` would silently cache CORS
-                // failures from any third-party that the URL pattern
-                // ever matched.
-                statuses: [200],
+                // are SAME-origin so they always come back as 200,
+                // 204, or an error. Allowing ``0`` would silently
+                // cache CORS failures from any third-party that the
+                // URL pattern ever matched.
+                //
+                // ``204`` is included because the geo-worker returns
+                // it for tiles outside the layer AOI bounds — without
+                // caching, every pan over an empty region re-fetches.
+                statuses: [200, 204],
               },
             },
           },

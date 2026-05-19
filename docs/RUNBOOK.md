@@ -231,29 +231,20 @@ SPF/DKIM/DMARC.
 
 ### 1.6 Things that look weird but are by design
 
-- **Boot logs duplicated.** ``uvicorn`` runs with ``--workers 2`` since
-  Phase 3. Every module-level log line in ``app/main.py`` (rate-limiter
-  init, GEE pre-init, cache-warming queued) fires once per worker, so
-  ``Starting Consorcio Canalero Backend v2...`` appears twice on a
-  fresh deploy. Not a bug — a later phase adds a ``worker_id`` field
-  to the structured logger; until then a Sentry/BetterStack dedup
-  rule on identical-message-within-1s is the pragmatic mitigation.
-- **PWA icons are a green ``CC`` placeholder.** Phase 3 / F3-F
-  generated three programmatic PNGs (192, 512, 512-maskable). The
-  maskable is RGB, not RGBA — some Android launchers (MIUI, One UI)
-  may render minor artifacts on the outer mask. Drop a real logo
-  into ``consorcio-web/public/icons/icon-{192,512,512-maskable}.png``
-  to replace; the manifest paths stay stable.
-- **Celery worker → 2 forks with a smaller DB pool.**
-  ``app/db/session.py`` detects whether the process is a Celery worker
-  (``sys.argv`` inspection) and shrinks the pool to ``5 + 5``. Don't
-  be surprised by ``QueuePool size=5`` in celery logs — it's intentional;
-  the alternative was 160 connections against a 100 ``max_connections``
-  budget on the shared postgres.
-- **``celery-beat`` is a singleton.** Plain ``docker compose up -d
-  --scale celery-beat=2`` would corrupt the schedule db. Don't scale
-  it. Phase 4 backlog has a redbeat migration that would fix this
-  properly.
+See **[docs/KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)** for the full
+list with rationale + expected-fix milestones. Quick reference:
+
+- Boot logs duplicated (2 uvicorn workers).
+- PWA icons are a green "CC" placeholder; replace under
+  ``consorcio-web/public/icons/``.
+- Celery DB pool intentionally smaller than backend (5+5 vs 20+20).
+- ``celery-beat`` is a singleton — do NOT ``--scale celery-beat=2``.
+- ``logout-all`` has a ≤15 min residual access-token window.
+- SMTP message bodies log to provider; switch to API mode to avoid.
+- Refresh-token replay-detection timing has a microsecond-grade
+  side-channel residual (theoretical, sub-threat-model).
+- Mantine CSS imports stay monolithic until v9 lands.
+- React Compiler opted-out on `LocationSection.tsx` + `TerrainViewer3D.tsx`.
 
 ---
 

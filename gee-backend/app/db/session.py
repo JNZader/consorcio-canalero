@@ -1,5 +1,6 @@
 """SQLAlchemy engine and session factory (sync + async for fastapi-users)."""
 
+import os
 import sys
 from collections.abc import AsyncGenerator, Generator
 
@@ -17,8 +18,17 @@ from app.config import settings
 # pushing the stack to 160 against a typical max_connections=100. The
 # Celery path is I/O-light — one connection per task — so a much
 # smaller pool is plenty.
-_IS_CELERY_PROCESS = any(
-    arg.endswith("celery") or "celery " in (arg + " ") for arg in sys.argv
+#
+# Phase 3.2 / post-3vr again: only inspect ``sys.argv[0]`` (the
+# executable) so ``pytest tests/celery_something`` doesn't false-
+# positive into the Celery pool. ``celery`` workers always invoke
+# the ``celery`` binary directly (or ``python -m celery``); in the
+# ``-m`` case ``sys.argv[0]`` becomes the ``runpy`` shim's path
+# which still ends in ``/celery/__main__.py``, so the basename
+# check below handles both.
+_argv0_basename = os.path.basename(sys.argv[0] if sys.argv else "").lower()
+_IS_CELERY_PROCESS = _argv0_basename in {"celery", "celery.exe", "__main__.py"} and any(
+    "celery" in arg for arg in sys.argv[:3]
 )
 _POOL_SIZE = 5 if _IS_CELERY_PROCESS else 20
 _MAX_OVERFLOW = 5 if _IS_CELERY_PROCESS else 20
