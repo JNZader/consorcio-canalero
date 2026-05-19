@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -166,6 +167,14 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=get_rate_limiter())
 app.add_middleware(GZipMiddleware, minimum_size=500)
+# Host-header validation — derived from CORS_ORIGINS + API_BASE_URL + the
+# loopback aliases the Docker healthcheck uses. Refuses requests whose
+# ``Host`` header doesn't match any allowed name, which closes URL-
+# rewriting / cookie-scoping attacks based on a forged Host. Only added
+# when we actually have a host list (dev with default settings would
+# block /live calls from inside docker if we weren't careful, but the
+# loopback aliases above prevent that).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

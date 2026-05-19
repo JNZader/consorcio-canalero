@@ -111,6 +111,32 @@ class Settings(BaseSettings):
 
         return sorted(origins)
 
+    @property
+    def trusted_hosts(self) -> list[str]:
+        """Allowed ``Host`` header values for ``TrustedHostMiddleware``.
+
+        Derived from CORS origins + the API base URL hostname + the
+        local loopback aliases the Docker healthcheck uses
+        (``localhost``, ``127.0.0.1``). Without this any client can
+        send ``Host: attacker.example`` and our app responds — which
+        breaks URL rewriting (password reset links, OAuth redirects),
+        cookie scoping, and any auditable hostname check downstream.
+        """
+        from urllib.parse import urlparse
+
+        hosts: set[str] = set()
+        for url in self.cors_origins_list:
+            parsed = urlparse(url)
+            if parsed.hostname:
+                hosts.add(parsed.hostname)
+        if self.api_base_url:
+            parsed = urlparse(self.api_base_url)
+            if parsed.hostname:
+                hosts.add(parsed.hostname)
+        # Docker healthcheck hits localhost:8000 from inside the container.
+        hosts.update({"localhost", "127.0.0.1"})
+        return sorted(hosts)
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
