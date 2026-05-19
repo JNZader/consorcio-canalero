@@ -64,6 +64,13 @@ if settings.google_oauth_client_id:
     # callback URL and make a victim sign in as the attacker's Google account.
     _OAUTH_STATE_COOKIE = "oauth_state"
     _OAUTH_STATE_MAX_AGE = 600  # 10 minutes — generous for slow Google flows.
+    # Narrow the cookie scope to the OAuth endpoints only. Path=/ would
+    # make the cookie ride on every backend request, which is both wider
+    # than necessary and a small leak surface (any future endpoint that
+    # echoes a header could surface it). Both ``set_cookie`` and
+    # ``delete_cookie`` MUST use the same Path or the browser won't
+    # find the cookie on the callback.
+    _OAUTH_STATE_COOKIE_PATH = "/api/v2/auth/google/"
 
     _oauth_logger = logging.getLogger(__name__)
 
@@ -110,8 +117,22 @@ if settings.google_oauth_client_id:
     from sqlalchemy import select as sa_select
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    def _is_https_request(request: Request) -> bool:
-        """True when the request was served over HTTPS (incl. via X-Forwarded-Proto)."""
+    def _is_secure_request(request: Request) -> bool:
+        """True when the cookie's ``Secure`` flag MUST be set.
+
+        In production/staging we force ``True`` regardless of headers — the
+        backend is only reachable via Caddy/HTTPS in those envs and reading
+        ``X-Forwarded-Proto`` would otherwise trust a client-supplied header
+        (no ``forwarded_allow_ips`` whitelist is wired today, so any upstream
+        that bypasses the reverse proxy could forge it).
+
+        In dev we fall back to the request scheme so HTTP localhost still
+        works without a Secure-cookie rejection.
+        """
+        from app.config import _is_production_env
+
+        if _is_production_env(settings.environment):
+            return True
         if request.url.scheme == "https":
             return True
         forwarded = request.headers.get("x-forwarded-proto", "")
@@ -139,23 +160,33 @@ if settings.google_oauth_client_id:
         )
 
         response = JSONResponse({"authorization_url": authorization_url})
+        secure = _is_secure_request(request)
+        # SameSite policy:
+        #  - HTTPS prod (Cloudflare Pages frontend → Hetzner backend, cross-
+        #    origin): use ``none`` so the cookie travels on the cross-site
+        #    response. ``none`` REQUIRES ``Secure=true`` per spec; we set
+        #    both together. The CSRF protection still holds because the
+        #    server compares the cookie to Google's echoed state.
+        #  - Dev (HTTP localhost, same-origin via Vite proxy): ``lax``
+        #    is enough and avoids the ``Secure`` requirement.
+        same_site = "none" if secure else "lax"
         response.set_cookie(
             key=_OAUTH_STATE_COOKIE,
             value=state_nonce,
             max_age=_OAUTH_STATE_MAX_AGE,
             httponly=True,
-            # SameSite=lax is required: the callback is reached via top-level
-            # navigation from accounts.google.com, so SameSite=strict would
-            # strip the cookie. ``none`` would weaken the CSRF protection.
-            samesite="lax",
-            secure=_is_https_request(request),
-            path="/",
+            samesite=same_site,
+            secure=secure,
+            path=_OAUTH_STATE_COOKIE_PATH,
         )
         return response
 
     def _clear_state_cookie(response: RedirectResponse) -> None:
-        """Delete the oauth_state cookie after a callback (success or fail)."""
-        response.delete_cookie(_OAUTH_STATE_COOKIE, path="/")
+        """Delete the oauth_state cookie after a callback (success or fail).
+
+        Path MUST match the set_cookie call, or the browser won't unset it.
+        """
+        response.delete_cookie(_OAUTH_STATE_COOKIE, path=_OAUTH_STATE_COOKIE_PATH)
 
     @router.get("/auth/google/callback", tags=["auth"])
     async def google_oauth_callback(
@@ -283,9 +314,19 @@ if settings.google_oauth_client_id:
             return response
 
         except Exception as exc:
+            # Log the full exception server-side, but redact the user-visible
+            # ``error_description`` — ``str(exc)`` can surface SQLAlchemy
+            # internals, file paths, or DSN fragments that don't belong in
+            # the browser address bar or history.
             _oauth_logger.exception("Google OAuth callback failed: %s", exc)
+            from app.config import _is_production_env
+
+            if _is_production_env(settings.environment):
+                description = "OAuth flow failed; please retry."
+            else:
+                description = str(exc)
             response = RedirectResponse(
-                url=f"{frontend_callback}?{urlencode({'error': 'auth_failed', 'error_description': str(exc)})}"
+                url=f"{frontend_callback}?{urlencode({'error': 'auth_failed', 'error_description': description})}"
             )
             _clear_state_cookie(response)
             return response

@@ -90,11 +90,12 @@ export class JWTAuthAdapter implements AuthAdapter {
     // ``credentials: 'include'`` is required so the browser stores the
     // backend's ``oauth_state`` cookie (anti-CSRF nonce). Without it the
     // callback will always 401 on cross-origin deploys (Cloudflare Pages
-    // frontend + Hetzner backend on a different domain).
+    // frontend + Hetzner backend on a different domain). No request body
+    // and no custom headers → stays a "simple" CORS GET and avoids an
+    // unnecessary preflight.
     const response = await fetch(`${AUTH_BASE}/auth/google/authorize`, {
       method: 'GET',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {

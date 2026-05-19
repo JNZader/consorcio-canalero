@@ -4,7 +4,6 @@ Carga variables de entorno y define settings.
 """
 
 import logging
-import os
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -16,7 +15,7 @@ INSECURE_DEFAULTS = {
     "jwt_secret": {"CHANGE-ME-IN-PRODUCTION", ""},
     "redis_password": {"changeme", ""},
 }
-MIN_JWT_SECRET_LENGTH = 32
+MIN_JWT_SECRET_LENGTH = 64  # bytes — matches `openssl rand -hex 32` recommendation
 
 
 class Settings(BaseSettings):
@@ -58,6 +57,10 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = 100
     rate_limit_window: int = 60
+    # Read once at boot — middleware references settings.rate_limit_disabled,
+    # not os.getenv at request time. That way an in-process mutation of
+    # the env var can't reopen the bypass after the fail-fast check below.
+    rate_limit_disabled: bool = False
 
     # App
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
@@ -126,13 +129,18 @@ def _enforce_production_secrets(s: Settings) -> None:
     if s.jwt_secret in INSECURE_DEFAULTS["jwt_secret"]:
         problems.append(
             "JWT_SECRET is missing or set to the placeholder default; "
-            "generate a 32+ char random value (e.g. `openssl rand -hex 32`)."
+            "generate a 64+ byte random value (e.g. `openssl rand -hex 32`)."
         )
-    elif len(s.jwt_secret) < MIN_JWT_SECRET_LENGTH:
-        problems.append(
-            f"JWT_SECRET is too short ({len(s.jwt_secret)} chars); "
-            f"must be at least {MIN_JWT_SECRET_LENGTH} characters."
-        )
+    else:
+        # Count bytes, not chars — a 32-char unicode string can be much
+        # less than 32 bytes of HMAC key material.
+        secret_bytes = len(s.jwt_secret.encode("utf-8"))
+        if secret_bytes < MIN_JWT_SECRET_LENGTH:
+            problems.append(
+                f"JWT_SECRET is too short ({secret_bytes} bytes); "
+                f"must be at least {MIN_JWT_SECRET_LENGTH} bytes "
+                "(use `openssl rand -hex 32` for 64-byte hex)."
+            )
 
     if s.redis_password in INSECURE_DEFAULTS["redis_password"]:
         # Empty is allowed in environments where Redis isn't password-
@@ -144,12 +152,33 @@ def _enforce_production_secrets(s: Settings) -> None:
                 "rotate it to a real secret."
             )
 
-    rate_limit_disabled = os.getenv("RATE_LIMIT_DISABLED", "").strip().lower()
-    if rate_limit_disabled in {"1", "true", "yes", "on"}:
+    # ``s.rate_limit_disabled`` is parsed by pydantic-settings from the
+    # env var (with "1"/"true"/"yes"/"on" → True). Reading the parsed
+    # field instead of os.getenv keeps the boot-time check aligned with
+    # what the middleware actually sees at runtime — no normalization
+    # drift between the two code paths.
+    if s.rate_limit_disabled:
         problems.append(
             "RATE_LIMIT_DISABLED is truthy in a production environment; "
             "unset it or set it to 'false'."
         )
+
+    # CORS hardening — with credentials: 'include' on the OAuth flow, a
+    # mis-set CORS_ORIGINS that includes localhost or the wildcard '*'
+    # becomes a credentialed-CSRF foothold. Refuse to start.
+    raw_cors = (settings.cors_origins or "").strip()
+    if raw_cors == "" or "*" in raw_cors:
+        problems.append(
+            "CORS_ORIGINS is empty or contains '*' in production; "
+            "set an explicit comma-separated list of frontend origins."
+        )
+    else:
+        dev_hosts = ("localhost", "127.0.0.1", "0.0.0.0")
+        if any(host in entry for entry in s.cors_origins_list for host in dev_hosts):
+            problems.append(
+                "CORS_ORIGINS contains a localhost/dev origin in production; "
+                "remove dev entries from the env var."
+            )
 
     if problems:
         message = (

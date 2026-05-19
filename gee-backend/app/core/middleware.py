@@ -50,10 +50,12 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/", "/health"] or "/tiles/" in request.url.path:
             return await call_next(request)
 
-        # Skip rate limiting when disabled via env (local dev / E2E)
-        import os
-
-        if os.getenv("RATE_LIMIT_DISABLED", "").lower() in ("1", "true", "yes"):
+        # Skip rate limiting when disabled via settings (local dev / E2E).
+        # ``settings.rate_limit_disabled`` is read once at boot from the
+        # env var; the production fail-fast check in app/config.py refuses
+        # to start if this is truthy outside dev, so reaching this branch
+        # in prod is structurally impossible.
+        if settings.rate_limit_disabled:
             return await call_next(request)
 
         # Prefer per-user rate limiting when authenticated; fall back to IP.
