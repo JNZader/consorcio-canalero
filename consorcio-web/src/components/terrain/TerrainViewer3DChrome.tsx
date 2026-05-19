@@ -65,6 +65,7 @@ interface TerrainViewer3DChromeProps {
   vectorLayerVisibility: Record<string, boolean>;
   onVectorLayerToggle: (layerId: string, visible: boolean) => void;
   hasApprovedZones: boolean;
+  intersectionsLength?: number;
   ready: boolean;
   selectedImage: SelectedImageSummary | null;
   /**
@@ -134,6 +135,7 @@ export function TerrainViewer3DChrome({
   vectorLayerVisibility,
   onVectorLayerToggle,
   hasApprovedZones,
+  intersectionsLength = 0,
   ready,
   selectedImage,
   etapasVisibility,
@@ -300,6 +302,7 @@ export function TerrainViewer3DChrome({
             vectorLayerVisibility={vectorLayerVisibility}
             onVectorLayerToggle={onVectorLayerToggle}
             hasApprovedZones={hasApprovedZones}
+            intersectionsLength={intersectionsLength}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
             embedded

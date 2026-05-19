@@ -17,7 +17,9 @@ import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
 import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
+import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
+import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../../hooks/useSelectedImage';
@@ -194,6 +196,12 @@ export default function TerrainViewer3D({
     enabled: !!sharedMap3dVectors.catastro,
   });
   const { soilMap } = useSoilMap({ enabled: !!sharedMap3dVectors.soil });
+  // Conflictos points (canal/road intersections). The hook returns null when
+  // the user isn't authenticated, so the panel toggle hides itself for
+  // anonymous visitors. Counting features here drives the panel's "show"
+  // condition (mirror of ``map2dDerived.ts:230``).
+  const { conflictos } = useConflictos();
+  const intersectionsLength = conflictos?.features?.length ?? 0;
   // Pilar Verde + Pilar Azul (Canales) — strict mirror of 2D MapaMapLibre
   // wiring. The hooks share TanStack cache keys with the 2D viewer, so when
   // both viewers mount in the same session the static GeoJSON assets are
@@ -513,6 +521,16 @@ export default function TerrainViewer3D({
             tileSize: 256,
             attribution: '&copy; Esri',
           },
+          // Martin MVT — same source the 2D viewer consumes via
+          // ``syncMartinSuggestionLayers``. Always declared, controlled by
+          // visibility, so the effect downstream only flips the layer
+          // visibility instead of mutating sources.
+          puntos_conflicto_src: {
+            type: 'vector',
+            tiles: [getMartinTileUrl('puntos_conflicto')],
+            minzoom: 0,
+            maxzoom: 22,
+          },
         },
         layers: [
           {
@@ -534,6 +552,24 @@ export default function TerrainViewer3D({
             type: 'raster',
             source: 'terrain-texture',
             paint: { 'raster-opacity': overlayOpacityRef.current },
+          },
+          // Conflictos puntos — drawn on top of every raster, drape onto
+          // the 3D terrain automatically because MapLibre samples the
+          // terrain elevation for any non-raster layer. Visibility flips
+          // via an effect below.
+          {
+            id: 'puntos_conflicto-circle',
+            type: 'circle',
+            source: 'puntos_conflicto_src',
+            'source-layer': MARTIN_SOURCES.puntos_conflicto.table,
+            layout: { visibility: 'none' },
+            paint: {
+              'circle-color': MARTIN_SOURCES.puntos_conflicto.style.fillColor,
+              'circle-opacity': MARTIN_SOURCES.puntos_conflicto.style.fillOpacity,
+              'circle-radius': MARTIN_SOURCES.puntos_conflicto.style.radius,
+              'circle-stroke-color': MARTIN_SOURCES.puntos_conflicto.style.color,
+              'circle-stroke-width': MARTIN_SOURCES.puntos_conflicto.style.weight,
+            },
           },
         ],
         terrain: {
@@ -675,6 +711,21 @@ export default function TerrainViewer3D({
       overlayCoversEverything ? 'none' : 'visible'
     );
   }, [activeRasterTileUrl, overlayOpacity, ready]);
+
+  // Puntos de conflicto — same layer/source the 2D viewer consumes via
+  // Martin. Visibility tracks ``vectorLayerVisibility.puntos_conflicto``.
+  const puntosConflictoVisible =
+    !!sharedMap3dVectors.puntos_conflicto && intersectionsLength > 0;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!map.getLayer('puntos_conflicto-circle')) return;
+    map.setLayoutProperty(
+      'puntos_conflicto-circle',
+      'visibility',
+      puntosConflictoVisible ? 'visible' : 'none'
+    );
+  }, [puntosConflictoVisible, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -846,6 +897,7 @@ export default function TerrainViewer3D({
         vectorLayerVisibility={vectorLayerVisibility}
         onVectorLayerToggle={handleVectorLayerToggle}
         hasApprovedZones={!!approvedZonesCollection}
+        intersectionsLength={intersectionsLength}
         ready={ready}
         selectedImage={selectedImage}
         etapasVisibility={etapasVisibility}

@@ -39,6 +39,11 @@ export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },
   { id: 'soil', label: 'Suelos IDECOR 1:50.000', status: 'supported' },
   { id: 'catastro', label: 'Catastro rural IDECOR', status: 'supported' },
+  // Mirror of the 2D map's "Puntos conflicto" toggle — only meaningful
+  // when the user is authenticated AND the backend reports intersections.
+  // The panel hides this row when ``intersectionsLength === 0`` (see the
+  // ``hiddenByContext`` check below).
+  { id: 'puntos_conflicto', label: 'Puntos conflicto', status: 'supported' },
 ];
 
 const supportedRasterTypeSet = new Set(

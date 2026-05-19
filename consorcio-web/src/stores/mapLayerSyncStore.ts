@@ -121,17 +121,15 @@ const defaultVisibleVectors: Record<string, boolean> = {
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
 
+// Map3D defaults intentionally mirror Map2D now — the historical OFF-by-
+// default was a workaround for the render budget, but ``maxTileCacheSize``,
+// ``prefetchZoomDelta: 0`` and the lazy-load of pilar verde / catastro /
+// soil make starting with the core layers (roads, waterways, canales
+// relevados) visible affordable on every viewer. The user sees a
+// consistent map between the 2D and 3D toggles instead of a fresh-looking
+// blank scene when they switch from 2D.
 const defaultMap3dVisibleVectors: Record<string, boolean> = {
   ...defaultVisibleVectors,
-  roads: false,
-  waterways: false,
-  waterways_rio_tercero: false,
-  waterways_canal_desviador: false,
-  waterways_canal_litin_tortugas: false,
-  waterways_arroyo_algodon: false,
-  waterways_arroyo_las_mojarras: false,
-  canales_relevados: false,
-  canales_propuestos: false,
 };
 
 const inMemoryStorage = {
@@ -379,17 +377,39 @@ export const useMapLayerSyncStore = create<
       // Migration history:
       //   v1 → v2 (2026-05-18): force `terrainSmoothingEnabled = true` so
       //   the 3D viewer launches with the despike pipeline on by default.
-      version: 2,
+      //   v2 → v3 (2026-05-19): unify 3D defaults with 2D so users see
+      //   roads / waterways / canales_relevados ON on the 3D side too.
+      version: 3,
       migrate: (persistedState, fromVersion) => {
         const state = (persistedState as Partial<MapLayerSyncStoreState>) ?? {};
+        let next = state;
         if (fromVersion < 2) {
-          return {
-            ...state,
+          next = {
+            ...next,
             terrainSmoothingEnabled: true,
-            terrainSmoothingThreshold: state.terrainSmoothingThreshold ?? 'med',
+            terrainSmoothingThreshold: next.terrainSmoothingThreshold ?? 'med',
           };
         }
-        return state;
+        if (fromVersion < 3 && next.map3d) {
+          next = {
+            ...next,
+            map3d: {
+              ...next.map3d,
+              visibleVectors: {
+                ...next.map3d.visibleVectors,
+                roads: true,
+                waterways: true,
+                waterways_rio_tercero: true,
+                waterways_canal_desviador: true,
+                waterways_canal_litin_tortugas: true,
+                waterways_arroyo_algodon: true,
+                waterways_arroyo_las_mojarras: true,
+                canales_relevados: true,
+              },
+            },
+          };
+        }
+        return next;
       },
       partialize: (state) => ({
         map2d: {

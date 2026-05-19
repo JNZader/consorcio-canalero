@@ -30,6 +30,7 @@ import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text } from '
 import { useMemo } from 'react';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { getActiveAttributions } from '../map2d/layerAttributions';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
@@ -69,6 +70,12 @@ interface TerrainLayerTogglesPanelProps {
   /** Optional — when omitted, no close button is rendered (used in embedded mode). */
   readonly onClose?: () => void;
   readonly hasApprovedZones: boolean;
+  /**
+   * Number of canal/road conflict points returned by ``useConflictos``.
+   * When 0, the panel hides the "Puntos conflicto" row entirely (the
+   * toggle would have nothing to switch).
+   */
+  readonly intersectionsLength?: number;
   readonly canalesRelevadosItems?: readonly { id: string; label: string }[];
   readonly canalesPropuestosItems?: readonly { id: string; label: string }[];
   /**
@@ -77,6 +84,89 @@ interface TerrainLayerTogglesPanelProps {
    * grid below the map. Defaults to `false` (legacy floating overlay).
    */
   readonly embedded?: boolean;
+}
+
+/**
+ * Render a "master + per-canal children" block matching the 2D viewer's
+ * ``LayerControlsPanel`` behaviour:
+ *   - the master checkbox shows the aggregate state (all / some /
+ *     indeterminate) of its children and a label that flips between
+ *     "Encender todos los X" / "Apagar todos los X";
+ *   - clicking the master is a bulk action that prends/apaga every child;
+ *   - individual checkboxes are never disabled; activating one while the
+ *     master is OFF auto-promotes the master to ON, otherwise the
+ *     visibility gate would hide the canal and confuse the user.
+ *
+ * This is shared with the 2D viewer in spirit only — TerrainLayerTogglesPanel
+ * lives in 280px-wide chrome with a flat (non-folder-grouped) child list,
+ * while the 2D panel groups by ``tramo_folder`` via CollapsibleSection.
+ */
+function renderCanalesGroup({
+  masterLabel,
+  masterFlag,
+  masterOn,
+  items,
+  vectorLayerVisibility,
+  onVectorLayerToggle,
+}: {
+  masterLabel: 'relevados' | 'propuestos';
+  masterFlag: 'canales_relevados' | 'canales_propuestos';
+  masterOn: boolean;
+  items: readonly { id: string; label: string }[] | undefined;
+  vectorLayerVisibility: Record<string, boolean>;
+  onVectorLayerToggle: (layerId: string, visible: boolean) => void;
+}) {
+  const childIds = items?.map((it) => it.id) ?? [];
+  const visibleCount = childIds.reduce(
+    (n, id) => n + (vectorLayerVisibility[id] ? 1 : 0),
+    0
+  );
+  const hasChildren = childIds.length > 0;
+  const allOn = hasChildren && visibleCount === childIds.length;
+  const allOff = !hasChildren || visibleCount === 0;
+  const indeterminate = hasChildren && !allOn && !allOff;
+  const dynamicLabel = !hasChildren
+    ? `Canales ${masterLabel}`
+    : allOn
+      ? `Apagar todos los ${masterLabel}`
+      : `Encender todos los ${masterLabel}`;
+  return (
+    <>
+      <Checkbox
+        size="xs"
+        label={dynamicLabel}
+        checked={allOn}
+        indeterminate={indeterminate}
+        onChange={(event) => {
+          const next = event.currentTarget.checked;
+          onVectorLayerToggle(masterFlag, next);
+          for (const childId of childIds) {
+            onVectorLayerToggle(childId, next);
+          }
+        }}
+      />
+      {items && items.length > 0 && (
+        <Stack gap={2} pl="md">
+          {items.map((item) => (
+            <Checkbox
+              key={item.id}
+              size="xs"
+              label={item.label}
+              checked={vectorLayerVisibility[item.id] ?? true}
+              onChange={(event) => {
+                const next = event.currentTarget.checked;
+                onVectorLayerToggle(item.id, next);
+                if (next && !masterOn) {
+                  // Auto-promote master so the layer actually renders.
+                  onVectorLayerToggle(masterFlag, true);
+                }
+              }}
+            />
+          ))}
+        </Stack>
+      )}
+    </>
+  );
 }
 
 export function TerrainLayerTogglesPanel({
@@ -90,6 +180,7 @@ export function TerrainLayerTogglesPanel({
   onVectorLayerToggle,
   onClose,
   hasApprovedZones,
+  intersectionsLength = 0,
   canalesRelevadosItems,
   canalesPropuestosItems,
   embedded = false,
@@ -225,20 +316,68 @@ export function TerrainLayerTogglesPanel({
             titleWeight={600}
           >
             <Stack gap={4}>
-              {PRIORITY_3D_VECTOR_LAYERS.map((layer) => (
-                <Checkbox
-                  key={layer.id}
-                  size="xs"
-                  checked={vectorLayerVisibility[layer.id] ?? false}
-                  disabled={layer.status !== 'supported'}
-                  onChange={(event) => onVectorLayerToggle(layer.id, event.currentTarget.checked)}
-                  label={
-                    layer.status === 'supported'
-                      ? layer.label
-                      : `${layer.label} (${layer.status === 'planned' ? 'pendiente' : layer.status})`
-                  }
-                />
-              ))}
+              {PRIORITY_3D_VECTOR_LAYERS.map((layer) => {
+                // Conflict points only meaningful when the backend reports
+                // at least one intersection. Same gating rule the 2D
+                // viewer applies (``map2dDerived.ts:230``).
+                if (layer.id === 'puntos_conflicto' && intersectionsLength === 0) {
+                  return null;
+                }
+                // Hidrografía gets sub-toggles so the user can choose which
+                // individual waterway to show (Río Tercero, Canal Desviador,
+                // etc.) — matches the 2D viewer.
+                if (layer.id === 'waterways') {
+                  const masterOn = vectorLayerVisibility.waterways ?? false;
+                  return (
+                    <Stack key={layer.id} gap={2}>
+                      <Checkbox
+                        size="xs"
+                        checked={masterOn}
+                        onChange={(event) =>
+                          onVectorLayerToggle(layer.id, event.currentTarget.checked)
+                        }
+                        label={layer.label}
+                      />
+                      <Stack gap={2} pl="md">
+                        {WATERWAY_DEFS.map((def) => {
+                          const subKey = `waterways_${def.id}`;
+                          return (
+                            <Checkbox
+                              key={subKey}
+                              size="xs"
+                              checked={vectorLayerVisibility[subKey] ?? true}
+                              onChange={(event) => {
+                                const next = event.currentTarget.checked;
+                                onVectorLayerToggle(subKey, next);
+                                if (next && !masterOn) {
+                                  onVectorLayerToggle(layer.id, true);
+                                }
+                              }}
+                              label={def.nombre}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    </Stack>
+                  );
+                }
+                return (
+                  <Checkbox
+                    key={layer.id}
+                    size="xs"
+                    checked={vectorLayerVisibility[layer.id] ?? false}
+                    disabled={layer.status !== 'supported'}
+                    onChange={(event) =>
+                      onVectorLayerToggle(layer.id, event.currentTarget.checked)
+                    }
+                    label={
+                      layer.status === 'supported'
+                        ? layer.label
+                        : `${layer.label} (${layer.status === 'planned' ? 'pendiente' : layer.status})`
+                    }
+                  />
+                );
+              })}
             </Stack>
           </CollapsibleSection>
 
@@ -283,54 +422,22 @@ export function TerrainLayerTogglesPanel({
             titleWeight={600}
           >
             <Stack gap={4}>
-              <Checkbox
-                size="xs"
-                label="Canales relevados"
-                checked={relevadosMasterOn}
-                onChange={(event) =>
-                  onVectorLayerToggle('canales_relevados', event.currentTarget.checked)
-                }
-              />
-              {canalesRelevadosItems && canalesRelevadosItems.length > 0 && (
-                <Stack gap={2} pl="md">
-                  {canalesRelevadosItems.map((item) => (
-                    <Checkbox
-                      key={item.id}
-                      size="xs"
-                      label={item.label}
-                      checked={vectorLayerVisibility[item.id] ?? true}
-                      onChange={(event) =>
-                        onVectorLayerToggle(item.id, event.currentTarget.checked)
-                      }
-                      disabled={!relevadosMasterOn}
-                    />
-                  ))}
-                </Stack>
-              )}
-              <Checkbox
-                size="xs"
-                label="Canales propuestos"
-                checked={propuestosMasterOn}
-                onChange={(event) =>
-                  onVectorLayerToggle('canales_propuestos', event.currentTarget.checked)
-                }
-              />
-              {canalesPropuestosItems && canalesPropuestosItems.length > 0 && (
-                <Stack gap={2} pl="md">
-                  {canalesPropuestosItems.map((item) => (
-                    <Checkbox
-                      key={item.id}
-                      size="xs"
-                      label={item.label}
-                      checked={vectorLayerVisibility[item.id] ?? true}
-                      onChange={(event) =>
-                        onVectorLayerToggle(item.id, event.currentTarget.checked)
-                      }
-                      disabled={!propuestosMasterOn}
-                    />
-                  ))}
-                </Stack>
-              )}
+              {renderCanalesGroup({
+                masterLabel: 'relevados',
+                masterFlag: 'canales_relevados',
+                masterOn: relevadosMasterOn,
+                items: canalesRelevadosItems,
+                vectorLayerVisibility,
+                onVectorLayerToggle,
+              })}
+              {renderCanalesGroup({
+                masterLabel: 'propuestos',
+                masterFlag: 'canales_propuestos',
+                masterOn: propuestosMasterOn,
+                items: canalesPropuestosItems,
+                vectorLayerVisibility,
+                onVectorLayerToggle,
+              })}
             </Stack>
           </CollapsibleSection>
 

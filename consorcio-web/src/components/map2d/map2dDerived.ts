@@ -222,11 +222,14 @@ export function buildVectorLayerItems(params: {
     { id: 'waterways', label: 'Hidrografía', show: true },
     {
       id: 'roads',
-      label: 'Red vial',
+      // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
+      label: 'Red Vial',
       show: !!roadsCollection && roadsCollection.features.length > 0,
     },
-    { id: 'soil', label: 'Suelos IDECOR', show: true },
-    { id: 'catastro', label: 'Catastro rural', show: true },
+    // Labels match the 3D toggles panel so the user sees the same wording
+    // across views (terrainLayerConfig.ts:35-42).
+    { id: 'soil', label: 'Suelos IDECOR 1:50.000', show: true },
+    { id: 'catastro', label: 'Catastro rural IDECOR', show: true },
     { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
     {
