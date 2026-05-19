@@ -37,6 +37,9 @@ httpx>=0.28.0
 python-multipart>=0.0.19
 openpyxl>=3.1.5
 xlrd>=2.0.1
+# Pillow comes in transitively today (pyvista), but we use it directly
+# for denuncia-photo validation + EXIF GPS strip — declare explicitly.
+Pillow>=10.0.0
 
 # Background Tasks
 celery>=5.4.0
