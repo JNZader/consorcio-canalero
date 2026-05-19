@@ -101,7 +101,7 @@ class Settings(BaseSettings):
 
 
 # Instancia global de settings
-settings = Settings()  # type: ignore[call-arg]
+settings = Settings()
 
 
 def _is_production_env(environment: str) -> bool:

@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: ruff check .
-      - run: mypy app/ --ignore-missing-imports
+      - run: mypy app/auth app/domains/padron app/domains/denuncias  # mypy.ini strict scope
       - run: python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q
 
   build-backend:

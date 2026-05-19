@@ -70,8 +70,17 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self, user: User, request: Request | None = None
     ) -> None:
         """Check pre-authorized emails and auto-assign role on registration."""
-        # Get the async session from the user_db internals
-        session: AsyncSession = self.user_db.session
+        # Get the async session from the user_db internals.
+        # fastapi-users-db-sqlalchemy stores it on ``.session``, but the
+        # ``BaseUserDatabase`` Protocol fastapi-users exposes does not
+        # declare the attribute, so mypy can't see it. We know the
+        # concrete adapter we use (SQLAlchemyUserDatabase) — narrow with
+        # a runtime-safe cast.
+        from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+        from typing import cast
+
+        sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
+        session: AsyncSession = sqlalchemy_user_db.session
 
         result = await session.execute(
             select(PreAuthorizedEmail).where(

@@ -129,6 +129,9 @@ class DenunciaService:
             )
 
         updated = self.repo.update(db, denuncia_id, data)
+        if updated is None:
+            # Unreachable: ``get_by_id`` above would have raised 404 first.
+            raise HTTPException(status_code=404, detail="Denuncia no encontrada")
         db.commit()
-        db.refresh(updated)  # type: ignore[arg-type]
-        return updated  # type: ignore[return-value]
+        db.refresh(updated)
+        return updated

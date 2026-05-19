@@ -49,7 +49,10 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: mypy app/ --ignore-missing-imports
+      # mypy.ini runs strict (ignore_missing_imports=False) on the three
+      # PII/auth-sensitive modules. Scope is intentional — typing the
+      # entire app/ is roadmap F4, not Phase 1.
+      - run: mypy app/auth app/domains/padron app/domains/denuncias
 
   test:
     name: Test (pytest)

@@ -131,9 +131,12 @@ class PadronService:
                 )
 
         updated = self.repo.update(db, consorcista_id, data)
+        if updated is None:
+            # Unreachable: ``get_by_id`` above would have raised 404 first.
+            raise HTTPException(status_code=404, detail="Consorcista no encontrado")
         db.commit()
-        db.refresh(updated)  # type: ignore[arg-type]
-        return updated  # type: ignore[return-value]
+        db.refresh(updated)
+        return updated
 
     # ── CSV/XLSX IMPORT ──────────────────────
 
@@ -297,6 +300,8 @@ class PadronService:
 
         workbook = load_workbook(io.BytesIO(content), data_only=True)
         sheet = workbook.active
+        if sheet is None:
+            raise ValueError("XLSX no tiene hojas accesibles")
         rows_iter = sheet.iter_rows(values_only=True)
         headers = next(rows_iter, None)
         if not headers:

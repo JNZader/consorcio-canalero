@@ -164,10 +164,13 @@ class PadronRepository:
 
         total = sum(por_estado.values())
 
-        # Total hectareas
-        total_hectareas: float = db.execute(
+        # Total hectareas — coalesce guarantees a non-NULL float, but
+        # SQLAlchemy's typing still surfaces ``float | None`` so we
+        # narrow it here.
+        raw_total: float | None = db.execute(
             select(func.coalesce(func.sum(Consorcista.hectareas), 0.0))
         ).scalar_one()
+        total_hectareas: float = raw_total or 0.0
 
         return {
             "total": total,

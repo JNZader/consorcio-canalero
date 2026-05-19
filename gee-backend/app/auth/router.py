@@ -49,6 +49,7 @@ if settings.google_oauth_client_id:
     import logging
     import os
     import secrets
+    from typing import Literal
     from urllib.parse import urlencode
 
     from fastapi import Depends, Request
@@ -169,7 +170,7 @@ if settings.google_oauth_client_id:
         #    server compares the cookie to Google's echoed state.
         #  - Dev (HTTP localhost, same-origin via Vite proxy): ``lax``
         #    is enough and avoids the ``Secure`` requirement.
-        same_site = "none" if secure else "lax"
+        same_site: Literal["lax", "none"] = "none" if secure else "lax"
         response.set_cookie(
             key=_OAUTH_STATE_COOKIE,
             value=state_nonce,
