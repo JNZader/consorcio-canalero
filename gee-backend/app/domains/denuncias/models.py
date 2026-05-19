@@ -73,6 +73,7 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     respuesta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
