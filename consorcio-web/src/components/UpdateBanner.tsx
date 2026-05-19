@@ -23,7 +23,7 @@
  * Rendered once at the app root (next to ``<Notifications>``).
  */
 import { Button, Group, Paper, Portal, Text } from '@mantine/core';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 // eslint-disable-next-line import/no-unresolved -- virtual module from vite-plugin-pwa
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
@@ -34,6 +34,10 @@ const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute
 
 export function UpdateBanner() {
   const { updateAvailable } = useVersionCheck();
+  // Tracks the click → reload window. Without this the button has no
+  // affordance during the ~1–3 s SKIP_WAITING + controllerchange dance
+  // and the user thinks it's broken before the page actually reloads.
+  const [isUpdating, setIsUpdating] = useState(false);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
@@ -98,21 +102,29 @@ export function UpdateBanner() {
       >
         <Group justify="space-between" wrap="nowrap" gap="xs" align="center">
           <Text size="sm" fw={500} style={{ flex: 1, minWidth: 0 }}>
-            Nueva versión disponible
+            {isUpdating ? 'Actualizando…' : 'Nueva versión disponible'}
           </Text>
           <Button
             size="compact-sm"
             color="acento"
             c="dark.9"
+            loading={isUpdating}
+            disabled={isUpdating}
             onClick={() => {
+              setIsUpdating(true);
               // Reset the SW's needRefresh flag so the banner closes
               // immediately while ``updateServiceWorker`` does its
               // skipWaiting + controllerchange + reload dance.
               setNeedRefresh(false);
-              void updateServiceWorker(true);
+              updateServiceWorker(true).catch((err) => {
+                logger.warn('[update-banner] updateServiceWorker failed', err);
+                // Fall back to a plain reload — better than leaving the
+                // user stuck on a perpetually-loading button.
+                window.location.reload();
+              });
             }}
           >
-            Actualizar
+            {isUpdating ? 'Actualizando' : 'Actualizar'}
           </Button>
         </Group>
       </Paper>
