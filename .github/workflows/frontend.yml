@@ -31,10 +31,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Lockfile generated on Windows lacks Linux optional deps like
-      # @rollup/rollup-linux-x64-gnu and @biomejs/cli-linux-x64 (npm/cli#4828).
-      # Delete it so npm install resolves platform-correct binaries.
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run lint
 
   test:
@@ -46,7 +45,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run test:run
 
   typecheck:
@@ -59,7 +60,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run typecheck
 
   smoke:
@@ -72,7 +75,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run test:smoke
 
   mutation:
@@ -86,7 +91,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run mutation:run
 
   build:
@@ -100,5 +107,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run build

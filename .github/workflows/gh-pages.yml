@@ -30,7 +30,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: rm -f package-lock.json && npm install --no-audit --no-fund --legacy-peer-deps
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Build with base path
         run: npx vite build --base /
         env:
