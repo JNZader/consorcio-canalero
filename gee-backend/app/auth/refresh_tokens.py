@@ -51,11 +51,20 @@ async def issue_token(
     omit to start a fresh family (login).
     """
     raw = _new_raw_token()
+    # Use Python ``now`` for both ``created_at`` and ``expires_at`` so
+    # the new token's ``created_at`` shares a clock with the OLD
+    # token's ``revoked_at`` (also Python ``now`` in the CAS UPDATE).
+    # Without this, ``created_at`` falls to PostgreSQL ``NOW()``
+    # (server_default) and a few ms of inter-clock skew could let the
+    # replay-detection sweep catch a token that was actually minted
+    # AFTER the legit rotation.
+    now = datetime.now(tz=timezone.utc)
     token_row = RefreshToken(
         user_id=user.id,
         token_hash=_hash_token(raw),
         family_id=family_id or uuid.uuid4(),
-        expires_at=datetime.now(tz=timezone.utc) + REFRESH_TOKEN_LIFETIME,
+        created_at=now,
+        expires_at=now + REFRESH_TOKEN_LIFETIME,
         revoked=False,
         user_agent=(user_agent or "")[:255] or None,
         client_ip=(client_ip or "")[:64] or None,
@@ -191,19 +200,27 @@ async def rotate(
     revoked_at = replay_row.revoked_at
     should_burn = revoked_at is None or (now - revoked_at) > RACE_WINDOW
 
-    # Always run the family UPDATE. In ``should_burn=False`` the
-    # ``literal(False)`` predicate matches 0 rows so the operation is
-    # a no-op — but it costs the same wire roundtrip as the real burn.
-    # The extra ``created_at <= replay_row.revoked_at`` filter prevents
-    # the rare race where, between our SELECT and the family update,
-    # a legit user wins a concurrent CAS and mints a NEW token in the
-    # same family. That fresh row mustn't get caught in our sweep.
+    # Always run the family UPDATE. The extra ``created_at <= burn_threshold``
+    # filter prevents the rare race where, between our SELECT and the family
+    # update, a legit user wins a concurrent CAS and mints a NEW token in
+    # the same family — that fresh row mustn't get caught in our sweep
+    # because its ``created_at`` is past the threshold.
+    #
+    # KNOWN LIMITATION (documented by the 4th-layer review): when
+    # ``should_burn=False`` the ``false()`` literal is constant-folded
+    # by the PostgreSQL planner into a "One-Time Filter" that returns 0
+    # rows without scanning the table — so the timing of the no-op
+    # branch is measurably shorter than the burn branch in the same
+    # datacenter. The attacker would need (a) co-location or thousands
+    # of samples and (b) a stolen cookie already in hand to exploit
+    # it, so the residual risk is below our threat model. Accepted.
+    burn_threshold = replay_row.revoked_at or now
     await session.execute(
         update(RefreshToken)
         .where(
             RefreshToken.family_id == replay_row.family_id,
             RefreshToken.revoked.is_(False),
-            RefreshToken.created_at <= (replay_row.revoked_at or replay_row.created_at),
+            RefreshToken.created_at <= burn_threshold,
             true() if should_burn else false(),
         )
         .values(revoked=True, revoked_at=now)
