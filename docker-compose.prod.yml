@@ -70,7 +70,18 @@ services:
       # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
       # outage downstream must NOT kill this container. /ready (with
       # real dep checks + 503) is for load balancers, not Docker.
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/live || exit 1"]
+      #
+      # We forge the Host header to match ``API_BASE_URL`` because
+      # ``TrustedHostMiddleware`` no longer accepts ``localhost`` (any
+      # container on the same Docker network could have used it to
+      # impersonate the API). ``HEALTHCHECK_HOST`` falls back to the
+      # hostname stripped out of ``API_BASE_URL`` so a single env var
+      # drives both the public URL and the internal probe.
+      test:
+        - "CMD-SHELL"
+        - >-
+          HOST=${HEALTHCHECK_HOST:-$(echo "$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\\1|')};
+          wget --no-verbose --tries=1 --spider --header="Host: $$HOST" http://localhost:8000/live || exit 1
       interval: 30s
       timeout: 10s
       retries: 3

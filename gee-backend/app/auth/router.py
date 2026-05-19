@@ -154,6 +154,15 @@ async def refresh_access_token(
     )
     user = orm_q.scalar_one_or_none()
     if user is None or not user.is_active:
+        # Phase 2.1 / post-3vr fix: if the user is gone or disabled
+        # but the cookie keeps showing up, burn the whole family. The
+        # 3-voice review flagged that the previous code returned 401
+        # without revoking — a stolen cookie whose owner was just
+        # deleted would have stayed quietly valid for replays until
+        # natural expiry.
+        from app.auth.refresh_tokens import revoke_family
+
+        await revoke_family(session, existing.family_id)
         response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
         _clear_refresh_cookie(response)
         return response

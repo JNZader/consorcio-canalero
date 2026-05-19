@@ -135,7 +135,9 @@ async def upload_denuncia_photo(
     denuncia = db.get(Denuncia, denuncia_id)
     if denuncia is None:
         raise HTTPException(status_code=404, detail="Denuncia no encontrada")
-    if denuncia.user_id != uuid.UUID(str(user.id)):
+    # Legacy denuncias (pre-auth) may have ``user_id=None``. ``UUID(str(None))``
+    # would raise ValueError → 500; explicit guard makes it a clean 403.
+    if denuncia.user_id is None or denuncia.user_id != uuid.UUID(str(user.id)):
         raise HTTPException(
             status_code=403,
             detail="No podés modificar una denuncia que no es tuya.",

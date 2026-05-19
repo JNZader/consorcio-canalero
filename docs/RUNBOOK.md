@@ -167,8 +167,12 @@ Hetzner Storage Box) — the same `.env` drives both backup runners.
    RESTIC_REPOSITORY=sftp:u123456-sub1@u123456.your-storagebox.de:/restic/consorcio
    RESTIC_PASSWORD=<openssl rand -base64 48>
    ```
-5. Storage Box doesn't have lifecycle rules; rotate manually or rely
-   on `restic forget --prune` (already in the script).
+5. **Important**: Storage Box has no automatic lifecycle. The
+   ``backup_postgres.sh`` script's ``BACKUP_RETENTION_DAYS`` setting
+   only affects the B2 path; for SB you either set a manual cleanup
+   cron (``find``-style delete via SFTP) or accept unbounded growth.
+   Volume backups via ``restic forget --prune`` ARE managed
+   automatically because restic stores its own lifecycle metadata.
 
 #### 1.4.c Trigger a one-off backup (verifies the credentials are right)
 
@@ -217,6 +221,13 @@ SPF/DKIM/DMARC.
    ```
 3. `docker compose up -d backend worker`. The backend reads these vars
    on boot; password reset + email verification flows start delivering.
+4. **Operator-side hardening**: most SMTP providers (Brevo included)
+   log message bodies for 30+ days for support purposes. Password-reset
+   and email-verification tokens are valid one-shot credentials. If
+   your threat model includes the provider's support team, configure
+   their account to disable body logging OR migrate to the provider's
+   API (Brevo, Resend, SES all have a transactional API alongside
+   SMTP) which doesn't leave the token in a stored body.
 
 ---
 
@@ -269,7 +280,19 @@ ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238 \
    docker compose up -d backend worker celery-worker"
 ```
 
-### 2.3 Apply a new Alembic migration
+### 2.3 ``/auth/jwt/logout-all`` and the residual access-token window
+
+The endpoint revokes EVERY refresh token for the calling user, but
+JWT access tokens issued in the previous 15 minutes remain valid
+until natural expiry (the JWT is stateless by design — we don't
+maintain a server-side revocation list for access tokens). Practical
+implication: an attacker with a STOLEN access token has at most
+~15 min after the user clicks "logout from all devices" to do
+damage. If you need stricter zero-trust revocation, roadmap F3 covers
+adding a per-user ``revocation_epoch`` column that the JWT strategy
+checks on every request — at the cost of one DB read per call.
+
+### 2.4 Apply a new Alembic migration
 
 The compose files now include a `migrate` service that runs
 `alembic upgrade head` before `backend` / `celery-worker` start. After

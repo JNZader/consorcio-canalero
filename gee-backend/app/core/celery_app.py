@@ -60,8 +60,31 @@ celery_app.conf.update(
             "schedule": crontab(minute="30", hour=f"*/{GEO_MATVIEW_REFRESH_HOURS}"),
             "options": {"queue": "geo"},
         },
+        # Phase 2.1: purge expired / long-revoked refresh tokens so the
+        # ``refresh_tokens`` table stays bounded. Daily at 04:15 UTC.
+        "purge-stale-refresh-tokens": {
+            "task": "auth.purge_stale_refresh_tokens",
+            "schedule": crontab(minute="15", hour="4"),
+            "options": {"queue": "celery"},
+        },
     },
 )
+
+
+@celery_app.task(name="auth.purge_stale_refresh_tokens")
+def purge_stale_refresh_tokens_task() -> int:
+    """Sync wrapper for the async cleanup so Celery can schedule it."""
+    import asyncio
+
+    from app.auth.cleanup_tasks import purge_stale_refresh_tokens
+    from app.db.session import AsyncSessionLocal
+
+    async def _run() -> int:
+        async with AsyncSessionLocal() as session:
+            return await purge_stale_refresh_tokens(session)
+
+    return asyncio.run(_run())
+
 
 if __name__ == "__main__":
     celery_app.start()

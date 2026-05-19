@@ -60,6 +60,14 @@ pg_dump --no-owner --no-acl --clean --if-exists "$DATABASE_URL" \
 SIZE_BYTES="$(stat -c %s "$DUMP_PATH" 2>/dev/null || stat -f %z "$DUMP_PATH")"
 echo "[$(date -u +%FT%TZ)] dump size: ${SIZE_BYTES} bytes"
 
+# Integrity sidecar. AES-256-CBC has no built-in authentication tag,
+# so a bit-flip in the offsite blob would only surface at restore time
+# with a corrupted SQL. The companion ``.sha256`` lets the restore
+# drill verify the dump before decrypting.
+SHA256_PATH="${DUMP_PATH}.sha256"
+sha256sum "$DUMP_PATH" | awk '{print $1}' > "$SHA256_PATH"
+echo "[$(date -u +%FT%TZ)] sha256: $(cat "$SHA256_PATH")"
+
 case "$BACKUP_BACKEND" in
   b2)
     : "${B2_BUCKET:?B2_BUCKET is required for BACKUP_BACKEND=b2}"
@@ -72,6 +80,8 @@ case "$BACKUP_BACKEND" in
       b2 account authorize "$B2_KEY_ID" "$B2_APPLICATION_KEY"
     B2_ACCOUNT_INFO="${TMPDIR}/.b2_account_info" \
       b2 file upload --quiet "$B2_BUCKET" "$DUMP_PATH" "postgres/${FILENAME}"
+    B2_ACCOUNT_INFO="${TMPDIR}/.b2_account_info" \
+      b2 file upload --quiet "$B2_BUCKET" "$SHA256_PATH" "postgres/${FILENAME}.sha256"
 
     if [ "$RETENTION_DAYS" -gt 0 ]; then
       # B2 lifecycle rules are the right way to handle retention; this
@@ -122,6 +132,7 @@ for line in sys.stdin:
       "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
 -mkdir ${REMOTE_DIR}
 put ${DUMP_PATH} ${REMOTE_PATH}
+put ${SHA256_PATH} ${REMOTE_PATH}.sha256
 quit
 EOF
 

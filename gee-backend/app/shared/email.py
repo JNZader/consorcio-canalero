@@ -68,6 +68,16 @@ async def send_email(
         )
         return
 
+    # aiosmtplib treats ``start_tls`` and ``use_tls`` as mutually
+    # exclusive flags. If the operator set both we honour ``use_tls``
+    # (the stricter mode) and log a warning — the config fail-fast
+    # may add an explicit error later.
+    use_tls = settings.smtp_use_tls
+    start_tls = settings.smtp_use_starttls and not use_tls
+    if settings.smtp_use_tls and settings.smtp_use_starttls:
+        logger.warning(
+            "SMTP_USE_TLS and SMTP_USE_STARTTLS both true — using SMTPS only"
+        )
     try:
         await aiosmtplib.send(
             msg,
@@ -75,7 +85,8 @@ async def send_email(
             port=settings.smtp_port,
             username=settings.smtp_username or None,
             password=settings.smtp_password or None,
-            start_tls=settings.smtp_use_starttls,
+            start_tls=start_tls,
+            use_tls=use_tls,
             timeout=15,
         )
         logger.info(

@@ -79,9 +79,13 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""  # e.g. no-reply@consorcio.example.com
     smtp_from_name: str = "Consorcio Canalero 10 de Mayo"
-    # Whether to use STARTTLS (default on port 587). Pure SMTPS (port 465)
-    # would need ``smtp_use_tls=True`` instead.
+    # Transport mode. EXACTLY ONE should be true:
+    #   - port 587 STARTTLS upgrade: ``smtp_use_starttls=True`` (default)
+    #   - port 465 implicit TLS    : ``smtp_use_tls=True``
+    #     (Office 365, some legacy Google Workspace, Hostinger, Namecheap)
+    # The boot check below catches the both-true misconfig.
     smtp_use_starttls: bool = True
+    smtp_use_tls: bool = False
 
     # Centralised logs (BetterStack / Logtail) — empty = disabled.
     # Wired in app/core/logging.py. When set, the LogtailHandler is
@@ -128,12 +132,18 @@ class Settings(BaseSettings):
     def trusted_hosts(self) -> list[str]:
         """Allowed ``Host`` header values for ``TrustedHostMiddleware``.
 
-        Derived from CORS origins + the API base URL hostname + the
-        local loopback aliases the Docker healthcheck uses
-        (``localhost``, ``127.0.0.1``). Without this any client can
-        send ``Host: attacker.example`` and our app responds — which
-        breaks URL rewriting (password reset links, OAuth redirects),
-        cookie scoping, and any auditable hostname check downstream.
+        Derived from CORS origins + the API base URL hostname. The
+        Docker healthcheck has to forge a matching Host header
+        explicitly (see the ``healthcheck`` block in
+        ``docker-compose.prod.yml``) — we deliberately do NOT include
+        ``localhost``/``127.0.0.1`` because every other container on
+        the same Docker network can forge ``Host: localhost`` and
+        bypass the host-pinning otherwise.
+
+        In dev (when CORS_ORIGINS has a localhost entry, which the
+        fail-fast check refuses in production) the dev origins flow
+        through naturally so localhost works on the developer
+        machine.
         """
         from urllib.parse import urlparse
 
@@ -146,8 +156,10 @@ class Settings(BaseSettings):
             parsed = urlparse(self.api_base_url)
             if parsed.hostname:
                 hosts.add(parsed.hostname)
-        # Docker healthcheck hits localhost:8000 from inside the container.
-        hosts.update({"localhost", "127.0.0.1"})
+        # No localhost. Dev installs whose ``CORS_ORIGINS`` includes
+        # ``http://localhost:5173`` get localhost in the set via the
+        # loop above; prod ``CORS_ORIGINS`` is loopback-free (the
+        # fail-fast check refuses it).
         return sorted(hosts)
 
     class Config:

@@ -257,6 +257,11 @@ async def get_denuncia_photo(
         # respond 404 so the surface stays uniform.
         return Response(status_code=404)
     denuncia_id = _uuid.UUID(match.group("uuid"))
+    # On-disk filenames are always lowercase (storage normalises via
+    # ``uuid.UUID(...)`` before writing). The route regex is
+    # case-insensitive so the auth check still works for an uppercased
+    # URL — but the disk lookup would 404 without this normalisation.
+    filename = filename.lower()
 
     # We need a DB session here but the dependency tree above didn't
     # give us one. Open a short-lived session manually rather than
@@ -291,8 +296,14 @@ async def get_denuncia_photo(
         "webp": "image/webp",
     }.get(ext, "application/octet-stream")
 
+    # Read on a worker thread so the 10 MB blocking I/O doesn't stall
+    # the asyncio event loop. Bounded at MAX_PHOTO_BYTES on the write
+    # path, so a single allocation is safe.
+    import asyncio
+
+    content = await asyncio.to_thread(photo_path.read_bytes)
     return Response(
-        content=photo_path.read_bytes(),
+        content=content,
         media_type=media_type,
         headers={
             # Photos are immutable once uploaded — cache aggressively
