@@ -113,7 +113,9 @@ services:
       - proxy
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
+      # outage downstream must NOT kill this container.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/live || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

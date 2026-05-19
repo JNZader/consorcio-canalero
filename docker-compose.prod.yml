@@ -67,14 +67,16 @@ services:
       - backend
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/health || exit 1"]
+      # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
+      # outage downstream must NOT kill this container. /ready (with
+      # real dep checks + 503) is for load balancers, not Docker.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/live || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      # GEE auth + lazy imports add 5–15 s before /health responds. 20 s was
-      # enough most of the time, but cold deploys on a loaded host sometimes
-      # tripped the retries and marked the container unhealthy before it
-      # could answer. 60 s gives comfortable margin.
+      # GEE auth + lazy imports add 5–15 s before the app accepts
+      # requests on first boot; 60 s margin so the container isn't
+      # marked unhealthy before it can answer.
       start_period: 60s
     depends_on:
       migrate:

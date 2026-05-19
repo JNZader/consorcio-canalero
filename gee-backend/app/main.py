@@ -6,7 +6,7 @@ Consorcio Canalero Backend — v2.
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -201,8 +201,62 @@ async def root():
     }
 
 
+@app.get("/live")
+async def live():
+    """Liveness probe — process is up and the event loop is responsive.
+
+    Intentionally does NOT touch DB, Redis, or GEE. A transient outage in
+    a downstream dependency must NOT cause Docker / Kubernetes to kill
+    and restart this container, because killing the app makes the outage
+    worse. Use ``/ready`` for "is this instance OK to take traffic".
+    """
+    return {"status": "ok", "version": APP_VERSION}
+
+
+@app.get("/ready")
+async def ready(response: Response):
+    """Readiness probe — instance is safe to receive traffic.
+
+    Returns 503 when a critical dependency is degraded (DB or Redis), so
+    a load balancer can drain this instance until it recovers. GEE is
+    treated as non-critical — most routes don't need it.
+    """
+    db_health = await check_database_health()
+    redis_health = await check_redis_health()
+    gee_health = await check_gee_health()
+    alembic_health = await check_alembic_health()
+
+    services = {
+        "database": db_health,
+        "redis": redis_health,
+        "gee": gee_health,
+        "alembic": alembic_health,
+    }
+
+    critical_ok = (
+        db_health["status"] == "healthy"
+        and redis_health["status"] == "healthy"
+        and alembic_health["status"] == "healthy"
+    )
+
+    if not critical_ok:
+        response.status_code = 503
+
+    return {
+        "status": "ready" if critical_ok else "not_ready",
+        "services": services,
+        "version": APP_VERSION,
+    }
+
+
 @app.get("/health")
 async def health():
+    """Legacy combined endpoint — kept for external monitors that hit it.
+
+    Always returns HTTP 200; degradation is signalled in the ``status``
+    field of the body. New consumers should pick ``/live`` (liveness) or
+    ``/ready`` (readiness) explicitly.
+    """
     db_health = await check_database_health()
     redis_health = await check_redis_health()
     gee_health = await check_gee_health()
