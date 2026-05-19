@@ -13,6 +13,7 @@ import {
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
+import type { CanalToggleEntry } from '../shared/canalesGrouping';
 
 interface LayerItem {
   id: string;
@@ -94,8 +95,8 @@ interface TerrainViewer3DChromeProps {
   porcentajeForestacionVisible?: boolean;
   canalesRelevadosVisible?: boolean;
   canalesPropuestosVisible?: boolean;
-  canalesRelevadosItems?: readonly LayerItem[];
-  canalesPropuestosItems?: readonly LayerItem[];
+  canalesRelevadosItems?: readonly CanalToggleEntry[];
+  canalesPropuestosItems?: readonly CanalToggleEntry[];
   /**
    * Phase 5 (Batch F) — click-driven InfoPanel overlay. Renders
    * absolutely-positioned above the terrain chrome via the shared

@@ -17,6 +17,7 @@ import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
 import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
+import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
@@ -217,20 +218,16 @@ export default function TerrainViewer3D({
     propuestas: canalesPropuestas,
     index: canalesIndex,
   } = useCanales();
+  // Group by tramo_folder so the 3D panel mirrors the 2D viewer's UX: multi-
+  // segment projects collapse into a single CollapsibleSection with a
+  // master checkbox + the individual tramos underneath, instead of N flat
+  // checkboxes the user has to scroll through.
   const canalesRelevadosItems = useMemo(
-    () =>
-      canalesIndex?.relevados.map((r) => ({
-        id: `canal_relevado_${r.id.replace(/-/g, '_')}`,
-        label: r.nombre,
-      })) ?? [],
+    () => groupCanalesByFolder(canalesIndex?.relevados ?? [], 'relevado'),
     [canalesIndex]
   );
   const canalesPropuestosItems = useMemo(
-    () =>
-      canalesIndex?.propuestas.map((p) => ({
-        id: `canal_propuesto_${p.id.replace(/-/g, '_')}`,
-        label: p.nombre,
-      })) ?? [],
+    () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
   );
   const selectedImage = useSelectedImageListener();

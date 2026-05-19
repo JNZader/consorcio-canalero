@@ -9,8 +9,10 @@ import {
   Text,
 } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { CanalesLayerSection } from '../shared/CanalesLayerSection';
+import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import { getActiveAttributions } from './layerAttributions';
 
 interface LayerItem {
@@ -18,14 +20,11 @@ interface LayerItem {
   label: string;
 }
 
-/**
- * Canal entry — either a single canal (`leaf`) or a group of tramos that
- * share a `tramo_folder` (`group`). Groups render as a CollapsibleSection
- * with a master checkbox that toggles every child at once.
- */
-export type CanalToggleEntry =
-  | { kind: 'leaf'; id: string; label: string }
-  | { kind: 'group'; folder: string; label: string; children: LayerItem[] };
+// Re-export so consumers still importing CanalToggleEntry from this file
+// (MapaMapLibre, MapUiPanels, TerrainViewer3DChrome) keep compiling. The
+// type itself now lives in ``shared/canalesGrouping`` and is shared with
+// the 3D viewer.
+export type { CanalToggleEntry };
 
 interface SelectItem {
   value: string;
@@ -62,151 +61,6 @@ interface LayerControlsPanelProps {
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
 }
 
-function collectChildIds(entries: readonly CanalToggleEntry[] | undefined): string[] {
-  const ids: string[] = [];
-  if (!entries) return ids;
-  for (const e of entries) {
-    if (e.kind === 'leaf') ids.push(e.id);
-    else for (const c of e.children) ids.push(c.id);
-  }
-  return ids;
-}
-
-function computeBulkState(
-  entries: readonly CanalToggleEntry[] | undefined,
-  vectorVisibility: Record<string, boolean>
-): { childIds: string[]; allOn: boolean; indeterminate: boolean } {
-  const childIds = collectChildIds(entries);
-  if (childIds.length === 0) return { childIds, allOn: false, indeterminate: false };
-  const on = childIds.reduce((n, id) => n + (vectorVisibility[id] ? 1 : 0), 0);
-  const allOn = on === childIds.length;
-  const allOff = on === 0;
-  return { childIds, allOn, indeterminate: !allOn && !allOff };
-}
-
-function CanalLeafRow({
-  id,
-  label,
-  vectorVisibility,
-  onLayerVisibilityChange,
-  onChildActivated,
-}: {
-  id: string;
-  label: string;
-  vectorVisibility: Record<string, boolean>;
-  onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
-  /** Called when user activates this child — used to auto-flip the master ON. */
-  onChildActivated?: () => void;
-}) {
-  return (
-    <div data-testid={`canal-toggle-${id}`}>
-      <Checkbox
-        size="xs"
-        label={label}
-        checked={!!vectorVisibility[id]}
-        onChange={(event) => {
-          const next = event.currentTarget.checked;
-          onLayerVisibilityChange(id, next);
-          if (next) onChildActivated?.();
-        }}
-      />
-    </div>
-  );
-}
-
-function CanalGroupRow({
-  folder,
-  label,
-  tramos,
-  vectorVisibility,
-  onLayerVisibilityChange,
-  onChildActivated,
-}: {
-  folder: string;
-  label: string;
-  tramos: { id: string; label: string }[];
-  vectorVisibility: Record<string, boolean>;
-  onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
-  onChildActivated?: () => void;
-}) {
-  const visibleCount = tramos.reduce(
-    (n, c) => n + (vectorVisibility[c.id] ? 1 : 0),
-    0
-  );
-  const allOn = visibleCount === tramos.length;
-  const allOff = visibleCount === 0;
-  const indeterminate = !allOn && !allOff;
-  const title = `${label} (${tramos.length} tramos)`;
-  return (
-    <div data-testid={`canal-group-${folder}`}>
-      <CollapsibleSection
-        title={title}
-        defaultOpen={false}
-        titleSize="xs"
-        titleWeight={500}
-        rightAccessory={
-          <Checkbox
-            size="xs"
-            aria-label={`Toggle ${label}`}
-            checked={allOn}
-            indeterminate={indeterminate}
-            onClick={(event) => event.stopPropagation()}
-            onChange={(event) => {
-              const next = event.currentTarget.checked;
-              for (const c of tramos) onLayerVisibilityChange(c.id, next);
-              if (next) onChildActivated?.();
-            }}
-          />
-        }
-      >
-        <Stack gap={2} pl="md">
-          {tramos.map((c) => (
-            <CanalLeafRow
-              key={c.id}
-              id={c.id}
-              label={c.label}
-              vectorVisibility={vectorVisibility}
-              onLayerVisibilityChange={onLayerVisibilityChange}
-              onChildActivated={onChildActivated}
-            />
-          ))}
-        </Stack>
-      </CollapsibleSection>
-    </div>
-  );
-}
-
-function renderCanalEntry(
-  entry: CanalToggleEntry,
-  vectorVisibility: Record<string, boolean>,
-  onLayerVisibilityChange: (layerId: string, visible: boolean) => void,
-  onChildActivated: () => void
-) {
-  if (entry.kind === 'leaf') {
-    return (
-      <CanalLeafRow
-        key={entry.id}
-        id={entry.id}
-        label={entry.label}
-        vectorVisibility={vectorVisibility}
-        onLayerVisibilityChange={onLayerVisibilityChange}
-        onChildActivated={onChildActivated}
-      />
-    );
-  }
-  return (
-    <CanalGroupRow
-      key={entry.folder}
-      folder={entry.folder}
-      label={entry.label}
-      tramos={entry.children}
-      vectorVisibility={vectorVisibility}
-      onLayerVisibilityChange={onLayerVisibilityChange}
-      onChildActivated={onChildActivated}
-    />
-  );
-}
-
 export const LayerControlsPanel = memo(function LayerControlsPanel({
   baseLayer,
   onBaseLayerChange,
@@ -229,14 +83,6 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
     (canalesRelevadosItems?.length ?? 0) > 0 || (canalesPropuestosItems?.length ?? 0) > 0;
   const relevadosMaster = !!vectorVisibility.canales_relevados;
   const propuestosMaster = !!vectorVisibility.canales_propuestos;
-  const relevadosBulk = useMemo(
-    () => computeBulkState(canalesRelevadosItems, vectorVisibility),
-    [canalesRelevadosItems, vectorVisibility]
-  );
-  const propuestosBulk = useMemo(
-    () => computeBulkState(canalesPropuestosItems, vectorVisibility),
-    [canalesPropuestosItems, vectorVisibility]
-  );
   const activeAttributions = useMemo(() => {
     const visibleSet = new Set<string>();
     for (const [id, visible] of Object.entries(vectorVisibility)) {
@@ -396,73 +242,27 @@ export const LayerControlsPanel = memo(function LayerControlsPanel({
             titleWeight={600}
           >
             <Stack gap={6}>
-              {(canalesRelevadosItems?.length ?? 0) > 0 && (
-                <Stack gap={4}>
-                  <Checkbox
-                    size="xs"
-                    label={relevadosBulk.allOn ? 'Apagar todos los relevados' : 'Encender todos los relevados'}
-                    checked={relevadosBulk.allOn}
-                    indeterminate={relevadosBulk.indeterminate}
-                    onChange={(event) => {
-                      const next = event.currentTarget.checked;
-                      // Bulk: set every child + keep the master gate ON so they render.
-                      onLayerVisibilityChange('canales_relevados', next);
-                      for (const childId of relevadosBulk.childIds) {
-                        onLayerVisibilityChange(childId, next);
-                      }
-                    }}
-                  />
-                  <Stack gap={2} pl="md">
-                    {canalesRelevadosItems?.map((entry) =>
-                      renderCanalEntry(
-                        entry,
-                        vectorVisibility,
-                        onLayerVisibilityChange,
-                        () => {
-                          if (!relevadosMaster)
-                            onLayerVisibilityChange('canales_relevados', true);
-                        }
-                      )
-                    )}
-                  </Stack>
-                </Stack>
-              )}
-
-              {(canalesPropuestosItems?.length ?? 0) > 0 && (
-                <Stack gap={4}>
-                  <Checkbox
-                    size="xs"
-                    label={propuestosBulk.allOn ? 'Apagar todos los propuestos' : 'Encender todos los propuestos'}
-                    checked={propuestosBulk.allOn}
-                    indeterminate={propuestosBulk.indeterminate}
-                    onChange={(event) => {
-                      const next = event.currentTarget.checked;
-                      onLayerVisibilityChange('canales_propuestos', next);
-                      for (const childId of propuestosBulk.childIds) {
-                        onLayerVisibilityChange(childId, next);
-                      }
-                    }}
-                  />
-                  <Stack gap={2} pl="md">
-                    {canalesPropuestosItems?.map((entry) =>
-                      renderCanalEntry(
-                        entry,
-                        vectorVisibility,
-                        onLayerVisibilityChange,
-                        () => {
-                          if (!propuestosMaster)
-                            onLayerVisibilityChange('canales_propuestos', true);
-                        }
-                      )
-                    )}
-                  </Stack>
-                  {/*
-                    The propuestos etapas filter (Alta → Largo plazo) lives in
-                    `LeyendaPanel` as interactive checkboxes — single source of
-                    truth for both swatch colors AND toggle controls.
-                  */}
-                </Stack>
-              )}
+              <CanalesLayerSection
+                side="relevados"
+                entries={canalesRelevadosItems}
+                masterFlag="canales_relevados"
+                masterOn={relevadosMaster}
+                vectorVisibility={vectorVisibility}
+                onLayerVisibilityChange={onLayerVisibilityChange}
+              />
+              <CanalesLayerSection
+                side="propuestos"
+                entries={canalesPropuestosItems}
+                masterFlag="canales_propuestos"
+                masterOn={propuestosMaster}
+                vectorVisibility={vectorVisibility}
+                onLayerVisibilityChange={onLayerVisibilityChange}
+              />
+              {/*
+                Etapas filter (Alta → Largo plazo) for propuestos lives in
+                ``LeyendaPanel`` as interactive checkboxes — single source
+                of truth for both swatch colors AND toggle controls.
+              */}
             </Stack>
           </CollapsibleSection>
         </Paper>

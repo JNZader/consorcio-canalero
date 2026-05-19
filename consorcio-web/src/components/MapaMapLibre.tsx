@@ -14,7 +14,7 @@ import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection } from 'geojson';
 
 import { ALL_ETAPAS } from '../types/canales';
-import { groupCanalesByFolder } from './map2d/groupCanales';
+import { groupCanalesByFolder } from './shared/canalesGrouping';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
