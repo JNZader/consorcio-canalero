@@ -187,7 +187,12 @@ export default defineConfig({
       },
     },
     minify: 'esbuild',
-    target: 'es2020',
+    // Match tsconfig.json (target + lib both ES2022). Without aligning,
+    // esbuild does NOT polyfill ES2022 built-ins like Array.prototype.at,
+    // so any usage typed-OK at compile time can blow up at runtime in
+    // older browsers. ES2022 ≅ Chrome 94+, Safari 16.4+, Firefox 93+,
+    // which matches our actual user base.
+    target: 'es2022',
     cssCodeSplit: true,
     sourcemap: false,
     chunkSizeWarningLimit: 500,

@@ -47,7 +47,10 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and tile requests (tiles are high-volume)
-        if request.url.path in ["/", "/health"] or "/tiles/" in request.url.path:
+        if (
+            request.url.path in ["/", "/health", "/live", "/ready"]
+            or "/tiles/" in request.url.path
+        ):
             return await call_next(request)
 
         # Skip rate limiting when disabled via settings (local dev / E2E).
@@ -137,7 +140,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         if request.method not in ["POST", "PUT", "DELETE", "PATCH"]:
             return await call_next(request)
 
-        if request.url.path in ["/", "/health"]:
+        if request.url.path in ["/", "/health", "/live", "/ready"]:
             return await call_next(request)
 
         if any(request.url.path.startswith(path) for path in self.CSRF_EXEMPT_PATHS):
@@ -182,7 +185,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log all incoming requests and their responses."""
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in ["/", "/health"]:
+        if request.url.path in ["/", "/health", "/live", "/ready"]:
             return await call_next(request)
 
         start_time = time.time()

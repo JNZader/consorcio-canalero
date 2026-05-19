@@ -143,6 +143,21 @@ def _enforce_production_secrets(s: Settings) -> None:
 
     problems: list[str] = []
 
+    # Trim whitespace BEFORE the length check — a value pasted into a
+    # GUI env-var editor (Coolify, Dokku) commonly picks up a trailing
+    # ``\n`` or ``\r`` that survives in the JWT signing key and breaks
+    # interop. We also warn so the operator fixes the env, not just the
+    # symptom.
+    jwt_raw = s.jwt_secret
+    jwt_trimmed = jwt_raw.strip()
+    if jwt_trimmed != jwt_raw:
+        logger.warning(
+            "JWT_SECRET had leading/trailing whitespace; trimmed in memory. "
+            "Update the env var to remove it — different transports trim "
+            "differently and the mismatch will eventually bite."
+        )
+        s.jwt_secret = jwt_trimmed
+
     if s.jwt_secret in INSECURE_DEFAULTS["jwt_secret"]:
         problems.append(
             "JWT_SECRET is missing or set to the placeholder default; "
@@ -190,12 +205,21 @@ def _enforce_production_secrets(s: Settings) -> None:
             "set an explicit comma-separated list of frontend origins."
         )
     else:
-        dev_hosts = ("localhost", "127.0.0.1", "0.0.0.0")
-        if any(host in entry for entry in s.cors_origins_list for host in dev_hosts):
-            problems.append(
-                "CORS_ORIGINS contains a localhost/dev origin in production; "
-                "remove dev entries from the env var."
-            )
+        from urllib.parse import urlparse
+
+        loopback_hosts = {"localhost", "127.0.0.1", "0.0.0.0"}
+        for entry in s.cors_origins_list:
+            parsed = urlparse(entry)
+            hostname = (parsed.hostname or "").lower()
+            # Exact match against the loopback names, plus the ``.localhost``
+            # TLD (RFC 6761). Substring matches would reject legitimate
+            # hosts like ``my-localhost-tunnel.example.com``.
+            if hostname in loopback_hosts or hostname.endswith(".localhost"):
+                problems.append(
+                    f"CORS_ORIGINS contains a loopback host ({entry}) in "
+                    "production; remove dev entries from the env var."
+                )
+                break
 
     if problems:
         message = (

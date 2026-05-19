@@ -155,8 +155,24 @@ def configure_structlog(
     # when the token is set. Local stdout is preserved either way, so a
     # BetterStack outage doesn't blackhole observability. Imported lazily
     # so the dependency isn't required for installs that don't enable it.
+    #
+    # SECURITY: the handler MUST wear the same ``ProcessorFormatter`` as
+    # the stdout handler — otherwise it sees raw ``LogRecord`` objects
+    # without ``sanitize_event`` having redacted them, and tokens /
+    # emails / passwords ship to BetterStack in the clear. JSON renderer
+    # forced regardless of dev/prod console so the shape stays parseable
+    # in the Logtail UI.
     betterstack_handler = _maybe_logtail_handler()
     if betterstack_handler is not None:
+        betterstack_handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                foreign_pre_chain=shared_processors,
+                processors=[
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    structlog.processors.JSONRenderer(),
+                ],
+            )
+        )
         root_logger.addHandler(betterstack_handler)
 
     # Also configure uvicorn loggers

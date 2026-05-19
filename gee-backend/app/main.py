@@ -3,10 +3,15 @@ Main entry point for FastAPI application.
 Consorcio Canalero Backend — v2.
 """
 
+# Sentry MUST initialise before ``app.config`` runs the prod fail-fast,
+# so a misconfigured boot crash is still reported. The bootstrap reads
+# SENTRY_DSN straight from the env and is a no-op when unset.
+import app._sentry_bootstrap  # noqa: F401 — import-side-effect only
+
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -37,32 +42,14 @@ from app.core.health import (
 APP_VERSION = "2.0.0"
 
 
-def _init_sentry() -> None:
-    """Lazy Sentry init — only fires when SENTRY_DSN is set.
-
-    Off by default so dev and self-hosted operators that don't want to
-    ship errors off-box pay zero overhead. The integration list mirrors
-    the ``sentry-sdk[fastapi,celery,sqlalchemy]`` extras we install: the
-    FastAPI integration adds request context to every exception, Celery
-    catches worker errors, SQLAlchemy reports slow queries (sampled).
+def _admin_dep():
+    """Lazy ``require_admin_or_operator`` import to avoid a circular dep
+    between ``app.main`` and ``app.auth``.
     """
-    if not settings.sentry_dsn:
-        return
-    import sentry_sdk
+    from app.auth import require_admin_or_operator
 
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.sentry_environment or settings.environment,
-        release=APP_VERSION,
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        # PII off — we already redact reset tokens etc. and the audit
-        # explicitly avoids producer names in public surfaces. Sending
-        # cookies/IPs to Sentry would walk that back.
-        send_default_pii=False,
-    )
+    return require_admin_or_operator
 
-
-_init_sentry()
 
 configure_structlog(
     json_format=not settings.debug,
@@ -243,23 +230,19 @@ async def live():
 
 @app.get("/ready")
 async def ready(response: Response):
-    """Readiness probe — instance is safe to receive traffic.
+    """Public readiness probe — minimal body, just ready/not_ready.
 
-    Returns 503 when a critical dependency is degraded (DB or Redis), so
-    a load balancer can drain this instance until it recovers. GEE is
-    treated as non-critical — most routes don't need it.
+    Returns 503 when a critical dependency (DB, Redis, Alembic) is
+    degraded so a load balancer can drain this instance. We deliberately
+    DO NOT expose which dependency is degraded, because the detailed
+    services block previously published here (PostGIS version, Alembic
+    revision SHA, GCP project id) gives an unauthenticated attacker
+    fingerprinting information. Operators who need the breakdown should
+    hit ``/admin/ready/detailed`` (operator+ auth required).
     """
     db_health = await check_database_health()
     redis_health = await check_redis_health()
-    gee_health = await check_gee_health()
     alembic_health = await check_alembic_health()
-
-    services = {
-        "database": db_health,
-        "redis": redis_health,
-        "gee": gee_health,
-        "alembic": alembic_health,
-    }
 
     critical_ok = (
         db_health["status"] == "healthy"
@@ -270,11 +253,7 @@ async def ready(response: Response):
     if not critical_ok:
         response.status_code = 503
 
-    return {
-        "status": "ready" if critical_ok else "not_ready",
-        "services": services,
-        "version": APP_VERSION,
-    }
+    return {"status": "ready" if critical_ok else "not_ready"}
 
 
 @app.get("/health")
@@ -283,19 +262,14 @@ async def health():
 
     Always returns HTTP 200; degradation is signalled in the ``status``
     field of the body. New consumers should pick ``/live`` (liveness) or
-    ``/ready`` (readiness) explicitly.
+    ``/ready`` (readiness) explicitly. The detailed services breakdown
+    that used to live here is now under ``/admin/ready/detailed`` behind
+    operator auth (it leaked PostGIS version + Alembic SHA + GCP project
+    id to unauthenticated callers).
     """
     db_health = await check_database_health()
     redis_health = await check_redis_health()
-    gee_health = await check_gee_health()
     alembic_health = await check_alembic_health()
-
-    services = {
-        "database": db_health,
-        "redis": redis_health,
-        "gee": gee_health,
-        "alembic": alembic_health,
-    }
 
     is_healthy = (
         db_health["status"] == "healthy"
@@ -303,9 +277,32 @@ async def health():
         and alembic_health["status"] == "healthy"
     )
 
+    return {"status": "healthy" if is_healthy else "degraded"}
+
+
+@app.get("/admin/ready/detailed", tags=["admin"])
+async def ready_detailed(
+    _user=Depends(_admin_dep()),
+):
+    """Operator-authenticated readiness with per-service breakdown.
+
+    Returns the same dict the public ``/ready`` used to expose, including
+    PostGIS version, Alembic revision SHA, GCP project id, and any error
+    strings from health probes. Gated behind ``require_admin_or_operator``
+    because that information is useful for debugging but actively useful
+    to an attacker doing reconnaissance.
+    """
+    db_health = await check_database_health()
+    redis_health = await check_redis_health()
+    gee_health = await check_gee_health()
+    alembic_health = await check_alembic_health()
     return {
-        "status": "healthy" if is_healthy else "degraded",
-        "services": services,
+        "services": {
+            "database": db_health,
+            "redis": redis_health,
+            "gee": gee_health,
+            "alembic": alembic_health,
+        },
         "version": APP_VERSION,
     }
 
