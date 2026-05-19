@@ -14,7 +14,7 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { CATEGORY_OPTIONS, STATUS_OPTIONS, getAllowedNextEstados } from '../../../../constants';
+import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import { API_URL } from '../../../../lib/api';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';

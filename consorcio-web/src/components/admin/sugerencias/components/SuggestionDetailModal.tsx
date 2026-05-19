@@ -18,7 +18,7 @@ import { DatePicker } from '@mantine/dates';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconHistory, IconTrash } from '../../../ui/icons';
-import { CATEGORIA_OPTIONS, ESTADO_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
+import { CATEGORIA_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
 import type { SeguimientoEntry } from '../sugerenciasPanelTypes';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
 

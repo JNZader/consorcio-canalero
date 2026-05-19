@@ -18,7 +18,7 @@ import { groupCanalesByFolder } from './shared/canalesGrouping';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Register PMTiles protocol once at module level
 const _pmtilesProtocol = new Protocol();
@@ -87,7 +87,6 @@ export default function MapaMapLibre() {
   const config = useConfigStore((state) => state.config);
   const canManageZoning = useCanAccess(['admin', 'operador']);
   const isAdmin = useCanAccess(['admin']);
-  const _mapInstanceId = useId();
 
   const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
   const centerLat = mapCenter.lat;
@@ -676,7 +675,6 @@ export default function MapaMapLibre() {
           canManageZoning={canManageZoning}
           showSuggestedZonesPanel={showSuggestedZonesPanel}
           hasApprovedZones={hasApprovedZones}
-          onToggleSuggestedZonesPanel={() => setShowSuggestedZonesPanel((prev) => !prev)}
           onOpenExportPng={() => setExportPngModalOpen(true)}
           onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
           onExportKmz={handleExportKmz}

@@ -14,11 +14,6 @@ import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
-
-interface LayerItem {
-  id: string;
-  label: string;
-}
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
 import styles from '../../styles/components/map.module.css';

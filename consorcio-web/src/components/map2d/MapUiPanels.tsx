@@ -69,8 +69,11 @@ export interface MapUiPanelsProps {
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
   readonly canManageZoning: boolean;
   readonly showSuggestedZonesPanel: boolean;
+  // ``onToggleSuggestedZonesPanel`` was on this prop API but the panel
+  // only ever opens via the close button (handled by
+  // ``onCloseSuggestedZonesPanel``); the toggle is owned by the
+  // MapaMapLibre header. Removed in the noUnusedParameters cleanup.
   readonly hasApprovedZones: boolean;
-  readonly onToggleSuggestedZonesPanel: () => void;
   readonly onOpenExportPng: () => void;
   readonly onExportApprovedZonesPdf: () => void;
   /**
@@ -172,7 +175,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   canManageZoning,
   showSuggestedZonesPanel,
   hasApprovedZones,
-  onToggleSuggestedZonesPanel,
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
