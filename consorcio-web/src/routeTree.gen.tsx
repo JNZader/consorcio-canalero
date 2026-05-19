@@ -277,13 +277,47 @@ function AuthCallbackPage() {
         // Get params from URL (backend Google OAuth callback)
         const urlParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const token =
-          hashParams.get('token') ||
-          hashParams.get('access_token') ||
-          urlParams.get('token') ||
-          urlParams.get('access_token');
         const errorParam = urlParams.get('error');
         const errorDescription = urlParams.get('error_description');
+
+        // Preferred path (post Phase 2 / F2-L): the backend sets the
+        // JWT in a single-use HttpOnly cookie and redirects with
+        // ``?via=cookie`` (no token in URL). The SPA exchanges the
+        // cookie for the actual token via a JSON endpoint.
+        const apiBase =
+          import.meta.env.VITE_API_URL ||
+          import.meta.env.PUBLIC_API_URL ||
+          'http://localhost:8000';
+        let token: string | null = null;
+        if (urlParams.get('via') === 'cookie') {
+          logger.debug('[AUTH CALLBACK] Exchanging OAuth cookie for token');
+          try {
+            const exchange = await fetch(`${apiBase}/api/v2/auth/jwt/exchange-cookie`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+            if (exchange.ok) {
+              const body = await exchange.json();
+              token = body?.access_token ?? null;
+            } else {
+              logger.error('[AUTH CALLBACK] Cookie exchange failed:', exchange.status);
+            }
+          } catch (e) {
+            logger.error('[AUTH CALLBACK] Cookie exchange threw:', e);
+          }
+        }
+
+        // Backwards-compat fallback: legacy fragment / query token. Used
+        // by deploys that haven't picked up F2-L yet. Once every active
+        // session has rotated through the new flow, the four reads
+        // below can be removed.
+        if (!token) {
+          token =
+            hashParams.get('token') ||
+            hashParams.get('access_token') ||
+            urlParams.get('token') ||
+            urlParams.get('access_token');
+        }
 
         logger.debug('[AUTH CALLBACK] URL params:', {
           token: token ? 'present' : 'missing',
@@ -306,11 +340,7 @@ function AuthCallbackPage() {
           logger.debug('[AUTH CALLBACK] Got token, fetching user profile...');
           clearAuthCallbackUrl();
 
-          const API_URL =
-            import.meta.env.VITE_API_URL ||
-            import.meta.env.PUBLIC_API_URL ||
-            'http://localhost:8000';
-          const profileRes = await fetch(`${API_URL}/api/v2/users/me`, {
+          const profileRes = await fetch(`${apiBase}/api/v2/users/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
 

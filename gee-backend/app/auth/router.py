@@ -65,6 +65,16 @@ if settings.google_oauth_client_id:
     # callback URL and make a victim sign in as the attacker's Google account.
     _OAUTH_STATE_COOKIE = "oauth_state"
     _OAUTH_STATE_MAX_AGE = 600  # 10 minutes — generous for slow Google flows.
+
+    # Single-use exchange cookie used to hand the JWT back to the SPA.
+    # Previously the callback redirected to ``frontend/auth/callback#access_token=...``
+    # — the token landed in ``window.location.hash`` (accessible to any
+    # script on the page, including browser extensions), in the URL bar
+    # (visible over the shoulder), and in browser history. The new flow
+    # stores the JWT in a short-lived HttpOnly cookie and lets the SPA
+    # call ``POST /auth/jwt/exchange-cookie`` once to read + delete it.
+    _OAUTH_EXCHANGE_COOKIE = "oauth_access_token"
+    _OAUTH_EXCHANGE_MAX_AGE = 60  # 60 s — the SPA hits the exchange immediately.
     # Narrow the cookie scope to the OAuth endpoints only. Path=/ would
     # make the cookie ride on every backend request, which is both wider
     # than necessary and a small leak surface (any future endpoint that
@@ -307,9 +317,30 @@ if settings.google_oauth_client_id:
 
             _oauth_logger.info("Google OAuth login successful for %s", account_email)
             response = RedirectResponse(
-                # Use the URL fragment so the browser can read the token, but it is
-                # not sent back to servers or captured in standard request logs.
-                url=f"{frontend_callback}#{urlencode({'access_token': token})}"
+                # No more URL-fragment token — the SPA reads the JWT
+                # from a single-use HttpOnly cookie via
+                # ``POST /auth/jwt/exchange-cookie`` after this redirect.
+                url=f"{frontend_callback}?via=cookie"
+            )
+            secure_cookie = _is_secure_request(request)
+            response.set_cookie(
+                key=_OAUTH_EXCHANGE_COOKIE,
+                value=token,
+                max_age=_OAUTH_EXCHANGE_MAX_AGE,
+                httponly=True,
+                # Strict — the redirect that sets this cookie is a
+                # top-level navigation initiated by the cross-site Google
+                # callback, BUT the immediate next request (the SPA's
+                # exchange POST) is same-site (frontend → backend on the
+                # same eTLD+1 when using a shared parent domain) so
+                # strict is appropriate. Falls back to ``lax`` only when
+                # the deploy is cross-origin (HTTPS) so the cookie still
+                # travels back from Cloudflare Pages → Hetzner.
+                samesite="none" if secure_cookie else "lax",
+                secure=secure_cookie,
+                # Narrow path so the cookie only travels to the OAuth
+                # exchange endpoint. /api/v2/auth/jwt/exchange-cookie.
+                path="/api/v2/auth/jwt/",
             )
             _clear_state_cookie(response)
             return response
@@ -331,3 +362,33 @@ if settings.google_oauth_client_id:
             )
             _clear_state_cookie(response)
             return response
+
+    @router.post("/auth/jwt/exchange-cookie", tags=["auth"])
+    async def exchange_oauth_cookie(request: Request):
+        """Trade the single-use OAuth cookie for an access token in JSON.
+
+        The SPA hits this once after landing on ``/auth/callback?via=cookie``.
+        The cookie is read, dropped from the response (browser clears it),
+        and the JWT is returned in the response body so the SPA can put
+        it in sessionStorage exactly like the password-login flow does.
+
+        Returns 401 (with cookie clear) when the cookie is missing or
+        empty — the most common reason is the SPA hit this endpoint
+        twice (the cookie was consumed by the first call). The user
+        should re-start the Google flow.
+        """
+        token = request.cookies.get(_OAUTH_EXCHANGE_COOKIE)
+        response = JSONResponse(
+            {"access_token": token or "", "token_type": "bearer"}
+            if token
+            else {
+                "error": "missing_exchange_cookie",
+                "error_description": (
+                    "OAuth exchange cookie ausente o expirada (>60 s). "
+                    "Reintentá el login con Google."
+                ),
+            },
+            status_code=200 if token else 401,
+        )
+        response.delete_cookie(_OAUTH_EXCHANGE_COOKIE, path="/api/v2/auth/jwt/")
+        return response
