@@ -56,6 +56,13 @@ export interface AuthAdapter {
   /** Clear stored tokens (for expired session handling) */
   clearTokens(): void;
 
+  /**
+   * Swap the stored access token without touching the cached user
+   * profile. Used by the silent-refresh interceptor when the
+   * backend issues a new access token via the refresh-cookie flow.
+   */
+  replaceAccessToken(token: string): Promise<void>;
+
   /** Subscribe to auth state changes */
   onAuthStateChange(callback: AuthStateChangeCallback): () => void;
 }

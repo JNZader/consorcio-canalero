@@ -60,6 +60,18 @@ export class JWTAuthAdapter implements AuthAdapter {
     this.persistSession(session);
     this.notifyListeners('SIGNED_IN', session);
 
+    // Phase 2 / F2-K: stamp the refresh-token cookie immediately
+    // after a successful login so the silent-refresh interceptor has
+    // a cookie to trade. Best-effort — if the call fails the user
+    // can still work until their access token expires.
+    void fetch(`${AUTH_BASE}/auth/jwt/login-with-refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {
+      /* noop — caller already has a valid access token */
+    });
+
     return session;
   }
 
@@ -138,6 +150,25 @@ export class JWTAuthAdapter implements AuthAdapter {
   clearTokens(): void {
     this.clearStorage();
     this.notifyListeners('SIGNED_OUT', null);
+  }
+
+  async replaceAccessToken(token: string): Promise<void> {
+    // Keep the previously cached user; only the access token rotates.
+    const current = await this.getSession();
+    if (current?.user) {
+      this.persistSession({ access_token: token, user: current.user });
+      this.notifyListeners('TOKEN_REFRESHED', {
+        access_token: token,
+        user: current.user,
+      });
+      return;
+    }
+    // No cached user yet (cold load after the SPA bootstrapped on a
+    // refresh-only response). Hydrate from /users/me with the fresh
+    // token so the storage stays consistent.
+    const user = await this.fetchCurrentUser(token);
+    this.persistSession({ access_token: token, user });
+    this.notifyListeners('TOKEN_REFRESHED', { access_token: token, user });
   }
 
   onAuthStateChange(callback: AuthStateChangeCallback): () => void {

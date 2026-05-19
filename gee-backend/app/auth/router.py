@@ -1,12 +1,70 @@
 """Auth router — JWT login/register + Google OAuth."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import auth_backend, fastapi_users
+from app.auth.dependencies import (
+    auth_backend,
+    current_active_user,
+    fastapi_users,
+    get_jwt_strategy,
+)
+from app.auth.models import User
+from app.auth.refresh_tokens import (
+    REFRESH_TOKEN_LIFETIME,
+    issue_token,
+    revoke_all_for_user,
+    rotate,
+)
 from app.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.config import settings
+from app.db.session import get_async_db
 
 router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Refresh-token cookie helpers (Phase 2 / F2-K)
+# ─────────────────────────────────────────────────────────────────────
+
+_REFRESH_COOKIE = "refresh_token"
+_REFRESH_COOKIE_PATH = "/api/v2/auth/jwt/"
+
+
+def _is_secure_request(request: Request) -> bool:
+    """Mirror of the OAuth flow's secure-flag logic.
+
+    Hardcoded ``True`` in production/staging so a misconfigured proxy
+    can't downgrade the cookie. Falls back to ``request.url.scheme``
+    in dev so HTTP localhost still works.
+    """
+    from app.config import _is_production_env
+
+    if _is_production_env(settings.environment):
+        return True
+    if request.url.scheme == "https":
+        return True
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    return forwarded.lower().split(",", 1)[0].strip() == "https"
+
+
+def _set_refresh_cookie(response: JSONResponse, request: Request, raw: str) -> None:
+    secure = _is_secure_request(request)
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=raw,
+        max_age=int(REFRESH_TOKEN_LIFETIME.total_seconds()),
+        httponly=True,
+        samesite="none" if secure else "lax",
+        secure=secure,
+        path=_REFRESH_COOKIE_PATH,
+    )
+
+
+def _clear_refresh_cookie(response: JSONResponse) -> None:
+    response.delete_cookie(_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
+
 
 # JWT auth routes: /auth/jwt/login, /auth/jwt/logout
 router.include_router(
@@ -14,6 +72,126 @@ router.include_router(
     prefix="/auth/jwt",
     tags=["auth"],
 )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Login wrapper that ALSO sets the refresh cookie. Lives BEFORE the
+# fastapi-users include above on registration order but runs AFTER
+# because FastAPI matches routes in registration order — explicit
+# decorator order doesn't matter here. The path is the same as the
+# fastapi-users one (``/auth/jwt/login``), so this DECORATOR re-wraps
+# it: client POSTs same body, gets same JSON shape, plus the cookie.
+# ─────────────────────────────────────────────────────────────────────
+
+
+@router.post("/auth/jwt/login-with-refresh", tags=["auth"])
+async def login_with_refresh(
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_db),
+):
+    """Mint an access token + refresh cookie for an already-authenticated user.
+
+    Why a separate endpoint instead of patching ``/auth/jwt/login``:
+    fastapi-users owns that route and inlines a Pydantic form body
+    that's awkward to extend without re-implementing the password
+    verification flow. The SPA hits ``/auth/jwt/login`` first (gets
+    the JWT in JSON), then immediately hits this endpoint with the
+    Bearer header so the refresh cookie gets stamped. Subsequent
+    auto-refreshes use ``/auth/jwt/refresh`` only.
+    """
+    strategy = get_jwt_strategy()
+    access_token = await strategy.write_token(user)
+    raw_refresh, _ = await issue_token(
+        session,
+        user=user,
+        user_agent=request.headers.get("user-agent", ""),
+        client_ip=request.client.host if request.client else None,
+    )
+    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    _set_refresh_cookie(response, request, raw_refresh)
+    return response
+
+
+@router.post("/auth/jwt/refresh", tags=["auth"])
+async def refresh_access_token(
+    request: Request,
+    session: AsyncSession = Depends(get_async_db),
+):
+    """Trade the refresh cookie for a new access token + rotated cookie.
+
+    Returns 401 when the cookie is absent, unknown, expired, replayed
+    (already revoked), or belongs to a deleted user. On replay we
+    revoke the whole family before returning the 401 — same response
+    body to the client either way, so an attacker doesn't learn that
+    they tripped the alarm.
+    """
+    raw = request.cookies.get(_REFRESH_COOKIE)
+    if not raw:
+        return JSONResponse({"detail": "missing refresh cookie"}, status_code=401)
+
+    # Look up the user from the presented token BEFORE calling rotate
+    # so we can authorise correctly without trusting client input.
+    from app.auth.refresh_tokens import find_active
+
+    existing = await find_active(session, raw)
+    if existing is None:
+        # Unknown or expired. Make sure the client drops whatever
+        # cookie they had.
+        response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
+        _clear_refresh_cookie(response)
+        return response
+
+    # Load the user — even if the token row is revoked we go through
+    # ``rotate`` so the family-burn logic runs. ``User.id`` typeshed
+    # narrows to UUID and confuses mypy on the column-equality form
+    # below; the runtime expression is a normal SQLAlchemy
+    # ``ColumnElement[bool]``.
+    from sqlalchemy import select as sa_select
+
+    orm_q = await session.execute(
+        sa_select(User).where(User.id == existing.user_id)  # type: ignore[arg-type]
+    )
+    user = orm_q.scalar_one_or_none()
+    if user is None or not user.is_active:
+        response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
+        _clear_refresh_cookie(response)
+        return response
+
+    rotated = await rotate(
+        session,
+        raw_token=raw,
+        user=user,
+        user_agent=request.headers.get("user-agent", ""),
+        client_ip=request.client.host if request.client else None,
+    )
+    if rotated is None:
+        response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
+        _clear_refresh_cookie(response)
+        return response
+
+    new_raw, _row = rotated
+    strategy = get_jwt_strategy()
+    access_token = await strategy.write_token(user)
+    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    _set_refresh_cookie(response, request, new_raw)
+    return response
+
+
+@router.post("/auth/jwt/logout-all", tags=["auth"])
+async def logout_all_sessions(
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_db),
+):
+    """Revoke every refresh token for the caller. ``/auth/jwt/logout``
+    only invalidates the access token in the caller's hand — this one
+    nukes every device.
+    """
+    revoked = await revoke_all_for_user(session, user.id)
+    response = JSONResponse({"revoked_sessions": revoked})
+    _clear_refresh_cookie(response)
+    return response
+
 
 # Register route: /auth/register
 router.include_router(

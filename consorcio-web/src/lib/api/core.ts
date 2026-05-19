@@ -62,6 +62,54 @@ export function clearAuthTokenCache(): void {
 export interface ApiFetchOptions extends RequestInit {
   timeout?: number;
   skipAuth?: boolean;
+  /**
+   * Internal flag: marked when this call is a retry after a refresh-
+   * token attempt. Prevents an infinite refresh→retry loop when the
+   * new token also gets a 401.
+   */
+  __alreadyRetried?: boolean;
+}
+
+/**
+ * Try to refresh the access token via the HttpOnly cookie set on
+ * login (Phase 2 / F2-K). Returns ``true`` when a fresh token is now
+ * in storage and the caller can retry the original request.
+ *
+ * Multiple concurrent 401s share a single in-flight refresh promise
+ * to avoid hammering the backend.
+ */
+let _refreshInFlight: Promise<boolean> | null = null;
+
+async function attemptTokenRefresh(): Promise<boolean> {
+  if (_refreshInFlight) {
+    return _refreshInFlight;
+  }
+  _refreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_URL}${API_PREFIX}/auth/jwt/refresh`, {
+        method: 'POST',
+        credentials: 'include', // sends the HttpOnly refresh_token cookie
+      });
+      if (!response.ok) {
+        return false;
+      }
+      const body = await response.json();
+      const token = body?.access_token as string | undefined;
+      if (!token) {
+        return false;
+      }
+      // Persist the new access token via the auth adapter so the next
+      // ``getAuthToken()`` returns it.
+      await authAdapter.replaceAccessToken(token);
+      clearAuthTokenCache();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      _refreshInFlight = null;
+    }
+  })();
+  return _refreshInFlight;
 }
 
 function hasItemsArray<T>(data: unknown): data is { items: T[] } {
@@ -130,16 +178,32 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
 
-      // Handle expired/invalid token — auto-logout + redirect
-      // Guard prevents multiple parallel 401s from each triggering a separate logout
-      if (response.status === 401 && !skipAuth) {
+      // Handle expired/invalid access token — Phase 2 / F2-K. The
+      // access token now lives 15 min instead of 60 min, so we expect
+      // a lot more 401s during normal use. Try to silently refresh
+      // via the HttpOnly cookie before forcing the user back to login.
+      if (
+        response.status === 401 &&
+        !skipAuth &&
+        !options.__alreadyRetried
+      ) {
+        const refreshed = await attemptTokenRefresh();
+        if (refreshed) {
+          // Retry the original call exactly once with the new token.
+          // The ``__alreadyRetried`` flag stops a refresh loop if the
+          // new token also gets a 401 (e.g. role revoked on the
+          // backend).
+          return apiFetch<T>(endpoint, { ...options, __alreadyRetried: true });
+        }
+
+        // Refresh failed (no cookie, expired, replayed). Fall through
+        // to the legacy logout flow.
         if (!_handlingAuthExpiry) {
           _handlingAuthExpiry = true;
           logger.warn('Sesion expirada — redirigiendo a login');
           clearAuthTokenCache();
           authAdapter.clearTokens();
           window.dispatchEvent(new CustomEvent('auth:expired'));
-          // Reset flag after redirect completes (fallback: 10s)
           setTimeout(() => {
             _handlingAuthExpiry = false;
           }, 10_000);

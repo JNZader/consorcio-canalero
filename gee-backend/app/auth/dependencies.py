@@ -159,7 +159,12 @@ bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=settings.jwt_secret, lifetime_seconds=3600)
+    # Phase 2 / F2-K: access tokens are short-lived (15 min). The SPA
+    # refreshes them via the refresh-token cookie set on login. With
+    # ``access`` this short, a stolen token has a 15-min blast radius
+    # before the user can ``logout-all`` to revoke the whole token
+    # family.
+    return JWTStrategy(secret=settings.jwt_secret, lifetime_seconds=900)
 
 
 auth_backend = AuthenticationBackend(
