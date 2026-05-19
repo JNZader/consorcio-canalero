@@ -3,10 +3,12 @@
 import os
 import sys
 from collections.abc import AsyncGenerator, Generator
+from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
@@ -35,17 +37,32 @@ _MAX_OVERFLOW = 5 if _IS_CELERY_PROCESS else 20
 
 
 # --- Sync engine (for domain services, repositories, migrations) ---
+#
+# Phase 4 / F4-F: when PgBouncer transaction-pool is in front of postgres,
+# SQLAlchemy's own connection pool is redundant (PgBouncer is already
+# multiplexing). Worse, holding pooled connections inflates PgBouncer's
+# ``max_client_conn`` budget unnecessarily. Switch to ``NullPool``
+# (per the SA docs https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#asyncpg-prepared-statement-name)
+# so each request opens a fresh PgBouncer client connection that
+# returns to the pool the moment the work is done.
 
-engine = create_engine(
-    settings.database_url,
-    echo=settings.database_echo,
-    pool_pre_ping=True,
-    # See module-level note on ``_IS_CELERY_PROCESS`` — backend keeps
-    # the 20+20 pool sized for FastAPI's 40-thread default; celery
-    # forks see 5+5 because they only hold one connection per task.
-    pool_size=_POOL_SIZE,
-    max_overflow=_MAX_OVERFLOW,
-)
+if settings.use_pgbouncer:
+    engine = create_engine(
+        settings.database_url,
+        echo=settings.database_echo,
+        poolclass=NullPool,
+    )
+else:
+    engine = create_engine(
+        settings.database_url,
+        echo=settings.database_echo,
+        pool_pre_ping=True,
+        # See module-level note on ``_IS_CELERY_PROCESS`` — backend keeps
+        # the 20+20 pool sized for FastAPI's 40-thread default; celery
+        # forks see 5+5 because they only hold one connection per task.
+        pool_size=_POOL_SIZE,
+        max_overflow=_MAX_OVERFLOW,
+    )
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
@@ -65,30 +82,54 @@ _async_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg:
 
 # Phase 4 / F4-F: PgBouncer transaction-pool compatibility.
 #
-# asyncpg's default behaviour is to keep a per-connection ``PreparedStatement``
-# cache. The statement name lives on a SPECIFIC postgres backend
-# connection — when PgBouncer is in transaction-pool mode the next
-# transaction is likely to land on a different postgres connection
-# that has never seen that name, so the second use raises
-# ``InvalidSqlStatementNameError``. Setting both caches to 0 forces
-# asyncpg to send fresh SQL on every call. This is slower than
-# prepared statements on direct-to-postgres setups (which is why
-# we toggle it on a flag, not on by default).
+# Direct-to-postgres: asyncpg's per-connection ``PreparedStatement``
+# cache is a net win — fewer round-trips on hot queries.
+#
+# PgBouncer transaction mode: two distinct problems.
+#
+#   1. ``statement_cache_size=0`` alone is NOT enough. SQLAlchemy's
+#      asyncpg dialect ALWAYS calls ``connection.prepare()`` under the
+#      hood (statement_cache_size only governs whether asyncpg holds
+#      a reference to the result). PgBouncer multiplexes the next
+#      transaction to a possibly-fresh postgres backend, so the
+#      enumerated default prepared-statement name collides →
+#      ``DuplicatePreparedStatementError`` or
+##     ``InvalidSqlStatementNameError`` in the wild.
+#      Fix: pass ``prepared_statement_name_func`` to generate a
+#      unique name per call. (SA docs, post-#6467.)
+#
+#   2. SQLAlchemy's connection pool layered over PgBouncer's pool is
+#      redundant and inflates ``max_client_conn`` accounting.
+#      Fix: ``poolclass=NullPool`` — each request opens a fresh
+#      PgBouncer client connection and releases it on close.
+#
+# Both fixes are interlocked: NullPool without the name_func still
+# blows up; name_func without NullPool keeps the pool active and is
+# wasteful but functional.
 _async_connect_args: dict[str, object] = {}
 if settings.use_pgbouncer:
     _async_connect_args["statement_cache_size"] = 0
-    _async_connect_args["prepared_statement_cache_size"] = 0
+    _async_connect_args["prepared_statement_name_func"] = (
+        lambda: f"__asyncpg_{uuid4()}__"
+    )
 
-async_engine = create_async_engine(
-    _async_url,
-    echo=settings.database_echo,
-    pool_pre_ping=True,
-    # Phase 3 / F3-K: matches the sync pool. Same per-process sizing
-    # rule: 20+20 on backend uvicorn workers, 5+5 inside celery forks.
-    pool_size=_POOL_SIZE,
-    max_overflow=_MAX_OVERFLOW,
-    connect_args=_async_connect_args,
-)
+if settings.use_pgbouncer:
+    async_engine = create_async_engine(
+        _async_url,
+        echo=settings.database_echo,
+        poolclass=NullPool,
+        connect_args=_async_connect_args,
+    )
+else:
+    async_engine = create_async_engine(
+        _async_url,
+        echo=settings.database_echo,
+        pool_pre_ping=True,
+        # Phase 3 / F3-K: matches the sync pool. Same per-process sizing
+        # rule: 20+20 on backend uvicorn workers, 5+5 inside celery forks.
+        pool_size=_POOL_SIZE,
+        max_overflow=_MAX_OVERFLOW,
+    )
 
 AsyncSessionLocal = async_sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
