@@ -82,7 +82,21 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.12
+      # Phase 4 / F4-B: raised the floor from 0.12 → 0.30 after seeding
+      # the two test files referenced by ``.cosmic-ray.toml`` (they did
+      # NOT exist before this batch — the gate had been mis-configured
+      # to point at non-existent test paths and was effectively dead).
+      # Measured baseline at commit time: 63.41% kill rate (175 killed
+      # / 276 mutations) across denuncias/service.py, monitoring/service.py
+      # and tramites/schemas.py — the 0.30 floor gives a ~33pp cushion
+      # for natural drift while still catching the kind of regression
+      # the gate exists to prevent.
+      #
+      # Wallclock budget: ~10 min on the desktop benchmark (276 mutations
+      # × ~1.8s per pytest invocation + ~30-60s cosmic-ray init overhead).
+      # On a GH Actions runner expect 1.5-2x slower → realistically
+      # 15-22 min, comfortably inside the 35-min timeout below.
+      - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.30
 
   security:
     name: Security scan (Trivy)

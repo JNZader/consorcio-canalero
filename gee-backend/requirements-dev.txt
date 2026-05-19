@@ -14,7 +14,7 @@ pytest-mock>=3.12.0
 pytest-xdist>=3.5.0  # Parallel test execution
 testcontainers>=4.0.0  # Auto-spin PostgreSQL+PostGIS for tests
 mutmut>=3.2.0  # Mutation testing
-cosmic-ray>=8.3.0  # Temporary mutation gate for CI
+cosmic-ray==8.4.6  # Pinned (Phase 4 / F4-B): cosmic_gate.py parses the ``test_outcome`` field on dump output. A major bump that renames it would silently bucket all results into ``other`` and report kill_rate=0 (fails closed — good — but noisy). Bump deliberately when upgrading.
 httpx>=0.27.0  # TestClient async support
 factory-boy>=3.3.0  # Test fixtures
 faker>=22.0.0  # Fake data generation

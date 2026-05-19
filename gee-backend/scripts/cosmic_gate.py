@@ -69,7 +69,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-kill-rate",
         type=float,
-        default=float(os.getenv("COSMIC_MIN_KILL_RATE", "0.12")),
+        default=float(os.getenv("COSMIC_MIN_KILL_RATE", "0.30")),
         help="Minimum accepted kill rate between 0 and 1",
     )
     return parser.parse_args()
