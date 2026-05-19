@@ -73,6 +73,26 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Summary — image SHA + rollback hint
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${SHORT_SHA}"
+          {
+            echo "### Backend image published"
+            echo ""
+            echo "\`\`\`"
+            echo "$IMAGE"
+            echo "\`\`\`"
+            echo ""
+            echo "**To deploy this build on the Hetzner server:**"
+            echo ""
+            echo "1. Edit \`/home/javier/stacks/consorcio/.env\`:"
+            echo "   \`BACKEND_IMAGE=$IMAGE\`"
+            echo "2. Run: \`docker compose pull backend && docker compose up -d backend\`"
+            echo ""
+            echo "**To rollback** to a previous version, point BACKEND_IMAGE at the older SHA from"
+            echo "[the package registry](https://github.com/${{ github.repository }}/pkgs/container/consorcio-canalero%2Fbackend)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build-geo-worker:
     name: Build Geo Worker Image
@@ -106,6 +126,20 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Summary — geo-worker image SHA
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ env.REGISTRY }}/${{ env.GEO_WORKER_IMAGE }}:${SHORT_SHA}"
+          {
+            echo "### Geo-worker image published"
+            echo ""
+            echo "\`\`\`"
+            echo "$IMAGE"
+            echo "\`\`\`"
+            echo ""
+            echo "Set \`GEO_WORKER_IMAGE=$IMAGE\` in the server .env then"
+            echo "\`docker compose pull geo-worker && docker compose up -d geo-worker\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: Deploy to server
