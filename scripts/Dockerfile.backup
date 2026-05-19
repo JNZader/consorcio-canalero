@@ -1,0 +1,34 @@
+# Tiny image bundling the deps the backup scripts need.
+# Built and run by the ``backup-postgres`` / ``backup-volumes`` services
+# in docker-compose.prod.yml (profile: backup).
+#
+# Operators trigger a backup with:
+#   docker compose --profile backup run --rm backup-postgres
+#   docker compose --profile backup run --rm backup-volumes
+
+FROM alpine:3.20
+
+RUN apk add --no-cache \
+      bash \
+      coreutils \
+      zstd \
+      openssl \
+      postgresql16-client \
+      restic \
+      openssh-client \
+      sshpass \
+      python3 \
+      py3-pip \
+      ca-certificates
+
+# Backblaze B2 CLI. ``--break-system-packages`` because Alpine 3.20
+# ships PEP 668 and we have no other Python on the image to pollute.
+RUN pip install --break-system-packages --no-cache-dir 'b2>=4.0.0'
+
+WORKDIR /opt/backup
+COPY backup_postgres.sh backup_volumes.sh /opt/backup/
+RUN chmod +x /opt/backup/backup_postgres.sh /opt/backup/backup_volumes.sh
+
+# Default command is a no-op — the compose service overrides it with
+# the specific backup script per invocation.
+CMD ["/bin/bash", "-lc", "echo 'override CMD with the backup script you want'"]

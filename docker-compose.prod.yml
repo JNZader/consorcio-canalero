@@ -185,6 +185,44 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # ---------------------------------------------------------------
+  # Backup runners (Phase 2 / F2-A + F2-B). Opt-in via the ``backup``
+  # compose profile so they don't run unless explicitly invoked:
+  #   docker compose --profile backup run --rm backup-postgres
+  #   docker compose --profile backup run --rm backup-volumes
+  # Schedule from the host crontab (see docs/RUNBOOK.md).
+  # ---------------------------------------------------------------
+  backup-postgres:
+    profiles: ["backup"]
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    container_name: consorcio-backup-postgres
+    restart: "no"
+    env_file: .env  # supplies DATABASE_URL + the BACKUP_* / B2_* / HETZNER_SB_* vars
+    command: ["/opt/backup/backup_postgres.sh"]
+    networks:
+      - backend
+      - consorcio-internal
+
+  backup-volumes:
+    profiles: ["backup"]
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    container_name: consorcio-backup-volumes
+    restart: "no"
+    env_file: .env  # supplies RESTIC_* + B2_* / Storage Box creds
+    volumes:
+      # Mount the same volumes the backend / geo-worker write to,
+      # read-only so a backup run can't accidentally mutate them.
+      - geo-data:/data/geo:ro
+      - denuncia-uploads:/app/uploads:ro
+    command: ["/opt/backup/backup_volumes.sh"]
+    networks:
+      - backend
+      - consorcio-internal
+
 # Redes EXTERNAS — creadas una sola vez en el server:
 #   docker network create proxy
 #   docker network create backend

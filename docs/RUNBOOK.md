@@ -106,6 +106,118 @@ configuration disables all three. To turn them on:
 > probe (200 = process responsive); `/ready` is true readiness (503
 > when DB or Redis are down).
 
+### 1.4 Offsite backups (Phase 2 / F2-A + F2-B)
+
+Two scripts in `scripts/` plus two compose services run the daily
+encrypted backups. **Pick one storage backend** (Backblaze B2 *or*
+Hetzner Storage Box) — the same `.env` drives both backup runners.
+
+#### 1.4.a Option A — Backblaze B2 (recommended for offsite separation)
+
+1. Signup at <https://www.backblaze.com/sign-up/cloud-storage>. Free
+   tier: 10 GB storage + 1 GB egress/day. Past that ~€5/TB/month.
+2. *Create a Bucket* → name it `consorcio-backups`, **Files in Bucket
+   are: Private**, **Default Lifecycle Settings**: "Keep prior versions
+   for X days" → 30. Use the EU region if available.
+3. *App Keys → Add a New Application Key* → name "consorcio-backup",
+   bucket = your bucket, capabilities = `listBuckets`, `listFiles`,
+   `readFiles`, `writeFiles`, `deleteFiles`. Copy the **keyID** and
+   the **applicationKey** (the long one) — Backblaze shows the secret
+   exactly once.
+4. Edit `/home/javier/stacks/consorcio/.env`:
+   ```env
+   # pg_dump backup (F2-A)
+   BACKUP_BACKEND=b2
+   B2_BUCKET=consorcio-backups
+   B2_KEY_ID=<keyID from step 3>
+   B2_APPLICATION_KEY=<applicationKey from step 3>
+   BACKUP_ENCRYPTION_PASSPHRASE=<openssl rand -base64 48>
+   BACKUP_RETENTION_DAYS=30
+
+   # restic volume backup (F2-B)
+   RESTIC_REPOSITORY=b2:consorcio-backups:/restic/consorcio
+   RESTIC_PASSWORD=<openssl rand -base64 48>
+   B2_ACCOUNT_ID=<same keyID as B2_KEY_ID>
+   B2_ACCOUNT_KEY=<same as B2_APPLICATION_KEY>
+   ```
+5. **Store both passphrases off-server** (password manager). Lose them
+   and the backups are unrecoverable.
+
+#### 1.4.b Option B — Hetzner Storage Box (cheapest if VPS is Hetzner)
+
+1. Hetzner Cloud Console → *Storage Boxes* → add a 100 GB box (~€3.20
+   /month, same datacenter as the VPS for fastest writes).
+2. *Settings* of the new box → **enable SSH support** + create a
+   sub-account dedicated to the consorcio (`u123456-sub1`) with its
+   own password.
+3. (Recommended) Generate an SSH key on the server (`ssh-keygen -t
+   ed25519 -f ~/.ssh/hetzner_sb`), then add the public key in the
+   Storage Box UI.
+4. Edit `.env`:
+   ```env
+   # pg_dump backup
+   BACKUP_BACKEND=hetzner-sb
+   HETZNER_SB_HOST=u123456.your-storagebox.de
+   HETZNER_SB_USER=u123456-sub1
+   HETZNER_SB_SSH_KEY=/home/javier/.ssh/hetzner_sb   # or HETZNER_SB_PASS=...
+   BACKUP_ENCRYPTION_PASSPHRASE=<openssl rand -base64 48>
+   BACKUP_RETENTION_DAYS=30
+
+   # restic volume backup
+   RESTIC_REPOSITORY=sftp:u123456-sub1@u123456.your-storagebox.de:/restic/consorcio
+   RESTIC_PASSWORD=<openssl rand -base64 48>
+   ```
+5. Storage Box doesn't have lifecycle rules; rotate manually or rely
+   on `restic forget --prune` (already in the script).
+
+#### 1.4.c Trigger a one-off backup (verifies the credentials are right)
+
+```bash
+ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238
+cd /home/javier/stacks/consorcio
+docker compose --profile backup run --rm backup-postgres
+docker compose --profile backup run --rm backup-volumes
+```
+
+The two services live behind the `backup` compose profile so they
+don't auto-start with `docker compose up`. First run will build the
+image (~1 min); subsequent runs are seconds.
+
+#### 1.4.d Schedule the daily backup via host crontab
+
+```cron
+# m h dom mon dow  command
+15 03 * * *  cd /home/javier/stacks/consorcio && /usr/bin/docker compose --profile backup run --rm backup-postgres >>/var/log/consorcio-backup-postgres.log 2>&1
+45 03 * * *  cd /home/javier/stacks/consorcio && /usr/bin/docker compose --profile backup run --rm backup-volumes  >>/var/log/consorcio-backup-volumes.log  2>&1
+```
+
+The 30-min gap keeps the two jobs from saturating the upload bandwidth
+at the same time. Both logs rotate via logrotate in
+`/etc/logrotate.d/consorcio` (template in `docs/templates/`).
+
+### 1.5 Email / SMTP (Phase 2 / F2-J)
+
+Currently the password-reset and the (incoming) email verification
+flow write the token to the structured logger. Wire any SMTP provider
+to send actual mails. Brevo (300/day free, no card) is the easiest
+LATAM choice; Resend (100/day) is fine if your domain is set up with
+SPF/DKIM/DMARC.
+
+1. Provider signup (Brevo example):
+   - <https://www.brevo.com/free-shop-account/> → free plan.
+   - *SMTP & API* → enable the SMTP relay → copy the **SMTP key**.
+2. Edit `.env`:
+   ```env
+   SMTP_HOST=smtp-relay.brevo.com
+   SMTP_PORT=587
+   SMTP_USERNAME=<your brevo login email>
+   SMTP_PASSWORD=<SMTP key from step 1>
+   SMTP_FROM=no-reply@<your domain>
+   SMTP_FROM_NAME=Consorcio Canalero 10 de Mayo
+   ```
+3. `docker compose up -d backend worker`. The backend reads these vars
+   on boot; password reset + email verification flows start delivering.
+
 ---
 
 ## 2. Daily ops
@@ -310,35 +422,87 @@ Common causes:
 ### 3.6 Restore from backup
 
 > **Pre-req**: backups must already exist. Phase 1 doesn't wire
-> automated backups — roadmap F2 covers `pg_dump` to Backblaze B2 +
-> `restic` for uploads. Until then this section is theoretical.
+> Pre-req: section 1.4 (offsite backups) must be configured. The
+> commands below assume Backblaze B2; for Hetzner SB just swap the
+> download step.
 
-Once backups are in place:
+**Postgres dump restore** (F2-A):
 
 ```bash
-# 1. Stop dependants
+# 1. Download the most recent dump from B2 (or sftp from Storage Box)
+docker compose --profile backup run --rm --entrypoint sh backup-postgres -c '
+  B2_ACCOUNT_INFO=/tmp/.b2 b2 account authorize "$B2_KEY_ID" "$B2_APPLICATION_KEY" &&
+  B2_ACCOUNT_INFO=/tmp/.b2 b2 ls "$B2_BUCKET" postgres/ | tail -1 |
+  awk "{print \$NF}" |
+  xargs -I {} B2_ACCOUNT_INFO=/tmp/.b2 b2 file download "$B2_BUCKET" {} /tmp/latest.sql.zst.enc &&
+  cat /tmp/latest.sql.zst.enc
+' > latest.sql.zst.enc
+
+# 2. Decrypt + decompress
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+  -pass "env:BACKUP_ENCRYPTION_PASSPHRASE" \
+  -in latest.sql.zst.enc | zstd -d -o latest.sql
+
+# 3. Stop dependants so they don't write during restore
 docker compose stop backend worker celery-worker
 
-# 2. Drop and recreate the DB
-docker compose exec postgres psql -U consorcio -c "DROP DATABASE consorcio_canalero;"
-docker compose exec postgres psql -U consorcio -c "CREATE DATABASE consorcio_canalero;"
+# 4. Wipe + restore (psql, since the dump uses CLEAN/IF-EXISTS)
+docker compose exec -T postgres psql -U "$DB_USER" -d consorcio_canalero < latest.sql
 
-# 3. Restore from the latest dump
-docker compose exec -T postgres pg_restore -U consorcio -d consorcio_canalero < backup.dump
-
-# 4. Restart
+# 5. Restart
 docker compose up -d backend worker celery-worker
+```
+
+**File-backed volumes restore** (F2-B, restic):
+
+```bash
+# List snapshots
+docker compose --profile backup run --rm --entrypoint restic backup-volumes snapshots
+
+# Restore the most recent into a scratch path on the host
+docker compose --profile backup run --rm \
+  --entrypoint restic \
+  -v "$PWD/restore:/restore" \
+  backup-volumes \
+  restore latest --target /restore
+
+# Move into the live volumes (stops the consumers first)
+docker compose stop backend geo-worker
+docker run --rm -v consorcio-denuncia-uploads:/dest -v "$PWD/restore/app/uploads:/src:ro" \
+  alpine sh -c 'cp -av /src/. /dest/'
+docker run --rm -v consorcio-geo-data:/dest -v "$PWD/restore/data/geo:/src:ro" \
+  alpine sh -c 'cp -av /src/. /dest/'
+docker compose up -d backend geo-worker
 ```
 
 ---
 
 ## 4. Periodic drills
 
-- **Monthly**: practice 3.6 against a `consorcio_canalero_drill`
-  database. Time the procedure end-to-end; the target RTO is 4 h.
-- **Weekly**: read this file. Update any step that's stale.
+- **Daily (automated)**: section 1.4.d cron triggers
+  `backup-postgres` at 03:15 UTC and `backup-volumes` at 03:45 UTC.
+  Confirm both runs every Monday — check `/var/log/consorcio-backup-*.log`
+  for "backup OK" within the past 24 h.
+- **Monthly (manual drill)**: practice section 3.6 against a
+  `consorcio_canalero_drill` database (not the live one!). Steps:
+  1. `docker compose exec postgres psql -U $DB_USER -c "CREATE DATABASE consorcio_canalero_drill;"`
+  2. Pull the latest dump from B2/SB into a scratch dir.
+  3. Run the restore commands from section 3.6 against `_drill`.
+  4. `\dt` to confirm tables, count a few rows (`SELECT COUNT(*) FROM denuncias;`).
+  5. `DROP DATABASE consorcio_canalero_drill` when done.
+  Time the end-to-end procedure; the target RTO is 4 h. Note the
+  timing in this file under "Last drill" so you can spot regressions.
 - **Quarterly**: rotate `JWT_SECRET`, `REDIS_PASSWORD`, GCP service
-  account key, GHCR token, Cloudflare API token.
+  account key, GHCR token, Cloudflare API token,
+  `BACKUP_ENCRYPTION_PASSPHRASE`, and `RESTIC_PASSWORD`. When you
+  rotate the restic password you MUST keep the old one accessible
+  until every snapshot encrypted with it has aged out.
+- **Annually**: rebuild the `Dockerfile.backup` image to pick up the
+  latest base + ``b2``/``restic`` security patches:
+  `docker compose --profile backup build --no-cache`.
+
+**Last drill**: not yet executed. Update this line after the first
+real run.
 
 ---
 
@@ -357,3 +521,23 @@ docker compose up -d backend worker celery-worker
 | Sentry | <https://sentry.io> (when configured) |
 | BetterStack | <https://logs.betterstack.com> (when configured) |
 | UptimeRobot | <https://uptimerobot.com> (when configured) |
+| Backblaze B2 | <https://secure.backblaze.com> (when F2-A on B2) |
+| Hetzner Storage Box | <https://console.hetzner.cloud/projects> (when F2-A on SB) |
+| SMTP provider | Brevo / Resend / etc. (when F2-J configured) |
+
+### 5.1 External accounts checklist
+
+Tick each as you create the account and stash credentials in the
+password manager. Empty rows = the integration is wireable but not
+yet activated.
+
+| Integration | Account created? | Where token / key lives | RUNBOOK section |
+|-------------|------------------|--------------------------|-----------------|
+| Sentry (errors) | ☐ | `.env` SENTRY_DSN + Cloudflare Pages VITE_SENTRY_DSN | 1.1 |
+| BetterStack (logs) | ☐ | `.env` BETTERSTACK_TOKEN + Cloudflare Pages VITE_LOGTAIL_TOKEN | 1.2 |
+| UptimeRobot (uptime) | ☐ | Monitor created in UptimeRobot UI (no app token) | 1.3 |
+| Backblaze B2 (backups) | ☐ | `.env` B2_KEY_ID / B2_APPLICATION_KEY / B2_BUCKET | 1.4.a |
+| Hetzner Storage Box (backups) | ☐ | `.env` HETZNER_SB_HOST / USER / SSH_KEY | 1.4.b |
+| SMTP (email verify, reset) | ☐ | `.env` SMTP_HOST / USERNAME / PASSWORD | 1.5 |
+| Backup encryption passphrase | ☐ | `.env` BACKUP_ENCRYPTION_PASSPHRASE (LOSE = backups unrecoverable) | 1.4 |
+| Restic passphrase | ☐ | `.env` RESTIC_PASSWORD (LOSE = backups unrecoverable) | 1.4 |
