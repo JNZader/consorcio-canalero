@@ -53,8 +53,8 @@ const DEFAULT_CENTER: [number, number] = [MAP_CENTER[1], MAP_CENTER[0]];
 // viewport. On desktop, zoom 11 frames the whole jurisdiction with a bit
 // of breathing room. On phones (≤ 768 px wide) the same content needs
 // one extra zoom step out so the East-West axis still fits.
-const DEFAULT_ZOOM_DESKTOP = 11;
-const DEFAULT_ZOOM_MOBILE = 10;
+const DEFAULT_ZOOM_DESKTOP = 10;
+const DEFAULT_ZOOM_MOBILE = 9;
 const MOBILE_BREAKPOINT_PX = 768;
 function getDefaultZoom(): number {
   if (typeof window === 'undefined') return DEFAULT_ZOOM_DESKTOP;
