@@ -45,15 +45,25 @@ router.include_router(
 
 # Google OAuth (only if configured)
 if settings.google_oauth_client_id:
+    import hmac
     import logging
     import os
+    import secrets
     from urllib.parse import urlencode
 
     from fastapi import Depends, Request
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import JSONResponse, RedirectResponse
     from google.auth.transport import requests as google_auth_requests
     from google.oauth2 import id_token as google_id_token
     from httpx_oauth.clients.google import GoogleOAuth2
+
+    # OAuth anti-CSRF: the authorize endpoint mints a random ``state`` nonce,
+    # drops it into a short-lived HttpOnly cookie, and passes it to Google.
+    # The callback rejects the request unless Google's ``state`` matches the
+    # cookie (constant-time). Without this, an attacker can forge the
+    # callback URL and make a victim sign in as the attacker's Google account.
+    _OAUTH_STATE_COOKIE = "oauth_state"
+    _OAUTH_STATE_MAX_AGE = 600  # 10 minutes — generous for slow Google flows.
 
     _oauth_logger = logging.getLogger(__name__)
 
@@ -100,6 +110,13 @@ if settings.google_oauth_client_id:
     from sqlalchemy import select as sa_select
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    def _is_https_request(request: Request) -> bool:
+        """True when the request was served over HTTPS (incl. via X-Forwarded-Proto)."""
+        if request.url.scheme == "https":
+            return True
+        forwarded = request.headers.get("x-forwarded-proto", "")
+        return forwarded.lower().split(",", 1)[0].strip() == "https"
+
     @router.get("/auth/google/authorize", tags=["auth"])
     async def google_oauth_authorize(request: Request):
         """
@@ -110,15 +127,35 @@ if settings.google_oauth_client_id:
         if not redirect_url:
             redirect_url = str(request.url_for("google_oauth_callback"))
 
+        state_nonce = secrets.token_urlsafe(32)
         authorization_url = await google_oauth_client.get_authorization_url(
             redirect_url,
+            state=state_nonce,
             scope=[
                 "openid",
                 "https://www.googleapis.com/auth/userinfo.email",
                 "https://www.googleapis.com/auth/userinfo.profile",
             ],
         )
-        return {"authorization_url": authorization_url}
+
+        response = JSONResponse({"authorization_url": authorization_url})
+        response.set_cookie(
+            key=_OAUTH_STATE_COOKIE,
+            value=state_nonce,
+            max_age=_OAUTH_STATE_MAX_AGE,
+            httponly=True,
+            # SameSite=lax is required: the callback is reached via top-level
+            # navigation from accounts.google.com, so SameSite=strict would
+            # strip the cookie. ``none`` would weaken the CSRF protection.
+            samesite="lax",
+            secure=_is_https_request(request),
+            path="/",
+        )
+        return response
+
+    def _clear_state_cookie(response: RedirectResponse) -> None:
+        """Delete the oauth_state cookie after a callback (success or fail)."""
+        response.delete_cookie(_OAUTH_STATE_COOKIE, path="/")
 
     @router.get("/auth/google/callback", tags=["auth"])
     async def google_oauth_callback(
@@ -135,17 +172,39 @@ if settings.google_oauth_client_id:
         """
         frontend_callback = f"{settings.frontend_url.rstrip('/')}/auth/callback"
 
+        # CSRF check: the ``state`` Google echoed back MUST match the nonce
+        # we put in the ``oauth_state`` cookie during /authorize. Do this
+        # before touching the ``code`` so a forged callback never reaches
+        # the token-exchange step. ``hmac.compare_digest`` to dodge any
+        # timing-side-channel that could leak the cookie value.
+        cookie_state = request.cookies.get(_OAUTH_STATE_COOKIE)
+        if (
+            not cookie_state
+            or not state
+            or not hmac.compare_digest(cookie_state, state)
+        ):
+            _oauth_logger.warning("Google OAuth state mismatch — possible CSRF attempt")
+            response = RedirectResponse(
+                url=f"{frontend_callback}?{urlencode({'error': 'invalid_state', 'error_description': 'OAuth state verification failed. Please retry the login.'})}"
+            )
+            _clear_state_cookie(response)
+            return response
+
         if error:
             _oauth_logger.error("Google OAuth error: %s - %s", error, error_description)
             params = urlencode(
                 {"error": error, "error_description": error_description or ""}
             )
-            return RedirectResponse(url=f"{frontend_callback}?{params}")
+            response = RedirectResponse(url=f"{frontend_callback}?{params}")
+            _clear_state_cookie(response)
+            return response
 
         if not code:
-            return RedirectResponse(
+            response = RedirectResponse(
                 url=f"{frontend_callback}?{urlencode({'error': 'missing_code'})}"
             )
+            _clear_state_cookie(response)
+            return response
 
         try:
             # Determine the redirect_url (must match what was used for authorize)
@@ -159,16 +218,20 @@ if settings.google_oauth_client_id:
             # Verify the id_token to get user info (no People API needed)
             id_token = oauth_token.get("id_token")
             if not id_token:
-                return RedirectResponse(
+                response = RedirectResponse(
                     url=f"{frontend_callback}?{urlencode({'error': 'no_id_token', 'error_description': 'Google did not return an id_token'})}"
                 )
+                _clear_state_cookie(response)
+                return response
 
             id_info = _verify_google_id_token(id_token)
             account_email = id_info.get("email")
             if not account_email:
-                return RedirectResponse(
+                response = RedirectResponse(
                     url=f"{frontend_callback}?{urlencode({'error': 'no_email'})}"
                 )
+                _clear_state_cookie(response)
+                return response
 
             # Find existing user by email
             result = await session.execute(
@@ -200,23 +263,29 @@ if settings.google_oauth_client_id:
                 )
 
             if not user.is_active:
-                return RedirectResponse(
+                response = RedirectResponse(
                     url=f"{frontend_callback}?{urlencode({'error': 'inactive_user'})}"
                 )
+                _clear_state_cookie(response)
+                return response
 
             # Generate JWT token
             strategy = get_jwt_strategy()
             token = await strategy.write_token(user)
 
             _oauth_logger.info("Google OAuth login successful for %s", account_email)
-            return RedirectResponse(
+            response = RedirectResponse(
                 # Use the URL fragment so the browser can read the token, but it is
                 # not sent back to servers or captured in standard request logs.
                 url=f"{frontend_callback}#{urlencode({'access_token': token})}"
             )
+            _clear_state_cookie(response)
+            return response
 
         except Exception as exc:
             _oauth_logger.exception("Google OAuth callback failed: %s", exc)
-            return RedirectResponse(
+            response = RedirectResponse(
                 url=f"{frontend_callback}?{urlencode({'error': 'auth_failed', 'error_description': str(exc)})}"
             )
+            _clear_state_cookie(response)
+            return response

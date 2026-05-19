@@ -87,8 +87,13 @@ export class JWTAuthAdapter implements AuthAdapter {
   async loginWithGoogle(): Promise<void> {
     // Fetch the Google OAuth authorization URL from the backend.
     // fastapi-users returns {"authorization_url": "https://accounts.google.com/..."}
+    // ``credentials: 'include'`` is required so the browser stores the
+    // backend's ``oauth_state`` cookie (anti-CSRF nonce). Without it the
+    // callback will always 401 on cross-origin deploys (Cloudflare Pages
+    // frontend + Hetzner backend on a different domain).
     const response = await fetch(`${AUTH_BASE}/auth/google/authorize`, {
       method: 'GET',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
     });
 
