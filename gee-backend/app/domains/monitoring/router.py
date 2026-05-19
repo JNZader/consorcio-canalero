@@ -17,6 +17,7 @@ from app.domains.monitoring.schemas import (
     SugerenciaUpdate,
 )
 from app.domains.monitoring.service import MonitoringService
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(tags=["monitoring"])
 
@@ -80,7 +81,7 @@ def create_sugerencia(
 
 @router.get(
     "/sugerencias",
-    response_model=dict,
+    response_model=PaginatedResponse[SugerenciaListResponse],
     tags=["sugerencias"],
 )
 def list_sugerencias(
@@ -91,17 +92,17 @@ def list_sugerencias(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[SugerenciaListResponse]:
     """Listar sugerencias con paginacion y filtros (requiere operador)."""
     items, total = service.list_sugerencias(
         db, page=page, limit=limit, estado=estado, categoria=categoria
     )
-    return {
-        "items": [SugerenciaListResponse.model_validate(s) for s in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[SugerenciaListResponse].create(
+        items=[SugerenciaListResponse.model_validate(s) for s in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 # ──────────────────────────────────────────────

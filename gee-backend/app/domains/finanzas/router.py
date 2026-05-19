@@ -23,6 +23,7 @@ from app.domains.finanzas.schemas import (
     PresupuestoResponse,
 )
 from app.domains.finanzas.service import FinanzasService
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/finanzas", tags=["finanzas"])
 
@@ -45,7 +46,7 @@ def _require_operator():
 # ──────────────────────────────────────────────
 
 
-@router.get("/gastos", response_model=dict)
+@router.get("/gastos", response_model=PaginatedResponse[GastoListResponse])
 def list_gastos(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -54,17 +55,17 @@ def list_gastos(
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[GastoListResponse]:
     """Listar gastos con paginacion y filtros (requiere operador)."""
     items, total = service.list_gastos(
         db, page=page, limit=limit, categoria=categoria, year=year
     )
-    return {
-        "items": [GastoListResponse.model_validate(g) for g in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[GastoListResponse].create(
+        items=[GastoListResponse.model_validate(g) for g in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/gastos/{gasto_id}", response_model=GastoResponse)
@@ -106,7 +107,7 @@ def update_gasto(
 # ──────────────────────────────────────────────
 
 
-@router.get("/ingresos", response_model=dict)
+@router.get("/ingresos", response_model=PaginatedResponse[IngresoListResponse])
 def list_ingresos(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -115,17 +116,17 @@ def list_ingresos(
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[IngresoListResponse]:
     """Listar ingresos con paginacion y filtros (requiere operador)."""
     items, total = service.list_ingresos(
         db, page=page, limit=limit, categoria=categoria, year=year
     )
-    return {
-        "items": [IngresoListResponse.model_validate(i) for i in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[IngresoListResponse].create(
+        items=[IngresoListResponse.model_validate(i) for i in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/ingresos/{ingreso_id}", response_model=IngresoResponse)
