@@ -53,8 +53,9 @@ def list_gastos(
     year: Optional[int] = None,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar gastos con paginacion y filtros."""
+    """Listar gastos con paginacion y filtros (requiere operador)."""
     items, total = service.list_gastos(
         db, page=page, limit=limit, categoria=categoria, year=year
     )
@@ -71,8 +72,9 @@ def get_gasto(
     gasto_id: uuid.UUID,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Obtener detalle de un gasto."""
+    """Obtener detalle de un gasto (requiere operador)."""
     return service.get_gasto(db, gasto_id)
 
 
@@ -112,8 +114,9 @@ def list_ingresos(
     year: Optional[int] = None,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar ingresos con paginacion y filtros."""
+    """Listar ingresos con paginacion y filtros (requiere operador)."""
     items, total = service.list_ingresos(
         db, page=page, limit=limit, categoria=categoria, year=year
     )
@@ -130,8 +133,9 @@ def get_ingreso(
     ingreso_id: uuid.UUID,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Obtener detalle de un ingreso."""
+    """Obtener detalle de un ingreso (requiere operador)."""
     return service.get_ingreso(db, ingreso_id)
 
 
@@ -168,8 +172,9 @@ def list_presupuestos(
     year: Optional[int] = None,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Listar presupuestos (opcionalmente filtrar por anio)."""
+    """Listar presupuestos (opcionalmente filtrar por anio; requiere operador)."""
     return service.list_presupuestos(db, year=year)
 
 
@@ -197,8 +202,9 @@ def get_budget_execution(
     year: int,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Ejecucion presupuestaria: proyectado vs real por rubro."""
+    """Ejecucion presupuestaria: proyectado vs real por rubro (requiere operador)."""
     return service.get_budget_execution(db, year)
 
 
@@ -207,8 +213,9 @@ def get_financial_summary(
     year: int,
     db: Session = Depends(get_db),
     service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Resumen financiero anual: total ingresos, gastos y balance."""
+    """Resumen financiero anual: total ingresos, gastos y balance (requiere operador)."""
     return service.get_financial_summary(db, year)
 
 
