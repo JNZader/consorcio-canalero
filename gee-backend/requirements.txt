@@ -41,6 +41,11 @@ xlrd>=2.0.1
 # for denuncia-photo validation + EXIF GPS strip — declare explicitly.
 Pillow>=10.0.0
 
+# Async SMTP — used only when SMTP_HOST is set (see app/shared/email.py).
+# Wraps the stdlib smtplib in asyncio so the FastAPI event loop isn't
+# blocked while shipping the email.
+aiosmtplib>=3.0.0
+
 # Background Tasks
 celery>=5.4.0
 redis>=5.0.0

@@ -129,7 +129,10 @@ def _validate_and_strip_exif(content: bytes, declared_mime: str) -> bytes:
     # JPEG/PNG trims the file slightly without quality loss; WebP gets
     # a near-lossless re-encode.
     buffer = io.BytesIO()
-    save_kwargs: dict[str, object] = {"format": expected_format}
+    # Pillow's typeshed declares the save kwargs as ``str | None``,
+    # but in practice each format reads them differently (ints for
+    # quality, bool for optimize). ``Any`` is the practical type here.
+    save_kwargs: dict[str, object] = {}
     if exif is not None:
         save_kwargs["exif"] = exif.tobytes()
     if expected_format == "JPEG":
@@ -139,8 +142,9 @@ def _validate_and_strip_exif(content: bytes, declared_mime: str) -> bytes:
         save_kwargs["optimize"] = True
     elif expected_format == "WEBP":
         save_kwargs["quality"] = 92
-    image.save(buffer, **save_kwargs)
+    image.save(buffer, format=expected_format, **save_kwargs)
     return buffer.getvalue()
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Validation constants — applied by the router before calling storage.save

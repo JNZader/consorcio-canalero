@@ -63,8 +63,42 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 "token_fingerprint": token_fingerprint,
             },
         )
-        # TODO: Send email via SMTP when configured.
-        # See PENDIENTES.md: "Necesita configurar envio de email (SMTP o servicio)"
+
+        # Phase 2 / F2-J: ship the actual email when SMTP is configured.
+        # ``send_email`` is a silent no-op when ``SMTP_HOST`` is empty,
+        # so this path is safe on dev / unconfigured installs.
+        from app.shared.email import build_reset_email, send_email
+
+        template = build_reset_email(token=token, frontend_url=settings.frontend_url)
+        await send_email(to_email=user.email, **template)
+
+    async def on_after_request_verify(
+        self, user: User, token: str, request: Request | None = None
+    ) -> None:
+        """Ship the verification email when ``request-verify-token`` fires.
+
+        Same redaction policy as the password-reset flow: NEVER log the
+        token. The email helper degrades to a logged no-op on installs
+        without SMTP, so dev / unconfigured installs see the user
+        registered but stuck "pending verify" until the operator
+        manually verifies them.
+        """
+        token_fingerprint = hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+        logger.info(
+            "Email verification requested",
+            extra={
+                "user_email_hash": hashlib.sha256(
+                    user.email.lower().encode("utf-8")
+                ).hexdigest()[:12],
+                "token_fingerprint": token_fingerprint,
+            },
+        )
+        from app.shared.email import build_verification_email, send_email
+
+        template = build_verification_email(
+            token=token, frontend_url=settings.frontend_url
+        )
+        await send_email(to_email=user.email, **template)
 
     async def on_after_register(
         self, user: User, request: Request | None = None
@@ -76,10 +110,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         # declare the attribute, so mypy can't see it. We know the
         # concrete adapter we use (SQLAlchemyUserDatabase) — narrow with
         # a runtime-safe cast.
-        from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
         from typing import cast
 
-        sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
+        sqlalchemy_user_db = cast(
+            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
+        )
         session: AsyncSession = sqlalchemy_user_db.session
 
         result = await session.execute(
@@ -95,6 +130,21 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             pre_auth.claimed = True
             session.add(user)
             await session.commit()
+
+        # Phase 2 / F2-J: send the verification email automatically on
+        # register so the citizen doesn't have to call a separate
+        # ``request-verify-token`` endpoint. ``request_verify`` mints
+        # the token and triggers ``on_after_request_verify`` above.
+        # Wrapped in try/except so an SMTP outage can't fail the
+        # registration itself — the citizen exists, they can re-request
+        # the verification mail later.
+        try:
+            await self.request_verify(user, request)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Auto-verify email failed (user is registered anyway)",
+                extra={"error": str(exc)},
+            )
 
 
 def get_user_manager(

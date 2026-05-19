@@ -70,6 +70,19 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = 0.0  # 0.0 = no transaction tracing
     sentry_environment: str = ""  # falls back to settings.environment
 
+    # SMTP — opt-in. Empty SMTP_HOST disables the integration; UserManager
+    # falls back to logging the verification / reset token so dev still
+    # works without an external provider.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # e.g. no-reply@consorcio.example.com
+    smtp_from_name: str = "Consorcio Canalero 10 de Mayo"
+    # Whether to use STARTTLS (default on port 587). Pure SMTPS (port 465)
+    # would need ``smtp_use_tls=True`` instead.
+    smtp_use_starttls: bool = True
+
     # Centralised logs (BetterStack / Logtail) — empty = disabled.
     # Wired in app/core/logging.py. When set, the LogtailHandler is
     # attached to the root logger so every structlog event also ships
