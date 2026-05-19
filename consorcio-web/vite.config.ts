@@ -5,7 +5,18 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [
-    react(),
+    // Phase 3 / F3-E: React Compiler — auto-memoises components and
+    // hooks the way ``useMemo`` + ``useCallback`` would, except the
+    // compiler is conservative and only inserts memos where it can
+    // PROVE safety. React 19 is the minimum supported runtime
+    // (already pinned in package.json). The plugin runs as a Babel
+    // pass that ``@vitejs/plugin-react`` already hosts, so this is
+    // a config-only change.
+    react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+      },
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt', 'capas/*.geojson'],
@@ -257,7 +268,13 @@ export default defineConfig({
             '@mantine/form',
             '@mantine/notifications',
           ],
-          'vendor-mantine-extras': ['@mantine/charts', '@mantine/dates', '@mantine/dropzone'],
+          // @mantine/dates loaded eager via DatesProvider in main.tsx —
+          // keep it in its own small chunk (~30 KB) so the heavier
+          // ``vendor-mantine-extras`` (charts + dropzone) stays lazy.
+          // Without this split, DatesProvider would pull the entire
+          // 200+ KB extras bundle into the initial entry.
+          'vendor-mantine-dates': ['@mantine/dates'],
+          'vendor-mantine-extras': ['@mantine/charts', '@mantine/dropzone'],
           'vendor-charts': ['recharts'],
           'vendor-maplibre': ['maplibre-gl'],
           'vendor-map-draw': ['@mapbox/mapbox-gl-draw'],
