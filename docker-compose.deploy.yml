@@ -149,6 +149,40 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- Celery Beat (cron scheduler) ---
+  # Phase 3 / F3-L. See docker-compose.prod.yml for the rationale.
+  celery-beat:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-celery-beat
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
+    env_file: .env
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - celery-beat-schedule:/var/run/celery
+    networks:
+      - consorcio-internal
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # --- Celery Worker ---
   celery-worker:
     build:
@@ -270,3 +304,6 @@ volumes:
     name: consorcio-geo-data
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  # Phase 3 / F3-L: scratch dir for celery-beat schedule db.
+  celery-beat-schedule:
+    name: consorcio-celery-beat-schedule

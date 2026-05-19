@@ -142,6 +142,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- Celery Beat (cron scheduler) ---
+  # Phase 3 / F3-L. Without this service the beat_schedule entries in
+  # app/core/celery_app.py never fire: alert evaluation, materialised-view
+  # refresh, and the new refresh-token cleanup (auth.purge_stale_refresh_tokens)
+  # all stay dormant. One replica only — running two beat processes would
+  # double-fire every task.
+  celery-beat:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-celery-beat
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
+    env_file: .env
+    volumes:
+      # Scratch dir for the celerybeat-schedule db (no need to persist
+      # across container rebuilds — beat re-reads schedule from code).
+      - celery-beat-schedule:/var/run/celery
+    networks:
+      - backend
+      - consorcio-internal
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # --- Geo Worker (GDAL + WhiteboxTools, queue geo) ---
   geo-worker:
     image: ${GEO_WORKER_IMAGE:-ghcr.io/jnzader/consorcio-canalero/geo-worker:latest}
@@ -260,3 +293,7 @@ volumes:
   # image rebuilds. Back up with `docker run --rm -v consorcio-denuncia-uploads:/data ...`.
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  # Scratch volume for the celery-beat schedule db. Beat re-reads the
+  # schedule from code on startup so this doesn't need to be backed up.
+  celery-beat-schedule:
+    name: consorcio-celery-beat-schedule

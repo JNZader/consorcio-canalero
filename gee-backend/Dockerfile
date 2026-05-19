@@ -98,4 +98,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run without reload
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Phase 3 / F3-J: 2 workers (out of 4 vCPU on the prod CX33). Each
+# worker is an independent Python process, so DB pool / Redis pool /
+# GEE auth state is duplicated. The pool sizes in app/db/session.py
+# were bumped in F3-K so 2 workers stay below max_connections.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
