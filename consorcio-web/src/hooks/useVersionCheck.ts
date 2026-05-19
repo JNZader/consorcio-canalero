@@ -34,8 +34,6 @@ export interface VersionCheckResult {
   latestSha: string | null;
   /** True iff ``latestSha`` is set and different from ``initialSha``. */
   updateAvailable: boolean;
-  /** Forces a one-shot reload that bypasses the HTTP cache. */
-  reload: () => void;
 }
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -113,61 +111,5 @@ export function useVersionCheck(intervalMs: number = DEFAULT_INTERVAL_MS): Versi
     initialSha,
     latestSha,
     updateAvailable,
-    reload: forceUpdate,
   };
-}
-
-/**
- * Activate the new service worker (if one is waiting) and reload.
- *
- * vite-plugin-pwa runs with ``registerType: 'autoUpdate'`` — the new SW
- * downloads in the background but stays in the ``waiting`` state until
- * every tab is closed. A plain ``window.location.reload()`` therefore
- * keeps serving cached assets from the OLD SW, which is exactly why
- * users were hitting Ctrl+Shift+R to see updates.
- *
- * Flow:
- *   1. Ask the active registration to re-check for updates (in case the
- *      ``waiting`` slot isn't populated yet when the user clicks).
- *   2. POST ``SKIP_WAITING`` to the waiting SW (vite-plugin-pwa's SW
- *      handles this message and calls ``self.skipWaiting()``).
- *   3. Wait for the ``controllerchange`` event — that's the moment the
- *      new SW takes over the page.
- *   4. ``location.reload()`` to pick up the fresh bundle, now served
- *      by the new SW.
- *
- * A 3 s timeout falls back to a plain reload in case the SW doesn't
- * respond — never leave the user stuck on the "Actualizar" button.
- */
-async function forceUpdate(): Promise<void> {
-  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    try {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) {
-        try {
-          await reg.update();
-        } catch {
-          // ``update()`` can throw offline — ignore and continue.
-        }
-        const waitingSW = reg.waiting ?? reg.installing;
-        if (waitingSW) {
-          waitingSW.postMessage({ type: 'SKIP_WAITING' });
-          await new Promise<void>((resolve) => {
-            const timeoutId = window.setTimeout(resolve, 3000);
-            navigator.serviceWorker.addEventListener(
-              'controllerchange',
-              () => {
-                window.clearTimeout(timeoutId);
-                resolve();
-              },
-              { once: true }
-            );
-          });
-        }
-      }
-    } catch (err) {
-      logger.warn('[version-check] forceUpdate fell through to plain reload', err);
-    }
-  }
-  window.location.reload();
 }
