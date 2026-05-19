@@ -97,9 +97,14 @@ export default function TerrainViewer3D({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const activeRasterLayerIdRef = useRef<string | null>(null);
   const activeRasterTileUrlRef = useRef<string | null>(null);
-  const overlayOpacityRef = useRef(0.7);
+  const overlayOpacityRef = useRef(1);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
-  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  // Default to fully opaque: the previous 0.7 let the world-imagery base
+  // bleed through the active raster, which read as "stacked images" to the
+  // user. With a fully opaque overlay we can also skip fetching the base
+  // tiles entirely when an overlay covers them (handled by a separate
+  // effect below).
+  const [overlayOpacity, setOverlayOpacity] = useState(1);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
@@ -409,6 +414,14 @@ export default function TerrainViewer3D({
             id: 'satellite-base',
             type: 'raster',
             source: 'satellite',
+            // Initial visibility is decided by an effect below — if a raster
+            // overlay is already covering the terrain at full opacity we
+            // never need to fetch the world-imagery mosaic, so we start the
+            // layer hidden to avoid an unwanted burst of tile requests on
+            // first render.
+            layout: {
+              visibility: activeRasterTileUrlRef.current && overlayOpacityRef.current >= 1 ? 'none' : 'visible',
+            },
             paint: { 'raster-opacity': 1 },
           },
           {
@@ -493,6 +506,24 @@ export default function TerrainViewer3D({
       buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold),
     ]);
   }, [buildTerrainRgbUrl, terrainSmoothingEnabled, terrainSmoothingThreshold, ready]);
+
+  // Hide the world-imagery base layer when the active raster overlay is
+  // fully opaque: there's nothing to peek through, so the ESRI tiles would
+  // just be wasted bandwidth (the user even confirmed they don't want that
+  // layer fetched at all unless it's needed). When the user pulls opacity
+  // below 1, or there's no overlay yet, we put the base back so the 3D
+  // mesh doesn't render as a blank surface.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!map.getLayer('satellite-base')) return;
+    const overlayCoversEverything = !!activeRasterTileUrl && overlayOpacity >= 1;
+    map.setLayoutProperty(
+      'satellite-base',
+      'visibility',
+      overlayCoversEverything ? 'none' : 'visible'
+    );
+  }, [activeRasterTileUrl, overlayOpacity, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
