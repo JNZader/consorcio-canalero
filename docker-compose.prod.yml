@@ -27,6 +27,27 @@
 # ===========================================
 
 services:
+  # --- One-shot DB migration runner ---
+  # Runs `alembic upgrade head` against the production DB and exits 0.
+  # The backend / celery-worker depend on this with
+  # ``service_completed_successfully`` so they never start against an
+  # out-of-date schema. If the migration fails, dependents don't start
+  # and the deploy fails loudly instead of producing 500s at runtime.
+  migrate:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-migrate
+    env_file: .env
+    command: alembic upgrade head
+    networks:
+      - backend
+      - consorcio-internal
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # --- Backend FastAPI ---
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
@@ -56,6 +77,8 @@ services:
       # could answer. 60 s gives comfortable margin.
       start_period: 60s
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       geo-worker:
         condition: service_started
     deploy:
@@ -80,6 +103,9 @@ services:
     networks:
       - backend
       - consorcio-internal
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
       interval: 30s

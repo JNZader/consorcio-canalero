@@ -66,6 +66,34 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # --- One-shot DB migration runner ---
+  # Runs `alembic upgrade head` against the production DB and exits 0.
+  # The backend and celery-worker depend on this with
+  # ``service_completed_successfully`` so they never start against an
+  # out-of-date schema. If the migration fails, dependents don't start
+  # and the deploy fails loudly instead of producing 500s at runtime.
+  migrate:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-migrate
+    env_file: .env
+    command: alembic upgrade head
+    volumes:
+      - ./credentials:/app/credentials:ro
+    networks:
+      - consorcio-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # --- Backend FastAPI ---
   backend:
     build:
@@ -93,6 +121,8 @@ services:
       # so the container isn't marked unhealthy before it can answer.
       start_period: 60s
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -129,6 +159,8 @@ services:
       retries: 3
       start_period: 30s
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
