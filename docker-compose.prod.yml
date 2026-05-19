@@ -27,12 +27,68 @@
 # ===========================================
 
 services:
+  # --- PgBouncer transaction-pool (Phase 4 / F4-F) ---
+  # Sits between the app containers and postgres so SQLAlchemy
+  # connection pools collapse onto a single multiplexed channel
+  # instead of holding 40+ direct postgres backends per worker.
+  #
+  # Hard prereqs (encoded in app/db/session.py when USE_PGBOUNCER=true):
+  #   - ``poolclass=NullPool`` on both engines (SA pool layered over
+  #     PgBouncer's pool is redundant and inflates max_client_conn).
+  #   - ``connect_args["prepared_statement_name_func"] = lambda:
+  #     f"__asyncpg_{uuid4()}__"`` so PgBouncer-multiplexed backends
+  #     don't collide on auto-enumerated prepared-statement names.
+  #
+  # If ``USE_PGBOUNCER`` is unset / false the backend still talks to
+  # postgres directly via DATABASE_URL; this service stays up but is
+  # unused. Toggle both env vars together.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p3
+    container_name: consorcio-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${POSTGRES_HOST:-postgres}
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-consorcio}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-consorcio}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "25"
+      # ``DISCARD ALL`` between transactions flushes prepared
+      # statements + session state on the postgres backend before it
+      # rejoins PgBouncer's pool. SA docs flag this as mandatory.
+      SERVER_RESET_QUERY: DISCARD ALL
+      AUTH_TYPE: scram-sha-256
+      LISTEN_PORT: "5432"
+    networks:
+      - backend
+      - consorcio-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # --- One-shot DB migration runner ---
   # Runs `alembic upgrade head` against the production DB and exits 0.
   # The backend / celery-worker depend on this with
   # ``service_completed_successfully`` so they never start against an
   # out-of-date schema. If the migration fails, dependents don't start
   # and the deploy fails loudly instead of producing 500s at runtime.
+  #
+  # ``migrate`` ALWAYS talks to postgres directly (not via PgBouncer)
+  # — alembic emits DDL with session-level state PgBouncer transaction
+  # mode would discard between batches.
   migrate:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-migrate

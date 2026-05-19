@@ -274,6 +274,77 @@ reclamo del consorcio ante otras entidades que sí cumplen.
 **Renovación / actualización**: solo cuando cambien la finalidad, el
 responsable o las categorías de datos. Anual no es obligatorio.
 
+### 1.8 PgBouncer transaction-pool (Phase 4 / F4-F)
+
+PgBouncer sits between the Python app containers (``backend`` +
+``worker`` + ``celery-beat``) and PostgreSQL, multiplexing N
+client-side connections onto a much smaller number of postgres
+backends. **Net effect on prod (Hetzner CX33)**: SQLAlchemy's
+20+20 pool per process collapsed to a single shared backend
+connection through PgBouncer, freeing ~40 postgres slots that
+used to sit idle on lock.
+
+**Activation requires BOTH halves** — code-side AND ops-side. Either
+one alone makes the situation worse, not better.
+
+#### Code-side (already in repo)
+
+In ``gee-backend/app/db/session.py`` and ``app/config.py``:
+
+  - ``settings.use_pgbouncer`` (env var ``USE_PGBOUNCER``,
+    default ``false``).
+  - When ``true``: ``poolclass=NullPool`` on both engines AND
+    ``prepared_statement_name_func`` on the asyncpg engine.
+    Neither alone is enough — SA's asyncpg dialect ALWAYS calls
+    ``connection.prepare()``, so without the UUID-tagged name
+    PgBouncer-multiplexed backends throw
+    ``DuplicatePreparedStatementError`` under load.
+
+The flag is opt-in so installs without PgBouncer don't pay the
+``statement_cache_size=0`` deopt.
+
+#### Ops-side checklist
+
+1. ``pgbouncer`` service in ``docker-compose.prod.yml`` (already
+   added). Image: ``edoburu/pgbouncer:v1.23.1-p3``. Pool mode
+   ``transaction``, ``MAX_CLIENT_CONN=200``, ``DEFAULT_POOL_SIZE=25``,
+   ``SERVER_RESET_QUERY=DISCARD ALL`` (mandatory per SA docs).
+
+2. ``.env`` on the server needs:
+
+   ```
+   POSTGRES_PASSWORD=<real pg password — read pg_shadow, NOT POSTGRES_PASSWORD env on the postgres container which only applies at initdb>
+   DATABASE_URL=postgresql://<user>:<pass>@pgbouncer:5432/<db>   ← host = pgbouncer, NOT postgres
+   USE_PGBOUNCER=true
+   ```
+
+3. ``docker compose up -d pgbouncer`` first; wait for healthy.
+   Then ``docker compose up -d backend worker``. Order matters
+   because backend's ``depends_on`` lists pgbouncer.
+
+4. Verify multiplexing actually happened:
+
+   ```bash
+   docker exec consorcio-postgres psql -U <user> -d <db> -c "SELECT client_addr, count(*) FROM pg_stat_activity WHERE datname='<db>' GROUP BY 1 ORDER BY 2 DESC;"
+   ```
+
+   You should see ONE client_addr (the pgbouncer container IP) with
+   a small count (default 1 connection, grows under burst).
+   Pre-PgBouncer this list had ~40+ rows.
+
+#### Gotchas
+
+- The ``migrate`` one-shot container talks to postgres DIRECTLY
+  (not via pgbouncer). Alembic DDL relies on session-level state
+  that transaction-pool mode discards between batches; routing
+  migrations through pgbouncer breaks ``alembic upgrade head``
+  silently on multi-statement migrations.
+- If you ever see ``DuplicatePreparedStatementError`` or
+  ``InvalidSqlStatementNameError`` in backend logs after enabling
+  the flag, the most likely cause is the code-side half being
+  out of date (older image deployed against newer PgBouncer
+  service). Roll the backend image forward.
+
 ### 1.6 Things that look weird but are by design
 
 See **[docs/KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)** for the full
