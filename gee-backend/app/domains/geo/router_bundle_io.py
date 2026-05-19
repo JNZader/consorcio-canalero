@@ -2,7 +2,6 @@
 
 import io
 import json
-import shutil
 import uuid
 import zipfile
 from datetime import date
@@ -26,6 +25,107 @@ from app.domains.geo.router_common import (
     _require_admin,
     _upsert_bundle_layer,
 )
+
+
+# Zip-bomb caps. The bundle import is admin-only, but an admin account
+# that gets phished or rotated should not be able to OOM the host or
+# fill the disk. Limits sized for the legitimate workflows:
+#   - largest known production bundle: ~150 MB compressed, ~600 MB
+#     uncompressed, ~30 files (DEM tiles + vectors + manifest.json).
+#   - 4× headroom gives operators slack for ad-hoc imports.
+_MAX_BUNDLE_BYTES = 500 * 1024 * 1024  # 500 MB compressed upload
+_MAX_BUNDLE_FILES = 200  # member count inside the zip
+_MAX_FILE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GB per file
+_MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB across all files
+# Worst-case compression ratio we allow before flagging the bundle as
+# a likely zip bomb. 100:1 catches the textbook 42 KB → 4.5 GB bomb;
+# legitimate DEM / vector bundles fall well below 20:1.
+_MAX_COMPRESSION_RATIO = 100
+
+
+def _validate_zip_manifest(archive: zipfile.ZipFile, compressed_bytes: int) -> None:
+    """Run zip-bomb caps before extracting anything from ``archive``.
+
+    Raises ``HTTPException(400)`` with a precise message if the bundle
+    blows any of the caps. Cheap — only reads the central directory.
+    """
+    members = archive.infolist()
+    if len(members) > _MAX_BUNDLE_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Bundle tiene demasiados archivos: {len(members)} (máx "
+                f"{_MAX_BUNDLE_FILES})."
+            ),
+        )
+    total_uncompressed = 0
+    for member in members:
+        if member.file_size > _MAX_FILE_UNCOMPRESSED_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Archivo '{member.filename}' descomprimido pesa "
+                    f"{member.file_size:,} bytes; máx "
+                    f"{_MAX_FILE_UNCOMPRESSED_BYTES:,}."
+                ),
+            )
+        total_uncompressed += member.file_size
+    if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Bundle descomprimido excede el límite: "
+                f"{total_uncompressed:,} bytes (máx "
+                f"{_MAX_TOTAL_UNCOMPRESSED_BYTES:,})."
+            ),
+        )
+    if (
+        compressed_bytes > 0
+        and total_uncompressed / compressed_bytes > _MAX_COMPRESSION_RATIO
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Relación de compresión sospechosa "
+                f"({total_uncompressed / compressed_bytes:.0f}:1) — posible "
+                "zip bomb. Rechazado."
+            ),
+        )
+
+
+def _safe_copy_member(
+    archive: zipfile.ZipFile,
+    member: str,
+    target_path: Path,
+    *,
+    max_bytes: int = _MAX_FILE_UNCOMPRESSED_BYTES,
+) -> None:
+    """Copy a zip member to disk, capping the number of bytes written.
+
+    ``shutil.copyfileobj`` honours the size reported by ``ZipInfo`` for
+    the uncompressed stream, but a maliciously crafted central directory
+    can lie. This wrapper enforces the cap at read time so a forged
+    header can't smuggle a multi-GB file past the manifest validation.
+    """
+    written = 0
+    chunk = 64 * 1024
+    with archive.open(member) as source, target_path.open("wb") as target:
+        while True:
+            block = source.read(chunk)
+            if not block:
+                break
+            written += len(block)
+            if written > max_bytes:
+                target_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Archivo '{member}' excede el límite de "
+                        f"{max_bytes:,} bytes durante la extracción."
+                    ),
+                )
+            target.write(block)
+
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -109,14 +209,34 @@ async def import_geo_bundle(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Debe subir un archivo .zip")
 
-    content = await file.read()
-    if not content:
+    # Cap the compressed upload BEFORE buffering it in memory. We read in
+    # chunks and bail on the first byte past the limit, so a 10 GB upload
+    # from a phished admin can't OOM the worker.
+    buffer = io.BytesIO()
+    received = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        received += len(chunk)
+        if received > _MAX_BUNDLE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(f"Bundle excede el límite de {_MAX_BUNDLE_BYTES:,} bytes."),
+            )
+        buffer.write(chunk)
+    if received == 0:
         raise HTTPException(status_code=400, detail="Archivo vacio")
+    buffer.seek(0)
 
     try:
-        archive = zipfile.ZipFile(io.BytesIO(content))
+        archive = zipfile.ZipFile(buffer)
     except zipfile.BadZipFile as exc:
         raise HTTPException(status_code=400, detail="Bundle ZIP invalido") from exc
+
+    # Cheap pre-flight against zip-bomb caps — reads only the central
+    # directory, no member decompression.
+    _validate_zip_manifest(archive, compressed_bytes=received)
 
     try:
         with archive:
@@ -163,11 +283,7 @@ async def import_geo_bundle(
                 if not archive_path:
                     continue
                 target_path = bundle_dir / Path(archive_path).name
-                with (
-                    archive.open(archive_path) as source,
-                    target_path.open("wb") as target,
-                ):
-                    shutil.copyfileobj(source, target)
+                _safe_copy_member(archive, archive_path, target_path)
 
                 _upsert_bundle_layer(
                     db,
