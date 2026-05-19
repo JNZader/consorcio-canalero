@@ -94,8 +94,17 @@ class RefreshToken(UUIDMixin, TimestampMixin, Base):
     family_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # When the row was flipped from ``revoked=False`` to ``revoked=True``.
+    # Powers replay detection in ``rotate()``: a token presented within
+    # ~30 s of revocation is treated as a concurrent two-tab race; later
+    # presentations are real replays and burn the family.
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Coarse client fingerprint — useful for the "logged in from these
     # devices" list. Not load-bearing; truncated to keep storage tight.
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

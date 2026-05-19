@@ -13,8 +13,10 @@ from app.auth.dependencies import (
 from app.auth.models import User
 from app.auth.refresh_tokens import (
     REFRESH_TOKEN_LIFETIME,
+    find_active,
     issue_token,
     revoke_all_for_user,
+    revoke_family,
     rotate,
 )
 from app.auth.schemas import UserCreate, UserRead, UserUpdate
@@ -132,8 +134,6 @@ async def refresh_access_token(
 
     # Look up the user from the presented token BEFORE calling rotate
     # so we can authorise correctly without trusting client input.
-    from app.auth.refresh_tokens import find_active
-
     existing = await find_active(session, raw)
     if existing is None:
         # Unknown or expired. Make sure the client drops whatever
@@ -160,8 +160,6 @@ async def refresh_access_token(
         # without revoking — a stolen cookie whose owner was just
         # deleted would have stayed quietly valid for replays until
         # natural expiry.
-        from app.auth.refresh_tokens import revoke_family
-
         await revoke_family(session, existing.family_id)
         response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
         _clear_refresh_cookie(response)

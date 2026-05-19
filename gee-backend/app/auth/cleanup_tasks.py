@@ -40,13 +40,14 @@ async def purge_stale_refresh_tokens(session: AsyncSession) -> int:
         delete(RefreshToken).where(
             or_(
                 RefreshToken.expires_at < now - EXPIRED_GRACE,
-                # ``updated_at`` is not currently set on revoke (the
-                # rotate flow uses UPDATE without bumping the
-                # timestamp). Fall back to ``created_at`` as a
-                # conservative proxy — a row revoked AT creation
-                # vanishes after REVOKED_GRACE either way.
+                # Phase 2.2: real ``revoked_at`` lets us purge tokens
+                # exactly REVOKED_GRACE days after the revocation.
+                # The legacy backfill (zz_refresh_tokens_revoked_at
+                # migration) copied ``updated_at`` into ``revoked_at``
+                # for any pre-existing revoked rows.
                 (RefreshToken.revoked.is_(True))
-                & (RefreshToken.created_at < now - REVOKED_GRACE),
+                & (RefreshToken.revoked_at.is_not(None))
+                & (RefreshToken.revoked_at < now - REVOKED_GRACE),
             )
         )
     )

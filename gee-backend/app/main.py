@@ -8,6 +8,7 @@ Consorcio Canalero Backend — v2.
 # SENTRY_DSN straight from the env and is a no-op when unset.
 import app._sentry_bootstrap  # noqa: F401 — import-side-effect only
 
+import asyncio
 import os
 import re
 from contextlib import asynccontextmanager
@@ -299,8 +300,6 @@ async def get_denuncia_photo(
     # Read on a worker thread so the 10 MB blocking I/O doesn't stall
     # the asyncio event loop. Bounded at MAX_PHOTO_BYTES on the write
     # path, so a single allocation is safe.
-    import asyncio
-
     content = await asyncio.to_thread(photo_path.read_bytes)
     return Response(
         content=content,

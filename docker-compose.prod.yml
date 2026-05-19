@@ -80,7 +80,7 @@ services:
       test:
         - "CMD-SHELL"
         - >-
-          HOST=${HEALTHCHECK_HOST:-$(echo "$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\\1|')};
+          HOST="$${HEALTHCHECK_HOST:-$$(echo "$${API_BASE_URL:?API_BASE_URL is required for the healthcheck Host header}" | sed -E 's|https?://([^/]+).*|\1|')}";
           wget --no-verbose --tries=1 --spider --header="Host: $$HOST" http://localhost:8000/live || exit 1
       interval: 30s
       timeout: 10s
@@ -109,7 +109,10 @@ services:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-celery-worker
     restart: unless-stopped
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q celery
+    # ``--pool=prefork`` is REQUIRED — celery_app.purge_stale_refresh_tokens_task
+    # uses ``asyncio.run`` which only works without an already-running event
+    # loop. gevent / eventlet pools would crash that beat task.
+    command: celery -A app.core.celery_app worker --pool=prefork --loglevel=info --concurrency=2 -Q celery
     env_file: .env
     volumes:
       - geo-data:/data/geo

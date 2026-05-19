@@ -97,13 +97,16 @@ async def revoke_family(session: AsyncSession, family_id: uuid.UUID) -> int:
     result = await session.execute(
         update(RefreshToken)
         .where(RefreshToken.family_id == family_id, RefreshToken.revoked.is_(False))
-        .values(revoked=True)
+        .values(revoked=True, revoked_at=datetime.now(tz=timezone.utc))
     )
     await session.commit()
     # ``rowcount`` is only on UPDATE/DELETE Results; mypy types the base
     # Result without it. The driver guarantees the attribute for the
     # statement shape we're using here, so the cast is safe.
     return int(getattr(result, "rowcount", 0) or 0)
+
+
+RACE_WINDOW = timedelta(seconds=30)
 
 
 async def rotate(
@@ -116,73 +119,75 @@ async def rotate(
 ) -> tuple[str, RefreshToken] | None:
     """Rotate a presented refresh token.
 
-    Returns ``(new_raw_token, new_row)`` on success, ``None`` on any
-    auth failure (unknown / expired / replay). The rotation uses a
-    compare-and-swap UPDATE so concurrent presenters of the same token
-    (two-tab race) don't all win — only the first request whose UPDATE
-    affects 1 row gets to mint a new token; the loser returns ``None``
-    and the client sees a regular 401 instead of a family-wide burn.
+    Returns ``(new_raw_token, new_row)`` on success, ``None`` on auth
+    failure (unknown / expired / replay).
 
-    Replay detection still fires when the presented row is found
-    already-revoked at lookup time (i.e. the rotation happened in a
-    PREVIOUS request and the cookie was reused later). In that case
-    the whole family is revoked.
+    Concurrency model:
+      - First call wins the CAS UPDATE, stamps ``revoked_at = now()``,
+        and mints a new token in the same family.
+      - Second call within ``RACE_WINDOW`` (two-tab race) loses the
+        CAS, sees the row already revoked but with ``revoked_at`` very
+        recent, and returns ``None`` WITHOUT burning the family.
+      - Third call past ``RACE_WINDOW`` (real replay — attacker stole
+        the cookie after the legit user rotated) loses the CAS, sees
+        the row revoked with ``revoked_at`` old, and DOES burn the
+        family.
     """
     digest = _hash_token(raw_token)
+    now = datetime.now(tz=timezone.utc)
 
     # Compare-and-swap: only one concurrent caller flips ``revoked``
-    # from False to True. ``returning(id)`` lets us detect the winner.
+    # False→True. Stamp ``revoked_at`` in the same statement so the
+    # race-vs-replay decision below is unambiguous.
     cas_result = await session.execute(
         update(RefreshToken)
         .where(
             RefreshToken.token_hash == digest,
             RefreshToken.revoked.is_(False),
             RefreshToken.user_id == user.id,
-            RefreshToken.expires_at > datetime.now(tz=timezone.utc),
+            RefreshToken.expires_at > now,
         )
-        .values(revoked=True)
+        .values(revoked=True, revoked_at=now)
         .returning(RefreshToken.id, RefreshToken.family_id)
     )
     winner = cas_result.first()
-    if winner is None:
-        # Either we lost the race (someone else rotated 1 ms ago),
-        # the token doesn't exist, it expired, or it was already
-        # revoked. Distinguish the "already revoked" case (replay)
-        # so we can burn the family.
-        replay_lookup = await session.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == digest)
-        )
-        replay_row = replay_lookup.scalar_one_or_none()
-        if replay_row is not None and replay_row.revoked:
-            # Race winner already rotated this token, OR an attacker
-            # replayed a revoked token. We can't tell the difference
-            # cheaply, so the conservative move is to NOT burn the
-            # family on a race loss (avoids the legitimate two-tab
-            # DoS the 3-voice review surfaced) while still burning
-            # on a clearly-stale presented token: the next rotation
-            # attempt with the SAME revoked token after a grace
-            # window will hit this path again, which we still treat
-            # as a race-loss.
-            #
-            # The trade-off: a real attacker who steals the cookie
-            # AFTER the legit tab has rotated will be treated as a
-            # race-loss, NOT as a replay. They get 401, they don't
-            # get the family burned. That's still strictly better
-            # than the pre-fix behavior (legit tabs DoS'd each
-            # other), and family-burn still triggers for replays
-            # of LONG-revoked tokens via the find_active fast path.
-            return None
+    if winner is not None:
         await session.commit()
+        return await issue_token(
+            session,
+            user=user,
+            family_id=winner.family_id,
+            user_agent=user_agent,
+            client_ip=client_ip,
+        )
+
+    # Lost the CAS. Distinguish race-loss from replay.
+    replay_lookup = await session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == digest)
+    )
+    replay_row = replay_lookup.scalar_one_or_none()
+    if replay_row is None or not replay_row.revoked:
+        # Unknown token, expired, or wrong user — plain 401.
         return None
 
-    await session.commit()
-    return await issue_token(
-        session,
-        user=user,
-        family_id=winner.family_id,
-        user_agent=user_agent,
-        client_ip=client_ip,
-    )
+    # Row IS revoked. If the revocation is very recent, it's the
+    # winner of a concurrent rotate; if it's older than RACE_WINDOW,
+    # the cookie was reused long after rotation → replay.
+    revoked_at = replay_row.revoked_at
+    if revoked_at is None:
+        # Legacy row revoked before the column existed — be
+        # conservative and treat as replay (the row's ``updated_at``
+        # is the proxy used by the migration backfill, so any
+        # non-backfilled NULL means the revocation is OLD).
+        await revoke_family(session, replay_row.family_id)
+        return None
+    if now - revoked_at > RACE_WINDOW:
+        # Real replay. Burn the family.
+        await revoke_family(session, replay_row.family_id)
+        return None
+
+    # Race-loss within the grace window — return None without burn.
+    return None
 
 
 async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
@@ -190,7 +195,7 @@ async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
     result = await session.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False))
-        .values(revoked=True)
+        .values(revoked=True, revoked_at=datetime.now(tz=timezone.utc))
     )
     await session.commit()
     # ``rowcount`` is only on UPDATE/DELETE Results; mypy types the base

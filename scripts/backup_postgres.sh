@@ -65,7 +65,10 @@ echo "[$(date -u +%FT%TZ)] dump size: ${SIZE_BYTES} bytes"
 # with a corrupted SQL. The companion ``.sha256`` lets the restore
 # drill verify the dump before decrypting.
 SHA256_PATH="${DUMP_PATH}.sha256"
-sha256sum "$DUMP_PATH" | awk '{print $1}' > "$SHA256_PATH"
+# Standard sha256sum -c format: ``<hash>  <filename>``. The filename is
+# stored as the basename (not the absolute path) so the restore can run
+# ``sha256sum -c file.sha256`` from any directory holding the dump.
+(cd "$TMPDIR" && sha256sum "$(basename "$DUMP_PATH")" > "$SHA256_PATH")
 echo "[$(date -u +%FT%TZ)] sha256: $(cat "$SHA256_PATH")"
 
 case "$BACKUP_BACKEND" in

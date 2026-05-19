@@ -246,6 +246,17 @@ def _enforce_production_secrets(s: Settings) -> None:
             "unset it or set it to 'false'."
         )
 
+    # SMTP TLS: if email is configured at all in production, refuse to
+    # ship password-reset / verification tokens over plaintext SMTP.
+    # ``both False`` would otherwise silently send tokens in the clear.
+    if s.smtp_host:
+        if not (s.smtp_use_tls or s.smtp_use_starttls):
+            problems.append(
+                "SMTP_HOST is set in production but neither SMTP_USE_TLS nor "
+                "SMTP_USE_STARTTLS is true; password-reset tokens would "
+                "travel in cleartext. Enable exactly one."
+            )
+
     # CORS hardening — with credentials: 'include' on the OAuth flow, a
     # mis-set CORS_ORIGINS that includes localhost or the wildcard '*'
     # becomes a credentialed-CSRF foothold. Refuse to start.

@@ -73,7 +73,17 @@ celery_app.conf.update(
 
 @celery_app.task(name="auth.purge_stale_refresh_tokens")
 def purge_stale_refresh_tokens_task() -> int:
-    """Sync wrapper for the async cleanup so Celery can schedule it."""
+    """Sync wrapper for the async cleanup so Celery can schedule it.
+
+    NOTE on worker pool compatibility: ``asyncio.run`` creates a NEW
+    event loop, which fails with ``RuntimeError: This event loop is
+    already running`` when the Celery worker is started with
+    ``--pool=gevent|eventlet`` (those pools install a running loop at
+    process start). Our compose files start celery-worker with the
+    default ``prefork`` pool — DO NOT switch to gevent / eventlet
+    without first rewriting this task (and any other ``asyncio.run``
+    callsite under Celery) to schedule onto the existing loop instead.
+    """
     import asyncio
 
     from app.auth.cleanup_tasks import purge_stale_refresh_tokens
