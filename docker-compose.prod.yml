@@ -146,8 +146,16 @@ services:
   # Phase 3 / F3-L. Without this service the beat_schedule entries in
   # app/core/celery_app.py never fire: alert evaluation, materialised-view
   # refresh, and the new refresh-token cleanup (auth.purge_stale_refresh_tokens)
-  # all stay dormant. One replica only — running two beat processes would
-  # double-fire every task.
+  # all stay dormant.
+  #
+  # ⚠️ DO NOT scale this service. ``deploy.replicas: 1`` below is a
+  # Swarm-only directive — plain ``docker compose up -d --scale celery-beat=2``
+  # WILL spin two beat processes, both writing to the shared
+  # ``celery-beat-schedule`` volume and corrupting the SQLite-style
+  # schedule db. ``container_name`` below is the operational guard on
+  # a single host. The real fix (Phase 4 backlog) is migrating to
+  # ``celery-redbeat`` which uses Redis as the schedule store and
+  # self-elects a leader.
   celery-beat:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-celery-beat

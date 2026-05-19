@@ -138,11 +138,21 @@ export default defineConfig({
             options: {
               cacheName: 'geo-raster-tiles',
               expiration: {
-                maxEntries: 1500,  // ~3 zoom levels of a small AOI
+                // Lowered from 1500 → 800 after the post-3vr review:
+                // iOS Safari caps per-origin Cache Storage to ~50 MB
+                // and 1500 × 50 KB = 75 MB silently evicted. 800
+                // covers ~2 zoom levels of the AOI and stays within
+                // the strictest mobile budget.
+                maxEntries: 800,
                 maxAgeSeconds: 60 * 60 * 24 * 14,  // 14 days
               },
               cacheableResponse: {
-                statuses: [0, 200],
+                // Drop the ``0`` opaque-response status — these tiles
+                // are SAME-origin so they always come back as 200 or
+                // an error. Allowing ``0`` would silently cache CORS
+                // failures from any third-party that the URL pattern
+                // ever matched.
+                statuses: [200],
               },
             },
           },
@@ -172,7 +182,7 @@ export default defineConfig({
           // Heavy lazy vendor chunks — do not precache on install; cache after first use.
           {
             urlPattern:
-              /\/assets\/vendor-(maplibre|map-draw|pmtiles|charts|mantine-extras)-.*\.js$/i,
+              /\/assets\/vendor-(maplibre|map-draw|pmtiles|charts|mantine-(extras|dates))-.*\.js$/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'lazy-vendor-chunks',

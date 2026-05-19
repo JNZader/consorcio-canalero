@@ -4,7 +4,16 @@
  * Renders the DEM as a 3D terrain map using MapLibre's native setTerrain()
  * with terrain-RGB tiles from the backend. The user tilts the map with
  * Ctrl+drag (or two-finger drag on mobile) to see elevation.
+ *
+ * Phase 3.1 / post-3vr: this file mutates several refs during render
+ * (``activeRasterLayerIdRef``, ``activeRasterTileUrlRef``,
+ * ``overlayOpacityRef``, etc.) — a pattern the React Compiler can
+ * break because it may memoise an "equivalent" render and skip the
+ * body entirely, leaving the refs stale. Opting out of the compiler
+ * for this file until each write moves into a proper ``useEffect``.
  */
+
+'use no memo';
 
 import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

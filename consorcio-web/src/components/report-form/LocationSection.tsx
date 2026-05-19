@@ -1,3 +1,11 @@
+// Phase 3.1 / post-3vr: this file mutates several refs during render
+// (lines 54, 57 below) — a pattern that the React Compiler can break
+// because it may memoise an "equivalent" render and skip running the
+// component body, leaving the refs stale. Opting OUT of the compiler
+// for this file is the lowest-risk fix until the refs are wrapped in
+// a proper ``useEffect``.
+'use no memo';
+
 import { Badge, Box, Button, Collapse, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import maplibregl from 'maplibre-gl';
