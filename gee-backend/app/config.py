@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # Database (PostgreSQL + PostGIS)
     database_url: str = "postgresql://consorcio:consorcio_dev@localhost:5432/consorcio"
     database_echo: bool = False
+    # Phase 4 / F4-F: switch to PgBouncer transaction-pooling mode. When
+    # ``True`` the async engine drops asyncpg's server-side prepared
+    # statement cache (``statement_cache_size=0``) — PgBouncer
+    # transaction mode is incompatible with prepared statements because
+    # the prepared name lives on a server connection that the next
+    # transaction may not reuse. The sync engine doesn't need a change
+    # because psycopg2 does NOT use server-side prepares by default.
+    # Leave ``False`` for direct-to-postgres deploys.
+    use_pgbouncer: bool = False
 
     # Google Earth Engine
     gee_key_file_path: Optional[str] = None

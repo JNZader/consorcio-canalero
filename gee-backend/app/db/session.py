@@ -63,6 +63,22 @@ def get_db() -> Generator[Session, None, None]:
 
 _async_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
+# Phase 4 / F4-F: PgBouncer transaction-pool compatibility.
+#
+# asyncpg's default behaviour is to keep a per-connection ``PreparedStatement``
+# cache. The statement name lives on a SPECIFIC postgres backend
+# connection — when PgBouncer is in transaction-pool mode the next
+# transaction is likely to land on a different postgres connection
+# that has never seen that name, so the second use raises
+# ``InvalidSqlStatementNameError``. Setting both caches to 0 forces
+# asyncpg to send fresh SQL on every call. This is slower than
+# prepared statements on direct-to-postgres setups (which is why
+# we toggle it on a flag, not on by default).
+_async_connect_args: dict[str, object] = {}
+if settings.use_pgbouncer:
+    _async_connect_args["statement_cache_size"] = 0
+    _async_connect_args["prepared_statement_cache_size"] = 0
+
 async_engine = create_async_engine(
     _async_url,
     echo=settings.database_echo,
@@ -71,6 +87,7 @@ async_engine = create_async_engine(
     # rule: 20+20 on backend uvicorn workers, 5+5 inside celery forks.
     pool_size=_POOL_SIZE,
     max_overflow=_MAX_OVERFLOW,
+    connect_args=_async_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(
