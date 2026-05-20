@@ -183,19 +183,112 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     const url = page.url();
     expect(url).toContain('/login');
   });
+
+  // F5-C gap closer: cross-tab session semantics. F4-E moved tokens to
+  // sessionStorage which is per-tab — a new tab opened after login has
+  // NO token. ProtectedRoute must redirect that tab to /login even
+  // though Zustand's ``cc-auth-storage`` persists ``user`` / ``profile``
+  // to localStorage (which IS shared across tabs). The bug we want to
+  // catch is "frontend trusts localStorage user and lets the new tab
+  // through despite the missing token".
+  test('new tab opened after login is unauthenticated', async ({ context, page }) => {
+    await loginViaForm(page);
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    const newTab = await context.newPage();
+    await newTab.goto(`${APP_URL}/admin`);
+    await newTab.waitForTimeout(POST_NAV_MS);
+
+    // Token is per-tab; the new tab never received one, so the
+    // guard must bounce it.
+    const url = newTab.url();
+    expect(url).toContain('/login');
+    await newTab.close();
+  });
+
+  // F5-C gap closer: ciudadano-role bounce. ProtectedRoute defaults to
+  // ``allowedRoles=['admin', 'operador']``. A logged-in ciudadano hitting
+  // /admin should see the ``UnauthorizedState`` ("Acceso Denegado"),
+  // NOT be redirected to /login (the session IS valid; just the role
+  // doesn't have access).
+  test('ciudadano logged in cannot reach /admin', async ({ page, request }) => {
+    // Register a fresh ciudadano on-the-fly. The /auth/register endpoint
+    // auto-assigns role=ciudadano per production.spec.ts:281. Using a
+    // throwaway email keeps this test independent of any seeded fixture
+    // and self-cleaning at the DB layer (account is unused after).
+    // ``@playwright.com`` (not ``.test``): Pydantic's email-validator
+    // rejects reserved RFC 6761 TLDs like ``.test``. The existing
+    // ``production.spec.ts`` uses the same domain for registration.
+    const uniqueEmail = `f5c-citizen-${Date.now()}@playwright.com`;
+    const password = 'TestCitizen123';
+    const reg = await request.post(
+      'https://cc10demayo-api.javierzader.com/api/v2/auth/register',
+      {
+        data: {
+          email: uniqueEmail,
+          password,
+          nombre: 'F5C',
+          apellido: 'Citizen',
+        },
+      }
+    );
+    expect(reg.status()).toBe(201);
+
+    // Log in through the form (not the API) so the frontend session
+    // hydration runs exactly as a real user. Give the SPA a moment
+    // to mount — first-paint on Cloudflare cold edge can run past
+    // 2s before any input is in the DOM.
+    await page.goto(`${APP_URL}/login`);
+    await page.waitForTimeout(PAGE_SETTLE_MS);
+    const emailInput = page
+      .locator(
+        'input[type="email"], input[name="email"], input[placeholder*="mail"], input[placeholder*="correo"]'
+      )
+      .first();
+    await emailInput.waitFor({ state: 'visible', timeout: 20_000 });
+    await emailInput.fill(uniqueEmail);
+    await page.locator('input[type="password"]').first().fill(password);
+    await page.locator('button[type="submit"]').first().click();
+
+    // Wait for the token to land (same trick as ``loginViaForm``).
+    await page.waitForFunction(
+      () => !!window.sessionStorage.getItem('consorcio_auth_token'),
+      { timeout: 20_000 }
+    );
+
+    await page.goto(`${APP_URL}/admin`);
+    await page.waitForTimeout(POST_NAV_MS);
+
+    // The contract: a ciudadano with a valid session reaching /admin
+    // ends up SOMEWHERE OTHER than /admin (the project chose to
+    // redirect to the public home instead of rendering the
+    // ``UnauthorizedState`` inline — both are valid implementations,
+    // but the redirect is what's live). Two asserts together pin it:
+    //   - session stayed alive (no bounce to /login, that would mean
+    //     "you have no session", not "you can't access this");
+    //   - the URL is no longer /admin (the guard fired).
+    const url = page.url();
+    expect(url).not.toContain('/login');
+    expect(url).not.toMatch(/\/admin($|\/)/);
+
+    // Belt-and-suspenders: the token is still in sessionStorage, i.e.
+    // the session itself survived — only the role gate kicked in.
+    const tokenStillPresent = await page.evaluate(
+      () => !!window.sessionStorage.getItem('consorcio_auth_token')
+    );
+    expect(tokenStillPresent).toBeTruthy();
+  });
 });
 
-// Phase 5 backlog (3vr findings deferred, non-blocking for F4-C):
-//   - Token refresh cycle (Phase 2 silent refresh) — not exercised
-//     by any e2e; needs fake-clock or direct refresh endpoint hit.
-//   - Cross-tab session: F4-E moved tokens to sessionStorage but
-//     Zustand persists user/profile to localStorage; a 2nd tab
-//     boots with ``user`` populated and no token until init clears
-//     it. Worth an explicit ``context.newPage()`` assertion.
+// Phase 5+ backlog (still deferred, harder to land):
+//   - Token refresh cycle (silent JWT refresh after 15-min expiry) —
+//     needs fake-clock or a real wait + retry; the spec already takes
+//     ~50s, adding 16 min per test isn't viable. Worth wiring through
+//     the API directly (POST /auth/jwt/refresh) in a separate spec
+//     when the F2 refresh contract gets touched again.
 //   - Mutating actions (POST/PATCH/DELETE) through UI — CSRF
 //     middleware requires ``Content-Type: application/json``; a
 //     frontend fetcher regression that drops the header would not
-//     fail this spec because we only exercise reads.
-//   - Ciudadano role bounce — ProtectedRoute defaults to
-//     ``['admin','operador']``; the spec covers admin login but
-//     not ciudadano-tried-/admin → "Acceso Denegado".
+//     fail this spec because we only exercise reads. Wiring needs
+//     a real mutating flow through a form component, which is more
+//     test infrastructure than F5-C's scope.
