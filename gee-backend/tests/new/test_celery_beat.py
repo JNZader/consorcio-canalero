@@ -5,8 +5,6 @@ Validates that beat_schedule task names match registered task names,
 env var configuration works, and both periodic tasks are scheduled.
 """
 
-import os
-from unittest import mock
 
 
 # ── Beat schedule task names ────────────────────────

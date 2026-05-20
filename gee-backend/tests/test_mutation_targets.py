@@ -17,8 +17,7 @@ Targets configured in ``.cosmic-ray.toml``:
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest

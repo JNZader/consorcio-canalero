@@ -5,7 +5,7 @@ Covers: job CRUD, layer CRUD, approved zoning, and analisis.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 from sqlalchemy.orm import Session
@@ -23,11 +23,7 @@ import app.domains.reuniones.models  # noqa: F401
 import app.domains.tramites.models  # noqa: F401
 
 from app.domains.geo.models import (
-    AnalisisGeo,
     EstadoGeoJob,
-    GeoApprovedZoning,
-    GeoJob,
-    GeoLayer,
 )
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.repository import GeoRepository

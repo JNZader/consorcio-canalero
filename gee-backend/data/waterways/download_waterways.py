@@ -4,7 +4,6 @@
 import json
 import urllib.request
 import urllib.parse
-import sys
 import time
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"

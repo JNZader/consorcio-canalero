@@ -1,0 +1,30 @@
+# ruff configuration for gee-backend.
+#
+# Phase 4 / F4.X-3: tightening the lint surface so the local preflight
+# script can enforce ``ruff check`` as a gate. Defaults are mostly
+# fine; the only divergence is allowing F841 (unused local variable)
+# inside ``tests/`` because a common pattern in this codebase is:
+#
+#     result = service.do_something()
+#     # no assertion on ``result`` — the test only proves the call
+#     # does NOT raise (smoke test against a regression).
+#
+# Auto-fixing F841 there would delete the assignment AND the
+# side-effecting call together (ruff's ``--unsafe-fixes`` removes
+# the whole line), which silently dismantles every smoke test of
+# that shape. Banning the rule in tests is the safe move; banning
+# it globally would mask real bugs in non-test code.
+
+line-length = 100
+
+[lint]
+# Mirror ruff's default rule set (E4 + E7 + E9 + F) so this preflight
+# matches what the disabled CI used to enforce. Widening to all of
+# ``E`` and ``W`` surfaces ~40 pre-existing style nits that aren't
+# scoped to F4.X-3.
+select = ["E4", "E7", "E9", "F"]
+ignore = []
+
+[lint.per-file-ignores]
+# Smoke-test pattern, see header comment.
+"tests/**/*.py" = ["F841"]

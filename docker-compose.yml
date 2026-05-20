@@ -55,6 +55,11 @@ services:
       - MARTIN_INTERNAL_URL=${MARTIN_INTERNAL_URL:-http://martin:3000}
       - MARTIN_PUBLIC_URL=${MARTIN_PUBLIC_URL:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://consorcio-canalero.pages.dev,http://localhost:5173,http://localhost:3000}
+      # F4.X-1: required whenever DATABASE_URL points at pgbouncer.
+      # Default off here because the dev-local compose embeds postgres
+      # directly; only flip to true if the developer adds a pgbouncer
+      # service or points DATABASE_URL at an external pooled instance.
+      - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
     env_file:
       - ./gee-backend/.env
     depends_on:
@@ -76,6 +81,46 @@ services:
       --port 8000
       --reload
       --reload-dir /app/app
+
+  # ============================================
+  # MIGRATE - one-shot alembic runner (Phase 4 / F4.X-2)
+  # ============================================
+  # Companion to the prod compose's migrate service. Same safety
+  # contract: alembic ALWAYS talks to postgres directly, never via
+  # pgbouncer (transaction mode discards session state between DDL
+  # statements, leaving migrations half-applied).
+  #
+  # Behind a ``profiles: ["migrate"]`` so ``docker compose up -d``
+  # does NOT auto-spin this container — it's a one-shot ad-hoc tool.
+  # Invoke explicitly:
+  #
+  #   docker compose --profile migrate run --rm migrate
+  #   docker compose --profile migrate run --rm migrate alembic current
+  #   docker compose --profile migrate run --rm migrate alembic downgrade -1
+  migrate:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: development
+    image: consorcio-backend
+    container_name: consorcio-migrate
+    profiles: ["migrate"]
+    restart: "no"
+    volumes:
+      - ./gee-backend/credentials:/app/credentials:ro
+    env_file:
+      - ./gee-backend/.env
+    environment:
+      # Hard overrides — direct-to-postgres, USE_PGBOUNCER=false so
+      # ``app/db/session.py`` builds the standard QueuePool engine.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-consorcio}:${POSTGRES_PASSWORD:-consorcio_dev}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-consorcio}
+      - USE_PGBOUNCER=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - consorcio-network
+    command: alembic upgrade head
 
   # ============================================
   # REDIS - Broker for Celery
@@ -113,6 +158,11 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # F4.X-1: same reasoning as the backend service above. Without
+      # this propagation, async celery tasks hit
+      # ``DuplicatePreparedStatementError`` the moment they run
+      # through pgbouncer (real incident on 2026-05-19).
+      - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
     env_file:
       - ./gee-backend/.env
     depends_on:

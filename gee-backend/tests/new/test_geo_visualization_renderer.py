@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import sys
 import types
-from unittest.mock import MagicMock, patch, call
-import tempfile
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest

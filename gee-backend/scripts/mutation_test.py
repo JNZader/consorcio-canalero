@@ -11,11 +11,8 @@ Usage:
     python scripts/mutation_test.py all
 """
 
-import ast
-import copy
 import subprocess
 import sys
-import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 

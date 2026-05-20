@@ -7,7 +7,6 @@ for endpoint coverage. No real DB or GEE needed.
 
 from __future__ import annotations
 
-import io
 import json
 import uuid
 from datetime import date, datetime
@@ -16,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 
 # ---------------------------------------------------------------------------
@@ -146,11 +144,8 @@ class TestGetGeoBundleStorageDir:
             mock_candidate.mkdir.return_value = None
             MockPath.return_value = mock_candidate
 
-            from app.domains.geo.router_common import _get_geo_bundle_storage_dir
 
             # Reset so we hit the real logic
-            from importlib import reload
-            import app.domains.geo.router_common
 
     def test_raises_500_when_all_fail(self):
         from app.domains.geo.router_common import _get_geo_bundle_storage_dir

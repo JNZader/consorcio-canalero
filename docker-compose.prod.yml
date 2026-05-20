@@ -100,15 +100,29 @@ services:
   migrate:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-migrate
+    # NO ``profiles:`` here — backend / celery-worker / celery-beat
+    # all declare ``depends_on: migrate: service_completed_successfully``
+    # so this one-shot has to be picked up by every ``docker compose up -d``.
+    # The legacy ``docker-compose.yml`` (dev-local) DOES use a profile
+    # because it has no dependency chain on migrate — invocation there
+    # is purely ad-hoc.
     env_file: .env
-    # 3vr fix-forward on commit 253e727: when ``USE_PGBOUNCER=true``
-    # the .env-resolved DATABASE_URL points at pgbouncer:5432, which
-    # breaks alembic DDL (transaction-pool mode discards session
-    # state between statements). Override DATABASE_URL here so
-    # ``alembic upgrade head`` always talks to postgres DIRECTLY —
-    # the docstring above is now config-enforced, not doc-only.
+    # 3vr fix-forward on commit 253e727 (then F4.X-3 retroactive 3vr):
+    # when ``USE_PGBOUNCER=true`` the .env-resolved DATABASE_URL
+    # points at pgbouncer:5432, which breaks alembic DDL (transaction
+    # mode discards session state between statements). TWO overrides
+    # below — both required:
+    #   1. ``DATABASE_URL`` → postgres directly (bypass pgbouncer).
+    #   2. ``USE_PGBOUNCER=false`` so ``app/db/session.py`` builds
+    #      the standard QueuePool engine with normal prepared
+    #      statements, instead of the NullPool +
+    #      ``prepared_statement_name_func`` branch that's meant for
+    #      runtime PgBouncer traffic. Without (2) alembic would
+    #      receive UUID-suffixed prepared-statement names that
+    #      it doesn't need and that confuse some Postgres tooling.
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-consorcio}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-consorcio}
+      USE_PGBOUNCER: "false"
     command: alembic upgrade head
     networks:
       - backend

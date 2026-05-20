@@ -431,7 +431,53 @@ list with rationale + expected-fix milestones. Quick reference:
 
 ## 2. Daily ops
 
-### 2.1 Deploy from `main`
+### 2.1 Pre-push preflight (CI replacement while Actions is paused)
+
+> ⚠️ **CI is paused** — the GitHub Actions workflows `Backend`,
+> `Build and Publish Images`, and `Frontend` are `disabled_manually`
+> at the org level because the Actions billing quota was exceeded.
+> Until quota resets / a paid plan kicks in, the Phase 4 gates
+> (ruff + mypy + auth-gate tests + 60% coverage + 30% mutation)
+> are NOT enforced server-side. **Run the local preflight before
+> every push.**
+
+`gee-backend/scripts/preflight.sh` reproduces the same gates that
+the disabled CI workflows used to enforce. Run it from the
+`gee-backend/` directory before `git push`:
+
+```bash
+cd gee-backend
+bash scripts/preflight.sh             # ALL gates (~10min, the default)
+bash scripts/preflight.sh --fast      # skip mutation gate (~30s)
+```
+
+The mutation gate is part of the DEFAULT run — keeping it behind a
+flag would let it rust silently. Use `--fast` only during inner-loop
+edits; the unflagged invocation is the one that gates ``git push``.
+Exit code is 0 iff every enforced gate passes. The script prints a
+clear ✘/✔ per step and a closing summary listing any failures.
+
+What it covers (each step mirrors what the GH Actions workflow ran):
+
+1. **ruff check** — uses `gee-backend/ruff.toml` (rule set
+   `E4 + E7 + E9 + F` mirroring ruff's default; F841 silenced in
+   `tests/` for smoke-test patterns).
+2. **mypy strict scope** — `app/auth`, `app/domains/padron`,
+   `app/domains/denuncias`. Other modules opt out via `mypy.ini`.
+3. **auth-gate regression tests** —
+   `tests/new/test_auth_gates.py`. Catches a missing `Depends(...)`
+   on a PII endpoint.
+4. **Backend coverage ≥ 60%** —
+   `pytest tests/new/ --cov-config=.coveragerc --cov-fail-under=60`.
+5. **Mutation kill-rate ≥ 0.30** —
+   `scripts/cosmic_gate.py` against denuncias.service,
+   monitoring.service, tramites.schemas.
+
+If `ruff check` fails after a fresh dependency upgrade or a new
+file lands, fix the underlying issue rather than widening the
+`ignore` list — the gate is small on purpose.
+
+### 2.2 Deploy from `main`
 
 The Hetzner stack currently builds locally on `git pull` (no image
 pull). The simpler flow:
@@ -463,7 +509,7 @@ to paste. To migrate the server to this mode:
 4. To roll back: same flow, just point at the previous SHA from
    <https://github.com/JNZader/consorcio-canalero/pkgs/container/consorcio-canalero%2Fbackend>.
 
-### 2.2 Rotate JWT secret
+### 2.3 Rotate JWT secret
 
 Every user logged in right now has a session signed with the current
 `JWT_SECRET`. Rotating invalidates all sessions — schedule outside
@@ -478,7 +524,7 @@ ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238 \
    docker compose up -d backend worker celery-worker"
 ```
 
-### 2.3 ``/auth/jwt/logout-all`` and the residual access-token window
+### 2.4 ``/auth/jwt/logout-all`` and the residual access-token window
 
 The endpoint revokes EVERY refresh token for the calling user, but
 JWT access tokens issued in the previous 15 minutes remain valid
@@ -490,7 +536,7 @@ damage. If you need stricter zero-trust revocation, roadmap F3 covers
 adding a per-user ``revocation_epoch`` column that the JWT strategy
 checks on every request — at the cost of one DB read per call.
 
-### 2.4 Apply a new Alembic migration
+### 2.5 Apply a new Alembic migration
 
 The compose files now include a `migrate` service that runs
 `alembic upgrade head` before `backend` / `celery-worker` start. After
@@ -500,10 +546,31 @@ a `git pull` that includes a new revision, the normal
 If you need to run it manually (e.g. baseline an existing DB):
 
 ```bash
-docker compose run --rm migrate
+docker compose --profile migrate run --rm migrate
 ```
 
-### 2.4 Inspect denuncia uploads
+> ⚠️ **NEVER** run `docker compose run --rm backend alembic ...`
+> while `USE_PGBOUNCER=true` is in `.env`. The backend container
+> inherits `DATABASE_URL=postgresql://...@pgbouncer:5432/...`
+> from the stack env, and alembic DDL emits multi-statement
+> transactions that PgBouncer transaction-pool mode discards
+> between commits — migrations land HALF-applied and the
+> session blows up on the next `CREATE INDEX`. The dedicated
+> `migrate` service in `docker-compose.yml` overrides
+> `DATABASE_URL` inline to talk to postgres directly AND forces
+> `USE_PGBOUNCER=false` for the duration of the migration, so
+> the command above is the only safe way to run alembic on the
+> live server.
+
+Other safe alembic operations through the same service:
+
+```bash
+docker compose --profile migrate run --rm migrate alembic current
+docker compose --profile migrate run --rm migrate alembic history
+docker compose --profile migrate run --rm migrate alembic downgrade -1
+```
+
+### 2.6 Inspect denuncia uploads
 
 Photos live in the `consorcio-denuncia-uploads` named volume. To list:
 

@@ -323,7 +323,6 @@ class TestExportQgisEndpointUnit:
 
     @pytest.mark.asyncio
     async def test_returns_zip_bytes_with_correct_headers(self):
-        from app.domains.geo.router import export_qgis_project
 
         mock_user = MagicMock()
         mock_user.role = "operador"

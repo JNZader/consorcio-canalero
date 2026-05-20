@@ -12,7 +12,6 @@ happy path needs a fully-issued JWT, which is out of scope here.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import uuid
 from datetime import datetime, timedelta, timezone

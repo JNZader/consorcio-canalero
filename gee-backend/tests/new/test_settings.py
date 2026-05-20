@@ -1,9 +1,7 @@
 """Tests for the settings domain (models, repository, service, router)."""
 
-import uuid
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.domains.settings.models import CategoriaSettings, SystemSettings

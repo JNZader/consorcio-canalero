@@ -10,16 +10,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.domains.capas.models import Capa, FuenteCapa, TipoCapa
+from app.domains.capas.models import Capa
 from app.domains.capas.repository import CapasRepository
-from app.domains.capas.schemas import CapaCreate, EstiloCapa
+from app.domains.capas.schemas import CapaCreate
 from app.domains.denuncias.models import Denuncia, EstadoDenuncia
-from app.domains.denuncias.repository import DenunciaRepository
 from app.domains.denuncias.schemas import DenunciaCreate
 from app.domains.denuncias.service import DenunciaService
-from app.domains.monitoring.models import Sugerencia
-from app.domains.monitoring.repository import MonitoringRepository
-from app.domains.monitoring.schemas import SugerenciaCreate
 from app.domains.monitoring.service import MonitoringService
 
 

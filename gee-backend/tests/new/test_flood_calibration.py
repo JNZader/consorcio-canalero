@@ -17,7 +17,6 @@ from app.domains.geo.schemas import (
     FloodEventCreate,
     FloodEventResponse,
     FloodLabelCreate,
-    FloodLabelResponse,
 )
 
 

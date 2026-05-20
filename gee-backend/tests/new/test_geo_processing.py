@@ -11,7 +11,6 @@ Focus on:
 from __future__ import annotations
 
 import inspect
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch

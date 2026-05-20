@@ -7,9 +7,7 @@ Tests:
 - SAR_TEMPORAL enum value exists
 """
 
-import math
 
-import pytest
 
 from app.domains.geo.gee_tasks import detect_vv_anomalies
 from app.domains.geo.models import TipoAnalisisGee
