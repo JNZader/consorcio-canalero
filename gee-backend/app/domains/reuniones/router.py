@@ -18,6 +18,7 @@ from app.domains.reuniones.schemas import (
     ReunionUpdate,
 )
 from app.domains.reuniones.service import ReunionService
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/reuniones", tags=["reuniones"])
 
@@ -47,7 +48,7 @@ def _require_admin():
 # ──────────────────────────────────────────────
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=PaginatedResponse[ReunionListResponse])
 def list_reuniones(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -56,17 +57,17 @@ def list_reuniones(
     db: Session = Depends(get_db),
     service: ReunionService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[ReunionListResponse]:
     """Listar reuniones con paginacion y filtros."""
     items, total = service.list_reuniones(
         db, page=page, limit=limit, estado=estado, tipo=tipo
     )
-    return {
-        "items": [ReunionListResponse.model_validate(r) for r in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[ReunionListResponse].create(
+        items=[ReunionListResponse.model_validate(r) for r in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.post("", response_model=ReunionCreateResponse, status_code=201)

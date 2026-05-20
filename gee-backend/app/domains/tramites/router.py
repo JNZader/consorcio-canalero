@@ -18,6 +18,7 @@ from app.domains.tramites.schemas import (
     TramiteUpdate,
 )
 from app.domains.tramites.service import TramiteService
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/tramites", tags=["tramites"])
 
@@ -50,7 +51,7 @@ def get_stats(
     return service.get_stats(db)
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=PaginatedResponse[TramiteListResponse])
 def list_tramites(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -60,17 +61,17 @@ def list_tramites(
     db: Session = Depends(get_db),
     service: TramiteService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[TramiteListResponse]:
     """Listar tramites con paginacion y filtros."""
     items, total = service.list_tramites(
         db, page=page, limit=limit, estado=estado, tipo=tipo, prioridad=prioridad
     )
-    return {
-        "items": [TramiteListResponse.model_validate(t) for t in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[TramiteListResponse].create(
+        items=[TramiteListResponse.model_validate(t) for t in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/{tramite_id}", response_model=TramiteResponse)

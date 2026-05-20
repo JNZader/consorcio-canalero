@@ -28,6 +28,7 @@ from app.domains.geo.schemas import (
     GeoLayerResponse,
 )
 from app.domains.geo.service import GeoJobDispatchError, dispatch_job
+from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -56,7 +57,7 @@ def submit_geo_job(
     return job
 
 
-@router.get("/jobs", response_model=dict)
+@router.get("/jobs", response_model=PaginatedResponse[GeoJobListResponse])
 def list_geo_jobs(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -65,7 +66,7 @@ def list_geo_jobs(
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_authenticated()),
-):
+) -> PaginatedResponse[GeoJobListResponse]:
     """List geo processing jobs with pagination and filters."""
     items, total = repo.get_jobs(
         db,
@@ -74,12 +75,12 @@ def list_geo_jobs(
         estado_filter=estado,
         tipo_filter=tipo,
     )
-    return {
-        "items": [GeoJobListResponse.model_validate(j) for j in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[GeoJobListResponse].create(
+        items=[GeoJobListResponse.model_validate(j) for j in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=GeoJobResponse)
@@ -101,7 +102,7 @@ def get_geo_job(
 # ──────────────────────────────────────────────
 
 
-@router.get("/layers", response_model=dict)
+@router.get("/layers", response_model=PaginatedResponse[GeoLayerListResponse])
 def list_geo_layers(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -111,7 +112,7 @@ def list_geo_layers(
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_authenticated()),
-):
+) -> PaginatedResponse[GeoLayerListResponse]:
     """List available geo layers with pagination and filters."""
     items, total = repo.get_layers(
         db,
@@ -121,15 +122,18 @@ def list_geo_layers(
         fuente_filter=fuente,
         area_id_filter=area_id,
     )
-    return {
-        "items": [GeoLayerListResponse.model_validate(layer) for layer in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[GeoLayerListResponse].create(
+        items=[GeoLayerListResponse.model_validate(layer) for layer in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
-@router.get("/layers/public", response_model=dict)
+@router.get(
+    "/layers/public",
+    response_model=PaginatedResponse[GeoLayerListResponse],
+)
 def list_public_geo_layers(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -138,14 +142,16 @@ def list_public_geo_layers(
     area_id: Optional[str] = None,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-):
+) -> PaginatedResponse[GeoLayerListResponse]:
     """List a safe public subset of geo layers.
 
     Currently intended for non-authenticated base visualization only.
     """
     allowed_types = {"dem_raw"}
     if tipo and tipo not in allowed_types:
-        return {"items": [], "total": 0, "page": page, "limit": limit}
+        return PaginatedResponse[GeoLayerListResponse].create(
+            items=[], total=0, page=page, limit=limit
+        )
 
     items, total = repo.get_layers(
         db,
@@ -156,14 +162,14 @@ def list_public_geo_layers(
         area_id_filter=area_id,
     )
     filtered_items = [layer for layer in items if layer.tipo in allowed_types]
-    return {
-        "items": [
+    return PaginatedResponse[GeoLayerListResponse].create(
+        items=[
             GeoLayerListResponse.model_validate(layer) for layer in filtered_items
         ],
-        "total": len(filtered_items),
-        "page": page,
-        "limit": limit,
-    }
+        total=len(filtered_items),
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/layers/{layer_id}", response_model=GeoLayerResponse)

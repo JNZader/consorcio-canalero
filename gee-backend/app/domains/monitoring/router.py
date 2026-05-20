@@ -112,7 +112,7 @@ def list_sugerencias(
 
 @router.get(
     "/sugerencias/mine",
-    response_model=dict,
+    response_model=PaginatedResponse[SugerenciaCitizenResponse],
     tags=["sugerencias"],
 )
 def list_my_sugerencias(
@@ -121,25 +121,26 @@ def list_my_sugerencias(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     user=Depends(_require_user()),
-):
+) -> PaginatedResponse[SugerenciaCitizenResponse]:
     """
     Lista paginada de sugerencias del ciudadano logueado, con todo el
     detalle. Mirror de `/denuncias/mine` — usado en la sección
     "Mis sugerencias" del `/perfil`.
+
+    ``SugerenciaCitizenResponse`` (no ``notas_internas``) en lugar de la
+    full operator response — las notas internas del consorcio no
+    tienen que viajar al ciudadano nunca, ni siquiera ocultas en el
+    JSON.
     """
     items, total = service.list_sugerencias_by_user(
         db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit
     )
-    # `SugerenciaCitizenResponse` (no `notas_internas`) en lugar de la
-    # full operator response — las notas internas del consorcio no
-    # tienen que viajar al ciudadano nunca, ni siquiera ocultas en el
-    # JSON.
-    return {
-        "items": [SugerenciaCitizenResponse.model_validate(s) for s in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[SugerenciaCitizenResponse].create(
+        items=[SugerenciaCitizenResponse.model_validate(s) for s in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get(
@@ -264,7 +265,10 @@ def get_dashboard(
     return service.get_dashboard_stats(db)
 
 
-@router.get("/monitoring/analyses", response_model=dict)
+@router.get(
+    "/monitoring/analyses",
+    response_model=PaginatedResponse[AnalisisGeeResponse],
+)
 def list_analyses(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -272,15 +276,15 @@ def list_analyses(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[AnalisisGeeResponse]:
     """Historial de analisis GEE con paginacion."""
     items, total = service.list_analyses(db, page=page, limit=limit, tipo=tipo)
-    return {
-        "items": [AnalisisGeeResponse.model_validate(a) for a in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[AnalisisGeeResponse].create(
+        items=[AnalisisGeeResponse.model_validate(a) for a in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get(

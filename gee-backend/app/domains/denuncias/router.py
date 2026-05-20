@@ -218,14 +218,14 @@ def delete_my_denuncia(
     return None
 
 
-@router.get("/mine", response_model=dict)
+@router.get("/mine", response_model=PaginatedResponse[DenunciaResponse])
 def list_my_denuncias(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     user=Depends(_require_user()),
-):
+) -> PaginatedResponse[DenunciaResponse]:
     """
     Lista paginada de denuncias del ciudadano logueado, con todo el
     detalle (incluida la `respuesta` que el operador escribió). Se usa
@@ -234,12 +234,12 @@ def list_my_denuncias(
     items, total = service.list_by_user(
         db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit
     )
-    return {
-        "items": [DenunciaResponse.model_validate(d) for d in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[DenunciaResponse].create(
+        items=[DenunciaResponse.model_validate(d) for d in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/rate-limit", response_model=dict)
