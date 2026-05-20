@@ -123,32 +123,60 @@ so multiple replicas become safe.
 
 ## Auth / sessions
 
-### `logout-all` has a ≤15 min residual access-token window
+### ~~`logout-all` has a ≤15 min residual access-token window~~ — RESOLVED in F5-F
 
-`POST /auth/jwt/logout-all` revokes every refresh token immediately,
-but JWT access tokens issued in the previous 15 minutes remain valid
-until natural expiry (JWT is stateless by design).
+Originally documented: `POST /auth/jwt/logout-all` revoked every
+refresh token immediately, but JWT access tokens issued in the
+previous 15 minutes survived until natural expiry (JWT is stateless
+by design) — giving an attacker holding a stolen access token up to
+15 minutes of usable window after the user pressed logout-all.
 
-**Mitigation today**: communicate the 15-min cap to security-sensitive
-operators who use the endpoint.
+**Resolved** (Phase 5 / F5-F): `RevocableJWTStrategy` in
+`app/auth/dependencies.py` embeds a `User.revocation_epoch` integer
+into every issued JWT's `epoch` claim and rejects on read any token
+whose embedded epoch is BELOW the current user value. Both
+`logout-all` and the admin force-revoke endpoint bump
+`User.revocation_epoch` atomically with the refresh-token revocation,
+so the residual window closes in the same transaction.
 
-**Expected fix** (Phase 4): add a per-user `revocation_epoch` column
-and check it in `get_jwt_strategy`. Cost: one DB read per request,
-worth it only if a real threat model demands it.
+Cost paid: one extra integer comparison per authenticated request,
+on a User row that was already loaded by `current_active_user`.
+Always-on — no feature flag.
 
-### SMTP body logging carries reset / verify tokens
+This section is kept for historical context; remove on the next
+KNOWN_LIMITATIONS sweep.
+
+### SMTP body logging carries reset / verify tokens — MITIGATION SHIPPED, gated by feature flag
 
 Phase 2 / F2-J sends password-reset and email-verification tokens
 inside the message body. Most SMTP providers (Brevo, Resend, SES)
 log message bodies for 30+ days for support purposes.
 
-**Mitigation today**: documented in RUNBOOK § 1.5 — operators
-configure their provider to disable body logging OR use the
-provider's transactional API rather than SMTP.
+**Mitigation infrastructure** (Phase 5 / F5-E, shipped): the
+`app/auth/email_codes.py` module + `POST /auth/exchange-code`
+endpoint + the SPA's `?code=` handler form a complete one-time-code
+flow. When enabled, the email body carries ONLY an 8-char code
+(36^8 ≈ 2.8 × 10^12 combos, 15-min TTL, single-use), and the SPA
+exchanges the code for the long JWT before consuming it via the
+existing verify / reset endpoints. The code is worthless after
+exchange OR after 15 minutes, so SMTP-body retention loses its
+attack value.
 
-**Expected fix** (Phase 4): switch to a one-time code that the SPA
-exchanges for the long token, so the SMTP body never carries the
-credential itself.
+**Activation status**: gated behind the `USE_ONE_TIME_CODES` env
+flag (defaults to `False` in `app/config.py`). The repo's
+docker-compose files do NOT set this flag, so installs that don't
+opt in fall through to the legacy token-in-body path. The SPA's
+`ResetPasswordForm` accepts BOTH `?token=` (legacy) and `?code=`
+(flag-on) so the flip is non-breaking.
+
+**To activate on a deployment**: set `USE_ONE_TIME_CODES=true` in
+the backend container's environment + restart. Verify with a real
+forgot-password round-trip; the email should contain a short code
+rather than a JWT-shaped string.
+
+**Mitigation while flag is off**: documented in RUNBOOK § 1.5 —
+operators configure their provider to disable body logging OR use
+the provider's transactional API rather than SMTP.
 
 ### Refresh-token timing equicost has a constant-fold residual (F5-G skipped)
 
