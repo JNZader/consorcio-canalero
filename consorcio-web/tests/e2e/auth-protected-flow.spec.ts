@@ -1,0 +1,201 @@
+/**
+ * Phase 4 / F4-C — End-to-end auth flow test.
+ *
+ * The existing ``login-flow.spec.ts`` covers the login form alone:
+ * empty form renders, valid creds redirect, wrong creds keep you on
+ * /login, Google OAuth button is present. It does NOT cover the
+ * full session lifecycle — once logged in, can the user actually
+ * reach a protected route? Does logout actually invalidate the
+ * session? F4-D's auth-gate tests cover the BACKEND side (every
+ * sensitive endpoint refuses unauthenticated callers); this spec
+ * covers the FRONTEND side (the ``ProtectedRoute`` component
+ * actually redirects, and the logout button actually clears state).
+ *
+ * Together with the backend gate they prove: an unauthenticated
+ * caller is rejected by EITHER layer alone, so a regression in
+ * one doesn't open a window.
+ *
+ * Runs against the live Cloudflare Pages deploy + the live Hetzner
+ * backend, same as login-flow.spec.ts. The credentials below are
+ * the long-standing E2E admin seed (also referenced in helpers/
+ * auth.ts) and exist in prod for exactly this purpose.
+ */
+
+import { test, expect, type Page } from '@playwright/test';
+
+const APP_URL = 'https://consorcio-canalero.pages.dev';
+const ADMIN_EMAIL = 'jnzader@gmail.com';
+const ADMIN_PASSWORD = '1qaz2wsx';
+
+// Long timeouts to absorb (a) Cloudflare Pages cold edge cache and
+// (b) Hetzner backend cold-start + GEE auth on first hit. The
+// existing login-flow.spec.ts uses 2s/5s — this spec runs the form
+// 4 times (once per test) which compounds latency, so we give a
+// little more headroom per nav.
+const PAGE_SETTLE_MS = 3500;
+const POST_NAV_MS = 8000;
+
+async function loginViaForm(page: Page): Promise<void> {
+  // Diagnostic hook — only surfaces console errors so a flaky run
+  // leaves breadcrumbs in the report. Cheap; never throws.
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') console.log('[browser-console-error]', msg.text());
+  });
+
+  await page.goto(`${APP_URL}/login`);
+
+  const emailInput = page
+    .locator(
+      'input[type="email"], input[name="email"], input[placeholder*="mail"], input[placeholder*="correo"]'
+    )
+    .first();
+  const passwordInput = page.locator('input[type="password"]').first();
+  await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
+  await emailInput.fill(ADMIN_EMAIL);
+  await passwordInput.fill(ADMIN_PASSWORD);
+
+  const submitBtn = page.locator('button[type="submit"]').first();
+  await submitBtn.click();
+
+  // Wait for the login to settle. Two valid completion signals:
+  //   (a) URL navigated away from /login (the SPA pushes /admin)
+  //   (b) sessionStorage has the auth token
+  // Whichever lands first is enough. Race them with ``Promise.any``
+  // so we don't depend on a single timing assumption — a future
+  // change to either the route target or the storage key only
+  // breaks ONE branch, not the whole spec.
+  await Promise.any([
+    page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 20_000 }),
+    page.waitForFunction(
+      () => !!window.sessionStorage.getItem('consorcio_auth_token'),
+      { timeout: 20_000 }
+    ),
+  ]);
+}
+
+test.describe('E2E auth flow — login → protected → logout', () => {
+  // Each test runs the login form again (fresh browser context per
+  // Playwright default). Cloudflare cold edge + Hetzner cold-start
+  // on first hit can blow past the 30s default per-test budget; bump
+  // to 60s so the cold path still passes deterministically.
+  test.setTimeout(60_000);
+
+  test('login lands on a screen that proves authentication', async ({ page }) => {
+    await loginViaForm(page);
+    const url = page.url();
+    const body = (await page.textContent('body')) ?? '';
+
+    // The app redirects logged-in admins to /admin (or directly to the
+    // dashboard tab). The login screen redirects to landing on logout.
+    // Either of these signals "authenticated" is enough for this test;
+    // we don't pin the exact URL because the redirect target has
+    // changed once already in the project's history and we don't want
+    // a future copy/UX tweak to break this gate.
+    const authenticatedSignals =
+      url.includes('/admin') ||
+      url.includes('/perfil') ||
+      body.includes('Panel') ||
+      body.includes('Dashboard') ||
+      body.includes('Bienvenido') ||
+      body.includes('Cerrar sesión') ||
+      body.includes('Cerrar sesion');
+
+    expect(authenticatedSignals).toBeTruthy();
+  });
+
+  test('protected /admin route is reachable after login', async ({ page }) => {
+    await loginViaForm(page);
+    await page.goto(`${APP_URL}/admin`);
+    await page.waitForTimeout(POST_NAV_MS);
+
+    // ProtectedRoute redirects to /login when the session is missing.
+    // If we stayed on /admin (or a sub-route under it) we were
+    // accepted.
+    const url = page.url();
+    expect(url).not.toContain('/login');
+    expect(url).toMatch(/\/admin/);
+  });
+
+  // 3vr Opus-alt HIGH: the original "logout clears session" test had
+  // a fallback that ran ``sessionStorage.clear()`` when the button
+  // wasn't found, masking a future regression where the logout UI
+  // disappears. Split into TWO tests so a missing button now fails
+  // a dedicated assertion AND we still cover the protected-route
+  // guard against cleared-storage independently.
+  //
+  // Implementation note: the admin UI hides the logout action inside
+  // the user-avatar dropdown (the ``A Admin`` button in the topbar).
+  // The two-step click — open dropdown → find logout item — pins
+  // the UX, not just the underlying ``signOut`` call.
+  test('logout BUTTON exists and clicking it leaves /admin', async ({ page }) => {
+    await loginViaForm(page);
+
+    // Step 1: open the user menu. Match the avatar by its visible
+    // text "Admin" since that's the role name; a future i18n swap
+    // would need to update this and the assertions below in lockstep.
+    const userMenuTrigger = page
+      .locator('button:has-text("Admin"), [role="button"]:has-text("Admin")')
+      .first();
+    await expect(userMenuTrigger).toBeVisible({ timeout: 10_000 });
+    await userMenuTrigger.click();
+
+    // Step 2: the dropdown should now expose a logout entry. Accept
+    // either "Cerrar sesión" (with accent) or "Salir" (alternative
+    // wording the project has used at different points). Use a
+    // generic menuitem locator since Mantine renders the dropdown
+    // as a role=menu.
+    const logoutItem = page
+      .locator(
+        '[role="menuitem"]:has-text("Cerrar"), button:has-text("Cerrar"), [role="menuitem"]:has-text("Salir"), button:has-text("Salir")'
+      )
+      .first();
+    await expect(logoutItem).toBeVisible({ timeout: 5_000 });
+    await logoutItem.click();
+    await page.waitForTimeout(POST_NAV_MS);
+
+    // After clicking, the app should redirect away from /admin
+    // (typically to / or /login).
+    const url = page.url();
+    expect(url).not.toMatch(/\/admin/);
+  });
+
+  test('protected route guard fires when session storage is gone', async ({ page }) => {
+    // Independent of the logout button UI — this test only proves
+    // the ProtectedRoute component itself re-redirects to /login when
+    // the stored session vanishes, however that happens (logout,
+    // session expiry, manual ``sessionStorage.clear()`` from devtools).
+    await loginViaForm(page);
+
+    // Wait for the post-login navigation to finish before touching
+    // storage — ``waitForLoadState('networkidle')`` ensures the JS
+    // execution context for the destination page is stable, so
+    // ``evaluate`` below doesn't race against an in-flight nav.
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+
+    await page.evaluate(() => {
+      window.sessionStorage.clear();
+      window.localStorage.clear();
+    });
+
+    await page.goto(`${APP_URL}/admin`);
+    await page.waitForTimeout(POST_NAV_MS);
+
+    const url = page.url();
+    expect(url).toContain('/login');
+  });
+});
+
+// Phase 5 backlog (3vr findings deferred, non-blocking for F4-C):
+//   - Token refresh cycle (Phase 2 silent refresh) — not exercised
+//     by any e2e; needs fake-clock or direct refresh endpoint hit.
+//   - Cross-tab session: F4-E moved tokens to sessionStorage but
+//     Zustand persists user/profile to localStorage; a 2nd tab
+//     boots with ``user`` populated and no token until init clears
+//     it. Worth an explicit ``context.newPage()`` assertion.
+//   - Mutating actions (POST/PATCH/DELETE) through UI — CSRF
+//     middleware requires ``Content-Type: application/json``; a
+//     frontend fetcher regression that drops the header would not
+//     fail this spec because we only exercise reads.
+//   - Ciudadano role bounce — ProtectedRoute defaults to
+//     ``['admin','operador']``; the spec covers admin login but
+//     not ciudadano-tried-/admin → "Acceso Denegado".
