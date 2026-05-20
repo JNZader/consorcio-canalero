@@ -135,6 +135,40 @@ async def test_token_without_epoch_claim_treated_as_zero():
 
 
 @pytest.mark.asyncio
+async def test_get_jwt_strategy_dependency_returns_revocable_subclass():
+    """3vr Opus-alt HIGH fix-forward: the unit tests above instantiate
+    ``RevocableJWTStrategy`` directly. A future bug where
+    ``get_jwt_strategy()`` accidentally returns the base ``JWTStrategy``
+    would not be caught — the unit tests would still pass against the
+    detached subclass. Lock the DI wiring so a regression in
+    ``app/auth/dependencies.py:get_jwt_strategy`` fails this test."""
+    from app.auth.dependencies import get_jwt_strategy
+
+    strat = get_jwt_strategy()
+    assert isinstance(strat, RevocableJWTStrategy), (
+        "get_jwt_strategy() must return the F5-F-aware subclass — "
+        "otherwise the epoch claim is never written/read and the "
+        "15-min residual window is back."
+    )
+
+    # Issue a token and verify the ``epoch`` claim is actually in the
+    # payload. Catches the parallel bug shape where ``write_token``
+    # forgets to embed the claim.
+    from fastapi_users.jwt import decode_jwt
+
+    user = _make_user(epoch=3)
+    token = await strat.write_token(user)
+    payload = decode_jwt(
+        token, strat.decode_key, strat.token_audience, algorithms=[strat.algorithm]
+    )
+    assert "epoch" in payload, "Issued JWT must carry the ``epoch`` claim."
+    assert payload["epoch"] == 3, (
+        f"epoch claim should match user.revocation_epoch at issue time, "
+        f"got {payload['epoch']!r}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_invalid_token_still_rejected_normally():
     """The new epoch check must not weaken the existing JWT validation
     — a tampered token still fails on signature, not on epoch."""
