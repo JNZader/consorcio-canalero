@@ -138,6 +138,42 @@ async def create_code_for_token(
     raise last_err
 
 
+async def invalidate_open_codes_for_user(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    purpose: str,
+) -> int:
+    """Mark every unconsumed, unexpired code for this user+purpose as
+    consumed_at=now.
+
+    Phase 5 / F5-E 3vr fix-forward (Sonnet finding): without this,
+    pressing "forgot password" twice leaves TWO simultaneously valid
+    codes in flight. Calling this BEFORE ``create_code_for_token``
+    in the UserManager hook ensures only the latest code is usable.
+
+    Caller commits or rolls back. Returns the row count for tests.
+    """
+    if purpose not in _VALID_PURPOSES:
+        raise ValueError(
+            f"purpose must be one of {sorted(_VALID_PURPOSES)}, got {purpose!r}"
+        )
+    from sqlalchemy import update as sa_update
+
+    now = datetime.now(tz=timezone.utc)
+    result = await session.execute(
+        sa_update(EmailCode)
+        .where(
+            EmailCode.user_id == user_id,
+            EmailCode.purpose == purpose,
+            EmailCode.consumed_at.is_(None),
+            EmailCode.expires_at > now,
+        )
+        .values(consumed_at=now)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 async def exchange_code_for_token(
     session: AsyncSession,
     *,

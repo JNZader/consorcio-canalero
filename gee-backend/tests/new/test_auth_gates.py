@@ -192,6 +192,42 @@ class TestUploadsAuthGates:
 # ---------------------------------------------------------------------------
 
 
+class TestExchangeCodeEndpoint:
+    """F5-E HTTP wiring test (3vr Opus-alt H3 fix). The
+    ``test_email_codes.py`` suite tests the library; this test pins
+    the endpoint surface so a future regression in the router wiring
+    (wrong path, middleware intercept, missing serializer) fails CI
+    even if the library tests still pass.
+
+    Note: the bad-payload test still touches the DB (does a SELECT
+    looking for the bogus code) so it requires the ``test_engine``
+    fixture to materialise the schema. The malformed-purpose test
+    short-circuits on the in-Python allow-list before any SQL runs.
+    """
+
+    def test_exchange_code_bad_payload_400(self, client: TestClient, test_engine):
+        """A bogus code is rejected with 400 (the same status we
+        return for "expired" / "wrong purpose" — enumeration-blind)."""
+        _ = test_engine
+        resp = client.post(
+            "/api/v2/auth/exchange-code",
+            json={"code": "NEVERWAS", "purpose": "reset"},
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400, (
+            f"unknown code should return 400, got {resp.status_code}"
+        )
+
+    def test_exchange_code_invalid_purpose_400(self, client: TestClient):
+        """Malformed purpose → 400 (same shape, no info leak)."""
+        resp = client.post(
+            "/api/v2/auth/exchange-code",
+            json={"code": "ANYCODEZ", "purpose": "not-a-purpose"},
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+
 class TestAdminReadyDetailedGate:
     def test_admin_ready_detailed_unauthenticated_401(self, client: TestClient):
         resp = client.get("/admin/ready/detailed")

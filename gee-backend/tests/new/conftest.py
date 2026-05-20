@@ -84,6 +84,14 @@ os.environ.update(
 
 from app.db.base import Base  # noqa: E402
 
+# Eagerly import every model module so ``Base.metadata`` knows about
+# every table BEFORE ``create_all`` runs in the ``test_engine``
+# fixture. Without this, models that aren't transitively imported by
+# ``app.main`` (e.g. ``EmailCode`` from F5-E) miss the create_all
+# pass and their tables vanish from the test schema.
+from app.auth import email_codes as _email_codes_model  # noqa: F401, E402
+from app.shared import audit_log as _audit_log_model  # noqa: F401, E402
+
 
 @pytest.fixture(scope="session")
 def test_engine():

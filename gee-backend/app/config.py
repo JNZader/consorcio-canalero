@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     # because psycopg2 does NOT use server-side prepares by default.
     # Leave ``False`` for direct-to-postgres deploys.
     use_pgbouncer: bool = False
+    # Phase 5 / F5-E: SMTP-body PII hardening. When ``True``, verify
+    # and reset emails carry an 8-char alphanumeric code that the SPA
+    # exchanges for the JWT token via ``POST /auth/exchange-code``.
+    # When ``False`` (DEFAULT), the legacy behaviour is preserved —
+    # the email URL still embeds the token directly so existing
+    # SPA versions keep working. Flip to ``True`` only AFTER the SPA
+    # is updated to handle the ``?code=`` query parameter, otherwise
+    # users clicking the email link land on a page the SPA ignores.
+    use_one_time_codes: bool = False
 
     # Google Earth Engine
     gee_key_file_path: Optional[str] = None

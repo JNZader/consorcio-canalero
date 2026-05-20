@@ -65,26 +65,66 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         )
 
         # Phase 5 / F5-E: stand the SMTP body off the JWT token.
-        # Generate a short code, persist the mapping in ``email_codes``,
-        # send the email with the code (not the token). The SPA
-        # exchanges the code for the original token via
-        # ``POST /auth/exchange-code``. Provider logs that retain the
-        # body for 30+ days now only see a 15-min one-shot code.
-        from app.auth.email_codes import RESET_PURPOSE, create_code_for_token
+        # When ``settings.use_one_time_codes`` is enabled, generate a
+        # short code, persist the mapping in ``email_codes``, send
+        # the email with the code (not the token). The SPA exchanges
+        # the code for the original token via
+        # ``POST /auth/exchange-code``. Provider logs that retain
+        # the body for 30+ days now only see a 15-min one-shot code.
+        #
+        # When disabled (DEFAULT), the legacy token-in-URL path runs
+        # so existing SPA versions keep working — flip the flag in
+        # ``.env`` once the frontend ships the ``?code=`` handler.
         from app.shared.email import build_reset_email, send_email
-        from typing import cast
 
-        sqlalchemy_user_db = cast(
-            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
-        )
-        session: AsyncSession = sqlalchemy_user_db.session
-        code = await create_code_for_token(
-            session, user=user, purpose=RESET_PURPOSE, token=token
-        )
-        await session.commit()
+        if settings.use_one_time_codes:
+            from app.auth.email_codes import (
+                RESET_PURPOSE,
+                create_code_for_token,
+                invalidate_open_codes_for_user,
+            )
+            from typing import cast
 
-        template = build_reset_email(code=code, frontend_url=settings.frontend_url)
-        await send_email(to_email=user.email, **template)
+            sqlalchemy_user_db = cast(
+                "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
+            )
+            session: AsyncSession = sqlalchemy_user_db.session
+            # Invalidate any prior unconsumed reset codes for this user
+            # so "forgot password" pressed twice doesn't leave two
+            # simultaneously valid codes in flight (3vr Sonnet finding).
+            await invalidate_open_codes_for_user(
+                session, user_id=user.id, purpose=RESET_PURPOSE
+            )
+            code = await create_code_for_token(
+                session, user=user, purpose=RESET_PURPOSE, token=token
+            )
+            await session.commit()
+
+            template = build_reset_email(
+                code=code, frontend_url=settings.frontend_url
+            )
+            try:
+                await send_email(to_email=user.email, **template)
+            except Exception:
+                # SMTP delivery failed — the code row would be a leak
+                # (user can never receive it, but it's still valid for
+                # 15 min). Roll back the row so the user can retry
+                # cleanly. (3vr Opus-alt H2 fix.)
+                from app.auth.email_codes import EmailCode
+                from sqlalchemy import delete as sa_delete
+
+                await session.execute(
+                    sa_delete(EmailCode).where(EmailCode.code == code)
+                )
+                await session.commit()
+                raise
+        else:
+            # Legacy path — embeds the token in the URL. The frontend
+            # still uses this until F5-E rollout flips the flag.
+            template = build_reset_email(
+                code=token, frontend_url=settings.frontend_url
+            )
+            await send_email(to_email=user.email, **template)
 
     async def on_after_request_verify(
         self, user: User, token: str, request: Request | None = None
@@ -107,24 +147,51 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 "token_fingerprint": token_fingerprint,
             },
         )
-        # Phase 5 / F5-E: same hardening as ``on_after_forgot_password``.
-        from app.auth.email_codes import VERIFY_PURPOSE, create_code_for_token
+        # Phase 5 / F5-E: same hardening as ``on_after_forgot_password``,
+        # gated behind the ``USE_ONE_TIME_CODES`` flag.
         from app.shared.email import build_verification_email, send_email
-        from typing import cast
 
-        sqlalchemy_user_db = cast(
-            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
-        )
-        session: AsyncSession = sqlalchemy_user_db.session
-        code = await create_code_for_token(
-            session, user=user, purpose=VERIFY_PURPOSE, token=token
-        )
-        await session.commit()
+        if settings.use_one_time_codes:
+            from app.auth.email_codes import (
+                VERIFY_PURPOSE,
+                create_code_for_token,
+                invalidate_open_codes_for_user,
+            )
+            from typing import cast
 
-        template = build_verification_email(
-            code=code, frontend_url=settings.frontend_url
-        )
-        await send_email(to_email=user.email, **template)
+            sqlalchemy_user_db = cast(
+                "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
+            )
+            session: AsyncSession = sqlalchemy_user_db.session
+            await invalidate_open_codes_for_user(
+                session, user_id=user.id, purpose=VERIFY_PURPOSE
+            )
+            code = await create_code_for_token(
+                session, user=user, purpose=VERIFY_PURPOSE, token=token
+            )
+            await session.commit()
+
+            template = build_verification_email(
+                code=code, frontend_url=settings.frontend_url
+            )
+            try:
+                await send_email(to_email=user.email, **template)
+            except Exception:
+                # Same SMTP-failure rollback as the reset path.
+                from app.auth.email_codes import EmailCode
+                from sqlalchemy import delete as sa_delete
+
+                await session.execute(
+                    sa_delete(EmailCode).where(EmailCode.code == code)
+                )
+                await session.commit()
+                raise
+        else:
+            # Legacy path — token in URL, same as pre-F5-E.
+            template = build_verification_email(
+                code=token, frontend_url=settings.frontend_url
+            )
+            await send_email(to_email=user.email, **template)
 
     async def on_after_register(
         self, user: User, request: Request | None = None
