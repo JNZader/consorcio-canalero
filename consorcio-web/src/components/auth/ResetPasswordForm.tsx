@@ -3,6 +3,7 @@ import {
   Anchor,
   Button,
   Center,
+  Loader,
   Paper,
   PasswordInput,
   Stack,
@@ -10,8 +11,8 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useState } from 'react';
-import { resetPasswordWithToken } from '../../lib/auth';
+import { useEffect, useState } from 'react';
+import { exchangeCodeForToken, resetPasswordWithToken } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
 
@@ -19,13 +20,49 @@ const RESET_PASSWORD_ERROR_ID = 'reset-password-error';
 const RESET_CONFIRM_PASSWORD_ERROR_ID = 'reset-confirm-password-error';
 
 interface ResetPasswordFormProps {
+  /** Legacy: long JWT token embedded directly in the email URL.
+   * Sent when the backend's ``USE_ONE_TIME_CODES`` is off. */
   token: string;
+  /** F5-E: short SMTP-safe code that the SPA must exchange for the
+   * real JWT via ``POST /auth/exchange-code``. Sent when the
+   * backend ships the email with ``?code=`` instead of ``?token=``. */
+  code?: string;
 }
 
-export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+export default function ResetPasswordForm({ token, code }: ResetPasswordFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // F5-E: when the URL carries ``?code=`` instead of ``?token=``, hit
+  // the exchange endpoint first to get the real JWT, then proceed as
+  // before. ``effectiveToken`` is what the password-reset call uses.
+  // ``exchanging`` gates the UI behind a loader so the user doesn't
+  // see "Invalid link" while the network round-trip is in flight.
+  const [exchanging, setExchanging] = useState<boolean>(!!code && !token);
+  const [effectiveToken, setEffectiveToken] = useState<string>(token);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!effectiveToken && code) {
+      setExchanging(true);
+      exchangeCodeForToken(code, 'reset')
+        .then((resolved) => {
+          if (cancelled) return;
+          if (resolved) {
+            setEffectiveToken(resolved);
+          }
+          setExchanging(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setExchanging(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [code, effectiveToken]);
 
   const form = useForm({
     initialValues: {
@@ -55,7 +92,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     setError(null);
 
     try {
-      const result = await resetPasswordWithToken(token, values.password);
+      const result = await resetPasswordWithToken(effectiveToken, values.password);
 
       if (result.success) {
         setSuccess(true);
@@ -69,13 +106,32 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     }
   };
 
-  if (!token) {
+  // F5-E: code is being exchanged for the real token. Show a loader
+  // so the user doesn't see the "Invalid link" state during the
+  // round-trip.
+  if (exchanging) {
+    return (
+      <Center mih="80vh">
+        <Paper shadow="md" p="xl" radius="md" w={400}>
+          <Stack align="center" gap="md">
+            <Loader />
+            <Text size="sm" c="dimmed">
+              Verificando el enlace…
+            </Text>
+          </Stack>
+        </Paper>
+      </Center>
+    );
+  }
+
+  if (!effectiveToken) {
     return (
       <Center mih="80vh">
         <Paper shadow="md" p="xl" radius="md" w={400}>
           <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace invalido">
             <Text size="sm">
-              Este enlace de recuperacion es invalido. Solicita uno nuevo desde la pagina de login.
+              Este enlace de recuperacion es invalido o expiró. Solicita uno
+              nuevo desde la pagina de login.
             </Text>
           </Alert>
           <Button

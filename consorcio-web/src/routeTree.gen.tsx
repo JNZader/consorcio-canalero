@@ -179,12 +179,18 @@ const forgotPasswordRoute = createRoute({
 const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/reset-password',
+  // F5-E: accept BOTH ``?token=`` (legacy path: email URL embeds the
+  // long JWT directly) and ``?code=`` (new path: email URL carries
+  // the short SMTP-safe code, SPA exchanges via /auth/exchange-code).
+  // The component handles the exchange transparently so the user
+  // sees the same UX in both modes.
   validateSearch: (search: Record<string, unknown>) => ({
     token: (search.token as string) || '',
+    code: (search.code as string) || '',
   }),
   component: () => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { token } = resetPasswordRoute.useSearch();
+    const { token, code } = resetPasswordRoute.useSearch();
     return (
       <RootLayout
         title="Nueva Contrasena"
@@ -192,7 +198,7 @@ const resetPasswordRoute = createRoute({
         noindex={true}
       >
         <Suspense fallback={<PageLoader />}>
-          <ResetPasswordForm token={token} />
+          <ResetPasswordForm token={token} code={code} />
         </Suspense>
       </RootLayout>
     );

@@ -280,6 +280,61 @@ test.describe('E2E auth flow — login → protected → logout', () => {
   });
 });
 
+test.describe('F5-E reset-password code exchange', () => {
+  // The backend's ``USE_ONE_TIME_CODES`` flag is OFF in prod today
+  // (rollout sequenced — backend ships first, frontend follows in
+  // this commit, then operations flips the flag). So we cannot test
+  // the live exchange flow against a real email. Instead we test the
+  // frontend contract from the SPA side:
+  //   - ``?code=...`` triggers a loader state (the exchange call).
+  //   - A bogus code is rejected by the backend with HTTP 400 →
+  //     SPA degrades gracefully to the "invalid link" screen.
+  test('reset-password with ?code= shows loader then "invalid link" on bad code', async ({
+    page,
+  }) => {
+    await page.goto(`${APP_URL}/reset-password?code=NEVERWAS`);
+    // The exchange call hits ``/auth/exchange-code`` which returns 400
+    // for any bogus code. The SPA renders the loader for the
+    // round-trip then falls through to the "invalid" Alert.
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    await page.waitForTimeout(2000);
+    const body = (await page.textContent('body')) ?? '';
+    // Either the loader stayed visible (slow backend) or the
+    // "invalid" alert is showing. Both are acceptable end states for
+    // a bogus code; what we DON'T want is the password form rendered
+    // (which would mean the SPA proceeded with a missing token).
+    const passwordInputVisible = await page
+      .locator('input[type="password"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    expect(passwordInputVisible).toBeFalsy();
+    // And either the loader or the invalid-link Alert IS visible.
+    const validErrorState =
+      /verificando el enlace|enlace invalido|enlace invalid|expir/i.test(body);
+    expect(validErrorState, `body should show loader or invalid-link alert, got: ${body.slice(0, 400)}`).toBeTruthy();
+  });
+
+  test('reset-password with ?token= (legacy path) keeps working', async ({ page }) => {
+    // Legacy fallback while ``USE_ONE_TIME_CODES=false``: the email
+    // still embeds the long JWT in ``?token=``. The SPA must accept
+    // it without hitting the exchange endpoint — same behaviour as
+    // pre-F5-E. We use a junk JWT here; the API will reject it as
+    // ``RESET_PASSWORD_BAD_TOKEN``, but only AFTER the password form
+    // is rendered (proving the SPA didn't try to exchange).
+    await page.goto(
+      `${APP_URL}/reset-password?token=ey-invalid-but-renders-form`
+    );
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    // The password input renders because the SPA treats ``?token=``
+    // as already-valid for rendering purposes — actual validation
+    // happens on submit.
+    await expect(
+      page.locator('input[type="password"]').first()
+    ).toBeVisible({ timeout: 10_000 });
+  });
+});
+
 // Phase 5+ backlog (still deferred, harder to land):
 //   - Token refresh cycle (silent JWT refresh after 15-min expiry) —
 //     needs fake-clock or a real wait + retry; the spec already takes
