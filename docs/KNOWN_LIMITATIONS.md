@@ -34,17 +34,42 @@ KNOWN_LIMITATIONS sweep.
 
 ## Frontend / PWA
 
-### PWA icons are a green "CC" placeholder
+### ~~PWA icons are a green "CC" placeholder~~ — RESOLVED in F5-M
 
-Phase 3 / F3-F generated three programmatic PNGs (192, 512,
-512-maskable). The maskable is RGB, not RGBA — some Android launchers
-(MIUI, One UI) render minor artifacts on the outer mask.
+Originally documented: the 3 PWA PNGs in
+``consorcio-web/public/icons/icon-{192,512,512-maskable}.png`` were
+programmatically-generated placeholders (green "CC" text) from
+Phase 3 / F3-F. The maskable variant was RGB instead of RGBA,
+producing visual artifacts on Android adaptive-icon launchers
+(One UI, MIUI).
 
-**Mitigation today**: replace the three files under
-`consorcio-web/public/icons/icon-{192,512,512-maskable}.png` with a
-real design. The manifest paths stay stable.
+**Resolved** in F5-M: regenerated all three icons from
+``public/favicon.ico`` (256×256 RGBA, the existing real favicon
+of the SPA). The pipeline:
 
-**Expected fix** (Phase 4 — design budget): commission a real logo.
+  - ``icon-192.png`` — direct LANCZOS downscale 256→192.
+  - ``icon-512.png`` — LANCZOS upscale 256→512 (some softness vs
+    a native 512 asset, but acceptable; the favicon is the only
+    source of truth available without commissioning a logo).
+  - ``icon-512-maskable.png`` — 80% safe area: the favicon is
+    inset to 409×409 centered on a 512×512 transparent canvas
+    with 51px of RGBA-transparent padding on each side. This is
+    the spec-compliant safe-area mask that lets Android launchers
+    crop into any shape (circle, squircle, teardrop) without
+    losing critical content.
+
+All three files are now RGBA, fixing the RGB artifact bug on
+adaptive-icon launchers.
+
+This is still a placeholder in spirit (the favicon is a simple
+mark, not a full institutional logo), but it's a placeholder
+that **(a) matches the rest of the SPA's brand mark**, **(b)**
+fixes the technical RGBA bug, and **(c)** doesn't need a design
+budget to ship.
+
+If the consorcio eventually commissions a proper logo, the
+manifest paths stay stable — drop in the new PNGs and the PWA
+picks them up on next install.
 
 ### React Compiler opted-out on two ref-heavy files
 
