@@ -146,37 +146,45 @@ Always-on — no feature flag.
 This section is kept for historical context; remove on the next
 KNOWN_LIMITATIONS sweep.
 
-### SMTP body logging carries reset / verify tokens — MITIGATION SHIPPED, gated by feature flag
+### ~~SMTP body logging carries reset / verify tokens~~ — RESOLVED in F5-E (live in prod)
 
-Phase 2 / F2-J sends password-reset and email-verification tokens
-inside the message body. Most SMTP providers (Brevo, Resend, SES)
-log message bodies for 30+ days for support purposes.
+Originally: Phase 2 / F2-J sent password-reset and email-verification
+tokens inside the message body. Most SMTP providers (Brevo, Resend,
+SES) log message bodies for 30+ days for support purposes — meaning a
+30-day window where a provider-side compromise leaks valid reset
+credentials.
 
-**Mitigation infrastructure** (Phase 5 / F5-E, shipped): the
+**Resolved** (Phase 5 / F5-E, activated 2026-05-20): the
 `app/auth/email_codes.py` module + `POST /auth/exchange-code`
-endpoint + the SPA's `?code=` handler form a complete one-time-code
-flow. When enabled, the email body carries ONLY an 8-char code
-(36^8 ≈ 2.8 × 10^12 combos, 15-min TTL, single-use), and the SPA
-exchanges the code for the long JWT before consuming it via the
-existing verify / reset endpoints. The code is worthless after
-exchange OR after 15 minutes, so SMTP-body retention loses its
-attack value.
+endpoint + the SPA's `?code=` handler form a one-time-code flow.
+The email body now carries ONLY an 8-char code (36^8 ≈ 2.8 × 10^12
+combos, 15-min TTL, single-use); the SPA exchanges the code for
+the long JWT before consuming it via the existing verify / reset
+endpoints. The code is worthless after exchange OR after 15
+minutes, so SMTP-body retention loses its attack value.
 
-**Activation status**: gated behind the `USE_ONE_TIME_CODES` env
-flag (defaults to `False` in `app/config.py`). The repo's
-docker-compose files do NOT set this flag, so installs that don't
-opt in fall through to the legacy token-in-body path. The SPA's
-`ResetPasswordForm` accepts BOTH `?token=` (legacy) and `?code=`
-(flag-on) so the flip is non-breaking.
+Activation chain (all live in prod):
+  - `USE_ONE_TIME_CODES=true` set in the server's `.env`.
+  - Wired into the `environment:` block of both the backend and
+    worker services in `docker-compose.yml` (commit 476b2ba). The
+    worker is the one that dispatches the SMTP send from the
+    UserManager hook, so both containers must flip together.
+  - Integration tests at `gee-backend/tests/new/test_one_time_codes_flag.py`
+    pin the contract: when the flag is True the JWT NEVER appears
+    in the email body; when False the legacy path keeps working.
 
-**To activate on a deployment**: set `USE_ONE_TIME_CODES=true` in
-the backend container's environment + restart. Verify with a real
-forgot-password round-trip; the email should contain a short code
-rather than a JWT-shaped string.
+Verification from prod (post-activation smoke test):
+  - `email_codes` table populated with a real round-trip row at
+    2026-05-20 04:42 UTC, confirming the active path runs.
 
-**Mitigation while flag is off**: documented in RUNBOOK § 1.5 —
-operators configure their provider to disable body logging OR use
-the provider's transactional API rather than SMTP.
+**For installs that opt out**: the flag still defaults to `False`
+in `app/config.py`, so an install that doesn't set
+`USE_ONE_TIME_CODES=true` keeps the legacy token-in-body
+behaviour. RUNBOOK § 1.5 still describes that path for
+operators who don't enable the mitigation.
+
+This section is kept for historical context; remove on the next
+KNOWN_LIMITATIONS sweep.
 
 ### Refresh-token timing equicost has a constant-fold residual (F5-G skipped)
 
