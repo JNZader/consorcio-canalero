@@ -14,8 +14,10 @@ from app.domains.denuncias.schemas import (
     DenunciaCreateResponse,
     DenunciaListResponse,
     DenunciaResponse,
+    DenunciaStatsResponse,
     DenunciaUpdate,
 )
+from app.shared.quota import SubmissionStatusResponse
 from app.domains.denuncias.service import DenunciaService
 from app.shared.pagination import PaginatedResponse
 from app.shared.storage import (
@@ -242,19 +244,21 @@ def list_my_denuncias(
     )
 
 
-@router.get("/rate-limit", response_model=dict)
+@router.get("/rate-limit", response_model=SubmissionStatusResponse)
 def get_denuncia_rate_limit(
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     user=Depends(_require_user()),
-):
+) -> SubmissionStatusResponse:
     """
     Cupo restante del ciudadano para crear denuncias (5 cada 24 h
-    rolling, source-of-truth = base de datos). Devuelve
-    `{remaining, limit, reset_seconds}`. El form lo usa para mostrar el
-    badge "Te quedan N" antes de que el usuario llene el formulario.
+    rolling, source-of-truth = base de datos). El form lo usa para
+    mostrar el badge "Te quedan N" antes de que el usuario llene el
+    formulario.
     """
-    return service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
+    return SubmissionStatusResponse.model_validate(
+        service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
+    )
 
 
 # ──────────────────────────────────────────────
@@ -262,14 +266,14 @@ def get_denuncia_rate_limit(
 # ──────────────────────────────────────────────
 
 
-@router.get("/stats", response_model=dict)
+@router.get("/stats", response_model=DenunciaStatsResponse)
 def get_stats(
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> DenunciaStatsResponse:
     """Estadisticas agregadas de denuncias (requiere operador)."""
-    return service.get_stats(db)
+    return DenunciaStatsResponse.model_validate(service.get_stats(db))
 
 
 @router.get("", response_model=PaginatedResponse[DenunciaListResponse])

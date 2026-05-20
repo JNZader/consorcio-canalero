@@ -9,15 +9,18 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.monitoring.schemas import (
     AnalisisGeeResponse,
+    DashboardStatsResponse,
     SugerenciaAgendarRequest,
     SugerenciaCitizenResponse,
     SugerenciaCreate,
     SugerenciaListResponse,
     SugerenciaResponse,
+    SugerenciaStatsResponse,
     SugerenciaUpdate,
 )
 from app.domains.monitoring.service import MonitoringService
 from app.shared.pagination import PaginatedResponse
+from app.shared.quota import SubmissionStatusResponse
 
 router = APIRouter(tags=["monitoring"])
 
@@ -145,19 +148,21 @@ def list_my_sugerencias(
 
 @router.get(
     "/sugerencias/rate-limit",
-    response_model=dict,
+    response_model=SubmissionStatusResponse,
     tags=["sugerencias"],
 )
 def get_sugerencia_rate_limit(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     user=Depends(_require_user()),
-):
+) -> SubmissionStatusResponse:
     """
     Cupo restante del ciudadano para crear sugerencias (5 cada 24 h
     rolling, espejo del flujo de `/denuncias/rate-limit`).
     """
-    return service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
+    return SubmissionStatusResponse.model_validate(
+        service.get_rate_limit_status(db, uuid.UUID(str(user.id)))
+    )
 
 
 # ──────────────────────────────────────────────
@@ -167,16 +172,18 @@ def get_sugerencia_rate_limit(
 
 @router.get(
     "/sugerencias/stats",
-    response_model=dict,
+    response_model=SugerenciaStatsResponse,
     tags=["sugerencias"],
 )
 def get_sugerencias_stats(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> SugerenciaStatsResponse:
     """Estadisticas agregadas de sugerencias (requiere operador)."""
-    return service.get_sugerencias_stats(db)
+    return SugerenciaStatsResponse.model_validate(
+        service.get_sugerencias_stats(db)
+    )
 
 
 @router.get(
@@ -255,14 +262,16 @@ def agendar_sugerencia(
 # ──────────────────────────────────────────────
 
 
-@router.get("/monitoring/dashboard", response_model=dict)
+@router.get("/monitoring/dashboard", response_model=DashboardStatsResponse)
 def get_dashboard(
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> DashboardStatsResponse:
     """Dashboard con estadisticas agregadas de todos los dominios."""
-    return service.get_dashboard_stats(db)
+    return DashboardStatsResponse.model_validate(
+        service.get_dashboard_stats(db)
+    )
 
 
 @router.get(

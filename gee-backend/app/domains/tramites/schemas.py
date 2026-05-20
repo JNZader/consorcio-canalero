@@ -119,3 +119,12 @@ class TramiteCreateResponse(BaseModel):
     id: uuid.UUID
     message: str
     estado: str
+
+
+class TramiteStatsResponse(BaseModel):
+    """Aggregate counts surfaced by ``GET /tramites/stats``."""
+
+    total: int
+    por_estado: dict[str, int]
+    por_tipo: dict[str, int]
+    por_prioridad: dict[str, int]

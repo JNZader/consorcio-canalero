@@ -154,3 +154,12 @@ class CsvImportResponse(BaseModel):
     created: int
     skipped: int
     errors: list[dict[str, Any]]
+
+
+class PadronStatsResponse(BaseModel):
+    """Aggregate counts + hectareas surfaced by ``GET /padron/stats``."""
+
+    total: int
+    por_estado: dict[str, int]
+    por_categoria: dict[str, int]
+    total_hectareas: float

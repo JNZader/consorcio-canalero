@@ -13,6 +13,7 @@ from app.domains.padron.schemas import (
     ConsorcistaResponse,
     ConsorcistaUpdate,
     CsvImportResponse,
+    PadronStatsResponse,
 )
 from app.domains.padron.service import PadronService
 from app.shared.pagination import PaginatedResponse
@@ -45,14 +46,14 @@ def _require_admin():
 # ──────────────────────────────────────────────
 
 
-@router.get("/stats", response_model=dict)
+@router.get("/stats", response_model=PadronStatsResponse)
 def get_stats(
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> PadronStatsResponse:
     """Estadisticas agregadas del padron (requiere operador)."""
-    return service.get_stats(db)
+    return PadronStatsResponse.model_validate(service.get_stats(db))
 
 
 # ──────────────────────────────────────────────

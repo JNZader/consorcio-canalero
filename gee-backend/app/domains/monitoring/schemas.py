@@ -183,3 +183,21 @@ class DashboardStatsResponse(BaseModel):
     total_tramites: int = 0
     latest_analyses: list[AnalisisGeeResponse] = []
     resumen_financiero: dict[str, Any] = {}
+
+
+class SugerenciaStatsResponse(BaseModel):
+    """Aggregate counts surfaced by ``GET /sugerencias/stats``.
+
+    The 4 estado-named fields (pendiente / en_agenda / tratado /
+    descartado) are convenience shortcuts so the frontend doesn't have
+    to know the internal ``EstadoSugerencia`` enum keys. They are the
+    same numbers ``ciudadanas`` / ``internas`` split.
+    """
+
+    pendiente: int = 0
+    en_agenda: int = 0
+    tratado: int = 0
+    descartado: int = 0
+    total: int = 0
+    ciudadanas: int = 0
+    internas: int = 0

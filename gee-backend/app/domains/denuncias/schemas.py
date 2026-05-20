@@ -107,3 +107,12 @@ class DenunciaCreateResponse(BaseModel):
     id: uuid.UUID
     message: str
     estado: str
+
+
+class DenunciaStatsResponse(BaseModel):
+    """Aggregate counts surfaced by ``GET /denuncias/stats``."""
+
+    total: int
+    por_estado: dict[str, int]
+    por_tipo: dict[str, int]
+    por_cuenca: dict[str, int]

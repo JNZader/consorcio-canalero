@@ -15,6 +15,7 @@ from app.domains.tramites.schemas import (
     TramiteCreateResponse,
     TramiteListResponse,
     TramiteResponse,
+    TramiteStatsResponse,
     TramiteUpdate,
 )
 from app.domains.tramites.service import TramiteService
@@ -41,14 +42,14 @@ def _require_operator():
 # ──────────────────────────────────────────────
 
 
-@router.get("/stats", response_model=dict)
+@router.get("/stats", response_model=TramiteStatsResponse)
 def get_stats(
     db: Session = Depends(get_db),
     service: TramiteService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> TramiteStatsResponse:
     """Estadisticas agregadas de tramites (requiere operador)."""
-    return service.get_stats(db)
+    return TramiteStatsResponse.model_validate(service.get_stats(db))
 
 
 @router.get("", response_model=PaginatedResponse[TramiteListResponse])
