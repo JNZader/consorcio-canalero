@@ -141,6 +141,62 @@ constant-fold concern alongside the rest of the complexity.
 
 ---
 
+## Architecture
+
+### Dependency Injection is pragmatic, not formal IoC (F4-I skipped)
+
+Every service in ``app/domains/*/service.py`` accepts its
+repository through the constructor with a sensible default:
+
+```python
+class DenunciaService:
+    def __init__(self, repository: DenunciaRepository | None = None) -> None:
+        self.repo = repository or DenunciaRepository()
+```
+
+The pattern delivers what DI is supposed to deliver — services
+are testable WITHOUT touching the database (verified across the
+F4-B mutation suite where every Service is instantiated with a
+``MagicMock()`` repo and the assertions still exercise real
+business logic), and a future swap of the persistence backend
+needs to change exactly one default per service rather than
+hunt down every caller.
+
+What this is NOT:
+  - There is no formal ``RepositoryProtocol`` typed contract.
+    Repos and services are coupled to each other's concrete
+    classes at type-check time. Mocks work because Python's
+    structural typing accepts ``MagicMock`` for anything.
+  - There is no IoC container (no Punq, no ``dependency-injector``,
+    no FastAPI ``Depends`` for repos). The wiring is just
+    constructor-argument-with-default.
+
+Why F4-I (a planned refactor to formal Protocol-based DI) was
+skipped:
+  - The 8 services that follow this pattern would each need a
+    Protocol class declaring every method they depend on. ~400
+    lines of new code, ~zero behaviour change.
+  - The benefit (clearer contracts, mock-by-default in mypy
+    strict mode) does NOT pay back at this codebase size. The
+    F4-B mutation tests already cover the same surface without
+    Protocols.
+  - The harder part of "real DI" — letting a deploy swap
+    PostgreSQL for SQLite, or instrument repo calls with OTel —
+    requires runtime wiring at FastAPI ``Depends`` level, not
+    just a type-only refactor. That is a Phase 5+ project once
+    a use case actually motivates it.
+
+**Expected fix** (Phase 5+, only if motivated by a real use case):
+introduce a thin ``app/_shared/repository_protocols.py`` declaring
+``DenunciaRepoProtocol``, ``MonitoringRepoProtocol``, etc., and
+re-type the service constructors against the Protocol. Routers
+move from ``Depends(get_service)`` to ``Depends(get_repo)`` +
+explicit service construction. This is invasive and shouldn't
+land until something concrete (e.g. a read-only replica repo for
+analytics) makes it worth the churn.
+
+---
+
 ## Builds / bundles
 
 ### Mantine CSS imports stay monolithic
