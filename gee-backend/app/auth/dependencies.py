@@ -158,13 +158,95 @@ def get_user_manager(
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
+class RevocableJWTStrategy(JWTStrategy[User, uuid.UUID]):
+    """JWTStrategy extension that honours ``User.revocation_epoch``.
+
+    Phase 5 / F5-F. The default fastapi-users JWTStrategy issues
+    stateless tokens that survive until natural expiry — a 15-min
+    blast radius after ``/auth/jwt/logout-all`` invalidates the
+    refresh family. This extension bakes the user's current epoch
+    into every issued token and refuses tokens whose embedded epoch
+    is below the current user value.
+
+    Implementation cost: one extra integer comparison per request,
+    on a User row that was already going to be loaded for auth.
+    """
+
+    async def write_token(self, user: User) -> str:
+        # Import locally — ``fastapi_users.jwt`` is the recommended
+        # public surface for ``generate_jwt`` per the upstream source.
+        from fastapi_users.jwt import generate_jwt
+
+        data = {
+            "sub": str(user.id),
+            "aud": self.token_audience,
+            # Embed the epoch at issue time. Reading user.revocation_epoch
+            # with ``or 0`` defends against legacy rows that somehow
+            # lost their NOT NULL constraint (defensive — the column
+            # is ``nullable=False`` with ``server_default='0'``).
+            "epoch": int(getattr(user, "revocation_epoch", 0) or 0),
+        }
+        return generate_jwt(
+            data,
+            self.encode_key,
+            self.lifetime_seconds,
+            algorithm=self.algorithm,
+        )
+
+    async def read_token(
+        self,
+        token: str | None,
+        user_manager: BaseUserManager[User, uuid.UUID],
+    ) -> User | None:
+        # Delegate the JWT-validation half (signature, expiry,
+        # audience) to the upstream implementation. It returns the
+        # user — or None — after a fresh DB load.
+        user = await super().read_token(token, user_manager)
+        if user is None or token is None:
+            return user
+
+        # We need the epoch claim, which the parent doesn't expose.
+        # Decode again with the same secret — cheap, the parent
+        # already validated the signature so this is just JSON
+        # extraction.
+        import jwt as _jwt
+        from fastapi_users.jwt import decode_jwt
+
+        try:
+            data = decode_jwt(
+                token,
+                self.decode_key,
+                self.token_audience,
+                algorithms=[self.algorithm],
+            )
+        except _jwt.PyJWTError:
+            # Should never happen — parent already accepted the token.
+            # Fail closed.
+            return None
+
+        token_epoch = int(data.get("epoch", 0))
+        user_epoch = int(getattr(user, "revocation_epoch", 0) or 0)
+
+        if token_epoch < user_epoch:
+            # Token was issued before the last ``logout-all`` bump.
+            # Treat as invalid; the caller falls through to 401.
+            return None
+
+        return user
+
+
 def get_jwt_strategy() -> JWTStrategy:
     # Phase 2 / F2-K: access tokens are short-lived (15 min). The SPA
     # refreshes them via the refresh-token cookie set on login. With
     # ``access`` this short, a stolen token has a 15-min blast radius
     # before the user can ``logout-all`` to revoke the whole token
-    # family.
-    return JWTStrategy(secret=settings.jwt_secret, lifetime_seconds=900)
+    # family. Phase 5 / F5-F additionally closes that residual window
+    # by checking the embedded ``epoch`` claim against the user's
+    # ``revocation_epoch`` on every request.
+    return RevocableJWTStrategy(
+        secret=settings.jwt_secret,
+        lifetime_seconds=900,
+    )
 
 
 auth_backend = AuthenticationBackend(

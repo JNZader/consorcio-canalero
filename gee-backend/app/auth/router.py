@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import (
@@ -190,11 +191,29 @@ async def logout_all_sessions(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_db),
 ):
-    """Revoke every refresh token for the caller. ``/auth/jwt/logout``
-    only invalidates the access token in the caller's hand — this one
-    nukes every device.
+    """Revoke every refresh token AND invalidate every outstanding
+    access token for the caller.
+
+    Two-layer revocation:
+      1. Refresh tokens — set ``revoked=True`` on every row in the
+         user's family (``revoke_all_for_user``). The SPA's next
+         attempt to silently refresh fails.
+      2. Access tokens — bump ``User.revocation_epoch``. Every JWT
+         issued before this call carries the OLD epoch in its claims
+         and is rejected by the JWT strategy on the next request.
+         Phase 5 / F5-F: closes the 15-min residual window that
+         existed pre-this commit (stateless JWTs survived until
+         natural expiry).
     """
     revoked = await revoke_all_for_user(session, user.id)
+    # Atomic bump — single UPDATE, no race with other requests issuing
+    # tokens against the same user (they'd embed the post-bump epoch).
+    await session.execute(
+        update(User)
+        .where(User.id == user.id)  # type: ignore[arg-type]
+        .values(revocation_epoch=User.revocation_epoch + 1)
+    )
+    await session.commit()
     response = JSONResponse({"revoked_sessions": revoked})
     _clear_refresh_cookie(response)
     return response

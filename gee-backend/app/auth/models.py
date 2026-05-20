@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,15 @@ class User(SQLAlchemyBaseUserTableUUID, TimestampMixin, Base):
         ),
         nullable=False,
         default=UserRole.CIUDADANO,
+    )
+    # Phase 5 / F5-F: closes the 15-min residual access-token window
+    # after ``/auth/jwt/logout-all``. Every JWT is issued with the
+    # user's current ``revocation_epoch`` baked into its payload; the
+    # JWT strategy refuses tokens whose embedded epoch is less than
+    # the user's current value. Default 0 means existing tokens
+    # (pre-migration) keep working until they expire naturally.
+    revocation_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
 
 
