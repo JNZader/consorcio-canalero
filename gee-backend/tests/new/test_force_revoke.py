@@ -24,8 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.auth.models import User, UserRole
-from app.auth.refresh_tokens import RefreshToken
+from app.auth.models import RefreshToken, User, UserRole
 from app.shared.audit_log import AuditLog
 
 
@@ -136,6 +135,9 @@ async def test_force_revoke_happy_path(test_engine):
             assert rt.revoked is True
 
         # Verify the audit_log row exists with the right shape.
+        # 3vr Opus-alt H2 fix-forward: the resource string now ALSO
+        # embeds both emails so the trail survives a future delete
+        # of the admin (FK is ``ON DELETE SET NULL``).
         async with SessionLocal() as session:
             entry = (
                 await session.execute(
@@ -144,7 +146,73 @@ async def test_force_revoke_happy_path(test_engine):
                     .where(AuditLog.action == "user.force-revoke")
                 )
             ).scalar_one()
-            assert entry.resource == f"user_id={target.id}"
+            assert f"user_id={target.id}" in entry.resource
+            assert f"target_email={target.email}" in entry.resource
+            assert f"acting_admin_email={admin.email}" in entry.resource
+    finally:
+        await _cleanup_users(SessionLocal, [admin.id, target.id])
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_force_revoke_invalidates_pending_email_codes(test_engine):
+    """3vr Opus-alt H1 fix-forward: force-revoke must invalidate any
+    pending email_codes for the target. Otherwise an attacker holding
+    a "forgot password" code in the victim's inbox bypasses the
+    revocation by resetting the password and logging back in.
+
+    Verifies that BOTH reset and verify codes are marked consumed."""
+    _ = test_engine
+    from app.api.v2.admin import force_revoke_user
+    from app.auth.email_codes import (
+        EmailCode,
+        RESET_PURPOSE,
+        VERIFY_PURPOSE,
+        create_code_for_token,
+    )
+
+    engine, SessionLocal = _make_session_factory()
+    admin = await _seed_user(SessionLocal, UserRole.ADMIN)
+    target = await _seed_user(SessionLocal, UserRole.CIUDADANO)
+
+    try:
+        # Plant a pending reset + a pending verify code for the target.
+        async with SessionLocal() as session:
+            reset_code = await create_code_for_token(
+                session, user=target, purpose=RESET_PURPOSE, token="reset-jwt"
+            )
+            verify_code = await create_code_for_token(
+                session, user=target, purpose=VERIFY_PURPOSE, token="verify-jwt"
+            )
+            await session.commit()
+
+        # Admin force-revokes.
+        async with SessionLocal() as session:
+            class _StubRequest:
+                client = None
+
+            await force_revoke_user(
+                user_id=target.id,
+                request=_StubRequest(),  # type: ignore[arg-type]
+                admin=admin,
+                db=session,
+            )
+
+        # Both codes must now be consumed_at != NULL.
+        async with SessionLocal() as session:
+            rows = (
+                await session.execute(
+                    select(EmailCode).where(
+                        EmailCode.code.in_([reset_code, verify_code])
+                    )
+                )
+            ).scalars().all()
+            assert len(rows) == 2
+            for row in rows:
+                assert row.consumed_at is not None, (
+                    f"code {row.code!r} ({row.purpose}) should be consumed "
+                    f"after force-revoke; consumed_at={row.consumed_at}"
+                )
     finally:
         await _cleanup_users(SessionLocal, [admin.id, target.id])
         await engine.dispose()

@@ -230,13 +230,22 @@ async def rotate(
 
 
 async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
-    """Revoke every non-revoked refresh token for the user."""
+    """Revoke every non-revoked refresh token for the user.
+
+    Caller commits or rolls back — the helper used to ``await
+    session.commit()`` inside, but that broke atomicity when the
+    caller needed to chain other writes (force-revoke endpoint bumps
+    ``revocation_epoch`` + writes an ``audit_log`` row in the SAME
+    transaction). 3vr Sonnet HIGH fix-forward on the F5-F follow-up:
+    moved commit responsibility to the caller, so a failure in any
+    chained step rolls back the whole operation, not just the steps
+    after the implicit commit point.
+    """
     result = await session.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False))
         .values(revoked=True, revoked_at=datetime.now(tz=timezone.utc))
     )
-    await session.commit()
     # ``rowcount`` is only on UPDATE/DELETE Results; mypy types the base
     # Result without it. The driver guarantees the attribute for the
     # statement shape we're using here, so the cast is safe.

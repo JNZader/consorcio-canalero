@@ -130,10 +130,34 @@ async def force_revoke_user(
             ),
         )
 
-    # Two-layer revocation, same as the self path:
-    # 1) refresh tokens
+    # Three-layer revocation (3vr Opus-alt H1 fix-forward expands
+    # the original two-layer set):
+    # 1) Refresh tokens — caller commits, so revoke_all_for_user
+    #    no longer commits internally. The whole operation is one
+    #    atomic transaction so a failure in step 2/3/4 rolls
+    #    back the token revocation too.
     revoked = await revoke_all_for_user(db, target.id)
-    # 2) bump revocation_epoch atomically (SQL-side increment so a
+
+    # 2) Pending email_codes (Phase 5 / F5-E). Without this, an
+    #    attacker who triggered a "forgot password" before the
+    #    admin's force-revoke could still use that 15-min code to
+    #    reset the password and log back in — the force-revoke
+    #    would be silently bypassed. Invalidate BOTH purposes so
+    #    a pending verify code can't be used either.
+    from app.auth.email_codes import (
+        RESET_PURPOSE,
+        VERIFY_PURPOSE,
+        invalidate_open_codes_for_user,
+    )
+
+    await invalidate_open_codes_for_user(
+        db, user_id=target.id, purpose=RESET_PURPOSE
+    )
+    await invalidate_open_codes_for_user(
+        db, user_id=target.id, purpose=VERIFY_PURPOSE
+    )
+
+    # 3) Bump revocation_epoch atomically (SQL-side increment so a
     #    concurrent token issuance reads the post-bump value).
     await db.execute(
         update(User)
@@ -147,15 +171,21 @@ async def force_revoke_user(
     )
     new_epoch = int(refresh_result.scalar_one())
 
-    # Ley 25.326 audit trail — written BEFORE the commit so it's part
-    # of the same transaction. If the audit insert fails the whole
-    # operation aborts; we'd rather refuse the revoke than execute
-    # it without trail.
+    # 4) Ley 25.326 audit trail. ``audit_log.user_id`` is the admin
+    #    via FK with ``ON DELETE SET NULL`` — if the admin is later
+    #    deleted (off-boarding / GDPR), the FK clears but we want
+    #    the trail to survive. So we ALSO embed the admin's email
+    #    in the ``resource`` column at write-time (3vr Opus-alt H2
+    #    fix-forward). The resource is bounded to 512 chars; the
+    #    helper truncates if needed.
     await write_audit_entry_async(
         db,
         user_id=admin.id,
         action="user.force-revoke",
-        resource=f"user_id={target.id}",
+        resource=(
+            f"user_id={target.id} target_email={target.email} "
+            f"acting_admin_email={admin.email}"
+        ),
         client_ip=request.client.host if request.client else None,
     )
 
