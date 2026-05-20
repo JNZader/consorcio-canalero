@@ -64,12 +64,26 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             },
         )
 
-        # Phase 2 / F2-J: ship the actual email when SMTP is configured.
-        # ``send_email`` is a silent no-op when ``SMTP_HOST`` is empty,
-        # so this path is safe on dev / unconfigured installs.
+        # Phase 5 / F5-E: stand the SMTP body off the JWT token.
+        # Generate a short code, persist the mapping in ``email_codes``,
+        # send the email with the code (not the token). The SPA
+        # exchanges the code for the original token via
+        # ``POST /auth/exchange-code``. Provider logs that retain the
+        # body for 30+ days now only see a 15-min one-shot code.
+        from app.auth.email_codes import RESET_PURPOSE, create_code_for_token
         from app.shared.email import build_reset_email, send_email
+        from typing import cast
 
-        template = build_reset_email(token=token, frontend_url=settings.frontend_url)
+        sqlalchemy_user_db = cast(
+            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
+        )
+        session: AsyncSession = sqlalchemy_user_db.session
+        code = await create_code_for_token(
+            session, user=user, purpose=RESET_PURPOSE, token=token
+        )
+        await session.commit()
+
+        template = build_reset_email(code=code, frontend_url=settings.frontend_url)
         await send_email(to_email=user.email, **template)
 
     async def on_after_request_verify(
@@ -93,10 +107,22 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 "token_fingerprint": token_fingerprint,
             },
         )
+        # Phase 5 / F5-E: same hardening as ``on_after_forgot_password``.
+        from app.auth.email_codes import VERIFY_PURPOSE, create_code_for_token
         from app.shared.email import build_verification_email, send_email
+        from typing import cast
+
+        sqlalchemy_user_db = cast(
+            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
+        )
+        session: AsyncSession = sqlalchemy_user_db.session
+        code = await create_code_for_token(
+            session, user=user, purpose=VERIFY_PURPOSE, token=token
+        )
+        await session.commit()
 
         template = build_verification_email(
-            token=token, frontend_url=settings.frontend_url
+            code=code, frontend_url=settings.frontend_url
         )
         await send_email(to_email=user.email, **template)
 

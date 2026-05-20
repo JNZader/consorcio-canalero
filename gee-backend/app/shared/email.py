@@ -131,14 +131,24 @@ def send_email_blocking(
 # ─────────────────────────────────────────────────────────────────────
 
 
-def build_verification_email(token: str, frontend_url: str) -> dict[str, str]:
-    """Email for the post-register email-verification flow."""
-    link = f"{frontend_url.rstrip('/')}/auth/verify?token={token}"
+def build_verification_email(code: str, frontend_url: str) -> dict[str, str]:
+    """Email for the post-register email-verification flow.
+
+    Phase 5 / F5-E: the email carries a short ``code``, NOT the JWT
+    verify token. The SPA exchanges the code for the real token via
+    ``POST /auth/exchange-code``. Provider logs retaining the body
+    for 30+ days now only see a code that expires in 15 minutes and
+    is one-shot.
+    """
+    link = f"{frontend_url.rstrip('/')}/auth/verify?code={code}"
     text = (
         "Hola,\n\n"
         "Recibimos tu registro en el Consorcio Canalero 10 de Mayo. "
         "Para activar tu cuenta, abrí este enlace:\n\n"
         f"{link}\n\n"
+        f"O ingresá este código en la página de verificación:\n\n"
+        f"    {code}\n\n"
+        "El código expira en 15 minutos.\n"
         "Si no te registraste, ignorá este correo.\n\n"
         "— Consorcio Canalero 10 de Mayo"
     )
@@ -147,8 +157,10 @@ def build_verification_email(token: str, frontend_url: str) -> dict[str, str]:
         "<p>Recibimos tu registro en el Consorcio Canalero 10 de Mayo. "
         "Para activar tu cuenta, hacé click acá:</p>"
         f'<p><a href="{link}">Verificar mi correo</a></p>'
-        f"<p>O copiá esta URL en tu navegador: <code>{link}</code></p>"
-        "<p>Si no te registraste, ignorá este correo.</p>"
+        f"<p>O ingresá este código en la página de verificación: "
+        f'<strong style="font-family:monospace;font-size:18px;letter-spacing:2px">{code}</strong></p>'
+        "<p>El código expira en 15 minutos.<br>"
+        "Si no te registraste, ignorá este correo.</p>"
         '<hr><p style="color:#666;font-size:12px">Consorcio Canalero 10 de Mayo</p>'
     )
     return {
@@ -158,17 +170,23 @@ def build_verification_email(token: str, frontend_url: str) -> dict[str, str]:
     }
 
 
-def build_reset_email(token: str, frontend_url: str) -> dict[str, str]:
-    """Email for the forgot-password flow."""
-    link = f"{frontend_url.rstrip('/')}/auth/reset?token={token}"
+def build_reset_email(code: str, frontend_url: str) -> dict[str, str]:
+    """Email for the forgot-password flow.
+
+    Phase 5 / F5-E: same hardening as the verify email — body carries
+    a short ``code``, not the JWT reset token.
+    """
+    link = f"{frontend_url.rstrip('/')}/auth/reset?code={code}"
     text = (
         "Hola,\n\n"
         "Alguien (probablemente vos) pidió restablecer la contraseña de "
         "tu cuenta en el Consorcio Canalero. Abrí este enlace para "
         "definir una nueva contraseña:\n\n"
         f"{link}\n\n"
-        "El enlace expira en 1 hora. Si no fuiste vos, podés ignorar "
-        "este correo — tu contraseña no cambió.\n\n"
+        f"O ingresá este código en la página de restablecimiento:\n\n"
+        f"    {code}\n\n"
+        "El código expira en 15 minutos. Si no fuiste vos, podés "
+        "ignorar este correo — tu contraseña no cambió.\n\n"
         "— Consorcio Canalero 10 de Mayo"
     )
     html = (
@@ -176,8 +194,9 @@ def build_reset_email(token: str, frontend_url: str) -> dict[str, str]:
         "<p>Alguien (probablemente vos) pidió restablecer tu "
         "contraseña. Hacé click acá para elegir una nueva:</p>"
         f'<p><a href="{link}">Restablecer contraseña</a></p>'
-        f"<p>O copiá esta URL: <code>{link}</code></p>"
-        "<p>El enlace expira en 1 hora. Si no fuiste vos, podés "
+        f"<p>O ingresá este código: "
+        f'<strong style="font-family:monospace;font-size:18px;letter-spacing:2px">{code}</strong></p>'
+        "<p>El código expira en 15 minutos. Si no fuiste vos, podés "
         "ignorar este correo — tu contraseña no cambió.</p>"
         '<hr><p style="color:#666;font-size:12px">Consorcio Canalero 10 de Mayo</p>'
     )

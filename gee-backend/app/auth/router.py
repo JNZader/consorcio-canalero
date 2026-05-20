@@ -1,7 +1,8 @@
 """Auth router — JWT login/register + Google OAuth."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -217,6 +218,53 @@ async def logout_all_sessions(
     response = JSONResponse({"revoked_sessions": revoked})
     _clear_refresh_cookie(response)
     return response
+
+
+# Phase 5 / F5-E: exchange the short SMTP-body code for the real
+# fastapi-users token. The SPA calls this BEFORE hitting
+# ``/auth/reset-password`` (purpose='reset') or ``/auth/verify``
+# (purpose='verify'). Endpoint is public — the code itself is the
+# capability — and rate-limited by the global middleware so
+# enumeration attacks against the 36^8 namespace stay infeasible
+# at 100 req/s.
+
+
+class _ExchangeCodeRequest(BaseModel):
+    code: str
+    purpose: str  # "verify" or "reset"
+
+
+class _ExchangeCodeResponse(BaseModel):
+    token: str
+
+
+@router.post(
+    "/auth/exchange-code",
+    response_model=_ExchangeCodeResponse,
+    tags=["auth"],
+)
+async def exchange_code(
+    payload: _ExchangeCodeRequest,
+    session: AsyncSession = Depends(get_async_db),
+) -> _ExchangeCodeResponse:
+    """Trade a short SMTP-body code for the real verify/reset token.
+
+    Returns 400 on any failure path (unknown code, wrong purpose,
+    expired, already consumed). We deliberately collapse all failure
+    modes into one shape so enumeration can't distinguish "never
+    existed" from "expired two minutes ago".
+    """
+    from app.auth.email_codes import exchange_code_for_token
+
+    token = await exchange_code_for_token(
+        session, code=payload.code, purpose=payload.purpose
+    )
+    await session.commit()
+    if token is None:
+        raise HTTPException(
+            status_code=400, detail="Código inválido o expirado."
+        )
+    return _ExchangeCodeResponse(token=token)
 
 
 # Register route: /auth/register
