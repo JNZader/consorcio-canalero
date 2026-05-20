@@ -60,6 +60,14 @@ services:
       # directly; only flip to true if the developer adds a pgbouncer
       # service or points DATABASE_URL at an external pooled instance.
       - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
+      # F5-E: gate for the one-time-code flow. When ``true`` the
+      # password-reset / email-verify hooks generate an 8-char code,
+      # store it in ``email_codes``, and email ONLY the code — the
+      # long JWT never leaves the backend. Defaults ``false`` so the
+      # legacy ``?token=`` path keeps working on installs that don't
+      # opt in. Activation requires this flag on BOTH backend and
+      # worker (the worker dispatches the actual SMTP send).
+      - USE_ONE_TIME_CODES=${USE_ONE_TIME_CODES:-false}
       # F4-F + F5-F deploy fix: TrustedHostMiddleware rejects
       # ``localhost`` in production, so a ``curl http://localhost:8000``
       # healthcheck returns 400 "Invalid host header". The healthcheck
@@ -179,6 +187,12 @@ services:
       # ``DuplicatePreparedStatementError`` the moment they run
       # through pgbouncer (real incident on 2026-05-19).
       - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
+      # F5-E: SMTP send for password-reset / email-verify dispatches
+      # from THIS worker (see ``app/auth/dependencies.py`` UserManager
+      # hooks). The flag must match the backend container — if backend
+      # generates a code but worker isn't gated on, the email body
+      # ends up empty / inconsistent. Set both to ``true`` together.
+      - USE_ONE_TIME_CODES=${USE_ONE_TIME_CODES:-false}
     env_file:
       - ./gee-backend/.env
     depends_on:
