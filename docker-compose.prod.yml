@@ -50,7 +50,12 @@ services:
       DB_HOST: ${POSTGRES_HOST:-postgres}
       DB_PORT: "5432"
       DB_USER: ${POSTGRES_USER:-consorcio}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # ``:?`` makes docker-compose fail loudly at ``up`` time if
+      # ``.env`` doesn't set the var — otherwise the substitution is
+      # an empty string and PgBouncer reports a cryptic
+      # ``FATAL: password authentication failed`` that looks like a
+      # creds problem instead of a config problem.
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required when pgbouncer is in the stack}
       DB_NAME: ${POSTGRES_DB:-consorcio}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "200"
@@ -64,9 +69,12 @@ services:
     networks:
       - backend
       - consorcio-internal
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # NOTE: postgres is EXTERNAL to this compose file (see header
+    # comment — "PostgreSQL y Redis son EXTERNOS (shared stack)").
+    # Declaring ``depends_on: postgres`` here would fail
+    # ``docker compose up`` with "service postgres is not defined".
+    # We rely on the healthcheck below + restart policy to handle
+    # the case where postgres isn't ready yet at startup.
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
       interval: 10s
@@ -93,6 +101,14 @@ services:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-migrate
     env_file: .env
+    # 3vr fix-forward on commit 253e727: when ``USE_PGBOUNCER=true``
+    # the .env-resolved DATABASE_URL points at pgbouncer:5432, which
+    # breaks alembic DDL (transaction-pool mode discards session
+    # state between statements). Override DATABASE_URL here so
+    # ``alembic upgrade head`` always talks to postgres DIRECTLY —
+    # the docstring above is now config-enforced, not doc-only.
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-consorcio}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-consorcio}
     command: alembic upgrade head
     networks:
       - backend
@@ -154,6 +170,8 @@ services:
         condition: service_completed_successfully
       geo-worker:
         condition: service_started
+      pgbouncer:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -182,6 +200,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
       interval: 30s
@@ -228,6 +248,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
     deploy:
       replicas: 1
       resources:

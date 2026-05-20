@@ -335,15 +335,80 @@ The flag is opt-in so installs without PgBouncer don't pay the
 #### Gotchas
 
 - The ``migrate`` one-shot container talks to postgres DIRECTLY
-  (not via pgbouncer). Alembic DDL relies on session-level state
-  that transaction-pool mode discards between batches; routing
-  migrations through pgbouncer breaks ``alembic upgrade head``
-  silently on multi-statement migrations.
+  (not via pgbouncer). This is now config-enforced: the
+  ``migrate`` service in ``docker-compose.prod.yml`` defines its
+  own ``environment.DATABASE_URL`` that overrides ``.env`` to
+  point at ``postgres:5432``. Alembic DDL relies on session-level
+  state that transaction-pool mode discards between batches.
 - If you ever see ``DuplicatePreparedStatementError`` or
   ``InvalidSqlStatementNameError`` in backend logs after enabling
   the flag, the most likely cause is the code-side half being
   out of date (older image deployed against newer PgBouncer
   service). Roll the backend image forward.
+
+#### Verify deployed config matches the repo
+
+A 3vr review of the F4-F ops commit (253e727) flagged that the
+server may run a legacy compose file (no PgBouncer service in
+git history) while the new pgbouncer service in this repo is the
+documented source-of-truth. To check the live values match what
+this RUNBOOK describes:
+
+```bash
+ssh production
+docker exec consorcio-pgbouncer env | grep -E '(POOL_MODE|MAX_CLIENT_CONN|DEFAULT_POOL_SIZE|SERVER_RESET_QUERY|AUTH_TYPE)'
+```
+
+Expected output (all four must match):
+
+```
+POOL_MODE=transaction
+MAX_CLIENT_CONN=200
+DEFAULT_POOL_SIZE=25
+SERVER_RESET_QUERY=DISCARD ALL
+AUTH_TYPE=scram-sha-256
+```
+
+If anything diverges, either the server config was hand-edited
+post-deploy OR the repo has drifted from what is actually
+running. Reconcile before the next deploy.
+
+#### Rollback (PgBouncer making things worse)
+
+If the gate misbehaves under real load (saturation, sustained
+``server_login_timeout`` errors, mass ``DuplicatePreparedStatementError``):
+
+1. SSH to the server and edit ``/home/javier/stacks/consorcio/.env``:
+
+   ```
+   DATABASE_URL=postgresql://<user>:<pass>@postgres:5432/<db>   ← host = postgres
+   USE_PGBOUNCER=false
+   ```
+
+2. Restart the app containers (NOT pgbouncer — leave it running, it
+   is idempotent harm = none when nothing routes through it):
+
+   ```bash
+   docker compose up -d backend worker celery-beat
+   ```
+
+3. Verify the rollback landed. ``pg_stat_activity`` should now show
+   one row per backend process (3-4 client_addr values) instead of
+   the single multiplexed PgBouncer row:
+
+   ```bash
+   docker exec consorcio-postgres psql -U <user> -d <db> -c "SELECT client_addr, count(*) FROM pg_stat_activity WHERE datname='<db>' GROUP BY 1 ORDER BY 2 DESC;"
+   ```
+
+4. Optional, only if you want to fully tear down: ``docker compose
+   stop pgbouncer && docker compose rm -f pgbouncer``. Not
+   required for the rollback to take effect — step 1 already
+   stopped any traffic from reaching it.
+
+The whole rollback is reversible: re-enable the same way (set
+``USE_PGBOUNCER=true`` + flip DATABASE_URL back to ``pgbouncer:5432``,
+restart app containers) once whatever caused the failure is
+understood.
 
 ### 1.6 Things that look weird but are by design
 
