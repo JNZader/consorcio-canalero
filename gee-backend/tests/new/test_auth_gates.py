@@ -228,6 +228,24 @@ class TestExchangeCodeEndpoint:
         assert resp.status_code == 400
 
 
+class TestForceRevokeAuthGate:
+    """F5-F follow-up. Admin-only ``POST /admin/users/{id}/force-revoke``.
+    The auth gate is the same shape as the other admin endpoints; we
+    pin the unauth path here so a regression on the dep wiring fails
+    CI before the deploy."""
+
+    def test_unauthenticated_401(self, client: TestClient):
+        # A fake UUID is fine — auth check fires before the path
+        # parameter resolves to a real user.
+        resp = client.post(
+            "/api/v2/admin/users/00000000-0000-0000-0000-000000000000/force-revoke",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401, (
+            f"Force-revoke MUST require auth — got {resp.status_code}"
+        )
+
+
 class TestAdminReadyDetailedGate:
     def test_admin_ready_detailed_unauthenticated_401(self, client: TestClient):
         resp = client.get("/admin/ready/detailed")

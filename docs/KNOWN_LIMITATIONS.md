@@ -219,33 +219,22 @@ analytics) makes it worth the churn.
 
 ---
 
-### Admin force-revoke endpoint missing (F5-F follow-up)
+### ~~Admin force-revoke endpoint missing~~ — RESOLVED in F5-F follow-up
 
-Phase 5 / F5-F shipped the user-side ``/auth/jwt/logout-all`` that
-bumps the user's ``revocation_epoch`` and revokes every refresh
-token. There is NO admin-side counterpart that an operator can use
-to force-revoke ANOTHER user's tokens — the canonical "fire an
-employee" or "compromise on user X" workflow.
+Originally documented as a gap: the user-side ``/auth/jwt/logout-all``
+existed since F5-F but had no admin-side counterpart for the "fire
+an employee" / "compromise on user X" workflow.
 
-Today the workaround is manual SQL on the server:
+**Resolved** (commit landed in this batch): ``POST /admin/users/{id}/force-revoke``
+runs the same two-layer revocation as ``logout_all_sessions`` against
+ANY ``user_id``, writes an ``audit_log`` row with
+``action='user.force-revoke'`` + ``resource='user_id=<target>'`` so
+the action is traceable, and refuses self-revoke with a 400 (the
+admin must use ``/auth/jwt/logout-all`` for their own sessions —
+otherwise they'd lock themselves out mid-incident).
 
-```sql
-UPDATE users SET revocation_epoch = revocation_epoch + 1 WHERE id = '<uuid>';
-UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = '<uuid>' AND NOT revoked;
-```
-
-That works, but it's undocumented procedure and skips the audit
-logging that a proper endpoint would attach. ``/admin/users/set-role``
-demotes the role but does NOT invalidate any in-flight tokens.
-
-**Expected fix** (Phase 5+, file as F5-H when an actual incident
-needs it): add ``POST /admin/users/{id}/force-logout`` (admin-only)
-that runs the same two-layer revocation as
-``logout_all_sessions`` plus an ``audit_log`` write for traceability.
-Mechanism is one ``revoke_all_for_user`` call + the same
-``UPDATE users SET revocation_epoch = revocation_epoch + 1``.
-Trivial to implement; deferred only because the use case hasn't
-materialised yet.
+This section is kept for historical context; remove on the next
+KNOWN_LIMITATIONS sweep.
 
 ### Two endpoints still ``response_model=dict`` (F5-B leftover)
 
