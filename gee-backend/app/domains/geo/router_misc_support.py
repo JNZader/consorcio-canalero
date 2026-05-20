@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import AnalisisGeoListResponse
+from app.shared.pagination import PaginatedResponse
 
 
 def export_geo_bundle_impl(
@@ -178,16 +179,16 @@ def list_gee_analyses_impl(
     estado: Optional[str],
     db: Session,
     repo: GeoRepository,
-):
+) -> PaginatedResponse[AnalisisGeoListResponse]:
     items, total = repo.get_analisis_list(
         db, page=page, limit=limit, tipo_filter=tipo, estado_filter=estado
     )
-    return {
-        "items": [AnalisisGeoListResponse.model_validate(a) for a in items],
-        "total": total,
-        "page": page,
-        "limit": limit,
-    }
+    return PaginatedResponse[AnalisisGeoListResponse].create(
+        items=[AnalisisGeoListResponse.model_validate(a) for a in items],
+        total=total,
+        page=page,
+        limit=limit,
+    )
 
 
 def get_gee_analysis_impl(analisis_id, db: Session, repo: GeoRepository):

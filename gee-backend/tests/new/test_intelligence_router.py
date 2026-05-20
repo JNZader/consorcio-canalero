@@ -292,12 +292,19 @@ class TestHCIEndpoints:
 
 class TestSimpleEndpoints:
     def test_refresh_views(self):
+        # F5-B batch 3: endpoint now returns ``RefreshViewsResponse``
+        # (Pydantic) instead of a plain dict. Mock the repo response
+        # to the dict shape the new schema validates against.
         from app.domains.geo.intelligence.router import refresh_views
 
         mock_repo = MagicMock()
-        mock_repo.refresh_materialized_views.return_value = ["view_a", "view_b"]
+        mock_repo.refresh_materialized_views.return_value = {
+            "mv_dashboard_geo_stats": "ok",
+            "mv_hci_por_zona": "ok",
+        }
         result = refresh_views(db=MagicMock(), repo=mock_repo, _user=MagicMock())
-        assert result["status"] == "refreshed"
+        assert result.status == "refreshed"
+        assert result.views["mv_hci_por_zona"] == "ok"
 
     def test_list_conflictos(self):
         from app.domains.geo.intelligence.router import list_conflictos
@@ -308,7 +315,8 @@ class TestSimpleEndpoints:
             tipo=None, severidad=None, page=1, limit=20,
             db=MagicMock(), repo=mock_repo, _user=MagicMock(),
         )
-        assert result["total"] == 0
+        assert result.total == 0
+        assert result.items == []
 
     def test_detect_conflictos(self):
         from app.domains.geo.intelligence.router import detect_conflictos
@@ -320,7 +328,8 @@ class TestSimpleEndpoints:
         ) as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = detect_conflictos(db=MagicMock(), _user=MagicMock())
-        assert result["task_id"] == "task-123"
+        assert result.task_id == "task-123"
+        assert result.status == "submitted"
 
     def test_escorrentia_missing_layers(self):
         from app.domains.geo.intelligence.router import run_escorrentia
@@ -347,7 +356,8 @@ class TestSimpleEndpoints:
             cuenca=None, page=1, limit=50,
             db=MagicMock(), repo=mock_repo, _user=MagicMock(),
         )
-        assert result["total"] == 0
+        assert result.total == 0
+        assert result.items == []
 
     def test_generate_zonas(self):
         from app.domains.geo.intelligence.router import generate_zonas
@@ -360,7 +370,7 @@ class TestSimpleEndpoints:
         ) as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = generate_zonas(payload, db=MagicMock(), _user=MagicMock())
-        assert result["task_id"] == "task-456"
+        assert result.task_id == "task-456"
 
     def test_batch_calculate_hci(self):
         from app.domains.geo.intelligence.router import batch_calculate_hci
@@ -372,19 +382,21 @@ class TestSimpleEndpoints:
         ) as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = batch_calculate_hci(db=MagicMock(), _user=MagicMock())
-        assert result["task_id"] == "task-789"
+        assert result.task_id == "task-789"
 
     def test_get_canal_priorities(self):
         from app.domains.geo.intelligence.router import get_canal_priorities
 
         result = get_canal_priorities(db=MagicMock(), _user=MagicMock())
-        assert "items" in result
+        assert result.items == []
+        assert "calcular" in result.message
 
     def test_get_road_risks(self):
         from app.domains.geo.intelligence.router import get_road_risks
 
         result = get_road_risks(db=MagicMock(), _user=MagicMock())
-        assert "items" in result
+        assert result.items == []
+        assert "calcular" in result.message
 
     def test_list_alertas(self):
         from app.domains.geo.intelligence.router import list_alertas
@@ -392,19 +404,29 @@ class TestSimpleEndpoints:
         mock_repo = MagicMock()
         mock_repo.get_alertas_activas.return_value = []
         result = list_alertas(db=MagicMock(), repo=mock_repo, _user=MagicMock())
-        assert result["total"] == 0
+        assert result.total == 0
+        assert result.items == []
 
     def test_evaluate_alertas(self):
+        # F5-B batch 3: shape changed from ``{"alerts_created": N}``
+        # to ``AlertEvaluationResponse`` (alertas_creadas + alertas_activas_total).
+        # That matches the actual service.check_alerts() return value —
+        # the old test was asserting against a key that did NOT exist in
+        # the real service.
         from app.domains.geo.intelligence.router import evaluate_alertas
 
         mock_service = MagicMock()
-        mock_service.check_alerts.return_value = {"alerts_created": 0}
+        mock_service.check_alerts.return_value = {
+            "alertas_creadas": 0,
+            "alertas_activas_total": 3,
+        }
         with patch(
             "app.domains.geo.intelligence.router._get_intel_service",
             return_value=mock_service,
         ):
             result = evaluate_alertas(db=MagicMock(), _user=MagicMock())
-        assert result["alerts_created"] == 0
+        assert result.alertas_creadas == 0
+        assert result.alertas_activas_total == 3
 
     def test_deactivate_alerta_found(self):
         from app.domains.geo.intelligence.router import deactivate_alerta
@@ -448,7 +470,7 @@ class TestCompositeEndpoints:
             result = trigger_composite_analysis(
                 payload, db=MagicMock(), _user=MagicMock()
             )
-        assert result["task_id"] == "comp-task-1"
+        assert result.task_id == "comp-task-1"
 
     def test_get_composite_stats_not_found(self):
         from app.domains.geo.intelligence.router import get_composite_stats

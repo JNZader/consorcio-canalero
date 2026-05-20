@@ -197,6 +197,37 @@ analytics) makes it worth the churn.
 
 ---
 
+### Two endpoints still ``response_model=dict`` (F5-B leftover)
+
+F5-B migrated 29 of 31 dict-typed endpoints to proper Pydantic
+schemas. Two remain. Both have shapes that don't fit the standard
+``PaginatedResponse[T]`` envelope or any other reusable schema:
+
+1. **``GET /geo/basins``** — returns a raw GeoJSON ``FeatureCollection``
+   (``{"type": "FeatureCollection", "features": [...]}``). The frontend
+   feeds it directly into MapLibre's ``addSource()`` which already
+   understands the shape. Adding a Pydantic ``FeatureCollection``
+   wrapper would mean either (a) validating every geometry on the
+   way out (expensive for a 500-polygon response) or (b) keeping
+   ``features: list[dict]`` as a passthrough, which gains nothing
+   over the current state.
+2. **``GET /geo/intelligence/hci``** — returns one of TWO mutually-
+   exclusive shapes depending on the ``use_mv`` query flag:
+   ``IndiceHidricoResponse`` items when false, ``mv_hci_por_zona``
+   raw dict rows when true. A proper migration is to split this
+   into two endpoints (``/hci`` and ``/hci/by-zone``) so each has
+   one shape. That's an API-breaking change and out of scope for
+   F5-B's "fix the type contract without changing the URL".
+
+**Expected fix** (Phase 5+):
+  - ``/geo/basins``: only worth it if the frontend codegen pain
+    surfaces. The MapLibre integration doesn't care.
+  - ``/geo/intelligence/hci``: split into two URLs the next time
+    the intelligence API gets a version bump or a documented
+    breaking-change window.
+
+---
+
 ## Builds / bundles
 
 ### Mantine CSS imports stay monolithic

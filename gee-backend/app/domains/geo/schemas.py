@@ -352,3 +352,11 @@ class EventoAfectadosResponse(BaseModel):
     total_consorcistas: int
     total_ha: float
     zonas_afectadas: list[AfectadosResponse]
+
+
+class ApprovedZonesDeleteResponse(BaseModel):
+    """Result of ``DELETE /geo/basins/approved-zones/current`` — how many
+    rows the deletion touched. The endpoint is idempotent: zero deleted
+    when there was no active approved zoning to clear."""
+
+    deleted: int

@@ -121,3 +121,11 @@ class CapaListResponse(BaseModel):
     orden: int
     es_publica: bool
     created_at: datetime
+
+
+class CapaReorderResponse(BaseModel):
+    """Result of ``PUT /capas/reorder`` — how many rows had their
+    ``orden`` updated."""
+
+    message: str
+    count: int

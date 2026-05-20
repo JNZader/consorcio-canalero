@@ -18,10 +18,12 @@ from app.domains.geo.intelligence.router_support import (
     paginated_response,
     serialize_comparison_items,
     serialize_composite_stats,
-    task_response,
 )
 from app.domains.geo.intelligence.schemas import (
     AlertaResponse,
+    AlertasActivasResponse,
+    AlertEvaluationResponse,
+    AsyncTaskResponse,
     BasinRiskRankingResponse,
     CompositeComparisonResponse,
     CompositeAnalysisRequest,
@@ -31,10 +33,13 @@ from app.domains.geo.intelligence.schemas import (
     EscorrentiaRequest,
     EscorrentiaResponse,
     IndiceHidricoResponse,
+    IntelligencePlaceholderResponse,
     PuntoConflictoResponse,
+    RefreshViewsResponse,
     ZonaOperativaResponse,
     ZonificacionRequest,
 )
+from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
 
@@ -64,14 +69,14 @@ def _require_admin():
 
 
 # MATERIALIZED VIEW REFRESH
-@router.post("/refresh-views", response_model=dict)
+@router.post("/refresh-views", response_model=RefreshViewsResponse)
 def refresh_views(
     db: Session = Depends(get_db),
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_admin()),
-):
+) -> RefreshViewsResponse:
     results = repo.refresh_materialized_views(db)
-    return {"status": "refreshed", "views": results}
+    return RefreshViewsResponse(status="refreshed", views=results)
 
 
 # DASHBOARD
@@ -154,7 +159,10 @@ def list_hci(
 
 
 # CONFLICT POINTS
-@router.get("/conflictos", response_model=dict)
+@router.get(
+    "/conflictos",
+    response_model=PaginatedResponse[PuntoConflictoResponse],
+)
 def list_conflictos(
     tipo: Optional[str] = Query(default=None),
     severidad: Optional[str] = Query(default=None),
@@ -163,27 +171,27 @@ def list_conflictos(
     db: Session = Depends(get_db),
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[PuntoConflictoResponse]:
     items, total = repo.get_conflictos(
         db, tipo_filter=tipo, severidad_filter=severidad, page=page, limit=limit
     )
-    return paginated_response(
-        [PuntoConflictoResponse.model_validate(i) for i in items],
+    return PaginatedResponse[PuntoConflictoResponse].create(
+        items=[PuntoConflictoResponse.model_validate(i) for i in items],
         total=total,
         page=page,
         limit=limit,
     )
 
 
-@router.post("/conflictos/detectar", response_model=dict)
+@router.post("/conflictos/detectar", response_model=AsyncTaskResponse)
 def detect_conflictos(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
+) -> AsyncTaskResponse:
     from app.domains.geo.intelligence.tasks import task_detect_all_conflicts
 
     task = task_detect_all_conflicts.delay()
-    return task_response(task)
+    return AsyncTaskResponse(task_id=task.id)
 
 
 # RUNOFF SIMULATION
@@ -206,7 +214,7 @@ def run_escorrentia(
 
 
 # OPERATIONAL ZONES
-@router.get("/zonas", response_model=dict)
+@router.get("/zonas", response_model=PaginatedResponse[ZonaOperativaResponse])
 def list_zonas(
     cuenca: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -214,87 +222,88 @@ def list_zonas(
     db: Session = Depends(get_db),
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
-):
+) -> PaginatedResponse[ZonaOperativaResponse]:
     items, total = repo.get_zonas(db, page=page, limit=limit, cuenca_filter=cuenca)
-    return paginated_response(
-        [ZonaOperativaResponse.model_validate(z) for z in items],
+    return PaginatedResponse[ZonaOperativaResponse].create(
+        items=[ZonaOperativaResponse.model_validate(z) for z in items],
         total=total,
         page=page,
         limit=limit,
     )
 
 
-@router.post("/zonas/generar", response_model=dict)
+@router.post("/zonas/generar", response_model=AsyncTaskResponse)
 def generate_zonas(
     payload: ZonificacionRequest,
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
+) -> AsyncTaskResponse:
     from app.domains.geo.intelligence.tasks import task_generate_zonification
 
     task = task_generate_zonification.delay(
         str(payload.dem_layer_id), payload.threshold
     )
-    return task_response(task)
+    return AsyncTaskResponse(task_id=task.id)
 
 
-@router.post("/hci/batch", response_model=dict)
+@router.post("/hci/batch", response_model=AsyncTaskResponse)
 def batch_calculate_hci(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
+) -> AsyncTaskResponse:
     from app.domains.geo.intelligence.tasks import task_calculate_hci_all_zones
 
     task = task_calculate_hci_all_zones.delay()
-    return task_response(task)
+    return AsyncTaskResponse(task_id=task.id)
 
 
 # CANAL PRIORITY
-@router.get("/canales/prioridad", response_model=dict)
+@router.get("/canales/prioridad", response_model=IntelligencePlaceholderResponse)
 def get_canal_priorities(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
+) -> IntelligencePlaceholderResponse:
     # Placeholder: in production this would use cached results
-    return {
-        "items": [],
-        "message": "Use POST /geo/intelligence/canales/prioridad/calcular to compute",
-    }
+    return IntelligencePlaceholderResponse(
+        items=[],
+        message="Use POST /geo/intelligence/canales/prioridad/calcular to compute",
+    )
 
 
 # ROAD RISK
-@router.get("/caminos/riesgo", response_model=dict)
+@router.get("/caminos/riesgo", response_model=IntelligencePlaceholderResponse)
 def get_road_risks(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
-    return {
-        "items": [],
-        "message": "Use POST /geo/intelligence/caminos/riesgo/calcular to compute",
-    }
+) -> IntelligencePlaceholderResponse:
+    return IntelligencePlaceholderResponse(
+        items=[],
+        message="Use POST /geo/intelligence/caminos/riesgo/calcular to compute",
+    )
 
 
 # ALERTS
-@router.get("/alertas", response_model=dict)
+@router.get("/alertas", response_model=AlertasActivasResponse)
 def list_alertas(
     db: Session = Depends(get_db),
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
-):
+) -> AlertasActivasResponse:
     alertas = repo.get_alertas_activas(db)
-    return {
-        "items": [AlertaResponse.model_validate(a) for a in alertas],
-        "total": len(alertas),
-    }
+    return AlertasActivasResponse(
+        items=[AlertaResponse.model_validate(a) for a in alertas],
+        total=len(alertas),
+    )
 
 
-@router.post("/alertas/evaluar", response_model=dict)
+@router.post("/alertas/evaluar", response_model=AlertEvaluationResponse)
 def evaluate_alertas(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
-    result = _get_intel_service().check_alerts(db)
-    return result
+) -> AlertEvaluationResponse:
+    return AlertEvaluationResponse.model_validate(
+        _get_intel_service().check_alerts(db)
+    )
 
 
 @router.post("/alertas/{alerta_id}/desactivar", response_model=AlertaResponse)
@@ -312,12 +321,12 @@ def deactivate_alerta(
 
 
 # COMPOSITE ANALYSIS
-@router.post("/composite/analyze", response_model=dict)
+@router.post("/composite/analyze", response_model=AsyncTaskResponse)
 def trigger_composite_analysis(
     payload: CompositeAnalysisRequest,
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
-):
+) -> AsyncTaskResponse:
     from app.domains.geo.tasks import composite_analysis_task
 
     task = composite_analysis_task.delay(
@@ -325,7 +334,7 @@ def trigger_composite_analysis(
         weights_flood=payload.weights_flood,
         weights_drainage=payload.weights_drainage,
     )
-    return task_response(task)
+    return AsyncTaskResponse(task_id=task.id)
 
 
 @router.get("/composite/stats/{area_id}", response_model=BasinRiskRankingResponse)

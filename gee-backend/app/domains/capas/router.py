@@ -10,6 +10,7 @@ from app.domains.capas.schemas import (
     CapaCreate,
     CapaListResponse,
     CapaReorder,
+    CapaReorderResponse,
     CapaResponse,
     CapaUpdate,
 )
@@ -117,13 +118,13 @@ def delete_capa(
     service.delete(db, capa_id)
 
 
-@router.put("/reorder", response_model=dict)
+@router.put("/reorder", response_model=CapaReorderResponse)
 def reorder_capas(
     payload: CapaReorder,
     db: Session = Depends(get_db),
     service: CapasService = Depends(get_service),
     _user=Depends(_require_operator()),
-):
+) -> CapaReorderResponse:
     """Reordenar capas (requiere operador)."""
     count = service.reorder(db, payload.ordered_ids)
-    return {"message": "Orden actualizado", "count": count}
+    return CapaReorderResponse(message="Orden actualizado", count=count)

@@ -66,12 +66,14 @@ from app.domains.geo.router_misc_support import (
 from app.domains.geo.visualization.router import router as visualization_router
 from app.domains.geo.schemas import (
     AnalisisGeoCreate,
+    AnalisisGeoListResponse,
     AnalisisGeoResponse,
     DemPipelineRequest,
     DemPipelineResponse,
     GeoJobCreate,
 )
 from app.domains.geo.service import GeoJobDispatchError, dispatch_job
+from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
@@ -326,7 +328,10 @@ def submit_gee_analysis(
     return submit_gee_analysis_impl(payload, db, repo)
 
 
-@gee_router.get("/analysis", response_model=dict)
+@gee_router.get(
+    "/analysis",
+    response_model=PaginatedResponse[AnalisisGeoListResponse],
+)
 def list_gee_analyses(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -335,7 +340,7 @@ def list_gee_analyses(
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_authenticated()),
-):
+) -> PaginatedResponse[AnalisisGeoListResponse]:
     return list_gee_analyses_impl(page, limit, tipo, estado, db, repo)
 
 

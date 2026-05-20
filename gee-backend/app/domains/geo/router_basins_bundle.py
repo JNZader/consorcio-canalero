@@ -24,6 +24,7 @@ from app.domains.geo.router_common import (
     _serialize_approved_zoning,
     _validate_geojson_filename,
 )
+from app.domains.geo.schemas import ApprovedZonesDeleteResponse
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -178,7 +179,10 @@ async def import_current_approved_basin_zones(
     )
 
 
-@router.delete("/basins/approved-zones/current", response_model=dict)
+@router.delete(
+    "/basins/approved-zones/current",
+    response_model=ApprovedZonesDeleteResponse,
+)
 def clear_current_approved_basin_zones(
     cuenca: Optional[str] = Query(
         default=None, description="Optional filter by cuenca name"
@@ -186,11 +190,11 @@ def clear_current_approved_basin_zones(
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
-):
+) -> ApprovedZonesDeleteResponse:
     """Delete the currently persisted approved zoning."""
     deleted = repo.clear_active_approved_zoning(db, cuenca=cuenca)
     db.commit()
-    return {"deleted": deleted}
+    return ApprovedZonesDeleteResponse(deleted=deleted)
 
 
 @router.get(

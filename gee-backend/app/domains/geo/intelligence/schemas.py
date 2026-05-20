@@ -403,3 +403,68 @@ class AnalysisSummaryResponse(BaseModel):
     )
     avg_score: float = Field(..., description="Average score across all suggestions")
     created_at: datetime
+
+
+# ──────────────────────────────────────────────────────────────────────
+# F5-B batch 3 — typed responses for intelligence endpoints that were
+# returning ``response_model=dict`` (and therefore typed as
+# ``Record<string, unknown>`` on the frontend).
+# ──────────────────────────────────────────────────────────────────────
+
+
+class RefreshViewsResponse(BaseModel):
+    """Result of ``POST /intelligence/refresh-views`` — one entry per
+    materialized view, value is either ``"ok"``, ``"ok (non-concurrent)"``
+    or ``"error: <message>"`` per the repo implementation."""
+
+    status: str = Field(..., description="Always ``refreshed`` on this endpoint.")
+    views: dict[str, str] = Field(
+        ..., description="Per-view refresh status keyed by view name."
+    )
+
+
+class AsyncTaskResponse(BaseModel):
+    """Standard celery dispatch result. Returned by every ``POST`` that
+    enqueues background work (``/conflictos/detectar``, ``/zonas/generar``,
+    ``/hci/batch``, ``/composite/analyze``)."""
+
+    task_id: str = Field(..., description="Celery task UUID.")
+    status: str = Field(
+        default="submitted",
+        description="Always ``submitted`` immediately after dispatch.",
+    )
+
+
+class AlertasActivasResponse(BaseModel):
+    """Non-paginated wrapper for ``GET /intelligence/alertas`` — the
+    list is short (active alerts only) so pagination isn't worth the
+    envelope overhead. ``total`` is redundant with ``len(items)`` but
+    surfaced explicitly to match the historical ``response_model=dict``
+    contract the frontend already consumes."""
+
+    items: list["AlertaResponse"]
+    total: int
+
+
+class AlertEvaluationResponse(BaseModel):
+    """Outcome of ``POST /intelligence/alertas/evaluar`` — how many new
+    alerts the run created and the resulting total."""
+
+    alertas_creadas: int
+    alertas_activas_total: int
+
+
+class IntelligencePlaceholderResponse(BaseModel):
+    """Used by the two stub GET endpoints (``/canales/prioridad`` and
+    ``/caminos/riesgo``) that don't compute results synchronously yet —
+    they tell the caller to POST to the matching ``/calcular`` instead.
+    Keeping a real schema (vs ``response_model=dict``) so the OpenAPI
+    surface still documents the response shape."""
+
+    items: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Always empty on these placeholder endpoints.",
+    )
+    message: str = Field(
+        ..., description="Operator-facing hint pointing at the real endpoint."
+    )
