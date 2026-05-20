@@ -71,19 +71,34 @@ If the consorcio eventually commissions a proper logo, the
 manifest paths stay stable — drop in the new PNGs and the PWA
 picks them up on next install.
 
-### React Compiler opted-out on two ref-heavy files
+### ~~React Compiler opted-out on two ref-heavy files~~ — RESOLVED (Phase 5)
 
-Phase 3 / F3-E activated `babel-plugin-react-compiler`. Two files
-(`LocationSection.tsx`, `TerrainViewer3D.tsx`) mutate refs during
-render and earned a `'use no memo'` directive in Phase 3.1 to keep
-the compiler from skipping renders.
+Originally: Phase 3 / F3-E activated `babel-plugin-react-compiler`.
+Two files (`LocationSection.tsx`, `TerrainViewer3D.tsx`) mutated
+refs during render and earned a `'use no memo'` directive in
+Phase 3.1 to keep the compiler from skipping renders. The
+trade-off was that the map + 3D terrain views — the most-
+renderable surfaces — missed the compiler's auto-memoisation
+wins.
 
-**Trade-off**: the map + 3D terrain views — the most-renderable
-surfaces — miss the compiler's auto-memoisation wins.
+**Resolved** (Phase 5 / 2026-05-20): each render-time
+`ref.current = value` write was moved into a post-commit
+`useEffect(() => { ref.current = value; })`. The effect runs after
+every render and keeps the ref in sync before any user handler can
+read it, so the existing click / event-handler semantics are
+preserved. The `'use no memo'` directive was removed from both
+files, putting the map + 3D terrain back on the compiler's
+auto-memoisation path.
 
-**Expected fix** (Phase 4): wrap each `ref.current = value` in a
-`useEffect(() => { ref.current = value; })` and remove the directive.
-Ticket: `consorcio-web/TODO_REFS.md` (TBD).
+Verification:
+  - `tsc --noEmit` clean.
+  - All 24 component tests for the affected files pass
+    (`LocationSection.test.tsx`, the four `TerrainViewer3D*.test.tsx`).
+  - `rg 'use no memo' consorcio-web/src/` returns nothing —
+    no compiler opt-outs left.
+
+This section is kept for historical context; remove on the next
+KNOWN_LIMITATIONS sweep.
 
 ---
 

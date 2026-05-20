@@ -1,11 +1,3 @@
-// Phase 3.1 / post-3vr: this file mutates several refs during render
-// (lines 54, 57 below) — a pattern that the React Compiler can break
-// because it may memoise an "equivalent" render and skip running the
-// component body, leaving the refs stale. Opting OUT of the compiler
-// for this file is the lowest-risk fix until the refs are wrapped in
-// a proper ``useEffect``.
-'use no memo';
-
 import { Badge, Box, Button, Collapse, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import maplibregl from 'maplibre-gl';
@@ -58,11 +50,22 @@ export function LocationSection({
   // that's what was making the form "reset" when the user typed in
   // descripcion or picked a tipo, and what threw the cascade of
   // `WebGL context was lost` errors.
+  //
+  // The ``.current = value`` writes live in ``useEffect`` so the
+  // React Compiler can safely memoise this component. A bare write
+  // during render would let the compiler skip the body on an
+  // "equivalent" render and leave the ref stale; the post-commit
+  // effect runs on every render and keeps the ref in sync with the
+  // latest prop / hook value before any click handler can fire.
   const onLocationSelectRef = useRef(onLocationSelect);
-  onLocationSelectRef.current = onLocationSelect;
+  useEffect(() => {
+    onLocationSelectRef.current = onLocationSelect;
+  });
   const { zonaGeoJson, caminosGeoJson, waterways } = useFormMapLayers();
   const zonaGeoJsonRef = useRef(zonaGeoJson);
-  zonaGeoJsonRef.current = zonaGeoJson;
+  useEffect(() => {
+    zonaGeoJsonRef.current = zonaGeoJson;
+  });
   const initialCenterRef = useRef(defaultCenter);
   const initialZoomRef = useRef(defaultZoom);
 

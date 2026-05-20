@@ -5,15 +5,7 @@
  * with terrain-RGB tiles from the backend. The user tilts the map with
  * Ctrl+drag (or two-finger drag on mobile) to see elevation.
  *
- * Phase 3.1 / post-3vr: this file mutates several refs during render
- * (``activeRasterLayerIdRef``, ``activeRasterTileUrlRef``,
- * ``overlayOpacityRef``, etc.) — a pattern the React Compiler can
- * break because it may memoise an "equivalent" render and skip the
- * body entirely, leaving the refs stale. Opting out of the compiler
- * for this file until each write moves into a proper ``useEffect``.
  */
-
-'use no memo';
 
 import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -169,7 +161,15 @@ export default function TerrainViewer3D({
         ? SELECTED_IMAGE_LAYER_ID
         : (textureLayerId ?? demLayerId ?? null)
   );
-  activeRasterLayerIdRef.current = activeRasterLayerId;
+  // ``.current = value`` lives in a post-commit effect (not a bare
+  // write during render) so the React Compiler can safely memoise
+  // this component. Same pattern as ``activeRasterTileUrlRef`` and
+  // ``overlayOpacityRef`` below; the rest of the ref writes already
+  // happen inside ``useEffect`` / handlers, so this was the last
+  // render-time write standing.
+  useEffect(() => {
+    activeRasterLayerIdRef.current = activeRasterLayerId;
+  }, [activeRasterLayerId]);
   // Tracks whether the user has explicitly picked a raster from the chrome
   // selector. Until that happens, the auto-default-to-Sentinel effect below
   // is allowed to flip the active layer; once the user picks something, we
