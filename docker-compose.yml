@@ -60,6 +60,14 @@ services:
       # directly; only flip to true if the developer adds a pgbouncer
       # service or points DATABASE_URL at an external pooled instance.
       - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
+      # F4-F + F5-F deploy fix: TrustedHostMiddleware rejects
+      # ``localhost`` in production, so a ``curl http://localhost:8000``
+      # healthcheck returns 400 "Invalid host header". The healthcheck
+      # below forges the public hostname so the internal probe is
+      # accepted. ``HEALTHCHECK_HOST`` is a public hostname, NOT a
+      # secret — hardcoding the default avoids carrying any extra
+      # env-file plumbing.
+      - HEALTHCHECK_HOST=${HEALTHCHECK_HOST:-localhost}
     env_file:
       - ./gee-backend/.env
     depends_on:
@@ -70,11 +78,19 @@ services:
     networks:
       - consorcio-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Liveness only — ``/live`` does NOT touch DB / Redis / GEE, so a
+      # transient outage downstream doesn't kill this container. Mirrors
+      # the prod healthcheck contract in ``docker-compose.prod.yml``.
+      test:
+        - "CMD-SHELL"
+        - >-
+          curl -fsS -o /dev/null
+          -H "Host: $${HEALTHCHECK_HOST}"
+          http://localhost:8000/live || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 60s
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
