@@ -4,10 +4,25 @@ Uses structlog for JSON-formatted, structured logging.
 """
 
 import logging
+import os
 import sys
 from typing import Any, List, Optional, Set
 import structlog
 from structlog.types import EventDict, Processor
+
+
+# Phase 5 / F5-N: per-worker identifier so duplicated module-level
+# boot logs from the 2 uvicorn workers can be dedup'd downstream
+# (Sentry / BetterStack group by the (message, worker_id) tuple
+# instead of just (message), which collapsed both copies into one
+# and hid the second worker's failures).
+#
+# Computed once at module load so every log record from THIS
+# process gets the same value. Uvicorn workers are separate
+# processes (one ``fork()`` per worker), so each gets a distinct
+# PID → a distinct ``worker_id``. Celery prefork workers also
+# inherit this per-process scoping naturally.
+_WORKER_ID = str(os.getpid())
 
 
 # Sensitive fields that should be sanitized in logs
@@ -83,6 +98,7 @@ def add_app_context(
     """Add application context to log events."""
     event_dict["app"] = "consorcio-canalero-gee"
     event_dict["service"] = "backend"
+    event_dict["worker_id"] = _WORKER_ID
     return event_dict
 
 

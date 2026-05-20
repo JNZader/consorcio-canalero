@@ -11,20 +11,24 @@ Linked from `docs/RUNBOOK.md § 1.6`.
 
 ## Observability
 
-### Boot logs duplicated under 2 uvicorn workers
+### ~~Boot logs duplicated under 2 uvicorn workers~~ — RESOLVED in F5-N
 
-`uvicorn` runs with `--workers 2` since Phase 3 / F3-J. Every
-module-level log line in `app/main.py` (rate-limiter init, GEE
-pre-init, cache-warming queued) fires once per worker, so
-``Starting Consorcio Canalero Backend v2...`` appears twice on a
-fresh deploy.
+Originally documented: `uvicorn` runs with `--workers 2` since
+Phase 3 / F3-J. Every module-level log line in `app/main.py` fires
+once per worker, so ``Starting Consorcio Canalero Backend v2...``
+appears twice on a fresh deploy. Sentry/BetterStack would dedup by
+message hash and silently hide the second worker's events.
 
-**Mitigation today**: Sentry/BetterStack dedup rule on identical
-message within 1 s.
+**Resolved**: ``add_app_context`` in ``app/core/logging.py`` now
+emits a per-process ``worker_id`` field (PID of the importing
+process, computed once at module load) on every event. The dedup
+grouping becomes ``(message, worker_id)`` so both workers' boot
+lines stay visible. The same mechanism applies to celery prefork
+workers naturally — each fork is a separate process with its own
+PID.
 
-**Expected fix** (Phase 4): add a `worker_id` field to the structured
-logger context so duplicated messages are trivially distinguishable
-and dedup-friendly.
+This section is kept for historical context; remove on the next
+KNOWN_LIMITATIONS sweep.
 
 ---
 
