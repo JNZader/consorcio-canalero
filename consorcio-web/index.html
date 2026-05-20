@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-AR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -46,6 +46,37 @@
     <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
     <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin />
     <link rel="dns-prefetch" href="https://earthengine.googleapis.com" />
+
+    <!--
+      F5-I: schema.org LocalBusiness for local SEO. Helps Google
+      surface the consorcio's address + contact in the knowledge
+      panel for queries like "consorcio canalero Marcos Juárez".
+      Keep ``url`` / ``telephone`` / ``email`` in sync with the
+      values rendered in the Footer + Contact section.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "GovernmentOrganization",
+        "name": "Consorcio Canalero 10 de Mayo",
+        "alternateName": "Consorcio 10 de Mayo",
+        "url": "https://consorcio10demayo.gob.ar/",
+        "logo": "https://consorcio10demayo.gob.ar/icons/icon-512.png",
+        "description": "Consorcio canalero de Marcos Juárez, Córdoba. Gestión territorial, monitoreo satelital de cuencas, caminos rurales e infraestructura hídrica.",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Marcos Juárez",
+          "addressRegion": "Córdoba",
+          "addressCountry": "AR"
+        },
+        "email": "contacto@consorcio10demayo.gob.ar",
+        "telephone": "+54 353 4000000",
+        "areaServed": {
+          "@type": "AdministrativeArea",
+          "name": "Marcos Juárez, Córdoba, Argentina"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
