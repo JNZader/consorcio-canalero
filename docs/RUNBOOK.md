@@ -794,6 +794,77 @@ real run.
 
 ---
 
+### 4.1 Server-vs-repo compose drift (F5-A2)
+
+The Hetzner stack runs a CUSTOM ``docker-compose.yml`` that diverged
+from the in-repo ``docker-compose.yml`` (dev local) and from
+``docker-compose.prod.yml`` (the canonical prod template). All three
+files coexist; only the server's is load-bearing for live traffic.
+
+**What's different on the server (vs ``docker-compose.prod.yml``):**
+
+- Builds from local ``./gee-backend`` source (``build:`` directive)
+  instead of pulling from GHCR (``image: ghcr.io/...``). Reason:
+  GH Actions ``Build and Publish Images`` workflow is currently
+  ``disabled_manually`` — quota exceeded. With no published image,
+  there's nothing to pull, so the server falls back to a local
+  ``docker compose build``.
+- Postgres + Redis are EMBEDDED on the same compose, not external.
+  ``docker-compose.prod.yml`` treats them as external services on
+  a shared Docker network. The server inherited the embedded
+  topology from an earlier phase and was never migrated.
+- Caddy / proxy is NOT in the compose — runs as a system service
+  outside Docker.
+
+**What we have in sync (F4-F + F4.X-1 + F4.X-2 fix-forwards):**
+
+- Backend service ``environment`` block forwards ``USE_PGBOUNCER``.
+- Worker service ``environment`` block forwards ``USE_PGBOUNCER``.
+- PgBouncer service is up with ``POOL_MODE=transaction``,
+  ``MAX_CLIENT_CONN=200``, ``SERVER_RESET_QUERY=DISCARD ALL``,
+  ``AUTH_TYPE=scram-sha-256``.
+- Dedicated ``migrate`` service with ``DATABASE_URL`` override to
+  postgres directly + ``USE_PGBOUNCER=false`` so alembic doesn't
+  blow up on multi-statement DDL.
+
+**What's required before the server can adopt ``docker-compose.prod.yml``:**
+
+1. GH Actions billing quota resets (or the user upgrades to a paid
+   plan). Until then ``Build and Publish Images`` cannot produce
+   the ``ghcr.io/jnzader/consorcio-canalero/{backend,geo-worker}``
+   images that ``docker-compose.prod.yml`` references.
+2. Run § 2.7 (cutover) once images are published — replace the
+   server's ``docker-compose.yml`` with a copy of
+   ``docker-compose.prod.yml`` from the repo, set
+   ``BACKEND_IMAGE`` + ``GEO_WORKER_IMAGE`` in ``.env`` to the
+   SHA-pinned tags, ``docker compose pull && docker compose up -d``.
+
+**Why we haven't backported the embedded topology into the prod
+file instead:**
+
+External postgres + redis is the correct prod pattern (shared
+across stacks, separate upgrade cadence, separate backup
+schedules). The server is the one in the wrong shape, not the
+prod compose. The migration goes one way: server → prod.yml,
+when the CI side is ready.
+
+**Drift watch — what to check periodically:**
+
+Run on the server:
+
+```bash
+docker exec consorcio-pgbouncer env | grep -E '(POOL_MODE|MAX_CLIENT_CONN|DEFAULT_POOL_SIZE|SERVER_RESET_QUERY)'
+docker exec consorcio-backend env | grep -E '(USE_PGBOUNCER|DATABASE_URL)'
+docker exec consorcio-worker env | grep -E '(USE_PGBOUNCER|DATABASE_URL)'
+```
+
+Compare against the equivalent values in
+``docker-compose.prod.yml``. Divergence usually means somebody
+hand-edited the server's compose without updating the repo —
+reconcile before the next deploy.
+
+---
+
 ## 5. Where things live
 
 | Component | Location |
