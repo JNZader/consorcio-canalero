@@ -121,7 +121,7 @@ provider's transactional API rather than SMTP.
 exchanges for the long token, so the SMTP body never carries the
 credential itself.
 
-### Refresh-token timing equicost has a constant-fold residual
+### Refresh-token timing equicost has a constant-fold residual (F5-G skipped)
 
 Phase 2.3's `rotate()` uses `literal(true())` vs `literal(false())`
 as the burn-vs-no-op gate, intending equicost SQL execution. The
@@ -134,10 +134,32 @@ of microseconds.
 thousands of samples AND (b) a stolen cookie already in hand —
 strictly stronger pre-conditions than what the leak grants.
 
-**Expected fix** (Phase 4 backlog: simplify refresh-token design).
-The whole CAS+family-burn+race-window machinery would be replaced
-by short refresh tokens + frequent re-auth, eliminating the
-constant-fold concern alongside the rest of the complexity.
+**Phase 5 / F5-G investigation outcome (skip-with-justification)**:
+F5-G was originally scoped as "swap the ``true()/false()`` literals
+for a predicate the planner can't constant-fold". The investigation
+landed on the conclusion that ANY shape the planner can statically
+determine to be empty (``id == sentinel_uuid``, ``revoked_at <=
+1970-01-01``, ``token_hash == 'never_a_hash'``) is still subject to
+fast path optimisation — index lookup returning 0 rows is roughly
+as fast as the One-Time Filter. The only honest equicost shapes
+either:
+
+  - Force a real row-by-row scan (e.g. ``position()`` calls on every
+    row) which is itself a measurable cost spike and visible as a
+    different timing signature; or
+  - Execute the same UPDATE in both branches and rely on the WHERE
+    not mutating anything in no-op mode — that requires the burn
+    semantics to be a SUPERSET of the no-op semantics, which they
+    are not (legitimate race-loss must NOT burn the family).
+
+The real fix is what this section already pointed at: rip out the
+CAS + family-burn + race-window machinery in favour of short
+refresh tokens + frequent re-auth. That removes the burn-vs-no-op
+decision and the leak vanishes with it. That refactor was deferred
+to Phase 6+ because it's a multi-day rewrite of a load-bearing
+auth path, while the threat model accepts the current residual.
+
+**Expected fix** (Phase 6+ refresh-token redesign): see above.
 
 ---
 
