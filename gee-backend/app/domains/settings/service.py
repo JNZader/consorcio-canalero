@@ -19,7 +19,7 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
     },
     {
         "clave": "general/jurisdiccion",
-        "valor": "Marcos Juarez, Cordoba, Argentina",
+        "valor": "Bell Ville, Cordoba, Argentina",
         "categoria": "general",
         "descripcion": "Jurisdiccion territorial",
     },
