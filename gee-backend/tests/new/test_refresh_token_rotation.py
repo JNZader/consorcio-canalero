@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -32,6 +32,7 @@ from app.auth.refresh_tokens import (
     revoke_family,
     rotate,
 )
+from app.shared.audit_log import AuditLog
 
 
 def _make_session_factory():
@@ -77,6 +78,29 @@ async def _get_row(SessionLocal, row_id: uuid.UUID) -> RefreshToken:
                 select(RefreshToken).where(RefreshToken.id == row_id)
             )
         ).scalar_one()
+
+
+async def _audit_rows_for_user(SessionLocal, user_id: uuid.UUID) -> list[AuditLog]:
+    async with SessionLocal() as session:
+        return list(
+            (
+                await session.execute(
+                    select(AuditLog).where(AuditLog.user_id == user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+
+async def _cleanup_audit(SessionLocal, user_id: uuid.UUID) -> None:
+    """audit_log FK is ON DELETE SET NULL, so deleting the user would orphan
+    these rows (user_id -> NULL) instead of removing them. Delete explicitly."""
+    from sqlalchemy import delete as sa_delete
+
+    async with SessionLocal() as session:
+        await session.execute(sa_delete(AuditLog).where(AuditLog.user_id == user_id))
+        await session.commit()
 
 
 async def _backdate(
@@ -638,6 +662,208 @@ async def test_revoke_family_revokes_every_active_row(test_engine):
         assert (await _get_row(SessionLocal, rowA.id)).revoked is True
         assert (await _get_row(SessionLocal, rowB.id)).revoked is True
         assert (await _get_row(SessionLocal, rowC.id)).revoked is False
+    finally:
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# T1 — lock_timeout (defense-in-depth)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_returns_none_on_lock_timeout(test_engine, monkeypatch):
+    """T1: when the per-family advisory lock cannot be taken within
+    ``_LOCK_TIMEOUT_MS`` (a concurrent holder sits on it), ``rotate`` must
+    time out (SQLSTATE 55P03), roll back, and return None (fail-secure → 401
+    → re-login) rather than hang. The presented token stays untouched.
+
+    Session A takes the family's advisory xact lock and holds it (open tx).
+    Session B rotates the same family with a short lock_timeout → must return
+    None WITHOUT burning or revoking anything.
+    """
+    from app.auth import refresh_tokens as rt
+
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    # Shrink the timeout so the test does not wait the production 5 s.
+    monkeypatch.setattr(rt, "_LOCK_TIMEOUT_MS", 400)
+
+    session_a = SessionLocal()
+    try:
+        async with SessionLocal() as session:
+            raw0, row0 = await issue_token(session, user=user)
+        family_id = row0.family_id
+
+        # Session A grabs the SAME advisory lock rotate will need and holds it
+        # (no commit/rollback → lock stays held for the whole transaction).
+        await session_a.execute(
+            select(func.pg_advisory_xact_lock(func.hashtext(str(family_id))))
+        )
+
+        # Session B rotates → blocks on the lock → times out after 400 ms.
+        async with SessionLocal() as session_b:
+            result = await rt.rotate(session_b, raw_token=raw0, user=user)
+        assert result is None, "lock_timeout must make rotate fail-secure (None)"
+
+        # The presented token was NOT revoked — rotate rolled back cleanly.
+        fresh = await _get_row(SessionLocal, row0.id)
+        assert fresh.revoked is False, "timed-out rotate must not mutate state"
+    finally:
+        await session_a.rollback()
+        await session_a.close()
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# T2 — log-only UA/IP anomaly (observability, never revokes)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_client_change_writes_audit_and_still_rotates(test_engine):
+    """T2: rotating with a UA/IP that differs from the one persisted on the
+    old token writes ONE audit row (action='refresh.rotate.client-change')
+    AND the rotation still SUCCEEDS (log-only — nothing is revoked/burned)."""
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    try:
+        async with SessionLocal() as session:
+            raw1, row1 = await issue_token(
+                session, user=user, user_agent="UA-old", client_ip="1.1.1.1"
+            )
+
+        async with SessionLocal() as session:
+            rotated = await rotate(
+                session,
+                raw_token=raw1,
+                user=user,
+                user_agent="UA-new",
+                client_ip="2.2.2.2",
+            )
+
+        # Rotation SUCCEEDS — anomaly is log-only, never revokes.
+        assert rotated is not None, "UA/IP drift must NOT block a legit rotation"
+        _raw2, row2 = rotated
+        assert row2.family_id == row1.family_id
+        assert row2.revoked is False
+        assert (await _get_row(SessionLocal, row1.id)).revoked is True
+
+        # Exactly one audit row for the client-change event.
+        rows = await _audit_rows_for_user(SessionLocal, user.id)
+        change_rows = [r for r in rows if r.action == "refresh.rotate.client-change"]
+        assert len(change_rows) == 1, "one client-change audit row expected"
+        entry = change_rows[0]
+        assert str(row1.family_id) in entry.resource
+        assert "changed=ua+ip" in entry.resource
+        # Never leak the raw token or its hash.
+        assert raw1 not in entry.resource
+        assert (row1.token_hash or "zzz") not in entry.resource
+    finally:
+        await _cleanup_audit(SessionLocal, user.id)
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rotate_same_client_writes_no_audit(test_engine):
+    """T2 (negative): rotating with the SAME UA/IP writes NO audit row."""
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    try:
+        async with SessionLocal() as session:
+            raw1, _row1 = await issue_token(
+                session, user=user, user_agent="UA-same", client_ip="9.9.9.9"
+            )
+
+        async with SessionLocal() as session:
+            rotated = await rotate(
+                session,
+                raw_token=raw1,
+                user=user,
+                user_agent="UA-same",
+                client_ip="9.9.9.9",
+            )
+        assert rotated is not None
+
+        rows = await _audit_rows_for_user(SessionLocal, user.id)
+        change_rows = [r for r in rows if r.action == "refresh.rotate.client-change"]
+        assert change_rows == [], "no audit row when the client fingerprint matches"
+    finally:
+        await _cleanup_audit(SessionLocal, user.id)
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# T3 — revoke_all loop locks a family born after the first SELECT
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_revoke_all_loop_locks_family_born_after_first_select(
+    test_engine, monkeypatch
+):
+    """T3: a family that is BORN (concurrent login) AFTER ``revoke_all_for_user``
+    ran its first family SELECT must still be LOCKED by the loop's re-SELECT
+    before the user-wide UPDATE — closing the residual where a late family was
+    revoked without its advisory lock (reopening the rotate-in-flight miss).
+
+    Deterministic (no asyncio race): we hook ``_lock_family`` so that on its
+    FIRST call (locking F0) it mints a brand-new family F1 for the same user
+    in a separate committed session — exactly "a family born after the first
+    SELECT". The loop must then re-SELECT, discover F1, and lock it.
+
+    Bidirectional: with the pre-fix single-SELECT code F1 is revoked by the
+    user-wide UPDATE but NEVER locked → ``F1 in locked_calls`` is False → RED.
+    With the loop → GREEN.
+    """
+    from app.auth import refresh_tokens as rt
+
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    try:
+        async with SessionLocal() as session:
+            _raw0, row0 = await issue_token(session, user=user)  # family F0
+
+        orig_lock = rt._lock_family
+        locked_calls: list[uuid.UUID] = []
+        born: dict = {}
+
+        async def hooked_lock(session, family_id):
+            locked_calls.append(family_id)
+            if not born:
+                # Concurrent login mints a NEW family (F1) after the first
+                # family SELECT already returned {F0}.
+                async with SessionLocal() as s2:
+                    _raw1, row1 = await issue_token(s2, user=user)
+                born["row"] = row1
+            return await orig_lock(session, family_id)
+
+        monkeypatch.setattr(rt, "_lock_family", hooked_lock)
+
+        async with SessionLocal() as session:
+            revoked = await rt.revoke_all_for_user(session, user.id)
+            await session.commit()
+
+        f1 = born["row"]
+        assert f1.family_id in locked_calls, (
+            "the loop must re-SELECT and lock the family born after the first "
+            "SELECT (residual fix); the pre-fix single-SELECT never would"
+        )
+        assert (await _get_row(SessionLocal, f1.id)).revoked is True
+        assert (await _get_row(SessionLocal, row0.id)).revoked is True
+        assert revoked >= 2
     finally:
         await _cleanup_users(SessionLocal, [user.id])
         await engine.dispose()
