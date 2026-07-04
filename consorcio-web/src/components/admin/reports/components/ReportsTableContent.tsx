@@ -106,7 +106,11 @@ export function ReportsTableContent({
                           variant="light"
                           color="blue"
                           component="a"
-                          href={`/mapa?lat=${report.latitud}&lng=${report.longitud}&zoom=15`}
+                          href={`/mapa?${new URLSearchParams({
+                            lat: String(report.latitud),
+                            lng: String(report.longitud),
+                            zoom: '15',
+                          })}`}
                           aria-label={`Ver ubicacion de denuncia en el mapa, coordenadas ${report.latitud}, ${report.longitud}`}
                         >
                           <IconMap size={18} />

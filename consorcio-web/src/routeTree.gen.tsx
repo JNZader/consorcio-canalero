@@ -298,7 +298,6 @@ function AuthCallbackPage() {
       try {
         // Get params from URL (backend Google OAuth callback)
         const urlParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const errorParam = urlParams.get('error');
         const errorDescription = urlParams.get('error_description');
 
@@ -329,17 +328,10 @@ function AuthCallbackPage() {
           }
         }
 
-        // Backwards-compat fallback: legacy fragment / query token. Used
-        // by deploys that haven't picked up F2-L yet. Once every active
-        // session has rotated through the new flow, the four reads
-        // below can be removed.
-        if (!token) {
-          token =
-            hashParams.get('token') ||
-            hashParams.get('access_token') ||
-            urlParams.get('token') ||
-            urlParams.get('access_token');
-        }
+        // Session-fixation hardening: the legacy fragment/query token
+        // fallback (?token= / #access_token=) was REMOVED. The only
+        // accepted path is ``?via=cookie`` + exchange-cookie above —
+        // a token planted in the URL by an attacker is never persisted.
 
         logger.debug('[AUTH CALLBACK] URL params:', {
           token: token ? 'present' : 'missing',
@@ -397,7 +389,7 @@ function AuthCallbackPage() {
         }
 
         // Fallback: check existing session
-        logger.debug('[AUTH CALLBACK] No token in URL, checking existing session...');
+        logger.debug('[AUTH CALLBACK] No token from cookie exchange, checking existing session...');
         const existingSession = await authAdapter.getSession();
 
         if (existingSession) {

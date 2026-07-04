@@ -78,16 +78,23 @@ export function useReportHighlight({ mapRef, mapReady }: UseReportHighlightParam
 
     // Custom DOM element — Mantine's Image / popup body is overkill here.
     // A keyboard-accessible button + label is enough.
+    //
+    // Convencion: NUNCA interpolar dato de usuario en setHTML de MapLibre;
+    // usar setDOMContent + textContent (los nodos construidos con
+    // createElement/textContent no son parseados como HTML).
+    const popupContent = document.createElement('div');
+    popupContent.style.fontSize = '13px';
+    const title = document.createElement('strong');
+    title.textContent = 'Denuncia ubicada aquí';
+    const coords = document.createElement('span');
+    coords.textContent = `${highlight.lat.toFixed(5)}, ${highlight.lng.toFixed(5)}`;
+    popupContent.append(title, document.createElement('br'), coords);
+
     const popup = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,
       offset: 24,
-    }).setHTML(
-      `<div style="font-size: 13px;">
-        <strong>Denuncia ubicada aquí</strong><br/>
-        ${highlight.lat.toFixed(5)}, ${highlight.lng.toFixed(5)}
-      </div>`
-    );
+    }).setDOMContent(popupContent);
 
     const marker = new maplibregl.Marker({ color: '#dc2626' })
       .setLngLat([highlight.lng, highlight.lat])

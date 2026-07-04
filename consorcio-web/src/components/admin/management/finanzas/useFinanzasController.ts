@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import { validateOptionalHttpUrl } from '../../../../lib/validators';
 import { DEFAULT_CATEGORIES, DEFAULT_INCOME_SOURCES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 import {
@@ -62,6 +63,7 @@ export function useFinanzasController() {
       descripcion: validateDescripcion,
       monto: validateMonto,
       categoria: (value) => validateRequiredOption(value, 'Categoria'),
+      comprobante_url: validateOptionalHttpUrl,
     },
   });
 
@@ -87,6 +89,7 @@ export function useFinanzasController() {
       descripcion: validateDescripcion,
       monto: validateMonto,
       fuente: (value) => validateRequiredOption(value, 'Fuente'),
+      comprobante_url: validateOptionalHttpUrl,
     },
   });
 
@@ -103,6 +106,7 @@ export function useFinanzasController() {
       descripcion: validateDescripcion,
       monto: validateMonto,
       fuente: (value) => validateRequiredOption(value, 'Fuente'),
+      comprobante_url: validateOptionalHttpUrl,
     },
   });
 

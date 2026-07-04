@@ -19,7 +19,7 @@ import { useState } from 'react';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import { logger } from '../lib/logger';
-import { validateEmail } from '../lib/validators';
+import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
 
 const LOGIN_NAME_ERROR_ID = 'login-name-error';
@@ -46,19 +46,14 @@ export function LoginFormContent() {
     validate: {
       email: validateEmail,
       password: (value) => {
-        if (value.length < 8) {
-          return 'La contrasena debe tener al menos 8 caracteres';
-        }
         if (mode === 'register') {
-          // Require at least one number and one letter for new registrations
-          if (!/[0-9]/.test(value)) {
-            return 'La contrasena debe incluir al menos un numero';
-          }
-          if (!/[a-zA-Z]/.test(value)) {
-            return 'La contrasena debe incluir al menos una letra';
-          }
+          // Shared strength rules (same as reset-password flow).
+          return validatePassword(value);
         }
-        return null;
+        // Login: only sanity-check length; strength was enforced at signup.
+        return value.length < MIN_PASSWORD_LENGTH
+          ? `La contrasena debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`
+          : null;
       },
       confirmPassword: (value, values) =>
         mode === 'register' && value !== values.password ? 'Las contrasenas no coinciden' : null,
