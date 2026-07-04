@@ -151,7 +151,7 @@ async def rotate(
     statements (CAS + SELECT + family-update + commit) so an attacker
     can't read latency to learn whether the cookie they hold was just
     rotated. The family-update in the race-loss path is a no-op
-    (guarded by ``literal(False)``) but takes the same wire time.
+    (guarded by ``false()``) but takes the same wire time.
     """
     digest = _hash_token(raw_token)
     now = datetime.now(tz=timezone.utc)
@@ -200,11 +200,24 @@ async def rotate(
     revoked_at = replay_row.revoked_at
     should_burn = revoked_at is None or (now - revoked_at) > RACE_WINDOW
 
-    # Always run the family UPDATE. The extra ``created_at <= burn_threshold``
-    # filter prevents the rare race where, between our SELECT and the family
-    # update, a legit user wins a concurrent CAS and mints a NEW token in
-    # the same family — that fresh row mustn't get caught in our sweep
-    # because its ``created_at`` is past the threshold.
+    # Always run the family UPDATE. On a CONFIRMED replay (should_burn=True)
+    # we burn EVERY still-active row in the family — no ``created_at`` filter.
+    #
+    # Why no ``created_at`` filter: a replay means the family is compromised
+    # but we CANNOT tell attacker from victim. In the canonical stolen-cookie
+    # chain the attacker rotates the stolen token FIRST, so the LIVE token is
+    # the rotation successor whose ``created_at`` is stamped a few ms AFTER the
+    # revocation (issue_token uses its own ``now`` post-CAS). A
+    # ``created_at <= revoked_at`` filter would spare exactly that token,
+    # leaving the attacker's session alive and making anti-replay a no-op on a
+    # linear chain. The safe posture on a confirmed replay is: nuke the whole
+    # family and force BOTH parties to re-authenticate. The prior filter only
+    # ever mattered for should_burn=True, and its effect (sparing a concurrent
+    # mint) is precisely the wrong call once a replay is confirmed.
+    #
+    # The should_burn=False branch (two-tab race within RACE_WINDOW) is
+    # unchanged: the ``false()`` literal short-circuits the UPDATE to 0 rows,
+    # so a legit race-loss still does NOT burn the family.
     #
     # KNOWN LIMITATION (documented by the 4th-layer review): when
     # ``should_burn=False`` the ``false()`` literal is constant-folded
@@ -214,13 +227,11 @@ async def rotate(
     # datacenter. The attacker would need (a) co-location or thousands
     # of samples and (b) a stolen cookie already in hand to exploit
     # it, so the residual risk is below our threat model. Accepted.
-    burn_threshold = replay_row.revoked_at or now
     await session.execute(
         update(RefreshToken)
         .where(
             RefreshToken.family_id == replay_row.family_id,
             RefreshToken.revoked.is_(False),
-            RefreshToken.created_at <= burn_threshold,
             true() if should_burn else false(),
         )
         .values(revoked=True, revoked_at=now)

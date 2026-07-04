@@ -216,18 +216,16 @@ async def test_rotate_unknown_token_returns_none_without_side_effects(test_engin
 async def test_replay_after_race_window_burns_family_siblings(test_engine):
     """(b) Presenting a token that was ALREADY rotated, past the
     RACE_WINDOW, is a replay (stolen cookie) → rotate() returns None
-    and the family-burn sweep revokes every still-active token in the
-    family whose ``created_at <= revoked_at`` of the replayed row.
+    and the family-burn sweep revokes EVERY still-active token in the
+    family — pre-rotation siblings AND the rotation successor.
 
-    IMPORTANT nuance this test PINS (verified empirically): tokens
-    minted AFTER the replayed token's revocation are deliberately
-    spared by the ``created_at <= burn_threshold`` filter — including
-    the direct successor of the legit rotation, whose ``created_at``
-    is stamped milliseconds after the CAS ``revoked_at`` (see the
-    clock-sharing comment in ``issue_token``). So "burn the family"
-    means "burn everything that existed when the token was revoked",
-    NOT "burn all descendants". If the security posture ever changes
-    to burn descendants too, flip the successor assertion below.
+    Security posture (fixed): a confirmed replay means the family is
+    compromised and we cannot tell attacker from victim, so we nuke the
+    whole family and force re-authentication. There is NO ``created_at``
+    filter — the successor of the winning rotation (which, in a
+    stolen-cookie chain where the attacker rotated first, is the
+    attacker's LIVE token) MUST be burned too. See
+    ``test_replay_burns_attacker_active_token_linear_chain``.
     """
     _ = test_engine
     engine, SessionLocal = _make_session_factory()
@@ -279,10 +277,67 @@ async def test_replay_after_race_window_burns_family_siblings(test_engine):
             "replayed token's revocation"
         )
 
-        # The post-rotation successor is spared by design (created_at
-        # is milliseconds past the burn threshold — see docstring).
+        # The post-rotation successor is ALSO burned: a confirmed replay
+        # nukes the whole family regardless of created_at (see docstring).
         successor = await _get_row(SessionLocal, row2.id)
-        assert successor.revoked is False
+        assert successor.revoked is True
+    finally:
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_replay_burns_attacker_active_token_linear_chain(test_engine):
+    """THEFT SCENARIO (anti-replay must revoke the attacker's live token).
+
+    Canonical stolen-cookie chain:
+      1. Victim holds T0 (raw1). Attacker steals the T0 cookie.
+      2. Attacker rotates T0 FIRST → T0 revoked (revoked_at=rA), attacker
+         receives T1 (row2) with created_at=cA a few ms AFTER rA (issue_token
+         stamps its own ``now`` post-CAS). T1 is the attacker's LIVE token.
+      3. Time passes past RACE_WINDOW.
+      4. Victim's browser (still holding T0) hits /refresh → replay detected,
+         should_burn=True → family burn MUST kill T1.
+
+    If the family burn spares T1 (because cA > burn_threshold), the attacker's
+    live token survives and anti-replay is a no-op on a linear chain.
+    """
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    try:
+        # Victim logs in → T0.
+        async with SessionLocal() as session:
+            raw1, row1 = await issue_token(session, user=user)
+
+        # Attacker rotates the stolen T0 FIRST → attacker holds T1 (row2).
+        async with SessionLocal() as session:
+            rotated = await rotate(session, raw_token=raw1, user=user)
+        assert rotated is not None
+        _raw2_attacker, row2 = rotated  # attacker's LIVE token
+
+        # Time passes beyond the grace window. Shift revoked_at (rA) and the
+        # successor's created_at (cA) back together — realistic: they were
+        # stamped ~simultaneously, so cA stays a few ms AFTER rA.
+        await _backdate(
+            SessionLocal,
+            revoked_row_id=row1.id,
+            active_row_id=row2.id,
+            delta=RACE_WINDOW + timedelta(seconds=30),
+        )
+
+        # Victim presents the still-held T0 → replay.
+        async with SessionLocal() as session:
+            replay = await rotate(session, raw_token=raw1, user=user)
+        assert replay is None, "replayed token must never mint a new one"
+
+        # SECURITY ASSERTION: the attacker's live token must be revoked.
+        attacker_token = await _get_row(SessionLocal, row2.id)
+        assert attacker_token.revoked is True, (
+            "family burn on a confirmed replay must revoke the attacker's "
+            "live token (the rotation successor), not spare it"
+        )
     finally:
         await _cleanup_users(SessionLocal, [user.id])
         await engine.dispose()
