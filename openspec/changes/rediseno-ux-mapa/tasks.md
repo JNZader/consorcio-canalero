@@ -87,13 +87,13 @@
 
 ## Phase 3: Control fino por capa activa (Dolor 2, estructural)
 
-- [ ] **3.1 Slots opacidad/orden en el store + migración (RED→GREEN)**
+- [x] **3.1 Slots opacidad/orden en el store + migración (RED→GREEN)**
   - RED: `mapLayerSyncStore.test.ts` — estado persistido de la version previa conserva visibilidad tras el bump; nuevos campos con defaults.
   - GREEN: agregar `opacityByLayer?`/`orderByLayer?` (opcionales) a los slices 2d/3d; bump `version` + `migrate`.
   - **AC**: sin pérdida de visibilidad; slots aditivos.
   - **Files**: `consorcio-web/src/stores/mapLayerSyncStore.ts`, test
 
-- [ ] **3.2 Aplicar opacidad en useMapLayerEffects (RED→GREEN)**
+- [x] **3.2 Aplicar opacidad en useMapLayerEffects (RED→GREEN)**
   - RED: `useMapLayerEffects.test.ts` — con `opacityByLayer` set, la capa usa esa opacidad; sin set, opacidad default idéntica a hoy.
   - GREEN: leer el slot y aplicar en `setPaintProperty` sin tocar los z-orders/opacidades hardcodeadas cuando no hay override.
   - **AC**: default NO cambia (regression guard).

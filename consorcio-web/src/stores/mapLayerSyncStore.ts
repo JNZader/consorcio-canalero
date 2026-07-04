@@ -6,6 +6,19 @@ import { ALL_ETAPAS, type Etapa, type IndexFile } from '../types/canales';
 export interface SharedMapLayerState {
   activeRasterType: string | null;
   visibleVectors: Record<string, boolean>;
+  /**
+   * Per-layer opacity MULTIPLIER (0..1) keyed by UI layer id. `1` (or absent)
+   * means "untouched" — the hardcoded default paint is applied verbatim. The
+   * imperative apply step (`applyLayerOpacity`) skips any id that is absent or
+   * exactly 1 so the default rendering stays byte-identical. Default `{}`.
+   */
+  opacityByLayer: Record<string, number>;
+  /**
+   * Desired render order (bottom → top) as a list of UI layer ids. Empty
+   * means "use the hardcoded default order" — the imperative apply step
+   * (`applyLayerOrder`) is a no-op on an empty list. Default `[]`.
+   */
+  orderByLayer: string[];
 }
 
 type MapViewKey = 'map2d' | 'map3d';
@@ -13,6 +26,10 @@ type MapViewKey = 'map2d' | 'map3d';
 interface SharedMapLayerActions {
   setActiveRasterType: (view: MapViewKey, tipo: string | null) => void;
   setVectorVisibility: (view: MapViewKey, layerId: string, visible: boolean) => void;
+  /** Set a per-layer opacity multiplier (clamped to 0..1). */
+  setLayerOpacity: (view: MapViewKey, layerId: string, value: number) => void;
+  /** Replace the per-layer render order (bottom → top UI ids). */
+  setLayerOrder: (view: MapViewKey, orderedIds: string[]) => void;
   hydrateViewState: (view: MapViewKey, payload: Partial<SharedMapLayerState>) => void;
   markViewInitialized: (view: MapViewKey) => void;
 }
@@ -146,11 +163,15 @@ const storage = createJSONStorage(() => {
 const DEFAULT_MAP2D_LAYER_STATE: SharedMapLayerState = {
   activeRasterType: null,
   visibleVectors: defaultVisibleVectors,
+  opacityByLayer: {},
+  orderByLayer: [],
 };
 
 const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
   activeRasterType: null,
   visibleVectors: defaultMap3dVisibleVectors,
+  opacityByLayer: {},
+  orderByLayer: [],
 };
 
 interface MapLayerSyncStoreState {
@@ -217,6 +238,76 @@ interface PilarAzulActions {
   isCanalVisible: (view: MapViewKey, id: string) => boolean;
 }
 
+/**
+ * Persist migration — patches a persisted state blob forward to the current
+ * schema version. Exported (not inlined) so it can be unit-tested directly:
+ * the store's test harness mocks the `persist` middleware to a pass-through,
+ * which would otherwise skip this callback entirely.
+ *
+ * Migration history:
+ *   v1 → v2 (2026-05-18): force `terrainSmoothingEnabled = true`.
+ *   v2 → v3 (2026-05-19): unify 3D defaults with 2D (roads/waterways/canales).
+ *   v3 → v4 (2026-07-04): seed per-layer `opacityByLayer` / `orderByLayer`
+ *     slots as `{}` / `[]` on both views WITHOUT touching any persisted
+ *     visibility — empty = untouched default → no render change.
+ */
+export function migrateMapLayerState(
+  persistedState: unknown,
+  fromVersion: number
+): Partial<MapLayerSyncStoreState> {
+  const state = (persistedState as Partial<MapLayerSyncStoreState>) ?? {};
+  let next = state;
+  if (fromVersion < 2) {
+    next = {
+      ...next,
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: next.terrainSmoothingThreshold ?? 'med',
+    };
+  }
+  if (fromVersion < 3 && next.map3d) {
+    next = {
+      ...next,
+      map3d: {
+        ...next.map3d,
+        visibleVectors: {
+          ...next.map3d.visibleVectors,
+          roads: true,
+          waterways: true,
+          waterways_rio_tercero: true,
+          waterways_canal_desviador: true,
+          waterways_canal_litin_tortugas: true,
+          waterways_arroyo_algodon: true,
+          waterways_arroyo_las_mojarras: true,
+          canales_relevados: true,
+        },
+      },
+    };
+  }
+  if (fromVersion < 4) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          opacityByLayer: next.map2d.opacityByLayer ?? {},
+          orderByLayer: next.map2d.orderByLayer ?? [],
+        },
+      };
+    }
+    if (next.map3d) {
+      next = {
+        ...next,
+        map3d: {
+          ...next.map3d,
+          opacityByLayer: next.map3d.opacityByLayer ?? {},
+          orderByLayer: next.map3d.orderByLayer ?? [],
+        },
+      };
+    }
+  }
+  return next;
+}
+
 export const useMapLayerSyncStore = create<
   MapLayerSyncStoreState & SharedMapLayerActions & PilarAzulActions
 >()(
@@ -252,13 +343,37 @@ export const useMapLayerSyncStore = create<
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
+      setLayerOpacity: (view, layerId, value) =>
+        set((state) => ({
+          [view]: {
+            ...state[view],
+            opacityByLayer: {
+              ...state[view].opacityByLayer,
+              [layerId]: Math.min(1, Math.max(0, value)),
+            },
+          },
+          initializedViews: { ...state.initializedViews, [view]: true },
+        })),
+      setLayerOrder: (view, orderedIds) =>
+        set((state) => ({
+          [view]: {
+            ...state[view],
+            orderByLayer: [...orderedIds],
+          },
+          initializedViews: { ...state.initializedViews, [view]: true },
+        })),
       hydrateViewState: (view, payload) =>
         set((state) => ({
           [view]: {
+            ...state[view],
             activeRasterType: payload.activeRasterType ?? state[view].activeRasterType,
             visibleVectors: payload.visibleVectors
               ? { ...state[view].visibleVectors, ...payload.visibleVectors }
               : state[view].visibleVectors,
+            opacityByLayer: payload.opacityByLayer
+              ? { ...state[view].opacityByLayer, ...payload.opacityByLayer }
+              : state[view].opacityByLayer,
+            orderByLayer: payload.orderByLayer ?? state[view].orderByLayer,
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
@@ -379,38 +494,12 @@ export const useMapLayerSyncStore = create<
       //   the 3D viewer launches with the despike pipeline on by default.
       //   v2 → v3 (2026-05-19): unify 3D defaults with 2D so users see
       //   roads / waterways / canales_relevados ON on the 3D side too.
-      version: 3,
-      migrate: (persistedState, fromVersion) => {
-        const state = (persistedState as Partial<MapLayerSyncStoreState>) ?? {};
-        let next = state;
-        if (fromVersion < 2) {
-          next = {
-            ...next,
-            terrainSmoothingEnabled: true,
-            terrainSmoothingThreshold: next.terrainSmoothingThreshold ?? 'med',
-          };
-        }
-        if (fromVersion < 3 && next.map3d) {
-          next = {
-            ...next,
-            map3d: {
-              ...next.map3d,
-              visibleVectors: {
-                ...next.map3d.visibleVectors,
-                roads: true,
-                waterways: true,
-                waterways_rio_tercero: true,
-                waterways_canal_desviador: true,
-                waterways_canal_litin_tortugas: true,
-                waterways_arroyo_algodon: true,
-                waterways_arroyo_las_mojarras: true,
-                canales_relevados: true,
-              },
-            },
-          };
-        }
-        return next;
-      },
+      //   v3 → v4 (2026-07-04): seed the per-layer `opacityByLayer` /
+      //   `orderByLayer` slots (map-redesign Fase 3) as empty `{}` / `[]` on
+      //   both views so existing users get the new fields without touching any
+      //   persisted visibility. Empty = "untouched default" → no render change.
+      version: 4,
+      migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {
           ...state.map2d,
@@ -421,6 +510,9 @@ export const useMapLayerSyncStore = create<
             hydraulic_risk: false,
             puntos_conflicto: false,
           },
+          // Per-layer opacity/order overrides (Fase 3) — persisted verbatim.
+          opacityByLayer: state.map2d.opacityByLayer,
+          orderByLayer: state.map2d.orderByLayer,
         },
         map3d: {
           ...state.map3d,
@@ -430,6 +522,8 @@ export const useMapLayerSyncStore = create<
             hydraulic_risk: false,
             puntos_conflicto: false,
           },
+          opacityByLayer: state.map3d.opacityByLayer,
+          orderByLayer: state.map3d.orderByLayer,
         },
         initializedViews: state.initializedViews,
         canalesPropuestasPrioridad: state.canalesPropuestasPrioridad,

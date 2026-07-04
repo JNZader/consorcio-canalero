@@ -28,6 +28,7 @@ import {
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
+import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,
@@ -397,6 +398,74 @@ export function useMapLayerEffects({
     if (!map || !mapReady) return;
     syncYpfEstacionBombeoLayer(map);
   }, [mapReady, mapRef]);
+
+  // ── Per-layer opacity & order (map-redesign Fase 3) ─────────────────────
+  // Read the map2d overrides. Both default to `{}` / `[]` (untouched), in
+  // which case the apply helpers are guaranteed no-ops so the default
+  // rendering stays byte-identical to before this feature existed.
+  const opacityByLayer = useMapLayerSyncStore((s) => s.map2d.opacityByLayer);
+  const orderByLayer = useMapLayerSyncStore((s) => s.map2d.orderByLayer);
+
+  // Async-mount / re-hoist re-run signal (FF-A3). The opacity/order effects
+  // apply IMPERATIVELY and skip ml layers that aren't mounted yet — so if a
+  // target layer mounts AFTER the effect first ran (react-query data arrives,
+  // e.g. waterways start as `[]`), or a sibling sync effect re-hoists the
+  // stack via raise*Stack, a persisted override would be silently lost.
+  // Collapsing every mount/reorder trigger into a string signature lets both
+  // effects RE-RUN whenever the layer set or its ordering could have changed.
+  // Over-firing is safe: the apply helpers are idempotent and no-op on empty
+  // overrides (byte-identical default preserved). These effects are declared
+  // AFTER the sync effects, so within a commit they run LAST and reassert the
+  // custom order over any raise*Stack call.
+  const layerMountSignal = [
+    Object.entries(vectorVisibility)
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .sort()
+      .join(','),
+    soilCollection ? 1 : 0,
+    roadsCollection ? 1 : 0,
+    basins ? 1 : 0,
+    zonaCollection ? 1 : 0,
+    approvedZonesCollection ? 1 : 0,
+    suggestedZonesDisplay ? 1 : 0,
+    canales?.index ? 1 : 0,
+    canales?.relevados ? 1 : 0,
+    canales?.propuestas ? 1 : 0,
+    escuelas?.collection ? 1 : 0,
+    pilarVerde?.bpaHistorico ? 1 : 0,
+    pilarVerde?.agroAceptada ? 1 : 0,
+    pilarVerde?.agroPresentada ? 1 : 0,
+    pilarVerde?.agroZonas ? 1 : 0,
+    pilarVerde?.porcentajeForestacion ? 1 : 0,
+    waterwaysDefs.length,
+    Object.entries(propuestasEtapasVisibility)
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .sort()
+      .join(','),
+  ].join('|');
+
+  // Opacity: for each UI id whose multiplier is PRESENT (incl. 1 → reset to
+  // default), apply `default * clampedMultiplier` on its ml layers. An empty
+  // override map has no entries → nothing applied → default untouched. Re-runs
+  // on `layerMountSignal` so overrides land on layers that mount later.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    void layerMountSignal;
+    applyLayerOpacity(map, opacityByLayer);
+  }, [mapReady, mapRef, opacityByLayer, layerMountSignal]);
+
+  // Order: when `orderByLayer` is non-empty, hoist each UI id's ml-layer group
+  // to enforce the requested bottom → top order. Empty → no-op (today's
+  // ordering, incl. PILAR_VERDE_Z_ORDER + roads-below-waterways, untouched).
+  // Runs after the sync effects above have mounted/ordered the base stack, and
+  // re-asserts the custom order after any raise*Stack re-hoist via the signal.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    void layerMountSignal;
+    applyLayerOrder(map, orderByLayer);
+  }, [mapReady, mapRef, orderByLayer, layerMountSignal]);
 
   // ── DEM z-order hoist ───────────────────────────────────────────────────
   // Keep the DEM raster just below the user-authored stack (Pilar Verde +
