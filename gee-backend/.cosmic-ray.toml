@@ -3,6 +3,14 @@ module-path = [
   "app/domains/denuncias/service.py",
   "app/domains/monitoring/service.py",
   "app/domains/tramites/schemas.py",
+  # TODO(mutation-coverage): finanzas/service.py, auth/refresh_tokens.py y
+  # padron/service.py son los dominios de mayor riesgo y DEBERIAN estar aca,
+  # pero sus unicos tests viven en tests/new/ y requieren PostGIS
+  # (testcontainers). El mutation harness corre el test-command una vez por
+  # mutante, asi que apuntarlo a tests con DB lo haria tardar horas. Para
+  # sumarlos: escribir primero unit tests LIVIANOS sin DB (ej. validar_cuit
+  # mod-11 y el field_validator de rubro son logica pura y se prestan) y
+  # agregarlos al test-command de abajo.
 ]
 timeout = 120.0
 excluded-modules = []

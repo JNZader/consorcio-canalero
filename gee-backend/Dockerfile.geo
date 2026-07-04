@@ -39,8 +39,26 @@ COPY supervisord-geo.conf /etc/supervisor/conf.d/geo.conf
 # Create data directory for GeoTIFF storage
 RUN mkdir -p /data/geo /var/log/supervisor
 
+# Create non-root user (mirrors gee-backend/Dockerfile production stage)
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Writable paths for the app user:
+# - /app: workdir
+# - /data/geo: GeoTIFF/raster outputs (volume; ownership applies on first init)
+# - /var/log/supervisor: supervisord logfile
+# - /var/run/supervisord.pid: pre-created so non-root supervisord can write
+#   its pidfile (/var/run itself stays root-owned)
+# - whitebox package dir: WhiteboxTools writes settings/logs next to its binary
+RUN chown -R app:app /app /data/geo /var/log/supervisor \
+    && touch /var/run/supervisord.pid \
+    && chown app:app /var/run/supervisord.pid \
+    && chown -R app:app "$(python3 -c 'import whitebox, os; print(os.path.dirname(whitebox.__file__))')"
+
 # Expose tile service port
 EXPOSE 8001
+
+# Switch to non-root user
+USER app
 
 # Run both Celery worker and tile service via supervisord
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/geo.conf"]

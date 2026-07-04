@@ -322,7 +322,7 @@ services:
     container_name: consorcio-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./consorcio-web/src:/app/src:ro
       - ./consorcio-web/public:/app/public:ro

@@ -66,7 +66,9 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest tests/ -v --cov=app --cov-fail-under=40
+      # Unified coverage floor: 60 everywhere (backend.yml, deploy.yml,
+      # package.json test:backend) — the real prod gate is deploy.yml's 60.
+      - run: pytest tests/ -v --cov=app --cov-fail-under=60
 
   mutation:
     name: Mutation tests (cosmic-ray)
@@ -107,7 +109,8 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
+      # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: gee-backend

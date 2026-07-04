@@ -48,11 +48,15 @@ services:
     image: redis:7-alpine
     container_name: consorcio-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    # AOF persistence: redis is Celery broker + result backend — losing it
+    # drops in-flight tasks and beat state on restart.
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required} --appendonly yes
+    volumes:
+      - redis-data:/data
     networks:
       - consorcio-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -304,6 +308,8 @@ volumes:
     name: consorcio-geo-data
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  redis-data:
+    name: consorcio-redis-data
   # Phase 3 / F3-L: scratch dir for celery-beat schedule db.
   celery-beat-schedule:
     name: consorcio-celery-beat-schedule

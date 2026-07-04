@@ -47,4 +47,12 @@ COPY scripts/ ./scripts/
 # Create data directories
 RUN mkdir -p /data/geo/models /data/geo/training
 
+# Create non-root user (mirrors gee-backend/Dockerfile production stage)
+# /app + /data/geo writable (models + training outputs; volume ownership applies on first init)
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app /data/geo
+
+# Switch to non-root user
+USER app
+
 CMD ["python", "scripts/train_water_unet.py"]
