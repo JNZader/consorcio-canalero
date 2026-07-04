@@ -15,7 +15,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import false, true, update
+from sqlalchemy import false, func, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -44,11 +44,23 @@ async def issue_token(
     family_id: uuid.UUID | None = None,
     user_agent: str | None = None,
     client_ip: str | None = None,
+    commit: bool = True,
 ) -> tuple[str, RefreshToken]:
     """Issue a new refresh token.
 
     Pass ``family_id`` to chain into an existing family (rotation);
     omit to start a fresh family (login).
+
+    ``commit`` controls transaction ownership:
+      - ``commit=True`` (default, login path): this function commits AND
+        refreshes the new row before returning, so the caller
+        (``login_with_refresh``) gets a fully-persisted, key-populated
+        row without owning a transaction.
+      - ``commit=False`` (rotate path): this function only ``flush``es
+        (assigns the PK / server-side defaults WITHOUT ending the
+        transaction) and leaves the commit to the caller, so the CAS and
+        the mint land in ONE transaction (see ``rotate`` for why that
+        atomicity is load-bearing).
     """
     raw = _new_raw_token()
     # Use Python ``now`` for both ``created_at`` and ``expires_at`` so
@@ -70,8 +82,13 @@ async def issue_token(
         client_ip=(client_ip or "")[:64] or None,
     )
     session.add(token_row)
-    await session.commit()
-    await session.refresh(token_row)
+    if commit:
+        await session.commit()
+        await session.refresh(token_row)
+    else:
+        # Assign the PK / server-side defaults without ending the
+        # transaction — the caller owns the commit.
+        await session.flush()
     return raw, token_row
 
 
@@ -96,13 +113,43 @@ async def find_active(session: AsyncSession, raw_token: str) -> RefreshToken | N
     return row
 
 
+async def _lock_family(session: AsyncSession, family_id: uuid.UUID) -> None:
+    """Take the per-family PostgreSQL advisory transaction lock.
+
+    ``pg_advisory_xact_lock`` is held until the transaction that took it
+    commits/rolls back. EVERY path that mutates a family's rows
+    (``rotate``, ``revoke_family``, ``revoke_all_for_user``) takes THIS
+    lock BEFORE its UPDATE, so they serialize against each other end to
+    end. This closes the READ COMMITTED interleave where one path's
+    snapshot misses a row another path is minting/revoking in a
+    not-yet-committed transaction (e.g. a ``logout-all`` sweep running
+    ``UPDATE ... WHERE revoked=False`` cannot see a ``rotate`` successor
+    that is minted-but-not-committed, so that successor would survive the
+    revocation and silently restore the session logout-all had to kill).
+
+    ``hashtext(uuid::text)`` yields an int4 key, widened to the bigint
+    the single-arg lock function takes. Contention is per-family only, so
+    throughput is unaffected in the common case.
+    """
+    await session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtext(str(family_id))))
+    )
+
+
 async def revoke_family(session: AsyncSession, family_id: uuid.UUID) -> int:
     """Revoke every token in the family. Returns the row count.
 
-    Called when a replayed (already-revoked) refresh token is presented:
-    the attacker likely stole the cookie, so the whole session is
-    burnt down even if individual rows looked valid.
+    Called when a replayed (already-revoked) refresh token is presented,
+    or when the presenting user was deleted/deactivated: the attacker
+    likely stole the cookie, so the whole session is burnt down even if
+    individual rows looked valid.
+
+    Takes the per-family advisory lock BEFORE the UPDATE (same lock
+    ``rotate`` uses) so a concurrent rotate on this family cannot mint a
+    successor invisible to this revocation's READ COMMITTED snapshot.
+    This helper self-commits, so the lock is released here.
     """
+    await _lock_family(session, family_id)
     result = await session.execute(
         update(RefreshToken)
         .where(RefreshToken.family_id == family_id, RefreshToken.revoked.is_(False))
@@ -147,13 +194,60 @@ async def rotate(
         the row revoked with ``revoked_at`` old, and DOES burn the
         family.
 
+    Atomicity (post-3vr concurrency fix): the ENTIRE rotate runs in ONE
+    transaction serialized by a per-family PostgreSQL advisory lock
+    (``pg_advisory_xact_lock`` on ``hashtext(family_id)``). This closes
+    an interleave the previous multi-commit shape left open under READ
+    COMMITTED: a victim's replay-burn could scan the family for
+    ``revoked=False`` rows while a concurrent attacker rotation was
+    minting its successor in a not-yet-committed transaction; the
+    freshly-minted token was invisible to the burn's snapshot and
+    survived the sweep, defeating anti-replay. With every rotate on a
+    family serialized end-to-end, the two operations can no longer
+    overlap: whoever runs second sees the other's committed state (the
+    burn sweeps the successor, or the successor's CAS finds the token
+    already revoked and mints nothing). See
+    ``test_concurrent_replay_burn_must_sweep_attacker_mint``.
+
     Timing: race-loss and replay paths run the SAME number of SQL
-    statements (CAS + SELECT + family-update + commit) so an attacker
-    can't read latency to learn whether the cookie they hold was just
-    rotated. The family-update in the race-loss path is a no-op
-    (guarded by ``false()``) but takes the same wire time.
+    statements (lookup + lock + CAS + SELECT + family-update + commit)
+    so an attacker can't read latency to learn whether the cookie they
+    hold was just rotated. The family-update in the race-loss path is a
+    no-op (guarded by ``false()``) but takes the same wire time.
     """
     digest = _hash_token(raw_token)
+
+    # Discover the presented token's family so we can take the per-family
+    # advisory lock BEFORE any mutation. An unknown token has no family
+    # to act on — return the same 401 as before without locking.
+    presented = (
+        await session.execute(
+            select(RefreshToken.family_id).where(RefreshToken.token_hash == digest)
+        )
+    ).first()
+    if presented is None:
+        return None
+    family_id = presented.family_id
+
+    # Serialize every rotate() on this family, and against revoke_family /
+    # revoke_all_for_user (they take the SAME lock). The lock is held until
+    # THIS transaction commits/rolls back — which is why the CAS and the
+    # mint below MUST share one transaction (no intermediate commit), and
+    # why every return path past this point commits to release the lock
+    # promptly. Deadlock is not possible: rotate takes EXACTLY ONE lock and
+    # never requests a second while holding it, so it can never be a link
+    # in a wait cycle (revoke_all takes N locks but in a globally sorted
+    # order, and no path both holds this lock and waits on another lock
+    # rotate could hold).
+    await _lock_family(session, family_id)
+
+    # Stamp ``now`` AFTER acquiring the advisory lock so ``revoked_at``
+    # (CAS) and the should_burn age check reflect the post-serialization
+    # instant, not the (possibly much earlier) pre-contention time. This
+    # keeps the invariant that the successor's ``created_at`` (issue_token
+    # stamps its OWN, even-later ``now`` post-CAS) is >= this ``revoked_at``
+    # — so the replay sweep never mistakes a legit successor for a
+    # pre-revocation row.
     now = datetime.now(tz=timezone.utc)
 
     # Compare-and-swap: only one concurrent caller flips ``revoked``
@@ -172,14 +266,21 @@ async def rotate(
     )
     winner = cas_result.first()
     if winner is not None:
-        await session.commit()
-        return await issue_token(
+        # Mint the successor in the SAME transaction as the CAS
+        # (``commit=False``), then commit both atomically. The advisory
+        # lock is held across the whole unit, so a concurrent burn on
+        # this family cannot interleave between the CAS and the mint.
+        raw, token_row = await issue_token(
             session,
             user=user,
             family_id=winner.family_id,
             user_agent=user_agent,
             client_ip=client_ip,
+            commit=False,
         )
+        await session.commit()
+        await session.refresh(token_row)
+        return raw, token_row
 
     # Lost the CAS. Distinguish race-loss from replay — but do BOTH
     # paths with identical SQL roundtrips so the timing side-channel
@@ -192,7 +293,9 @@ async def rotate(
         # Unknown token, expired, or wrong user — plain 401. No
         # family operation possible (no family to act on); we accept
         # the slight timing skew here because this path doesn't leak
-        # information about an EXISTING family.
+        # information about an EXISTING family. Commit to release the
+        # per-family advisory lock taken above.
+        await session.commit()
         return None
 
     # Decide burn vs no-op based on revoked_at age. ``None`` legacy
@@ -251,7 +354,40 @@ async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
     moved commit responsibility to the caller, so a failure in any
     chained step rolls back the whole operation, not just the steps
     after the implicit commit point.
+
+    Advisory locking (multi-family): this is a user-wide sweep spanning
+    EVERY active family. Before the UPDATE we SELECT DISTINCT the active
+    families and take the per-family advisory lock on each, IN SORTED
+    ORDER, so a concurrent ``rotate`` on any of those families cannot mint
+    a successor invisible to this sweep's READ COMMITTED snapshot (the
+    logout-all / force-revoke residual). Because the caller owns the
+    commit, the XACT locks are held until the CALLER commits — covering
+    the whole logout-all/force-revoke unit (including the
+    ``revocation_epoch`` bump), so no rotate successor can slip through
+    between this UPDATE and the epoch bump.
+
+    Deadlock analysis: locks are acquired in a deterministic global order
+    (``ORDER BY family_id``), so two concurrent ``revoke_all_for_user``
+    calls acquire in the same order and cannot form a cycle. ``rotate``
+    takes EXACTLY ONE lock and never waits on a second while holding it,
+    so it can never close a wait cycle with this sweep either.
+
+    TOCTOU note: ``rotate`` never creates NEW families (only ``login``
+    with ``family_id=None`` does), so locking the user's EXISTING active
+    families fully covers the rotate-in-flight threat. A login concurrent
+    with this sweep that mints a brand-new family is a legitimately new
+    session, out of scope for logout-all (which revokes what existed at
+    call time).
     """
+    family_rows = await session.execute(
+        select(RefreshToken.family_id)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False))
+        .distinct()
+        .order_by(RefreshToken.family_id)
+    )
+    for (family_id,) in family_rows.all():
+        await _lock_family(session, family_id)
+
     result = await session.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False))
