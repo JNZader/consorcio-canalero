@@ -36,7 +36,7 @@ def sample_create_data() -> ConsorcistaCreate:
     return ConsorcistaCreate(
         nombre="Juan",
         apellido="Perez",
-        cuit="20-12345678-9",
+        cuit="20-12345678-6",
         dni="12345678",
         domicilio="Calle Falsa 123",
         localidad="Bell Ville",
@@ -49,10 +49,35 @@ def sample_create_data() -> ConsorcistaCreate:
     )
 
 
+def _mod11_check_digit(first10: str) -> int | None:
+    """AFIP mod-11 check digit for the first 10 CUIT digits.
+
+    Returns ``None`` when ``resto == 1`` (AFIP never issues those —
+    the prefix changes instead), so callers must retry with another
+    base number.
+    """
+    multiplicadores = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+    resto = sum(int(d) * m for d, m in zip(first10, multiplicadores)) % 11
+    if resto == 0:
+        return 0
+    if resto == 1:
+        return None
+    return 11 - resto
+
+
 def _unique_cuit() -> str:
-    """Generate a unique 11-digit CUIT for test isolation."""
-    digits = str(uuid.uuid4().int)[:11].zfill(11)
-    return f"{digits[:2]}-{digits[2:10]}-{digits[10:]}"
+    """Generate a unique CUIT with a VALID mod-11 check digit.
+
+    The schema layer validates the AFIP check digit, so random
+    11-digit strings would be rejected ~91% of the time. Build
+    ``20-XXXXXXXX-<computed dv>`` from random digits and retry when
+    the base falls on the invalid ``resto == 1`` case.
+    """
+    while True:
+        body = str(uuid.uuid4().int)[:8].zfill(8)
+        dv = _mod11_check_digit(f"20{body}")
+        if dv is not None:
+            return f"20-{body}-{dv}"
 
 
 def _create_data_with_unique_cuit(**overrides) -> ConsorcistaCreate:
@@ -73,32 +98,71 @@ def _create_data_with_unique_cuit(**overrides) -> ConsorcistaCreate:
 
 
 class TestCuitValidation:
-    """Test CUIT format validation in schemas."""
+    """Test CUIT format + AFIP mod-11 check-digit validation in schemas.
+
+    Reference CUIT used throughout: ``20-12345678-6``. Its check digit
+    is computed with the AFIP algorithm — multipliers
+    (5,4,3,2,7,6,5,4,3,2) over ``2012345678`` give sum 148,
+    ``148 % 11 == 5`` → ``dv = 11 - 5 = 6``. The previous test data
+    (``20-12345678-9``) had an INVALID check digit and only passed
+    before the mod-11 validation existed.
+    """
 
     def test_valid_cuit_formatted(self):
         data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20-12345678-9"
+            nombre="Ana", apellido="Garcia", cuit="20-12345678-6"
         )
-        assert data.cuit == "20-12345678-9"
+        assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_digits_only(self):
         data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20123456789"
+            nombre="Ana", apellido="Garcia", cuit="20123456786"
         )
-        assert data.cuit == "20-12345678-9"
+        assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_with_spaces(self):
         data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="  20-12345678-9  "
+            nombre="Ana", apellido="Garcia", cuit="  20-12345678-6  "
         )
-        assert data.cuit == "20-12345678-9"
+        assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_with_dots(self):
         """Dots and dashes mixed — should normalize to formatted."""
         data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20.12345678.9"
+            nombre="Ana", apellido="Garcia", cuit="20.12345678.6"
         )
-        assert data.cuit == "20-12345678-9"
+        assert data.cuit == "20-12345678-6"
+
+    def test_invalid_check_digit_rejected(self):
+        """11 well-formed digits but wrong verifier — mod-11 must reject.
+
+        ``20-12345678-0``: the correct dv for ``2012345678`` is 6, so
+        0 fails the check. This is the regression gate for the AFIP
+        mod-11 validation.
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            ConsorcistaCreate(
+                nombre="Ana", apellido="Garcia", cuit="20-12345678-0"
+            )
+        assert "verificador" in str(exc_info.value)
+
+    def test_invalid_check_digit_rejected_digits_only(self):
+        """Same rejection for the digits-only input form."""
+        with pytest.raises(ValidationError) as exc_info:
+            ConsorcistaCreate(
+                nombre="Ana", apellido="Garcia", cuit="20123456789"
+            )
+        assert "verificador" in str(exc_info.value)
+
+    def test_resto_1_base_always_invalid(self):
+        """``20-44335566-X`` has ``resto == 1`` — AFIP never issues a
+        CUIT on that base (the prefix changes instead), so EVERY
+        check digit 0-9 must be rejected."""
+        for dv in range(10):
+            with pytest.raises(ValidationError):
+                ConsorcistaCreate(
+                    nombre="Ana", apellido="Garcia", cuit=f"20-44335566-{dv}"
+                )
 
     def test_invalid_cuit_too_short(self):
         with pytest.raises(ValidationError) as exc_info:
@@ -122,16 +186,24 @@ class TestCuitValidation:
         assert "11 digitos" in str(exc_info.value)
 
     def test_update_cuit_validation(self):
-        data = ConsorcistaUpdate(cuit="20123456789")
-        assert data.cuit == "20-12345678-9"
+        data = ConsorcistaUpdate(cuit="20123456786")
+        assert data.cuit == "20-12345678-6"
+
+    def test_update_cuit_invalid_check_digit_rejected(self):
+        with pytest.raises(ValidationError):
+            ConsorcistaUpdate(cuit="20-12345678-0")
 
     def test_update_cuit_none_is_valid(self):
         data = ConsorcistaUpdate(cuit=None)
         assert data.cuit is None
 
     def test_normalize_cuit_function(self):
-        assert _normalize_cuit("20-12345678-9") == "20-12345678-9"
-        assert _normalize_cuit("20123456789") == "20-12345678-9"
+        assert _normalize_cuit("20-12345678-6") == "20-12345678-6"
+        assert _normalize_cuit("20123456786") == "20-12345678-6"
+
+    def test_normalize_cuit_function_rejects_bad_dv(self):
+        with pytest.raises(ValueError, match="verificador"):
+            _normalize_cuit("20-12345678-9")
 
 
 # ──────────────────────────────────────────────
@@ -413,8 +485,8 @@ class TestCsvImport:
     def test_import_valid_csv(self, db: Session, service: PadronService):
         csv_content = (
             "nombre,apellido,cuit,localidad\n"
-            "Ana,Garcia,20-11223344-5,Bell Ville\n"
-            "Pedro,Lopez,27-99887766-1,Cordoba\n"
+            "Ana,Garcia,20-11223344-0,Bell Ville\n"
+            "Pedro,Lopez,27-99887766-6,Cordoba\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
@@ -427,7 +499,7 @@ class TestCsvImport:
     def test_import_skips_missing_nombre(self, db: Session, service: PadronService):
         csv_content = (
             "nombre,apellido,cuit\n"
-            ",Garcia,20-11223344-5\n"
+            ",Garcia,20-11223344-0\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
@@ -451,8 +523,8 @@ class TestCsvImport:
     ):
         csv_content = (
             "nombre,apellido,cuit\n"
-            "Ana,Garcia,20-33445566-7\n"
-            "Pedro,Lopez,20-33445566-7\n"
+            "Ana,Garcia,20-33445566-2\n"
+            "Pedro,Lopez,20-33445566-2\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
@@ -484,21 +556,21 @@ class TestCsvImport:
     def test_import_normalizes_cuit(self, db: Session, service: PadronService):
         csv_content = (
             "nombre,apellido,cuit\n"
-            "Ana,Garcia,20443355667\n"
+            "Ana,Garcia,20443355678\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
         assert result["created"] == 1
 
         # Verify the CUIT was normalized
-        found = service.repo.get_by_cuit(db, "20-44335566-7")
+        found = service.repo.get_by_cuit(db, "20-44335567-8")
         assert found is not None
 
     def test_import_column_aliases(self, db: Session, service: PadronService):
         """Headers like 'nombres', 'cuil', 'direccion' should be recognized."""
         csv_content = (
             "nombres,apellidos,cuil,direccion\n"
-            "Ana,Garcia,20-55667788-9,Calle 1\n"
+            "Ana,Garcia,20-55667788-4,Calle 1\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")

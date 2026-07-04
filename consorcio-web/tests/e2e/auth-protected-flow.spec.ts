@@ -16,24 +16,36 @@
  * one doesn't open a window.
  *
  * Runs against the live Cloudflare Pages deploy + the live Hetzner
- * backend, same as login-flow.spec.ts. The credentials below are
- * the long-standing E2E admin seed (also referenced in helpers/
- * auth.ts) and exist in prod for exactly this purpose.
+ * backend, same as login-flow.spec.ts. The E2E admin seed credentials
+ * are provided via E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD env vars
+ * (same convention as helpers/auth.ts) — never committed to git.
  */
 
 import { test, expect, type Page } from '@playwright/test';
 
 const APP_URL = 'https://consorcio-canalero.pages.dev';
-const ADMIN_EMAIL = 'jnzader@gmail.com';
-const ADMIN_PASSWORD = '1qaz2wsx';
 
-// Long timeouts to absorb (a) Cloudflare Pages cold edge cache and
-// (b) Hetzner backend cold-start + GEE auth on first hit. The
-// existing login-flow.spec.ts uses 2s/5s — this spec runs the form
-// 4 times (once per test) which compounds latency, so we give a
-// little more headroom per nav.
-const PAGE_SETTLE_MS = 3500;
-const POST_NAV_MS = 8000;
+// E2E admin credentials come from the environment — NEVER hardcode
+// them here (this file is committed; the previous plaintext creds
+// were rotated after being found in git history). Tests that need
+// the admin seed self-skip when the vars are absent.
+//
+// Document these vars in consorcio-web/.env.example:
+//   E2E_ADMIN_EMAIL=<seeded admin email>
+//   E2E_ADMIN_PASSWORD=<seeded admin password>
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
+
+// Generous per-condition timeout to absorb (a) Cloudflare Pages cold
+// edge cache and (b) Hetzner backend cold-start + GEE auth on first
+// hit. Applied to condition-based waits (waitForURL / toHaveURL),
+// NOT as fixed sleeps.
+const NAV_TIMEOUT_MS = 20_000;
+
+/** Skip the current test unless the admin seed creds are configured. */
+function requireAdminCreds(): void {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, 'set E2E_ADMIN_* env');
+}
 
 async function loginViaForm(page: Page): Promise<void> {
   // Diagnostic hook — only surfaces console errors so a flaky run
@@ -51,8 +63,8 @@ async function loginViaForm(page: Page): Promise<void> {
     .first();
   const passwordInput = page.locator('input[type="password"]').first();
   await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
-  await emailInput.fill(ADMIN_EMAIL);
-  await passwordInput.fill(ADMIN_PASSWORD);
+  await emailInput.fill(ADMIN_EMAIL!);
+  await passwordInput.fill(ADMIN_PASSWORD!);
 
   const submitBtn = page.locator('button[type="submit"]').first();
   await submitBtn.click();
@@ -81,6 +93,7 @@ test.describe('E2E auth flow — login → protected → logout', () => {
   test.setTimeout(60_000);
 
   test('login lands on a screen that proves authentication', async ({ page }) => {
+    requireAdminCreds();
     await loginViaForm(page);
     const url = page.url();
     const body = (await page.textContent('body')) ?? '';
@@ -104,16 +117,15 @@ test.describe('E2E auth flow — login → protected → logout', () => {
   });
 
   test('protected /admin route is reachable after login', async ({ page }) => {
+    requireAdminCreds();
     await loginViaForm(page);
     await page.goto(`${APP_URL}/admin`);
-    await page.waitForTimeout(POST_NAV_MS);
 
     // ProtectedRoute redirects to /login when the session is missing.
-    // If we stayed on /admin (or a sub-route under it) we were
-    // accepted.
-    const url = page.url();
-    expect(url).not.toContain('/login');
-    expect(url).toMatch(/\/admin/);
+    // ``toHaveURL`` auto-retries: it passes as soon as the SPA settles
+    // on /admin, and fails with a clear diff if we got bounced.
+    await expect(page).toHaveURL(/\/admin/, { timeout: NAV_TIMEOUT_MS });
+    expect(page.url()).not.toContain('/login');
   });
 
   // 3vr Opus-alt HIGH: the original "logout clears session" test had
@@ -128,6 +140,7 @@ test.describe('E2E auth flow — login → protected → logout', () => {
   // The two-step click — open dropdown → find logout item — pins
   // the UX, not just the underlying ``signOut`` call.
   test('logout BUTTON exists and clicking it leaves /admin', async ({ page }) => {
+    requireAdminCreds();
     await loginViaForm(page);
 
     // Step 1: open the user menu. Match the avatar by its visible
@@ -151,12 +164,14 @@ test.describe('E2E auth flow — login → protected → logout', () => {
       .first();
     await expect(logoutItem).toBeVisible({ timeout: 5_000 });
     await logoutItem.click();
-    await page.waitForTimeout(POST_NAV_MS);
 
     // After clicking, the app should redirect away from /admin
-    // (typically to / or /login).
-    const url = page.url();
-    expect(url).not.toMatch(/\/admin/);
+    // (typically to / or /login). Condition-based wait instead of a
+    // fixed sleep — resolves as soon as the redirect lands.
+    await page.waitForURL((url) => !/\/admin/.test(url.pathname), {
+      timeout: NAV_TIMEOUT_MS,
+    });
+    expect(page.url()).not.toMatch(/\/admin/);
   });
 
   test('protected route guard fires when session storage is gone', async ({ page }) => {
@@ -164,6 +179,7 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     // the ProtectedRoute component itself re-redirects to /login when
     // the stored session vanishes, however that happens (logout,
     // session expiry, manual ``sessionStorage.clear()`` from devtools).
+    requireAdminCreds();
     await loginViaForm(page);
 
     // Wait for the post-login navigation to finish before touching
@@ -178,10 +194,9 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     });
 
     await page.goto(`${APP_URL}/admin`);
-    await page.waitForTimeout(POST_NAV_MS);
 
-    const url = page.url();
-    expect(url).toContain('/login');
+    // Wait for the guard's redirect by condition, not by clock.
+    await expect(page).toHaveURL(/\/login/, { timeout: NAV_TIMEOUT_MS });
   });
 
   // F5-C gap closer: cross-tab session semantics. F4-E moved tokens to
@@ -192,17 +207,16 @@ test.describe('E2E auth flow — login → protected → logout', () => {
   // catch is "frontend trusts localStorage user and lets the new tab
   // through despite the missing token".
   test('new tab opened after login is unauthenticated', async ({ context, page }) => {
+    requireAdminCreds();
     await loginViaForm(page);
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
     const newTab = await context.newPage();
     await newTab.goto(`${APP_URL}/admin`);
-    await newTab.waitForTimeout(POST_NAV_MS);
 
     // Token is per-tab; the new tab never received one, so the
-    // guard must bounce it.
-    const url = newTab.url();
-    expect(url).toContain('/login');
+    // guard must bounce it. Condition-based wait for the redirect.
+    await expect(newTab).toHaveURL(/\/login/, { timeout: NAV_TIMEOUT_MS });
     await newTab.close();
   });
 
@@ -235,11 +249,10 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     expect(reg.status()).toBe(201);
 
     // Log in through the form (not the API) so the frontend session
-    // hydration runs exactly as a real user. Give the SPA a moment
-    // to mount — first-paint on Cloudflare cold edge can run past
-    // 2s before any input is in the DOM.
+    // hydration runs exactly as a real user. The ``waitFor`` on the
+    // email input below already absorbs the Cloudflare cold-edge
+    // first paint — no fixed settle sleep needed.
     await page.goto(`${APP_URL}/login`);
-    await page.waitForTimeout(PAGE_SETTLE_MS);
     const emailInput = page
       .locator(
         'input[type="email"], input[name="email"], input[placeholder*="mail"], input[placeholder*="correo"]'
@@ -257,7 +270,11 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     );
 
     await page.goto(`${APP_URL}/admin`);
-    await page.waitForTimeout(POST_NAV_MS);
+
+    // Wait by condition: the role gate redirects AWAY from /admin.
+    await page.waitForURL((url) => !/^\/admin($|\/)/.test(url.pathname), {
+      timeout: NAV_TIMEOUT_MS,
+    });
 
     // The contract: a ciudadano with a valid session reaching /admin
     // ends up SOMEWHERE OTHER than /admin (the project chose to
@@ -297,22 +314,22 @@ test.describe('F5-E reset-password code exchange', () => {
     // for any bogus code. The SPA renders the loader for the
     // round-trip then falls through to the "invalid" Alert.
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
-    await page.waitForTimeout(2000);
-    const body = (await page.textContent('body')) ?? '';
     // Either the loader stayed visible (slow backend) or the
     // "invalid" alert is showing. Both are acceptable end states for
-    // a bogus code; what we DON'T want is the password form rendered
-    // (which would mean the SPA proceeded with a missing token).
+    // a bogus code. ``toContainText`` auto-retries, replacing the
+    // previous fixed 2s sleep.
+    await expect(page.locator('body')).toContainText(
+      /verificando el enlace|enlace invalido|enlace invalid|expir/i,
+      { timeout: 15_000 }
+    );
+    // What we DON'T want is the password form rendered (which would
+    // mean the SPA proceeded with a missing token).
     const passwordInputVisible = await page
       .locator('input[type="password"]')
       .first()
       .isVisible()
       .catch(() => false);
     expect(passwordInputVisible).toBeFalsy();
-    // And either the loader or the invalid-link Alert IS visible.
-    const validErrorState =
-      /verificando el enlace|enlace invalido|enlace invalid|expir/i.test(body);
-    expect(validErrorState, `body should show loader or invalid-link alert, got: ${body.slice(0, 400)}`).toBeTruthy();
   });
 
   test('reset-password with ?token= (legacy path) keeps working', async ({ page }) => {
