@@ -43,6 +43,10 @@ export function useCaminosColoreados() {
       return (await response.json()) as CaminosColoreados;
     },
     staleTime: 1000 * 60 * 10,
+    // Public geo layer that degrades gracefully (inline error + `reload`).
+    // One retry covers transient blips without the global retry-3
+    // exponential-backoff pile-up on a hard failure.
+    retry: 1,
   });
 
   const caminos = useMemo<FeatureCollection | null>(() => {

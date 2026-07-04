@@ -16,6 +16,11 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60, // 1 minute
       gcTime: 1000 * 60 * 5, // 5 minutes (formerly cacheTime)
+      // Global default for API queries. Static-asset / gracefully-degrading
+      // geo hooks (useSoilMap, useCatastroMap, useBasins, useCaminosColoreados)
+      // override this per-query with `retry: 0 | 1` — a 404 on a bundled
+      // geojson never recovers, so 3 exponential-backoff retries only delay
+      // the graceful fallback.
       retry: 3,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
       refetchOnWindowFocus: false,

@@ -71,6 +71,10 @@ export function useSoilMap(options: UseSoilMapOptions = {}) {
       return (await response.json()) as FeatureCollection;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    // Static bundled asset: a 404/error won't fix itself on retry, and the
+    // map degrades gracefully without the layer. Overrides the global
+    // `retry: 3` (exponential backoff) from lib/query.ts.
+    retry: 0,
     enabled: options.enabled ?? true,
   });
 

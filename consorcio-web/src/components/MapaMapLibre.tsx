@@ -162,7 +162,13 @@ export default function MapaMapLibre() {
   const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
   const { caminos, consorcios } = useCaminosColoreados();
   const { conflictos } = useConflictos();
-  const { soilMap } = useSoilMap();
+  // Lazy fetch (~2.2MB geojson): the soil layer starts OFF
+  // (mapLayerSyncStore soil: false), so defer the download until the user
+  // actually toggles it on — same pattern as TerrainViewer3D.tsx.
+  // Correctness: soilCollection is only consumed by syncSoilLayers (hidden
+  // while OFF) and the KMZ export, which skips soil unless
+  // visibleLayers.soil === true (kmzBuilder.ts::shouldIncludeLayer).
+  const { soilMap } = useSoilMap({ enabled: !!vectorVisibility.soil });
   const { basins } = useBasins();
   const { suggestedZones } = useSuggestedZones();
   const { waterways } = useWaterways();
@@ -201,7 +207,16 @@ export default function MapaMapLibre() {
   );
   const { collection: escuelasCollection } = useEscuelas();
   const escuelasData = { collection: escuelasCollection };
-  const { catastroMap } = useCatastroMap();
+  // Lazy fetch (~1.8MB geojson): the 2D catastro RENDER uses Martin vector
+  // tiles (mapLayerEffectHelpers.ts::syncCatastroLayers) — this geojson's
+  // only 2D consumer is `exportSources.catastro` for the KMZ export. The
+  // KMZ builder only includes catastro when the layer is visible
+  // (kmzBuilder.ts::shouldIncludeLayer → visibleLayers.catastro === true),
+  // so gating the fetch on visibility is lossless for the export.
+  // Known race (documented trade-off): toggling catastro ON and exporting
+  // KMZ before the fetch resolves silently omits the layer — same graceful
+  // degradation buildKmz already applies to any missing slot.
+  const { catastroMap } = useCatastroMap({ enabled: !!vectorVisibility.catastro });
 
   const {
     zonaCollection,
@@ -523,24 +538,40 @@ export default function MapaMapLibre() {
   // ── KMZ export data sources ────────────────────────────────────────────
   // Keys MUST match `kmzLayerRegistry` entries. Missing/null slots are
   // silently skipped by `buildKmz` — the hook does not refuse when a slot
-  // is empty. Assembled inline (not memoised) because the cost is trivial
-  // (13 property reads) and the downstream hook dedupes by reference
-  // identity of each FeatureCollection.
-  const exportSources = {
-    canales_relevados: canalesRelevados,
-    canales_propuestos: canalesPropuestas,
-    escuelas: escuelasCollection,
-    pilar_verde_bpa_historico: pilarVerde?.bpaHistorico ?? null,
-    pilar_verde_agro_aceptada: pilarVerde?.agroAceptada ?? null,
-    pilar_verde_agro_presentada: pilarVerde?.agroPresentada ?? null,
-    pilar_verde_agro_zonas: pilarVerde?.agroZonas ?? null,
-    pilar_verde_porcentaje_forestacion: pilarVerde?.porcentajeForestacion ?? null,
-    waterways: waterwaysCollection,
-    roads: roadsCollection ?? null,
-    catastro: catastroMap,
-    soil: soilCollection,
-    'ypf-estacion-bombeo': YPF_ESTACION_BOMBEO_GEOJSON,
-  };
+  // is empty. Memoised explicitly: a fresh object identity every render
+  // would invalidate `useMapExportHandlers`'s `handleExportKmz` useCallback
+  // (dep: `exportSources`) and everything downstream of it.
+  const exportSources = useMemo(
+    () => ({
+      canales_relevados: canalesRelevados,
+      canales_propuestos: canalesPropuestas,
+      escuelas: escuelasCollection,
+      pilar_verde_bpa_historico: pilarVerde?.bpaHistorico ?? null,
+      pilar_verde_agro_aceptada: pilarVerde?.agroAceptada ?? null,
+      pilar_verde_agro_presentada: pilarVerde?.agroPresentada ?? null,
+      pilar_verde_agro_zonas: pilarVerde?.agroZonas ?? null,
+      pilar_verde_porcentaje_forestacion: pilarVerde?.porcentajeForestacion ?? null,
+      waterways: waterwaysCollection,
+      roads: roadsCollection ?? null,
+      catastro: catastroMap,
+      soil: soilCollection,
+      'ypf-estacion-bombeo': YPF_ESTACION_BOMBEO_GEOJSON,
+    }),
+    [
+      canalesRelevados,
+      canalesPropuestas,
+      escuelasCollection,
+      pilarVerde?.bpaHistorico,
+      pilarVerde?.agroAceptada,
+      pilarVerde?.agroPresentada,
+      pilarVerde?.agroZonas,
+      pilarVerde?.porcentajeForestacion,
+      waterwaysCollection,
+      roadsCollection,
+      catastroMap,
+      soilCollection,
+    ]
+  );
 
   const {
     handleExportPng,

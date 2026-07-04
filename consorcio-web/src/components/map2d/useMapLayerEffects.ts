@@ -37,11 +37,6 @@ import {
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
 
-function observeLayerSyncDependencyChange(..._values: readonly unknown[]): void {
-  // Intentional no-op: some effects must re-run after sibling layer effects
-  // have mounted/reordered sources even when this effect only needs map state.
-}
-
 interface LayerLike {
   id: string;
   nombre: string;
@@ -301,7 +296,32 @@ export function useMapLayerEffects({
   // whenever the user toggles an etapa.
   const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
 
+  // ── Canales visibility signature ─────────────────────────────────────────
+  // The canales sync effect only cares about the canales-related slices of
+  // `vectorVisibility` (master toggles + per-canal `canal_relevado_*` /
+  // `canal_propuesto_*` keys). Depending on the whole object made EVERY
+  // layer toggle (soil, roads, escuelas, …) re-filter and re-order the
+  // canales z-stack. A sorted string signature gives value-equality in the
+  // dep array (Object.is on strings), so the effect re-runs only when a
+  // canales-relevant flag actually changes.
+  const canalesVisibilitySignature = Object.entries(vectorVisibility)
+    .filter(
+      ([key]) =>
+        key === 'canales_relevados' ||
+        key === 'canales_propuestos' ||
+        key.startsWith('canal_relevado_') ||
+        key.startsWith('canal_propuesto_')
+    )
+    .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+    .sort()
+    .join('|');
+  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados;
+  const canalesPropuestosVisible = !!vectorVisibility.canales_propuestos;
+
   useEffect(() => {
+    // Reference the signature so the effect re-runs on per-canal toggles
+    // (the id lists below are read non-reactively via `getState()`).
+    void canalesVisibilitySignature;
     const map = mapRef.current;
     if (!map || !mapReady) return;
     if (!canales) return;
@@ -333,8 +353,8 @@ export function useMapLayerEffects({
         GeoJSON.LineString,
         import('../../types/canales').CanalFeatureProperties
       > | null,
-      relevadosVisible: !!vectorVisibility.canales_relevados,
-      propuestasVisible: !!vectorVisibility.canales_propuestos,
+      relevadosVisible: canalesRelevadosVisible,
+      propuestasVisible: canalesPropuestosVisible,
       visibleRelevadoIds,
       visiblePropuestaIds,
       activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
@@ -346,7 +366,9 @@ export function useMapLayerEffects({
     canales?.index,
     canales?.relevados,
     canales?.propuestas,
-    vectorVisibility,
+    canalesRelevadosVisible,
+    canalesPropuestosVisible,
+    canalesVisibilitySignature,
     propuestasEtapasVisibility,
   ]);
 
@@ -380,44 +402,51 @@ export function useMapLayerEffects({
   // Keep the DEM raster just below the user-authored stack (Pilar Verde +
   // Canales) so contextual vectors (soil / catastro / basins / roads /
   // waterways) are NOT dimmed by the 0.6 raster-opacity overlay. This effect
-  // runs after all Pilar Verde + Canales sync effects — the deps cover every
-  // signal that can mount/unmount one of the reference layers.
-  useEffect(() => {
-    observeLayerSyncDependencyChange(
-      demTileUrl,
-      vectorVisibility,
-      canales,
-      canales?.index,
-      canales?.relevados,
-      canales?.propuestas,
-      pilarVerde?.bpaHistorico,
-      pilarVerde?.agroAceptada,
-      pilarVerde?.agroPresentada,
-      pilarVerde?.agroZonas,
-      pilarVerde?.porcentajeForestacion,
-      propuestasEtapasVisibility
-    );
+  // must re-run whenever a sibling sync effect can have mounted/reordered a
+  // reference layer — but ONLY while the DEM is actually shown. The previous
+  // version depended on ~13 raw objects and re-ran on every layer toggle
+  // even with the DEM off (immediate early-return). Instead we collapse all
+  // mount/reorder triggers into a string signature that is a constant ''
+  // while the DEM is inactive, so inactive-DEM renders never re-fire it.
+  const demActive = showDemOverlay && !!activeDemLayerId;
+  const demReorderSignal = !demActive
+    ? ''
+    : [
+        // Any visibility flip can mount a layer above the DEM raster.
+        Object.entries(vectorVisibility)
+          .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+          .sort()
+          .join(','),
+        // Data arrival mounts sources/layers after the DEM is already up.
+        soilCollection ? 1 : 0,
+        roadsCollection ? 1 : 0,
+        basins ? 1 : 0,
+        canales?.index ? 1 : 0,
+        canales?.relevados ? 1 : 0,
+        canales?.propuestas ? 1 : 0,
+        pilarVerde?.bpaHistorico ? 1 : 0,
+        pilarVerde?.agroAceptada ? 1 : 0,
+        pilarVerde?.agroPresentada ? 1 : 0,
+        pilarVerde?.agroZonas ? 1 : 0,
+        pilarVerde?.porcentajeForestacion ? 1 : 0,
+        // Etapa flips re-run syncCanalesLayers (may remount canal layers).
+        Object.entries(propuestasEtapasVisibility)
+          .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+          .sort()
+          .join(','),
+      ].join('|');
 
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
     if (!showDemOverlay || !activeDemLayerId) return;
+    // `demReorderSignal` is referenced so sibling layer mounts/reorders
+    // (encoded in the signature) re-trigger the hoist while the DEM is on.
+    // `demTileUrl` is referenced because syncDemRasterLayer re-creates the
+    // raster layer (appended on top) when the tile URL changes — the hoist
+    // must re-run afterwards.
+    void demReorderSignal;
+    void demTileUrl;
     moveDemAboveContextualVectors(map);
-  }, [
-    mapReady,
-    mapRef,
-    showDemOverlay,
-    activeDemLayerId,
-    demTileUrl,
-    vectorVisibility,
-    canales,
-    canales?.index,
-    canales?.relevados,
-    canales?.propuestas,
-    pilarVerde?.bpaHistorico,
-    pilarVerde?.agroAceptada,
-    pilarVerde?.agroPresentada,
-    pilarVerde?.agroZonas,
-    pilarVerde?.porcentajeForestacion,
-    propuestasEtapasVisibility,
-  ]);
+  }, [mapReady, mapRef, showDemOverlay, activeDemLayerId, demTileUrl, demReorderSignal]);
 }
