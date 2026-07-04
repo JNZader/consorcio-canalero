@@ -5,7 +5,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.finanzas.models import CATEGORIAS_GASTO
 
 
 # ──────────────────────────────────────────────
@@ -140,11 +142,32 @@ class IngresoListResponse(BaseModel):
 
 
 class PresupuestoCreate(BaseModel):
-    """Payload to create a budget line item."""
+    """Payload to create a budget line item.
+
+    ``rubro`` is constrained to the same ``CATEGORIAS_GASTO`` enum used by
+    ``Gasto.categoria`` so that the budget-execution report (projected vs
+    actual) compares values in the same namespace. Free-text rubros made
+    the report silently miss matches.
+    """
 
     anio: int = Field(..., ge=2000, le=2100)
-    rubro: str = Field(..., min_length=2, max_length=100)
+    rubro: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        description=" | ".join(CATEGORIAS_GASTO),
+    )
     monto_proyectado: Decimal = Field(..., ge=0, max_digits=12, decimal_places=2)
+
+    @field_validator("rubro")
+    @classmethod
+    def validate_rubro(cls, v: str) -> str:
+        rubro = v.strip().lower()
+        if rubro not in CATEGORIAS_GASTO:
+            raise ValueError(
+                f"Rubro invalido. Opciones: {', '.join(CATEGORIAS_GASTO)}"
+            )
+        return rubro
 
 
 class PresupuestoUpdate(BaseModel):

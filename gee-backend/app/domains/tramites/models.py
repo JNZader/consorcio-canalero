@@ -107,10 +107,10 @@ class Tramite(UUIDMixin, TimestampMixin, Base):
     )
     fecha_resolucion: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     resolucion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
 
     # Relationships
@@ -137,10 +137,10 @@ class TramiteSeguimiento(UUIDMixin, Base):
     estado_anterior: Mapped[str] = mapped_column(String(50), nullable=False)
     estado_nuevo: Mapped[str] = mapped_column(String(50), nullable=False)
     comentario: Mapped[str] = mapped_column(Text, nullable=False)
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),

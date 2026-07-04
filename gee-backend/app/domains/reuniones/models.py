@@ -83,10 +83,10 @@ class Reunion(UUIDMixin, TimestampMixin, Base):
     orden_del_dia_items: Mapped[list] = mapped_column(
         JSON, nullable=False, server_default="[]"
     )
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
 
     # Relationships

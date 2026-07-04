@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.padron.models import Consorcista
@@ -224,8 +225,23 @@ class PadronService:
                     ),
                     categoria=payload.get("categoria"),
                 )
-                self.repo.create(db, schema)
+                # Savepoint per row: if the INSERT fails, only this row is
+                # rolled back and the session stays usable for the rest of
+                # the file (no poisoned session).
+                with db.begin_nested():
+                    self.repo.create(db, schema)
                 created += 1
+            except IntegrityError:
+                # Real duplicate at the DB level (e.g. concurrent insert or
+                # unique constraint the pre-checks missed) — report it as a
+                # duplicate, not as a spurious error.
+                skipped += 1
+                errors.append(
+                    {
+                        "row": row_number,
+                        "error": f"CUIT {cuit} ya existe en el padron",
+                    }
+                )
             except Exception as exc:
                 skipped += 1
                 errors.append({"row": row_number, "error": str(exc)})
