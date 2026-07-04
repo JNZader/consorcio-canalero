@@ -100,6 +100,10 @@ export function useMapInitialization({
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
       preserveDrawingBuffer: true,
+      // Wheel/one-finger gestures must NOT hijack the page scroll. MapLibre's
+      // native cooperative-gestures mode requires Ctrl+wheel (or two fingers)
+      // to zoom and shows a hint otherwise. See change `rediseno-ux-mapa`.
+      cooperativeGestures: true,
     });
 
     map.addControl(new maplibre.NavigationControl(), 'top-right');

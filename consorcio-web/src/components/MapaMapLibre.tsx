@@ -9,7 +9,7 @@
  * MapaInteractivo.tsx only needs a 1-line lazy import change to activate this.
  */
 
-import { Box } from '@mantine/core';
+import { Box, Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import type { Feature, FeatureCollection } from 'geojson';
 
@@ -46,6 +46,7 @@ import styles from '../styles/components/map.module.css';
 import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
+import { MapWorkspace } from './map2d/MapWorkspace';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
@@ -614,6 +615,10 @@ export default function MapaMapLibre() {
   /*  Render                                                                 */
   /* ---------------------------------------------------------------------- */
 
+  // "N capas activas" indicator (Phase 1). Phase 2.4 refines this to only
+  // count top-level families; for now it reflects all visible vector flags.
+  const activeLayerCount = Object.values(vectorVisibility).filter(Boolean).length;
+
   return (
     <Box className={styles.mapWorkspace} data-testid="map-workspace">
       <Box
@@ -639,154 +644,153 @@ export default function MapaMapLibre() {
         />
       </Box>
 
-      <Box
-        className={styles.mapCanvasWrapper}
-        role="application"
-        aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
-      >
-        {/* Map container */}
-        <div
-          ref={sliderContainerRef}
-          style={{ width: '100%', height: '100%', position: 'relative' }}
-        >
-          <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-          {viewMode === 'comparison' && comparison?.left && comparison.right && (
+      <MapWorkspace
+        activeLayerCount={activeLayerCount}
+        canvas={
+          <Box
+            className={styles.mapCanvasWrapper}
+            role="application"
+            aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
+          >
+            {/* Map container */}
             <div
-              ref={comparisonContainerRef}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                pointerEvents: 'none',
-                zIndex: 10,
-                clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
-              }}
+              ref={sliderContainerRef}
+              style={{ width: '100%', height: '100%', position: 'relative' }}
+            >
+              <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+              {viewMode === 'comparison' && comparison?.left && comparison.right && (
+                <div
+                  ref={comparisonContainerRef}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    zIndex: 10,
+                    clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
+                  }}
+                />
+              )}
+              <MapViewportOverlay
+                viewMode={viewMode}
+                sliderPosition={sliderPosition}
+                mapReady={mapReady}
+                onSliderMouseDown={handleSliderMouseDown}
+              />
+            </div>
+
+            {/* Measurement tools: floating toolbar + HTML label overlay. */}
+            <MeasurementToolbar
+              mode={measurementState.mode}
+              hasMeasurements={measurementState.measurements.length > 0}
+              onStartDistance={startMeasureDistance}
+              onStartArea={startMeasureArea}
+              onClear={clearMeasurements}
             />
-          )}
-          <MapViewportOverlay
-            viewMode={viewMode}
-            sliderPosition={sliderPosition}
-            mapReady={mapReady}
-            onSliderMouseDown={handleSliderMouseDown}
-          />
-        </div>
+            <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
+            <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 
-        {/* Measurement tools: floating toolbar + HTML label overlay. */}
-        <MeasurementToolbar
-          mode={measurementState.mode}
-          hasMeasurements={measurementState.measurements.length > 0}
-          onStartDistance={startMeasureDistance}
-          onStartArea={startMeasureArea}
-          onClear={clearMeasurements}
-        />
-        <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
-        <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
-
-        <MapUiPanels
-          baseLayer={baseLayer}
-          onBaseLayerChange={setBaseLayer}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          hasSingleImage={hasSingleImage}
-          hasComparison={hasComparison}
-          singleImageInfo={singleImageInfo}
-          comparisonInfo={comparisonInfo}
-          layerItems={vectorLayerItems}
-          vectorVisibility={vectorVisibility}
-          onLayerVisibilityChange={toggleLayer}
-          showIGNOverlay={showIGNOverlay}
-          onShowIGNOverlayChange={setShowIGNOverlay}
-          demEnabled={demLayers.length > 0}
-          showDemOverlay={showDemOverlay}
-          onShowDemOverlayChange={setShowDemOverlay}
-          activeDemLayerId={activeDemLayerId}
-          onActiveDemLayerIdChange={setActiveDemLayerId}
-          demOptions={demLayerOptions}
-          canalesRelevadosItems={canalesRelevadosItems}
-          canalesPropuestosItems={canalesPropuestosItems}
-          canManageZoning={canManageZoning}
-          showSuggestedZonesPanel={showSuggestedZonesPanel}
-          hasApprovedZones={hasApprovedZones}
-          onOpenExportPng={() => setExportPngModalOpen(true)}
-          onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
-          onExportKmz={handleExportKmz}
-          showLegend={showLegend}
-          consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
-          activeLegendItems={activeLegendItems}
-          visibleRasterLayers={visibleRasterLayers}
-          hiddenClasses={hiddenClasses}
-          hiddenRanges={hiddenRanges}
-          onClassToggle={(layerType, classIndex, visible) =>
-            setHiddenClasses((prev) => {
-              const curr = prev[layerType] ?? [];
-              const next = visible ? curr.filter((i) => i !== classIndex) : [...curr, classIndex];
-              return { ...prev, [layerType]: next };
-            })
-          }
-          onRangeToggle={(layerType, rangeIndex, visible) =>
-            setHiddenRanges((prev) => {
-              const curr = prev[layerType] ?? [];
-              const next = visible ? curr.filter((i) => i !== rangeIndex) : [...curr, rangeIndex];
-              return { ...prev, [layerType]: next };
-            })
-          }
-          suggestedZoneSummaries={suggestedZoneSummaries}
-          suggestedZoneNames={suggestedZoneNames}
-          onZoneNameChange={(id, value) =>
-            setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
-          }
-          selectedDraftBasinName={selectedDraftBasinName}
-          selectedDraftBasinZoneId={selectedDraftBasinZoneId}
-          draftDestinationZoneId={draftDestinationZoneId}
-          onDestinationZoneChange={setDraftDestinationZoneId}
-          onApplyBasinMove={handleApplyBasinMove}
-          approvedAt={approvedAt}
-          approvedVersion={approvedVersion}
-          approvedZonesHistory={approvedZonesHistory}
-          approvalName={approvalName}
-          approvalNotes={approvalNotes}
-          onApprovalNameChange={setApprovalName}
-          onApprovalNotesChange={setApprovalNotes}
-          onCloseSuggestedZonesPanel={() => setShowSuggestedZonesPanel(false)}
-          onApproveZones={handleApproveZones}
-          onClearApprovedZones={handleClearApprovedZones}
-          onRestoreVersion={async (id) => {
-            try {
-              await restoreApprovedZonesVersion(id);
-              notifications.show({
-                title: 'Versión restaurada',
-                message: 'Zonificación restaurada',
-                color: 'green',
-              });
-            } catch (_err) {
-              notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
-            }
-          }}
-          onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
-          selectedFeatures={selectedFeatures}
-          onCloseInfoPanel={() => setSelectedFeatures([])}
-          bpaEnriched={pilarVerde?.bpaEnriched}
-          bpaHistory={pilarVerde?.bpaHistory}
-          exportPngModalOpen={exportPngModalOpen}
-          onCloseExportPngModal={() => setExportPngModalOpen(false)}
-          exportTitle={exportTitle}
-          exportIncludeLegend={exportIncludeLegend}
-          exportIncludeMetadata={exportIncludeMetadata}
-          onExportTitleChange={setExportTitle}
-          onExportIncludeLegendChange={setExportIncludeLegend}
-          onExportIncludeMetadataChange={setExportIncludeMetadata}
-          onExportPng={handleExportPng}
-          showEmbeddedMapControls={false}
-          showEmbeddedRasterLegend={false}
-        />
-      </Box>
-
-      <Box
-        className={styles.mapBottomBar}
-        aria-label="Capas y leyenda del mapa"
-        data-testid="map-bottom-bar"
-      >
-        <Box className={styles.mapBottomBarItem} data-testid="map-bottom-bar-toggles">
-          <LayerControlsPanel
+            <MapUiPanels
+              baseLayer={baseLayer}
+              onBaseLayerChange={setBaseLayer}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              hasSingleImage={hasSingleImage}
+              hasComparison={hasComparison}
+              singleImageInfo={singleImageInfo}
+              comparisonInfo={comparisonInfo}
+              layerItems={vectorLayerItems}
+              vectorVisibility={vectorVisibility}
+              onLayerVisibilityChange={toggleLayer}
+              showIGNOverlay={showIGNOverlay}
+              onShowIGNOverlayChange={setShowIGNOverlay}
+              demEnabled={demLayers.length > 0}
+              showDemOverlay={showDemOverlay}
+              onShowDemOverlayChange={setShowDemOverlay}
+              activeDemLayerId={activeDemLayerId}
+              onActiveDemLayerIdChange={setActiveDemLayerId}
+              demOptions={demLayerOptions}
+              canalesRelevadosItems={canalesRelevadosItems}
+              canalesPropuestosItems={canalesPropuestosItems}
+              canManageZoning={canManageZoning}
+              showSuggestedZonesPanel={showSuggestedZonesPanel}
+              hasApprovedZones={hasApprovedZones}
+              onOpenExportPng={() => setExportPngModalOpen(true)}
+              onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+              onExportKmz={handleExportKmz}
+              showLegend={showLegend}
+              consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+              activeLegendItems={activeLegendItems}
+              visibleRasterLayers={visibleRasterLayers}
+              hiddenClasses={hiddenClasses}
+              hiddenRanges={hiddenRanges}
+              onClassToggle={(layerType, classIndex, visible) =>
+                setHiddenClasses((prev) => {
+                  const curr = prev[layerType] ?? [];
+                  const next = visible ? curr.filter((i) => i !== classIndex) : [...curr, classIndex];
+                  return { ...prev, [layerType]: next };
+                })
+              }
+              onRangeToggle={(layerType, rangeIndex, visible) =>
+                setHiddenRanges((prev) => {
+                  const curr = prev[layerType] ?? [];
+                  const next = visible ? curr.filter((i) => i !== rangeIndex) : [...curr, rangeIndex];
+                  return { ...prev, [layerType]: next };
+                })
+              }
+              suggestedZoneSummaries={suggestedZoneSummaries}
+              suggestedZoneNames={suggestedZoneNames}
+              onZoneNameChange={(id, value) =>
+                setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
+              }
+              selectedDraftBasinName={selectedDraftBasinName}
+              selectedDraftBasinZoneId={selectedDraftBasinZoneId}
+              draftDestinationZoneId={draftDestinationZoneId}
+              onDestinationZoneChange={setDraftDestinationZoneId}
+              onApplyBasinMove={handleApplyBasinMove}
+              approvedAt={approvedAt}
+              approvedVersion={approvedVersion}
+              approvedZonesHistory={approvedZonesHistory}
+              approvalName={approvalName}
+              approvalNotes={approvalNotes}
+              onApprovalNameChange={setApprovalName}
+              onApprovalNotesChange={setApprovalNotes}
+              onCloseSuggestedZonesPanel={() => setShowSuggestedZonesPanel(false)}
+              onApproveZones={handleApproveZones}
+              onClearApprovedZones={handleClearApprovedZones}
+              onRestoreVersion={async (id) => {
+                try {
+                  await restoreApprovedZonesVersion(id);
+                  notifications.show({
+                    title: 'Versión restaurada',
+                    message: 'Zonificación restaurada',
+                    color: 'green',
+                  });
+                } catch (_err) {
+                  notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
+                }
+              }}
+              onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
+              selectedFeatures={selectedFeatures}
+              onCloseInfoPanel={() => setSelectedFeatures([])}
+              bpaEnriched={pilarVerde?.bpaEnriched}
+              bpaHistory={pilarVerde?.bpaHistory}
+              exportPngModalOpen={exportPngModalOpen}
+              onCloseExportPngModal={() => setExportPngModalOpen(false)}
+              exportTitle={exportTitle}
+              exportIncludeLegend={exportIncludeLegend}
+              exportIncludeMetadata={exportIncludeMetadata}
+              onExportTitleChange={setExportTitle}
+              onExportIncludeLegendChange={setExportIncludeLegend}
+              onExportIncludeMetadataChange={setExportIncludeMetadata}
+              onExportPng={handleExportPng}
+              showEmbeddedMapControls={false}
+              showEmbeddedRasterLegend={false}
+            />
+          </Box>
+        }
+        controls={
+          <Stack gap="sm" data-testid="map-controls-tree">
+            <LayerControlsPanel
             layerItems={vectorLayerItems}
             vectorVisibility={vectorVisibility}
             onLayerVisibilityChange={toggleLayer}
@@ -801,10 +805,9 @@ export default function MapaMapLibre() {
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
           />
-        </Box>
-        {showLegend && (
-          <Box className={styles.mapBottomBarItem} data-testid="map-bottom-bar-leyenda">
-            <LeyendaPanel
+            {showLegend && (
+              <>
+                <LeyendaPanel
               consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
               customItems={activeLegendItems}
               embedded
@@ -848,9 +851,11 @@ export default function MapaMapLibre() {
                 }
               />
             )}
-          </Box>
-        )}
-      </Box>
+              </>
+            )}
+          </Stack>
+        }
+      />
     </Box>
   );
 }
