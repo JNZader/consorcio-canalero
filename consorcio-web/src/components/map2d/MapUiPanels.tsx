@@ -9,12 +9,14 @@ import { InfoPanel } from './InfoPanel';
 import { type CanalToggleEntry, LayerControlsPanel } from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
+import type { LayerCategory } from './map2dDerived';
 import { SuggestedZonesPanel } from './SuggestedZonesPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 
 interface LayerItem {
   id: string;
   label: string;
+  category: LayerCategory;
 }
 
 interface DemOption {

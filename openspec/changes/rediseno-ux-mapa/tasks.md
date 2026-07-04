@@ -50,34 +50,34 @@
 
 ## Phase 2: Agrupación + búsqueda de capas (Dolor 1)
 
-- [ ] **2.1 Agregar category a LayerItem (RED→GREEN)**
+- [x] **2.1 Agregar category a LayerItem (RED→GREEN)**
   - RED: `map2dDerived.test.ts` — assert que TODO item de `buildVectorLayerItems` tiene `category` válida.
   - GREEN: const-object `LAYER_CATEGORY` + campo `category` por capa en `buildVectorLayerItems` (`map2dDerived.ts:216-266`).
   - **AC**: ninguna capa sin familia; tipo derivado del const-object (skill typescript).
   - **Files**: `consorcio-web/src/components/map2d/map2dDerived.ts`, `map2dDerived.test.ts`
 
-- [ ] **2.2 Accordion por familia en LayerControlsPanel (RED→GREEN)**
+- [x] **2.2 Accordion por familia en LayerControlsPanel (RED→GREEN)**
   - RED: `LayerControlsPanel.test.tsx` — capas renderizan agrupadas por category en `Accordion`.
   - GREEN: reemplazar lista plana por `Accordion` de Mantine, un item por familia, con icono por grupo.
   - **AC**: 6 familias; Canales conserva su sub-sección master + per-canal.
   - **Files**: `consorcio-web/src/components/map2d/LayerControlsPanel.tsx`, test
   - **Dependencies**: 2.1
 
-- [ ] **2.3 Buscador de capas (RED→GREEN)**
+- [x] **2.3 Buscador de capas (RED→GREEN)**
   - RED: test — escribir texto filtra por nombre (case-insensitive) y oculta grupos sin match.
   - GREEN: `TextInput` de búsqueda que filtra `layerItems` por `label`.
   - **AC**: filtro reactivo sin memoization manual.
   - **Files**: `consorcio-web/src/components/map2d/LayerControlsPanel.tsx`, test
   - **Dependencies**: 2.2
 
-- [ ] **2.4 Indicador "N capas activas" (RED→GREEN)**
+- [x] **2.4 Indicador "N capas activas" (RED→GREEN)**
   - RED: test — Badge muestra el conteo de `vectorVisibility` en true.
   - GREEN: derivar conteo y pasarlo a `MapWorkspace`/panel como `Badge`.
   - **AC**: se actualiza al togglear.
   - **Files**: `LayerControlsPanel.tsx`, `MapWorkspace.tsx`
   - **Dependencies**: 2.2
 
-- [ ] **2.5 Verificar paridad 2D/3D**
+- [x] **2.5 Verificar paridad 2D/3D**
   - Confirmar que `TerrainLayerTogglesPanel` (3D) muestra las mismas familias/nombres para capas compartidas; ajustar naming si divergió.
   - **AC**: test/afirmación de paridad de familias.
   - **Files**: `consorcio-web/src/components/terrain/*TogglesPanel*`, test

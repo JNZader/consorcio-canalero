@@ -37,7 +37,7 @@ const baseProps = {
   demOptions: [],
 };
 
-const ESCUELAS_ITEM = { id: 'escuelas', label: 'Escuelas rurales' };
+const ESCUELAS_ITEM = { id: 'escuelas', label: 'Escuelas rurales', category: 'territorio' as const };
 
 describe('<LayerControlsPanel /> — Escuelas rurales toggle', () => {
   it('renders the "Escuelas rurales" checkbox when provided in layerItems', () => {
@@ -141,7 +141,7 @@ describe('buildVectorLayerItems — escuelas entry', () => {
     } as Parameters<typeof buildVectorLayerItems>[0]);
 
     const escuelas = items.find((item) => item.id === 'escuelas');
-    expect(escuelas).toEqual({ id: 'escuelas', label: 'Escuelas rurales' });
+    expect(escuelas).toEqual({ id: 'escuelas', label: 'Escuelas rurales', category: 'territorio' });
   });
 
   it('OMITS the escuelas entry when showEscuelas is false', async () => {

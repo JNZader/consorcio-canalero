@@ -171,6 +171,24 @@ export function buildActiveLegendItems(params: {
   return items;
 }
 
+/**
+ * Layer families for the 2D control panel accordion (change
+ * `rediseno-ux-mapa`, Phase 2). Every entry returned by
+ * `buildVectorLayerItems` carries a `category` so `LayerControlsPanel` can
+ * group checkboxes by family. `BASE` is reserved for the structural controls
+ * (capa base / IGN / DEM) that live in the panel — not in this array.
+ */
+export const LAYER_CATEGORY = {
+  BASE: 'base',
+  HIDROGRAFIA: 'hidrografia',
+  TERRITORIO: 'territorio',
+  PILAR_VERDE: 'pilar_verde',
+  CANALES: 'canales',
+  ANALISIS: 'analisis',
+} as const;
+
+export type LayerCategory = (typeof LAYER_CATEGORY)[keyof typeof LAYER_CATEGORY];
+
 export function buildVectorLayerItems(params: {
   basins: FeatureCollection | null | undefined;
   approvedZonesCollection: FeatureCollection | null | undefined;
@@ -216,45 +234,89 @@ export function buildVectorLayerItems(params: {
     {
       id: 'basins',
       label: 'Subcuencas',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
       show: isAdmin && !!basins && basins.features.length > 0,
     },
-    { id: 'approved_zones', label: 'Cuencas', show: !!approvedZonesCollection },
-    { id: 'waterways', label: 'Hidrografía', show: true },
+    {
+      id: 'approved_zones',
+      label: 'Cuencas',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: !!approvedZonesCollection,
+    },
+    { id: 'waterways', label: 'Hidrografía', category: LAYER_CATEGORY.HIDROGRAFIA, show: true },
     {
       id: 'roads',
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
       label: 'Red Vial',
+      category: LAYER_CATEGORY.TERRITORIO,
       show: !!roadsCollection && roadsCollection.features.length > 0,
     },
     // Labels match the 3D toggles panel so the user sees the same wording
     // across views (terrainLayerConfig.ts:35-42).
-    { id: 'soil', label: 'Suelos IDECOR 1:50.000', show: true },
-    { id: 'catastro', label: 'Catastro rural IDECOR', show: true },
-    { id: 'puntos_conflicto', label: 'Puntos conflicto', show: intersectionsLength > 0 },
+    { id: 'soil', label: 'Suelos IDECOR 1:50.000', category: LAYER_CATEGORY.TERRITORIO, show: true },
+    {
+      id: 'catastro',
+      label: 'Catastro rural IDECOR',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: true,
+    },
+    {
+      id: 'puntos_conflicto',
+      label: 'Puntos conflicto',
+      category: LAYER_CATEGORY.ANALISIS,
+      show: intersectionsLength > 0,
+    },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
     {
       id: 'pilar_verde_bpa_historico',
       label: 'BPA histórico (por años)',
+      category: LAYER_CATEGORY.PILAR_VERDE,
       show: showPilarVerde,
     },
-    { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen', show: showPilarVerde },
-    { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron', show: showPilarVerde },
-    { id: 'pilar_verde_agro_zonas', label: 'Zonas Agroforestales', show: showPilarVerde },
+    {
+      id: 'pilar_verde_agro_aceptada',
+      label: 'Agroforestal: Cumplen',
+      category: LAYER_CATEGORY.PILAR_VERDE,
+      show: showPilarVerde,
+    },
+    {
+      id: 'pilar_verde_agro_presentada',
+      label: 'Agroforestal: Presentaron',
+      category: LAYER_CATEGORY.PILAR_VERDE,
+      show: showPilarVerde,
+    },
+    {
+      id: 'pilar_verde_agro_zonas',
+      label: 'Zonas Agroforestales',
+      category: LAYER_CATEGORY.PILAR_VERDE,
+      show: showPilarVerde,
+    },
     {
       id: 'pilar_verde_porcentaje_forestacion',
       label: '% Forestación obligatoria',
+      category: LAYER_CATEGORY.PILAR_VERDE,
       show: showPilarVerde,
     },
     // ── Pilar Azul (Canales) — master toggles per spec ──
     // Per-canal sub-toggles + the "Etapas propuestas" filter subsection are
     // rendered by Phase 4's `LayerControlsPanel` Canales section.
-    { id: 'canales_relevados', label: 'Canales relevados', show: showPilarAzul },
-    { id: 'canales_propuestos', label: 'Canales propuestos', show: showPilarAzul },
+    {
+      id: 'canales_relevados',
+      label: 'Canales relevados',
+      category: LAYER_CATEGORY.CANALES,
+      show: showPilarAzul,
+    },
+    {
+      id: 'canales_propuestos',
+      label: 'Canales propuestos',
+      category: LAYER_CATEGORY.CANALES,
+      show: showPilarAzul,
+    },
     // ── Pilar Azul (Escuelas rurales) — single master toggle (design §7) ──
-    { id: 'escuelas', label: 'Escuelas rurales', show: showEscuelas },
+    { id: 'escuelas', label: 'Escuelas rurales', category: LAYER_CATEGORY.TERRITORIO, show: showEscuelas },
   ]
     .filter(({ show }) => show)
-    .map(({ id, label }) => ({ id, label }));
+    .map(({ id, label, category }) => ({ id, label, category }));
 }
 
 export function buildDemLayerOptions(

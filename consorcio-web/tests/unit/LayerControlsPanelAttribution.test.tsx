@@ -31,8 +31,8 @@ const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
   layerItems: [
-    { id: 'catastro', label: 'Catastro' },
-    { id: PILAR_VERDE_LAYER_IDS[0], label: 'BPA 2025' },
+    { id: 'catastro', label: 'Catastro', category: 'territorio' as const },
+    { id: PILAR_VERDE_LAYER_IDS[0], label: 'BPA 2025', category: 'pilar_verde' as const },
   ],
   onLayerVisibilityChange: () => {},
   showIGNOverlay: false,
