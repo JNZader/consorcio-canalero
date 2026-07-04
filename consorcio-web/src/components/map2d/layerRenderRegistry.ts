@@ -93,6 +93,49 @@ export const RENDERABLE_UI_LAYER_IDS = [
 export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
 
 /**
+ * Canonical DEFAULT render order (BOTTOM → TOP) of the reorderable UI layers.
+ *
+ * Derived from the real mount/hoist sequence in `useMapLayerEffects.ts` +
+ * `mapLayerEffectHelpers.ts` + `PILAR_VERDE_Z_ORDER` (pilarVerdeLayers.ts):
+ *
+ *   - `roads` is explicitly `moveLayer`'d BELOW the first waterway line
+ *     (`syncRoadLayers`) → it is the lowest of the reorderable set.
+ *   - waterways / soil / catastro / basins / approved_zones mount in that
+ *     effect-declaration order (each `addLayer` appends on top).
+ *   - `puntos_conflicto` (Martín circle) mounts next.
+ *   - The Pilar Verde stack is hoisted to the top in `PILAR_VERDE_Z_ORDER`
+ *     (agro_zonas < porcentaje_forestacion < agro_presentada < agro_aceptada
+ *     < bpa_historico) by `raisePilarVerdeStack`.
+ *   - The canales stack is hoisted ABOVE Pilar Verde (its effect runs after),
+ *     relevados below propuestos (`raiseCanalesStack`).
+ *   - `escuelas` mounts last of the reorderable set → topmost.
+ *
+ * This is the seed the Tanda B reorder UI displays (reversed → top-of-list =
+ * top-of-map) when no user override exists. It is best-effort canonical: the
+ * exact runtime z can shift slightly across async mounts, so the unit test
+ * only locks that this list is SET-EQUAL to `RENDERABLE_UI_LAYER_IDS` (no
+ * missing/extra id) — that is the invariant the FULL-set contract of
+ * `applyLayerOrder` relies on.
+ */
+export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
+  'roads',
+  'waterways',
+  'soil',
+  'catastro',
+  'basins',
+  'approved_zones',
+  'puntos_conflicto',
+  'pilar_verde_agro_zonas',
+  'pilar_verde_porcentaje_forestacion',
+  'pilar_verde_agro_presentada',
+  'pilar_verde_agro_aceptada',
+  'pilar_verde_bpa_historico',
+  'canales_relevados',
+  'canales_propuestos',
+  'escuelas',
+] as const;
+
+/**
  * The 5 waterway per-file line layer ids. Generated from the SAME source of
  * truth (`buildWaterwayLayerConfigs`) the sync helper uses, so the id set can
  * never drift. Each waterway line layer paints `line-opacity: 0.9`

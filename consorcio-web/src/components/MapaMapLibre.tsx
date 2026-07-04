@@ -141,6 +141,21 @@ export default function MapaMapLibre() {
   );
   const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
 
+  // ── Per-layer fine controls (Fase 3 — Tanda B) ────────────────────────────
+  // Opacity/order slots + setters for the map2d view. Assembled into a single
+  // `layerFineControl` object threaded to MapUiPanels + LayerControlsPanel.
+  const opacityByLayer = useMapLayerSyncStore((state) => state.map2d.opacityByLayer);
+  const orderByLayer = useMapLayerSyncStore((state) => state.map2d.orderByLayer);
+  const setLayerOpacity = useMapLayerSyncStore((state) => state.setLayerOpacity);
+  const setLayerOrder = useMapLayerSyncStore((state) => state.setLayerOrder);
+  const layerFineControl = {
+    opacityByLayer,
+    onLayerOpacityChange: (layerId: string, multiplier: number) =>
+      setLayerOpacity('map2d', layerId, multiplier),
+    orderByLayer,
+    onLayerOrderChange: (orderedIds: string[]) => setLayerOrder('map2d', orderedIds),
+  };
+
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)
   const [vectorVisibility, setVectorVisibility] = useState<Record<string, boolean>>(
     () => sharedVisibleVectors
@@ -711,6 +726,7 @@ export default function MapaMapLibre() {
               demOptions={demLayerOptions}
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
+              layerFineControl={layerFineControl}
               canManageZoning={canManageZoning}
               showSuggestedZonesPanel={showSuggestedZonesPanel}
               hasApprovedZones={hasApprovedZones}
@@ -804,6 +820,7 @@ export default function MapaMapLibre() {
             demOptions={demLayerOptions}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
+            layerFineControl={layerFineControl}
           />
             {showLegend && (
               <>

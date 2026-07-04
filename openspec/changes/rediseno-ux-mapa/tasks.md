@@ -100,20 +100,20 @@
   - **Files**: `consorcio-web/src/components/map2d/useMapLayerEffects.ts`, test
   - **Dependencies**: 3.1
 
-- [ ] **3.3 Control de opacidad por capa en la UI (RED→GREEN)**
+- [x] **3.3 Control de opacidad por capa en la UI (RED→GREEN)**
   - RED: test — `Slider` por capa activa dispara `onOpacityChange(layerId, value)`.
   - GREEN: `Slider` de opacidad en cada capa activa dentro del Accordion.
   - **AC**: mover slider re-renderiza solo esa capa.
   - **Files**: `LayerControlsPanel.tsx`, test
   - **Dependencies**: 3.2
 
-- [ ] **3.4 Agrupar props de control fino en MapUiPanels**
+- [x] **3.4 Agrupar props de control fino en MapUiPanels**
   - Introducir un prop objeto (`layerFineControl: { opacityByLayer, onOpacityChange, activeCount }`) en vez de props sueltos; no expandir la superficie de ~60 props.
   - **AC**: no se agregan props planos nuevos; tipos vía interface dedicada.
   - **Files**: `consorcio-web/src/components/MapUiPanels.tsx`
   - **Dependencies**: 3.3
 
-- [ ] **3.5 Reorden por capa** (APROBADA por el usuario 2026-07-04)
+- [x] **3.5 Reorden por capa** (APROBADA por el usuario 2026-07-04)
   - Drag-reorder que escribe `orderByLayer` y `useMapLayerEffects` respeta el orden. Snapshot visual antes/después.
   - **AC**: z-order default sin cambios cuando no hay override.
   - **Files**: `LayerControlsPanel.tsx`, `useMapLayerEffects.ts`, store

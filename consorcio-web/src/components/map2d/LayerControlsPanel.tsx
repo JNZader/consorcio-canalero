@@ -1,5 +1,6 @@
 import {
   Accordion,
+  ActionIcon,
   Badge,
   Box,
   Checkbox,
@@ -9,26 +10,63 @@ import {
   Paper,
   SegmentedControl,
   Select,
+  Slider,
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import { type CanalToggleEntry, collectChildIds } from '../shared/canalesGrouping';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
   IconChartBar,
   IconDroplet,
   IconMap,
   IconMapPin,
   IconPlant,
+  IconRefresh,
   IconRoute,
   IconSearch,
 } from '../ui/icons';
 import { getActiveAttributions } from './layerAttributions';
+import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
+import { LayerOrderSection } from './LayerOrderSection';
 import { LAYER_CATEGORY, type LayerCategory } from './map2dDerived';
+
+const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
+
+/**
+ * Fine-grained per-layer render controls (map-redesign Fase 3 — Tanda B).
+ * Grouped into ONE prop object (task 3.4) instead of ~4 loose fields, threaded
+ * MapaMapLibre → MapUiPanels → LayerControlsPanel. All slots map 1:1 onto the
+ * `mapLayerSyncStore` map2d slots + their setters.
+ */
+export interface LayerFineControl {
+  /** Per-UI-layer opacity MULTIPLIER (0..1). Absent id → untouched default. */
+  readonly opacityByLayer: Record<string, number>;
+  /** Set a UI layer's opacity multiplier (0..1). `1` resets to the default. */
+  readonly onLayerOpacityChange: (layerId: string, multiplier: number) => void;
+  /** Current BOTTOM→TOP render order override (empty = hardcoded default). */
+  readonly orderByLayer: readonly string[];
+  /** Write a FULL bottom→top order (empty array = reset to default). */
+  readonly onLayerOrderChange: (orderedIds: string[]) => void;
+}
+
+/**
+ * No-op default so panels/tests that don't wire fine-controls keep working —
+ * the sliders seed from `?? 1` (untouched) and the order section falls back to
+ * `DEFAULT_LAYER_ORDER`.
+ */
+const NOOP_FINE_CONTROL: LayerFineControl = {
+  opacityByLayer: {},
+  onLayerOpacityChange: () => {},
+  orderByLayer: [],
+  onLayerOrderChange: () => {},
+};
 
 interface LayerItem {
   id: string;
@@ -76,6 +114,13 @@ interface LayerControlsPanelProps {
    */
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
+  /**
+   * Fine-grained per-layer opacity + render-order controls (Fase 3 — Tanda B).
+   * Optional: when omitted, a no-op default keeps the panel identical to its
+   * pre-Fase-3 behavior (sliders seed from the default, order falls back to
+   * `DEFAULT_LAYER_ORDER`).
+   */
+  readonly layerFineControl?: LayerFineControl;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -134,6 +179,56 @@ function filterCanalEntries(
   });
 }
 
+/**
+ * Compact per-layer opacity slider (task 3.3). Rendered only for an ACTIVE
+ * layer that is in the render registry. Value is the 0..100 % view of the
+ * store's 0..1 multiplier; the ↺ button resets the multiplier to 1 (Tanda A
+ * made multiplier===1 restore the true hardcoded default).
+ */
+function LayerOpacityControl({
+  layerId,
+  label,
+  multiplier,
+  onChange,
+}: {
+  layerId: string;
+  label: string;
+  multiplier: number;
+  onChange: (layerId: string, multiplier: number) => void;
+}) {
+  const percent = Math.round(multiplier * 100);
+  return (
+    <Group gap={6} wrap="nowrap" pl={26} pr={4} data-testid={`layer-opacity-${layerId}`}>
+      <Slider
+        size="xs"
+        style={{ flex: 1 }}
+        min={0}
+        max={100}
+        step={1}
+        value={percent}
+        onChange={(value) => onChange(layerId, value / 100)}
+        label={(value) => `${value}%`}
+        thumbLabel={`Opacidad de ${label}`}
+      />
+      <Text size="9px" c="dimmed" w={28} ta="right">
+        {percent}%
+      </Text>
+      <Tooltip label="Restablecer opacidad" withArrow>
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          color="gray"
+          aria-label={`Restablecer opacidad de ${label}`}
+          data-testid={`layer-opacity-reset-${layerId}`}
+          onClick={() => onChange(layerId, 1)}
+        >
+          <IconRefresh size={12} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+}
+
 function FamilyControlLabel({ label, count }: { label: string; count: number }) {
   return (
     <Group gap="xs" justify="space-between" wrap="nowrap" style={{ flex: 1 }}>
@@ -169,6 +264,7 @@ export function LayerControlsPanel({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
+  layerFineControl = NOOP_FINE_CONTROL,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
@@ -378,15 +474,36 @@ export function LayerControlsPanel({
         </Accordion.Control>
         <Accordion.Panel>
           <Stack gap={4}>
-            {familyVisible.map((item) => (
-              <Checkbox
-                key={item.id}
-                size="xs"
-                label={item.label}
-                checked={!!vectorVisibility[item.id]}
-                onChange={(event) => onLayerVisibilityChange(item.id, event.currentTarget.checked)}
-              />
-            ))}
+            {familyVisible.map((item) => {
+              const isOn = !!vectorVisibility[item.id];
+              const showOpacity = isOn && RENDERABLE_UI_LAYER_ID_SET.has(item.id);
+              return (
+                <Box key={item.id}>
+                  <Checkbox
+                    size="xs"
+                    label={item.label}
+                    checked={isOn}
+                    onChange={(event) =>
+                      onLayerVisibilityChange(item.id, event.currentTarget.checked)
+                    }
+                  />
+                  {/*
+                    FF-B3: the slider is gated on `isOn`, but a persisted
+                    non-1 opacity is INTENTIONALLY preserved while the layer is
+                    off (`toggleLayer` never clears `opacityByLayer[id]`) and is
+                    re-applied on re-enable — do NOT "fix" this into a clear.
+                  */}
+                  {showOpacity && (
+                    <LayerOpacityControl
+                      layerId={item.id}
+                      label={item.label}
+                      multiplier={layerFineControl.opacityByLayer[item.id] ?? 1}
+                      onChange={layerFineControl.onLayerOpacityChange}
+                    />
+                  )}
+                </Box>
+              );
+            })}
             {showAttributions && (
               <>
                 {familyVisible.length > 0 && <Divider my={4} />}
@@ -462,6 +579,30 @@ export function LayerControlsPanel({
             <Text size="xs" c="dimmed" data-testid="layer-controls-no-results">
               Sin resultados para «{query}»
             </Text>
+          )}
+          {/*
+            Orden de capas (task 3.5). Hidden while searching to keep the
+            filtered view focused. Renders the FULL reorderable set (active +
+            dimmed inactive) so every write is a complete bottom→top order —
+            the contract `applyLayerOrder` requires.
+          */}
+          {!isSearching && (
+            <>
+              <Divider my={4} />
+              <CollapsibleSection
+                title="Orden de capas"
+                titleSize="xs"
+                defaultOpen={false}
+                testId="layer-order-collapsible"
+              >
+                <LayerOrderSection
+                  orderByLayer={layerFineControl.orderByLayer}
+                  onLayerOrderChange={layerFineControl.onLayerOrderChange}
+                  vectorVisibility={vectorVisibility}
+                  labelById={Object.fromEntries(layerItems.map((item) => [item.id, item.label]))}
+                />
+              </CollapsibleSection>
+            </>
           )}
         </Stack>
       </Paper>

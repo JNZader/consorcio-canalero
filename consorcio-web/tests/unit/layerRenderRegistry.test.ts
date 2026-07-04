@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_LAYER_ORDER,
   LAYER_RENDER_REGISTRY,
   OPACITY_PROP,
   RENDERABLE_UI_LAYER_IDS,
@@ -85,6 +86,21 @@ describe('layerRenderRegistry — coverage', () => {
       { id: 'map2d-soil-fill', opacityProp: 'fill-opacity', defaultOpacity: 0.3 },
       { id: 'map2d-soil-line', opacityProp: 'line-opacity', defaultOpacity: 0.85 },
     ]);
+  });
+});
+
+describe('DEFAULT_LAYER_ORDER', () => {
+  it('contains EXACTLY the RENDERABLE_UI_LAYER_IDS set (no missing/extra) — cannot drift', () => {
+    expect([...DEFAULT_LAYER_ORDER].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
+  });
+
+  it('has no duplicate ids', () => {
+    expect(new Set(DEFAULT_LAYER_ORDER).size).toBe(DEFAULT_LAYER_ORDER.length);
+  });
+
+  it('lists roads at the bottom and escuelas at the top (documented z-order)', () => {
+    expect(DEFAULT_LAYER_ORDER[0]).toBe('roads');
+    expect(DEFAULT_LAYER_ORDER.at(-1)).toBe('escuelas');
   });
 });
 
