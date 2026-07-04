@@ -34,7 +34,7 @@ from app.core.middleware import (
     CSRFProtectionMiddleware,
     RequestLoggingMiddleware,
 )
-from app.core.rate_limit import get_rate_limiter
+from app.core.rate_limit import get_auth_rate_limiter, get_rate_limiter
 from app.core.health import (
     check_alembic_health,
     check_database_health,
@@ -118,6 +118,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Error closing rate limiter", error=str(e))
     try:
+        await get_auth_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing auth rate limiter", error=str(e))
+    try:
         from app.core.cache import get_cache
 
         await get_cache().close()
@@ -174,7 +178,13 @@ app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
-app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=get_rate_limiter())
+app.add_middleware(
+    DistributedRateLimitMiddleware,
+    rate_limiter=get_rate_limiter(),
+    # Strict brute-force throttle for login / forgot-password /
+    # exchange-code (see AUTH_THROTTLE_PATHS in app/core/middleware.py).
+    auth_rate_limiter=get_auth_rate_limiter(),
+)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 # Host-header validation — derived from CORS_ORIGINS + API_BASE_URL + the
 # loopback aliases the Docker healthcheck uses. Refuses requests whose

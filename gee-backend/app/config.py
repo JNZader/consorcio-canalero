@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     # not os.getenv at request time. That way an in-process mutation of
     # the env var can't reopen the bypass after the fail-fast check below.
     rate_limit_disabled: bool = False
+    # Dedicated brute-force throttle for credential-guessing surfaces
+    # (login / forgot-password / exchange-code). Much stricter than the
+    # generic per-client limit above; consumed by
+    # ``DistributedRateLimitMiddleware`` via ``get_auth_rate_limiter()``.
+    auth_rate_limit_requests: int = 10
+    auth_rate_limit_window: int = 60
 
     # Error tracking (Sentry) — wired in app/main.py only when sentry_dsn
     # is non-empty. Leaving it empty silently disables the integration
@@ -118,7 +124,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     api_prefix: str = "/api/v2"
     debug: bool = False
-    enable_docs: bool = True
+    # Secure-by-default: docs OFF unless explicitly enabled via ENABLE_DOCS.
+    # Production fail-fast below warns if this is flipped on in prod.
+    enable_docs: bool = False
     environment: str = "development"  # "production" | "staging" | "development"
     frontend_url: str = "http://localhost:5173"
     api_base_url: str = (
@@ -262,6 +270,25 @@ def _enforce_production_secrets(s: Settings) -> None:
         problems.append(
             "RATE_LIMIT_DISABLED is truthy in a production environment; "
             "unset it or set it to 'false'."
+        )
+
+    # ``s.debug`` in production leaks internals (verbose 500 bodies via
+    # the generic exception handler, DEBUG-level logs, uvicorn reload).
+    # Same class of misconfig as RATE_LIMIT_DISABLED — refuse to start.
+    if s.debug:
+        problems.append(
+            "DEBUG debe ser False en producción; "
+            "unset DEBUG or set it to 'false'."
+        )
+
+    # Docs exposure in production is information disclosure (full API
+    # surface + schemas for unauthenticated recon), but it can be a
+    # deliberate operator choice — warn loudly instead of refusing.
+    if s.enable_docs:
+        logger.warning(
+            "ENABLE_DOCS is true in a production environment; /docs and "
+            "/redoc expose the full API schema to unauthenticated "
+            "clients. Set ENABLE_DOCS=false unless intentionally public."
         )
 
     # SMTP TLS: if email is configured at all in production, refuse to

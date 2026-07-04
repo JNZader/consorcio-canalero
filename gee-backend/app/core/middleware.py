@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.core.logging import get_logger
-from app.core.rate_limit import DistributedRateLimiter
+from app.core.rate_limit import DistributedRateLimiter, get_auth_rate_limiter
 
 logger = get_logger(__name__)
 
@@ -39,11 +39,42 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
 
 
 class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limiting middleware using distributed rate limiter with Redis."""
+    """Rate limiting middleware using distributed rate limiter with Redis.
 
-    def __init__(self, app, rate_limiter: DistributedRateLimiter):
+    Two tiers, same sliding-window infrastructure:
+
+    - Generic tier: ``rate_limiter`` (default 100 req / 60 s per client)
+      applies to every non-exempt path.
+    - Auth brute-force tier: paths in ``AUTH_THROTTLE_PATHS`` are checked
+      against the much stricter ``auth_rate_limiter`` (default
+      10 req / 60 s) INSTEAD of the generic one. These endpoints are
+      credential/code-guessing surfaces (login, forgot-password,
+      exchange-code); the strict limit is a strict subset of the generic
+      one, so swapping the limiter (rather than stacking both) keeps a
+      single Redis round-trip per request while still capping abuse.
+      The key is always the client IP for these paths — callers are
+      unauthenticated, and keying by a (possibly attacker-supplied)
+      token would let a bot rotate identities.
+    """
+
+    # Exact-match request paths that get the strict auth throttle.
+    AUTH_THROTTLE_PATHS: set[str] = {
+        "/api/v2/auth/jwt/login",
+        "/api/v2/auth/forgot-password",
+        "/api/v2/auth/exchange-code",
+    }
+
+    def __init__(
+        self,
+        app,
+        rate_limiter: DistributedRateLimiter,
+        auth_rate_limiter: Optional[DistributedRateLimiter] = None,
+    ):
         super().__init__(app)
         self.rate_limiter = rate_limiter
+        # Optional for backward compatibility with existing call sites /
+        # tests that only pass the generic limiter.
+        self.auth_rate_limiter = auth_rate_limiter or get_auth_rate_limiter()
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and tile requests (tiles are high-volume)
@@ -61,12 +92,24 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if settings.rate_limit_disabled:
             return await call_next(request)
 
-        # Prefer per-user rate limiting when authenticated; fall back to IP.
-        user_id = _extract_user_id_from_token(request.headers.get("authorization"))
         client_ip = request.client.host if request.client else "unknown"
-        rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
 
-        allowed, remaining, reset_time = await self.rate_limiter.check(rate_limit_key)
+        if request.url.path in self.AUTH_THROTTLE_PATHS:
+            # Brute-force tier: strict limiter, always keyed by IP (see
+            # class docstring). Separate key namespace via the limiter's
+            # own "ratelimit:auth:" prefix.
+            limiter = self.auth_rate_limiter
+            rate_limit_key = f"ip:{client_ip}"
+        else:
+            # Generic tier: prefer per-user rate limiting when
+            # authenticated; fall back to IP.
+            limiter = self.rate_limiter
+            user_id = _extract_user_id_from_token(
+                request.headers.get("authorization")
+            )
+            rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
+
+        allowed, remaining, reset_time = await limiter.check(rate_limit_key)
 
         if not allowed:
             logger.warning(
@@ -86,14 +129,14 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={
                     "Retry-After": str(reset_time),
-                    "X-RateLimit-Limit": str(self.rate_limiter.max_requests),
+                    "X-RateLimit-Limit": str(limiter.max_requests),
                     "X-RateLimit-Remaining": str(remaining),
                     "X-RateLimit-Reset": str(reset_time),
                 },
             )
 
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self.rate_limiter.max_requests)
+        response.headers["X-RateLimit-Limit"] = str(limiter.max_requests)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_time)
         return response

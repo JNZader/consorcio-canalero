@@ -22,9 +22,11 @@ Threat model
 ============
 
 Brute force against the code space: 36^8 ≈ 2.8 × 10^12 combos.
-At 100 req/s (well above the rate-limit middleware allows) it
-takes ~900 years to enumerate. The exchange endpoint also
-rate-limits per IP at the middleware layer.
+The generic middleware cap is 100 requests per 60 s (~1.7 req/s),
+so enumeration would take ~50,000+ years — and the exchange
+endpoint additionally sits behind the stricter per-IP auth
+throttle (see AUTH_THROTTLE_PATHS in app/core/middleware.py),
+making it slower still.
 
 The code is NOT a secret in the cryptographic sense (it's stored
 plaintext in the DB so the exchange lookup is O(1) on the unique
