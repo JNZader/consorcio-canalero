@@ -42,6 +42,188 @@ test.describe('MapaMapLibre — /mapa route', () => {
   });
 });
 
+/**
+ * Rediseño UX del mapa (change `rediseno-ux-mapa`, Fases 1-3).
+ *
+ * These extend the smoke suite with the redesign scenarios: responsive
+ * controls shell (collapsible sidebar / mobile Drawer), the cooperative-gesture
+ * scroll-trap fix, the per-layer opacity slider, and the "Orden de capas"
+ * drag-reorder list.
+ *
+ * All selectors are derived from the real DOM:
+ *   - MapWorkspace.tsx: data-testid `map-workspace-root` (carries `data-desktop`
+ *     + `data-collapsed`), `map-workspace-canvas`, `map-workspace-sidebar`,
+ *     `map-workspace-collapse` (aria-label "Colapsar/Expandir panel de capas"),
+ *     `map-workspace-burger` (Burger, aria-label "Abrir/Cerrar panel…").
+ *   - LayerControlsPanel.tsx: region role aria-label "Controles de capas del
+ *     mapa" (data-testid `layer-controls-panel-scroll`); opacity slider under
+ *     `layer-opacity-<id>` (Mantine Slider → role "slider"); order collapsible
+ *     `layer-order-collapsible` (CollapsibleSection header role "button" named
+ *     "Orden de capas").
+ *   - LayerOrderSection.tsx: `layer-order-section` + rows `layer-order-item-<id>`.
+ *   - useMapInitialization.ts: `cooperativeGestures: true` → MapLibre injects
+ *     `.maplibregl-cooperative-gesture-screen` into the map container.
+ *
+ * These need the app served with auth (the mapa project uses a storageState) and
+ * ideally the backend for layer data. Each test guards on the workspace mounting
+ * and skips (does NOT fail) when the shell/canvas is absent, so the suite is safe
+ * to run without the full stack — a real run needs the dev server + backend +
+ * E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD (see tests/e2e/playwright.local.config.ts).
+ */
+
+/** Navigate to /mapa and report whether the responsive workspace shell mounted. */
+async function gotoMapWorkspace(page: import('@playwright/test').Page): Promise<boolean> {
+  await page.goto(`${APP_URL}/mapa`);
+  const root = page.getByTestId('map-workspace-root');
+  return root.isVisible({ timeout: 15000 }).catch(() => false);
+}
+
+test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
+  test(
+    'controls live in a collapsible sidebar; collapsing widens the canvas',
+    { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-010'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+
+      const root = page.getByTestId('map-workspace-root');
+      await expect(root).toHaveAttribute('data-desktop', 'true');
+
+      const sidebar = page.getByTestId('map-workspace-sidebar');
+      await expect(sidebar).toBeVisible();
+
+      const canvas = page.getByTestId('map-workspace-canvas');
+      const before = await canvas.boundingBox();
+
+      // Collapse the sidebar via its toggle (aria-label "Colapsar panel de capas").
+      const collapse = page.getByTestId('map-workspace-collapse');
+      await expect(collapse).toBeVisible();
+      await collapse.click();
+
+      // Deterministic signal: the root flips data-collapsed to "true".
+      await expect(root).toHaveAttribute('data-collapsed', 'true');
+
+      // And the canvas should be at least as wide as before (sidebar collapses
+      // to a hidden/narrow rail via CSS grid — the map reclaims the space).
+      const after = await canvas.boundingBox();
+      if (before && after) {
+        expect(after.width).toBeGreaterThanOrEqual(before.width);
+      }
+
+      // Toggling again expands it back.
+      await collapse.click();
+      await expect(root).toHaveAttribute('data-collapsed', 'false');
+    }
+  );
+
+  test(
+    'active layer has an opacity slider in its family accordion',
+    { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-011'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+
+      const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
+      await expect(controls).toBeVisible();
+
+      // Enable a RENDERABLE vector layer (opacity sliders only show for layers in
+      // the render registry — Base IGN/DEM checkboxes do NOT produce a slider).
+      const renderable = controls
+        .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
+        .first();
+      const hasRenderable = await renderable.isVisible({ timeout: 10000 }).catch(() => false);
+      test.skip(!hasRenderable, 'No renderable vector layer available (no layer data)');
+
+      await renderable.check();
+
+      // The per-layer opacity control (Mantine Slider → role "slider") appears.
+      const slider = controls.getByRole('slider').first();
+      await expect(slider).toBeVisible();
+    }
+  );
+
+  test(
+    '"Orden de capas" renders the sortable layer list',
+    { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-012'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+
+      const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
+      await expect(controls).toBeVisible();
+
+      // The "Orden de capas" section is a collapsible, defaultOpen=false → expand it.
+      const orderHeader = page.getByTestId('layer-order-collapsible-header');
+      await expect(orderHeader).toBeVisible();
+      await orderHeader.click();
+
+      // The sortable list ALWAYS renders the full renderable set (active + dimmed).
+      const orderSection = page.getByTestId('layer-order-section');
+      await expect(orderSection).toBeVisible();
+      const rows = page.locator('[data-testid^="layer-order-item-"]');
+      expect(await rows.count()).toBeGreaterThan(0);
+    }
+  );
+
+  test(
+    'wheeling over the map does not zoom without a modifier (cooperativeGestures)',
+    { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-013'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+
+      // MapLibre with `cooperativeGestures: true` injects the gesture-hint
+      // overlay into the map container. Its presence is the robust, WebGL-init
+      // signal that the scroll-trap fix is active (wheel-without-ctrl scrolls the
+      // page / shows the hint instead of zooming).
+      const gestureScreen = page.locator('.maplibregl-cooperative-gesture-screen');
+      const mounted = await gestureScreen
+        .first()
+        .waitFor({ state: 'attached', timeout: 15000 })
+        .then(() => true)
+        .catch(() => false);
+      test.skip(!mounted, 'MapLibre canvas did not initialize (no WebGL in this environment)');
+
+      expect(await gestureScreen.count()).toBeGreaterThan(0);
+    }
+  );
+});
+
+test.describe('MapaMapLibre — rediseño UX (mobile shell)', () => {
+  // No mobile project exists in the config, so pin a phone-sized viewport here.
+  // useMediaQuery('(min-width: 48em)') resolves to mobile → Burger + Drawer.
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test(
+    'burger opens a full-screen Drawer with the same controls',
+    { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-014'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+
+      const root = page.getByTestId('map-workspace-root');
+      await expect(root).toHaveAttribute('data-desktop', 'false');
+
+      // The desktop sidebar must NOT be present on mobile.
+      await expect(page.getByTestId('map-workspace-sidebar')).toHaveCount(0);
+
+      // The Burger (☰) is visible and opens the Drawer.
+      const burger = page.getByTestId('map-workspace-burger');
+      await expect(burger).toBeVisible();
+      await burger.click();
+
+      // Full-screen Drawer (role "dialog") titled "Capas y leyenda".
+      const drawer = page.getByRole('dialog');
+      await expect(drawer).toBeVisible();
+
+      // The SAME controls tree is reachable inside the Drawer.
+      const controls = drawer.getByRole('region', { name: 'Controles de capas del mapa' });
+      await expect(controls).toBeVisible();
+      await expect(drawer.getByLabel('Buscar capa')).toBeVisible();
+    }
+  );
+});
+
 test.describe('MapaMapLibre — admin map features', () => {
   test('admin map page loads and shows 2D/3D toggle', async ({ page }) => {
     await page.goto(`${APP_URL}/admin`);

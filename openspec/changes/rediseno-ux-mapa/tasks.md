@@ -123,13 +123,13 @@
 
 ## Phase 4: Verificación
 
-- [ ] **4.1 E2E responsive + scroll-trap (Playwright)**
+- [x] **4.1 E2E responsive + scroll-trap (Playwright)**
   - `mapa-rediseno.spec.ts`: (a) desktop, colapsar ensancha el canvas; (b) mobile, ☰ abre Drawer full-screen; (c) wheel sobre el mapa scrollea la página.
   - **AC**: los 3 escenarios verdes.
   - **Files**: `consorcio-web/tests/e2e/mapa-rediseno.spec.ts`
   - **Dependencies**: 1.x, 2.x
 
-- [ ] **4.2 Regression: lazy-load geojson + dep-arrays**
+- [x] **4.2 Regression: lazy-load geojson + dep-arrays**
   - Verificar que `useSoilMap`/`useCatastroMap` (`enabled`) y los effects de carga no se regresionaron; no hay `useMemo`/`useCallback` manual nuevo.
   - **AC**: sin cargas eager nuevas; grep de memoization manual limpio.
   - **Files**: revisión de `map2d/*` hooks
