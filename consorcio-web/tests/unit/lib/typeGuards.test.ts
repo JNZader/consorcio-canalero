@@ -38,7 +38,7 @@ const validFeatureCollection = {
 };
 
 const validSelectedImage = {
-  tile_url: 'https://example.com/tiles/{z}/{x}/{y}',
+  tile_url: 'https://earthengine.googleapis.com/v1/projects/test/maps/abc/tiles/{z}/{x}/{y}',
   target_date: '2026-04-01',
   sensor: 'Sentinel-2',
   visualization: 'ndvi',
@@ -158,6 +158,13 @@ describe('typeGuards', () => {
       ).toBe(true);
       expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'http://example.com/{z}/{x}/{y}' })).toBe(false);
       expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'https://foo.googleapis.com/{z}/{x}/{y}' })).toBe(false);
+      // Any non-Earth-Engine https origin must be rejected (auditoría 2026-07-09 #3)
+      expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'https://example.com/tiles/{z}/{x}/{y}' })).toBe(false);
+      // Optional persisted search params are validated when present
+      expect(isValidSelectedImage({ ...validSelectedImage, days_buffer: 10, max_cloud: 80, mode: 'composite' })).toBe(true);
+      expect(isValidSelectedImage({ ...validSelectedImage, days_buffer: 99 })).toBe(false);
+      expect(isValidSelectedImage({ ...validSelectedImage, max_cloud: 150 })).toBe(false);
+      expect(isValidSelectedImage({ ...validSelectedImage, mode: 'invalid' })).toBe(false);
       expect(isValidSelectedImage({ ...validSelectedImage, sensor: 'Landsat-8' })).toBe(false);
       expect(isValidSelectedImage({ ...validSelectedImage, images_count: -1 })).toBe(false);
       expect(isValidSelectedImage({ ...validSelectedImage, flood_info: { id: '1' } })).toBe(false);

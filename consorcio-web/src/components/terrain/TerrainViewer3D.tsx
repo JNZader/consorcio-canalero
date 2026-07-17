@@ -24,7 +24,7 @@ import { useGEELayers } from '../../hooks/useGEELayers';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
-import { useSelectedImageListener } from '../../hooks/useSelectedImage';
+import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
@@ -77,26 +77,16 @@ const TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD = {
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v3';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 /**
- * localStorage key written by ``useSelectedImageListener``. Reading it
- * synchronously lets us pick Sentinel as the initial active layer at first
- * render, instead of mounting with the DEM and then swapping on the next
- * effect tick (which produced a visible flash from DEM → Sentinel).
+ * Reading the persisted selected image synchronously lets us pick Sentinel as
+ * the initial active layer at first render, instead of mounting with the DEM
+ * and then swapping on the next effect tick (which produced a visible flash
+ * from DEM → Sentinel). Uses the shared validated reader instead of an ad-hoc
+ * localStorage parse so a manipulated tile_url cannot bypass the host
+ * allowlist (auditoría 2026-07-09, hallazgo 3).
  */
-const SELECTED_IMAGE_STORAGE_KEY = 'consorcio_selected_image';
-
 function readPersistedSentinelTileUrl(): string | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const stored = window.localStorage.getItem(SELECTED_IMAGE_STORAGE_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { tile_url?: unknown } | null;
-    if (parsed && typeof parsed.tile_url === 'string' && parsed.tile_url.length > 0) {
-      return parsed.tile_url;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return getSelectedImageSync()?.tile_url ?? null;
 }
 
 function hasPersistedSentinelImage(): boolean {

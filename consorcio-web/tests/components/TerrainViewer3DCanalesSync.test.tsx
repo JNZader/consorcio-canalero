@@ -79,6 +79,7 @@ vi.mock('../../src/hooks/useSoilMap', () => ({
 }));
 vi.mock('../../src/hooks/useSelectedImage', () => ({
   useSelectedImageListener: () => null,
+  getSelectedImageSync: () => null,
 }));
 vi.mock('../../src/hooks/useWaterways', () => ({
   useWaterways: () => ({ waterways: [] }),
