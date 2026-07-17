@@ -419,7 +419,14 @@ class ImageExplorer:
         mode: str = "scene",
     ) -> Dict[str, Any]:
         if sensor == "sentinel2":
-            return self.get_sentinel2_image(target_date, days_buffer, max_cloud, visualization)
+            # composite mode → temporal median (rejects clouds); scene → mosaic.
+            return self.get_sentinel2_image(
+                target_date,
+                days_buffer,
+                max_cloud,
+                visualization,
+                use_median=mode == "composite",
+            )
         if sensor == "sentinel1":
             return self.get_sentinel1_image(target_date, days_buffer, visualization)
         if sensor in {"landsat8", "landsat7", "landsat5"}:

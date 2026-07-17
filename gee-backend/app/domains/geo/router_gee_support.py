@@ -497,6 +497,9 @@ async def get_historic_flood_tiles_impl(
         sensor = str(flood.get("sensor") or "sentinel2")
         max_cloud = int(flood.get("max_cloud") or 60)
 
+        # Historic floods always composite (temporal median) for optical sensors
+        # so transient clouds are rejected — this is the original use_median=True
+        # behavior. SAR (Sentinel-1) has no optical clouds, so it stays scene.
         result = await _run_blocking(
             explorer.get_image,
             sensor=sensor,
@@ -504,7 +507,7 @@ async def get_historic_flood_tiles_impl(
             days_buffer=days_buffer,
             max_cloud=max_cloud,
             visualization=visualization,
-            mode="composite" if sensor == "landsat7" else "scene",
+            mode="scene" if sensor == "sentinel1" else "composite",
         )
 
         if "error" in result:
@@ -515,6 +518,12 @@ async def get_historic_flood_tiles_impl(
                 visualization="vv_flood",
             )
 
+        # Tag composite so a persisted flood selection regenerates with the
+        # median (cloud-free) path on reload instead of drifting back to mosaic.
+        # Check the RESULT sensor, not the requested one, so the SAR fallback
+        # (which is scene/mosaic, no optical clouds) is never mislabeled.
+        if "error" not in result and result.get("sensor") != "Sentinel-1":
+            result.setdefault("composition_mode", "composite")
         result["flood_info"] = flood
         return result
     except AppException:
