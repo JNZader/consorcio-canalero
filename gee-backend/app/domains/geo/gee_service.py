@@ -400,6 +400,7 @@ class ImageExplorer:
     ) -> Dict[str, Any]:
         return build_landsat_payload(
             self,
+            ee,
             sensor=sensor,
             target_date=target_date,
             days_buffer=days_buffer,
