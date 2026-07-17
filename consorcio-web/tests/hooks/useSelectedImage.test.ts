@@ -118,6 +118,7 @@ describe('useSelectedImage', () => {
       visualization: 'true_color',
       max_cloud: null,
       days_buffer: 10,
+      mode: null,
     });
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'selectedImageChange' }));
 

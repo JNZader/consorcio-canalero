@@ -15,6 +15,7 @@ export interface ImagenMapaParams {
   visualization: string;
   max_cloud?: number | null;
   days_buffer: number;
+  mode?: 'scene' | 'composite' | null;
 }
 
 export interface ImagenComparacionParams {
@@ -81,6 +82,10 @@ export const mapImageApi = {
       // Optical sensors require max_cloud as a query param; default to the
       // Image Explorer's permissive 80% when saved params do not include it.
       queryParams.append('max_cloud', String(params.max_cloud ?? 80));
+    }
+
+    if (params.mode) {
+      queryParams.append('mode', params.mode);
     }
 
     return apiFetch<{

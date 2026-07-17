@@ -125,6 +125,7 @@ describe('useImageComparison', () => {
         visualization: leftImage.visualization,
         max_cloud: null,
         days_buffer: 10,
+        mode: null,
       },
       right: {
         sensor: leftImage.sensor,
@@ -132,6 +133,7 @@ describe('useImageComparison', () => {
         visualization: leftImage.visualization,
         max_cloud: null,
         days_buffer: 10,
+        mode: null,
       },
     });
     expect(dispatchSpy).toHaveBeenCalledWith(

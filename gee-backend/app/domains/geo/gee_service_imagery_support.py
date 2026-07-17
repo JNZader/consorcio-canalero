@@ -277,6 +277,8 @@ def build_landsat_payload(
         "collection": cfg["collection"],
         "composition_mode": composition_mode,
         "notes": notes,
+        "days_buffer": days_buffer,
+        "max_cloud": max_cloud,
     }
 
 
@@ -505,6 +507,10 @@ def build_sentinel2_payload(
         "visualization_description": preset["description"],
         "sensor": "Sentinel-2",
         "collection": collection_name,
+        # Effective search params so the frontend can persist and later
+        # regenerate this exact tile (auditoría 2026-07-09, hallazgo 2).
+        "days_buffer": days_buffer,
+        "max_cloud": max_cloud,
     }
 
 
@@ -548,6 +554,8 @@ def build_sentinel1_payload(
         "visualization_description": description,
         "sensor": "Sentinel-1",
         "collection": "COPERNICUS/S1_GRD",
+        "days_buffer": days_buffer,
+        "max_cloud": None,
     }
 
 

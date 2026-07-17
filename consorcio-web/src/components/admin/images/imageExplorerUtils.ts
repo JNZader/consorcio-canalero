@@ -44,7 +44,9 @@ export interface ImageResultLike {
   sensor: string;
   collection: string;
   notes?: string | null;
-  composition_mode?: 'scene' | 'composite';
+  composition_mode?: 'scene' | 'composite' | 'gapfill';
+  days_buffer?: number | null;
+  max_cloud?: number | null;
   cloud_cover?: number | null;
   path?: number | null;
   row?: number | null;
@@ -89,6 +91,12 @@ export function createSelectedImageFromResult(
   result: ImageResultLike | null
 ): SelectedImage | null {
   if (!result) return null;
+  // 'gapfill' and 'composite' both require mode=composite to regenerate the
+  // same tile: the backend decides gap-fill vs pure median from data presence.
+  const mode: 'scene' | 'composite' =
+    result.composition_mode === 'composite' || result.composition_mode === 'gapfill'
+      ? 'composite'
+      : 'scene';
   return {
     tile_url: result.tile_url,
     target_date: result.target_date,
@@ -97,6 +105,9 @@ export function createSelectedImageFromResult(
     visualization_description: result.visualization_description,
     collection: result.collection,
     images_count: result.images_count,
+    days_buffer: typeof result.days_buffer === 'number' ? result.days_buffer : undefined,
+    max_cloud: typeof result.max_cloud === 'number' ? result.max_cloud : null,
+    mode,
     flood_info: result.flood_info
       ? {
           id: result.flood_info.id,
