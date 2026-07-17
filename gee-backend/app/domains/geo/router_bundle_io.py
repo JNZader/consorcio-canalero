@@ -53,10 +53,7 @@ def _validate_zip_manifest(archive: zipfile.ZipFile, compressed_bytes: int) -> N
     if len(members) > _MAX_BUNDLE_FILES:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Bundle tiene demasiados archivos: {len(members)} (máx "
-                f"{_MAX_BUNDLE_FILES})."
-            ),
+            detail=(f"Bundle tiene demasiados archivos: {len(members)} (máx {_MAX_BUNDLE_FILES})."),
         )
     total_uncompressed = 0
     for member in members:
@@ -79,10 +76,7 @@ def _validate_zip_manifest(archive: zipfile.ZipFile, compressed_bytes: int) -> N
                 f"{_MAX_TOTAL_UNCOMPRESSED_BYTES:,})."
             ),
         )
-    if (
-        compressed_bytes > 0
-        and total_uncompressed / compressed_bytes > _MAX_COMPRESSION_RATIO
-    ):
+    if compressed_bytes > 0 and total_uncompressed / compressed_bytes > _MAX_COMPRESSION_RATIO:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -179,15 +173,11 @@ def export_geo_bundle(
             "format": "geo-bundle-v1",
             "vectors": {
                 "zonas_operativas": "vectors/zonas_operativas.geojson",
-                "approved_zoning": "vectors/approved_zoning.json"
-                if approved_payload
-                else None,
+                "approved_zoning": "vectors/approved_zoning.json" if approved_payload else None,
             },
             "layers": manifest_layers,
         }
-        bundle.writestr(
-            "manifest.json", json.dumps(manifest_payload, ensure_ascii=False, indent=2)
-        )
+        bundle.writestr("manifest.json", json.dumps(manifest_payload, ensure_ascii=False, indent=2))
 
     buffer.seek(0)
     filename = f"geo_bundle_{date.today().isoformat()}.zip"
@@ -263,9 +253,7 @@ async def import_geo_bundle(
 
             approved_path = manifest.get("vectors", {}).get("approved_zoning")
             if approved_path:
-                approved_payload = json.loads(
-                    archive.read(approved_path).decode("utf-8")
-                )
+                approved_payload = json.loads(archive.read(approved_path).decode("utf-8"))
                 approved_result = _import_approved_zoning_payload(
                     db,
                     repo,
@@ -273,9 +261,7 @@ async def import_geo_bundle(
                     approved_by_id=getattr(user, "id", None),
                     notes=f"Importado desde bundle: {file.filename}",
                 )
-                vectors_imported["zonificacion_aprobada"] = approved_result[
-                    "imported_count"
-                ]
+                vectors_imported["zonificacion_aprobada"] = approved_result["imported_count"]
 
             layers_imported = 0
             for layer_entry in manifest.get("layers", []):
@@ -292,9 +278,7 @@ async def import_geo_bundle(
                     fuente=str(layer_entry.get("fuente") or "manual"),
                     archivo_path=str(target_path),
                     formato=str(
-                        layer_entry.get("formato")
-                        or target_path.suffix.lstrip(".")
-                        or "geotiff"
+                        layer_entry.get("formato") or target_path.suffix.lstrip(".") or "geotiff"
                     ),
                     srid=int(layer_entry.get("srid") or 4326),
                     bbox=layer_entry.get("bbox"),

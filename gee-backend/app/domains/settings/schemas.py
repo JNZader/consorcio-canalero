@@ -25,9 +25,7 @@ class SettingUpdate(BaseModel):
     """Payload to update a setting value."""
 
     valor: Any = Field(..., description="New value (JSON-compatible)")
-    descripcion: Optional[str] = Field(
-        default=None, description="Optional description override"
-    )
+    descripcion: Optional[str] = Field(default=None, description="Optional description override")
 
 
 class SettingsByCategoryResponse(BaseModel):

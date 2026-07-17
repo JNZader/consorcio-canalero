@@ -191,9 +191,7 @@ class TestTramiteRepository:
         items, total = repo.get_all(db, estado_filter=EstadoTramite.INGRESADO)
         assert total >= 1
 
-        items_none, total_none = repo.get_all(
-            db, estado_filter=EstadoTramite.APROBADO
-        )
+        items_none, total_none = repo.get_all(db, estado_filter=EstadoTramite.APROBADO)
         assert total_none == 0
 
     def test_get_all_filter_by_tipo(
@@ -222,14 +220,10 @@ class TestTramiteRepository:
         repo.create(db, sample_create_data, usuario_id=user_with_id)
         db.flush()
 
-        items, total = repo.get_all(
-            db, prioridad_filter=PrioridadTramite.ALTA
-        )
+        items, total = repo.get_all(db, prioridad_filter=PrioridadTramite.ALTA)
         assert total >= 1
 
-        items_none, total_none = repo.get_all(
-            db, prioridad_filter=PrioridadTramite.BAJA
-        )
+        items_none, total_none = repo.get_all(db, prioridad_filter=PrioridadTramite.BAJA)
         assert total_none == 0
 
     def test_update(
@@ -252,9 +246,7 @@ class TestTramiteRepository:
         assert updated.estado == EstadoTramite.EN_TRAMITE
         assert updated.resolucion == "En proceso de revision"
 
-    def test_update_nonexistent_returns_none(
-        self, db: Session, repo: TramiteRepository
-    ):
+    def test_update_nonexistent_returns_none(self, db: Session, repo: TramiteRepository):
         update_data = TramiteUpdate(estado=EstadoTramite.EN_TRAMITE)
         result = repo.update(db, uuid.uuid4(), update_data)
         assert result is None
@@ -443,9 +435,7 @@ class TestTramiteService:
         assert tramite.id is not None
         assert tramite.estado == EstadoTramite.INGRESADO
 
-    def test_get_by_id_raises_on_missing(
-        self, db: Session, service: TramiteService
-    ):
+    def test_get_by_id_raises_on_missing(self, db: Session, service: TramiteService):
         with pytest.raises(Exception) as exc_info:
             service.get_by_id(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]

@@ -129,9 +129,7 @@ class Settings(BaseSettings):
     enable_docs: bool = False
     environment: str = "development"  # "production" | "staging" | "development"
     frontend_url: str = "http://localhost:5173"
-    api_base_url: str = (
-        ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
-    )
+    api_base_url: str = ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
 
     # Photo upload storage (LocalPhotoStorage for now — drop-in swap to S3/MinIO).
     # The directory is mounted as a Docker volume in compose so files survive
@@ -144,9 +142,7 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Retorna lista de origenes CORS permitidos."""
         origins = {
-            origin.strip().rstrip("/")
-            for origin in self.cors_origins.split(",")
-            if origin.strip()
+            origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()
         }
 
         if self.frontend_url:
@@ -257,8 +253,7 @@ def _enforce_production_secrets(s: Settings) -> None:
         # reachable externally) — but ``changeme`` is never OK.
         if s.redis_password == "changeme":
             problems.append(
-                "REDIS_PASSWORD is set to the placeholder 'changeme'; "
-                "rotate it to a real secret."
+                "REDIS_PASSWORD is set to the placeholder 'changeme'; rotate it to a real secret."
             )
 
     # ``s.rate_limit_disabled`` is parsed by pydantic-settings from the
@@ -276,10 +271,7 @@ def _enforce_production_secrets(s: Settings) -> None:
     # the generic exception handler, DEBUG-level logs, uvicorn reload).
     # Same class of misconfig as RATE_LIMIT_DISABLED — refuse to start.
     if s.debug:
-        problems.append(
-            "DEBUG debe ser False en producción; "
-            "unset DEBUG or set it to 'false'."
-        )
+        problems.append("DEBUG debe ser False en producción; unset DEBUG or set it to 'false'.")
 
     # Docs exposure in production is information disclosure (full API
     # surface + schemas for unauthenticated recon), but it can be a
@@ -329,10 +321,7 @@ def _enforce_production_secrets(s: Settings) -> None:
                 break
 
     if problems:
-        message = (
-            "Refusing to start with insecure configuration:\n  - "
-            + "\n  - ".join(problems)
-        )
+        message = "Refusing to start with insecure configuration:\n  - " + "\n  - ".join(problems)
         raise RuntimeError(message)
 
 

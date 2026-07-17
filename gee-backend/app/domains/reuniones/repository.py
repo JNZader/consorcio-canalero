@@ -27,9 +27,7 @@ class ReunionRepository:
         """Return a single reunion with its agenda items, or None."""
         stmt = (
             select(Reunion)
-            .options(
-                selectinload(Reunion.agenda_items).selectinload(AgendaItem.referencias)
-            )
+            .options(selectinload(Reunion.agenda_items).selectinload(AgendaItem.referencias))
             .where(Reunion.id == reunion_id)
         )
         return db.execute(stmt).scalar_one_or_none()
@@ -61,9 +59,7 @@ class ReunionRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(Reunion.fecha_reunion.desc()).offset(offset).limit(limit)
-        )
+        items_stmt = base.order_by(Reunion.fecha_reunion.desc()).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total

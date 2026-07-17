@@ -84,9 +84,7 @@ def get_available_layers_payload() -> List[Dict[str, str]]:
     return [dict(layer) for layer in AVAILABLE_LAYERS]
 
 
-def fetch_red_vial_features(
-    *, ensure_initialized, asset_path, ee_module
-) -> list[dict[str, Any]]:
+def fetch_red_vial_features(*, ensure_initialized, asset_path, ee_module) -> list[dict[str, Any]]:
     ensure_initialized()
     caminos = ee_module.FeatureCollection(asset_path("red_vial"))
     return caminos.getInfo().get("features", [])
@@ -133,9 +131,7 @@ def fetch_caminos_by_consorcio(
     filtered = caminos.filter(ee_module.Filter.eq("ccc", consorcio_codigo))
     geojson = filtered.getInfo()
     if len(geojson.get("features", [])) == 0:
-        geojson = caminos.filter(
-            ee_module.Filter.eq("ccc", consorcio_codigo.upper())
-        ).getInfo()
+        geojson = caminos.filter(ee_module.Filter.eq("ccc", consorcio_codigo.upper())).getInfo()
     return geojson
 
 

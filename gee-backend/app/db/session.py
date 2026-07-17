@@ -109,9 +109,7 @@ _async_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg:
 _async_connect_args: dict[str, object] = {}
 if settings.use_pgbouncer:
     _async_connect_args["statement_cache_size"] = 0
-    _async_connect_args["prepared_statement_name_func"] = (
-        lambda: f"__asyncpg_{uuid4()}__"
-    )
+    _async_connect_args["prepared_statement_name_func"] = lambda: f"__asyncpg_{uuid4()}__"
 
 if settings.use_pgbouncer:
     async_engine = create_async_engine(
@@ -131,9 +129,7 @@ else:
         max_overflow=_MAX_OVERFLOW,
     )
 
-AsyncSessionLocal = async_sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
-)
+AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:

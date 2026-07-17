@@ -135,9 +135,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
     except AppException:
         raise
     except Exception as e:
-        logger.error(
-            "Error obteniendo caminos por consorcio", codigo=codigo, error=str(e)
-        )
+        logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -145,9 +143,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
         )
 
 
-async def get_caminos_por_nombre_consorcio_impl(
-    *, nombre: str, ensure_gee
-) -> JSONResponse:
+async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> JSONResponse:
     svc = ensure_gee()
     try:
         geojson = await _run_blocking(svc["get_caminos_by_consorcio_nombre"], nombre)
@@ -298,9 +294,7 @@ async def get_sentinel2_image_impl(
     ensure_gee=None,
 ):
     cache = get_cache()
-    cache_key = (
-        f"gee:s2:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
-    )
+    cache_key = f"gee:s2:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
@@ -359,9 +353,7 @@ async def get_satellite_image_impl(
     ensure_gee=None,
 ):
     cache = get_cache()
-    cache_key = (
-        f"gee:image:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}:{mode}"
-    )
+    cache_key = f"gee:image:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}:{mode}"
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
@@ -404,9 +396,7 @@ async def get_image_scenes_impl(
     ensure_gee=None,
 ):
     cache = get_cache()
-    cache_key = (
-        f"gee:image-scenes:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
-    )
+    cache_key = f"gee:image-scenes:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
@@ -553,7 +543,5 @@ async def export_qgis_project_impl():
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={
-            "Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'
-        },
+        headers={"Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'},
     )

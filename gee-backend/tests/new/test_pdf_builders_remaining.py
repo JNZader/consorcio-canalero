@@ -129,7 +129,9 @@ class TestDecodeDataUrlImage:
 
 class TestBuildColorLegendTable:
     def test_with_items(self, branding):
-        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
+        from app.shared.pdf.builders_common import (
+            build_color_legend_table as _build_color_legend_table,
+        )
 
         items = [
             {"label": "Zone A", "color": "#ff0000"},
@@ -139,20 +141,22 @@ class TestBuildColorLegendTable:
         assert len(story) >= 2  # title + table
 
     def test_empty_items(self, branding):
-        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
+        from app.shared.pdf.builders_common import (
+            build_color_legend_table as _build_color_legend_table,
+        )
 
         story = _build_color_legend_table("Empty", [], branding)
         assert len(story) >= 2  # title + "Sin datos" paragraph
 
     def test_with_extra_value_key(self, branding):
-        from app.shared.pdf.builders_common import build_color_legend_table as _build_color_legend_table
+        from app.shared.pdf.builders_common import (
+            build_color_legend_table as _build_color_legend_table,
+        )
 
         items = [
             {"label": "Road A", "color": "#888888", "detail": "100 km"},
         ]
-        story = _build_color_legend_table(
-            "Road Legend", items, branding, extra_value_key="detail"
-        )
+        story = _build_color_legend_table("Road Legend", items, branding, extra_value_key="detail")
         assert len(story) >= 2
 
 
@@ -222,7 +226,13 @@ class TestBuildApprovedZoningPdf:
             feature_collection={
                 "type": "FeatureCollection",
                 "features": [
-                    {"properties": {"nombre": "X", "superficie_ha": "invalid", "basin_count": "bad"}},
+                    {
+                        "properties": {
+                            "nombre": "X",
+                            "superficie_ha": "invalid",
+                            "basin_count": "bad",
+                        }
+                    },
                 ],
             },
         )
@@ -539,7 +549,9 @@ class TestBuildCanalesDetailTable:
         # km cell contains the sum — 25.0 rendered as "25.0"
         total_km_cell = last_row[2]
         total_km_text = (
-            total_km_cell.getPlainText() if hasattr(total_km_cell, "getPlainText") else str(total_km_cell)
+            total_km_cell.getPlainText()
+            if hasattr(total_km_cell, "getPlainText")
+            else str(total_km_cell)
         )
         assert "25.0" in total_km_text
 
@@ -591,7 +603,9 @@ class TestBuildCanalesDetailTable:
         # header row is rows[0] → item rows start at 1
         first_km_cell = rows[1][2]
         first_km_text = (
-            first_km_cell.getPlainText() if hasattr(first_km_cell, "getPlainText") else str(first_km_cell)
+            first_km_cell.getPlainText()
+            if hasattr(first_km_cell, "getPlainText")
+            else str(first_km_cell)
         )
         # Must contain the number but NOT the "km" string (unit is in the header).
         assert "8.2" in first_km_text

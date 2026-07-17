@@ -90,6 +90,5 @@ class Presupuesto(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Presupuesto {self.id} anio={self.anio} "
-            f"rubro={self.rubro} ${self.monto_proyectado}>"
+            f"<Presupuesto {self.id} anio={self.anio} rubro={self.rubro} ${self.monto_proyectado}>"
         )

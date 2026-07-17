@@ -115,9 +115,7 @@ class MartinLayerCatalogItem(BaseModel):
     id: str
     tile_url: str  # public-facing template: {base}/{id}/{z}/{x}/{y}
     description: str
-    geometry_type: (
-        str  # normalized to lowercase: "polygon", "point", "linestring", etc.
-    )
+    geometry_type: str  # normalized to lowercase: "polygon", "point", "linestring", etc.
     source_layer: str  # same as id for Martin auto-published PostGIS views
 
 

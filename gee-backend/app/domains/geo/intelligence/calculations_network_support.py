@@ -50,12 +50,9 @@ def calcular_riesgo_camino_impl(
     twi_norm = min(max((sum(twi_values) / len(twi_values)) / 15.0, 0.0), 1.0)
     drain_factor = 0.0
     if drainage_gdf is not None and not drainage_gdf.empty:
-        drain_factor = max(
-            1.0 - (drainage_gdf.geometry.distance(camino_geom).min() / 500.0), 0.0
-        )
+        drain_factor = max(1.0 - (drainage_gdf.geometry.distance(camino_geom).min() / 500.0), 0.0)
     return round_score(
-        (0.30 * fa_norm + 0.25 * sl_norm + 0.25 * twi_norm + 0.20 * drain_factor)
-        * 100.0
+        (0.30 * fa_norm + 0.25 * sl_norm + 0.25 * twi_norm + 0.20 * drain_factor) * 100.0
     )
 
 
@@ -66,11 +63,7 @@ def clasificar_terreno_dinamico_impl(
 ) -> dict[str, Any]:
     result: dict[str, Any] = {"clases": {}, "estadisticas": {}}
     shape = next(
-        (
-            data.shape
-            for data in [sar_data, sentinel2_data, dem_data]
-            if data is not None
-        ),
+        (data.shape for data in [sar_data, sentinel2_data, dem_data] if data is not None),
         None,
     )
     if shape is None:
@@ -80,12 +73,8 @@ def clasificar_terreno_dinamico_impl(
         classified[sar_data < -15.0] = 1
     if sentinel2_data is not None:
         classified[(sentinel2_data > 0.5) & (classified == 0)] = 2
-        classified[
-            (sentinel2_data > 0.2) & (sentinel2_data <= 0.5) & (classified == 0)
-        ] = 4
-        classified[
-            (sentinel2_data <= 0.2) & (sentinel2_data > -0.1) & (classified == 0)
-        ] = 3
+        classified[(sentinel2_data > 0.2) & (sentinel2_data <= 0.5) & (classified == 0)] = 4
+        classified[(sentinel2_data <= 0.2) & (sentinel2_data > -0.1) & (classified == 0)] = 3
     class_names = {
         0: "sin_clasificar",
         1: "agua",
@@ -98,9 +87,7 @@ def clasificar_terreno_dinamico_impl(
     stats = {
         name: {
             "pixeles": int(np.sum(classified == code)),
-            "porcentaje": round(
-                (int(np.sum(classified == code)) / total_pixels) * 100.0, 2
-            )
+            "porcentaje": round((int(np.sum(classified == code)) / total_pixels) * 100.0, 2)
             if total_pixels > 0
             else 0.0,
         }
@@ -124,9 +111,7 @@ def rank_canal_hotspots_impl(
     from shapely.geometry import shape as shapely_shape
 
     if not Path(flow_acc_raster_path).exists():
-        raise FileNotFoundError(
-            f"Flow accumulation raster not found: {flow_acc_raster_path}"
-        )
+        raise FileNotFoundError(f"Flow accumulation raster not found: {flow_acc_raster_path}")
     raw_results: list[dict] = []
     for idx, canal in enumerate(canal_geometries):
         geom = canal.get("geometry")

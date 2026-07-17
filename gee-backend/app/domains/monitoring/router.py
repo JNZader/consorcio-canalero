@@ -77,9 +77,7 @@ def create_sugerencia(
             "contacto_email": user.email,
         }
     )
-    return service.create_sugerencia(
-        db, payload_data, usuario_id=uuid.UUID(str(user.id))
-    )
+    return service.create_sugerencia(db, payload_data, usuario_id=uuid.UUID(str(user.id)))
 
 
 @router.get(
@@ -181,9 +179,7 @@ def get_sugerencias_stats(
     _user=Depends(_require_operator()),
 ) -> SugerenciaStatsResponse:
     """Estadisticas agregadas de sugerencias (requiere operador)."""
-    return SugerenciaStatsResponse.model_validate(
-        service.get_sugerencias_stats(db)
-    )
+    return SugerenciaStatsResponse.model_validate(service.get_sugerencias_stats(db))
 
 
 @router.get(
@@ -252,9 +248,7 @@ def agendar_sugerencia(
     payload `fecha_reunion` is null (operator changed their mind), so
     the UI stays a single button instead of two.
     """
-    return service.agendar_sugerencia(
-        db, sugerencia_id, fecha_reunion=payload.fecha_reunion
-    )
+    return service.agendar_sugerencia(db, sugerencia_id, fecha_reunion=payload.fecha_reunion)
 
 
 # ──────────────────────────────────────────────
@@ -269,9 +263,7 @@ def get_dashboard(
     _user=Depends(_require_operator()),
 ) -> DashboardStatsResponse:
     """Dashboard con estadisticas agregadas de todos los dominios."""
-    return DashboardStatsResponse.model_validate(
-        service.get_dashboard_stats(db)
-    )
+    return DashboardStatsResponse.model_validate(service.get_dashboard_stats(db))
 
 
 @router.get(

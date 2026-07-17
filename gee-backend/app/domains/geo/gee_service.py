@@ -160,8 +160,7 @@ def _ensure_initialized() -> None:
         except Exception as exc:
             _gee_init_error = str(exc)
             raise ValueError(
-                "No se pudo inicializar GEE. "
-                "Verifica credenciales o conectividad del servicio"
+                "No se pudo inicializar GEE. Verifica credenciales o conectividad del servicio"
             ) from exc
 
 

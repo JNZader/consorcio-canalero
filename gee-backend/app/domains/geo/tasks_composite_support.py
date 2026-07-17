@@ -112,22 +112,16 @@ def composite_analysis_task_impl(
         )
         outputs["zonal_stats_count"] = str(zonal_stats_count)
         update_job(job_id, progreso=90)
-        update_job(
-            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs
-        )
+        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
         logger.info("composite_analysis.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
     except Exception:
         update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
-        logger.error(
-            "composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True
-        )
+        logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
         raise
 
 
-def resolve_composite_area_dir_impl(
-    *, area_id: str, get_db, geo_repo, tipo_geo_layer
-) -> str:
+def resolve_composite_area_dir_impl(*, area_id: str, get_db, geo_repo, tipo_geo_layer) -> str:
     db = get_db()
     try:
         layers, _ = geo_repo.get_layers(
@@ -190,9 +184,7 @@ def merge_drainage_networks_if_available_impl(
         if stale_tif.exists():
             stale_tif.unlink()
     except Exception:
-        logger.warning(
-            "composite_analysis.merge_drainage_failed", area_id=area_id, exc_info=True
-        )
+        logger.warning("composite_analysis.merge_drainage_failed", area_id=area_id, exc_info=True)
 
 
 def store_composite_zonal_stats_impl(
@@ -259,9 +251,7 @@ def store_composite_zonal_stats_impl(
 
         all_stats = flood_stats + drainage_stats
         if all_stats:
-            zona_ids = list(
-                {stat["zona_id"] for stat in all_stats if stat.get("zona_id")}
-            )
+            zona_ids = list({stat["zona_id"] for stat in all_stats if stat.get("zona_id")})
             tipos = list({stat["tipo"] for stat in all_stats if stat.get("tipo")})
             if zona_ids and tipos:
                 db.execute(

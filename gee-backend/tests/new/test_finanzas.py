@@ -270,9 +270,7 @@ class TestFinanzasRepositoryGastos:
         assert updated is not None
         assert updated.monto == Decimal("20000.00")
 
-    def test_update_nonexistent_returns_none(
-        self, db: Session, repo: FinanzasRepository
-    ):
+    def test_update_nonexistent_returns_none(self, db: Session, repo: FinanzasRepository):
         update_data = GastoUpdate(monto=Decimal("100.00"))
         result = repo.update_gasto(db, uuid.uuid4(), update_data)
         assert result is None
@@ -412,9 +410,7 @@ class TestFinanzasRepositoryReports:
         assert mant["proyectado"] == Decimal("100000.00")
         assert mant["real"] == Decimal("30000.00")
 
-    def test_budget_execution_empty_year(
-        self, db: Session, repo: FinanzasRepository
-    ):
+    def test_budget_execution_empty_year(self, db: Session, repo: FinanzasRepository):
         execution = repo.get_budget_execution(db, 1999)
         assert execution == []
 
@@ -452,9 +448,7 @@ class TestFinanzasRepositoryReports:
         assert summary["total_gastos"] >= Decimal("20000.00")
         assert summary["balance"] == summary["total_ingresos"] - summary["total_gastos"]
 
-    def test_financial_summary_empty_year(
-        self, db: Session, repo: FinanzasRepository
-    ):
+    def test_financial_summary_empty_year(self, db: Session, repo: FinanzasRepository):
         summary = repo.get_financial_summary(db, 1999)
         assert summary["total_ingresos"] == Decimal("0")
         assert summary["total_gastos"] == Decimal("0")
@@ -497,9 +491,7 @@ class TestFinanzasService:
         assert exc_info.value.status_code == 400
         assert "invalida" in str(exc_info.value.detail).lower()
 
-    def test_get_gasto_raises_on_missing(
-        self, db: Session, service: FinanzasService
-    ):
+    def test_get_gasto_raises_on_missing(self, db: Session, service: FinanzasService):
         with pytest.raises(Exception) as exc_info:
             service.get_gasto(db, uuid.uuid4())
         assert exc_info.value.status_code == 404
@@ -511,9 +503,7 @@ class TestFinanzasService:
         sample_ingreso_data: IngresoCreate,
         user_with_id: uuid.UUID,
     ):
-        ingreso = service.create_ingreso(
-            db, sample_ingreso_data, usuario_id=user_with_id
-        )
+        ingreso = service.create_ingreso(db, sample_ingreso_data, usuario_id=user_with_id)
         assert ingreso.id is not None
         assert ingreso.categoria == "cuotas"
 
@@ -534,9 +524,7 @@ class TestFinanzasService:
         assert exc_info.value.status_code == 400
         assert "invalida" in str(exc_info.value.detail).lower()
 
-    def test_get_ingreso_raises_on_missing(
-        self, db: Session, service: FinanzasService
-    ):
+    def test_get_ingreso_raises_on_missing(self, db: Session, service: FinanzasService):
         with pytest.raises(Exception) as exc_info:
             service.get_ingreso(db, uuid.uuid4())
         assert exc_info.value.status_code == 404
@@ -602,9 +590,7 @@ class TestCategoryValidation:
         gasto = service.create_gasto(db, sample_gasto_data, usuario_id=user_with_id)
 
         with pytest.raises(Exception) as exc_info:
-            service.update_gasto(
-                db, gasto.id, GastoUpdate(categoria="invalid_cat")
-            )
+            service.update_gasto(db, gasto.id, GastoUpdate(categoria="invalid_cat"))
         assert exc_info.value.status_code == 400
 
     def test_update_ingreso_invalid_categoria_rejected(
@@ -614,12 +600,8 @@ class TestCategoryValidation:
         sample_ingreso_data: IngresoCreate,
         user_with_id: uuid.UUID,
     ):
-        ingreso = service.create_ingreso(
-            db, sample_ingreso_data, usuario_id=user_with_id
-        )
+        ingreso = service.create_ingreso(db, sample_ingreso_data, usuario_id=user_with_id)
 
         with pytest.raises(Exception) as exc_info:
-            service.update_ingreso(
-                db, ingreso.id, IngresoUpdate(categoria="invalid_cat")
-            )
+            service.update_ingreso(db, ingreso.id, IngresoUpdate(categoria="invalid_cat"))
         assert exc_info.value.status_code == 400

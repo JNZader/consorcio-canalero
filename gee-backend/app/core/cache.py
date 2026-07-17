@@ -77,9 +77,7 @@ class JSONCache:
         try:
             raw = await client.get(self._full_key(key))
         except Exception as exc:
-            logger.warning(
-                "Redis GET failed, treating as miss", key=key, error=str(exc)
-            )
+            logger.warning("Redis GET failed, treating as miss", key=key, error=str(exc))
             return None
         if raw is None:
             return None
@@ -234,9 +232,7 @@ class BytesCache:
         try:
             return client.get(self._full_key(key))
         except Exception as exc:
-            logger.warning(
-                "Redis GET failed, treating as miss", key=key, error=str(exc)
-            )
+            logger.warning("Redis GET failed, treating as miss", key=key, error=str(exc))
             return None
 
     def set(self, key: str, value: bytes, ttl_seconds: int) -> bool:

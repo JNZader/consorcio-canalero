@@ -100,14 +100,10 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     )
     fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
     fecha_fin: Mapped[date] = mapped_column(Date, nullable=False)
-    resultados: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict
-    )
+    resultados: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     hectareas_afectadas: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     porcentaje_area: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    parametros: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict
-    )
+    parametros: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     usuario_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -115,7 +111,4 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AnalisisGee {self.id} tipo={self.tipo} "
-            f"{self.fecha_inicio} – {self.fecha_fin}>"
-        )
+        return f"<AnalisisGee {self.id} tipo={self.tipo} {self.fecha_inicio} – {self.fecha_fin}>"

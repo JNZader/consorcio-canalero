@@ -93,9 +93,7 @@ def merge_drainage_networks_impl(
                     ww_data = json.load(f)
                 for feat in ww_data.get("features", []):
                     if reproject_fn is not None:
-                        feat["geometry"] = mapping(
-                            reproject_fn(shape(feat["geometry"]))
-                        )
+                        feat["geometry"] = mapping(reproject_fn(shape(feat["geometry"])))
                     feat.setdefault("properties", {})["source"] = "real"
                     feat["properties"].setdefault("waterway_file", geojson_file.stem)
                     combined_features.append(feat)
@@ -106,9 +104,7 @@ def merge_drainage_networks_impl(
                     exc_info=True,
                 )
     else:
-        logger.warning(
-            "merge_drainage_networks: waterways dir not found at %s", waterways_dir
-        )
+        logger.warning("merge_drainage_networks: waterways dir not found at %s", waterways_dir)
 
     combined = {"type": "FeatureCollection", "features": combined_features}
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -122,14 +118,10 @@ def merge_drainage_networks_impl(
     return output_path
 
 
-def rasterize_drainage_impl(
-    geojson_path: str, reference_tif: str, output_path: str
-) -> str:
+def rasterize_drainage_impl(geojson_path: str, reference_tif: str, output_path: str) -> str:
     with open(geojson_path) as f:
         geojson_data = json.load(f)
-    geometries = [
-        (shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])
-    ]
+    geometries = [(shape(feat["geometry"]), 1) for feat in geojson_data.get("features", [])]
     with rasterio.open(reference_tif) as src:
         meta = src.meta.copy()
         out_shape = (src.height, src.width)
@@ -184,9 +176,7 @@ def compute_flood_risk_impl(
     ).astype(np.float32) * np.float32(100.0)
     out_nodata = np.float32(-9999.0)
     composite[nodata_mask] = out_nodata
-    meta.update(
-        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
-    )
+    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(composite, 1)
@@ -213,9 +203,7 @@ def compute_drainage_need_impl(
             reference = area / "flow_acc.tif"
             if not reference.exists():
                 reference = area / "hand.tif"
-            rasterize_drainage_fn(
-                str(source_geojson), str(reference), str(drainage_path)
-            )
+            rasterize_drainage_fn(str(source_geojson), str(reference), str(drainage_path))
         else:
             raise FileNotFoundError(
                 f"drainage.tif not found in {area_dir}. Run the DEM pipeline first to generate the drainage network."
@@ -245,9 +233,7 @@ def compute_drainage_need_impl(
 
     out_nodata = np.float32(-9999.0)
     composite[nodata_mask] = out_nodata
-    meta.update(
-        {"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)}
-    )
+    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": float(out_nodata)})
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(composite, 1)

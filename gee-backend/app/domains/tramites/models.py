@@ -151,7 +151,4 @@ class TramiteSeguimiento(UUIDMixin, Base):
     tramite: Mapped["Tramite"] = relationship(back_populates="seguimiento")
 
     def __repr__(self) -> str:
-        return (
-            f"<TramiteSeguimiento {self.id} "
-            f"{self.estado_anterior}->{self.estado_nuevo}>"
-        )
+        return f"<TramiteSeguimiento {self.id} {self.estado_anterior}->{self.estado_nuevo}>"

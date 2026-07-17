@@ -43,9 +43,7 @@ def agenda_repo() -> AgendaItemRepository:
 
 
 @pytest.fixture
-def service(
-    repo: ReunionRepository, agenda_repo: AgendaItemRepository
-) -> ReunionService:
+def service(repo: ReunionRepository, agenda_repo: AgendaItemRepository) -> ReunionService:
     return ReunionService(repository=repo, agenda_repository=agenda_repo)
 
 
@@ -298,9 +296,7 @@ class TestEstadoTransitions:
 class TestReunionRepository:
     """Repository layer tests."""
 
-    def test_get_by_id(
-        self, db: Session, repo: ReunionRepository, sample_reunion: Reunion
-    ):
+    def test_get_by_id(self, db: Session, repo: ReunionRepository, sample_reunion: Reunion):
         found = repo.get_by_id(db, sample_reunion.id)
         assert found is not None
         assert found.titulo == sample_reunion.titulo
@@ -341,9 +337,7 @@ class TestReunionRepository:
         assert total >= 1
         assert all(r.estado == "planificada" for r in items)
 
-    def test_delete(
-        self, db: Session, repo: ReunionRepository, sample_reunion: Reunion
-    ):
+    def test_delete(self, db: Session, repo: ReunionRepository, sample_reunion: Reunion):
         assert repo.delete(db, sample_reunion.id) is True
         assert repo.get_by_id(db, sample_reunion.id) is None
 
@@ -461,9 +455,7 @@ class TestReunionService:
             service.delete(db, uuid.uuid4())
         assert exc_info.value.status_code == 404
 
-    def test_add_agenda_item_reunion_not_found(
-        self, db: Session, service: ReunionService
-    ):
+    def test_add_agenda_item_reunion_not_found(self, db: Session, service: ReunionService):
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:

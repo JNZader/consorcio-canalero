@@ -55,6 +55,4 @@ class Consorcista(UUIDMixin, TimestampMixin, Base):
     notas: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
-        return (
-            f"<Consorcista {self.id} {self.apellido}, {self.nombre} cuit={self.cuit}>"
-        )
+        return f"<Consorcista {self.id} {self.apellido}, {self.nombre} cuit={self.cuit}>"

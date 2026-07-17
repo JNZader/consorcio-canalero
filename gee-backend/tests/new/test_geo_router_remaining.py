@@ -74,7 +74,9 @@ class TestReadGeojsonUpload:
         from app.domains.geo.router_common import _read_geojson_upload
 
         with pytest.raises(HTTPException) as exc_info:
-            _read_geojson_upload(json.dumps({"type": "FeatureCollection", "features": "bad"}).encode())
+            _read_geojson_upload(
+                json.dumps({"type": "FeatureCollection", "features": "bad"}).encode()
+            )
         assert exc_info.value.status_code == 400
 
     def test_accepts_valid_geojson(self):
@@ -143,7 +145,6 @@ class TestGetGeoBundleStorageDir:
             mock_candidate = MagicMock()
             mock_candidate.mkdir.return_value = None
             MockPath.return_value = mock_candidate
-
 
             # Reset so we hit the real logic
 
@@ -324,9 +325,7 @@ class TestImportApprovedZoningPayload:
         db = MagicMock()
         repo = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
-            _import_approved_zoning_payload(
-                db, repo, {"features": []}, approved_by_id=None
-            )
+            _import_approved_zoning_payload(db, repo, {"features": []}, approved_by_id=None)
         assert exc_info.value.status_code == 400
 
 
@@ -355,8 +354,13 @@ class TestUpsertBundleLayer:
         from app.domains.geo.router_common import _upsert_bundle_layer
 
         existing = SimpleNamespace(
-            nombre="old", fuente="old", archivo_path="/old.tif",
-            formato="geotiff", srid=4326, bbox=None, metadata_extra=None,
+            nombre="old",
+            fuente="old",
+            archivo_path="/old.tif",
+            formato="geotiff",
+            srid=4326,
+            bbox=None,
+            metadata_extra=None,
         )
         db = MagicMock()
         db.query.return_value.filter.return_value.one_or_none.return_value = existing

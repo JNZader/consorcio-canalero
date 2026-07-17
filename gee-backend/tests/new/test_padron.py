@@ -109,28 +109,20 @@ class TestCuitValidation:
     """
 
     def test_valid_cuit_formatted(self):
-        data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20-12345678-6"
-        )
+        data = ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="20-12345678-6")
         assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_digits_only(self):
-        data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20123456786"
-        )
+        data = ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="20123456786")
         assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_with_spaces(self):
-        data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="  20-12345678-6  "
-        )
+        data = ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="  20-12345678-6  ")
         assert data.cuit == "20-12345678-6"
 
     def test_valid_cuit_with_dots(self):
         """Dots and dashes mixed — should normalize to formatted."""
-        data = ConsorcistaCreate(
-            nombre="Ana", apellido="Garcia", cuit="20.12345678.6"
-        )
+        data = ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="20.12345678.6")
         assert data.cuit == "20-12345678-6"
 
     def test_invalid_check_digit_rejected(self):
@@ -141,17 +133,13 @@ class TestCuitValidation:
         mod-11 validation.
         """
         with pytest.raises(ValidationError) as exc_info:
-            ConsorcistaCreate(
-                nombre="Ana", apellido="Garcia", cuit="20-12345678-0"
-            )
+            ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="20-12345678-0")
         assert "verificador" in str(exc_info.value)
 
     def test_invalid_check_digit_rejected_digits_only(self):
         """Same rejection for the digits-only input form."""
         with pytest.raises(ValidationError) as exc_info:
-            ConsorcistaCreate(
-                nombre="Ana", apellido="Garcia", cuit="20123456789"
-            )
+            ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="20123456789")
         assert "verificador" in str(exc_info.value)
 
     def test_resto_1_base_always_invalid(self):
@@ -160,29 +148,21 @@ class TestCuitValidation:
         check digit 0-9 must be rejected."""
         for dv in range(10):
             with pytest.raises(ValidationError):
-                ConsorcistaCreate(
-                    nombre="Ana", apellido="Garcia", cuit=f"20-44335566-{dv}"
-                )
+                ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit=f"20-44335566-{dv}")
 
     def test_invalid_cuit_too_short(self):
         with pytest.raises(ValidationError) as exc_info:
-            ConsorcistaCreate(
-                nombre="Ana", apellido="Garcia", cuit="1234567"
-            )
+            ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="1234567")
         assert "11 digitos" in str(exc_info.value)
 
     def test_invalid_cuit_too_long(self):
         with pytest.raises(ValidationError) as exc_info:
-            ConsorcistaCreate(
-                nombre="Ana", apellido="Garcia", cuit="123456789012"
-            )
+            ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="123456789012")
         assert "11 digitos" in str(exc_info.value)
 
     def test_invalid_cuit_letters(self):
         with pytest.raises(ValidationError) as exc_info:
-            ConsorcistaCreate(
-                nombre="Ana", apellido="Garcia", cuit="AB-CDEFGHIJ-K"
-            )
+            ConsorcistaCreate(nombre="Ana", apellido="Garcia", cuit="AB-CDEFGHIJ-K")
         assert "11 digitos" in str(exc_info.value)
 
     def test_update_cuit_validation(self):
@@ -255,11 +235,15 @@ class TestConsorcistaModel:
 
     def test_cuit_unique_constraint(self, db: Session):
         c1 = Consorcista(
-            nombre="A", apellido="B", cuit="20-99887766-5",
+            nombre="A",
+            apellido="B",
+            cuit="20-99887766-5",
             estado=EstadoConsorcista.ACTIVO,
         )
         c2 = Consorcista(
-            nombre="C", apellido="D", cuit="20-99887766-5",
+            nombre="C",
+            apellido="D",
+            cuit="20-99887766-5",
             estado=EstadoConsorcista.ACTIVO,
         )
         db.add(c1)
@@ -338,12 +322,8 @@ class TestPadronRepository:
             assert item.categoria == "propietario"
 
     def test_get_all_search(self, db: Session, repo: PadronRepository):
-        repo.create(db, _create_data_with_unique_cuit(
-            nombre="Alfredo", apellido="Gonzalez"
-        ))
-        repo.create(db, _create_data_with_unique_cuit(
-            nombre="Maria", apellido="Lopez"
-        ))
+        repo.create(db, _create_data_with_unique_cuit(nombre="Alfredo", apellido="Gonzalez"))
+        repo.create(db, _create_data_with_unique_cuit(nombre="Maria", apellido="Lopez"))
         db.flush()
 
         items, total = repo.get_all(db, search="Alfredo")
@@ -376,12 +356,8 @@ class TestPadronRepository:
             assert c.id is not None
 
     def test_get_stats(self, db: Session, repo: PadronRepository):
-        repo.create(db, _create_data_with_unique_cuit(
-            hectareas=100.0, categoria="propietario"
-        ))
-        repo.create(db, _create_data_with_unique_cuit(
-            hectareas=50.0, categoria="arrendatario"
-        ))
+        repo.create(db, _create_data_with_unique_cuit(hectareas=100.0, categoria="propietario"))
+        repo.create(db, _create_data_with_unique_cuit(hectareas=50.0, categoria="arrendatario"))
         db.flush()
 
         stats = repo.get_stats(db)
@@ -400,17 +376,13 @@ class TestPadronRepository:
 class TestPadronService:
     """Service-layer tests."""
 
-    def test_create_commits_and_returns(
-        self, db: Session, service: PadronService
-    ):
+    def test_create_commits_and_returns(self, db: Session, service: PadronService):
         data = _create_data_with_unique_cuit(nombre="Luis")
         consorcista = service.create(db, data)
         assert consorcista.id is not None
         assert consorcista.nombre == "Luis"
 
-    def test_create_duplicate_cuit_raises_409(
-        self, db: Session, service: PadronService
-    ):
+    def test_create_duplicate_cuit_raises_409(self, db: Session, service: PadronService):
         cuit = _unique_cuit()
         service.create(db, _create_data_with_unique_cuit(cuit=cuit))
 
@@ -419,42 +391,28 @@ class TestPadronService:
         assert exc_info.value.status_code == 409  # type: ignore[union-attr]
         assert "CUIT" in str(exc_info.value.detail)
 
-    def test_get_by_id_raises_on_missing(
-        self, db: Session, service: PadronService
-    ):
+    def test_get_by_id_raises_on_missing(self, db: Session, service: PadronService):
         with pytest.raises(Exception) as exc_info:
             service.get_by_id(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_list_consorcistas(
-        self, db: Session, service: PadronService
-    ):
+    def test_list_consorcistas(self, db: Session, service: PadronService):
         service.create(db, _create_data_with_unique_cuit())
         items, total = service.list_consorcistas(db, page=1, limit=10)
         assert total >= 1
         assert len(items) >= 1
 
-    def test_list_with_search(
-        self, db: Session, service: PadronService
-    ):
-        service.create(db, _create_data_with_unique_cuit(
-            nombre="Buscable", apellido="Unico"
-        ))
+    def test_list_with_search(self, db: Session, service: PadronService):
+        service.create(db, _create_data_with_unique_cuit(nombre="Buscable", apellido="Unico"))
         items, total = service.list_consorcistas(db, search="Buscable")
         assert total >= 1
 
-    def test_update_consorcista(
-        self, db: Session, service: PadronService
-    ):
+    def test_update_consorcista(self, db: Session, service: PadronService):
         created = service.create(db, _create_data_with_unique_cuit(nombre="Before"))
-        updated = service.update(
-            db, created.id, ConsorcistaUpdate(nombre="After")
-        )
+        updated = service.update(db, created.id, ConsorcistaUpdate(nombre="After"))
         assert updated.nombre == "After"
 
-    def test_update_cuit_duplicate_raises_409(
-        self, db: Session, service: PadronService
-    ):
+    def test_update_cuit_duplicate_raises_409(self, db: Session, service: PadronService):
         cuit1 = _unique_cuit()
         cuit2 = _unique_cuit()
         service.create(db, _create_data_with_unique_cuit(cuit=cuit1))
@@ -464,9 +422,7 @@ class TestPadronService:
             service.update(db, c2.id, ConsorcistaUpdate(cuit=cuit1))
         assert exc_info.value.status_code == 409  # type: ignore[union-attr]
 
-    def test_get_stats(
-        self, db: Session, service: PadronService
-    ):
+    def test_get_stats(self, db: Session, service: PadronService):
         service.create(db, _create_data_with_unique_cuit())
         stats = service.get_stats(db)
         assert "total" in stats
@@ -497,10 +453,7 @@ class TestCsvImport:
         assert result["errors"] == []
 
     def test_import_skips_missing_nombre(self, db: Session, service: PadronService):
-        csv_content = (
-            "nombre,apellido,cuit\n"
-            ",Garcia,20-11223344-0\n"
-        ).encode("utf-8")
+        csv_content = ("nombre,apellido,cuit\n,Garcia,20-11223344-0\n").encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
 
@@ -508,23 +461,16 @@ class TestCsvImport:
         assert "obligatorios" in result["errors"][0]["error"]
 
     def test_import_skips_missing_cuit(self, db: Session, service: PadronService):
-        csv_content = (
-            "nombre,apellido,cuit\n"
-            "Ana,Garcia,\n"
-        ).encode("utf-8")
+        csv_content = ("nombre,apellido,cuit\nAna,Garcia,\n").encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
 
         assert result["skipped"] == 1
         assert "CUIT" in result["errors"][0]["error"]
 
-    def test_import_skips_duplicate_cuit_in_file(
-        self, db: Session, service: PadronService
-    ):
+    def test_import_skips_duplicate_cuit_in_file(self, db: Session, service: PadronService):
         csv_content = (
-            "nombre,apellido,cuit\n"
-            "Ana,Garcia,20-33445566-2\n"
-            "Pedro,Lopez,20-33445566-2\n"
+            "nombre,apellido,cuit\nAna,Garcia,20-33445566-2\nPedro,Lopez,20-33445566-2\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
@@ -533,16 +479,11 @@ class TestCsvImport:
         assert result["skipped"] == 1
         assert "duplicado" in result["errors"][0]["error"]
 
-    def test_import_skips_duplicate_cuit_in_db(
-        self, db: Session, service: PadronService
-    ):
+    def test_import_skips_duplicate_cuit_in_db(self, db: Session, service: PadronService):
         cuit = _unique_cuit()
         service.create(db, _create_data_with_unique_cuit(cuit=cuit))
 
-        csv_content = (
-            f"nombre,apellido,cuit\n"
-            f"Ana,Garcia,{cuit}\n"
-        ).encode("utf-8")
+        csv_content = (f"nombre,apellido,cuit\nAna,Garcia,{cuit}\n").encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
 
@@ -554,10 +495,7 @@ class TestCsvImport:
             service.import_csv(db, b"data", "test.txt")
 
     def test_import_normalizes_cuit(self, db: Session, service: PadronService):
-        csv_content = (
-            "nombre,apellido,cuit\n"
-            "Ana,Garcia,20443355678\n"
-        ).encode("utf-8")
+        csv_content = ("nombre,apellido,cuit\nAna,Garcia,20443355678\n").encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")
         assert result["created"] == 1
@@ -569,8 +507,7 @@ class TestCsvImport:
     def test_import_column_aliases(self, db: Session, service: PadronService):
         """Headers like 'nombres', 'cuil', 'direccion' should be recognized."""
         csv_content = (
-            "nombres,apellidos,cuil,direccion\n"
-            "Ana,Garcia,20-55667788-4,Calle 1\n"
+            "nombres,apellidos,cuil,direccion\nAna,Garcia,20-55667788-4,Calle 1\n"
         ).encode("utf-8")
 
         result = service.import_csv(db, csv_content, "test.csv")

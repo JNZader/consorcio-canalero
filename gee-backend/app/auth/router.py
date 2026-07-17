@@ -256,14 +256,10 @@ async def exchange_code(
     """
     from app.auth.email_codes import exchange_code_for_token
 
-    token = await exchange_code_for_token(
-        session, code=payload.code, purpose=payload.purpose
-    )
+    token = await exchange_code_for_token(session, code=payload.code, purpose=payload.purpose)
     await session.commit()
     if token is None:
-        raise HTTPException(
-            status_code=400, detail="Código inválido o expirado."
-        )
+        raise HTTPException(status_code=400, detail="Código inválido o expirado.")
     return _ExchangeCodeResponse(token=token)
 
 
@@ -472,11 +468,7 @@ if settings.google_oauth_client_id:
         # the token-exchange step. ``hmac.compare_digest`` to dodge any
         # timing-side-channel that could leak the cookie value.
         cookie_state = request.cookies.get(_OAUTH_STATE_COOKIE)
-        if (
-            not cookie_state
-            or not state
-            or not hmac.compare_digest(cookie_state, state)
-        ):
+        if not cookie_state or not state or not hmac.compare_digest(cookie_state, state):
             _oauth_logger.warning("Google OAuth state mismatch — possible CSRF attempt")
             response = RedirectResponse(
                 url=f"{frontend_callback}?{urlencode({'error': 'invalid_state', 'error_description': 'OAuth state verification failed. Please retry the login.'})}"
@@ -486,9 +478,7 @@ if settings.google_oauth_client_id:
 
         if error:
             _oauth_logger.error("Google OAuth error: %s - %s", error, error_description)
-            params = urlencode(
-                {"error": error, "error_description": error_description or ""}
-            )
+            params = urlencode({"error": error, "error_description": error_description or ""})
             response = RedirectResponse(url=f"{frontend_callback}?{params}")
             _clear_state_cookie(response)
             return response
@@ -528,9 +518,7 @@ if settings.google_oauth_client_id:
                 return response
 
             # Find existing user by email
-            result = await session.execute(
-                sa_select(User).where(User.email == account_email)
-            )
+            result = await session.execute(sa_select(User).where(User.email == account_email))
             user = result.scalar_one_or_none()
 
             if user is None:
@@ -552,9 +540,7 @@ if settings.google_oauth_client_id:
                 session.add(user)
                 await session.commit()
                 await session.refresh(user)
-                _oauth_logger.info(
-                    "Created new user via Google OAuth: %s", account_email
-                )
+                _oauth_logger.info("Created new user via Google OAuth: %s", account_email)
 
             if not user.is_active:
                 response = RedirectResponse(

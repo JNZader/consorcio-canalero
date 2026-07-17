@@ -145,9 +145,7 @@ def detect_water_from_gee(
 
     # Classify
     water_mask = ndwi.gte(NDWI_WATER_THRESHOLD)  # Definite water
-    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(
-        ndwi.lt(NDWI_WATER_THRESHOLD)
-    )  # Wet soil
+    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(ndwi.lt(NDWI_WATER_THRESHOLD))  # Wet soil
 
     # Morphological cleanup: remove isolated pixels, fill small holes
     water_clean = water_mask.focalMode(radius=2, kernelType="circle", units="pixels")
@@ -287,12 +285,8 @@ def detect_water_multi_date(
         change = {
             "from_date": first["image_date"],
             "to_date": last["image_date"],
-            "water_ha_change": round(
-                last["area"]["water_ha"] - first["area"]["water_ha"], 2
-            ),
-            "water_pct_change": round(
-                last["area"]["water_pct"] - first["area"]["water_pct"], 2
-            ),
+            "water_ha_change": round(last["area"]["water_ha"] - first["area"]["water_ha"], 2),
+            "water_pct_change": round(last["area"]["water_pct"] - first["area"]["water_pct"], 2),
             "trend": (
                 "increasing"
                 if last["area"]["water_pct"] > first["area"]["water_pct"] + 1

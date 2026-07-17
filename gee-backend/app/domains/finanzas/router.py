@@ -57,9 +57,7 @@ def list_gastos(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[GastoListResponse]:
     """Listar gastos con paginacion y filtros (requiere operador)."""
-    items, total = service.list_gastos(
-        db, page=page, limit=limit, categoria=categoria, year=year
-    )
+    items, total = service.list_gastos(db, page=page, limit=limit, categoria=categoria, year=year)
     return PaginatedResponse[GastoListResponse].create(
         items=[GastoListResponse.model_validate(g) for g in items],
         total=total,
@@ -118,9 +116,7 @@ def list_ingresos(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[IngresoListResponse]:
     """Listar ingresos con paginacion y filtros (requiere operador)."""
-    items, total = service.list_ingresos(
-        db, page=page, limit=limit, categoria=categoria, year=year
-    )
+    items, total = service.list_ingresos(db, page=page, limit=limit, categoria=categoria, year=year)
     return PaginatedResponse[IngresoListResponse].create(
         items=[IngresoListResponse.model_validate(i) for i in items],
         total=total,

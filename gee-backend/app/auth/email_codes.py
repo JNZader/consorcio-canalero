@@ -80,9 +80,7 @@ class EmailCode(UUIDMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    consumed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 def generate_short_code(length: int = CODE_LENGTH) -> str:
@@ -110,9 +108,7 @@ async def create_code_for_token(
     surfacing, matching the standard one-time-secret pattern.
     """
     if purpose not in _VALID_PURPOSES:
-        raise ValueError(
-            f"purpose must be one of {sorted(_VALID_PURPOSES)}, got {purpose!r}"
-        )
+        raise ValueError(f"purpose must be one of {sorted(_VALID_PURPOSES)}, got {purpose!r}")
 
     now = datetime.now(tz=timezone.utc)
     last_err: Exception | None = None
@@ -157,9 +153,7 @@ async def invalidate_open_codes_for_user(
     Caller commits or rolls back. Returns the row count for tests.
     """
     if purpose not in _VALID_PURPOSES:
-        raise ValueError(
-            f"purpose must be one of {sorted(_VALID_PURPOSES)}, got {purpose!r}"
-        )
+        raise ValueError(f"purpose must be one of {sorted(_VALID_PURPOSES)}, got {purpose!r}")
     from sqlalchemy import update as sa_update
 
     now = datetime.now(tz=timezone.utc)

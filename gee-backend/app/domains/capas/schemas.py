@@ -18,9 +18,7 @@ class EstiloCapa(BaseModel):
     color: str = Field(default="#3388ff", description="Stroke / border color")
     weight: int = Field(default=2, ge=0, le=20, description="Stroke width in px")
     fillColor: str = Field(default="#3388ff", description="Fill color")
-    fillOpacity: float = Field(
-        default=0.2, ge=0.0, le=1.0, description="Fill opacity 0..1"
-    )
+    fillOpacity: float = Field(default=0.2, ge=0.0, le=1.0, description="Fill opacity 0..1")
 
 
 # ──────────────────────────────────────────────
@@ -75,9 +73,7 @@ class CapaUpdate(BaseModel):
 class CapaReorder(BaseModel):
     """Batch reorder request — list of layer IDs in desired order."""
 
-    ordered_ids: list[uuid.UUID] = Field(
-        ..., description="Layer IDs in the desired display order"
-    )
+    ordered_ids: list[uuid.UUID] = Field(..., description="Layer IDs in the desired display order")
 
 
 # ──────────────────────────────────────────────

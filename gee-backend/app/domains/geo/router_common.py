@@ -103,22 +103,14 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     title: str
     subtitle: Optional[str] = None
     map_image_data_url: str = Field(..., alias="mapImageDataUrl")
-    zone_legend: list[MapLegendItemRequest] = Field(
-        default_factory=list, alias="zoneLegend"
-    )
-    road_legend: list[MapLegendItemRequest] = Field(
-        default_factory=list, alias="roadLegend"
-    )
-    canal_legend: list[CanalDetailRowRequest] = Field(
-        default_factory=list, alias="canalLegend"
-    )
+    zone_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="zoneLegend")
+    road_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="roadLegend")
+    canal_legend: list[CanalDetailRowRequest] = Field(default_factory=list, alias="canalLegend")
     raster_legends: list[RasterLegendGroupRequest] = Field(
         default_factory=list, alias="rasterLegends"
     )
     info_rows: list[MapInfoRowRequest] = Field(default_factory=list, alias="infoRows")
-    zone_summary: list[ZoneSummaryRowRequest] = Field(
-        default_factory=list, alias="zoneSummary"
-    )
+    zone_summary: list[ZoneSummaryRowRequest] = Field(default_factory=list, alias="zoneSummary")
 
 
 _tile_client = None
@@ -231,9 +223,7 @@ def _get_geo_bundle_storage_dir() -> Path:
             return candidate
         except OSError:
             continue
-    raise HTTPException(
-        status_code=500, detail="No se pudo preparar el directorio de bundles geo"
-    )
+    raise HTTPException(status_code=500, detail="No se pudo preparar el directorio de bundles geo")
 
 
 def _build_zonas_operativas_export(db: Session) -> dict:
@@ -276,9 +266,7 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
         if not geometry:
-            raise HTTPException(
-                status_code=400, detail=f"Feature {index} sin geometria"
-            )
+            raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
 
         geometry_type = geometry.get("type")
         if geometry_type not in {"Polygon", "MultiPolygon"}:
@@ -330,9 +318,7 @@ def _import_approved_zoning_payload(
     else:
         features = payload.get("features", [])
         if not features:
-            raise HTTPException(
-                status_code=400, detail="El archivo no contiene zonas aprobadas"
-            )
+            raise HTTPException(status_code=400, detail="El archivo no contiene zonas aprobadas")
 
         normalized_features = []
         zone_names = {}
@@ -343,9 +329,7 @@ def _import_approved_zoning_payload(
         for index, feature in enumerate(features, start=1):
             geometry = feature.get("geometry")
             if not geometry:
-                raise HTTPException(
-                    status_code=400, detail=f"Feature {index} sin geometria"
-                )
+                raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
 
             geometry_type = geometry.get("type")
             if geometry_type not in {"Polygon", "MultiPolygon"}:
@@ -367,13 +351,9 @@ def _import_approved_zoning_payload(
             approved_name = str(props.get("approved_nombre") or approved_name)
             approved_cuenca = props.get("approved_cuenca") or approved_cuenca
             zone_id = str(
-                source_properties.get("zone_id")
-                or props.get("zone_id")
-                or f"zone_{index}"
+                source_properties.get("zone_id") or props.get("zone_id") or f"zone_{index}"
             )
-            zone_name = str(
-                source_properties.get("name") or props.get("name") or f"Zona {index}"
-            )
+            zone_name = str(source_properties.get("name") or props.get("name") or f"Zona {index}")
             zone_names[zone_id] = zone_name
 
     previous_active = repo.get_active_approved_zoning(db, cuenca=approved_cuenca)

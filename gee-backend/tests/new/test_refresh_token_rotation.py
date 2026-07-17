@@ -74,20 +74,14 @@ async def _cleanup_users(SessionLocal, ids: list[uuid.UUID]) -> None:
 async def _get_row(SessionLocal, row_id: uuid.UUID) -> RefreshToken:
     async with SessionLocal() as session:
         return (
-            await session.execute(
-                select(RefreshToken).where(RefreshToken.id == row_id)
-            )
+            await session.execute(select(RefreshToken).where(RefreshToken.id == row_id))
         ).scalar_one()
 
 
 async def _audit_rows_for_user(SessionLocal, user_id: uuid.UUID) -> list[AuditLog]:
     async with SessionLocal() as session:
         return list(
-            (
-                await session.execute(
-                    select(AuditLog).where(AuditLog.user_id == user_id)
-                )
-            )
+            (await session.execute(select(AuditLog).where(AuditLog.user_id == user_id)))
             .scalars()
             .all()
         )
@@ -261,9 +255,7 @@ async def test_replay_after_race_window_burns_family_siblings(test_engine):
         async with SessionLocal() as session:
             raw1, row1 = await issue_token(session, user=user)
         async with SessionLocal() as session:
-            _raw_sib, sibling = await issue_token(
-                session, user=user, family_id=row1.family_id
-            )
+            _raw_sib, sibling = await issue_token(session, user=user, family_id=row1.family_id)
         async with SessionLocal() as session:
             rotated = await rotate(session, raw_token=raw1, user=user)
         assert rotated is not None
@@ -282,10 +274,7 @@ async def test_replay_after_race_window_burns_family_siblings(test_engine):
             await session.execute(
                 update(RefreshToken)
                 .where(RefreshToken.id == sibling.id)
-                .values(
-                    created_at=RefreshToken.created_at
-                    - (RACE_WINDOW + timedelta(seconds=60))
-                )
+                .values(created_at=RefreshToken.created_at - (RACE_WINDOW + timedelta(seconds=60)))
             )
             await session.commit()
 
@@ -297,8 +286,7 @@ async def test_replay_after_race_window_burns_family_siblings(test_engine):
         # The active sibling that existed before the rotation is burnt.
         swept = await _get_row(SessionLocal, sibling.id)
         assert swept.revoked is True, (
-            "family burn must revoke active tokens created before the "
-            "replayed token's revocation"
+            "family burn must revoke active tokens created before the replayed token's revocation"
         )
 
         # The post-rotation successor is ALSO burned: a confirmed replay
@@ -401,9 +389,7 @@ async def test_second_presentation_within_race_window_does_not_burn(test_engine)
         # The family survived: tab A's token is still active and
         # still authenticates.
         winner_row = await _get_row(SessionLocal, row2.id)
-        assert winner_row.revoked is False, (
-            "race-loss within RACE_WINDOW must NOT burn the family"
-        )
+        assert winner_row.revoked is False, "race-loss within RACE_WINDOW must NOT burn the family"
         async with SessionLocal() as session:
             still_valid = await find_active(session, raw2)
             assert still_valid is not None and still_valid.revoked is False
@@ -487,9 +473,7 @@ async def test_concurrent_replay_burn_must_sweep_attacker_mint(test_engine, monk
 
         async def attacker() -> None:
             async with SessionLocal() as session:
-                attacker_result["res"] = await rt.rotate(
-                    session, raw_token=raw_t1, user=user
-                )
+                attacker_result["res"] = await rt.rotate(session, raw_token=raw_t1, user=user)
 
         async def victim() -> None:
             async with SessionLocal() as session:
@@ -529,9 +513,7 @@ async def test_concurrent_replay_burn_must_sweep_attacker_mint(test_engine, monk
 
 
 @pytest.mark.asyncio
-async def test_logout_all_vs_concurrent_rotate_must_revoke_successor(
-    test_engine, monkeypatch
-):
+async def test_logout_all_vs_concurrent_rotate_must_revoke_successor(test_engine, monkeypatch):
     """3vr-confirmed RESIDUAL: ``revoke_all_for_user`` (logout-all /
     force-revoke) running concurrently with a ``rotate`` on the same
     family MUST revoke the rotate's freshly-minted successor.
@@ -588,9 +570,7 @@ async def test_logout_all_vs_concurrent_rotate_must_revoke_successor(
 
         async def rotator() -> None:
             async with SessionLocal() as session:
-                rotate_result["res"] = await rt.rotate(
-                    session, raw_token=raw0, user=user
-                )
+                rotate_result["res"] = await rt.rotate(session, raw_token=raw0, user=user)
 
         async def logout_all() -> None:
             async with SessionLocal() as session:
@@ -700,9 +680,7 @@ async def test_rotate_returns_none_on_lock_timeout(test_engine, monkeypatch):
 
         # Session A grabs the SAME advisory lock rotate will need and holds it
         # (no commit/rollback → lock stays held for the whole transaction).
-        await session_a.execute(
-            select(func.pg_advisory_xact_lock(func.hashtext(str(family_id))))
-        )
+        await session_a.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(family_id)))))
 
         # Session B rotates → blocks on the lock → times out after 400 ms.
         async with SessionLocal() as session_b:
@@ -809,9 +787,7 @@ async def test_rotate_same_client_writes_no_audit(test_engine):
 
 
 @pytest.mark.asyncio
-async def test_revoke_all_loop_locks_family_born_after_first_select(
-    test_engine, monkeypatch
-):
+async def test_revoke_all_loop_locks_family_born_after_first_select(test_engine, monkeypatch):
     """T3: a family that is BORN (concurrent login) AFTER ``revoke_all_for_user``
     ran its first family SELECT must still be LOCKED by the loop's re-SELECT
     before the user-wide UPDATE — closing the residual where a late family was

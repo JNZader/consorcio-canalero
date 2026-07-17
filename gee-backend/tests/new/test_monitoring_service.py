@@ -50,9 +50,7 @@ class TestResolveExistingPath:
 class TestLoadFeatureCollection:
     def test_valid_file(self, service, tmp_path):
         fc_file = tmp_path / "canales.geojson"
-        fc_file.write_text(
-            json.dumps({"type": "FeatureCollection", "features": []})
-        )
+        fc_file.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
         result = service._load_feature_collection(fc_file)
         assert result["type"] == "FeatureCollection"
         assert result["features"] == []
@@ -140,9 +138,7 @@ class TestPersistIncorporatedChannel:
 
     def test_appends_new_features(self, service, tmp_path):
         backend_file = tmp_path / "canales.geojson"
-        backend_file.write_text(
-            json.dumps({"type": "FeatureCollection", "features": []})
-        )
+        backend_file.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
 
         sugerencia = SimpleNamespace(
             id=uuid.uuid4(),
@@ -171,12 +167,12 @@ class TestPersistIncorporatedChannel:
         sug_id = uuid.uuid4()
         backend_file = tmp_path / "canales.geojson"
         backend_file.write_text(
-            json.dumps({
-                "type": "FeatureCollection",
-                "features": [
-                    {"properties": {"sugerencia_id": str(sug_id)}}
-                ],
-            })
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [{"properties": {"sugerencia_id": str(sug_id)}}],
+                }
+            )
         )
 
         sugerencia = SimpleNamespace(
@@ -197,13 +193,15 @@ class TestGetPersistedSugerenciaIds:
     def test_returns_ids(self, service, tmp_path):
         backend_file = tmp_path / "canales.geojson"
         backend_file.write_text(
-            json.dumps({
-                "type": "FeatureCollection",
-                "features": [
-                    {"properties": {"sugerencia_id": "abc-123"}},
-                    {"properties": {}},  # no sugerencia_id
-                ],
-            })
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {"properties": {"sugerencia_id": "abc-123"}},
+                        {"properties": {}},  # no sugerencia_id
+                    ],
+                }
+            )
         )
         with patch.object(service, "_resolve_existing_path", return_value=backend_file):
             ids = service._get_persisted_sugerencia_ids()

@@ -132,9 +132,7 @@ class TestPurgeSoftDeletedDenuncias:
         sync_url = os.environ["DATABASE_URL"]
         async_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         async_engine = create_async_engine(async_url, echo=False)
-        AsyncSessionLocal = sessionmaker(
-            async_engine, class_=AsyncSession, expire_on_commit=False
-        )
+        AsyncSessionLocal = sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
         now = datetime.now(tz=timezone.utc)
         old_deletion = now - DELETED_DENUNCIA_GRACE - timedelta(days=1)
@@ -193,12 +191,10 @@ class TestPurgeSoftDeletedDenuncias:
             )
             async with AsyncSessionLocal() as session:
                 survivors = (
-                    await session.execute(
-                        select(Denuncia.id).where(
-                            Denuncia.id.in_(seeded_ids)
-                        )
-                    )
-                ).scalars().all()
+                    (await session.execute(select(Denuncia.id).where(Denuncia.id.in_(seeded_ids))))
+                    .scalars()
+                    .all()
+                )
             survivors_set = set(survivors)
             assert d_old_id not in survivors_set, "expired row should be hard-deleted"
             assert d_recent_id in survivors_set, (
@@ -208,11 +204,7 @@ class TestPurgeSoftDeletedDenuncias:
         finally:
             # Cleanup ourselves — no transaction wrap on async engine.
             async with AsyncSessionLocal() as session:
-                await session.execute(
-                    sa_delete(Denuncia).where(Denuncia.id.in_(seeded_ids))
-                )
-                await session.execute(
-                    sa_delete(User).where(User.id == user_id_val)
-                )
+                await session.execute(sa_delete(Denuncia).where(Denuncia.id.in_(seeded_ids)))
+                await session.execute(sa_delete(User).where(User.id == user_id_val))
                 await session.commit()
             await async_engine.dispose()

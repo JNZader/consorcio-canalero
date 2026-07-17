@@ -14,9 +14,7 @@ from app.domains.geo.intelligence.models import (
 
 
 class IntelligenceRepositoryCompositesMixin:
-    def bulk_upsert_composite_stats(
-        self, db: Session, stats: list[dict[str, Any]]
-    ) -> int:
+    def bulk_upsert_composite_stats(self, db: Session, stats: list[dict[str, Any]]) -> int:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
         if not stats:
@@ -46,8 +44,7 @@ class IntelligenceRepositoryCompositesMixin:
             .join(ZonaOperativa, CompositeZonalStats.zona_id == ZonaOperativa.id)
             .options(joinedload(CompositeZonalStats.zona))
             .where(
-                ZonaOperativa.nombre.like(f"basin_{area_id}_%")
-                | (ZonaOperativa.cuenca == area_id)
+                ZonaOperativa.nombre.like(f"basin_{area_id}_%") | (ZonaOperativa.cuenca == area_id)
             )
         )
         if tipo:
@@ -74,9 +71,7 @@ class IntelligenceRepositoryCompositesMixin:
             .all()
         )
 
-    def insert_suggestions_batch(
-        self, db: Session, suggestions: list[dict[str, Any]]
-    ) -> int:
+    def insert_suggestions_batch(self, db: Session, suggestions: list[dict[str, Any]]) -> int:
         if not suggestions:
             return 0
         objects = [CanalSuggestion(**s) for s in suggestions]
@@ -102,9 +97,7 @@ class IntelligenceRepositoryCompositesMixin:
 
     def get_latest_batch(self, db: Session) -> Optional[uuid.UUID]:
         return db.execute(
-            select(CanalSuggestion.batch_id)
-            .order_by(CanalSuggestion.created_at.desc())
-            .limit(1)
+            select(CanalSuggestion.batch_id).order_by(CanalSuggestion.created_at.desc()).limit(1)
         ).scalar_one_or_none()
 
     def get_summary(

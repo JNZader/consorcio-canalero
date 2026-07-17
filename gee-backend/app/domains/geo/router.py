@@ -155,15 +155,11 @@ def export_geo_bundle(
 
 
 def export_current_approved_basin_zones_pdf(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
-    return export_current_approved_basin_zones_pdf_impl(
-        cuenca, db, repo, _get_user_display_name
-    )
+    return export_current_approved_basin_zones_pdf_impl(cuenca, db, repo, _get_user_display_name)
 
 
 def export_current_map_approved_basin_zones_pdf(

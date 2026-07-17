@@ -80,7 +80,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_rainfall_records_zona_date", table_name="rainfall_records")
     op.drop_index("ix_rainfall_records_date", table_name="rainfall_records")
-    op.drop_index(
-        "ix_rainfall_records_zona_operativa_id", table_name="rainfall_records"
-    )
+    op.drop_index("ix_rainfall_records_zona_operativa_id", table_name="rainfall_records")
     op.drop_table("rainfall_records")

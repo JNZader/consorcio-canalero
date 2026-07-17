@@ -53,9 +53,7 @@ def _normalize_cuit(value: str) -> str:
     digits = _NON_DIGITS.sub("", stripped)
 
     if len(digits) != 11:
-        raise ValueError(
-            "CUIT debe tener 11 digitos con formato XX-XXXXXXXX-X o XXXXXXXXXXX"
-        )
+        raise ValueError("CUIT debe tener 11 digitos con formato XX-XXXXXXXX-X o XXXXXXXXXXX")
 
     if not validar_cuit(digits):
         raise ValueError("CUIT invalido: el digito verificador no coincide")

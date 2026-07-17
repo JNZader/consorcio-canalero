@@ -50,16 +50,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Recreate the dropped idx_* indexes (mirrors zz_mgmt_indexes upgrade)."""
     op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_estado ON denuncias(estado)")
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_denuncias_created_at ON denuncias(created_at)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tramites_v2_estado ON tramites_v2(estado)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_created_at ON denuncias(created_at)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tramites_v2_estado ON tramites_v2(estado)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_tramites_v2_tipo ON tramites_v2(tipo)")
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_reuniones_v2_estado ON reuniones_v2(estado)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_reuniones_v2_estado ON reuniones_v2(estado)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_reuniones_v2_fecha_reunion ON reuniones_v2(fecha_reunion)"
     )

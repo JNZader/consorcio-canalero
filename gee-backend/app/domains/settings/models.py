@@ -24,9 +24,7 @@ class SystemSettings(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "system_settings"
 
-    clave: Mapped[str] = mapped_column(
-        String(200), nullable=False, unique=True, index=True
-    )
+    clave: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     valor: Mapped[Any] = mapped_column(JSONB, nullable=False)
     categoria: Mapped[str] = mapped_column(
         Enum(

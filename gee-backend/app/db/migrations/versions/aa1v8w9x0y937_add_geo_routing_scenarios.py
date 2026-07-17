@@ -24,12 +24,8 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("profile", sa.String(length=50), nullable=False),
-        sa.Column(
-            "request_payload", postgresql.JSON(astext_type=sa.Text()), nullable=False
-        ),
-        sa.Column(
-            "result_payload", postgresql.JSON(astext_type=sa.Text()), nullable=False
-        ),
+        sa.Column("request_payload", postgresql.JSON(astext_type=sa.Text()), nullable=False),
+        sa.Column("result_payload", postgresql.JSON(astext_type=sa.Text()), nullable=False),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("created_by_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column(
@@ -60,10 +56,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_geo_routing_scenarios_profile", table_name="geo_routing_scenarios"
-    )
-    op.drop_index(
-        "ix_geo_routing_scenarios_created_at", table_name="geo_routing_scenarios"
-    )
+    op.drop_index("ix_geo_routing_scenarios_profile", table_name="geo_routing_scenarios")
+    op.drop_index("ix_geo_routing_scenarios_created_at", table_name="geo_routing_scenarios")
     op.drop_table("geo_routing_scenarios")

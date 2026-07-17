@@ -170,9 +170,7 @@ def get_tile(
     _hidden_classes: set[int] = set()
     if hide_classes:
         try:
-            _hidden_classes = {
-                int(c.strip()) for c in hide_classes.split(",") if c.strip()
-            }
+            _hidden_classes = {int(c.strip()) for c in hide_classes.split(",") if c.strip()}
         except ValueError:
             logger.warning("Invalid hide_classes value: %s", hide_classes)
 
@@ -180,9 +178,7 @@ def get_tile(
     _hidden_ranges: set[int] = set()
     if hide_ranges:
         try:
-            _hidden_ranges = {
-                int(r.strip()) for r in hide_ranges.split(",") if r.strip()
-            }
+            _hidden_ranges = {int(r.strip()) for r in hide_ranges.split(",") if r.strip()}
         except ValueError:
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
 
@@ -191,9 +187,7 @@ def get_tile(
         # the kernel filter sees the neighbouring tile's elevations and the
         # seam between tiles disappears. The halo is cropped before render.
         buffer_px = TERRAIN_SMOOTHING_BUFFER_PX if terrain_smoothing else 0
-        tile_data = _read_elevation_tile(
-            file_path, x, y, z, tilesize=256, buffer_px=buffer_px
-        )
+        tile_data = _read_elevation_tile(file_path, x, y, z, tilesize=256, buffer_px=buffer_px)
         if tile_data is None:
             content = _render_flat_terrain_rgb_png(tilesize=256, elevation=0.0)
             bytes_cache.set(cache_key, content, ttl_seconds=24 * 3600)
@@ -277,8 +271,7 @@ def get_tile(
                 content = img.render(img_format="PNG", colormap=cmap_data)
             except Exception as e:
                 logger.warning(
-                    "Colormap '%s' not found in rio-tiler registry, "
-                    "falling back to grayscale: %s",
+                    "Colormap '%s' not found in rio-tiler registry, falling back to grayscale: %s",
                     cmap_name,
                     e,
                 )

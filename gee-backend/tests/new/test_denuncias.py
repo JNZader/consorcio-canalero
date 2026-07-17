@@ -173,14 +173,10 @@ class TestDenunciaRepository:
         repo.create(db, sample_create_data)
         db.flush()
 
-        items, total = repo.get_all(
-            db, estado_filter=EstadoDenuncia.PENDIENTE
-        )
+        items, total = repo.get_all(db, estado_filter=EstadoDenuncia.PENDIENTE)
         assert total >= 1
 
-        items_none, total_none = repo.get_all(
-            db, estado_filter=EstadoDenuncia.RESUELTO
-        )
+        items_none, total_none = repo.get_all(db, estado_filter=EstadoDenuncia.RESUELTO)
         assert total_none == 0
 
     def test_get_all_filter_by_cuenca(
@@ -211,9 +207,7 @@ class TestDenunciaRepository:
         assert updated.estado == EstadoDenuncia.EN_REVISION
         assert updated.respuesta == "Estamos revisando"
 
-    def test_update_nonexistent_returns_none(
-        self, db: Session, repo: DenunciaRepository
-    ):
+    def test_update_nonexistent_returns_none(self, db: Session, repo: DenunciaRepository):
         update_data = DenunciaUpdate(estado=EstadoDenuncia.EN_REVISION)
         result = repo.update(db, uuid.uuid4(), update_data)
         assert result is None
@@ -366,9 +360,7 @@ class TestDenunciaService:
         assert denuncia.id is not None
         assert denuncia.estado == EstadoDenuncia.PENDIENTE
 
-    def test_get_by_id_raises_on_missing(
-        self, db: Session, service: DenunciaService
-    ):
+    def test_get_by_id_raises_on_missing(self, db: Session, service: DenunciaService):
         with pytest.raises(Exception) as exc_info:
             service.get_by_id(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]

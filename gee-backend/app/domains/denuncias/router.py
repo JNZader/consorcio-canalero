@@ -233,9 +233,7 @@ def list_my_denuncias(
     detalle (incluida la `respuesta` que el operador escribió). Se usa
     en la sección "Mis denuncias" del `/perfil`.
     """
-    items, total = service.list_by_user(
-        db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit
-    )
+    items, total = service.list_by_user(db, user_id=uuid.UUID(str(user.id)), page=page, limit=limit)
     return PaginatedResponse[DenunciaResponse].create(
         items=[DenunciaResponse.model_validate(d) for d in items],
         total=total,
@@ -287,9 +285,7 @@ def list_denuncias(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[DenunciaListResponse]:
     """Listar denuncias con paginacion y filtros (requiere operador)."""
-    items, total = service.list_denuncias(
-        db, page=page, limit=limit, estado=estado, cuenca=cuenca
-    )
+    items, total = service.list_denuncias(db, page=page, limit=limit, estado=estado, cuenca=cuenca)
     return PaginatedResponse[DenunciaListResponse].create(
         items=[DenunciaListResponse.model_validate(d) for d in items],
         total=total,

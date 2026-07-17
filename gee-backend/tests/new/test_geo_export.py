@@ -210,9 +210,7 @@ class TestFetchVtLayers:
     async def test_returns_sorted_vt_layers(self):
         from app.domains.geo.qgis_export import fetch_vt_layers
 
-        catalog_payload = {
-            "tiles": {"vt_zonas": {}, "vt_canales": {}, "vt_parcelas": {}}
-        }
+        catalog_payload = {"tiles": {"vt_zonas": {}, "vt_canales": {}, "vt_parcelas": {}}}
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
@@ -341,9 +339,11 @@ class TestExportQgisEndpointUnit:
             ),
         ):
             from app.domains.geo.router import export_qgis_project as ep
+
             response = await ep(_user=mock_user)
 
         from starlette.responses import StreamingResponse
+
         assert isinstance(response, StreamingResponse)
         assert response.media_type == "application/zip"
         assert "consorcio-canalero.qgz" in response.headers.get("content-disposition", "")
@@ -362,6 +362,7 @@ class TestExportQgisEndpointUnit:
             ),
         ):
             from app.domains.geo.router import export_qgis_project as ep
+
             with pytest.raises(HTTPException) as exc_info:
                 await ep(_user=mock_user)
 
@@ -383,6 +384,7 @@ class TestExportQgisEndpointUnit:
         assert dep is not inspect.Parameter.empty, "_user has no Depends() default"
         # The dependency callable must be _require_operator (auth guard)
         from fastapi import params as fa_params
+
         assert isinstance(dep, fa_params.Depends), "_user default is not a Depends()"
 
     @pytest.mark.asyncio
@@ -404,9 +406,11 @@ class TestExportQgisEndpointUnit:
             ),
         ):
             from app.domains.geo.router import export_qgis_project as ep
+
             response = await ep(_user=mock_user)
 
         from starlette.responses import StreamingResponse
+
         assert isinstance(response, StreamingResponse)
         # Collect the streaming body
         chunks = [chunk async for chunk in response.body_iterator]

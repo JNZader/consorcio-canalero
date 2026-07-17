@@ -58,12 +58,8 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.execute(
-        "CREATE INDEX ix_caminos_geo_geometria ON caminos_geo USING GIST (geometria)"
-    )
-    op.execute(
-        "CREATE INDEX ix_caminos_geo_consorcio ON caminos_geo (consorcio_codigo)"
-    )
+    op.execute("CREATE INDEX ix_caminos_geo_geometria ON caminos_geo USING GIST (geometria)")
+    op.execute("CREATE INDEX ix_caminos_geo_consorcio ON caminos_geo (consorcio_codigo)")
 
     # ── materialized view: caminos por zona ────────────────────────────────
     # Groups by (zona, consorcio_caminero OR jerarquia as fallback).
@@ -92,9 +88,7 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX ix_mv_caminos_zona ON mv_caminos_por_zona (zona_id)")
     op.execute("CREATE INDEX ix_mv_caminos_cuenca ON mv_caminos_por_zona (cuenca)")
-    op.execute(
-        "CREATE INDEX ix_mv_caminos_consorcio ON mv_caminos_por_zona (consorcio_codigo)"
-    )
+    op.execute("CREATE INDEX ix_mv_caminos_consorcio ON mv_caminos_por_zona (consorcio_codigo)")
 
 
 def downgrade() -> None:

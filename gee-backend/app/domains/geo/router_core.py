@@ -57,9 +57,8 @@ def _public_map_layer_eval_enabled() -> bool:
 
     # Review/evaluation flag only; it is not a production publication policy.
     # Requires frontend VITE_PUBLIC_MAP_LAYER_EVAL=true so anonymous map UI requests it.
-    return (
-        _truthy_env_flag("PUBLIC_MAP_LAYER_EVAL")
-        and not _is_production_env(settings.environment)
+    return _truthy_env_flag("PUBLIC_MAP_LAYER_EVAL") and not _is_production_env(
+        settings.environment
     )
 
 
@@ -198,10 +197,7 @@ def list_public_geo_layers(
             query = query.filter(GeoLayer.area_id == area_id)
         total = query.count()
         items = (
-            query.order_by(GeoLayer.created_at.desc())
-            .offset((page - 1) * limit)
-            .limit(limit)
-            .all()
+            query.order_by(GeoLayer.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
         )
     else:
         items, total = repo.get_layers(

@@ -163,9 +163,7 @@ class TestInvitationQueries:
     def test_auto_assign_role_flow(self, db: Session):
         """Simulate the on_after_register flow: find pre-auth, assign role, mark claimed."""
         admin = _make_admin(db)
-        _make_invitation(
-            db, email="newuser@test.com", role=UserRole.OPERADOR, invited_by=admin.id
-        )
+        _make_invitation(db, email="newuser@test.com", role=UserRole.OPERADOR, invited_by=admin.id)
 
         # Simulate user registration
         new_user = User(
@@ -276,7 +274,5 @@ class TestInvitationSchemas:
     def test_invitation_result(self):
         from app.api.v2.admin_invitations import InvitationResult
 
-        result = InvitationResult(
-            email="test@test.com", role=UserRole.OPERADOR, status="created"
-        )
+        result = InvitationResult(email="test@test.com", role=UserRole.OPERADOR, status="created")
         assert result.status == "created"

@@ -53,6 +53,7 @@ class MutationResult:
 
 # ── Mutation operators ─────────────────────────────────────────
 
+
 def generate_mutations(source_lines: list[str]) -> list[Mutation]:
     """Generate mutations from source lines."""
     mutations: list[Mutation] = []
@@ -61,7 +62,9 @@ def generate_mutations(source_lines: list[str]) -> list[Mutation]:
         stripped = line.strip()
 
         # Skip comments, blanks, imports, decorators, docstrings
-        if not stripped or stripped.startswith(("#", "import ", "from ", "@", '"""', "'''", "def ", "class ")):
+        if not stripped or stripped.startswith(
+            ("#", "import ", "from ", "@", '"""', "'''", "def ", "class ")
+        ):
             continue
 
         # Comparison operators
@@ -88,8 +91,9 @@ def generate_mutations(source_lines: list[str]) -> list[Mutation]:
 
         # Numeric constants (change by small amount)
         import re
+
         # Float constants like 0.3, 0.25, 100.0
-        for match in re.finditer(r'(?<!=)\b(\d+\.\d+)\b', stripped):
+        for match in re.finditer(r"(?<!=)\b(\d+\.\d+)\b", stripped):
             val = float(match.group(1))
             if val == 0.0:
                 continue
@@ -112,7 +116,9 @@ def generate_mutations(source_lines: list[str]) -> list[Mutation]:
     return mutations
 
 
-def run_tests(source_path: Path, test_path: str, mutation: Mutation, source_lines: list[str]) -> str:
+def run_tests(
+    source_path: Path, test_path: str, mutation: Mutation, source_lines: list[str]
+) -> str:
     """Apply mutation, run tests, restore. Returns 'killed', 'survived', or 'error'."""
     original_content = source_path.read_text()
 
@@ -190,18 +196,18 @@ def main():
     results: list[MutationResult] = []
 
     for name, config in modules.items():
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  MUTATION TESTING: {name}")
         print(f"  Source: {config['source']}")
         print(f"  Tests:  {config['tests']}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         result = run_module(name, config)
         results.append(result)
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  MUTATION TESTING SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"{'Module':<25} {'Total':>6} {'Killed':>7} {'Survived':>9} {'Score':>7}")
     print("-" * 60)
 
@@ -220,9 +226,9 @@ def main():
     # Show survivors (weaknesses)
     all_survivors = [s for r in results for s in r.survivors]
     if all_survivors:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  SURVIVED MUTATIONS ({len(all_survivors)} — need better tests)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for r in results:
             if r.survivors:
                 print(f"\n  {r.module}:")

@@ -125,6 +125,4 @@ class DenunciaHistorial(UUIDMixin, Base):
     denuncia: Mapped["Denuncia"] = relationship(back_populates="historial")
 
     def __repr__(self) -> str:
-        return (
-            f"<DenunciaHistorial {self.id} {self.estado_anterior}->{self.estado_nuevo}>"
-        )
+        return f"<DenunciaHistorial {self.id} {self.estado_anterior}->{self.estado_nuevo}>"

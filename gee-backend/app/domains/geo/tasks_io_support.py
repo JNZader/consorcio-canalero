@@ -43,9 +43,7 @@ def download_dem_from_gee_task_impl(
         return {"dem_path": dem_path, "area_id": area_id}
     except Exception:
         if job_id:
-            update_job(
-                job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc()
-            )
+            update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
         raise
 
 
@@ -124,7 +122,5 @@ def delineate_basins_task_impl(
         }
     except Exception:
         if job_id:
-            update_job(
-                job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc()
-            )
+            update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
         raise

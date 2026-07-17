@@ -35,9 +35,9 @@ class TestMaterializedViewSQL:
         """Each MV SQL string should start with CREATE MATERIALIZED VIEW."""
         for name, sql in self._get_mv_sql_strings().items():
             stripped = sql.strip().upper()
-            assert stripped.startswith(
-                "CREATE MATERIALIZED VIEW"
-            ), f"{name} does not start with CREATE MATERIALIZED VIEW"
+            assert stripped.startswith("CREATE MATERIALIZED VIEW"), (
+                f"{name} does not start with CREATE MATERIALIZED VIEW"
+            )
 
     def test_all_mv_sql_contains_select(self):
         """Each MV SQL should contain a SELECT statement."""

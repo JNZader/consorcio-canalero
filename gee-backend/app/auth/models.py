@@ -28,9 +28,7 @@ class User(SQLAlchemyBaseUserTableUUID, TimestampMixin, Base):
     apellido: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     telefono: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     role: Mapped[UserRole] = mapped_column(
-        Enum(
-            UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]
-        ),
+        Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=UserRole.CIUDADANO,
     )
@@ -54,13 +52,9 @@ class PreAuthorizedEmail(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "pre_authorized_emails"
 
-    email: Mapped[str] = mapped_column(
-        String(320), nullable=False, unique=True, index=True
-    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     role: Mapped[UserRole] = mapped_column(
-        Enum(
-            UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]
-        ),
+        Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     invited_by: Mapped[uuid.UUID] = mapped_column(
@@ -71,7 +65,9 @@ class PreAuthorizedEmail(UUIDMixin, TimestampMixin, Base):
     claimed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     def __repr__(self) -> str:
-        return f"<PreAuthorizedEmail email={self.email} role={self.role.value} claimed={self.claimed}>"
+        return (
+            f"<PreAuthorizedEmail email={self.email} role={self.role.value} claimed={self.claimed}>"
+        )
 
 
 class RefreshToken(UUIDMixin, TimestampMixin, Base):
@@ -97,23 +93,15 @@ class RefreshToken(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     # SHA-256 hex of the raw token — 64 chars. We look up by this hash.
-    token_hash: Mapped[str] = mapped_column(
-        String(64), nullable=False, unique=True, index=True
-    )
-    family_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # When the row was flipped from ``revoked=False`` to ``revoked=True``.
     # Powers replay detection in ``rotate()``: a token presented within
     # ~30 s of revocation is treated as a concurrent two-tab race; later
     # presentations are real replays and burn the family.
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Coarse client fingerprint — useful for the "logged in from these
     # devices" list. Not load-bearing; truncated to keep storage tight.
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

@@ -27,14 +27,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_denuncias_user_id "
-        "ON denuncias (user_id)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_denuncias_geom "
-        "ON denuncias USING GIST (geom)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_denuncias_user_id ON denuncias (user_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_denuncias_geom ON denuncias USING GIST (geom)")
 
 
 def downgrade() -> None:

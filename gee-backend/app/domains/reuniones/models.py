@@ -55,12 +55,8 @@ class Reunion(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "reuniones_v2"
 
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
-    fecha_reunion: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    lugar: Mapped[str] = mapped_column(
-        String(200), nullable=False, server_default="Sede Consorcio"
-    )
+    fecha_reunion: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lugar: Mapped[str] = mapped_column(String(200), nullable=False, server_default="Sede Consorcio")
     descripcion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tipo: Mapped[str] = mapped_column(
         Enum(
@@ -80,9 +76,7 @@ class Reunion(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         default=EstadoReunion.PLANIFICADA,
     )
-    orden_del_dia_items: Mapped[list] = mapped_column(
-        JSON, nullable=False, server_default="[]"
-    )
+    orden_del_dia_items: Mapped[list] = mapped_column(JSON, nullable=False, server_default="[]")
     usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

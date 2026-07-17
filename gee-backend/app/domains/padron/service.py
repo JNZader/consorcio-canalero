@@ -218,11 +218,7 @@ class PadronService:
                     telefono=payload.get("telefono"),
                     email=payload.get("email"),
                     parcela=payload.get("parcela"),
-                    hectareas=(
-                        float(payload["hectareas"])
-                        if payload.get("hectareas")
-                        else None
-                    ),
+                    hectareas=(float(payload["hectareas"]) if payload.get("hectareas") else None),
                     categoria=payload.get("categoria"),
                 )
                 # Savepoint per row: if the INSERT fails, only this row is
@@ -278,9 +274,7 @@ class PadronService:
             "categoria": _normalize_text(mapped.get("categoria")),
         }
 
-    def _parse_rows(
-        self, filename: str, content: bytes
-    ) -> list[tuple[int, dict[str, Any]]]:
+    def _parse_rows(self, filename: str, content: bytes) -> list[tuple[int, dict[str, Any]]]:
         lower_name = filename.lower()
         if lower_name.endswith(".csv"):
             return self._parse_csv(content)
@@ -344,9 +338,7 @@ class PadronService:
         if sheet.nrows == 0:
             return []
 
-        headers = [
-            str(sheet.cell_value(0, col) or "").strip() for col in range(sheet.ncols)
-        ]
+        headers = [str(sheet.cell_value(0, col) or "").strip() for col in range(sheet.ncols)]
         rows: list[tuple[int, dict[str, Any]]] = []
         for row_idx in range(1, sheet.nrows):
             values = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]

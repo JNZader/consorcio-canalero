@@ -40,9 +40,7 @@ class Capa(UUIDMixin, TimestampMixin, Base):
     nombre: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tipo: Mapped[str] = mapped_column(
-        Enum(
-            TipoCapa, name="tipo_capa", values_callable=lambda x: [e.value for e in x]
-        ),
+        Enum(TipoCapa, name="tipo_capa", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     fuente: Mapped[str] = mapped_column(
@@ -64,9 +62,7 @@ class Capa(UUIDMixin, TimestampMixin, Base):
     visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
-    orden: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     es_publica: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

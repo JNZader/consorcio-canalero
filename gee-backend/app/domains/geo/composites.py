@@ -314,10 +314,7 @@ def extract_composite_zonal_stats(
             m_per_deg_lat = 111_320.0
             m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
             pixel_area_ha = (
-                abs(src.transform.a)
-                * m_per_deg_lon
-                * abs(src.transform.e)
-                * m_per_deg_lat
+                abs(src.transform.a) * m_per_deg_lon * abs(src.transform.e) * m_per_deg_lat
             ) / 10_000.0
 
         for zona in zonas:
@@ -331,8 +328,7 @@ def extract_composite_zonal_stats(
                 geom_shapely = shape(geom)
             else:
                 logger.warning(
-                    "extract_composite_zonal_stats: skipping zona %s — "
-                    "unsupported geometry type",
+                    "extract_composite_zonal_stats: skipping zona %s — unsupported geometry type",
                     zona_id,
                 )
                 continue
@@ -344,9 +340,7 @@ def extract_composite_zonal_stats(
             geom_geojson = mapping(geom_shapely)
 
             try:
-                out_image, _ = rasterio_mask(
-                    src, [geom_geojson], crop=True, all_touched=True
-                )
+                out_image, _ = rasterio_mask(src, [geom_geojson], crop=True, all_touched=True)
             except Exception:
                 logger.warning(
                     "extract_composite_zonal_stats: failed to mask zona %s, skipping",

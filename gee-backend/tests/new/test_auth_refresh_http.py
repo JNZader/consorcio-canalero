@@ -64,9 +64,7 @@ def client() -> TestClient:
     import os
 
     os.environ.setdefault("UPLOADS_ROOT", "/tmp/uploads-test-auth-refresh")
-    os.environ.setdefault(
-        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
-    )
+    os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
     from app.main import app
 
     tc = TestClient(app)
@@ -105,9 +103,7 @@ def seeded_user(test_engine):
         session.commit()
 
 
-def test_login_sets_refresh_cookie_and_refresh_rotates_it(
-    client: TestClient, seeded_user: User
-):
+def test_login_sets_refresh_cookie_and_refresh_rotates_it(client: TestClient, seeded_user: User):
     # ── 1. Password login (fastapi-users form body; /auth/ paths are
     #       CSRF-exempt so x-www-form-urlencoded is accepted). ──
     login = client.post(
@@ -152,22 +148,17 @@ def test_login_sets_refresh_cookie_and_refresh_rotates_it(
     cookie_after = client.cookies.get("refresh_token")
     assert cookie_after, "refresh MUST re-stamp the refresh cookie"
     assert cookie_after != cookie_before, (
-        "refresh cookie must ROTATE — same value back means the old "
-        "token was never revoked"
+        "refresh cookie must ROTATE — same value back means the old token was never revoked"
     )
 
     # The new access token actually authenticates.
     _discard_async_pool()
-    me = client.get(
-        "/api/v2/users/me", headers={"Authorization": f"Bearer {new_access}"}
-    )
+    me = client.get("/api/v2/users/me", headers={"Authorization": f"Bearer {new_access}"})
     assert me.status_code == 200, me.text
     assert me.json()["email"] == seeded_user.email
 
 
-def test_refresh_works_again_with_rotated_cookie(
-    client: TestClient, seeded_user: User
-):
+def test_refresh_works_again_with_rotated_cookie(client: TestClient, seeded_user: User):
     """The rotated cookie is itself refreshable — the chain doesn't
     dead-end after one rotation (family chaining works over HTTP)."""
     login = client.post(

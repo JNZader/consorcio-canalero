@@ -45,9 +45,7 @@ class TestAlembicHealth:
 
         with (
             patch("alembic.config.Config"),
-            patch(
-                "alembic.script.ScriptDirectory.from_config", return_value=script_dir
-            ),
+            patch("alembic.script.ScriptDirectory.from_config", return_value=script_dir),
         ):
             result = check_alembic_health_sync(db)
 
@@ -68,9 +66,7 @@ class TestAlembicHealth:
 
         with (
             patch("alembic.config.Config"),
-            patch(
-                "alembic.script.ScriptDirectory.from_config", return_value=script_dir
-            ),
+            patch("alembic.script.ScriptDirectory.from_config", return_value=script_dir),
         ):
             result = check_alembic_health_sync(db)
 
@@ -90,9 +86,7 @@ class TestAlembicHealth:
 
         with (
             patch("alembic.config.Config"),
-            patch(
-                "alembic.script.ScriptDirectory.from_config", return_value=script_dir
-            ),
+            patch("alembic.script.ScriptDirectory.from_config", return_value=script_dir),
         ):
             result = check_alembic_health_sync(db)
 
@@ -109,9 +103,7 @@ class TestAlembicHealth:
 
         with (
             patch("alembic.config.Config"),
-            patch(
-                "alembic.script.ScriptDirectory.from_config", return_value=script_dir
-            ),
+            patch("alembic.script.ScriptDirectory.from_config", return_value=script_dir),
         ):
             result = check_alembic_health_sync(db)
 
@@ -150,9 +142,7 @@ class TestAlembicHealth:
 
         assert result["status"] == "unhealthy"
         assert result["current_rev"] == "7e25b857692b"
-        assert (
-            "alembic" in result["error"].lower() or "script" in result["error"].lower()
-        )
+        assert "alembic" in result["error"].lower() or "script" in result["error"].lower()
 
 
 class TestAlembicHealthIntegration:
@@ -212,9 +202,7 @@ class TestAlembicHealthIntegration:
                 "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
             )
         )
-        db.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('757bbf64faae')")
-        )
+        db.execute(text("INSERT INTO alembic_version (version_num) VALUES ('757bbf64faae')"))
         db.flush()
 
         result = check_alembic_health_sync(db)

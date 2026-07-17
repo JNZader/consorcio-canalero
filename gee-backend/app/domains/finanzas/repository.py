@@ -224,10 +224,7 @@ class FinanzasRepository:
             .where(Presupuesto.anio == year)
             .group_by(Presupuesto.rubro)
         )
-        projected = {
-            row.rubro: Decimal(str(row.proyectado))
-            for row in db.execute(proj_stmt).all()
-        }
+        projected = {row.rubro: Decimal(str(row.proyectado)) for row in db.execute(proj_stmt).all()}
 
         # Actual expenses by categoria (maps to rubro)
         actual_stmt = (
@@ -238,10 +235,7 @@ class FinanzasRepository:
             .where(extract("year", Gasto.fecha) == year)
             .group_by(Gasto.categoria)
         )
-        actual = {
-            row.categoria: Decimal(str(row.real))
-            for row in db.execute(actual_stmt).all()
-        }
+        actual = {row.categoria: Decimal(str(row.real)) for row in db.execute(actual_stmt).all()}
 
         rubros = sorted(set(projected) | set(actual))
         return [

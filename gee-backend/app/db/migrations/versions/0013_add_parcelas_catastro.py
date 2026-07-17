@@ -64,9 +64,7 @@ def upgrade() -> None:
         unique=True,
     )
 
-    op.execute(
-        "CREATE INDEX ix_parcelas_catastro_geom ON parcelas_catastro USING GIST (geometria)"
-    )
+    op.execute("CREATE INDEX ix_parcelas_catastro_geom ON parcelas_catastro USING GIST (geometria)")
 
 
 def downgrade() -> None:

@@ -54,9 +54,7 @@ class CapasRepository:
         db.flush()
         return capa
 
-    def update(
-        self, db: Session, capa_id: uuid.UUID, data: CapaUpdate
-    ) -> Optional[Capa]:
+    def update(self, db: Session, capa_id: uuid.UUID, data: CapaUpdate) -> Optional[Capa]:
         """Apply partial update to an existing layer."""
         capa = self.get_by_id(db, capa_id)
         if capa is None:

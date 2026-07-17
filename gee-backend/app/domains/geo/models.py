@@ -383,9 +383,7 @@ class FloodLabel(UUIDMixin, TimestampMixin, Base):
     """A per-zone flood label within an event."""
 
     __tablename__ = "flood_labels"
-    __table_args__ = (
-        UniqueConstraint("event_id", "zona_id", name="uq_flood_label_event_zona"),
-    )
+    __table_args__ = (UniqueConstraint("event_id", "zona_id", name="uq_flood_label_event_zona"),)
 
     event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

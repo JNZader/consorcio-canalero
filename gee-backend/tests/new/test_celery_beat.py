@@ -6,7 +6,6 @@ env var configuration works, and both periodic tasks are scheduled.
 """
 
 
-
 # ── Beat schedule task names ────────────────────────
 
 

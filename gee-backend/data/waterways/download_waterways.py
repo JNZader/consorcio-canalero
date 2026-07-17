@@ -29,7 +29,7 @@ WATERWAYS = [
         "name": "Arroyo Algodon",
         "filename": "arroyo_algodon.geojson",
         "queries": [
-            '[out:json];relation(13508662);way(r);out geom;',
+            "[out:json];relation(13508662);way(r);out geom;",
             '[out:json];(way["waterway"]["name"~"Algod",i](-33.0,-63.2,-32.2,-62.0););out geom;',
         ],
     },
@@ -85,7 +85,7 @@ def get_extent(geojson):
 def main():
     results = []
     for i, ww in enumerate(WATERWAYS):
-        print(f"\n[{i+1}/{len(WATERWAYS)}] Downloading: {ww['name']}")
+        print(f"\n[{i + 1}/{len(WATERWAYS)}] Downloading: {ww['name']}")
         queries = ww.get("queries", [ww.get("query")])
 
         data = None
@@ -115,14 +115,18 @@ def main():
         n_features = len(geojson["features"])
         print(f"  Saved {n_features} features to {output_path}")
         if extent:
-            print(f"  Extent: lon [{extent['min_lon']:.4f}, {extent['max_lon']:.4f}] lat [{extent['min_lat']:.4f}, {extent['max_lat']:.4f}]")
+            print(
+                f"  Extent: lon [{extent['min_lon']:.4f}, {extent['max_lon']:.4f}] lat [{extent['min_lat']:.4f}, {extent['max_lat']:.4f}]"
+            )
 
-        results.append({
-            "name": ww["name"],
-            "file": ww["filename"],
-            "features": n_features,
-            "extent": extent,
-        })
+        results.append(
+            {
+                "name": ww["name"],
+                "file": ww["filename"],
+                "features": n_features,
+                "extent": extent,
+            }
+        )
 
         # Be polite to the API
         if i < len(WATERWAYS) - 1:
@@ -134,7 +138,9 @@ def main():
         print(f"  {r['name']}: {status}")
         if r.get("extent"):
             e = r["extent"]
-            print(f"    Center: ({(e['min_lat']+e['max_lat'])/2:.4f}, {(e['min_lon']+e['max_lon'])/2:.4f})")
+            print(
+                f"    Center: ({(e['min_lat'] + e['max_lat']) / 2:.4f}, {(e['min_lon'] + e['max_lon']) / 2:.4f})"
+            )
 
 
 if __name__ == "__main__":

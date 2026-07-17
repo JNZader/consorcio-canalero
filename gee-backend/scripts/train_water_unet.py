@@ -125,8 +125,7 @@ def load_aoi(filepath: str) -> tuple[Polygon, dict[str, float]]:
 
     else:
         raise ValueError(
-            f"Unsupported AOI file format '{suffix}'. "
-            "Use .geojson, .json, .kml, or .kmz."
+            f"Unsupported AOI file format '{suffix}'. Use .geojson, .json, .kml, or .kmz."
         )
 
     if not polygon.is_valid:
@@ -143,7 +142,11 @@ def load_aoi(filepath: str) -> tuple[Polygon, dict[str, float]]:
 
     logger.info(
         "Loaded AOI from %s — bbox: W=%.4f S=%.4f E=%.4f N=%.4f",
-        path.name, bbox["west"], bbox["south"], bbox["east"], bbox["north"],
+        path.name,
+        bbox["west"],
+        bbox["south"],
+        bbox["east"],
+        bbox["north"],
     )
     return polygon, bbox
 
@@ -167,9 +170,14 @@ def initialize_gee(credentials_dir: str = "/app/credentials") -> None:
         # Fallback: check environment variable
         env_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY")
         if env_json:
-            logger.info("No JSON file in %s — using GEE_SERVICE_ACCOUNT_KEY env var", credentials_dir)
+            logger.info(
+                "No JSON file in %s — using GEE_SERVICE_ACCOUNT_KEY env var", credentials_dir
+            )
             tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", prefix="gee-sa-", delete=False,
+                mode="w",
+                suffix=".json",
+                prefix="gee-sa-",
+                delete=False,
             )
             tmp.write(env_json)
             tmp.close()
@@ -254,7 +262,9 @@ def sample_patch_points(
     if len(points) < target:
         logger.warning(
             "Only generated %d sample points (target was %d) after %d attempts",
-            len(points), target, max_attempts,
+            len(points),
+            target,
+            max_attempts,
         )
 
     return points
@@ -293,9 +303,7 @@ def download_patch(
         response.raise_for_status()
 
         # Parse the numpy structured array from GEE
-        data = np.load(
-            __import__("io").BytesIO(response.content), allow_pickle=True
-        )
+        data = np.load(__import__("io").BytesIO(response.content), allow_pickle=True)
 
         # GEE returns structured array with band names as fields
         if data.dtype.names:
@@ -411,9 +419,7 @@ def download_patches(
 # ── Dataset ────────────────────────────────────────────────────────────
 
 
-def create_labels(
-    spectral: np.ndarray, scl: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
+def create_labels(spectral: np.ndarray, scl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Create pseudo-labels from NDWI and apply SCL cloud masking.
 
     Args:
@@ -475,9 +481,7 @@ class WaterSegmentationDataset(Dataset):
                 continue
 
             # Resize/crop to target size
-            spectral, water_label, valid_mask = self._resize(
-                spectral, water_label, valid_mask
-            )
+            spectral, water_label, valid_mask = self._resize(spectral, water_label, valid_mask)
 
             self.samples.append(
                 (
@@ -497,7 +501,10 @@ class WaterSegmentationDataset(Dataset):
         max_water = np.max(water_ratios) if water_ratios else 0
         logger.info(
             "Dataset: %d usable samples from %d patches | water coverage: avg=%.2f%%, max=%.2f%%",
-            len(self.samples), len(patches), avg_water, max_water,
+            len(self.samples),
+            len(patches),
+            avg_water,
+            max_water,
         )
 
         # ── Oversample patches that contain water ──
@@ -518,13 +525,17 @@ class WaterSegmentationDataset(Dataset):
             logger.info(
                 "Oversampling: %d wet patches (>%.1f%% water), %d dry patches | "
                 "oversample factor: %dx | total samples after: %d",
-                len(wet_samples), WATER_THRESHOLD_PCT, len(dry_samples),
-                oversample_factor, len(self.samples),
+                len(wet_samples),
+                WATER_THRESHOLD_PCT,
+                len(dry_samples),
+                oversample_factor,
+                len(self.samples),
             )
         else:
             logger.warning(
                 "Oversampling skipped: %d wet, %d dry patches — need both for oversampling",
-                len(wet_samples), len(dry_samples),
+                len(wet_samples),
+                len(dry_samples),
             )
 
         # ── Compute pos_weight for Focal Loss ──
@@ -542,7 +553,9 @@ class WaterSegmentationDataset(Dataset):
             self.pos_weight = 100.0  # cap when no water pixels at all
         logger.info(
             "Pixel balance: %.0f water / %.0f dry → pos_weight=%.1f (capped at 100)",
-            total_water_px, total_dry_px, self.pos_weight,
+            total_water_px,
+            total_dry_px,
+            self.pos_weight,
         )
 
     def _resize(
@@ -631,9 +644,8 @@ class FocalDiceLoss(nn.Module):
         alpha_t = target * self.alpha + (1 - target) * (1 - self.alpha)
 
         # Apply pos_weight: scale the positive-class log term
-        bce_term = (
-            -target * self.pos_weight * torch.log(pred_clamped)
-            - (1 - target) * torch.log(1 - pred_clamped)
+        bce_term = -target * self.pos_weight * torch.log(pred_clamped) - (1 - target) * torch.log(
+            1 - pred_clamped
         )
 
         # Focal modulation: (1 - p_t)^gamma
@@ -831,7 +843,9 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=50, help="Max training epochs (default: 50)")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (default: 1e-4)")
-    parser.add_argument("--patches", type=int, default=80, help="Number of patches to download (default: 80)")
+    parser.add_argument(
+        "--patches", type=int, default=80, help="Number of patches to download (default: 80)"
+    )
     parser.add_argument(
         "--output-path",
         type=str,
@@ -883,8 +897,14 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("U-Net Water Segmentation Training")
     logger.info("=" * 60)
-    logger.info("Config: epochs=%d, batch_size=%d, lr=%.6f, patches=%d, ndwi_thresh=%.2f",
-                args.epochs, args.batch_size, args.lr, args.patches, NDWI_THRESHOLD)
+    logger.info(
+        "Config: epochs=%d, batch_size=%d, lr=%.6f, patches=%d, ndwi_thresh=%.2f",
+        args.epochs,
+        args.batch_size,
+        args.lr,
+        args.patches,
+        NDWI_THRESHOLD,
+    )
     logger.info("Output: %s", args.output_path)
 
     # ── Device ──
@@ -905,8 +925,12 @@ def main() -> None:
     # ── Download patches ──
     logger.info("Downloading %d Sentinel-2 patches...", args.patches)
     raw_patches = download_patches(
-        args.patches, aoi_polygon, aoi_bounds,
-        args.max_cloud_cover, args.start_date, args.end_date,
+        args.patches,
+        aoi_polygon,
+        aoi_bounds,
+        args.max_cloud_cover,
+        args.start_date,
+        args.end_date,
     )
 
     if len(raw_patches) < 10:
@@ -965,8 +989,11 @@ def main() -> None:
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info("Model: U-Net ResNet34 — %dM params (%dM trainable)",
-                total_params // 1_000_000, trainable_params // 1_000_000)
+    logger.info(
+        "Model: U-Net ResNet34 — %dM params (%dM trainable)",
+        total_params // 1_000_000,
+        trainable_params // 1_000_000,
+    )
 
     # ── Train ──
     results = train(

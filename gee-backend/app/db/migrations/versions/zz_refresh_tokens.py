@@ -47,15 +47,9 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
     )
-    op.create_index(
-        "ix_refresh_tokens_user_id", "refresh_tokens", ["user_id"]
-    )
-    op.create_index(
-        "ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"], unique=True
-    )
-    op.create_index(
-        "ix_refresh_tokens_family_id", "refresh_tokens", ["family_id"]
-    )
+    op.create_index("ix_refresh_tokens_user_id", "refresh_tokens", ["user_id"])
+    op.create_index("ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"], unique=True)
+    op.create_index("ix_refresh_tokens_family_id", "refresh_tokens", ["family_id"])
 
 
 def downgrade() -> None:

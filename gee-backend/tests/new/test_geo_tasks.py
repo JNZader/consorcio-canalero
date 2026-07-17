@@ -17,12 +17,13 @@ import pytest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _mock_celery_app():
     """Neuter the celery_app.task decorator so tasks are plain functions."""
     with patch("app.core.celery_app.celery_app") as mock_app:
         # Make @celery_app.task(...) return the original function
-        mock_app.task = lambda *a, **kw: (lambda fn: fn)
+        mock_app.task = lambda *a, **kw: lambda fn: fn
         yield mock_app
 
 
@@ -395,7 +396,9 @@ class TestProcessDemPipeline:
             assert result["status"] == "completed"
             mock_repo.create_job.assert_called_once()
 
-    def test_pipeline_failure_updates_job_failed(self, mock_processing, mock_db, mock_repo, tmp_path):
+    def test_pipeline_failure_updates_job_failed(
+        self, mock_processing, mock_db, mock_repo, tmp_path
+    ):
         dem_path = str(tmp_path / "dem.tif")
         (tmp_path / "dem.tif").write_text("fake")
         mock_processing.fill_sinks.side_effect = RuntimeError("fill failed")
@@ -409,12 +412,12 @@ class TestProcessDemPipeline:
             from app.domains.geo.tasks import process_dem_pipeline
 
             with pytest.raises(RuntimeError, match="fill failed"):
-                process_dem_pipeline(
-                    area_id="a1", dem_path=dem_path, job_id=str(uuid.uuid4())
-                )
+                process_dem_pipeline(area_id="a1", dem_path=dem_path, job_id=str(uuid.uuid4()))
             # Last call should be FAILED status
             last_call_kwargs = mock_update.call_args[1]
-            assert "FAILED" in str(last_call_kwargs.get("estado", "")) or "error" in last_call_kwargs
+            assert (
+                "FAILED" in str(last_call_kwargs.get("estado", "")) or "error" in last_call_kwargs
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +428,10 @@ class TestProcessDemPipeline:
 class TestDownloadDemFromGee:
     def test_success(self, mock_processing, mock_db, mock_repo, tmp_path):
         mock_gee = MagicMock()
-        mock_gee.zona.geometry.return_value.getInfo.return_value = {"type": "Polygon", "coordinates": []}
+        mock_gee.zona.geometry.return_value.getInfo.return_value = {
+            "type": "Polygon",
+            "coordinates": [],
+        }
 
         with (
             patch("app.domains.geo.tasks._get_processing", return_value=mock_processing),

@@ -89,9 +89,7 @@ def export_current_approved_basin_zones_pdf_impl(
 
     zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
     if zoning is None:
-        raise HTTPException(
-            status_code=404, detail="No hay una zonificación aprobada activa"
-        )
+        raise HTTPException(status_code=404, detail="No hay una zonificación aprobada activa")
     pdf_buffer = build_approved_zoning_pdf(
         zoning,
         get_branding(db),
@@ -110,13 +108,9 @@ def export_current_map_approved_basin_zones_pdf_impl(payload, db: Session):
     from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
 
     return StreamingResponse(
-        build_approved_zoning_map_pdf(
-            payload.model_dump(by_alias=True), get_branding(db)
-        ),
+        build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), get_branding(db)),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": 'attachment; filename="zonificacion-aprobada-mapa.pdf"'
-        },
+        headers={"Content-Disposition": 'attachment; filename="zonificacion-aprobada-mapa.pdf"'},
     )
 
 
@@ -149,9 +143,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
     method = payload.parametros.get("method", "fusion")
     if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
         if start_date > end_date:
-            raise HTTPException(
-                status_code=422, detail="start_date debe ser anterior a end_date"
-            )
+            raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
         task = sar_temporal_task.delay(
             start_date,
             end_date,
@@ -159,9 +151,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
             analisis_id=str(analisis.id),
         )
     elif payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
-        task = analyze_flood_task.delay(
-            start_date, end_date, method, analisis_id=str(analisis.id)
-        )
+        task = analyze_flood_task.delay(start_date, end_date, method, analisis_id=str(analisis.id))
     else:
         task = supervised_classification_task.delay(
             start_date, end_date, analisis_id=str(analisis.id)

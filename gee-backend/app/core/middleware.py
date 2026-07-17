@@ -78,10 +78,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and tile requests (tiles are high-volume)
-        if (
-            request.url.path in ["/", "/health", "/live", "/ready"]
-            or "/tiles/" in request.url.path
-        ):
+        if request.url.path in ["/", "/health", "/live", "/ready"] or "/tiles/" in request.url.path:
             return await call_next(request)
 
         # Skip rate limiting when disabled via settings (local dev / E2E).
@@ -104,9 +101,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
             # Generic tier: prefer per-user rate limiting when
             # authenticated; fall back to IP.
             limiter = self.rate_limiter
-            user_id = _extract_user_id_from_token(
-                request.headers.get("authorization")
-            )
+            user_id = _extract_user_id_from_token(request.headers.get("authorization"))
             rate_limit_key = f"user:{user_id}" if user_id else f"ip:{client_ip}"
 
         allowed, remaining, reset_time = await limiter.check(rate_limit_key)
@@ -154,17 +149,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Keep browser capability exposure low for API responses. The frontend
         # may request geolocation, but the API never needs direct device access.
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=()"
-        )
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
         # Only emit HSTS when the request reached the public edge over HTTPS.
         # In local/dev and internal container traffic this app often sees HTTP.
         forwarded_proto = request.headers.get("x-forwarded-proto", "")
         if request.url.scheme == "https" or forwarded_proto == "https":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         if request.url.path.startswith("/api/v2/auth/"):
             response.headers["Cache-Control"] = "no-store"
@@ -206,11 +197,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         is_multipart = "multipart/form-data" in content_type
         is_json = "application/json" in content_type
 
-        if (
-            not is_multipart
-            and not is_json
-            and request.url.path not in self.UPLOAD_PATHS
-        ):
+        if not is_multipart and not is_json and request.url.path not in self.UPLOAD_PATHS:
             return JSONResponse(
                 status_code=415,
                 content={

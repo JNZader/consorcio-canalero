@@ -373,15 +373,9 @@ class TestTerrainClassification:
         """End-to-end classify_terrain with mocked rasterio."""
         from app.domains.geo.processing import classify_terrain
 
-        slope_arr = np.array(
-            [[0.5, 5.0], [0.3, 0.8]], dtype=np.float64
-        )
-        twi_arr = np.array(
-            [[8.0, 2.0], [1.0, 10.0]], dtype=np.float64
-        )
-        flow_acc_arr = np.array(
-            [[50, 2000], [5, 10000]], dtype=np.float64
-        )
+        slope_arr = np.array([[0.5, 5.0], [0.3, 0.8]], dtype=np.float64)
+        twi_arr = np.array([[8.0, 2.0], [1.0, 10.0]], dtype=np.float64)
+        flow_acc_arr = np.array([[50, 2000], [5, 10000]], dtype=np.float64)
 
         arrays = {
             "/tmp/slope.tif": slope_arr,
@@ -393,9 +387,7 @@ class TestTerrainClassification:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output = str(Path(tmpdir) / "terrain.tif")
-            result = classify_terrain(
-                "/tmp/slope.tif", "/tmp/twi.tif", "/tmp/flow_acc.tif", output
-            )
+            result = classify_terrain("/tmp/slope.tif", "/tmp/twi.tif", "/tmp/flow_acc.tif", output)
             assert result == output
 
 

@@ -155,9 +155,7 @@ class TestCalcularIndiceCriticidadHidrica:
         self, pendiente, acumulacion, twi, dist_canal, hist, expected_min, expected_max
     ):
         """HCI result falls within expected range."""
-        result = calcular_indice_criticidad_hidrica(
-            pendiente, acumulacion, twi, dist_canal, hist
-        )
+        result = calcular_indice_criticidad_hidrica(pendiente, acumulacion, twi, dist_canal, hist)
         assert expected_min <= result <= expected_max
 
 
@@ -199,11 +197,11 @@ class TestClasificarSeveridadConflicto:
     @pytest.mark.parametrize(
         "acumulacion,pendiente,expected",
         [
-            (6000, 1.0, "alta"),      # Very high accumulation
-            (100, 0.3, "alta"),        # Very low slope
-            (3000, 3.0, "media"),      # Medium accumulation
-            (100, 1.5, "media"),       # Low slope
-            (1000, 3.0, "baja"),       # Normal values
+            (6000, 1.0, "alta"),  # Very high accumulation
+            (100, 0.3, "alta"),  # Very low slope
+            (3000, 3.0, "media"),  # Medium accumulation
+            (100, 1.5, "media"),  # Low slope
+            (1000, 3.0, "baja"),  # Normal values
         ],
     )
     def test_severity_classification(self, acumulacion, pendiente, expected):

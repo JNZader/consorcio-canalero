@@ -18,14 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # denuncias (bare table, no _v2 suffix)
     op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_estado ON denuncias(estado)")
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_denuncias_created_at ON denuncias(created_at)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_denuncias_created_at ON denuncias(created_at)")
 
     # sugerencias_v2 (no `prioridad` column — skipped)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_sugerencias_v2_estado ON sugerencias_v2(estado)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_sugerencias_v2_estado ON sugerencias_v2(estado)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_sugerencias_v2_categoria ON sugerencias_v2(categoria)"
     )
@@ -35,16 +31,12 @@ def upgrade() -> None:
 
     # tramites_v2 (ix_tramites_v2_estado / ix_tramites_v2_tipo already exist as btree;
     # IF NOT EXISTS guards so this is a no-op in practice)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tramites_v2_estado ON tramites_v2(estado)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tramites_v2_estado ON tramites_v2(estado)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_tramites_v2_tipo ON tramites_v2(tipo)")
 
     # reuniones_v2 (column is `fecha_reunion`, not `fecha`;
     # ix_reuniones_v2_estado / ix_reuniones_v2_fecha_reunion already exist)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_reuniones_v2_estado ON reuniones_v2(estado)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_reuniones_v2_estado ON reuniones_v2(estado)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_reuniones_v2_fecha_reunion ON reuniones_v2(fecha_reunion)"
     )

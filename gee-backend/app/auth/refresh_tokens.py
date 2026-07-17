@@ -66,10 +66,7 @@ def _is_lock_timeout(exc: DBAPIError) -> bool:
     empirically). ``.orig`` is the asyncpg adapter ``Error`` exposing
     ``.sqlstate``.
     """
-    return (
-        getattr(getattr(exc, "orig", None), "sqlstate", None)
-        == _LOCK_NOT_AVAILABLE_SQLSTATE
-    )
+    return getattr(getattr(exc, "orig", None), "sqlstate", None) == _LOCK_NOT_AVAILABLE_SQLSTATE
 
 
 def _hash_token(raw: str) -> str:
@@ -145,9 +142,7 @@ async def find_active(session: AsyncSession, raw_token: str) -> RefreshToken | N
     cost regardless of whether the token exists.
     """
     digest = _hash_token(raw_token)
-    result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == digest)
-    )
+    result = await session.execute(select(RefreshToken).where(RefreshToken.token_hash == digest))
     row = result.scalar_one_or_none()
     if row is None:
         return None
@@ -185,9 +180,7 @@ async def _lock_family(session: AsyncSession, family_id: uuid.UUID) -> None:
     on each acquisition (e.g. the ``revoke_all_for_user`` loop) is idempotent.
     """
     await session.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}'"))
-    await session.execute(
-        select(func.pg_advisory_xact_lock(func.hashtext(str(family_id))))
-    )
+    await session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(family_id)))))
 
 
 async def revoke_family(session: AsyncSession, family_id: uuid.UUID) -> int:
@@ -363,9 +356,7 @@ async def rotate(
         ip_changed = new_ip != winner.client_ip
         if ua_changed or ip_changed:
             changed = "+".join(
-                part
-                for part, flag in (("ua", ua_changed), ("ip", ip_changed))
-                if flag
+                part for part, flag in (("ua", ua_changed), ("ip", ip_changed)) if flag
             )
             # Resource records user (via user_id), family, what changed, and
             # old vs new UA/IP. NEVER the raw token or its hash. Bounded to

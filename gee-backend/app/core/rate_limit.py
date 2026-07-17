@@ -95,9 +95,7 @@ class DistributedRateLimiter:
                 self._redis_available = True
                 logger.info("Redis connected for rate limiting")
             except ImportError:
-                logger.warning(
-                    "redis package not installed, using in-memory rate limiting"
-                )
+                logger.warning("redis package not installed, using in-memory rate limiting")
                 self._redis_available = False
                 return None
             except Exception as e:
@@ -204,9 +202,7 @@ class DistributedRateLimiter:
         # First pass: remove expired timestamps from all keys and delete empty keys
         empty_keys = []
         for key in list(self._memory_store.keys()):
-            self._memory_store[key] = [
-                t for t in self._memory_store[key] if t > window_start
-            ]
+            self._memory_store[key] = [t for t in self._memory_store[key] if t > window_start]
             if not self._memory_store[key]:
                 empty_keys.append(key)
 
@@ -223,9 +219,7 @@ class DistributedRateLimiter:
             # Sort keys by their oldest timestamp (most stale first)
             sorted_keys = sorted(
                 self._memory_store.keys(),
-                key=lambda k: (
-                    min(self._memory_store[k]) if self._memory_store[k] else 0
-                ),
+                key=lambda k: min(self._memory_store[k]) if self._memory_store[k] else 0,
             )
             # Remove the oldest half
             keys_to_remove = sorted_keys[: len(sorted_keys) // 2]

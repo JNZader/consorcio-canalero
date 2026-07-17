@@ -94,7 +94,8 @@ class TestJobCrud:
     def test_update_job_status(self, db: Session, repo: GeoRepository):
         job = repo.create_job(db, tipo="dem_pipeline")
         updated = repo.update_job_status(
-            db, job.id,
+            db,
+            job.id,
             estado="completed",
             progreso=100,
             resultado={"done": True},
@@ -109,16 +110,12 @@ class TestJobCrud:
 
     def test_update_job_celery_task_id(self, db: Session, repo: GeoRepository):
         job = repo.create_job(db, tipo="slope")
-        updated = repo.update_job_status(
-            db, job.id, celery_task_id="celery-123"
-        )
+        updated = repo.update_job_status(db, job.id, celery_task_id="celery-123")
         assert updated.celery_task_id == "celery-123"
 
     def test_update_job_error(self, db: Session, repo: GeoRepository):
         job = repo.create_job(db, tipo="aspect")
-        updated = repo.update_job_status(
-            db, job.id, estado="failed", error="something went wrong"
-        )
+        updated = repo.update_job_status(db, job.id, estado="failed", error="something went wrong")
         assert updated.error == "something went wrong"
 
 
@@ -154,31 +151,29 @@ class TestLayerCrud:
 
     def test_get_layers_paginated(self, db: Session, repo: GeoRepository):
         for i in range(4):
-            repo.create_layer(
-                db, nombre=f"L{i}", tipo="twi", fuente="gee", archivo_path=f"/l{i}"
-            )
+            repo.create_layer(db, nombre=f"L{i}", tipo="twi", fuente="gee", archivo_path=f"/l{i}")
         items, total = repo.get_layers(db, page=1, limit=2)
         assert total >= 4
         assert len(items) == 2
 
     def test_get_layers_with_tipo_filter(self, db: Session, repo: GeoRepository):
-        repo.create_layer(
-            db, nombre="Slope", tipo="slope", fuente="gee", archivo_path="/s"
-        )
+        repo.create_layer(db, nombre="Slope", tipo="slope", fuente="gee", archivo_path="/s")
         items, total = repo.get_layers(db, tipo_filter="slope")
         assert total >= 1
 
     def test_get_layers_with_fuente_filter(self, db: Session, repo: GeoRepository):
-        repo.create_layer(
-            db, nombre="Test", tipo="dem_raw", fuente="manual", archivo_path="/f"
-        )
+        repo.create_layer(db, nombre="Test", tipo="dem_raw", fuente="manual", archivo_path="/f")
         items, total = repo.get_layers(db, fuente_filter="manual")
         assert total >= 1
 
     def test_get_layer_by_tipo_and_area(self, db: Session, repo: GeoRepository):
         repo.create_layer(
-            db, nombre="Test", tipo="hand", fuente="gee",
-            archivo_path="/h", area_id="area_1",
+            db,
+            nombre="Test",
+            tipo="hand",
+            fuente="gee",
+            archivo_path="/h",
+            area_id="area_1",
         )
         result = repo.get_layer_by_tipo_and_area(db, "hand", "area_1")
         assert result is not None
@@ -186,19 +181,31 @@ class TestLayerCrud:
 
     def test_upsert_layer_creates_new(self, db: Session, repo: GeoRepository):
         layer = repo.upsert_layer(
-            db, nombre="New", tipo="flow_acc", fuente="gee",
-            archivo_path="/new", area_id="area_x",
+            db,
+            nombre="New",
+            tipo="flow_acc",
+            fuente="gee",
+            archivo_path="/new",
+            area_id="area_x",
         )
         assert layer.id is not None
 
     def test_upsert_layer_updates_existing(self, db: Session, repo: GeoRepository):
         first = repo.create_layer(
-            db, nombre="Old", tipo="hand", fuente="gee",
-            archivo_path="/old", area_id="area_y",
+            db,
+            nombre="Old",
+            tipo="hand",
+            fuente="gee",
+            archivo_path="/old",
+            area_id="area_y",
         )
         updated = repo.upsert_layer(
-            db, nombre="Updated", tipo="hand", fuente="dem_pipeline",
-            archivo_path="/updated", area_id="area_y",
+            db,
+            nombre="Updated",
+            tipo="hand",
+            fuente="dem_pipeline",
+            archivo_path="/updated",
+            area_id="area_y",
         )
         assert updated.id == first.id
         assert updated.nombre == "Updated"
@@ -206,7 +213,11 @@ class TestLayerCrud:
 
     def test_upsert_layer_no_area_id_creates_new(self, db: Session, repo: GeoRepository):
         layer = repo.upsert_layer(
-            db, nombre="NoArea", tipo="dem_raw", fuente="gee", archivo_path="/noarea",
+            db,
+            nombre="NoArea",
+            tipo="dem_raw",
+            fuente="gee",
+            archivo_path="/noarea",
         )
         assert layer.id is not None
 
@@ -315,7 +326,9 @@ class TestApprovedZoning:
 class TestAnalisisGeo:
     def test_create_analisis(self, db: Session, repo: GeoRepository):
         analisis = repo.create_analisis(
-            db, tipo="flood", fecha_analisis=date.today(),
+            db,
+            tipo="flood",
+            fecha_analisis=date.today(),
         )
         assert analisis.id is not None
         assert analisis.estado == EstadoGeoJob.PENDING
@@ -344,7 +357,8 @@ class TestAnalisisGeo:
     def test_update_analisis_status(self, db: Session, repo: GeoRepository):
         analisis = repo.create_analisis(db, tipo="flood", fecha_analisis=date.today())
         updated = repo.update_analisis_status(
-            db, analisis.id,
+            db,
+            analisis.id,
             estado="completed",
             celery_task_id="task-abc",
             resultado={"areas_affected": 5},
@@ -358,7 +372,5 @@ class TestAnalisisGeo:
 
     def test_update_analisis_error(self, db: Session, repo: GeoRepository):
         analisis = repo.create_analisis(db, tipo="custom", fecha_analisis=date.today())
-        updated = repo.update_analisis_status(
-            db, analisis.id, estado="failed", error="GEE timeout"
-        )
+        updated = repo.update_analisis_status(db, analisis.id, estado="failed", error="GEE timeout")
         assert updated.error == "GEE timeout"

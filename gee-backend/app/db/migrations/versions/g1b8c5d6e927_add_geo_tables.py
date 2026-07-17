@@ -92,9 +92,7 @@ def upgrade() -> None:
             nullable=False,
             comment="Path to the GeoTIFF/GeoJSON file on disk",
         ),
-        sa.Column(
-            "formato", formato_geo_layer, nullable=False, server_default="geotiff"
-        ),
+        sa.Column("formato", formato_geo_layer, nullable=False, server_default="geotiff"),
         sa.Column("srid", sa.Integer, nullable=False, server_default="4326"),
         sa.Column(
             "bbox",

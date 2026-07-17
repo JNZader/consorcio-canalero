@@ -118,9 +118,7 @@ class MonitoringService:
         )
 
         if not already_present:
-            existing_features.extend(
-                self._build_channel_features_from_sugerencia(sugerencia)
-            )
+            existing_features.extend(self._build_channel_features_from_sugerencia(sugerencia))
             payload["features"] = existing_features
             self._write_feature_collection(backend_path, payload)
 
@@ -170,9 +168,7 @@ class MonitoringService:
         limit: int = 20,
     ) -> tuple[list[Sugerencia], int]:
         """Citizen-owned paginated list — used by `GET /sugerencias/mine`."""
-        return self.repo.get_all_sugerencias_by_user(
-            db, user_id=user_id, page=page, limit=limit
-        )
+        return self.repo.get_all_sugerencias_by_user(db, user_id=user_id, page=page, limit=limit)
 
     def create_sugerencia(
         self,
@@ -263,9 +259,7 @@ class MonitoringService:
         limit: int = 20,
         tipo: Optional[str] = None,
     ) -> tuple[list[AnalisisGee], int]:
-        return self.repo.get_analysis_history(
-            db, page=page, limit=limit, tipo_filter=tipo
-        )
+        return self.repo.get_analysis_history(db, page=page, limit=limit, tipo_filter=tipo)
 
     def save_analysis(self, db: Session, data: dict[str, Any]) -> AnalisisGee:
         analysis = self.repo.save_analysis(db, data)

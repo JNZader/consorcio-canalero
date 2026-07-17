@@ -178,9 +178,7 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        tpi = run_step(
-            job_id, "compute_tpi", processing.compute_tpi, (filled, str(output_dir))
-        )
+        tpi = run_step(job_id, "compute_tpi", processing.compute_tpi, (filled, str(output_dir)))
         outputs["tpi"] = tpi
         register_raster_layer(
             nombre=f"tpi_{area_id}",
@@ -212,16 +210,12 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        update_job(
-            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs
-        )
+        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
         logger.info("dem_pipeline.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
     except Exception:
         update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
-        logger.error(
-            "dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True
-        )
+        logger.error("dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True)
         raise
 
 
@@ -278,9 +272,7 @@ def run_full_dem_pipeline_impl(
             "zonas_created": zonas_created,
             **pipeline_result.get("outputs", {}),
         }
-        update_job(
-            job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=all_outputs
-        )
+        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=all_outputs)
         logger.info(
             "full_dem_pipeline.done",
             area_id=area_id,
@@ -294,9 +286,7 @@ def run_full_dem_pipeline_impl(
         raise
 
 
-def cleanup_full_dem_state_impl(
-    *, area_id: str, get_db, geo_repo, intelligence_repo_cls
-) -> None:
+def cleanup_full_dem_state_impl(*, area_id: str, get_db, geo_repo, intelligence_repo_cls) -> None:
     logger.info("full_dem_pipeline.cleanup_start", area_id=area_id)
     db = get_db()
     try:
@@ -373,9 +363,7 @@ def count_manual_basins_impl(*, get_db) -> int:
         from sqlalchemy import text
 
         return db.execute(
-            text(
-                "SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'"
-            )
+            text("SELECT COUNT(*) FROM zonas_operativas WHERE cuenca != 'auto_delineated'")
         ).scalar()
     finally:
         db.close()
@@ -453,7 +441,5 @@ def generate_auto_basins_impl(
         formato=formato_geo_layer.GEOJSON,
     )
 
-    zonas_created = store_auto_delineated_basins(
-        area_id=area_id, basins_geojson=basins_geojson
-    )
+    zonas_created = store_auto_delineated_basins(area_id=area_id, basins_geojson=basins_geojson)
     return zonas_created, basins_raster, basins_geojson

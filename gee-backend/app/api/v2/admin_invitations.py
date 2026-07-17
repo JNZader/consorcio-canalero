@@ -159,9 +159,7 @@ async def revoke_invitation(
             detail=f"La invitación para {email_lower} ya fue reclamada.",
         )
 
-    await db.execute(
-        delete(PreAuthorizedEmail).where(PreAuthorizedEmail.email == email_lower)
-    )
+    await db.execute(delete(PreAuthorizedEmail).where(PreAuthorizedEmail.email == email_lower))
     await db.commit()
 
     return RevokeResponse(

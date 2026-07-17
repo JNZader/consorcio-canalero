@@ -120,7 +120,6 @@ def compute_stats_for_zones(
         List of stat dicts.
     """
     geometries = [
-        {"id": str(zid), "geometry": zwkt, "name": zname}
-        for zid, zwkt, zname in zone_wkts
+        {"id": str(zid), "geometry": zwkt, "name": zname} for zid, zwkt, zname in zone_wkts
     ]
     return compute_zonal_stats(geometries, raster_path, stats)

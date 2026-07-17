@@ -53,7 +53,6 @@ VIS_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
-
 LANDSAT_SENSORS: Dict[str, Dict[str, Any]] = {
     "landsat8": {
         "label": "Landsat 8",
@@ -100,6 +99,7 @@ OPTICAL_VISUALIZATION_DESCRIPTIONS: Dict[str, str] = {
     "inundacion": "Deteccion de agua (NDWI > 0)",
 }
 
+
 def mask_clouds_s2(image) -> Any:
     scl = image.select("SCL")
     mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))
@@ -114,9 +114,7 @@ def collection_dates(collection, distinct_collection_dates_fn) -> list[str]:
 def build_sentinel2_collection(
     ee_module, zona, start_date: date, end_date: date, max_cloud: int, *, use_toa: bool
 ):
-    collection_name = (
-        "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
-    )
+    collection_name = "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
     collection = (
         ee_module.ImageCollection(collection_name)
         .filterBounds(zona)
@@ -392,9 +390,7 @@ def build_sentinel2_tiles_payload(
             "end_date": end_date.isoformat(),
         }
     map_id = (
-        sentinel2.mosaic()
-        .clip(zona)
-        .getMapId({"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000})
+        sentinel2.mosaic().clip(zona).getMapId({"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000})
     )
     return {
         "tile_url": map_id["tile_fetcher"].url_format,
@@ -407,12 +403,8 @@ def build_sentinel2_tiles_payload(
 def build_flood_comparison_payload(
     explorer, *, flood_date: date, normal_date: date, days_buffer: int, max_cloud: int
 ) -> Dict[str, Any]:
-    flood_result = explorer.get_sentinel2_image(
-        flood_date, days_buffer, max_cloud, "inundacion"
-    )
-    normal_result = explorer.get_sentinel2_image(
-        normal_date, days_buffer, max_cloud, "rgb"
-    )
+    flood_result = explorer.get_sentinel2_image(flood_date, days_buffer, max_cloud, "inundacion")
+    normal_result = explorer.get_sentinel2_image(normal_date, days_buffer, max_cloud, "rgb")
     flood_rgb = explorer.get_sentinel2_image(flood_date, days_buffer, max_cloud, "rgb")
     return {
         "flood_date": flood_date.isoformat(),
@@ -426,10 +418,7 @@ def build_flood_comparison_payload(
 def available_visualizations_payload(
     vis_presets: Dict[str, Dict[str, Any]],
 ) -> List[Dict[str, str]]:
-    return [
-        {"id": key, "description": value["description"]}
-        for key, value in vis_presets.items()
-    ]
+    return [{"id": key, "description": value["description"]} for key, value in vis_presets.items()]
 
 
 def build_sentinel2_payload(

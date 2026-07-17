@@ -96,14 +96,12 @@ def detectar_puntos_conflicto_impl(
                     sl_row, sl_col = rowcol(sl_transform, centroid.x, centroid.y)
                     fa_val = (
                         float(fa_data[fa_row, fa_col])
-                        if 0 <= fa_row < fa_data.shape[0]
-                        and 0 <= fa_col < fa_data.shape[1]
+                        if 0 <= fa_row < fa_data.shape[0] and 0 <= fa_col < fa_data.shape[1]
                         else 0.0
                     )
                     sl_val = (
                         float(sl_data[sl_row, sl_col])
-                        if 0 <= sl_row < sl_data.shape[0]
-                        and 0 <= sl_col < sl_data.shape[1]
+                        if 0 <= sl_row < sl_data.shape[0] and 0 <= sl_col < sl_data.shape[1]
                         else 0.0
                     )
                 except Exception:

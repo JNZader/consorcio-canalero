@@ -12,9 +12,7 @@ from app.domains.geo.models import EstadoGeoJob, GeoJob, GeoLayer
 
 class GeoRepositoryJobsLayersMixin:
     def get_job_by_id(self, db: Session, job_id: uuid.UUID) -> Optional[GeoJob]:
-        return db.execute(
-            select(GeoJob).where(GeoJob.id == job_id)
-        ).scalar_one_or_none()
+        return db.execute(select(GeoJob).where(GeoJob.id == job_id)).scalar_one_or_none()
 
     def get_jobs(
         self,
@@ -80,9 +78,7 @@ class GeoRepositoryJobsLayersMixin:
         return job
 
     def get_layer_by_id(self, db: Session, layer_id: uuid.UUID) -> Optional[GeoLayer]:
-        return db.execute(
-            select(GeoLayer).where(GeoLayer.id == layer_id)
-        ).scalar_one_or_none()
+        return db.execute(select(GeoLayer).where(GeoLayer.id == layer_id)).scalar_one_or_none()
 
     def get_layers(
         self,
@@ -108,9 +104,7 @@ class GeoRepositoryJobsLayersMixin:
     def get_layer_by_tipo_and_area(
         self, db: Session, tipo: str, area_id: str
     ) -> Optional[GeoLayer]:
-        stmt = select(GeoLayer).where(
-            GeoLayer.tipo == tipo, GeoLayer.area_id == area_id
-        )
+        stmt = select(GeoLayer).where(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id)
         return db.execute(stmt).scalar_one_or_none()
 
     def create_layer(
@@ -156,9 +150,7 @@ class GeoRepositoryJobsLayersMixin:
         metadata_extra: Optional[dict] = None,
         area_id: Optional[str] = None,
     ) -> GeoLayer:
-        existing = (
-            self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
-        )
+        existing = self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
         if existing:
             existing.nombre = nombre
             existing.fuente = fuente

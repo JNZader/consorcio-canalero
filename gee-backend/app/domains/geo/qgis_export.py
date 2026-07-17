@@ -180,10 +180,7 @@ class QGISProjectGenerator:
             # tile-fetch time.  We build the string with explicit braces so
             # Python does NOT interpolate them as format placeholders.
             datasource_uri = (
-                "type=xyz"
-                f"&url={public_base}/{source_id}/{{z}}/{{x}}/{{y}}"
-                "&zmin=0"
-                "&zmax=14"
+                f"type=xyz&url={public_base}/{source_id}/{{z}}/{{x}}/{{y}}&zmin=0&zmax=14"
             )
             ET.SubElement(maplayer, "datasource").text = datasource_uri
             ET.SubElement(maplayer, "layername").text = layer_name
