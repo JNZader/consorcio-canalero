@@ -16,8 +16,8 @@ import type { Etapa } from '../../types/canales';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 
-import styles from '../../styles/components/map.module.css';
 import { InfoPanel } from '../map2d/InfoPanel';
+import { MapWorkspace } from '../map2d/MapWorkspace';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 
@@ -202,6 +202,13 @@ export function TerrainViewer3DChrome({
         </Group>
       </Group>
 
+      {/* Same responsive shell the 2D map got in the redesign: controls in a
+          collapsible sidebar (desktop) / full-screen Drawer (mobile) instead
+          of the retired bottom-bar, so the 3D canvas gets the same footprint
+          parity as 2D. */}
+      <MapWorkspace
+        activeLayerCount={Object.values(vectorLayerVisibility).filter(Boolean).length}
+        canvas={
       <Paper
         radius="md"
         withBorder
@@ -281,13 +288,10 @@ export function TerrainViewer3DChrome({
           </Text>
         </Box>
       </Paper>
-
-      <Box
-        className={styles.mapBottomBar}
-        aria-label="Capas y leyenda del visor 3D"
-        data-testid="terrain-3d-bottom-bar"
-      >
-        <Box className={styles.mapBottomBarItem} data-testid="terrain-3d-bottom-bar-toggles">
+        }
+        controls={
+      <Stack gap="md" aria-label="Capas y leyenda del visor 3D" data-testid="terrain-3d-bottom-bar">
+        <Box data-testid="terrain-3d-bottom-bar-toggles">
           <TerrainLayerTogglesPanel
             rasterLayers={rasterLayers}
             selectedImageOption={selectedImageOption}
@@ -304,7 +308,7 @@ export function TerrainViewer3DChrome({
             embedded
           />
         </Box>
-        <Box className={styles.mapBottomBarItem} data-testid="terrain-3d-bottom-bar-legends">
+        <Box data-testid="terrain-3d-bottom-bar-legends">
           <TerrainLegendsPanel
             activeRasterType={activeRasterType}
             hiddenClasses={hiddenClasses}
@@ -324,7 +328,9 @@ export function TerrainViewer3DChrome({
             embedded
           />
         </Box>
-      </Box>
+      </Stack>
+        }
+      />
     </>
   );
 }
