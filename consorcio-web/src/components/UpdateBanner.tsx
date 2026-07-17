@@ -22,7 +22,7 @@
  *
  * Rendered once at the app root (next to ``<Notifications>``).
  */
-import { Button, Group, Paper, Portal, Text } from '@mantine/core';
+import { ActionIcon, Button, Group, Paper, Portal, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
 // eslint-disable-next-line import/no-unresolved -- virtual module from vite-plugin-pwa
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -33,11 +33,16 @@ import { logger } from '../lib/logger';
 const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute
 
 export function UpdateBanner() {
-  const { updateAvailable } = useVersionCheck();
+  const { updateAvailable, latestSha } = useVersionCheck();
   // Tracks the click → reload window. Without this the button has no
   // affordance during the ~1–3 s SKIP_WAITING + controllerchange dance
   // and the user thinks it's broken before the page actually reloads.
   const [isUpdating, setIsUpdating] = useState(false);
+  // Dismiss per deploy: without it the banner covers map/panel content with
+  // no way out other than updating right now. Stores the dismissed SHA (not a
+  // boolean) so a NEWER deploy landing later in this tab re-arms the banner.
+  const [dismissedSha, setDismissedSha] = useState<string | null>(null);
+  const dismissed = dismissedSha !== null && dismissedSha === (latestSha ?? dismissedSha);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
@@ -71,7 +76,7 @@ export function UpdateBanner() {
       .catch((err) => logger.debug('[update-banner] reg.update() failed', err));
   }, [updateAvailable]);
 
-  const shouldShow = needRefresh || updateAvailable;
+  const shouldShow = (needRefresh || updateAvailable) && !dismissed;
   if (!shouldShow) return null;
 
   return (
@@ -126,6 +131,16 @@ export function UpdateBanner() {
           >
             {isUpdating ? 'Actualizando' : 'Actualizar'}
           </Button>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            aria-label="Cerrar aviso de actualización"
+            disabled={isUpdating}
+            onClick={() => setDismissedSha(latestSha ?? 'sw-refresh')}
+          >
+            ✕
+          </ActionIcon>
         </Group>
       </Paper>
     </Portal>
