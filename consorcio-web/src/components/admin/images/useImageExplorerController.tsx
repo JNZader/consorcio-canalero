@@ -105,7 +105,7 @@ export function useImageExplorerController() {
     clearComparison,
     isReady: comparisonReady,
   } = useImageComparison();
-  const { mapRef, updateTileLayer } = useImageExplorerMap();
+  const { mapRef, updateTileLayer, fitZona } = useImageExplorerMap();
 
   // GEE requests take seconds: without these guards a stale response can
   // overwrite a newer one, and the generic day-fetch effect would clobber the
@@ -374,6 +374,7 @@ export function useImageExplorerController() {
   return {
     isMobile,
     mapRef,
+    fitZona,
     loading,
     loadingDates,
     error,

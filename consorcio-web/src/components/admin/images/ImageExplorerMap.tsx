@@ -1,4 +1,4 @@
-import { Alert, Card, Loader, Paper, Stack, Text } from '@mantine/core';
+import { Alert, Button, Card, Loader, Paper, Stack, Text } from '@mantine/core';
 
 import { IconAlertTriangle, IconSatellite } from '../../ui/icons';
 
@@ -7,9 +7,16 @@ interface ImageExplorerMapProps {
   loading: boolean;
   resultExists: boolean;
   error: string | null;
+  onFitZona: () => void;
 }
 
-export function ImageExplorerMap({ mapRef, loading, resultExists, error }: ImageExplorerMapProps) {
+export function ImageExplorerMap({
+  mapRef,
+  loading,
+  resultExists,
+  error,
+  onFitZona,
+}: ImageExplorerMapProps) {
   return (
     <>
       {error && (
@@ -25,8 +32,23 @@ export function ImageExplorerMap({ mapRef, loading, resultExists, error }: Image
       >
         <div
           ref={mapRef}
-          style={{ width: '100%', height: 450, borderRadius: 'var(--mantine-radius-md)' }}
+          style={{
+            width: '100%',
+            // The map is THE tool of this page: grow with the viewport
+            // (fixed 450px left a tiny strip on tall monitors and cropped
+            // the zona), bounded so short laptops still fit the page.
+            height: 'clamp(450px, calc(100dvh - 420px), 950px)',
+            borderRadius: 'var(--mantine-radius-md)',
+          }}
         />
+        <Button
+          size="xs"
+          variant="default"
+          onClick={onFitZona}
+          style={{ position: 'absolute', top: 10, left: 10 }}
+        >
+          Ver zona completa
+        </Button>
         {loading && (
           <div
             style={{

@@ -125,6 +125,7 @@ export default function ImageExplorerPanel() {
             loading={controller.loading}
             resultExists={!!controller.result}
             error={controller.error}
+            onFitZona={controller.fitZona}
           />
 
           <ImageExplorerInfoPanels
