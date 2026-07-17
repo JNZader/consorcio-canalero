@@ -52,6 +52,10 @@ export function useBasins(options: UseBasinsOptions = {}) {
     },
     enabled,
     staleTime: 1000 * 60 * 5,
+    // Public geo layer that degrades gracefully (inline error + `reload`).
+    // One retry covers transient blips without the global retry-3
+    // exponential-backoff pile-up on a hard failure.
+    retry: 1,
   });
 
   return {

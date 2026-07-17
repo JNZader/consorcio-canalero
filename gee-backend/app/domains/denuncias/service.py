@@ -112,10 +112,7 @@ class DenunciaService:
             if data.estado not in allowed:
                 raise HTTPException(
                     status_code=400,
-                    detail=(
-                        f"Transicion de estado invalida: "
-                        f"{denuncia.estado} -> {data.estado}"
-                    ),
+                    detail=(f"Transicion de estado invalida: {denuncia.estado} -> {data.estado}"),
                 )
 
             # Record in historial

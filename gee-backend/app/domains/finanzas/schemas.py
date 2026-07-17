@@ -5,7 +5,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.finanzas.models import CATEGORIAS_GASTO
 
 
 # ──────────────────────────────────────────────
@@ -31,9 +33,7 @@ class GastoUpdate(BaseModel):
     """Partial update for a gasto."""
 
     descripcion: Optional[str] = Field(default=None, min_length=3, max_length=2000)
-    monto: Optional[Decimal] = Field(
-        default=None, gt=0, max_digits=12, decimal_places=2
-    )
+    monto: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     categoria: Optional[str] = None
     fecha: Optional[date] = None
     comprobante_url: Optional[str] = None
@@ -94,9 +94,7 @@ class IngresoUpdate(BaseModel):
     """Partial update for an ingreso."""
 
     descripcion: Optional[str] = Field(default=None, min_length=3, max_length=2000)
-    monto: Optional[Decimal] = Field(
-        default=None, gt=0, max_digits=12, decimal_places=2
-    )
+    monto: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     categoria: Optional[str] = None
     fecha: Optional[date] = None
     consorcista_id: Optional[uuid.UUID] = None
@@ -140,19 +138,36 @@ class IngresoListResponse(BaseModel):
 
 
 class PresupuestoCreate(BaseModel):
-    """Payload to create a budget line item."""
+    """Payload to create a budget line item.
+
+    ``rubro`` is constrained to the same ``CATEGORIAS_GASTO`` enum used by
+    ``Gasto.categoria`` so that the budget-execution report (projected vs
+    actual) compares values in the same namespace. Free-text rubros made
+    the report silently miss matches.
+    """
 
     anio: int = Field(..., ge=2000, le=2100)
-    rubro: str = Field(..., min_length=2, max_length=100)
+    rubro: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        description=" | ".join(CATEGORIAS_GASTO),
+    )
     monto_proyectado: Decimal = Field(..., ge=0, max_digits=12, decimal_places=2)
+
+    @field_validator("rubro")
+    @classmethod
+    def validate_rubro(cls, v: str) -> str:
+        rubro = v.strip().lower()
+        if rubro not in CATEGORIAS_GASTO:
+            raise ValueError(f"Rubro invalido. Opciones: {', '.join(CATEGORIAS_GASTO)}")
+        return rubro
 
 
 class PresupuestoUpdate(BaseModel):
     """Partial update for a budget line item."""
 
-    monto_proyectado: Optional[Decimal] = Field(
-        default=None, ge=0, max_digits=12, decimal_places=2
-    )
+    monto_proyectado: Optional[Decimal] = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
 
 class PresupuestoResponse(BaseModel):

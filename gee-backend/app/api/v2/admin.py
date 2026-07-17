@@ -150,12 +150,8 @@ async def force_revoke_user(
         invalidate_open_codes_for_user,
     )
 
-    await invalidate_open_codes_for_user(
-        db, user_id=target.id, purpose=RESET_PURPOSE
-    )
-    await invalidate_open_codes_for_user(
-        db, user_id=target.id, purpose=VERIFY_PURPOSE
-    )
+    await invalidate_open_codes_for_user(db, user_id=target.id, purpose=RESET_PURPOSE)
+    await invalidate_open_codes_for_user(db, user_id=target.id, purpose=VERIFY_PURPOSE)
 
     # 3) Bump revocation_epoch atomically (SQL-side increment so a
     #    concurrent token issuance reads the post-bump value).
@@ -183,8 +179,7 @@ async def force_revoke_user(
         user_id=admin.id,
         action="user.force-revoke",
         resource=(
-            f"user_id={target.id} target_email={target.email} "
-            f"acting_admin_email={admin.email}"
+            f"user_id={target.id} target_email={target.email} acting_admin_email={admin.email}"
         ),
         client_ip=request.client.host if request.client else None,
     )

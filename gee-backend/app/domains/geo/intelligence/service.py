@@ -320,8 +320,7 @@ def check_alerts(db: Session) -> dict[str, Any]:
                 db,
                 tipo="umbral_superado",
                 mensaje=(
-                    f"La zona '{zona.nombre}' ha superado el umbral critico "
-                    f"de indice hidrico"
+                    f"La zona '{zona.nombre}' ha superado el umbral critico de indice hidrico"
                 ),
                 nivel="critico",
                 zona_id=zona.id,
@@ -337,9 +336,7 @@ def check_alerts(db: Session) -> dict[str, Any]:
             intel_repo.create_alerta(
                 db,
                 tipo="umbral_superado",
-                mensaje=(
-                    f"La zona '{zona.nombre}' presenta nivel alto de indice hidrico"
-                ),
+                mensaje=(f"La zona '{zona.nombre}' presenta nivel alto de indice hidrico"),
                 nivel="advertencia",
                 zona_id=zona.id,
                 datos={"cuenca": zona.cuenca},

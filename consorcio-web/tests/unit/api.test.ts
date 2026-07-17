@@ -54,7 +54,7 @@ describe('API Client', () => {
   describe('healthCheck', () => {
     it('should return true when API is healthy', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: true,
+        ok: true, headers: new Headers(),
         json: () => Promise.resolve({ status: 'healthy' }),
       });
 
@@ -71,7 +71,7 @@ describe('API Client', () => {
 
     it('should return false when API returns error', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
+        ok: false, headers: new Headers(),
         status: 500,
       });
 
@@ -101,7 +101,7 @@ describe('API Client', () => {
         ];
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockLayers),
         });
 
@@ -116,7 +116,7 @@ describe('API Client', () => {
 
       it('should fetch only visible layers when specified', async () => {
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve([]),
         });
 
@@ -140,7 +140,7 @@ describe('API Client', () => {
         const mockResponse = { id: 'new-id', ...newLayer };
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockResponse),
         });
 
@@ -160,7 +160,7 @@ describe('API Client', () => {
     describe('delete', () => {
       it('should delete a layer', async () => {
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(undefined),
         });
 
@@ -189,7 +189,7 @@ describe('API Client', () => {
         };
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockReports),
         });
 
@@ -212,7 +212,7 @@ describe('API Client', () => {
 
       it('should fetch reports with object params', async () => {
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve({ items: [], total: 0, page: 1 }),
         });
 
@@ -242,7 +242,7 @@ describe('API Client', () => {
         };
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockReport),
         });
 
@@ -276,7 +276,7 @@ describe('API Client', () => {
         };
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockResponse),
         });
 
@@ -314,7 +314,7 @@ describe('API Client', () => {
         };
 
         mockFetch.mockResolvedValueOnce({
-          ok: true,
+          ok: true, headers: new Headers(),
           json: () => Promise.resolve(mockResponse),
         });
 
@@ -351,7 +351,7 @@ describe('API Client', () => {
   describe('Error Handling', () => {
     it('should throw error with detail from API response', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
+        ok: false, headers: new Headers(),
         status: 400,
         json: () =>
           Promise.resolve({
@@ -371,7 +371,7 @@ describe('API Client', () => {
 
     it('should throw generic error when no detail in response', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
+        ok: false, headers: new Headers(),
         status: 500,
         json: () => Promise.reject(new Error('Not JSON')),
       });
@@ -392,7 +392,7 @@ describe('API Client', () => {
   describe('Timeout Handling', () => {
     it('should pass AbortSignal to fetch for timeout support', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: true,
+        ok: true, headers: new Headers(),
         json: () => Promise.resolve([]),
       });
 

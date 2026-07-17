@@ -17,14 +17,21 @@ import { isValidSelectedImage } from '../lib/typeGuards';
 
 const STORAGE_KEY = 'consorcio_selected_image';
 
+export type SatelliteSensorLabel = 'Sentinel-1' | 'Sentinel-2' | 'Landsat 8' | 'Landsat 7' | 'Landsat 5';
+
 export interface SelectedImage {
   tile_url: string;
   target_date: string;
-  sensor: 'Sentinel-1' | 'Sentinel-2';
+  sensor: SatelliteSensorLabel;
   visualization: string;
   visualization_description: string;
   collection: string;
   images_count: number;
+  // Effective search params used when the tile was generated. Persisted so the
+  // backend restore can rebuild the SAME tile (auditoría 2026-07-09, hallazgo 2).
+  days_buffer?: number;
+  max_cloud?: number | null;
+  mode?: 'scene' | 'composite';
   flood_info?: {
     id: string;
     name: string;
@@ -43,8 +50,9 @@ function toBackendParams(image: SelectedImage): ImagenMapaParams {
     sensor: image.sensor,
     target_date: image.target_date,
     visualization: image.visualization,
-    max_cloud: null, // Not stored in SelectedImage; backend uses default
-    days_buffer: 10, // Default; the exact buffer used during search
+    max_cloud: image.max_cloud ?? null,
+    days_buffer: image.days_buffer ?? 10,
+    mode: image.mode ?? null,
   };
 }
 
@@ -297,11 +305,16 @@ async function restoreFromBackend(): Promise<SelectedImage | null> {
     return {
       tile_url: result.tile_url,
       target_date: result.target_date,
-      sensor: result.sensor as 'Sentinel-1' | 'Sentinel-2',
+      sensor: result.sensor as SatelliteSensorLabel,
       visualization: result.visualization,
       visualization_description: result.visualization_description,
       collection: result.collection,
       images_count: result.images_count,
+      // Carry the saved search params forward so the next persist round-trip
+      // keeps regenerating the same tile instead of drifting back to defaults.
+      days_buffer: params.days_buffer,
+      max_cloud: params.max_cloud ?? null,
+      mode: params.mode ?? undefined,
       selected_at: new Date().toISOString(),
     };
   } catch (err) {

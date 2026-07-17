@@ -66,17 +66,18 @@ def detect_water_from_gee(
     start = (dt - timedelta(days=days_window)).strftime("%Y-%m-%d")
     end = (dt + timedelta(days=days_window)).strftime("%Y-%m-%d")
 
-    # Get best Sentinel-2 image (least cloudy)
-    s2 = (
+    # Get best Sentinel-2 image (least cloudy).
+    # NOTE: ``.first()`` on an empty EE collection does NOT return Python
+    # ``None`` (it returns a server-side object that fails later on
+    # ``getInfo()``), so emptiness must be checked on the collection itself.
+    collection = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
         .filterBounds(ee_geom)
         .filterDate(start, end)
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", cloud_cover_max))
-        .sort("CLOUDY_PIXEL_PERCENTAGE")
-        .first()
     )
 
-    if s2 is None:
+    if collection.size().getInfo() == 0:
         info = (
             ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
             .filterBounds(ee_geom)
@@ -89,6 +90,8 @@ def detect_water_from_gee(
             "message": f"No Sentinel-2 images with <{cloud_cover_max}% clouds found ({info} total images in window)",
             "date_range": {"start": start, "end": end},
         }
+
+    s2 = collection.sort("CLOUDY_PIXEL_PERCENTAGE").first()
 
     # ── SCL cloud masking ──────────────────────────────────────────
     # Build a mask from the Scene Classification Layer (20 m, resampled
@@ -142,9 +145,7 @@ def detect_water_from_gee(
 
     # Classify
     water_mask = ndwi.gte(NDWI_WATER_THRESHOLD)  # Definite water
-    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(
-        ndwi.lt(NDWI_WATER_THRESHOLD)
-    )  # Wet soil
+    wet_mask = ndwi.gte(NDWI_WET_THRESHOLD).And(ndwi.lt(NDWI_WATER_THRESHOLD))  # Wet soil
 
     # Morphological cleanup: remove isolated pixels, fill small holes
     water_clean = water_mask.focalMode(radius=2, kernelType="circle", units="pixels")
@@ -284,12 +285,8 @@ def detect_water_multi_date(
         change = {
             "from_date": first["image_date"],
             "to_date": last["image_date"],
-            "water_ha_change": round(
-                last["area"]["water_ha"] - first["area"]["water_ha"], 2
-            ),
-            "water_pct_change": round(
-                last["area"]["water_pct"] - first["area"]["water_pct"], 2
-            ),
+            "water_ha_change": round(last["area"]["water_ha"] - first["area"]["water_ha"], 2),
+            "water_pct_change": round(last["area"]["water_pct"] - first["area"]["water_pct"], 2),
             "trend": (
                 "increasing"
                 if last["area"]["water_pct"] > first["area"]["water_pct"] + 1

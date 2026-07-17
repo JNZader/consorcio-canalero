@@ -39,9 +39,7 @@ def build_corridor_routing_pdf(
 
     request_payload = getattr(scenario, "request_payload", {}) or {}
     result_payload = getattr(scenario, "result_payload", {}) or {}
-    summary = (
-        result_payload.get("summary", {}) if isinstance(result_payload, dict) else {}
-    )
+    summary = result_payload.get("summary", {}) if isinstance(result_payload, dict) else {}
     breakdown = summary.get("cost_breakdown", {}) if isinstance(summary, dict) else {}
 
     story.append(Paragraph("Escenario de Corridor Routing", styles["title"]))
@@ -60,9 +58,7 @@ def build_corridor_routing_pdf(
         ("Modo", str(summary.get("mode", request_payload.get("mode", "network")))),
         (
             "Perfil",
-            str(
-                getattr(scenario, "profile", "") or request_payload.get("profile", "—")
-            ),
+            str(getattr(scenario, "profile", "") or request_payload.get("profile", "—")),
         ),
         ("Fecha de guardado", fmt_datetime(getattr(scenario, "created_at", None))),
         ("Favorito", "Sí" if getattr(scenario, "is_favorite", False) else "No"),
@@ -129,9 +125,7 @@ def build_corridor_routing_pdf(
         story.append(Spacer(1, 4 * mm))
 
     alternatives = (
-        result_payload.get("alternatives", [])
-        if isinstance(result_payload, dict)
-        else []
+        result_payload.get("alternatives", []) if isinstance(result_payload, dict) else []
     )
     if alternatives:
         story.append(Paragraph("Alternativas", styles["subtitle"]))
@@ -141,8 +135,7 @@ def build_corridor_routing_pdf(
                 str(item.get("rank", "—")),
                 str(item.get("total_distance_m", "—")),
                 str(item.get("edges", "—")),
-                ", ".join(str(edge_id) for edge_id in item.get("edge_ids", [])[:8])
-                or "—",
+                ", ".join(str(edge_id) for edge_id in item.get("edge_ids", [])[:8]) or "—",
             ]
             for item in alternatives
         ]

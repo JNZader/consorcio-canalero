@@ -46,7 +46,7 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
     hasComparison: false,
     singleImageInfo: null,
     comparisonInfo: null,
-    layerItems: [{ id: 'roads', label: 'Red vial' }],
+    layerItems: [{ id: 'roads', label: 'Red vial', category: 'territorio' as const }],
     vectorVisibility: {},
     onLayerVisibilityChange: noop,
     showIGNOverlay: false,

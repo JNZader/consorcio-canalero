@@ -40,9 +40,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("invited_by", sa.UUID(), nullable=False),
-        sa.Column(
-            "claimed", sa.Boolean(), nullable=False, server_default=sa.text("false")
-        ),
+        sa.Column("claimed", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -59,9 +57,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["invited_by"], ["users.id"]),
         sa.UniqueConstraint("email"),
     )
-    op.create_index(
-        "ix_pre_authorized_emails_email", "pre_authorized_emails", ["email"]
-    )
+    op.create_index("ix_pre_authorized_emails_email", "pre_authorized_emails", ["email"])
 
 
 def downgrade() -> None:

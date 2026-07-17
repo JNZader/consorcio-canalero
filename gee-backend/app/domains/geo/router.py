@@ -49,8 +49,10 @@ from app.domains.geo.router_gee_support import (
     get_gee_layer_impl,
     get_historic_flood_tiles_impl,
     get_historic_floods_impl,
+    get_image_scenes_impl,
     get_sentinel1_image_impl,
     get_sentinel2_image_impl,
+    get_satellite_image_impl,
     get_sentinel2_tiles_impl,
     list_consorcios_camineros_impl,
     list_gee_layers_impl,
@@ -153,15 +155,11 @@ def export_geo_bundle(
 
 
 def export_current_approved_basin_zones_pdf(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
-    return export_current_approved_basin_zones_pdf_impl(
-        cuenca, db, repo, _get_user_display_name
-    )
+    return export_current_approved_basin_zones_pdf_impl(cuenca, db, repo, _get_user_display_name)
 
 
 def export_current_map_approved_basin_zones_pdf(
@@ -296,6 +294,8 @@ get_gee_layer = _gee_async(get_gee_layer_impl)
 get_available_image_dates = _gee_async(get_available_image_dates_impl)
 get_sentinel2_image = _gee_async(get_sentinel2_image_impl)
 get_sentinel1_image = _gee_async(get_sentinel1_image_impl)
+get_satellite_image = _gee_async(get_satellite_image_impl)
+get_image_scenes = _gee_async(get_image_scenes_impl)
 compare_flood_dates = _gee_async(compare_flood_dates_impl)
 
 get_available_visualizations = _gee_simple(get_available_visualizations_impl)
@@ -315,6 +315,8 @@ gee_router.get("/images/available-dates")(get_available_image_dates)
 gee_router.get("/images/sentinel2")(get_sentinel2_image)
 gee_router.get("/images/sentinel1")(get_sentinel1_image)
 gee_router.get("/images/compare")(compare_flood_dates)
+gee_router.get("/images/scenes/{sensor}")(get_image_scenes)
+gee_router.get("/images/{sensor}")(get_satellite_image)
 gee_router.get("/images/historic-floods/{flood_id}")(get_historic_flood_tiles)
 
 

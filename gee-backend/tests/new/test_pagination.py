@@ -70,9 +70,7 @@ class TestPaginatedResponseCreate:
         assert resp.pages == 6
 
     def test_single_item(self):
-        resp = PaginatedResponse[_Item].create(
-            items=[_Item(id=1)], total=1, page=1, limit=20
-        )
+        resp = PaginatedResponse[_Item].create(items=[_Item(id=1)], total=1, page=1, limit=20)
         assert resp.pages == 1
 
     def test_limit_one(self):

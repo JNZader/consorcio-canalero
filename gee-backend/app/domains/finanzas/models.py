@@ -45,10 +45,10 @@ class Gasto(UUIDMixin, TimestampMixin, Base):
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     comprobante_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     proveedor: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
 
     def __repr__(self) -> str:
@@ -69,10 +69,10 @@ class Ingreso(UUIDMixin, TimestampMixin, Base):
         nullable=True,
     )
     comprobante_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
 
     def __repr__(self) -> str:
@@ -90,6 +90,5 @@ class Presupuesto(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Presupuesto {self.id} anio={self.anio} "
-            f"rubro={self.rubro} ${self.monto_proyectado}>"
+            f"<Presupuesto {self.id} anio={self.anio} rubro={self.rubro} ${self.monto_proyectado}>"
         )

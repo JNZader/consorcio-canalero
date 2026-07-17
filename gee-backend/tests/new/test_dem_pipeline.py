@@ -172,9 +172,9 @@ class TestBasinFilteringLogic:
         """Simulate the filtering loop from delineate_basins."""
         # Simulate basin features with known areas
         basins = [
-            {"basin_id": 1, "area_deg2": 0.001, "lat": -32.0},    # ~1051 ha
+            {"basin_id": 1, "area_deg2": 0.001, "lat": -32.0},  # ~1051 ha
             {"basin_id": 2, "area_deg2": 0.000001, "lat": -32.0},  # ~1.05 ha
-            {"basin_id": 3, "area_deg2": 0.0003, "lat": -32.0},    # ~315 ha
+            {"basin_id": 3, "area_deg2": 0.0003, "lat": -32.0},  # ~315 ha
         ]
 
         min_area_ha = 10.0

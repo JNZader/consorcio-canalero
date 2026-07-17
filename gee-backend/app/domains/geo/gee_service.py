@@ -31,6 +31,9 @@ from app.domains.geo.gee_service_support import (
     build_consorcio_stats,
     build_consorcios_camineros,
     build_sar_time_series_payload,
+    build_landsat_collection,
+    build_landsat_payload,
+    build_landsat_scenes_payload,
     build_sentinel1_collection,
     build_sentinel1_payload,
     build_sentinel2_collection,
@@ -40,6 +43,7 @@ from app.domains.geo.gee_service_support import (
     compute_ndwi_baselines_payload,
     get_landcover_c_payload,
     mask_clouds_s2,
+    mask_s2_cloudscore,
 )
 
 
@@ -157,8 +161,7 @@ def _ensure_initialized() -> None:
         except Exception as exc:
             _gee_init_error = str(exc)
             raise ValueError(
-                "No se pudo inicializar GEE. "
-                "Verifica credenciales o conectividad del servicio"
+                "No se pudo inicializar GEE. Verifica credenciales o conectividad del servicio"
             ) from exc
 
 
@@ -335,6 +338,9 @@ class ImageExplorer:
     def _mask_clouds_s2(self, image: ee.Image) -> ee.Image:
         return mask_clouds_s2(image)
 
+    def _mask_s2_cloudscore(self, collection):
+        return mask_s2_cloudscore(ee, collection)
+
     def _collection_dates(self, collection) -> list[str]:
         return collection_dates(collection, _distinct_collection_dates)
 
@@ -352,6 +358,9 @@ class ImageExplorer:
 
     def _sentinel1_collection(self, start_date: date, end_date: date):
         return build_sentinel1_collection(ee, self.zona, start_date, end_date)
+
+    def _landsat_collection(self, sensor: str, start_date: date, end_date: date, max_cloud: int):
+        return build_landsat_collection(ee, self.zona, sensor, start_date, end_date, max_cloud)
 
     def get_sentinel2_image(
         self,
@@ -382,6 +391,73 @@ class ImageExplorer:
             days_buffer=days_buffer,
             visualization=visualization,
         )
+
+    def get_landsat_image(
+        self,
+        sensor: str,
+        target_date: date,
+        days_buffer: int = 10,
+        max_cloud: int = 80,
+        visualization: str = "rgb",
+        use_median: bool = False,
+        mode: str = "scene",
+    ) -> Dict[str, Any]:
+        return build_landsat_payload(
+            self,
+            ee,
+            sensor=sensor,
+            target_date=target_date,
+            days_buffer=days_buffer,
+            max_cloud=max_cloud,
+            visualization=visualization,
+            use_median=use_median or mode == "composite",
+        )
+
+    def get_image(
+        self,
+        sensor: str,
+        target_date: date,
+        days_buffer: int = 10,
+        max_cloud: int = 80,
+        visualization: str = "rgb",
+        mode: str = "scene",
+    ) -> Dict[str, Any]:
+        if sensor == "sentinel2":
+            # composite mode → temporal median (rejects clouds); scene → mosaic.
+            return self.get_sentinel2_image(
+                target_date,
+                days_buffer,
+                max_cloud,
+                visualization,
+                use_median=mode == "composite",
+            )
+        if sensor == "sentinel1":
+            return self.get_sentinel1_image(target_date, days_buffer, visualization)
+        if sensor in {"landsat8", "landsat7", "landsat5"}:
+            return self.get_landsat_image(
+                sensor, target_date, days_buffer, max_cloud, visualization, mode=mode
+            )
+        return {"error": f"Sensor no soportado: {sensor}", "target_date": target_date.isoformat()}
+
+    def get_image_scenes(
+        self,
+        sensor: str,
+        target_date: date,
+        days_buffer: int = 1,
+        max_cloud: int = 80,
+        visualization: str = "rgb",
+    ) -> Dict[str, Any]:
+        if sensor in {"landsat8", "landsat7", "landsat5"}:
+            return build_landsat_scenes_payload(
+                self,
+                ee,
+                sensor=sensor,
+                target_date=target_date,
+                days_buffer=days_buffer,
+                max_cloud=max_cloud,
+                visualization=visualization,
+            )
+        return {"error": f"Listado de escenas no soportado para {sensor}"}
 
     def get_available_dates(
         self,

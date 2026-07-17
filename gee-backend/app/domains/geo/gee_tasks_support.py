@@ -28,9 +28,7 @@ def days_buffer(*, start_date, end_date) -> int:
     return (end_date - start_date).days or 10
 
 
-def build_flood_analysis_result(
-    *, explorer, start_date, end_date, method: str
-) -> dict[str, Any]:
+def build_flood_analysis_result(*, explorer, start_date, end_date, method: str) -> dict[str, Any]:
     resultado: dict[str, Any] = {}
     buffer_days = days_buffer(start_date=start_date, end_date=end_date)
     if method in ("fusion", "optical_only"):
@@ -75,9 +73,7 @@ def build_supervised_classification_stats(
 ) -> dict[str, Any]:
     days_buf = days_buffer(start_date=start_date, end_date=end_date)
     use_toa = start_date.year < 2019
-    collection_name = (
-        "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
-    )
+    collection_name = "COPERNICUS/S2_HARMONIZED" if use_toa else "COPERNICUS/S2_SR_HARMONIZED"
     zona = explorer.zona
     collection = (
         ee_module.ImageCollection(collection_name)
@@ -190,9 +186,7 @@ def build_classification_result(
             ee_module=ee_module,
         )
     except Exception as cls_err:
-        logger.warning(
-            "supervised_classification_task.classification_stats_failed: %s", cls_err
-        )
+        logger.warning("supervised_classification_task.classification_stats_failed: %s", cls_err)
         resultado["classification"] = {"error": str(cls_err)}
     resultado["classification_type"] = "ndvi_ndwi_based"
     return resultado

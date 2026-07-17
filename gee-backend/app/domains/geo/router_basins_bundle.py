@@ -107,13 +107,9 @@ async def import_basins_geojson(
     )
 
 
-@router.get(
-    "/basins/approved-zones/current", response_model=ApprovedZonesResponse | None
-)
+@router.get("/basins/approved-zones/current", response_model=ApprovedZonesResponse | None)
 def get_current_approved_basin_zones(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
@@ -184,9 +180,7 @@ async def import_current_approved_basin_zones(
     response_model=ApprovedZonesDeleteResponse,
 )
 def clear_current_approved_basin_zones(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
     _user=Depends(_require_operator()),
@@ -197,13 +191,9 @@ def clear_current_approved_basin_zones(
     return ApprovedZonesDeleteResponse(deleted=deleted)
 
 
-@router.get(
-    "/basins/approved-zones/history", response_model=list[ApprovedZonesResponse]
-)
+@router.get("/basins/approved-zones/history", response_model=list[ApprovedZonesResponse])
 def list_approved_basin_zone_history(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
@@ -215,9 +205,7 @@ def list_approved_basin_zone_history(
 
 @router.get("/basins/approved-zones/current/export-pdf")
 def export_current_approved_basin_zones_pdf(
-    cuenca: Optional[str] = Query(
-        default=None, description="Optional filter by cuenca name"
-    ),
+    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
 ):
@@ -226,9 +214,7 @@ def export_current_approved_basin_zones_pdf(
 
     zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
     if zoning is None:
-        raise HTTPException(
-            status_code=404, detail="No hay una zonificación aprobada activa"
-        )
+        raise HTTPException(status_code=404, detail="No hay una zonificación aprobada activa")
 
     branding = get_branding(db)
     approved_by_name = _get_user_display_name(db, zoning.approved_by_id)
@@ -255,9 +241,7 @@ def export_current_map_approved_basin_zones_pdf(
     from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
 
     branding = get_branding(db)
-    pdf_buffer = build_approved_zoning_map_pdf(
-        payload.model_dump(by_alias=True), branding
-    )
+    pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
     filename = "zonificacion-aprobada-mapa.pdf"
     return StreamingResponse(
         pdf_buffer,
@@ -266,9 +250,7 @@ def export_current_map_approved_basin_zones_pdf(
     )
 
 
-@router.post(
-    "/basins/approved-zones/{zoning_id}/restore", response_model=ApprovedZonesResponse
-)
+@router.post("/basins/approved-zones/{zoning_id}/restore", response_model=ApprovedZonesResponse)
 def restore_approved_basin_zone_version(
     zoning_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -278,9 +260,7 @@ def restore_approved_basin_zone_version(
     """Create a new active version by restoring a historical approved zoning."""
     source = repo.get_approved_zoning_by_id(db, zoning_id)
     if source is None:
-        raise HTTPException(
-            status_code=404, detail="Versión de zonificación no encontrada"
-        )
+        raise HTTPException(status_code=404, detail="Versión de zonificación no encontrada")
 
     restored = repo.create_approved_zoning_version(
         db,

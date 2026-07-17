@@ -24,7 +24,7 @@ import { useGEELayers } from '../../hooks/useGEELayers';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
-import { useSelectedImageListener } from '../../hooks/useSelectedImage';
+import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
@@ -36,6 +36,7 @@ import { getSupported3DRasterLayers } from './terrainLayerConfig';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
+  type TerrainVectorLayerVisibility,
   buildCuencasCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
@@ -77,26 +78,16 @@ const TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD = {
 const TERRAIN_TILE_CACHE_BUSTER = 'terrain-v3';
 const SELECTED_IMAGE_LAYER_ID = '__selected_sentinel_image__';
 /**
- * localStorage key written by ``useSelectedImageListener``. Reading it
- * synchronously lets us pick Sentinel as the initial active layer at first
- * render, instead of mounting with the DEM and then swapping on the next
- * effect tick (which produced a visible flash from DEM → Sentinel).
+ * Reading the persisted selected image synchronously lets us pick Sentinel as
+ * the initial active layer at first render, instead of mounting with the DEM
+ * and then swapping on the next effect tick (which produced a visible flash
+ * from DEM → Sentinel). Uses the shared validated reader instead of an ad-hoc
+ * localStorage parse so a manipulated tile_url cannot bypass the host
+ * allowlist (auditoría 2026-07-09, hallazgo 3).
  */
-const SELECTED_IMAGE_STORAGE_KEY = 'consorcio_selected_image';
-
 function readPersistedSentinelTileUrl(): string | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const stored = window.localStorage.getItem(SELECTED_IMAGE_STORAGE_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { tile_url?: unknown } | null;
-    if (parsed && typeof parsed.tile_url === 'string' && parsed.tile_url.length > 0) {
-      return parsed.tile_url;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return getSelectedImageSync()?.tile_url ?? null;
 }
 
 function hasPersistedSentinelImage(): boolean {
@@ -182,7 +173,17 @@ export default function TerrainViewer3D({
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
-    TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
+    () => {
+      // Seed from the LIVE store (persisted user prefs included) so the first
+      // frame already matches what the mirror effect below will converge to —
+      // no hidden→visible flash from a stale local default. zustand persist
+      // rehydrates in a microtask after store creation; if this ever mounts
+      // before that flush (SSR / eager-mount route), the mirror effect on
+      // sharedVisibleVectors still guarantees convergence one render later.
+      const { cuencas: _cuencas, zona: _zona, ...shared } =
+        useMapLayerSyncStore.getState().map3d.visibleVectors;
+      return { ...TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY, ...shared, cuencas: false };
+    }
   );
   // Phase 5 (Batch F) — click results surfaced by `useTerrainInteractionEffects`.
   // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
@@ -414,7 +415,13 @@ export default function TerrainViewer3D({
   };
 
   useEffect(() => {
-    const { cuencas: _ignoredCuencas, ...supportedVectors } = sharedVisibleVectors;
+    // zona excluded like in the seed above — 3D never renders it and letting
+    // it leak in would silently follow a future 2D default flip.
+    const {
+      cuencas: _ignoredCuencas,
+      zona: _ignoredZona,
+      ...supportedVectors
+    } = sharedVisibleVectors;
     setVectorLayerVisibility((prev) => ({
       ...prev,
       ...supportedVectors,
@@ -807,7 +814,7 @@ export default function TerrainViewer3D({
         soilCollection,
         catastroCollection,
       },
-      vectorLayerVisibility as typeof TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
+      vectorLayerVisibility as TerrainVectorLayerVisibility
     );
   }, [
     approvedZonesCollection,

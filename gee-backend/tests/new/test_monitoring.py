@@ -201,9 +201,7 @@ class TestMonitoringRepository:
         repo.create_sugerencia(db, sample_sugerencia_data)
         db.flush()
 
-        items, total = repo.get_all_sugerencias(
-            db, estado_filter=EstadoSugerencia.PENDIENTE
-        )
+        items, total = repo.get_all_sugerencias(db, estado_filter=EstadoSugerencia.PENDIENTE)
         assert total >= 1
 
         items_none, total_none = repo.get_all_sugerencias(
@@ -220,14 +218,10 @@ class TestMonitoringRepository:
         repo.create_sugerencia(db, sample_sugerencia_data)
         db.flush()
 
-        items, total = repo.get_all_sugerencias(
-            db, categoria_filter="infraestructura"
-        )
+        items, total = repo.get_all_sugerencias(db, categoria_filter="infraestructura")
         assert total >= 1
 
-        items_none, total_none = repo.get_all_sugerencias(
-            db, categoria_filter="nonexistent"
-        )
+        items_none, total_none = repo.get_all_sugerencias(db, categoria_filter="nonexistent")
         assert total_none == 0
 
     def test_update_sugerencia(
@@ -249,9 +243,7 @@ class TestMonitoringRepository:
         assert updated.estado == EstadoSugerencia.REVISADA
         assert updated.respuesta == "Estamos evaluando la sugerencia"
 
-    def test_update_nonexistent_returns_none(
-        self, db: Session, repo: MonitoringRepository
-    ):
+    def test_update_nonexistent_returns_none(self, db: Session, repo: MonitoringRepository):
         update_data = SugerenciaUpdate(estado=EstadoSugerencia.REVISADA)
         result = repo.update_sugerencia(db, uuid.uuid4(), update_data)
         assert result is None
@@ -329,9 +321,7 @@ class TestMonitoringRepository:
         )
         db.flush()
 
-        items, total = repo.get_analysis_history(
-            db, tipo_filter=TipoAnalisis.SAR
-        )
+        items, total = repo.get_analysis_history(db, tipo_filter=TipoAnalisis.SAR)
         assert total >= 1
 
         items_none, total_none = repo.get_analysis_history(
@@ -406,9 +396,7 @@ class TestMonitoringService:
         assert sugerencia.id is not None
         assert sugerencia.estado == EstadoSugerencia.PENDIENTE
 
-    def test_get_sugerencia_raises_on_missing(
-        self, db: Session, service: MonitoringService
-    ):
+    def test_get_sugerencia_raises_on_missing(self, db: Session, service: MonitoringService):
         with pytest.raises(Exception) as exc_info:
             service.get_sugerencia(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
@@ -442,18 +430,14 @@ class TestMonitoringService:
         assert updated.estado == EstadoSugerencia.IMPLEMENTADA
         assert updated.respuesta == "Implementado en marzo 2026"
 
-    def test_update_sugerencia_raises_on_missing(
-        self, db: Session, service: MonitoringService
-    ):
+    def test_update_sugerencia_raises_on_missing(self, db: Session, service: MonitoringService):
         with pytest.raises(Exception) as exc_info:
             service.update_sugerencia(
                 db, uuid.uuid4(), SugerenciaUpdate(estado=EstadoSugerencia.REVISADA)
             )
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_get_analysis_raises_on_missing(
-        self, db: Session, service: MonitoringService
-    ):
+    def test_get_analysis_raises_on_missing(self, db: Session, service: MonitoringService):
         with pytest.raises(Exception) as exc_info:
             service.get_analysis(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]

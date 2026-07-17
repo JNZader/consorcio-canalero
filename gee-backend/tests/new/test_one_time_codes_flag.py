@@ -93,9 +93,7 @@ async def _invoke_hook_with_captured_email(
     async with SessionLocal() as session:
         user_db = SQLAlchemyUserDatabase(session, User)
         manager = UserManager(user_db)
-        with patch(
-            "app.shared.email.send_email", new=AsyncMock(side_effect=_capture)
-        ):
+        with patch("app.shared.email.send_email", new=AsyncMock(side_effect=_capture)):
             hook = getattr(manager, hook_name)
             await hook(user, token, request=None)
 
@@ -112,9 +110,7 @@ async def _invoke_hook_with_captured_email(
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_flag_on_emails_code_not_token(
-    test_engine, monkeypatch
-):
+async def test_forgot_password_flag_on_emails_code_not_token(test_engine, monkeypatch):
     """USE_ONE_TIME_CODES=True → the email body carries the 8-char
     code, the JWT reset token NEVER appears in the body, and an
     ``email_codes`` row maps the code back to the original token."""
@@ -141,9 +137,7 @@ async def test_forgot_password_flag_on_emails_code_not_token(
             "JWT reset token leaked into email body_text — the WHOLE "
             "point of F5-E is to keep it out of SMTP-retained logs."
         )
-        assert jwt_token not in body_html, (
-            "JWT reset token leaked into email body_html."
-        )
+        assert jwt_token not in body_html, "JWT reset token leaked into email body_html."
 
         async with SessionLocal() as session:
             row = (
@@ -169,9 +163,7 @@ async def test_forgot_password_flag_on_emails_code_not_token(
 
 
 @pytest.mark.asyncio
-async def test_request_verify_flag_on_emails_code_not_token(
-    test_engine, monkeypatch
-):
+async def test_request_verify_flag_on_emails_code_not_token(test_engine, monkeypatch):
     """Same hardening on the email-verification path. The verify hook
     runs the same flag check, so a refactor of one without the other
     would slip past tests that only cover reset."""
@@ -219,9 +211,7 @@ async def test_request_verify_flag_on_emails_code_not_token(
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_flag_off_uses_legacy_token_in_body(
-    test_engine, monkeypatch
-):
+async def test_forgot_password_flag_off_uses_legacy_token_in_body(test_engine, monkeypatch):
     """USE_ONE_TIME_CODES=False (default) → the legacy path runs: the
     email body carries the JWT directly, no email_codes row exists.
     This is the regression guard that prevents an accidental flip of
@@ -251,10 +241,10 @@ async def test_forgot_password_flag_off_uses_legacy_token_in_body(
 
         async with SessionLocal() as session:
             rows = (
-                await session.execute(
-                    select(EmailCode).where(EmailCode.user_id == user.id)
-                )
-            ).scalars().all()
+                (await session.execute(select(EmailCode).where(EmailCode.user_id == user.id)))
+                .scalars()
+                .all()
+            )
             assert rows == [], (
                 "Flag is OFF — no email_codes row should be created. "
                 f"Found {len(rows)} row(s) which leaks one-time-code "

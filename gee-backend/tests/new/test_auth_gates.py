@@ -33,9 +33,7 @@ def client() -> TestClient:
     # Make sure ``localhost`` is in CORS_ORIGINS so the dev derivation
     # of trusted_hosts includes it. In prod the fail-fast refuses
     # localhost there — fine, this only fires in tests.
-    os.environ.setdefault(
-        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
-    )
+    os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
     from app.main import app
 
     tc = TestClient(app)
@@ -56,16 +54,12 @@ class TestPadronAuthGates:
 
     def test_list_consorcistas_unauthenticated_401(self, client: TestClient):
         resp = client.get("/api/v2/padron")
-        assert resp.status_code == 401, (
-            f"Padron list MUST require auth — got {resp.status_code}"
-        )
+        assert resp.status_code == 401, f"Padron list MUST require auth — got {resp.status_code}"
 
     def test_get_consorcista_unauthenticated_401(self, client: TestClient):
         # Existence of the row is irrelevant — auth must fail first.
         resp = client.get("/api/v2/padron/00000000-0000-0000-0000-000000000000")
-        assert resp.status_code == 401, (
-            f"Padron detail MUST require auth — got {resp.status_code}"
-        )
+        assert resp.status_code == 401, f"Padron detail MUST require auth — got {resp.status_code}"
 
     def test_stats_unauthenticated_401(self, client: TestClient):
         resp = client.get("/api/v2/padron/stats")
@@ -179,9 +173,7 @@ class TestAuthSessionGates:
 class TestUploadsAuthGates:
     def test_denuncia_photo_unauthenticated_401(self, client: TestClient):
         # Even with a valid filename pattern, no token = 401.
-        resp = client.get(
-            "/uploads/denuncias/00000000-0000-0000-0000-000000000000.jpg"
-        )
+        resp = client.get("/uploads/denuncias/00000000-0000-0000-0000-000000000000.jpg")
         assert resp.status_code == 401, (
             "Denuncia photos MUST require auth — public mount was removed in F2-F"
         )
@@ -214,9 +206,7 @@ class TestExchangeCodeEndpoint:
             json={"code": "NEVERWAS", "purpose": "reset"},
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status_code == 400, (
-            f"unknown code should return 400, got {resp.status_code}"
-        )
+        assert resp.status_code == 400, f"unknown code should return 400, got {resp.status_code}"
 
     def test_exchange_code_invalid_purpose_400(self, client: TestClient):
         """Malformed purpose → 400 (same shape, no info leak)."""
@@ -241,9 +231,7 @@ class TestForceRevokeAuthGate:
             "/api/v2/admin/users/00000000-0000-0000-0000-000000000000/force-revoke",
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status_code == 401, (
-            f"Force-revoke MUST require auth — got {resp.status_code}"
-        )
+        assert resp.status_code == 401, f"Force-revoke MUST require auth — got {resp.status_code}"
 
 
 class TestAdminReadyDetailedGate:

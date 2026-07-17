@@ -152,9 +152,7 @@ class TestCapasRepository:
         result = repo.get_by_id(db, uuid.uuid4())
         assert result is None
 
-    def test_get_all_ordered(
-        self, db: Session, repo: CapasRepository
-    ):
+    def test_get_all_ordered(self, db: Session, repo: CapasRepository):
         # Create layers with different orden values
         for i, name in enumerate(["Third", "First", "Second"]):
             data = CapaCreate(
@@ -172,9 +170,7 @@ class TestCapasRepository:
         orders = [c.orden for c in all_capas]
         assert orders == sorted(orders)
 
-    def test_get_all_visible_only(
-        self, db: Session, repo: CapasRepository
-    ):
+    def test_get_all_visible_only(self, db: Session, repo: CapasRepository):
         visible = CapaCreate(nombre="Visible", tipo="point", fuente="local", visible=True)
         hidden = CapaCreate(nombre="Hidden", tipo="point", fuente="local", visible=False)
         repo.create(db, visible)
@@ -188,12 +184,18 @@ class TestCapasRepository:
 
     def test_get_public(self, db: Session, repo: CapasRepository):
         public = CapaCreate(
-            nombre="Public", tipo="polygon", fuente="local",
-            es_publica=True, visible=True,
+            nombre="Public",
+            tipo="polygon",
+            fuente="local",
+            es_publica=True,
+            visible=True,
         )
         private = CapaCreate(
-            nombre="Private", tipo="polygon", fuente="local",
-            es_publica=False, visible=True,
+            nombre="Private",
+            tipo="polygon",
+            fuente="local",
+            es_publica=False,
+            visible=True,
         )
         repo.create(db, public)
         repo.create(db, private)
@@ -204,9 +206,7 @@ class TestCapasRepository:
         assert "Public" in names
         assert "Private" not in names
 
-    def test_update(
-        self, db: Session, repo: CapasRepository, sample_create_data: CapaCreate
-    ):
+    def test_update(self, db: Session, repo: CapasRepository, sample_create_data: CapaCreate):
         created = repo.create(db, sample_create_data)
         db.flush()
 
@@ -219,15 +219,11 @@ class TestCapasRepository:
         # Unchanged fields stay the same
         assert updated.tipo == TipoCapa.POLYGON
 
-    def test_update_nonexistent_returns_none(
-        self, db: Session, repo: CapasRepository
-    ):
+    def test_update_nonexistent_returns_none(self, db: Session, repo: CapasRepository):
         result = repo.update(db, uuid.uuid4(), CapaUpdate(nombre="Nope"))
         assert result is None
 
-    def test_delete(
-        self, db: Session, repo: CapasRepository, sample_create_data: CapaCreate
-    ):
+    def test_delete(self, db: Session, repo: CapasRepository, sample_create_data: CapaCreate):
         created = repo.create(db, sample_create_data)
         db.flush()
 
@@ -237,9 +233,7 @@ class TestCapasRepository:
         fetched = repo.get_by_id(db, created.id)
         assert fetched is None
 
-    def test_delete_nonexistent_returns_false(
-        self, db: Session, repo: CapasRepository
-    ):
+    def test_delete_nonexistent_returns_false(self, db: Session, repo: CapasRepository):
         result = repo.delete(db, uuid.uuid4())
         assert result is False
 
@@ -278,29 +272,28 @@ class TestCapasService:
         assert capa.id is not None
         assert capa.nombre == "Zona de riego"
 
-    def test_get_by_id_raises_on_missing(
-        self, db: Session, service: CapasService
-    ):
+    def test_get_by_id_raises_on_missing(self, db: Session, service: CapasService):
         with pytest.raises(Exception) as exc_info:
             service.get_by_id(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_list_capas(
-        self, db: Session, service: CapasService, sample_create_data: CapaCreate
-    ):
+    def test_list_capas(self, db: Session, service: CapasService, sample_create_data: CapaCreate):
         service.create(db, sample_create_data)
         capas = service.list_capas(db)
         assert len(capas) >= 1
 
-    def test_list_public(
-        self, db: Session, service: CapasService
-    ):
+    def test_list_public(self, db: Session, service: CapasService):
         public = CapaCreate(
-            nombre="Public layer", tipo="polygon", fuente="local",
-            es_publica=True, visible=True,
+            nombre="Public layer",
+            tipo="polygon",
+            fuente="local",
+            es_publica=True,
+            visible=True,
         )
         private = CapaCreate(
-            nombre="Private layer", tipo="polygon", fuente="local",
+            nombre="Private layer",
+            tipo="polygon",
+            fuente="local",
             es_publica=False,
         )
         service.create(db, public)
@@ -311,23 +304,17 @@ class TestCapasService:
         assert "Public layer" in names
         assert "Private layer" not in names
 
-    def test_update(
-        self, db: Session, service: CapasService, sample_create_data: CapaCreate
-    ):
+    def test_update(self, db: Session, service: CapasService, sample_create_data: CapaCreate):
         capa = service.create(db, sample_create_data)
         updated = service.update(db, capa.id, CapaUpdate(nombre="Updated name"))
         assert updated.nombre == "Updated name"
 
-    def test_update_nonexistent_raises_404(
-        self, db: Session, service: CapasService
-    ):
+    def test_update_nonexistent_raises_404(self, db: Session, service: CapasService):
         with pytest.raises(Exception) as exc_info:
             service.update(db, uuid.uuid4(), CapaUpdate(nombre="Nope"))
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_delete(
-        self, db: Session, service: CapasService, sample_create_data: CapaCreate
-    ):
+    def test_delete(self, db: Session, service: CapasService, sample_create_data: CapaCreate):
         capa = service.create(db, sample_create_data)
         service.delete(db, capa.id)
 
@@ -335,16 +322,12 @@ class TestCapasService:
             service.get_by_id(db, capa.id)
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_delete_nonexistent_raises_404(
-        self, db: Session, service: CapasService
-    ):
+    def test_delete_nonexistent_raises_404(self, db: Session, service: CapasService):
         with pytest.raises(Exception) as exc_info:
             service.delete(db, uuid.uuid4())
         assert exc_info.value.status_code == 404  # type: ignore[union-attr]
 
-    def test_reorder(
-        self, db: Session, service: CapasService
-    ):
+    def test_reorder(self, db: Session, service: CapasService):
         capas = []
         for name in ["X", "Y", "Z"]:
             data = CapaCreate(nombre=name, tipo="point", fuente="local")
@@ -354,9 +337,7 @@ class TestCapasService:
         count = service.reorder(db, ordered_ids)
         assert count == 3
 
-    def test_reorder_empty_raises_400(
-        self, db: Session, service: CapasService
-    ):
+    def test_reorder_empty_raises_400(self, db: Session, service: CapasService):
         with pytest.raises(Exception) as exc_info:
             service.reorder(db, [])
         assert exc_info.value.status_code == 400  # type: ignore[union-attr]

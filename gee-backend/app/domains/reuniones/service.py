@@ -89,10 +89,7 @@ class ReunionService:
             if data.estado not in allowed:
                 raise HTTPException(
                     status_code=400,
-                    detail=(
-                        f"Transicion de estado invalida: "
-                        f"{reunion.estado} -> {data.estado}"
-                    ),
+                    detail=(f"Transicion de estado invalida: {reunion.estado} -> {data.estado}"),
                 )
 
         updated = self.repo.update(db, reunion_id, data)

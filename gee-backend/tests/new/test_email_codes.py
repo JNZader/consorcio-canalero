@@ -123,9 +123,7 @@ async def test_create_code_persists_row(test_engine):
 
         async with SessionLocal() as session:
             row = (
-                await session.execute(
-                    select(EmailCode).where(EmailCode.code == code)
-                )
+                await session.execute(select(EmailCode).where(EmailCode.code == code))
             ).scalar_one()
             assert row.purpose == VERIFY_PURPOSE
             assert row.token == "fake-jwt-token-payload"
@@ -153,17 +151,13 @@ async def test_exchange_happy_path_returns_token(test_engine):
             await session.commit()
 
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(
-                session, code=code, purpose=RESET_PURPOSE
-            )
+            result = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
             await session.commit()
         assert result == "real-reset-token-value"
 
         # Second exchange must fail — one-shot semantics.
         async with SessionLocal() as session:
-            again = await exchange_code_for_token(
-                session, code=code, purpose=RESET_PURPOSE
-            )
+            again = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
         assert again is None
     finally:
         await _cleanup_user_async(SessionLocal, user.id)
@@ -188,9 +182,7 @@ async def test_exchange_wrong_purpose_returns_none(test_engine):
             await session.commit()
 
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(
-                session, code=code, purpose=RESET_PURPOSE
-            )
+            result = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
         assert result is None, (
             "Cross-purpose use of a code must fail — otherwise the "
             "verify code could be swapped into the reset flow."
@@ -207,9 +199,7 @@ async def test_exchange_unknown_code_returns_none(test_engine):
     engine, SessionLocal = _make_session_factory()
     try:
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(
-                session, code="NEVERWAS", purpose=VERIFY_PURPOSE
-            )
+            result = await exchange_code_for_token(session, code="NEVERWAS", purpose=VERIFY_PURPOSE)
         assert result is None
     finally:
         await engine.dispose()

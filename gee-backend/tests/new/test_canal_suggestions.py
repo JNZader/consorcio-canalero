@@ -119,7 +119,6 @@ class TestCanalSuggestionModel:
 
 
 class TestCanalSuggestionSchemas:
-
     def test_canal_suggestion_response_from_model(self, db):
         batch_id = uuid.uuid4()
         s = CanalSuggestion(
@@ -170,7 +169,6 @@ class TestCanalSuggestionSchemas:
 
 
 class TestSuggestionRepository:
-
     def test_insert_empty_batch_returns_zero(self, db, repo):
         count = repo.insert_suggestions_batch(db, [])
         assert count == 0
@@ -208,17 +206,16 @@ class TestSuggestionRepository:
     def test_get_suggestions_by_tipo_with_batch_filter(self, db, repo):
         batch_a = uuid.uuid4()
         batch_b = uuid.uuid4()
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("hotspot", 80.0, batch_a),
-            _make_suggestion("hotspot", 70.0, batch_b),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("hotspot", 80.0, batch_a),
+                _make_suggestion("hotspot", 70.0, batch_b),
+            ],
+        )
 
-        items_a, total_a = repo.get_suggestions_by_tipo(
-            db, "hotspot", batch_id=batch_a
-        )
-        items_b, total_b = repo.get_suggestions_by_tipo(
-            db, "hotspot", batch_id=batch_b
-        )
+        items_a, total_a = repo.get_suggestions_by_tipo(db, "hotspot", batch_id=batch_a)
+        items_b, total_b = repo.get_suggestions_by_tipo(db, "hotspot", batch_id=batch_b)
         assert total_a == 1
         assert total_b == 1
         assert items_a[0].score == 80.0
@@ -233,13 +230,19 @@ class TestSuggestionRepository:
         batch_new = uuid.uuid4()
 
         # Insert "old" batch first
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("gap", 40.0, batch_old),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("gap", 40.0, batch_old),
+            ],
+        )
         # Insert "new" batch after — created_at should be >= old
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("gap", 90.0, batch_new),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("gap", 90.0, batch_new),
+            ],
+        )
 
         latest = repo.get_latest_batch(db)
         # Should be one of the two (the most recently created)
@@ -251,12 +254,15 @@ class TestSuggestionRepository:
 
     def test_get_summary_for_specific_batch(self, db, repo):
         batch_id = uuid.uuid4()
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("hotspot", 80.0, batch_id),
-            _make_suggestion("hotspot", 60.0, batch_id),
-            _make_suggestion("gap", 50.0, batch_id),
-            _make_suggestion("maintenance", 70.0, batch_id),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("hotspot", 80.0, batch_id),
+                _make_suggestion("hotspot", 60.0, batch_id),
+                _make_suggestion("gap", 50.0, batch_id),
+                _make_suggestion("maintenance", 70.0, batch_id),
+            ],
+        )
 
         summary = repo.get_summary(db, batch_id=batch_id)
         assert summary is not None
@@ -269,32 +275,37 @@ class TestSuggestionRepository:
 
     def test_get_summary_uses_latest_batch_when_none(self, db, repo):
         batch_id = uuid.uuid4()
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("bottleneck", 33.0, batch_id),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("bottleneck", 33.0, batch_id),
+            ],
+        )
 
         summary = repo.get_summary(db)
         assert summary is not None
         assert summary["total_suggestions"] == 1
 
-    @pytest.mark.parametrize("page,limit,expected_count", [
-        (1, 2, 2),
-        (2, 2, 1),
-        (3, 2, 0),
-    ])
-    def test_get_suggestions_pagination(
-        self, db, repo, page, limit, expected_count
-    ):
+    @pytest.mark.parametrize(
+        "page,limit,expected_count",
+        [
+            (1, 2, 2),
+            (2, 2, 1),
+            (3, 2, 0),
+        ],
+    )
+    def test_get_suggestions_pagination(self, db, repo, page, limit, expected_count):
         batch_id = uuid.uuid4()
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("hotspot", 90.0, batch_id),
-            _make_suggestion("hotspot", 70.0, batch_id),
-            _make_suggestion("hotspot", 50.0, batch_id),
-        ])
-
-        items, total = repo.get_suggestions_by_tipo(
-            db, "hotspot", page=page, limit=limit
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("hotspot", 90.0, batch_id),
+                _make_suggestion("hotspot", 70.0, batch_id),
+                _make_suggestion("hotspot", 50.0, batch_id),
+            ],
         )
+
+        items, total = repo.get_suggestions_by_tipo(db, "hotspot", page=page, limit=limit)
         assert total == 3
         assert len(items) == expected_count
 
@@ -303,13 +314,19 @@ class TestSuggestionRepository:
         batch_1 = uuid.uuid4()
         batch_2 = uuid.uuid4()
 
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("hotspot", 90.0, batch_1),
-            _make_suggestion("gap", 80.0, batch_1),
-        ])
-        repo.insert_suggestions_batch(db, [
-            _make_suggestion("maintenance", 50.0, batch_2),
-        ])
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("hotspot", 90.0, batch_1),
+                _make_suggestion("gap", 80.0, batch_1),
+            ],
+        )
+        repo.insert_suggestions_batch(
+            db,
+            [
+                _make_suggestion("maintenance", 50.0, batch_2),
+            ],
+        )
 
         s1 = repo.get_summary(db, batch_id=batch_1)
         s2 = repo.get_summary(db, batch_id=batch_2)

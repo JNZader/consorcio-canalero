@@ -76,9 +76,7 @@ def task_calculate_hci_all_zones(
         for zona in zonas:
             try:
                 # Extract per-zone raster stats
-                zona_stats = _extract_zone_raster_stats(
-                    zona, slope_path, flow_acc_path, twi_path
-                )
+                zona_stats = _extract_zone_raster_stats(zona, slope_path, flow_acc_path, twi_path)
 
                 result = deps["intel_service"].calculate_hci_for_zone(
                     db,
@@ -148,9 +146,7 @@ def _extract_zone_raster_stats(
     )
 
     # TWI: normalize against 20 (typical TWI range 0-20)
-    stats["twi_medio"] = _zonal_mean_normalized(
-        twi_path, zone_geom, max_val=20.0, default=0.5
-    )
+    stats["twi_medio"] = _zonal_mean_normalized(twi_path, zone_geom, max_val=20.0, default=0.5)
 
     return stats
 
@@ -171,9 +167,7 @@ def _zonal_mean_normalized(
         from rasterio.mask import mask as rasterio_mask
 
         with rasterio.open(raster_path) as src:
-            out_image, _ = rasterio_mask(
-                src, [zone_geom], crop=True, nodata=src.nodata or -9999
-            )
+            out_image, _ = rasterio_mask(src, [zone_geom], crop=True, nodata=src.nodata or -9999)
             data = out_image[0]
             nodata = src.nodata or -9999
             valid = data[data != nodata]
@@ -184,9 +178,7 @@ def _zonal_mean_normalized(
             mean_val = float(np.mean(valid))
             return min(max(mean_val / max_val, 0.0), 1.0)
     except Exception:
-        logger.warning(
-            "hci.raster_extraction_failed", raster=raster_path, exc_info=True
-        )
+        logger.warning("hci.raster_extraction_failed", raster=raster_path, exc_info=True)
         return default
 
 
@@ -240,9 +232,7 @@ def task_detect_all_conflicts(buffer_m: float = 50.0) -> dict:
             logger.warning("conflicts.no_drenajes", msg="No drainage data available")
 
         # Need at least 2 non-empty datasets to detect intersections
-        non_empty = sum(
-            1 for gdf in [canales_gdf, caminos_gdf, drenajes_gdf] if not gdf.empty
-        )
+        non_empty = sum(1 for gdf in [canales_gdf, caminos_gdf, drenajes_gdf] if not gdf.empty)
         if non_empty < 2:
             return {
                 "status": "skipped",
@@ -280,15 +270,11 @@ def _load_canales_from_gee() -> "gpd.GeoDataFrame":
             try:
                 geojson = get_layer_geojson(layer_name)
                 if geojson and geojson.get("features"):
-                    gdf = gpd.GeoDataFrame.from_features(
-                        geojson["features"], crs="EPSG:4326"
-                    )
+                    gdf = gpd.GeoDataFrame.from_features(geojson["features"], crs="EPSG:4326")
                     if not gdf.empty:
                         all_gdfs.append(gdf)
             except Exception:
-                logger.warning(
-                    "conflicts.canal_load_failed", layer=layer_name, exc_info=True
-                )
+                logger.warning("conflicts.canal_load_failed", layer=layer_name, exc_info=True)
                 continue
 
         if all_gdfs:

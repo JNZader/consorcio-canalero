@@ -90,10 +90,7 @@ class TramiteService:
             if data.estado not in allowed:
                 raise HTTPException(
                     status_code=400,
-                    detail=(
-                        f"Transicion de estado invalida: "
-                        f"{tramite.estado} -> {data.estado}"
-                    ),
+                    detail=(f"Transicion de estado invalida: {tramite.estado} -> {data.estado}"),
                 )
 
             # Record in seguimiento

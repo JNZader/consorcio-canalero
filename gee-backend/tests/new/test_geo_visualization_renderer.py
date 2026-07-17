@@ -7,6 +7,7 @@ Strategy:
 - Tests assert that functions return bytes objects and call Plotter correctly.
 - No DB, no filesystem I/O, no real rendering.
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,6 +21,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Build a minimal pyvista stub so renderer.py can be imported in test env
 # ---------------------------------------------------------------------------
+
 
 def _make_pyvista_stub() -> types.ModuleType:
     """Return a fake pyvista module that satisfies renderer.py's imports."""
@@ -44,12 +46,15 @@ def _make_pyvista_stub() -> types.ModuleType:
     class _Plotter:
         def __init__(self, *args, **kwargs): ...
         def add_mesh(self, *args, **kwargs): ...
-        def screenshot(self, *args, **kwargs): return b"PNG_BYTES"
+        def screenshot(self, *args, **kwargs):
+            return b"PNG_BYTES"
+
         def open_movie(self, path, *args, **kwargs): ...
         def write_frame(self, *args, **kwargs): ...
         def close(self, *args, **kwargs): ...
         def set_position(self, *args, **kwargs): ...
-        def camera_position(self): return "iso"
+        def camera_position(self):
+            return "iso"
 
     pv.StructuredGrid = _StructuredGrid
     pv.PolyData = _PolyData
@@ -72,6 +77,7 @@ from app.domains.geo.visualization import renderer  # noqa: E402
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def dem_10x10() -> np.ndarray:
     """A small 10×10 DEM array with varied elevation values."""
@@ -89,6 +95,7 @@ def dem_zeros() -> np.ndarray:
 def affine_transform():
     """Minimal affine transform (rasterio-compatible namedtuple-like object)."""
     from collections import namedtuple
+
     Affine = namedtuple("Affine", ["a", "b", "c", "d", "e", "f"])
     # 30 m pixel, origin at (0, 300)
     return Affine(a=30.0, b=0.0, c=0.0, d=0.0, e=-30.0, f=300.0)
@@ -98,6 +105,7 @@ def affine_transform():
 def cuencas_gdf_empty():
     """GeoDataFrame with no geometries."""
     import geopandas as gpd
+
     return gpd.GeoDataFrame({"geometry": []})
 
 
@@ -106,6 +114,7 @@ def cuencas_gdf(cuencas_gdf_empty):
     """GeoDataFrame with one polygon geometry."""
     from shapely.geometry import Polygon
     import geopandas as gpd
+
     poly = Polygon([(0, 0), (30, 0), (30, 30), (0, 30)])
     return gpd.GeoDataFrame({"geometry": [poly]})
 
@@ -114,6 +123,7 @@ def cuencas_gdf(cuencas_gdf_empty):
 def conflictos_gdf_empty():
     """GeoDataFrame with no risk zones."""
     import geopandas as gpd
+
     return gpd.GeoDataFrame({"geometry": [], "nivel_riesgo": []})
 
 
@@ -122,11 +132,14 @@ def conflictos_gdf():
     """GeoDataFrame with one risk zone of each level."""
     from shapely.geometry import Polygon
     import geopandas as gpd
+
     poly = Polygon([(0, 0), (30, 0), (30, 30), (0, 30)])
-    return gpd.GeoDataFrame({
-        "geometry": [poly, poly, poly, poly],
-        "nivel_riesgo": ["bajo", "medio", "alto", "critico"],
-    })
+    return gpd.GeoDataFrame(
+        {
+            "geometry": [poly, poly, poly, poly],
+            "nivel_riesgo": ["bajo", "medio", "alto", "critico"],
+        }
+    )
 
 
 @pytest.fixture
@@ -156,6 +169,7 @@ def geojson_with_lines() -> dict:
 # ---------------------------------------------------------------------------
 # Task 2.1/2.2 — render_cuencas_3d
 # ---------------------------------------------------------------------------
+
 
 class TestRenderCuencas3d:
     """render_cuencas_3d returns PNG bytes; calls Plotter(off_screen=True)."""
@@ -198,7 +212,9 @@ class TestRenderCuencas3d:
 
         mock_instance.screenshot.assert_called_once()
 
-    def test_empty_geodataframe_does_not_crash(self, dem_10x10, affine_transform, cuencas_gdf_empty):
+    def test_empty_geodataframe_does_not_crash(
+        self, dem_10x10, affine_transform, cuencas_gdf_empty
+    ):
         """Empty GeoDataFrame → terrain-only render, no crash."""
         result = renderer.render_cuencas_3d(dem_10x10, affine_transform, cuencas_gdf_empty)
         assert isinstance(result, bytes)
@@ -212,6 +228,7 @@ class TestRenderCuencas3d:
 # ---------------------------------------------------------------------------
 # Task 2.3/2.4 — render_escorrentia_3d
 # ---------------------------------------------------------------------------
+
 
 class TestRenderEscorrentia3d:
     """render_escorrentia_3d returns PNG bytes for any GeoJSON input."""
@@ -252,6 +269,7 @@ class TestRenderEscorrentia3d:
 # Task 2.5/2.6 — render_riesgo_3d
 # ---------------------------------------------------------------------------
 
+
 class TestRenderRiesgo3d:
     """render_riesgo_3d returns PNG bytes; handles color-coded risk levels."""
 
@@ -263,7 +281,9 @@ class TestRenderRiesgo3d:
         result = renderer.render_riesgo_3d(dem_10x10, affine_transform, conflictos_gdf)
         assert len(result) > 0
 
-    def test_empty_risk_zones_does_not_crash(self, dem_10x10, affine_transform, conflictos_gdf_empty):
+    def test_empty_risk_zones_does_not_crash(
+        self, dem_10x10, affine_transform, conflictos_gdf_empty
+    ):
         result = renderer.render_riesgo_3d(dem_10x10, affine_transform, conflictos_gdf_empty)
         assert isinstance(result, bytes)
 
@@ -289,6 +309,7 @@ class TestRenderRiesgo3d:
 # ---------------------------------------------------------------------------
 # Task 2.7/2.8 — render_animacion_tormenta
 # ---------------------------------------------------------------------------
+
 
 class TestRenderAnimacionTormenta:
     """render_animacion_tormenta returns MP4 bytes via open_movie + write_frame."""
@@ -383,6 +404,7 @@ class TestRenderAnimacionTormenta:
 # ---------------------------------------------------------------------------
 # Task 2.9 — REFACTOR: _dem_to_grid helper
 # ---------------------------------------------------------------------------
+
 
 class TestDemToGridHelper:
     """_dem_to_grid private helper exists and returns a StructuredGrid-like object."""

@@ -258,6 +258,4 @@ class VisualizationService:
             flow_acc_path,
             slope_path,
         )
-        return renderer.render_animacion_tormenta(
-            elevation, transform, cuencas_gdf, conflictos_gdf
-        )
+        return renderer.render_animacion_tormenta(elevation, transform, cuencas_gdf, conflictos_gdf)

@@ -115,7 +115,7 @@ describe('map2d extracted panels', () => {
           baseLayer="osm"
           onBaseLayerChange={onBaseLayerChange}
           viewModePanel={<div>view-mode-slot</div>}
-          layerItems={[{ id: 'roads', label: 'Red vial' }]}
+          layerItems={[{ id: 'roads', label: 'Red vial', category: 'territorio' }]}
           vectorVisibility={{ roads: false }}
           onLayerVisibilityChange={onLayerVisibilityChange}
           showIGNOverlay={false}
@@ -236,7 +236,7 @@ describe('map2d extracted panels', () => {
         hasComparison={false}
         singleImageInfo={null}
         comparisonInfo={null}
-        layerItems={[{ id: 'waterways', label: 'Hidrografía' }]}
+        layerItems={[{ id: 'waterways', label: 'Hidrografía', category: 'hidrografia' }]}
         vectorVisibility={{ waterways: true, roads: true }}
         onLayerVisibilityChange={() => {}}
         showIGNOverlay={false}

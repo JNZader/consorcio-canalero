@@ -14,6 +14,7 @@ import { useForm } from '@mantine/form';
 import { useEffect, useState } from 'react';
 import { exchangeCodeForToken, resetPasswordWithToken } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
+import { validatePassword } from '../../lib/validators';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
 
 const RESET_PASSWORD_ERROR_ID = 'reset-password-error';
@@ -70,18 +71,8 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
       confirmPassword: '',
     },
     validate: {
-      password: (value) => {
-        if (value.length < 8) {
-          return 'La contrasena debe tener al menos 8 caracteres';
-        }
-        if (!/[0-9]/.test(value)) {
-          return 'La contrasena debe incluir al menos un numero';
-        }
-        if (!/[a-zA-Z]/.test(value)) {
-          return 'La contrasena debe incluir al menos una letra';
-        }
-        return null;
-      },
+      // Shared strength rules (same as register flow) — see lib/validators.ts
+      password: validatePassword,
       confirmPassword: (value, values) =>
         value !== values.password ? 'Las contrasenas no coinciden' : null,
     },

@@ -95,9 +95,7 @@ class DistributedRateLimiter:
                 self._redis_available = True
                 logger.info("Redis connected for rate limiting")
             except ImportError:
-                logger.warning(
-                    "redis package not installed, using in-memory rate limiting"
-                )
+                logger.warning("redis package not installed, using in-memory rate limiting")
                 self._redis_available = False
                 return None
             except Exception as e:
@@ -204,9 +202,7 @@ class DistributedRateLimiter:
         # First pass: remove expired timestamps from all keys and delete empty keys
         empty_keys = []
         for key in list(self._memory_store.keys()):
-            self._memory_store[key] = [
-                t for t in self._memory_store[key] if t > window_start
-            ]
+            self._memory_store[key] = [t for t in self._memory_store[key] if t > window_start]
             if not self._memory_store[key]:
                 empty_keys.append(key)
 
@@ -223,9 +219,7 @@ class DistributedRateLimiter:
             # Sort keys by their oldest timestamp (most stale first)
             sorted_keys = sorted(
                 self._memory_store.keys(),
-                key=lambda k: (
-                    min(self._memory_store[k]) if self._memory_store[k] else 0
-                ),
+                key=lambda k: min(self._memory_store[k]) if self._memory_store[k] else 0,
             )
             # Remove the oldest half
             keys_to_remove = sorted_keys[: len(sorted_keys) // 2]
@@ -362,6 +356,12 @@ class DistributedRateLimiter:
 # Global rate limiter instance (lazy initialization)
 _rate_limiter: Optional[DistributedRateLimiter] = None
 
+# Dedicated, stricter limiter for brute-forceable auth endpoints
+# (login / forgot-password / exchange-code). Same sliding-window
+# infrastructure, separate instance so the counters and the key
+# namespace ("ratelimit:auth:") never mix with the generic limiter.
+_auth_rate_limiter: Optional[DistributedRateLimiter] = None
+
 
 def get_rate_limiter() -> DistributedRateLimiter:
     """Get global rate limiter instance."""
@@ -375,3 +375,24 @@ def get_rate_limiter() -> DistributedRateLimiter:
             window_seconds=settings.rate_limit_window,
         )
     return _rate_limiter
+
+
+def get_auth_rate_limiter() -> DistributedRateLimiter:
+    """Get the stricter global limiter for auth brute-force protection.
+
+    Defaults to 10 requests / 60 s per client (see
+    ``settings.auth_rate_limit_requests`` / ``auth_rate_limit_window``) —
+    tight enough to make online credential / code guessing impractical,
+    loose enough for a legitimate user fumbling a password a few times.
+    """
+    global _auth_rate_limiter
+    if _auth_rate_limiter is None:
+        from app.config import settings
+
+        _auth_rate_limiter = DistributedRateLimiter(
+            redis_url=settings.redis_url,
+            max_requests=settings.auth_rate_limit_requests,
+            window_seconds=settings.auth_rate_limit_window,
+            key_prefix="ratelimit:auth:",
+        )
+    return _auth_rate_limiter

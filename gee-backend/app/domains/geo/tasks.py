@@ -135,9 +135,7 @@ def _register_raster_layer(
         tipo=tipo,
         archivo_path=archivo_path,
         area_id=area_id,
-        metadata_extra=_build_cog_metadata(
-            _convert_to_cog_safe(archivo_path), metadata_extra
-        ),
+        metadata_extra=_build_cog_metadata(_convert_to_cog_safe(archivo_path), metadata_extra),
     )
 
 
@@ -191,9 +189,7 @@ def _run_simple_processing_task(
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(
-                job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc()
-            )
+            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
         raise
 
 
@@ -218,9 +214,7 @@ def compute_aspect(dem_path: str, output_path: str, job_id: str | None = None) -
 
 
 @celery_app.task(queue="geo", name="geo.compute_flow_direction")
-def compute_flow_direction(
-    dem_path: str, output_path: str, job_id: str | None = None
-) -> dict:
+def compute_flow_direction(dem_path: str, output_path: str, job_id: str | None = None) -> dict:
     return _run_simple_processing_task(
         "compute_flow_direction",
         dem_path,
@@ -230,9 +224,7 @@ def compute_flow_direction(
 
 
 @celery_app.task(queue="geo", name="geo.compute_flow_accumulation")
-def compute_flow_accumulation(
-    dem_path: str, output_path: str, job_id: str | None = None
-) -> dict:
+def compute_flow_accumulation(dem_path: str, output_path: str, job_id: str | None = None) -> dict:
     return _run_simple_processing_task(
         "compute_flow_accumulation",
         dem_path,

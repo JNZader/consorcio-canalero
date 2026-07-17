@@ -29,6 +29,14 @@ COPY alembic.ini ./
 # Create data directory for geo processing outputs
 RUN mkdir -p /data/geo
 
+# Create non-root user (mirrors gee-backend/Dockerfile production stage)
+# /app + /data/geo writable (raster/geo outputs; volume ownership applies on first init)
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app /data/geo
+
 # No EXPOSE, no HEALTHCHECK — worker has no HTTP
+
+# Switch to non-root user
+USER app
 
 CMD ["celery", "-A", "app.core.celery_app", "worker", "--beat", "--loglevel=info", "--concurrency=2", "-Q", "celery,geo"]

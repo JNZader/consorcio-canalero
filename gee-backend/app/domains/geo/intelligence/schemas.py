@@ -28,9 +28,7 @@ def _wkb_to_geojson(v: Any) -> Optional[dict[str, Any]]:
             from shapely.geometry import mapping
             import json
 
-            shape = (
-                wkb.loads(bytes(v.data)) if hasattr(v, "data") else wkt.loads(str(v))
-            )
+            shape = wkb.loads(bytes(v.data)) if hasattr(v, "data") else wkt.loads(str(v))
             return json.loads(json.dumps(mapping(shape)))
         except Exception:
             return None
@@ -110,12 +108,8 @@ class CriticidadRequest(BaseModel):
     proximidad_canal_m: float = Field(
         ..., ge=0, description="Average distance to nearest canal (m)"
     )
-    historial_inundacion: float = Field(
-        ..., ge=0, le=1, description="Flood history factor"
-    )
-    pesos: Optional[dict[str, float]] = Field(
-        default=None, description="Custom weight dict"
-    )
+    historial_inundacion: float = Field(..., ge=0, le=1, description="Flood history factor")
+    pesos: Optional[dict[str, float]] = Field(default=None, description="Custom weight dict")
 
 
 class CriticidadResponse(BaseModel):
@@ -152,12 +146,8 @@ class ConflictoDetectarRequest(BaseModel):
     """Request to run conflict detection."""
 
     buffer_m: float = Field(default=50.0, ge=10, le=500, description="Buffer in meters")
-    flow_acc_threshold: float = Field(
-        default=500.0, ge=0, description="Min flow accumulation"
-    )
-    slope_threshold: float = Field(
-        default=5.0, ge=0, description="Max slope in degrees"
-    )
+    flow_acc_threshold: float = Field(default=500.0, ge=0, description="Min flow accumulation")
+    slope_threshold: float = Field(default=5.0, ge=0, description="Max slope in degrees")
 
 
 # ──────────────────────────────────────────────
@@ -168,9 +158,7 @@ class ConflictoDetectarRequest(BaseModel):
 class EscorrentiaRequest(BaseModel):
     """Request to run runoff simulation."""
 
-    punto_inicio: list[float] = Field(
-        ..., min_length=2, max_length=2, description="[lon, lat]"
-    )
+    punto_inicio: list[float] = Field(..., min_length=2, max_length=2, description="[lon, lat]")
     lluvia_mm: float = Field(..., gt=0, le=500, description="Rainfall in mm")
 
 
@@ -255,13 +243,9 @@ class DashboardInteligente(BaseModel):
     porcentaje_area_riesgo: float = Field(
         ..., description="Percentage of total area at risk (medio+)"
     )
-    canales_criticos: int = Field(
-        ..., description="Number of canals with priority > 70"
-    )
+    canales_criticos: int = Field(..., description="Number of canals with priority > 70")
     caminos_vulnerables: int = Field(..., description="Number of roads with risk > 70")
-    conflictos_activos: int = Field(
-        ..., description="Number of detected conflict points"
-    )
+    conflictos_activos: int = Field(..., description="Number of detected conflict points")
     alertas_activas: int = Field(..., description="Number of active alerts")
     zonas_por_nivel: dict[str, int] = Field(
         default_factory=dict,
@@ -302,12 +286,8 @@ class CompositeZonalStatsResponse(BaseModel):
     zona_nombre: Optional[str] = Field(
         default=None, description="Zone name (joined from ZonaOperativa)"
     )
-    cuenca: Optional[str] = Field(
-        default=None, description="Parent watershed / basin family"
-    )
-    superficie_ha: Optional[float] = Field(
-        default=None, description="Zone area in hectares"
-    )
+    cuenca: Optional[str] = Field(default=None, description="Parent watershed / basin family")
+    superficie_ha: Optional[float] = Field(default=None, description="Zone area in hectares")
     tipo: str = Field(..., description="flood_risk | drainage_need")
     mean_score: float
     max_score: float
@@ -360,9 +340,7 @@ class CanalSuggestionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    tipo: str = Field(
-        ..., description="hotspot | gap | route | maintenance | bottleneck"
-    )
+    tipo: str = Field(..., description="hotspot | gap | route | maintenance | bottleneck")
     score: float = Field(..., description="Relevance / priority score 0-100")
     metadata_: Optional[dict[str, Any]] = Field(
         default=None,
@@ -376,9 +354,7 @@ class CanalSuggestionResponse(BaseModel):
 class AnalysisRequest(BaseModel):
     """Request to trigger canal network analysis."""
 
-    area_id: str = Field(
-        ..., description="Processing area identifier (cuenca name or zone)"
-    )
+    area_id: str = Field(..., description="Processing area identifier (cuenca name or zone)")
     tipos: Optional[list[str]] = Field(
         default=None,
         description=(
@@ -418,9 +394,7 @@ class RefreshViewsResponse(BaseModel):
     or ``"error: <message>"`` per the repo implementation."""
 
     status: str = Field(..., description="Always ``refreshed`` on this endpoint.")
-    views: dict[str, str] = Field(
-        ..., description="Per-view refresh status keyed by view name."
-    )
+    views: dict[str, str] = Field(..., description="Per-view refresh status keyed by view name.")
 
 
 class AsyncTaskResponse(BaseModel):
@@ -465,6 +439,4 @@ class IntelligencePlaceholderResponse(BaseModel):
         default_factory=list,
         description="Always empty on these placeholder endpoints.",
     )
-    message: str = Field(
-        ..., description="Operator-facing hint pointing at the real endpoint."
-    )
+    message: str = Field(..., description="Operator-facing hint pointing at the real endpoint.")

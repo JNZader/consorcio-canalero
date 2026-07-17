@@ -14,13 +14,9 @@ class IntelligenceRepositoryZonesMixin:
     def _paginated_results(
         self, db: Session, base_stmt, *, page: int, limit: int, order_by
     ) -> tuple[list[Any], int]:
-        total: int = db.execute(
-            select(func.count()).select_from(base_stmt.subquery())
-        ).scalar_one()
+        total: int = db.execute(select(func.count()).select_from(base_stmt.subquery())).scalar_one()
         items = list(
-            db.execute(
-                base_stmt.order_by(order_by).offset((page - 1) * limit).limit(limit)
-            )
+            db.execute(base_stmt.order_by(order_by).offset((page - 1) * limit).limit(limit))
             .scalars()
             .all()
         )
@@ -59,9 +55,7 @@ class IntelligenceRepositoryZonesMixin:
             feature["type"] = "Feature"
         return feature
 
-    def get_zona_by_id(
-        self, db: Session, zona_id: uuid.UUID
-    ) -> Optional[ZonaOperativa]:
+    def get_zona_by_id(self, db: Session, zona_id: uuid.UUID) -> Optional[ZonaOperativa]:
         return db.execute(
             select(ZonaOperativa).where(ZonaOperativa.id == zona_id)
         ).scalar_one_or_none()
@@ -131,8 +125,7 @@ class IntelligenceRepositoryZonesMixin:
         features = [
             feature
             for row in rows
-            if (feature := self._serialize_zona_feature(row, allow_null_geometry=True))
-            is not None
+            if (feature := self._serialize_zona_feature(row, allow_null_geometry=True)) is not None
         ]
         return {
             "type": "FeatureCollection",
@@ -152,9 +145,7 @@ class IntelligenceRepositoryZonesMixin:
             stmt = stmt.where(ZonaOperativa.cuenca == cuenca_filter)
         rows = db.execute(stmt).all()
         return [
-            feature
-            for row in rows
-            if (feature := self._serialize_zona_feature(row)) is not None
+            feature for row in rows if (feature := self._serialize_zona_feature(row)) is not None
         ]
 
     def get_zonas_criticas(

@@ -197,9 +197,7 @@ class TestComputeHandTaskSignature:
         mock_processing = MagicMock()
         mock_processing.compute_hand.return_value = "/tmp/hand.tif"
 
-        with patch(
-            "app.domains.geo.tasks._get_processing", return_value=mock_processing
-        ):
+        with patch("app.domains.geo.tasks._get_processing", return_value=mock_processing):
             result = task_fn(
                 dem_path="/tmp/dem.tif",
                 flow_dir_path="/tmp/flow_dir.tif",

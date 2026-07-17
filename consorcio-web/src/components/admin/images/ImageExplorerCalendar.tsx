@@ -1,4 +1,4 @@
-import { ActionIcon, Group, Loader, Paper, Text, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Group, Loader, Paper, Select, Text, UnstyledButton } from '@mantine/core';
 
 import { IconArrowLeft, IconArrowRight } from '../../ui/icons';
 import { DAY_NAMES, MONTH_NAMES } from './imageExplorerUtils';
@@ -12,6 +12,7 @@ interface ImageExplorerCalendarProps {
   onSelectDay: (dateStr: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onMonthYearChange: (year: number, month: number) => void;
 }
 
 interface CalendarCellData {
@@ -104,6 +105,7 @@ export function ImageExplorerCalendar(props: ImageExplorerCalendarProps) {
     onSelectDay,
     onPrevMonth,
     onNextMonth,
+    onMonthYearChange,
   } = props;
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -119,8 +121,18 @@ export function ImageExplorerCalendar(props: ImageExplorerCalendarProps) {
       dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
     });
   }
-  const canGoNext =
-    year < today.getFullYear() || (year === today.getFullYear() && month < today.getMonth());
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
+  const canGoNext = year < currentYear || (year === currentYear && month < currentMonth);
+  const yearOptions = Array.from({ length: currentYear - 1984 + 1 }, (_, index) => {
+    const optionYear = currentYear - index;
+    return { value: String(optionYear), label: String(optionYear) };
+  });
+  const monthOptions = MONTH_NAMES.map((label, index) => ({
+    value: String(index),
+    label,
+    disabled: year === currentYear && index > currentMonth,
+  }));
 
   return (
     <Paper p="md" withBorder radius="md">
@@ -128,9 +140,35 @@ export function ImageExplorerCalendar(props: ImageExplorerCalendarProps) {
         <ActionIcon variant="subtle" onClick={onPrevMonth} aria-label="Mes anterior">
           <IconArrowLeft size={18} />
         </ActionIcon>
-        <Text fw={600} size="lg">
-          {MONTH_NAMES[month]} {year}
-        </Text>
+        <Group gap="xs">
+          <Select
+            aria-label="Seleccionar mes"
+            value={String(month)}
+            onChange={(value) => value != null && onMonthYearChange(year, Number(value))}
+            data={monthOptions}
+            size="xs"
+            w={140}
+            allowDeselect={false}
+          />
+          <Select
+            aria-label="Seleccionar año"
+            value={String(year)}
+            onChange={(value) => {
+              if (value == null) return;
+              const nextYear = Number(value);
+              const nextMonth =
+                nextYear === currentYear && month > currentMonth ? currentMonth : month;
+              onMonthYearChange(nextYear, nextMonth);
+            }}
+            data={yearOptions}
+            size="xs"
+            w={105}
+            allowDeselect={false}
+            searchable
+            maxDropdownHeight={360}
+            comboboxProps={{ withinPortal: true }}
+          />
+        </Group>
         <ActionIcon
           variant="subtle"
           onClick={onNextMonth}

@@ -7,8 +7,6 @@ Tests:
 - SAR_TEMPORAL enum value exists
 """
 
-
-
 from app.domains.geo.gee_tasks import detect_vv_anomalies
 from app.domains.geo.models import TipoAnalisisGee
 
@@ -61,9 +59,16 @@ class TestDetectVvAnomalies:
         # With many normal values and one extreme outlier, the outlier
         # should still fall below baseline - 2*std.
         dates = [
-            "2025-01-01", "2025-01-13", "2025-01-25", "2025-02-06",
-            "2025-02-18", "2025-03-02", "2025-03-14", "2025-03-26",
-            "2025-04-07", "2025-04-19",
+            "2025-01-01",
+            "2025-01-13",
+            "2025-01-25",
+            "2025-02-06",
+            "2025-02-18",
+            "2025-03-02",
+            "2025-03-14",
+            "2025-03-26",
+            "2025-04-07",
+            "2025-04-19",
         ]
         # 9 normal values around -12 dB, 1 extreme outlier at -22 dB
         vv_values = [-12.0, -11.5, -12.5, -11.8, -12.2, -11.9, -12.3, -11.7, -12.1, -22.0]
@@ -130,9 +135,16 @@ class TestDetectVvAnomalies:
     def test_anomaly_contains_date_and_vv(self):
         """Each anomaly entry must have 'date' and 'vv' keys."""
         dates = [
-            "2025-01-01", "2025-01-13", "2025-01-25", "2025-02-06",
-            "2025-02-18", "2025-03-02", "2025-03-14", "2025-03-26",
-            "2025-04-07", "2025-04-19",
+            "2025-01-01",
+            "2025-01-13",
+            "2025-01-25",
+            "2025-02-06",
+            "2025-02-18",
+            "2025-03-02",
+            "2025-03-14",
+            "2025-03-26",
+            "2025-04-07",
+            "2025-04-19",
         ]
         vv_values = [-12.0, -11.5, -12.5, -11.8, -12.2, -11.9, -12.3, -11.7, -12.1, -25.0]
 

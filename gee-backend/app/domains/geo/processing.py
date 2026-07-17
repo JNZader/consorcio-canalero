@@ -124,9 +124,7 @@ def _load_optional_raster(path: str | None) -> tuple[np.ndarray | None, float | 
     return load_optional_raster_impl(path_cls=Path, rasterio_module=rasterio, path=path)
 
 
-def ensure_nodata(
-    dem_path: str, output_path: str, nodata_value: float = -32768.0
-) -> str:
+def ensure_nodata(dem_path: str, output_path: str, nodata_value: float = -32768.0) -> str:
     return ensure_nodata_impl(
         rasterio_module=rasterio,
         shutil_module=shutil,
@@ -463,9 +461,7 @@ def classify_terrain(
     out_nodata = np.uint8(255)
     classified[nodata_mask] = out_nodata
 
-    meta.update(
-        {"dtype": "uint8", "count": 1, "driver": "GTiff", "nodata": int(out_nodata)}
-    )
+    meta.update({"dtype": "uint8", "count": 1, "driver": "GTiff", "nodata": int(out_nodata)})
     return _write_single_band(resolved_output_path, classified, meta)
 
 

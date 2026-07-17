@@ -119,18 +119,14 @@ async def test_force_revoke_happy_path(test_engine):
         # Verify the target's revocation_epoch incremented.
         async with SessionLocal() as session:
             row = (
-                await session.execute(
-                    select(User.revocation_epoch).where(User.id == target.id)
-                )
+                await session.execute(select(User.revocation_epoch).where(User.id == target.id))
             ).scalar_one()
             assert row == 1
 
         # Verify the refresh token is now revoked.
         async with SessionLocal() as session:
             rt = (
-                await session.execute(
-                    select(RefreshToken).where(RefreshToken.id == token_id)
-                )
+                await session.execute(select(RefreshToken).where(RefreshToken.id == token_id))
             ).scalar_one()
             assert rt.revoked is True
 
@@ -188,6 +184,7 @@ async def test_force_revoke_invalidates_pending_email_codes(test_engine):
 
         # Admin force-revokes.
         async with SessionLocal() as session:
+
             class _StubRequest:
                 client = None
 
@@ -201,12 +198,14 @@ async def test_force_revoke_invalidates_pending_email_codes(test_engine):
         # Both codes must now be consumed_at != NULL.
         async with SessionLocal() as session:
             rows = (
-                await session.execute(
-                    select(EmailCode).where(
-                        EmailCode.code.in_([reset_code, verify_code])
+                (
+                    await session.execute(
+                        select(EmailCode).where(EmailCode.code.in_([reset_code, verify_code]))
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(rows) == 2
             for row in rows:
                 assert row.consumed_at is not None, (
@@ -232,6 +231,7 @@ async def test_force_revoke_self_rejected_400(test_engine):
 
     try:
         async with SessionLocal() as session:
+
             class _StubRequest:
                 client = None
 
@@ -262,6 +262,7 @@ async def test_force_revoke_unknown_user_404(test_engine):
 
     try:
         async with SessionLocal() as session:
+
             class _StubRequest:
                 client = None
 

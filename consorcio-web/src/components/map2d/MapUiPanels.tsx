@@ -6,15 +6,21 @@ import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
 import { InfoPanel } from './InfoPanel';
-import { type CanalToggleEntry, LayerControlsPanel } from './LayerControlsPanel';
+import {
+  type CanalToggleEntry,
+  type LayerFineControl,
+  LayerControlsPanel,
+} from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
+import type { LayerCategory } from './map2dDerived';
 import { SuggestedZonesPanel } from './SuggestedZonesPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 
 interface LayerItem {
   id: string;
   label: string;
+  category: LayerCategory;
 }
 
 interface DemOption {
@@ -67,6 +73,8 @@ export interface MapUiPanelsProps {
   readonly demOptions: DemOption[];
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
+  /** Per-layer opacity + render-order controls (Fase 3 — Tanda B). */
+  readonly layerFineControl?: LayerFineControl;
   readonly canManageZoning: boolean;
   readonly showSuggestedZonesPanel: boolean;
   // ``onToggleSuggestedZonesPanel`` was on this prop API but the panel
@@ -172,6 +180,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
+  layerFineControl,
   canManageZoning,
   showSuggestedZonesPanel,
   hasApprovedZones,
@@ -291,6 +300,7 @@ export const MapUiPanels = memo(function MapUiPanels({
             demOptions={demOptions}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
+            layerFineControl={layerFineControl}
           />
           {showLegend && (
             <LeyendaPanel

@@ -1,10 +1,11 @@
 /**
  * LayerControlsPanelCollapse.test.tsx
  *
- * Collapsible "Capas" section inside `<LayerControlsPanel />`. The user can
- * click the section header (or press Enter/Space) to hide the body of the
- * Capas panel when it takes up too much screen space. State is local to the
- * panel (`useState`) and does NOT persist across unmounts.
+ * Accordion structure of `<LayerControlsPanel />` (change `rediseno-ux-mapa`,
+ * Phase 2). The flat "Capas" `CollapsibleSection` was replaced by a Mantine
+ * `Accordion` (multiple), one item per layer family. Every family is OPEN by
+ * default (the panel passes all family values in `defaultValue`); the user can
+ * collapse any family by clicking its control.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -22,8 +23,8 @@ const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
   layerItems: [
-    { id: 'catastro', label: 'Catastro' },
-    { id: 'pilar_verde_bpa_2025', label: 'BPA 2025' },
+    { id: 'catastro', label: 'Catastro', category: 'territorio' as const },
+    { id: 'pilar_verde_bpa_historico', label: 'BPA 2025', category: 'pilar_verde' as const },
   ],
   vectorVisibility: {},
   onLayerVisibilityChange: () => {},
@@ -37,42 +38,40 @@ const baseProps = {
   demOptions: [],
 };
 
-describe('<LayerControlsPanel /> — "Capas" collapsible section', () => {
-  it('renders the panel landmark and Capas checkboxes visible by default (expanded)', () => {
+describe('<LayerControlsPanel /> — family accordion', () => {
+  it('renders the panel landmark and family checkboxes visible by default (expanded)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
     expect(
       screen.getByRole('region', { name: /controles de capas del mapa/i }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/seleccionar capa base/i)).toBeInTheDocument();
-    expect(screen.getByText('Capas')).toBeInTheDocument();
+    // Family controls render as accordion buttons.
+    expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pilar verde/i })).toBeInTheDocument();
+    // Checkboxes are visible because every family opens by default.
     expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
     expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
   });
 
-  it('hides the Capas body when the header is clicked, keeps title visible', () => {
+  it('collapses a family when its control is clicked (aria-expanded flips)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
-    const header = screen.getByTestId('layer-controls-capas-header');
-    fireEvent.click(header);
+    const control = screen.getByRole('button', { name: /territorio/i });
+    expect(control).toHaveAttribute('aria-expanded', 'true');
 
-    expect(screen.queryByLabelText('Catastro')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('BPA 2025')).not.toBeInTheDocument();
-    // Title still visible.
-    expect(screen.getByText('Capas')).toBeInTheDocument();
-    expect(header).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(control);
+    expect(control).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('re-shows the Capas body after a second click', () => {
+  it('re-expands a family after a second click', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
-    const header = screen.getByTestId('layer-controls-capas-header');
-    fireEvent.click(header);
-    fireEvent.click(header);
+    const control = screen.getByRole('button', { name: /territorio/i });
+    fireEvent.click(control);
+    fireEvent.click(control);
 
-    expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
-    expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
-    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(control).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('exposes an accessible label for the DEM layer selector', () => {
@@ -110,15 +109,5 @@ describe('<LayerControlsPanel /> — "Capas" collapsible section', () => {
 
     expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('dem-1');
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
-  });
-
-  it('toggles via Enter key on the header', () => {
-    renderWithMantine(<LayerControlsPanel {...baseProps} />);
-
-    const header = screen.getByTestId('layer-controls-capas-header');
-    fireEvent.keyDown(header, { key: 'Enter' });
-
-    expect(screen.queryByLabelText('Catastro')).not.toBeInTheDocument();
-    expect(header).toHaveAttribute('aria-expanded', 'false');
   });
 });

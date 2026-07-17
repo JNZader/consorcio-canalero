@@ -80,9 +80,7 @@ def compute_raster_zone_features(
             continue
 
         try:
-            stats = compute_stats_for_zones(
-                zone_data, path, ["mean", "max", "min", "count"]
-            )
+            stats = compute_stats_for_zones(zone_data, path, ["mean", "max", "min", "count"])
             if stats and stats[0].get("count", 0) > 0:
                 _apply_raster_feature_stats(features, tipo, stats[0])
         except Exception:
@@ -96,9 +94,7 @@ def compute_raster_zone_features(
     return features
 
 
-def _apply_raster_feature_stats(
-    features: dict[str, Any], tipo: str, stats: dict[str, Any]
-) -> None:
+def _apply_raster_feature_stats(features: dict[str, Any], tipo: str, stats: dict[str, Any]) -> None:
     if tipo == "hand":
         features["hand_mean"] = stats.get("mean", 0) or 0
         features["hand_max"] = stats.get("max", 0) or 0
@@ -156,9 +152,7 @@ def compute_water_zone_features(
                 pass
 
         if historical_pcts:
-            features["water_pct_historical"] = round(
-                sum(historical_pcts) / len(historical_pcts), 2
-            )
+            features["water_pct_historical"] = round(sum(historical_pcts) / len(historical_pcts), 2)
     except Exception:
         logger.warning(
             "extract_zone_features: historical water detection failed for %s",

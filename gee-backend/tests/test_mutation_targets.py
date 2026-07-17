@@ -128,9 +128,7 @@ class TestDenunciaServiceCreate:
         uid = uuid.uuid4()
         svc.create(db, MagicMock(), user_id=uid)
 
-        assert enforce_called == [uid], (
-            "enforce_submission_limit MUST run when a user_id is passed"
-        )
+        assert enforce_called == [uid], "enforce_submission_limit MUST run when a user_id is passed"
         db.commit.assert_called_once()
 
     def test_skips_submission_limit_when_user_id_is_none(self, monkeypatch):
@@ -441,9 +439,7 @@ class TestMonitoringServiceFeatureHelpers:
         assert feats[0]["properties"]["name"] == "Canal A"
         assert feats[0]["properties"]["source"] == "sugerencia_incorporada"
         # Auto-generated id uses the sugerencia + index
-        assert feats[0]["properties"]["id"].startswith(
-            f"canales-existentes-sugerencia-{sug.id}-"
-        )
+        assert feats[0]["properties"]["id"].startswith(f"canales-existentes-sugerencia-{sug.id}-")
 
     def test_build_features_empty_geometry(self):
         """Defensive: a sugerencia without geometry returns an empty
@@ -520,9 +516,7 @@ class TestMonitoringServicePersistChannel:
         sug.id = sug_id
         sug.titulo = "ya estoy"
         sug.geometry = {
-            "features": [
-                {"geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]}}
-            ]
+            "features": [{"geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]}}]
         }
 
         svc._persist_incorporated_channel(sug)
@@ -533,9 +527,7 @@ class TestMonitoringServicePersistChannel:
 
     def test_raises_500_when_dataset_missing(self, tmp_path, monkeypatch):
         svc, _ = _make_monitoring_service()
-        monkeypatch.setattr(
-            svc, "_BACKEND_WATERWAYS_CANDIDATES", (tmp_path / "missing.geojson",)
-        )
+        monkeypatch.setattr(svc, "_BACKEND_WATERWAYS_CANDIDATES", (tmp_path / "missing.geojson",))
         sug = MagicMock()
         sug.id = uuid.uuid4()
 
@@ -547,9 +539,7 @@ class TestMonitoringServicePersistChannel:
 class TestMonitoringServiceGetPersistedIds:
     def test_returns_empty_set_when_no_dataset(self, tmp_path, monkeypatch):
         svc, _ = _make_monitoring_service()
-        monkeypatch.setattr(
-            svc, "_BACKEND_WATERWAYS_CANDIDATES", (tmp_path / "absent.geojson",)
-        )
+        monkeypatch.setattr(svc, "_BACKEND_WATERWAYS_CANDIDATES", (tmp_path / "absent.geojson",))
         assert svc._get_persisted_sugerencia_ids() == set()
 
     def test_extracts_ids_from_features(self, tmp_path, monkeypatch):

@@ -43,7 +43,7 @@ import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
  * obligatoria") that doesn't belong in the store; the store only knows the
  * layer ids. Order mirrors `PILAR_VERDE_LAYER_IDS` from `mapLayerSyncStore`.
  */
-const PILAR_VERDE_ITEMS = [
+export const PILAR_VERDE_ITEMS = [
   { id: 'pilar_verde_bpa_historico', label: 'BPA histórico (por años)' },
   { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen' },
   { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron' },

@@ -1,10 +1,29 @@
 import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../constants';
+import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
 import { API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { useConfigStore } from '../../../stores/configStore';
+
+/**
+ * The admin image explorer is an ANALYSIS tool, not the guarded public map:
+ * an operator inspecting a regional flood needs to pan upstream (Río Tercero)
+ * and zoom out for context. So it gets looser limits than the public
+ * MAP_MAX_BOUNDS/MAP_MIN_ZOOM — ±3° (~300 km) around the consorcio and
+ * province-level zoom — plus a "fit zona" control to come back in one click.
+ */
+const EXPLORER_MAX_BOUNDS: [[number, number], [number, number]] = [
+  [MAP_BOUNDS.west - 3, MAP_BOUNDS.south - 3],
+  [MAP_BOUNDS.east + 3, MAP_BOUNDS.north + 3],
+];
+const EXPLORER_MIN_ZOOM = 6;
+
+const ZONA_FIT_BOUNDS: [[number, number], [number, number]] = [
+  [MAP_BOUNDS.west, MAP_BOUNDS.south],
+  [MAP_BOUNDS.east, MAP_BOUNDS.north],
+];
 
 export function useImageExplorerMap() {
   const config = useConfigStore((state) => state.config);
@@ -46,15 +65,24 @@ export function useImageExplorerMap() {
       },
       center: [centerLng, centerLat],
       zoom,
-      minZoom: MAP_MIN_ZOOM,
-      maxBounds: MAP_MAX_BOUNDS,
+      minZoom: EXPLORER_MIN_ZOOM,
+      maxBounds: EXPLORER_MAX_BOUNDS,
     });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    // Start with the WHOLE consorcio visible — the fixed center+zoom default
+    // cropped the zona vertically on short map heights.
+    map.fitBounds(ZONA_FIT_BOUNDS, { padding: 24, animate: false });
     mapInstanceRef.current = map;
     return () => {
       map.remove();
       mapInstanceRef.current = null;
     };
   }, [centerLat, centerLng, zoom]);
+
+  const fitZona = useCallback(() => {
+    mapInstanceRef.current?.fitBounds(ZONA_FIT_BOUNDS, { padding: 24 });
+  }, []);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -123,5 +151,5 @@ export function useImageExplorerMap() {
     else map.once('load', apply);
   }, []);
 
-  return { mapRef, updateTileLayer };
+  return { mapRef, updateTileLayer, fitZona };
 }

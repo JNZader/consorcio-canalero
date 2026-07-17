@@ -1,6 +1,5 @@
 """Tests for the settings domain (models, repository, service, router)."""
 
-
 import pytest
 from sqlalchemy.orm import Session
 
@@ -129,14 +128,10 @@ class TestSettingsRepository:
 
     def test_upsert_json_value(self, db: Session, repo: SettingsRepository):
         """Settings can store complex JSON values."""
-        setting = _make_setting(
-            db, repo, clave="test/json", valor={"nested": [1, 2, 3]}
-        )
+        setting = _make_setting(db, repo, clave="test/json", valor={"nested": [1, 2, 3]})
         assert setting.valor == {"nested": [1, 2, 3]}
 
-    def test_upsert_preserves_descripcion_when_none(
-        self, db: Session, repo: SettingsRepository
-    ):
+    def test_upsert_preserves_descripcion_when_none(self, db: Session, repo: SettingsRepository):
         """If descripcion is None on upsert, the original description is kept."""
         _make_setting(db, repo, clave="test/desc", descripcion="original")
         repo.upsert(
@@ -166,9 +161,7 @@ class TestSettingsService:
         result = service.get_setting(db, "nonexistent/key", default="fallback")
         assert result == "fallback"
 
-    def test_get_setting_returns_none_default(
-        self, db: Session, service: SettingsService
-    ):
+    def test_get_setting_returns_none_default(self, db: Session, service: SettingsService):
         result = service.get_setting(db, "nonexistent/key")
         assert result is None
 
@@ -192,13 +185,9 @@ class TestSettingsService:
         result = service.update_setting(db, "nonexistent/key", "value")
         assert result is None
 
-    def test_update_setting_with_description(
-        self, db: Session, service: SettingsService
-    ):
+    def test_update_setting_with_description(self, db: Session, service: SettingsService):
         _make_setting(db, service.repo, clave="svc/desc_update", valor="v1")
-        updated = service.update_setting(
-            db, "svc/desc_update", "v2", descripcion="new desc"
-        )
+        updated = service.update_setting(db, "svc/desc_update", "v2", descripcion="new desc")
         assert updated is not None
         assert updated.descripcion == "new desc"
 
@@ -286,9 +275,7 @@ class TestSettingsSchemas:
         assert update.descripcion == "A number"
 
     def test_settings_by_category_response(self):
-        response = SettingsByCategoryResponse(
-            categoria="general", settings=[]
-        )
+        response = SettingsByCategoryResponse(categoria="general", settings=[])
         assert response.categoria == "general"
         assert response.settings == []
 
@@ -320,14 +307,10 @@ class TestPublicBranding:
         service = SettingsService()
 
         branding = BrandingResponse(
-            nombre_organizacion=service.get_setting(
-                db, "general/nombre_organizacion"
-            ),
+            nombre_organizacion=service.get_setting(db, "general/nombre_organizacion"),
             logo_url=service.get_setting(db, "branding/logo_url"),
             color_primario=service.get_setting(db, "branding/color_primario"),
-            color_secundario=service.get_setting(
-                db, "branding/color_secundario"
-            ),
+            color_secundario=service.get_setting(db, "branding/color_secundario"),
         )
         assert branding.nombre_organizacion == "Consorcio Canalero 10 de Mayo"
         assert branding.logo_url == "/static/logo.png"
@@ -338,14 +321,10 @@ class TestPublicBranding:
         """If no settings exist, branding returns None values."""
         service = SettingsService()
         branding = BrandingResponse(
-            nombre_organizacion=service.get_setting(
-                db, "general/nombre_organizacion"
-            ),
+            nombre_organizacion=service.get_setting(db, "general/nombre_organizacion"),
             logo_url=service.get_setting(db, "branding/logo_url"),
             color_primario=service.get_setting(db, "branding/color_primario"),
-            color_secundario=service.get_setting(
-                db, "branding/color_secundario"
-            ),
+            color_secundario=service.get_setting(db, "branding/color_secundario"),
         )
         assert branding.nombre_organizacion is None
         assert branding.logo_url is None

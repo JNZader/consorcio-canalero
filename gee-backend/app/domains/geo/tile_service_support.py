@@ -246,9 +246,7 @@ def bounds_intersect(
 ) -> bool:
     a_left, a_bottom, a_right, a_top = a
     b_left, b_bottom, b_right, b_top = b
-    return not (
-        a_right <= b_left or a_left >= b_right or a_top <= b_bottom or a_bottom >= b_top
-    )
+    return not (a_right <= b_left or a_left >= b_right or a_top <= b_bottom or a_bottom >= b_top)
 
 
 def read_categorical_tile(
@@ -436,9 +434,7 @@ def smooth_elevation_tile(
             bx = (w - 256) // 2
             center_elev = elevation[by : by + 256, bx : bx + 256]
             center_mask = valid_mask[by : by + 256, bx : bx + 256]
-            sample = (
-                center_elev[center_mask] if center_mask.any() else elevation[valid_mask]
-            )
+            sample = center_elev[center_mask] if center_mask.any() else elevation[valid_mask]
         else:
             sample = elevation[valid_mask]
         valid_median = float(np.nanmedian(sample))
@@ -475,9 +471,7 @@ def render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-def render_flat_terrain_rgb_png(
-    *, tilesize: int = 256, elevation: float = 0.0
-) -> bytes:
+def render_flat_terrain_rgb_png(*, tilesize: int = 256, elevation: float = 0.0) -> bytes:
     return render_terrain_rgb_png(
         np.full((tilesize, tilesize), elevation, dtype=np.float32),
         np.ones((tilesize, tilesize), dtype=bool),

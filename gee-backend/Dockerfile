@@ -102,4 +102,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # worker is an independent Python process, so DB pool / Redis pool /
 # GEE auth state is duplicated. The pool sizes in app/db/session.py
 # were bumped in F3-K so 2 workers stay below max_connections.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
+#
+# --forwarded-allow-ips: only trust X-Forwarded-* headers from Caddy on the
+# Docker "proxy" network. That network is external (`docker network create
+# proxy`, no explicit subnet in the composes), so we trust the RFC1918 range
+# Docker allocates bridge networks from (172.16.0.0/12) instead of "*",
+# which let ANY client spoof X-Forwarded-For.
+# TODO: narrow to the actual proxy subnet on the server
+# (`docker network inspect proxy -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "172.16.0.0/12"]

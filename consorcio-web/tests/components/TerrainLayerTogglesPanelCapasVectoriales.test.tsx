@@ -47,6 +47,9 @@ const baseProps = {
   onVectorLayerToggle: vi.fn(),
   onClose: vi.fn(),
   hasApprovedZones: false,
+  // "Puntos conflicto" is intentionally hidden when there are 0 conflict
+  // points — pass a non-zero count so ALL base rows render.
+  intersectionsLength: 3,
 };
 
 describe('<TerrainLayerTogglesPanel /> — "Capas vectoriales 3D" CollapsibleSection', () => {

@@ -28,9 +28,7 @@ class GeoRepositoryZoningAnalysisMixin:
     ) -> list[GeoApprovedZoning]:
         stmt = (
             approved_zoning_stmt(cuenca=cuenca)
-            .order_by(
-                GeoApprovedZoning.version.desc(), GeoApprovedZoning.approved_at.desc()
-            )
+            .order_by(GeoApprovedZoning.version.desc(), GeoApprovedZoning.approved_at.desc())
             .limit(limit)
         )
         return list(db.execute(stmt).scalars().all())
@@ -42,9 +40,7 @@ class GeoRepositoryZoningAnalysisMixin:
             select(GeoApprovedZoning).where(GeoApprovedZoning.id == zoning_id)
         ).scalar_one_or_none()
 
-    def get_next_approved_zoning_version(
-        self, db: Session, *, cuenca: Optional[str] = None
-    ) -> int:
+    def get_next_approved_zoning_version(self, db: Session, *, cuenca: Optional[str] = None) -> int:
         stmt = approved_zoning_stmt(cuenca=cuenca).with_only_columns(
             func.max(GeoApprovedZoning.version)
         )
@@ -80,9 +76,7 @@ class GeoRepositoryZoningAnalysisMixin:
         db.flush()
         return zoning
 
-    def clear_active_approved_zoning(
-        self, db: Session, *, cuenca: Optional[str] = None
-    ) -> int:
+    def clear_active_approved_zoning(self, db: Session, *, cuenca: Optional[str] = None) -> int:
         current = db.execute(
             approved_zoning_stmt(active_only=True, cuenca=cuenca)
         ).scalar_one_or_none()
@@ -92,9 +86,7 @@ class GeoRepositoryZoningAnalysisMixin:
         db.flush()
         return 1
 
-    def get_analisis_by_id(
-        self, db: Session, analisis_id: uuid.UUID
-    ) -> Optional[AnalisisGeo]:
+    def get_analisis_by_id(self, db: Session, analisis_id: uuid.UUID) -> Optional[AnalisisGeo]:
         return db.execute(
             select(AnalisisGeo).where(AnalisisGeo.id == analisis_id)
         ).scalar_one_or_none()

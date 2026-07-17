@@ -11,6 +11,8 @@ export { default as IconArrowUpRight } from '@tabler/icons-react/dist/esm/icons/
 export { default as IconArrowDownRight } from '@tabler/icons-react/dist/esm/icons/IconArrowDownRight.mjs';
 export { default as IconArrowsHorizontal } from '@tabler/icons-react/dist/esm/icons/IconArrowsHorizontal.mjs';
 export { default as IconGitCompare } from '@tabler/icons-react/dist/esm/icons/IconGitCompare.mjs';
+export { default as IconGripVertical } from '@tabler/icons-react/dist/esm/icons/IconGripVertical.mjs';
+export { default as IconArrowsSort } from '@tabler/icons-react/dist/esm/icons/IconArrowsSort.mjs';
 export { default as IconBrandGoogle } from '@tabler/icons-react/dist/esm/icons/IconBrandGoogle.mjs';
 export { default as IconBrandWhatsapp } from '@tabler/icons-react/dist/esm/icons/IconBrandWhatsapp.mjs';
 export { default as IconBuildingBridge } from '@tabler/icons-react/dist/esm/icons/IconBuildingBridge.mjs';

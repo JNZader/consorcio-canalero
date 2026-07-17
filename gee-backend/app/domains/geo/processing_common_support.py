@@ -39,9 +39,7 @@ def write_single_band_impl(
     return output_path
 
 
-def copy_if_projected_impl(
-    *, shutil_module, input_path: str, output_path: str, src
-) -> bool:
+def copy_if_projected_impl(*, shutil_module, input_path: str, output_path: str, src) -> bool:
     if src.crs and src.crs.is_projected:
         shutil_module.copy2(input_path, output_path)
         return True
@@ -133,9 +131,7 @@ def resolve_classify_terrain_inputs_impl(
         return True, slope_input, resolved_output, None, flow_acc_input, twi_input
 
     if filled_dem_path is None or output_dir is None:
-        raise ValueError(
-            "Current classify_terrain call requires filled_dem_path and output_dir"
-        )
+        raise ValueError("Current classify_terrain call requires filled_dem_path and output_dir")
     return (
         False,
         filled_dem_path,

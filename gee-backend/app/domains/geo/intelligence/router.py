@@ -142,14 +142,10 @@ def list_hci(
     _user=Depends(_require_operator()),
 ):
     if use_mv:
-        items, total = repo.get_hci_por_zona(
-            db, page=page, limit=limit, cuenca_filter=cuenca
-        )
+        items, total = repo.get_hci_por_zona(db, page=page, limit=limit, cuenca_filter=cuenca)
         return paginated_response(items, total=total, page=page, limit=limit)
 
-    hci_items, total = repo.get_indices_hidricos(
-        db, zona_id=zona_id, page=page, limit=limit
-    )
+    hci_items, total = repo.get_indices_hidricos(db, zona_id=zona_id, page=page, limit=limit)
     return paginated_response(
         [IndiceHidricoResponse.model_validate(i) for i in hci_items],
         total=total,
@@ -240,9 +236,7 @@ def generate_zonas(
 ) -> AsyncTaskResponse:
     from app.domains.geo.intelligence.tasks import task_generate_zonification
 
-    task = task_generate_zonification.delay(
-        str(payload.dem_layer_id), payload.threshold
-    )
+    task = task_generate_zonification.delay(str(payload.dem_layer_id), payload.threshold)
     return AsyncTaskResponse(task_id=task.id)
 
 
@@ -301,9 +295,7 @@ def evaluate_alertas(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ) -> AlertEvaluationResponse:
-    return AlertEvaluationResponse.model_validate(
-        _get_intel_service().check_alerts(db)
-    )
+    return AlertEvaluationResponse.model_validate(_get_intel_service().check_alerts(db))
 
 
 @router.post("/alertas/{alerta_id}/desactivar", response_model=AlertaResponse)
@@ -381,9 +373,7 @@ def compare_composite_stats(
             detail=f"Composite analysis not yet computed for area '{area_id}'",
         )
 
-    hand_layers, _ = geo_repo.get_layers(
-        db, area_id_filter=area_id, tipo_filter="hand", limit=1
-    )
+    hand_layers, _ = geo_repo.get_layers(db, area_id_filter=area_id, tipo_filter="hand", limit=1)
     if not hand_layers:
         raise HTTPException(
             status_code=404,
@@ -399,10 +389,6 @@ def compare_composite_stats(
         zona_dicts=zona_dicts,
     )
     if tipo == "drainage_need" and not baseline_by_zona:
-        return CompositeComparisonResponse(
-            area_id=area_id, tipo=tipo, items=[], total=0
-        )
+        return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=[], total=0)
     items = serialize_comparison_items(current_stats, baseline_by_zona, zona_meta, tipo)
-    return CompositeComparisonResponse(
-        area_id=area_id, tipo=tipo, items=items, total=len(items)
-    )
+    return CompositeComparisonResponse(area_id=area_id, tipo=tipo, items=items, total=len(items))

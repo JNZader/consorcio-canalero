@@ -65,11 +65,7 @@ def build_canales_detail_table(
     # Bold body style for the TOTAL row.
     from reportlab.lib.styles import ParagraphStyle
 
-    bold_font = (
-        "DejaVuSans-Bold"
-        if body_cell_style.fontName == "DejaVuSans"
-        else "Helvetica-Bold"
-    )
+    bold_font = "DejaVuSans-Bold" if body_cell_style.fontName == "DejaVuSans" else "Helvetica-Bold"
     bold_cell_style = ParagraphStyle(
         "PDFTableCellBold",
         parent=body_cell_style,
@@ -214,9 +210,7 @@ def build_approved_zoning_pdf(
 
     feature_collection = getattr(zoning, "feature_collection", None) or {}
     features = (
-        feature_collection.get("features", [])
-        if isinstance(feature_collection, dict)
-        else []
+        feature_collection.get("features", []) if isinstance(feature_collection, dict) else []
     )
     if features:
         total_area = 0.0
@@ -326,9 +320,7 @@ def build_approved_zoning_map_pdf(
                 ]
             )
 
-        zone_table = Table(
-            rows, colWidths=[8 * mm, 82 * mm, 35 * mm, 35 * mm], repeatRows=1
-        )
+        zone_table = Table(rows, colWidths=[8 * mm, 82 * mm, 35 * mm, 35 * mm], repeatRows=1)
         zone_table.setStyle(
             TableStyle(
                 [
@@ -358,9 +350,7 @@ def build_approved_zoning_map_pdf(
 
     if zone_legend and not zone_summary:
         story.append(Paragraph("Leyendas", styles["subtitle"]))
-        story.extend(
-            build_color_legend_table("Leyenda de zonas", zone_legend, branding)
-        )
+        story.extend(build_color_legend_table("Leyenda de zonas", zone_legend, branding))
         story.append(Spacer(1, 3 * mm))
     elif zone_legend or road_legend or canal_legend or raster_legends:
         story.append(Paragraph("Leyendas", styles["subtitle"]))

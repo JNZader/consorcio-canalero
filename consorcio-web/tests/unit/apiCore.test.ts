@@ -18,7 +18,7 @@ describe('api core', () => {
   it('caches auth token and sends Authorization header', async () => {
     mockGetAccessToken.mockResolvedValue('jwt-123');
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
+      ok: true, headers: new Headers(),
       json: async () => ({ ok: true }),
     });
 
@@ -43,7 +43,7 @@ describe('api core', () => {
   it('supports FormData bodies without forcing JSON content-type', async () => {
     mockGetAccessToken.mockResolvedValue(null);
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
+      ok: true, headers: new Headers(),
       json: async () => ({ uploaded: true }),
     });
     const { apiFetch } = await import('../../src/lib/api/core');
@@ -66,7 +66,7 @@ describe('api core', () => {
     await expect(apiFetch('/stats')).rejects.toThrow(/tiempo limite/i);
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: false,
+      ok: false, headers: new Headers(),
       status: 400,
       json: async () => ({ detail: 'Payload invalido' }),
     });
@@ -76,7 +76,7 @@ describe('api core', () => {
   it('maps generic backend error envelopes to user-facing messages', async () => {
     mockGetAccessToken.mockResolvedValue(null);
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false,
+      ok: false, headers: new Headers(),
       status: 500,
       json: async () => ({
         error: {

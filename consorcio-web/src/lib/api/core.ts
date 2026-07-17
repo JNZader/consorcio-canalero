@@ -214,6 +214,13 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       throw new Error(getApiErrorMessage(error, response.status));
     }
 
+    // 204 No Content / empty body: response.json() would throw a
+    // SyntaxError on an empty string. Callers of void-ish endpoints
+    // (DELETE, etc.) type these as ``apiFetch<void>`` / nullable T.
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as T;
+    }
+
     return response.json();
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {

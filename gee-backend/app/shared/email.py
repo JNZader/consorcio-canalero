@@ -63,9 +63,7 @@ async def send_email(
         # Lib not installed in this environment — log and bail. The
         # caller never observes a failure (we don't want a missed
         # email to abort the registration flow).
-        logger.warning(
-            "email send aborted: aiosmtplib not installed", extra={"subject": subject}
-        )
+        logger.warning("email send aborted: aiosmtplib not installed", extra={"subject": subject})
         return
 
     # aiosmtplib treats ``start_tls`` and ``use_tls`` as mutually
@@ -75,9 +73,7 @@ async def send_email(
     use_tls = settings.smtp_use_tls
     start_tls = settings.smtp_use_starttls and not use_tls
     if settings.smtp_use_tls and settings.smtp_use_starttls:
-        logger.warning(
-            "SMTP_USE_TLS and SMTP_USE_STARTTLS both true — using SMTPS only"
-        )
+        logger.warning("SMTP_USE_TLS and SMTP_USE_STARTTLS both true — using SMTPS only")
     try:
         await aiosmtplib.send(
             msg,
@@ -99,9 +95,7 @@ async def send_email(
     except Exception as exc:  # noqa: BLE001 — never abort the caller
         # Don't propagate — a flaky SMTP provider must not block the
         # user-facing flow (register / forgot-password).
-        logger.exception(
-            "email send failed", extra={"subject": subject, "error": str(exc)}
-        )
+        logger.exception("email send failed", extra={"subject": subject, "error": str(exc)})
 
 
 def send_email_blocking(

@@ -88,19 +88,22 @@ describe('mapLayerSyncStore — startup defaults', () => {
     });
   });
 
-  describe('map3d initial visibleVectors (lightweight startup)', () => {
+  describe('map3d initial visibleVectors (mirrors map2d defaults)', () => {
+    // Since `unify 2D and 3D viewer layer behaviour` (acb1d23), map3d
+    // defaults intentionally mirror map2d: roads/waterways/canales
+    // relevados start VISIBLE so switching 2D→3D shows a consistent map.
     const initial = useMapLayerSyncStore.getState().map3d.visibleVectors;
 
-    it.each(INITIAL_ON_VECTORS)('%s starts hidden on map3d', (id) => {
-      expect(initial[id]).toBe(false);
+    it.each(INITIAL_ON_VECTORS)('%s starts visible on map3d', (id) => {
+      expect(initial[id]).toBe(true);
     });
 
     it.each(INITIAL_OFF_VECTORS)('%s starts hidden on map3d', (id) => {
       expect(initial[id]).toBe(false);
     });
 
-    it('starts Canales hidden on map3d until the user enables them', () => {
-      expect(initial.canales_relevados).toBe(false);
+    it('starts Canales relevados visible (propuestos hidden) on map3d', () => {
+      expect(initial.canales_relevados).toBe(true);
       expect(initial.canales_propuestos).toBe(false);
     });
   });

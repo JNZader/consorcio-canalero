@@ -33,9 +33,7 @@ def upgrade() -> None:
         sa.Column("resource", sa.String(512), nullable=False),
         sa.Column("client_ip", sa.String(64), nullable=True),
     )
-    op.create_index(
-        "ix_audit_log_occurred_at", "audit_log", ["occurred_at"]
-    )
+    op.create_index("ix_audit_log_occurred_at", "audit_log", ["occurred_at"])
     op.create_index("ix_audit_log_user_id", "audit_log", ["user_id"])
     op.create_index("ix_audit_log_action", "audit_log", ["action"])
 

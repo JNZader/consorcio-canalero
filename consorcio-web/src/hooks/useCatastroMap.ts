@@ -32,6 +32,10 @@ export function useCatastroMap(options: UseCatastroMapOptions = {}) {
       return (await response.json()) as FeatureCollection;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    // Static bundled asset: a 404/error won't fix itself on retry, and the
+    // KMZ export degrades gracefully without the slot. Overrides the global
+    // `retry: 3` (exponential backoff) from lib/query.ts.
+    retry: 0,
     enabled: options.enabled ?? true,
   });
 

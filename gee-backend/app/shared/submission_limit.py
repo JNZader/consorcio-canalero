@@ -75,9 +75,7 @@ def get_submission_status(
     remaining = max(0, DAILY_SUBMISSION_LIMIT - used)
 
     reset_seconds = 0
-    oldest = _oldest_in_window(
-        db, model=model, user_id_attr=user_id_attr, user_id=user_id
-    )
+    oldest = _oldest_in_window(db, model=model, user_id_attr=user_id_attr, user_id=user_id)
     if oldest is not None:
         # `created_at` columns are stored as naive UTC (TimestampMixin).
         # Coerce to aware UTC before subtracting from `now`.
@@ -105,9 +103,7 @@ def enforce_submission_limit(
     Raise `HTTPException(429)` if the user has hit `DAILY_SUBMISSION_LIMIT`
     in the rolling 24h window. Call BEFORE persisting the new row.
     """
-    status = get_submission_status(
-        db, model=model, user_id_attr=user_id_attr, user_id=user_id
-    )
+    status = get_submission_status(db, model=model, user_id_attr=user_id_attr, user_id=user_id)
     if status["remaining"] <= 0:
         hours = max(1, status["reset_seconds"] // 3600)
         raise HTTPException(

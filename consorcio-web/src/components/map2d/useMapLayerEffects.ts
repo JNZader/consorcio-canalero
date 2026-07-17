@@ -28,6 +28,7 @@ import {
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
+import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,
@@ -36,11 +37,6 @@ import {
   syncImageOverlays,
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
-
-function observeLayerSyncDependencyChange(..._values: readonly unknown[]): void {
-  // Intentional no-op: some effects must re-run after sibling layer effects
-  // have mounted/reordered sources even when this effect only needs map state.
-}
 
 interface LayerLike {
   id: string;
@@ -301,7 +297,32 @@ export function useMapLayerEffects({
   // whenever the user toggles an etapa.
   const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
 
+  // ── Canales visibility signature ─────────────────────────────────────────
+  // The canales sync effect only cares about the canales-related slices of
+  // `vectorVisibility` (master toggles + per-canal `canal_relevado_*` /
+  // `canal_propuesto_*` keys). Depending on the whole object made EVERY
+  // layer toggle (soil, roads, escuelas, …) re-filter and re-order the
+  // canales z-stack. A sorted string signature gives value-equality in the
+  // dep array (Object.is on strings), so the effect re-runs only when a
+  // canales-relevant flag actually changes.
+  const canalesVisibilitySignature = Object.entries(vectorVisibility)
+    .filter(
+      ([key]) =>
+        key === 'canales_relevados' ||
+        key === 'canales_propuestos' ||
+        key.startsWith('canal_relevado_') ||
+        key.startsWith('canal_propuesto_')
+    )
+    .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+    .sort()
+    .join('|');
+  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados;
+  const canalesPropuestosVisible = !!vectorVisibility.canales_propuestos;
+
   useEffect(() => {
+    // Reference the signature so the effect re-runs on per-canal toggles
+    // (the id lists below are read non-reactively via `getState()`).
+    void canalesVisibilitySignature;
     const map = mapRef.current;
     if (!map || !mapReady) return;
     if (!canales) return;
@@ -333,8 +354,8 @@ export function useMapLayerEffects({
         GeoJSON.LineString,
         import('../../types/canales').CanalFeatureProperties
       > | null,
-      relevadosVisible: !!vectorVisibility.canales_relevados,
-      propuestasVisible: !!vectorVisibility.canales_propuestos,
+      relevadosVisible: canalesRelevadosVisible,
+      propuestasVisible: canalesPropuestosVisible,
       visibleRelevadoIds,
       visiblePropuestaIds,
       activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
@@ -346,7 +367,9 @@ export function useMapLayerEffects({
     canales?.index,
     canales?.relevados,
     canales?.propuestas,
-    vectorVisibility,
+    canalesRelevadosVisible,
+    canalesPropuestosVisible,
+    canalesVisibilitySignature,
     propuestasEtapasVisibility,
   ]);
 
@@ -376,48 +399,123 @@ export function useMapLayerEffects({
     syncYpfEstacionBombeoLayer(map);
   }, [mapReady, mapRef]);
 
+  // ── Per-layer opacity & order (map-redesign Fase 3) ─────────────────────
+  // Read the map2d overrides. Both default to `{}` / `[]` (untouched), in
+  // which case the apply helpers are guaranteed no-ops so the default
+  // rendering stays byte-identical to before this feature existed.
+  const opacityByLayer = useMapLayerSyncStore((s) => s.map2d.opacityByLayer);
+  const orderByLayer = useMapLayerSyncStore((s) => s.map2d.orderByLayer);
+
+  // Async-mount / re-hoist re-run signal (FF-A3). The opacity/order effects
+  // apply IMPERATIVELY and skip ml layers that aren't mounted yet — so if a
+  // target layer mounts AFTER the effect first ran (react-query data arrives,
+  // e.g. waterways start as `[]`), or a sibling sync effect re-hoists the
+  // stack via raise*Stack, a persisted override would be silently lost.
+  // Collapsing every mount/reorder trigger into a string signature lets both
+  // effects RE-RUN whenever the layer set or its ordering could have changed.
+  // Over-firing is safe: the apply helpers are idempotent and no-op on empty
+  // overrides (byte-identical default preserved). These effects are declared
+  // AFTER the sync effects, so within a commit they run LAST and reassert the
+  // custom order over any raise*Stack call.
+  const layerMountSignal = [
+    Object.entries(vectorVisibility)
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .sort()
+      .join(','),
+    soilCollection ? 1 : 0,
+    roadsCollection ? 1 : 0,
+    basins ? 1 : 0,
+    zonaCollection ? 1 : 0,
+    approvedZonesCollection ? 1 : 0,
+    suggestedZonesDisplay ? 1 : 0,
+    canales?.index ? 1 : 0,
+    canales?.relevados ? 1 : 0,
+    canales?.propuestas ? 1 : 0,
+    escuelas?.collection ? 1 : 0,
+    pilarVerde?.bpaHistorico ? 1 : 0,
+    pilarVerde?.agroAceptada ? 1 : 0,
+    pilarVerde?.agroPresentada ? 1 : 0,
+    pilarVerde?.agroZonas ? 1 : 0,
+    pilarVerde?.porcentajeForestacion ? 1 : 0,
+    waterwaysDefs.length,
+    Object.entries(propuestasEtapasVisibility)
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .sort()
+      .join(','),
+  ].join('|');
+
+  // Opacity: for each UI id whose multiplier is PRESENT (incl. 1 → reset to
+  // default), apply `default * clampedMultiplier` on its ml layers. An empty
+  // override map has no entries → nothing applied → default untouched. Re-runs
+  // on `layerMountSignal` so overrides land on layers that mount later.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    void layerMountSignal;
+    applyLayerOpacity(map, opacityByLayer);
+  }, [mapReady, mapRef, opacityByLayer, layerMountSignal]);
+
+  // Order: when `orderByLayer` is non-empty, hoist each UI id's ml-layer group
+  // to enforce the requested bottom → top order. Empty → no-op (today's
+  // ordering, incl. PILAR_VERDE_Z_ORDER + roads-below-waterways, untouched).
+  // Runs after the sync effects above have mounted/ordered the base stack, and
+  // re-asserts the custom order after any raise*Stack re-hoist via the signal.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    void layerMountSignal;
+    applyLayerOrder(map, orderByLayer);
+  }, [mapReady, mapRef, orderByLayer, layerMountSignal]);
+
   // ── DEM z-order hoist ───────────────────────────────────────────────────
   // Keep the DEM raster just below the user-authored stack (Pilar Verde +
   // Canales) so contextual vectors (soil / catastro / basins / roads /
   // waterways) are NOT dimmed by the 0.6 raster-opacity overlay. This effect
-  // runs after all Pilar Verde + Canales sync effects — the deps cover every
-  // signal that can mount/unmount one of the reference layers.
-  useEffect(() => {
-    observeLayerSyncDependencyChange(
-      demTileUrl,
-      vectorVisibility,
-      canales,
-      canales?.index,
-      canales?.relevados,
-      canales?.propuestas,
-      pilarVerde?.bpaHistorico,
-      pilarVerde?.agroAceptada,
-      pilarVerde?.agroPresentada,
-      pilarVerde?.agroZonas,
-      pilarVerde?.porcentajeForestacion,
-      propuestasEtapasVisibility
-    );
+  // must re-run whenever a sibling sync effect can have mounted/reordered a
+  // reference layer — but ONLY while the DEM is actually shown. The previous
+  // version depended on ~13 raw objects and re-ran on every layer toggle
+  // even with the DEM off (immediate early-return). Instead we collapse all
+  // mount/reorder triggers into a string signature that is a constant ''
+  // while the DEM is inactive, so inactive-DEM renders never re-fire it.
+  const demActive = showDemOverlay && !!activeDemLayerId;
+  const demReorderSignal = !demActive
+    ? ''
+    : [
+        // Any visibility flip can mount a layer above the DEM raster.
+        Object.entries(vectorVisibility)
+          .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+          .sort()
+          .join(','),
+        // Data arrival mounts sources/layers after the DEM is already up.
+        soilCollection ? 1 : 0,
+        roadsCollection ? 1 : 0,
+        basins ? 1 : 0,
+        canales?.index ? 1 : 0,
+        canales?.relevados ? 1 : 0,
+        canales?.propuestas ? 1 : 0,
+        pilarVerde?.bpaHistorico ? 1 : 0,
+        pilarVerde?.agroAceptada ? 1 : 0,
+        pilarVerde?.agroPresentada ? 1 : 0,
+        pilarVerde?.agroZonas ? 1 : 0,
+        pilarVerde?.porcentajeForestacion ? 1 : 0,
+        // Etapa flips re-run syncCanalesLayers (may remount canal layers).
+        Object.entries(propuestasEtapasVisibility)
+          .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+          .sort()
+          .join(','),
+      ].join('|');
 
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
     if (!showDemOverlay || !activeDemLayerId) return;
+    // `demReorderSignal` is referenced so sibling layer mounts/reorders
+    // (encoded in the signature) re-trigger the hoist while the DEM is on.
+    // `demTileUrl` is referenced because syncDemRasterLayer re-creates the
+    // raster layer (appended on top) when the tile URL changes — the hoist
+    // must re-run afterwards.
+    void demReorderSignal;
+    void demTileUrl;
     moveDemAboveContextualVectors(map);
-  }, [
-    mapReady,
-    mapRef,
-    showDemOverlay,
-    activeDemLayerId,
-    demTileUrl,
-    vectorVisibility,
-    canales,
-    canales?.index,
-    canales?.relevados,
-    canales?.propuestas,
-    pilarVerde?.bpaHistorico,
-    pilarVerde?.agroAceptada,
-    pilarVerde?.agroPresentada,
-    pilarVerde?.agroZonas,
-    pilarVerde?.porcentajeForestacion,
-    propuestasEtapasVisibility,
-  ]);
+  }, [mapReady, mapRef, showDemOverlay, activeDemLayerId, demTileUrl, demReorderSignal]);
 }

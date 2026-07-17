@@ -92,9 +92,7 @@ def sanitize_sensitive_data(
         return data
 
 
-def add_app_context(
-    logger: logging.Logger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def add_app_context(logger: logging.Logger, method_name: str, event_dict: EventDict) -> EventDict:
     """Add application context to log events."""
     event_dict["app"] = "consorcio-canalero-gee"
     event_dict["service"] = "backend"
@@ -102,9 +100,7 @@ def add_app_context(
     return event_dict
 
 
-def sanitize_event(
-    logger: logging.Logger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def sanitize_event(logger: logging.Logger, method_name: str, event_dict: EventDict) -> EventDict:
     """Sanitize sensitive data from log events."""
     return sanitize_sensitive_data(event_dict)
 

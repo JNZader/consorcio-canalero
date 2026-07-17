@@ -39,9 +39,7 @@ def upgrade() -> None:
             nullable=True,
             comment="Land capability class (I–VIII)",
         ),
-        sa.Column(
-            "ip", sa.String(50), nullable=True, comment="Índice de productividad"
-        ),
+        sa.Column("ip", sa.String(50), nullable=True, comment="Índice de productividad"),
         sa.Column(
             "geometria",
             geoalchemy2.types.Geometry(geometry_type="MULTIPOLYGON", srid=4326),
@@ -87,9 +85,7 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.execute(
-        "CREATE INDEX ix_canales_geo_geometria ON canales_geo USING GIST (geometria)"
-    )
+    op.execute("CREATE INDEX ix_canales_geo_geometria ON canales_geo USING GIST (geometria)")
 
     # ── materialized view: suelos por zona ───────────────────────────────────
     # ST_CollectionExtract(..., 3) extracts only polygons from the intersection

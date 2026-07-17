@@ -163,8 +163,7 @@ async def test_get_jwt_strategy_dependency_returns_revocable_subclass():
     )
     assert "epoch" in payload, "Issued JWT must carry the ``epoch`` claim."
     assert payload["epoch"] == 3, (
-        f"epoch claim should match user.revocation_epoch at issue time, "
-        f"got {payload['epoch']!r}"
+        f"epoch claim should match user.revocation_epoch at issue time, got {payload['epoch']!r}"
     )
 
 
@@ -177,7 +176,9 @@ async def test_invalid_token_still_rejected_normally():
     strategy = RevocableJWTStrategy(secret="test-secret-32-chars-min", lifetime_seconds=60)
 
     # Token signed with a DIFFERENT secret.
-    other_strategy = RevocableJWTStrategy(secret="some-other-secret-32+chars-X", lifetime_seconds=60)
+    other_strategy = RevocableJWTStrategy(
+        secret="some-other-secret-32+chars-X", lifetime_seconds=60
+    )
     bad_token = await other_strategy.write_token(user)
 
     result = await strategy.read_token(bad_token, mgr)

@@ -166,10 +166,7 @@ class PuntoConflicto(UUIDMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<PuntoConflicto {self.id} tipo={self.tipo!r} "
-            f"severidad={self.severidad!r}>"
-        )
+        return f"<PuntoConflicto {self.id} tipo={self.tipo!r} severidad={self.severidad!r}>"
 
 
 # ── Alerta Geo ────────────────────────────────

@@ -63,9 +63,7 @@ def upgrade() -> None:
         ),
         sa.Column("descripcion", sa.Text, nullable=True),
         sa.Column("tipo", tipo_reunion, nullable=False, server_default="ordinaria"),
-        sa.Column(
-            "estado", estado_reunion, nullable=False, server_default="planificada"
-        ),
+        sa.Column("estado", estado_reunion, nullable=False, server_default="planificada"),
         sa.Column(
             "orden_del_dia_items",
             postgresql.JSON,

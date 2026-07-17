@@ -28,8 +28,8 @@ const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
   layerItems: [
-    { id: 'catastro', label: 'Catastro' },
-    { id: 'pilar_verde_bpa_2025', label: 'BPA 2025' },
+    { id: 'catastro', label: 'Catastro', category: 'territorio' as const },
+    { id: 'pilar_verde_bpa_2025', label: 'BPA 2025', category: 'pilar_verde' as const },
   ],
   vectorVisibility: {},
   onLayerVisibilityChange: () => {},

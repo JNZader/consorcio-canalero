@@ -184,9 +184,11 @@ describe('<InfoPanel /> BPA branch', () => {
       <InfoPanel feature={buildFlatBpaFeature()} onClose={() => {}} />,
     );
 
-    // BpaCard-specific markers
+    // BpaCard-specific markers. PII strip (e1a30b4): producer name is no
+    // longer shown — the card titles with the "Cuenta {cuenta}" fallback.
     expect(screen.getByTestId('bpa-card')).toBeInTheDocument();
-    expect(screen.getByText('La Sentina')).toBeInTheDocument();
+    expect(screen.queryByText('La Sentina')).not.toBeInTheDocument();
+    expect(screen.getByText('Cuenta 150115736126')).toBeInTheDocument();
     expect(
       screen.getByText(/Datos:\s*IDECor.*Gobierno de Córdoba/i),
     ).toBeInTheDocument();
@@ -205,7 +207,9 @@ describe('<InfoPanel /> BPA branch', () => {
     );
 
     expect(screen.getByTestId('bpa-card')).toBeInTheDocument();
-    expect(screen.getByText('La Sentina')).toBeInTheDocument();
+    // PII strip: title falls back to "Cuenta {cuenta}".
+    expect(screen.queryByText('La Sentina')).not.toBeInTheDocument();
+    expect(screen.getByText('Cuenta 150115736126')).toBeInTheDocument();
   });
 
   it('wires histórico years into BpaCard when enriched parcel has años_lista (Phase 7)', () => {

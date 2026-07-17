@@ -68,12 +68,8 @@ def get_latest_runoff_layers(db: Session):
     from app.domains.geo.repository import GeoRepository
 
     geo_repo = GeoRepository()
-    flow_dir_layers, _ = geo_repo.get_layers(
-        db, tipo_filter=TipoGeoLayer.FLOW_DIR, page=1, limit=1
-    )
-    flow_acc_layers, _ = geo_repo.get_layers(
-        db, tipo_filter=TipoGeoLayer.FLOW_ACC, page=1, limit=1
-    )
+    flow_dir_layers, _ = geo_repo.get_layers(db, tipo_filter=TipoGeoLayer.FLOW_DIR, page=1, limit=1)
+    flow_acc_layers, _ = geo_repo.get_layers(db, tipo_filter=TipoGeoLayer.FLOW_ACC, page=1, limit=1)
     if not flow_dir_layers or not flow_acc_layers:
         raise HTTPException(
             status_code=400,
@@ -176,9 +172,7 @@ def build_baseline_by_zona(
         return {}
 
 
-def serialize_comparison_items(
-    current_stats, baseline_by_zona: dict, zona_meta: dict, tipo: str
-):
+def serialize_comparison_items(current_stats, baseline_by_zona: dict, zona_meta: dict, tipo: str):
     items: list[CompositeComparisonItemResponse] = []
     for stat in current_stats:
         baseline = baseline_by_zona.get(stat.zona_id)
@@ -215,9 +209,7 @@ def list_suggestions_for_batch(
     limit: int,
 ):
     if tipo:
-        return repo.get_suggestions_by_tipo(
-            db, tipo, page=page, limit=limit, batch_id=batch_id
-        )
+        return repo.get_suggestions_by_tipo(db, tipo, page=page, limit=limit, batch_id=batch_id)
 
     items, total = repo.get_suggestions_by_tipo(
         db, tipo="", page=page, limit=limit, batch_id=batch_id
@@ -231,14 +223,10 @@ def list_suggestions_for_batch(
     from app.domains.geo.intelligence.models import CanalSuggestion
 
     base = select(CanalSuggestion).where(CanalSuggestion.batch_id == batch_id)
-    total = db.execute(
-        select(sa_func.count()).select_from(base.subquery())
-    ).scalar_one()
+    total = db.execute(select(sa_func.count()).select_from(base.subquery())).scalar_one()
     offset = (page - 1) * limit
     items = list(
-        db.execute(
-            base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit)
-        )
+        db.execute(base.order_by(CanalSuggestion.score.desc()).offset(offset).limit(limit))
         .scalars()
         .all()
     )
@@ -255,19 +243,14 @@ def serialize_suggestion_page(*, items, total: int, page: int, limit: int, batch
     )
 
 
-def build_suggestion_summary_payload(
-    summary: dict, repo: IntelligenceRepository, db: Session
-):
+def build_suggestion_summary_payload(summary: dict, repo: IntelligenceRepository, db: Session):
     resolved_batch = summary["batch_id"]
     top_per_tipo: dict[str, list] = {}
     for tipo in SUGGESTION_TYPES:
-        items, _ = repo.get_suggestions_by_tipo(
-            db, tipo, page=1, limit=5, batch_id=resolved_batch
-        )
+        items, _ = repo.get_suggestions_by_tipo(db, tipo, page=1, limit=5, batch_id=resolved_batch)
         if items:
             top_per_tipo[tipo] = [
-                CanalSuggestionResponse.model_validate(item).model_dump()
-                for item in items
+                CanalSuggestionResponse.model_validate(item).model_dump() for item in items
             ]
 
     return {
@@ -275,8 +258,6 @@ def build_suggestion_summary_payload(
         "total_suggestions": summary["total_suggestions"],
         "by_tipo": summary["by_tipo"],
         "avg_score": summary["avg_score"],
-        "created_at": summary["created_at"].isoformat()
-        if summary.get("created_at")
-        else None,
+        "created_at": summary["created_at"].isoformat() if summary.get("created_at") else None,
         "top_per_tipo": top_per_tipo,
     }

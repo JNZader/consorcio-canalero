@@ -134,9 +134,7 @@ def get_public_mapa_imagen(
     comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
 
     principal = ImagenMapaParams(**principal_raw) if principal_raw else None
-    comparacion = (
-        ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
-    )
+    comparacion = ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
 
     return ImagenMapaResponse(
         imagen_principal=principal,
@@ -162,9 +160,7 @@ def save_mapa_imagen_principal(
 
     # Return full response
     comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
-    comparacion = (
-        ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
-    )
+    comparacion = ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
     return ImagenMapaResponse(
         imagen_principal=payload,
         imagen_comparacion=comparacion,

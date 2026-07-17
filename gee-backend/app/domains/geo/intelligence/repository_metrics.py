@@ -86,9 +86,7 @@ class IntelligenceRepositoryMetricsMixin:
             db, base, page=page, limit=limit, order_by=PuntoConflicto.created_at.desc()
         )
 
-    def get_conflictos_por_zona(
-        self, db: Session, zona_id: uuid.UUID
-    ) -> list[PuntoConflicto]:
+    def get_conflictos_por_zona(self, db: Session, zona_id: uuid.UUID) -> list[PuntoConflicto]:
         zona = self.get_zona_by_id(db, zona_id)
         if zona is None:
             return []
@@ -127,9 +125,7 @@ class IntelligenceRepositoryMetricsMixin:
         db.flush()
         return conflicto
 
-    def bulk_create_conflictos(
-        self, db: Session, conflictos: list[dict[str, Any]]
-    ) -> int:
+    def bulk_create_conflictos(self, db: Session, conflictos: list[dict[str, Any]]) -> int:
         objects = [PuntoConflicto(**c) for c in conflictos]
         db.add_all(objects)
         db.flush()
@@ -154,28 +150,20 @@ class IntelligenceRepositoryMetricsMixin:
         zona_id: Optional[uuid.UUID] = None,
         datos: Optional[dict] = None,
     ) -> AlertaGeo:
-        alerta = AlertaGeo(
-            tipo=tipo, mensaje=mensaje, nivel=nivel, zona_id=zona_id, datos=datos
-        )
+        alerta = AlertaGeo(tipo=tipo, mensaje=mensaje, nivel=nivel, zona_id=zona_id, datos=datos)
         db.add(alerta)
         db.flush()
         return alerta
 
-    def deactivate_alerta(
-        self, db: Session, alerta_id: uuid.UUID
-    ) -> Optional[AlertaGeo]:
-        alerta = db.execute(
-            select(AlertaGeo).where(AlertaGeo.id == alerta_id)
-        ).scalar_one_or_none()
+    def deactivate_alerta(self, db: Session, alerta_id: uuid.UUID) -> Optional[AlertaGeo]:
+        alerta = db.execute(select(AlertaGeo).where(AlertaGeo.id == alerta_id)).scalar_one_or_none()
         if alerta:
             alerta.activa = False
             db.flush()
         return alerta
 
     def get_dashboard_inteligente(self, db: Session) -> dict[str, Any]:
-        zonas_total = db.execute(
-            select(func.count()).select_from(ZonaOperativa)
-        ).scalar_one()
+        zonas_total = db.execute(select(func.count()).select_from(ZonaOperativa)).scalar_one()
         latest_hci = (
             select(
                 IndiceHidrico.zona_id,
@@ -201,9 +189,7 @@ class IntelligenceRepositoryMetricsMixin:
             + zonas_por_nivel.get("alto", 0)
             + zonas_por_nivel.get("critico", 0)
         )
-        conflictos = db.execute(
-            select(func.count()).select_from(PuntoConflicto)
-        ).scalar_one()
+        conflictos = db.execute(select(func.count()).select_from(PuntoConflicto)).scalar_one()
         alertas = db.execute(
             select(func.count()).select_from(
                 select(AlertaGeo).where(AlertaGeo.activa.is_(True)).subquery()
@@ -238,9 +224,7 @@ class IntelligenceRepositoryMetricsMixin:
         return results
 
     def get_dashboard_stats(self, db: Session) -> dict[str, Any]:
-        return self._empty_dict_from_matview(
-            db, "SELECT * FROM mv_dashboard_geo_stats LIMIT 1"
-        )
+        return self._empty_dict_from_matview(db, "SELECT * FROM mv_dashboard_geo_stats LIMIT 1")
 
     def get_hci_por_zona(
         self,
@@ -260,11 +244,7 @@ class IntelligenceRepositoryMetricsMixin:
         ).scalar_one()
         params.update({"offset": (page - 1) * limit, "limit": limit})
         data_sql = f"SELECT zona_id, zona_nombre, cuenca, superficie_ha, indice_final, nivel_riesgo, fecha_calculo FROM mv_hci_por_zona {where_clause} ORDER BY indice_final DESC OFFSET :offset LIMIT :limit"
-        return [
-            dict(r) for r in db.execute(text(data_sql), params).mappings().all()
-        ], total
+        return [dict(r) for r in db.execute(text(data_sql), params).mappings().all()], total
 
     def get_alertas_resumen(self, db: Session) -> dict[str, Any]:
-        return self._empty_dict_from_matview(
-            db, "SELECT * FROM mv_alertas_resumen LIMIT 1"
-        )
+        return self._empty_dict_from_matview(db, "SELECT * FROM mv_alertas_resumen LIMIT 1")

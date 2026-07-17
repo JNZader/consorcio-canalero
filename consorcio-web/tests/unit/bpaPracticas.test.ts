@@ -190,10 +190,12 @@ describe('normalizeBpaFlat', () => {
     const result = normalizeBpaFlat(props);
     expect(result).not.toBeNull();
     const nested = result as Bpa2025EnrichedRecord;
-    expect(nested.n_explotacion).toBe('La Sentina');
+    // PII strip (Ley 25.326, e1a30b4): n_explotacion / id_explotacion no
+    // longer exist on the normalized record — extra input props are ignored.
+    expect(nested).not.toHaveProperty('n_explotacion');
+    expect(nested).not.toHaveProperty('id_explotacion');
     expect(nested.superficie_bpa).toBe(245.7);
     expect(nested.bpa_total).toBe('8');
-    expect(nested.id_explotacion).toBe('1010');
     expect(nested.activa).toBe(true);
     expect(nested.ejes).toEqual({
       persona: 'Si',

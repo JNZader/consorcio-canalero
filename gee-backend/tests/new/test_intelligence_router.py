@@ -312,8 +312,13 @@ class TestSimpleEndpoints:
         mock_repo = MagicMock()
         mock_repo.get_conflictos.return_value = ([], 0)
         result = list_conflictos(
-            tipo=None, severidad=None, page=1, limit=20,
-            db=MagicMock(), repo=mock_repo, _user=MagicMock(),
+            tipo=None,
+            severidad=None,
+            page=1,
+            limit=20,
+            db=MagicMock(),
+            repo=mock_repo,
+            _user=MagicMock(),
         )
         assert result.total == 0
         assert result.items == []
@@ -323,9 +328,7 @@ class TestSimpleEndpoints:
 
         mock_task = MagicMock()
         mock_task.id = "task-123"
-        with patch(
-            "app.domains.geo.intelligence.tasks.task_detect_all_conflicts"
-        ) as mock_fn:
+        with patch("app.domains.geo.intelligence.tasks.task_detect_all_conflicts") as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = detect_conflictos(db=MagicMock(), _user=MagicMock())
         assert result.task_id == "task-123"
@@ -353,8 +356,12 @@ class TestSimpleEndpoints:
         mock_repo = MagicMock()
         mock_repo.get_zonas.return_value = ([], 0)
         result = list_zonas(
-            cuenca=None, page=1, limit=50,
-            db=MagicMock(), repo=mock_repo, _user=MagicMock(),
+            cuenca=None,
+            page=1,
+            limit=50,
+            db=MagicMock(),
+            repo=mock_repo,
+            _user=MagicMock(),
         )
         assert result.total == 0
         assert result.items == []
@@ -365,9 +372,7 @@ class TestSimpleEndpoints:
         payload = ZonificacionRequest(dem_layer_id=uuid.uuid4(), threshold=500)
         mock_task = MagicMock()
         mock_task.id = "task-456"
-        with patch(
-            "app.domains.geo.intelligence.tasks.task_generate_zonification"
-        ) as mock_fn:
+        with patch("app.domains.geo.intelligence.tasks.task_generate_zonification") as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = generate_zonas(payload, db=MagicMock(), _user=MagicMock())
         assert result.task_id == "task-456"
@@ -377,9 +382,7 @@ class TestSimpleEndpoints:
 
         mock_task = MagicMock()
         mock_task.id = "task-789"
-        with patch(
-            "app.domains.geo.intelligence.tasks.task_calculate_hci_all_zones"
-        ) as mock_fn:
+        with patch("app.domains.geo.intelligence.tasks.task_calculate_hci_all_zones") as mock_fn:
             mock_fn.delay.return_value = mock_task
             result = batch_calculate_hci(db=MagicMock(), _user=MagicMock())
         assert result.task_id == "task-789"
@@ -435,9 +438,7 @@ class TestSimpleEndpoints:
         alerta = SimpleNamespace(id=uuid.uuid4(), activa=False)
         mock_repo.deactivate_alerta.return_value = alerta
         db = MagicMock()
-        result = deactivate_alerta(
-            alerta_id=uuid.uuid4(), db=db, repo=mock_repo, _user=MagicMock()
-        )
+        result = deactivate_alerta(alerta_id=uuid.uuid4(), db=db, repo=mock_repo, _user=MagicMock())
         db.commit.assert_called_once()
 
     def test_deactivate_alerta_not_found(self):
@@ -447,8 +448,10 @@ class TestSimpleEndpoints:
         mock_repo.deactivate_alerta.return_value = None
         with pytest.raises(HTTPException) as exc_info:
             deactivate_alerta(
-                alerta_id=uuid.uuid4(), db=MagicMock(),
-                repo=mock_repo, _user=MagicMock(),
+                alerta_id=uuid.uuid4(),
+                db=MagicMock(),
+                repo=mock_repo,
+                _user=MagicMock(),
             )
         assert exc_info.value.status_code == 404
 
@@ -467,9 +470,7 @@ class TestCompositeEndpoints:
         mock_task.id = "comp-task-1"
         with patch("app.domains.geo.tasks.composite_analysis_task") as mock_fn:
             mock_fn.delay.return_value = mock_task
-            result = trigger_composite_analysis(
-                payload, db=MagicMock(), _user=MagicMock()
-            )
+            result = trigger_composite_analysis(payload, db=MagicMock(), _user=MagicMock())
         assert result.task_id == "comp-task-1"
 
     def test_get_composite_stats_not_found(self):
@@ -479,7 +480,10 @@ class TestCompositeEndpoints:
         mock_repo.get_composite_stats_by_area.return_value = []
         with pytest.raises(HTTPException) as exc_info:
             get_composite_stats(
-                area_id="nonexistent", tipo=None,
-                db=MagicMock(), repo=mock_repo, _user=MagicMock(),
+                area_id="nonexistent",
+                tipo=None,
+                db=MagicMock(),
+                repo=mock_repo,
+                _user=MagicMock(),
             )
         assert exc_info.value.status_code == 404

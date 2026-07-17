@@ -9,7 +9,7 @@
 .mapWorkspace {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(560px, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--mantine-spacing-sm);
   width: 100%;
 }
@@ -21,6 +21,11 @@
   align-items: flex-start;
 }
 
+/* ── Legacy bottom-bar (3D terrain chrome ONLY) ───────────────────────────── */
+/* The 2D map moved to MapWorkspace (below), but the 3D terrain view
+   (TerrainViewer3DChrome.tsx) still uses this two-column bottom bar and is
+   OUT OF SCOPE for the 2D redesign. Keep these classes so the 3D view keeps
+   its styling. */
 .mapBottomBar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -37,6 +42,98 @@
   overflow-y: auto;
 }
 
+/* ── Responsive controls shell (MapWorkspace) ─────────────────────────────── */
+/* Desktop: [ collapsible sidebar | canvas ]. Collapsing the sidebar returns
+   the freed width to the canvas. Mobile switches to canvas + Drawer (handled
+   by the component via useMediaQuery, not CSS). */
+/* Single-tree root (see MapWorkspace.tsx). The canvas is DOM-first (index 0)
+   in BOTH modes so its fiber never remounts across the 48em breakpoint. */
+.workspaceRoot {
+  width: 100%;
+}
+
+/* Desktop: [ sidebar | canvas ]. The sidebar comes AFTER the canvas in the
+   DOM, so `order` pulls it visually to the LEFT. Collapsing returns the freed
+   width to the canvas. */
+.workspaceRoot[data-desktop='true'] {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: var(--mantine-spacing-sm);
+  align-items: start;
+}
+
+.workspaceRoot[data-desktop='true'][data-collapsed='true'] {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.workspaceRoot[data-desktop='true'] .workspaceSidebar {
+  order: 1;
+}
+
+.workspaceRoot[data-desktop='true'] .workspaceCanvas {
+  order: 2;
+}
+
+/* Mobile: canvas full-width; the burger floats over it as an absolute overlay. */
+.workspaceRoot[data-desktop='false'] {
+  position: relative;
+}
+
+.workspaceSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  height: clamp(560px, calc(100dvh - 250px), 980px);
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+  overflow: hidden;
+}
+
+.workspaceSidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  padding: var(--mantine-spacing-xs);
+  border-bottom: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+}
+
+.workspaceSidebarHeaderCollapsed {
+  justify-content: center;
+  border-bottom: none;
+}
+
+.workspaceSidebarBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mantine-spacing-xs);
+}
+
+/* FIX 2: hide the body (keeps `controls` MOUNTED so panel state survives)
+   instead of conditional-rendering it away when the sidebar is collapsed. */
+.workspaceSidebar[data-collapsed='true'] .workspaceSidebarBody {
+  display: none;
+}
+
+.workspaceCanvas {
+  position: relative;
+  min-width: 0;
+}
+
+.workspaceBurger {
+  position: absolute;
+  top: var(--mantine-spacing-sm);
+  left: var(--mantine-spacing-sm);
+  z-index: 1100;
+  background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
+  border-radius: var(--mantine-radius-sm);
+  box-shadow: var(--mantine-shadow-sm);
+  padding: 4px;
+}
+
 .mapCanvasWrapper {
   position: relative;
   min-width: 0;
@@ -47,10 +144,16 @@
 }
 
 @media (max-width: 62em) {
-  .mapWorkspace {
-    grid-template-rows: auto minmax(500px, 1fr) auto;
+  .mapCanvasWrapper {
+    min-height: 500px;
+    height: clamp(500px, calc(100dvh - 220px), 860px);
   }
 
+  .workspaceSidebar {
+    height: clamp(500px, calc(100dvh - 220px), 860px);
+  }
+
+  /* 3D terrain bottom bar (out-of-scope legacy) */
   .mapBottomBar {
     grid-template-columns: 1fr;
   }
@@ -58,15 +161,23 @@
   .mapBottomBarItem {
     max-height: 50vh;
   }
-
-  .mapCanvasWrapper {
-    min-height: 500px;
-    height: clamp(500px, calc(100dvh - 220px), 860px);
-  }
 }
 
 .captureMode :global(.leaflet-control-container) {
   display: none;
+}
+
+/* Cooperative-gestures hint overlay (task 1.6). MapLibre paints a dimmed
+   screen with centered text when the user tries to wheel-zoom without Ctrl.
+   Force a dark scrim + white text so it stays legible over BOTH light and
+   dark base maps, and sit above the floating panels. */
+.mapCanvasWrapper :global(.maplibregl-cooperative-gesture-screen),
+.workspaceCanvas :global(.maplibregl-cooperative-gesture-screen) {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: var(--mantine-font-size-md);
+  font-weight: 600;
+  z-index: 1300;
 }
 
 .legendPanel {

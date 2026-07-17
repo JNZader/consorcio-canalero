@@ -28,15 +28,17 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
           sensor: comparison.left.sensor,
           target_date: comparison.left.target_date,
           visualization: comparison.left.visualization,
-          max_cloud: null,
-          days_buffer: 10,
+          max_cloud: comparison.left.max_cloud ?? null,
+          days_buffer: comparison.left.days_buffer ?? 10,
+          mode: comparison.left.mode ?? null,
         },
         right: {
           sensor: comparison.right.sensor,
           target_date: comparison.right.target_date,
           visualization: comparison.right.visualization,
-          max_cloud: null,
-          days_buffer: 10,
+          max_cloud: comparison.right.max_cloud ?? null,
+          days_buffer: comparison.right.days_buffer ?? 10,
+          mode: comparison.right.mode ?? null,
         },
       }
     : { enabled: false, left: null, right: null };

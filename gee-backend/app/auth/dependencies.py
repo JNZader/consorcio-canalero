@@ -57,9 +57,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         logger.info(
             "Password reset requested",
             extra={
-                "user_email_hash": hashlib.sha256(
-                    user.email.lower().encode("utf-8")
-                ).hexdigest()[:12],
+                "user_email_hash": hashlib.sha256(user.email.lower().encode("utf-8")).hexdigest()[
+                    :12
+                ],
                 "token_fingerprint": token_fingerprint,
             },
         )
@@ -85,24 +85,18 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             )
             from typing import cast
 
-            sqlalchemy_user_db = cast(
-                "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
-            )
+            sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
             session: AsyncSession = sqlalchemy_user_db.session
             # Invalidate any prior unconsumed reset codes for this user
             # so "forgot password" pressed twice doesn't leave two
             # simultaneously valid codes in flight (3vr Sonnet finding).
-            await invalidate_open_codes_for_user(
-                session, user_id=user.id, purpose=RESET_PURPOSE
-            )
+            await invalidate_open_codes_for_user(session, user_id=user.id, purpose=RESET_PURPOSE)
             code = await create_code_for_token(
                 session, user=user, purpose=RESET_PURPOSE, token=token
             )
             await session.commit()
 
-            template = build_reset_email(
-                code=code, frontend_url=settings.frontend_url
-            )
+            template = build_reset_email(code=code, frontend_url=settings.frontend_url)
             try:
                 await send_email(to_email=user.email, **template)
             except Exception:
@@ -113,17 +107,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 from app.auth.email_codes import EmailCode
                 from sqlalchemy import delete as sa_delete
 
-                await session.execute(
-                    sa_delete(EmailCode).where(EmailCode.code == code)
-                )
+                await session.execute(sa_delete(EmailCode).where(EmailCode.code == code))
                 await session.commit()
                 raise
         else:
             # Legacy path — embeds the token in the URL. The frontend
             # still uses this until F5-E rollout flips the flag.
-            template = build_reset_email(
-                code=token, frontend_url=settings.frontend_url
-            )
+            template = build_reset_email(code=token, frontend_url=settings.frontend_url)
             await send_email(to_email=user.email, **template)
 
     async def on_after_request_verify(
@@ -141,9 +131,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         logger.info(
             "Email verification requested",
             extra={
-                "user_email_hash": hashlib.sha256(
-                    user.email.lower().encode("utf-8")
-                ).hexdigest()[:12],
+                "user_email_hash": hashlib.sha256(user.email.lower().encode("utf-8")).hexdigest()[
+                    :12
+                ],
                 "token_fingerprint": token_fingerprint,
             },
         )
@@ -159,21 +149,15 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             )
             from typing import cast
 
-            sqlalchemy_user_db = cast(
-                "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
-            )
+            sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
             session: AsyncSession = sqlalchemy_user_db.session
-            await invalidate_open_codes_for_user(
-                session, user_id=user.id, purpose=VERIFY_PURPOSE
-            )
+            await invalidate_open_codes_for_user(session, user_id=user.id, purpose=VERIFY_PURPOSE)
             code = await create_code_for_token(
                 session, user=user, purpose=VERIFY_PURPOSE, token=token
             )
             await session.commit()
 
-            template = build_verification_email(
-                code=code, frontend_url=settings.frontend_url
-            )
+            template = build_verification_email(code=code, frontend_url=settings.frontend_url)
             try:
                 await send_email(to_email=user.email, **template)
             except Exception:
@@ -181,21 +165,15 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 from app.auth.email_codes import EmailCode
                 from sqlalchemy import delete as sa_delete
 
-                await session.execute(
-                    sa_delete(EmailCode).where(EmailCode.code == code)
-                )
+                await session.execute(sa_delete(EmailCode).where(EmailCode.code == code))
                 await session.commit()
                 raise
         else:
             # Legacy path — token in URL, same as pre-F5-E.
-            template = build_verification_email(
-                code=token, frontend_url=settings.frontend_url
-            )
+            template = build_verification_email(code=token, frontend_url=settings.frontend_url)
             await send_email(to_email=user.email, **template)
 
-    async def on_after_register(
-        self, user: User, request: Request | None = None
-    ) -> None:
+    async def on_after_register(self, user: User, request: Request | None = None) -> None:
         """Check pre-authorized emails and auto-assign role on registration."""
         # Get the async session from the user_db internals.
         # fastapi-users-db-sqlalchemy stores it on ``.session``, but the
@@ -205,9 +183,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         # a runtime-safe cast.
         from typing import cast
 
-        sqlalchemy_user_db = cast(
-            "SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db
-        )
+        sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
         session: AsyncSession = sqlalchemy_user_db.session
 
         result = await session.execute(

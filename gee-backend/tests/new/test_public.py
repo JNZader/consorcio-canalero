@@ -72,9 +72,7 @@ def _make_capa(
 class TestPublicLayerListing:
     """Only layers with es_publica=True and visible=True are returned."""
 
-    def test_only_public_layers_returned(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_only_public_layers_returned(self, db: Session, capas_repo: CapasRepository):
         _make_capa(db, capas_repo, nombre="Public", es_publica=True, visible=True)
         _make_capa(db, capas_repo, nombre="Private", es_publica=False, visible=True)
         _make_capa(db, capas_repo, nombre="Hidden Public", es_publica=True, visible=False)
@@ -86,9 +84,7 @@ class TestPublicLayerListing:
         assert "Private" not in names
         assert "Hidden Public" not in names
 
-    def test_public_layers_ordered_by_orden(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_public_layers_ordered_by_orden(self, db: Session, capas_repo: CapasRepository):
         _make_capa(db, capas_repo, nombre="C", es_publica=True, orden=2)
         _make_capa(db, capas_repo, nombre="A", es_publica=True, orden=0)
         _make_capa(db, capas_repo, nombre="B", es_publica=True, orden=1)
@@ -97,17 +93,13 @@ class TestPublicLayerListing:
         orders = [c.orden for c in public_layers]
         assert orders == sorted(orders)
 
-    def test_empty_when_no_public_layers(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_empty_when_no_public_layers(self, db: Session, capas_repo: CapasRepository):
         _make_capa(db, capas_repo, nombre="Private Only", es_publica=False)
 
         public_layers = capas_repo.get_public(db)
         assert len(public_layers) == 0
 
-    def test_public_layer_detail_found(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_public_layer_detail_found(self, db: Session, capas_repo: CapasRepository):
         capa = _make_capa(db, capas_repo, nombre="Detail Layer", es_publica=True)
 
         fetched = capas_repo.get_by_id(db, capa.id)
@@ -115,9 +107,7 @@ class TestPublicLayerListing:
         assert fetched.es_publica is True
         assert fetched.nombre == "Detail Layer"
 
-    def test_private_layer_detail_not_exposed(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_private_layer_detail_not_exposed(self, db: Session, capas_repo: CapasRepository):
         """Even if you know the ID, a private layer should not be served as public."""
         capa = _make_capa(db, capas_repo, nombre="Secret", es_publica=False)
 
@@ -134,9 +124,7 @@ class TestPublicLayerListing:
 class TestAnonymousDenunciaCreation:
     """Anonymous citizens can create denuncias without auth."""
 
-    def test_create_denuncia_successfully(
-        self, db: Session, denuncia_service: DenunciaService
-    ):
+    def test_create_denuncia_successfully(self, db: Session, denuncia_service: DenunciaService):
         payload = DenunciaCreate(
             tipo="desborde",
             descripcion="Canal desbordado en la zona norte, afectando caminos rurales.",
@@ -178,9 +166,7 @@ class TestAnonymousDenunciaCreation:
 class TestDenunciaStatusCheck:
     """Public status checks return only estado and created_at."""
 
-    def test_status_returns_limited_info(
-        self, db: Session, denuncia_service: DenunciaService
-    ):
+    def test_status_returns_limited_info(self, db: Session, denuncia_service: DenunciaService):
         payload = DenunciaCreate(
             tipo="camino_danado",
             descripcion="Camino rural danado despues de las lluvias fuertes de esta semana.",
@@ -230,9 +216,7 @@ class TestDenunciaStatusCheck:
 class TestPublishUnpublishWorkflow:
     """Admin can publish and unpublish layers."""
 
-    def test_publish_layer(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_publish_layer(self, db: Session, capas_repo: CapasRepository):
         capa = _make_capa(db, capas_repo, nombre="To Publish", es_publica=False)
         assert capa.es_publica is False
         assert capa.publicacion_fecha is None
@@ -247,9 +231,7 @@ class TestPublishUnpublishWorkflow:
         assert fetched.es_publica is True
         assert fetched.publicacion_fecha is not None
 
-    def test_unpublish_layer(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_unpublish_layer(self, db: Session, capas_repo: CapasRepository):
         capa = _make_capa(db, capas_repo, nombre="To Unpublish", es_publica=True)
         capa.publicacion_fecha = datetime.now(timezone.utc)
         db.flush()
@@ -278,15 +260,11 @@ class TestPublishUnpublishWorkflow:
         capa = _make_capa(db, capas_repo, nombre="Already Private", es_publica=False)
         assert capa.es_publica is False
 
-    def test_publish_nonexistent_layer(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_publish_nonexistent_layer(self, db: Session, capas_repo: CapasRepository):
         result = capas_repo.get_by_id(db, uuid.uuid4())
         assert result is None
 
-    def test_published_layer_appears_in_public_list(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_published_layer_appears_in_public_list(self, db: Session, capas_repo: CapasRepository):
         """After publishing, the layer should appear in public listing."""
         capa = _make_capa(db, capas_repo, nombre="Publish Flow", es_publica=False)
 
@@ -331,9 +309,7 @@ class TestPublishUnpublishWorkflow:
 class TestPublicStats:
     """Basic aggregate stats are exposed without auth."""
 
-    def test_stats_counts_denuncias(
-        self, db: Session, denuncia_service: DenunciaService
-    ):
+    def test_stats_counts_denuncias(self, db: Session, denuncia_service: DenunciaService):
         payload = DenunciaCreate(
             tipo="desborde",
             descripcion="Desborde de canal principal en zona este de la jurisdiccion.",
@@ -342,14 +318,10 @@ class TestPublicStats:
         )
         denuncia_service.create(db, payload)
 
-        total: int = db.execute(
-            select(func.count()).select_from(Denuncia)
-        ).scalar_one()
+        total: int = db.execute(select(func.count()).select_from(Denuncia)).scalar_one()
         assert total >= 1
 
-    def test_stats_counts_public_layers(
-        self, db: Session, capas_repo: CapasRepository
-    ):
+    def test_stats_counts_public_layers(self, db: Session, capas_repo: CapasRepository):
         _make_capa(db, capas_repo, nombre="Public Stat", es_publica=True)
         _make_capa(db, capas_repo, nombre="Private Stat", es_publica=False)
 
@@ -571,9 +543,7 @@ class TestMartinCatalogHandler:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         with (
             patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
@@ -596,9 +566,7 @@ class TestMartinCatalogHandler:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(
-            side_effect=httpx.TimeoutException("Request timed out")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Request timed out"))
 
         with (
             patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
@@ -620,9 +588,7 @@ class TestMartinCatalogHandler:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         with (
             patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
@@ -636,7 +602,6 @@ class TestMartinCatalogHandler:
 
     @pytest.mark.asyncio
     async def test_empty_catalog_returns_zero_count(self):
-
         """When Martin returns no tiles, response has empty layers and count=0."""
         from app.api.v2.public import get_martin_catalog
 

@@ -2,6 +2,7 @@ import type { Feature, FeatureCollection } from 'geojson';
 import { describe, expect, it } from 'vitest';
 
 import {
+  LAYER_CATEGORY,
   buildActiveLegendItems,
   buildBasinFeatureById,
   buildDemLayerOptions,
@@ -100,13 +101,16 @@ describe('map2dDerived', () => {
         intersectionsLength: 1,
         isAdmin: true,
       }),
+      // Labels are normalised with the 3D viewer (Red Vial / Suelos IDECOR
+      // 1:50.000 / Catastro rural IDECOR) — the source is the naming source of
+      // truth. Each item now also carries a `category` (change rediseno-ux-mapa).
     ).toEqual([
-      { id: 'basins', label: 'Subcuencas' },
-      { id: 'waterways', label: 'Hidrografía' },
-      { id: 'roads', label: 'Red vial' },
-      { id: 'soil', label: 'Suelos IDECOR' },
-      { id: 'catastro', label: 'Catastro rural' },
-      { id: 'puntos_conflicto', label: 'Puntos conflicto' },
+      { id: 'basins', label: 'Subcuencas', category: 'hidrografia' },
+      { id: 'waterways', label: 'Hidrografía', category: 'hidrografia' },
+      { id: 'roads', label: 'Red Vial', category: 'territorio' },
+      { id: 'soil', label: 'Suelos IDECOR 1:50.000', category: 'territorio' },
+      { id: 'catastro', label: 'Catastro rural IDECOR', category: 'territorio' },
+      { id: 'puntos_conflicto', label: 'Puntos conflicto', category: 'analisis' },
     ]);
 
     expect(
@@ -115,5 +119,24 @@ describe('map2dDerived', () => {
         { slope: 'Pendiente' },
       ),
     ).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
+  });
+
+  it('assigns every layer item a valid family category', () => {
+    const validCategories = new Set<string>(Object.values(LAYER_CATEGORY));
+    const items = buildVectorLayerItems({
+      basins: polygonCollection([pointFeature('b1')]),
+      approvedZonesCollection: polygonCollection([pointFeature('z1')]),
+      roadsCollection: polygonCollection([pointFeature('r1')]),
+      intersectionsLength: 1,
+      isAdmin: true,
+      showPilarVerde: true,
+      showPilarAzul: true,
+      showEscuelas: true,
+    });
+
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(validCategories.has(item.category)).toBe(true);
+    }
   });
 });

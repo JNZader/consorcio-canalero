@@ -1,29 +1,31 @@
 /**
  * LayerControlsPanelCanales.test.tsx
  *
- * Covers the Pilar Azul "Canales" CollapsibleSection inside
- * `<LayerControlsPanel />`. The section renders AFTER the existing "Capas"
- * section and contains:
+ * Covers the Pilar Azul "Canales" accordion item inside
+ * `<LayerControlsPanel />` (change `rediseno-ux-mapa`, Phase 2).
  *
- *   - 2 master checkboxes: "Canales relevados" + "Canales propuestos"
- *     (defaults: relevados ON, propuestos OFF — driven by store state via
- *     `vectorVisibility`).
- *   - Per-canal sub-checkboxes for each master, disabled + tooltipped when
- *     the master is OFF.
+ * The Canales content is rendered by the shipped `CanalesLayerSection`
+ * (`components/shared/CanalesLayerSection.tsx`), shared with the 3D viewer:
  *
- * The propuestos etapas filter (Alta → Largo plazo) used to live here as a
- * `<PropuestasEtapasFilter>` subsection, but moved to `LeyendaPanel` as
- * interactive checkboxes (single source of truth). Its tests live with the
- * standalone component (`PropuestasEtapasFilter.test.tsx`) and with the
- * legend (covered by visual QA — the legend tests stay light by design).
+ *   - Master toggle with a DYNAMIC label ("Encender/Apagar todos los
+ *     relevados|propuestos") + indeterminate state.
+ *   - Per-canal leaf rows (`data-testid="canal-toggle-<id>"`). Children are
+ *     NEVER disabled; toggling any child auto-enables its master.
+ *
+ * Entries are the `CanalToggleEntry` discriminated union
+ * (`{ kind: 'leaf', id, label }` or `{ kind: 'group', ... }`).
+ *
+ * The Canales accordion item is OPEN by default (the panel passes every family
+ * value in `defaultValue`), so its content is reachable without expanding.
  */
 
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
+import type { CanalToggleEntry } from '../../src/components/shared/canalesGrouping';
 
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider>{ui}</MantineProvider>);
@@ -32,7 +34,7 @@ function renderWithMantine(ui: ReactNode) {
 const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
-  layerItems: [{ id: 'catastro', label: 'Catastro' }],
+  layerItems: [{ id: 'catastro', label: 'Catastro', category: 'territorio' as const }],
   showIGNOverlay: false,
   onShowIGNOverlayChange: () => {},
   demEnabled: false,
@@ -43,18 +45,18 @@ const baseProps = {
   demOptions: [],
 };
 
-const canalesRelevadosItems = [
-  { id: 'canal_relevado_norte', label: 'Canal Norte' },
-  { id: 'canal_relevado_sur', label: 'Canal Sur' },
+const canalesRelevadosItems: CanalToggleEntry[] = [
+  { kind: 'leaf', id: 'canal_relevado_norte', label: 'Canal Norte' },
+  { kind: 'leaf', id: 'canal_relevado_sur', label: 'Canal Sur' },
 ];
 
-const canalesPropuestosItems = [
-  { id: 'canal_propuesto_nuevo_colector', label: 'Nuevo colector' },
-  { id: 'canal_propuesto_ampliacion', label: 'Ampliación' },
+const canalesPropuestosItems: CanalToggleEntry[] = [
+  { kind: 'leaf', id: 'canal_propuesto_nuevo_colector', label: 'Nuevo colector' },
+  { kind: 'leaf', id: 'canal_propuesto_ampliacion', label: 'Ampliación' },
 ];
 
 describe('<LayerControlsPanel /> — Canales section', () => {
-  it('renders a "Canales" collapsible section with both master checkboxes', () => {
+  it('renders a "Canales" accordion item with both dynamic master toggles', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
@@ -66,38 +68,43 @@ describe('<LayerControlsPanel /> — Canales section', () => {
     );
 
     expect(screen.getByTestId('layer-controls-canales')).toBeInTheDocument();
-    expect(screen.getByLabelText('Canales relevados')).toBeChecked();
-    expect(screen.getByLabelText('Canales propuestos')).not.toBeChecked();
+    // Master labels are dynamic. With one child on / one off (or all off), the
+    // master reads "Encender todos los …".
+    expect(screen.getByLabelText('Encender todos los relevados')).toBeInTheDocument();
+    expect(screen.getByLabelText('Encender todos los propuestos')).toBeInTheDocument();
   });
 
-  it('reflects master state from vectorVisibility', () => {
+  it('shows the "Apagar todos" master label when every child is on', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
-        vectorVisibility={{ canales_relevados: false, canales_propuestos: true }}
+        vectorVisibility={{
+          canales_relevados: true,
+          canal_relevado_norte: true,
+          canal_relevado_sur: true,
+        }}
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
       />,
     );
 
-    expect(screen.getByLabelText('Canales relevados')).not.toBeChecked();
-    expect(screen.getByLabelText('Canales propuestos')).toBeChecked();
+    expect(screen.getByLabelText('Apagar todos los relevados')).toBeInTheDocument();
   });
 
-  it('calls onLayerVisibilityChange when a master checkbox is toggled', () => {
+  it('toggling a master calls onLayerVisibilityChange for the master flag', () => {
     const onLayerVisibilityChange = vi.fn();
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
-        vectorVisibility={{ canales_relevados: true, canales_propuestos: false }}
+        vectorVisibility={{ canales_relevados: false, canales_propuestos: false }}
         onLayerVisibilityChange={onLayerVisibilityChange}
         canalesRelevadosItems={canalesRelevadosItems}
         canalesPropuestosItems={canalesPropuestosItems}
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('Canales propuestos'));
+    fireEvent.click(screen.getByLabelText('Encender todos los propuestos'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_propuestos', true);
   });
 
@@ -113,8 +120,8 @@ describe('<LayerControlsPanel /> — Canales section', () => {
   });
 });
 
-describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
-  it('renders one checkbox per canal in each group', () => {
+describe('<LayerControlsPanel /> — per-canal rows', () => {
+  it('renders one leaf row per canal in each side', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
@@ -132,25 +139,21 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
       />,
     );
 
-    for (const item of canalesRelevadosItems) {
-      expect(screen.getByTestId(`canal-toggle-${item.id}`)).toBeInTheDocument();
-      expect(screen.getByLabelText(item.label)).toBeChecked();
-    }
-    for (const item of canalesPropuestosItems) {
+    for (const item of [...canalesRelevadosItems, ...canalesPropuestosItems]) {
+      if (item.kind !== 'leaf') continue;
       expect(screen.getByTestId(`canal-toggle-${item.id}`)).toBeInTheDocument();
       expect(screen.getByLabelText(item.label)).toBeChecked();
     }
   });
 
-  it('disables relevado per-canal checkboxes when the relevados master is OFF', () => {
+  it('never disables per-canal rows, even when the master is OFF', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
         vectorVisibility={{
           canales_relevados: false,
-          canales_propuestos: true,
-          canal_relevado_norte: true,
-          canal_relevado_sur: true,
+          canal_relevado_norte: false,
+          canal_relevado_sur: false,
         }}
         onLayerVisibilityChange={() => {}}
         canalesRelevadosItems={canalesRelevadosItems}
@@ -159,65 +162,19 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
     );
 
     for (const item of canalesRelevadosItems) {
+      if (item.kind !== 'leaf') continue;
       const checkbox = screen.getByLabelText(item.label) as HTMLInputElement;
-      expect(checkbox).toBeDisabled();
+      expect(checkbox).not.toBeDisabled();
     }
   });
 
-  it('disables propuesto per-canal checkboxes when the propuestos master is OFF', () => {
-    renderWithMantine(
-      <LayerControlsPanel
-        {...baseProps}
-        vectorVisibility={{
-          canales_relevados: true,
-          canales_propuestos: false,
-          canal_propuesto_nuevo_colector: true,
-        }}
-        onLayerVisibilityChange={() => {}}
-        canalesRelevadosItems={canalesRelevadosItems}
-        canalesPropuestosItems={canalesPropuestosItems}
-      />,
-    );
-
-    for (const item of canalesPropuestosItems) {
-      const checkbox = screen.getByLabelText(item.label) as HTMLInputElement;
-      expect(checkbox).toBeDisabled();
-    }
-  });
-
-  it('renders a tooltip on disabled per-canal rows', () => {
-    renderWithMantine(
-      <LayerControlsPanel
-        {...baseProps}
-        vectorVisibility={{
-          canales_relevados: false,
-          canales_propuestos: true,
-          canal_relevado_norte: true,
-        }}
-        onLayerVisibilityChange={() => {}}
-        canalesRelevadosItems={canalesRelevadosItems}
-        canalesPropuestosItems={canalesPropuestosItems}
-      />,
-    );
-
-    // Tooltip markup carries its label via `data-tooltip-label` (set by our
-    // wrapper) — independent of the Mantine/react-floating-ui portal that
-    // may not be in the DOM until the user hovers.
-    const row = screen.getByTestId('canal-toggle-canal_relevado_norte');
-    expect(row).toHaveAttribute(
-      'data-tooltip-label',
-      "Activá 'Canales relevados' para usar esta opción",
-    );
-  });
-
-  it('calls onLayerVisibilityChange when a per-canal checkbox is toggled (master ON)', () => {
+  it('toggling a child calls onLayerVisibilityChange for that child id', () => {
     const onLayerVisibilityChange = vi.fn();
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
         vectorVisibility={{
           canales_relevados: true,
-          canales_propuestos: false,
           canal_relevado_norte: true,
           canal_relevado_sur: false,
         }}
@@ -230,5 +187,145 @@ describe('<LayerControlsPanel /> — per-canal sub-checkboxes', () => {
     fireEvent.click(screen.getByLabelText('Canal Sur'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_sur', true);
   });
+
+  it('auto-enables the master when a child is turned on while the master is OFF', () => {
+    const onLayerVisibilityChange = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{
+          canales_relevados: false,
+          canal_relevado_norte: false,
+          canal_relevado_sur: false,
+        }}
+        onLayerVisibilityChange={onLayerVisibilityChange}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Canal Norte'));
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_norte', true);
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_relevados', true);
+  });
+
+  it('master bulk-toggle propagates true to every child id (FF6)', () => {
+    const onLayerVisibilityChange = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{
+          canales_relevados: false,
+          canal_relevado_norte: false,
+          canal_relevado_sur: false,
+        }}
+        onLayerVisibilityChange={onLayerVisibilityChange}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Encender todos los relevados'));
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_relevados', true);
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_norte', true);
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_sur', true);
+  });
 });
 
+describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
+  function canalesControl() {
+    return screen.getByRole('button', { name: /canales/i });
+  }
+
+  it('counts the number of visible canal children (not the master flags)', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{
+          canales_relevados: true,
+          canal_relevado_norte: true,
+          canal_relevado_sur: true,
+        }}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+
+    expect(within(canalesControl()).getByText('2')).toBeInTheDocument();
+  });
+
+  it('drops the count when a child is toggled off', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{
+          canales_relevados: true,
+          canal_relevado_norte: true,
+          canal_relevado_sur: false,
+        }}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+
+    expect(within(canalesControl()).getByText('1')).toBeInTheDocument();
+  });
+
+  it('shows NO badge when the master flag is on but no child is visible (staleness guard)', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        // Master ON, every child OFF — the old master-flag count reported "1".
+        vectorVisibility={{ canales_relevados: true, canales_propuestos: false }}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+
+    expect(within(canalesControl()).queryByText('1')).not.toBeInTheDocument();
+  });
+});
+
+describe('<LayerControlsPanel /> — canal groups (FF5)', () => {
+  const groupEntry: CanalToggleEntry = {
+    kind: 'group',
+    folder: 'monte_lena',
+    label: 'Monte Leña',
+    children: [
+      { id: 'canal_relevado_a', label: 'Tramo 1' },
+      { id: 'canal_relevado_b', label: 'Tramo 2' },
+    ],
+  };
+
+  it('renders a group control (CanalGroupRow) for a tramo_folder entry', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{}}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={[groupEntry]}
+      />,
+    );
+
+    expect(screen.getByTestId('canal-group-monte_lena')).toBeInTheDocument();
+  });
+
+  it('the group bulk checkbox writes every child id at once', () => {
+    const onLayerVisibilityChange = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{}}
+        onLayerVisibilityChange={onLayerVisibilityChange}
+        canalesRelevadosItems={[groupEntry]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Toggle Monte Leña'));
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_a', true);
+    expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_b', true);
+  });
+});

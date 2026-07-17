@@ -59,9 +59,7 @@ def list_reuniones(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[ReunionListResponse]:
     """Listar reuniones con paginacion y filtros."""
-    items, total = service.list_reuniones(
-        db, page=page, limit=limit, estado=estado, tipo=tipo
-    )
+    items, total = service.list_reuniones(db, page=page, limit=limit, estado=estado, tipo=tipo)
     return PaginatedResponse[ReunionListResponse].create(
         items=[ReunionListResponse.model_validate(r) for r in items],
         total=total,

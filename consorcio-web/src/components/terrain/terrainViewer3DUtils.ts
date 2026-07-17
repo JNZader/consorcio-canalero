@@ -3,23 +3,21 @@ import type maplibregl from 'maplibre-gl';
 
 import { GEE_LAYER_COLORS } from '../../hooks/useGEELayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
-import {
-  PILAR_AZUL_DEFAULT_VISIBILITY,
-  PILAR_VERDE_DEFAULT_VISIBILITY,
-} from '../../stores/mapLayerSyncStore';
+import { MAP3D_DEFAULT_VISIBLE_VECTORS } from '../../stores/mapLayerSyncStore';
 
 /**
- * Base vector toggle defaults that the terrain viewer renders directly via
- * `syncTerrainVectorLayers`. The Pilar Verde / Pilar Azul defaults are merged
- * from the SHARED constants in `mapLayerSyncStore` to avoid drift — when the
- * store evolves a default (e.g. flipping `canales_propuestos` to ON), the 3D
- * viewer follows automatically without a literal duplication update here.
+ * Shape (key set) of the vector toggles the terrain viewer renders directly
+ * via `syncTerrainVectorLayers`. Values here are only a last-resort fallback:
+ * the REAL startup visibility comes from `mapLayerSyncStore`'s `map3d` slice
+ * (defaults below merge `MAP3D_DEFAULT_VISIBLE_VECTORS`, and the viewer seeds
+ * its local state from the live — possibly persisted — store on mount). The
+ * historical "lightweight 3D" hidden-by-default policy died in acb1d23 when
+ * 3D defaults were unified with 2D; keeping a second value-bearing copy here
+ * caused a divergent first frame.
  *
- * NOTE: `zona` was removed from this record because the 3D mesh IS the
- * consorcio area — rendering a red perimeter outline in 3D was visual noise.
- * 2D keeps its own independent `zona` visibility via `mapLayerSyncStore`'s
- * shared `visibleVectors` (keyed per-view), so removing it here does not
- * affect the 2D viewer.
+ * NOTE: `zona` is excluded because the 3D mesh IS the consorcio area —
+ * rendering a red perimeter outline in 3D was visual noise. `cuencas` is
+ * forced off in 3D (the GEE sub-cuencas builds replace it).
  */
 const TERRAIN_BASE_VECTOR_LAYER_VISIBILITY = {
   approved_zones: false,
@@ -31,12 +29,13 @@ const TERRAIN_BASE_VECTOR_LAYER_VISIBILITY = {
   catastro: false,
 } as const;
 
-export const TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY = {
+const { zona: _zonaExcluded, ...map3dDefaultsWithoutZona } = MAP3D_DEFAULT_VISIBLE_VECTORS;
+
+export const TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY: Record<string, boolean> = {
   ...TERRAIN_BASE_VECTOR_LAYER_VISIBILITY,
-  ...PILAR_VERDE_DEFAULT_VISIBILITY,
-  ...PILAR_AZUL_DEFAULT_VISIBILITY,
-  canales_relevados: false,
-} as const;
+  ...map3dDefaultsWithoutZona,
+  cuencas: false,
+};
 
 export type TerrainVectorLayerVisibility = Record<
   keyof typeof TERRAIN_BASE_VECTOR_LAYER_VISIBILITY,

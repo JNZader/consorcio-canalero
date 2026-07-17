@@ -1,4 +1,5 @@
 import { ActionIcon, Anchor, Paper, Table, Text } from '@mantine/core';
+import { isValidUrl } from '../../../../../lib/validators';
 import { IconEdit } from '../../../../ui/icons';
 import type { Ingreso } from '../finanzasTypes';
 import { renderFuenteBadge } from '../finanzasUtils';
@@ -46,7 +47,9 @@ export function IngresosTable({
                   </Text>
                 </Table.Td>
                 <Table.Td>
-                  {ingreso.comprobante_url ? (
+                  {/* Solo renderizar como link si el esquema es http(s):
+                      evita javascript:/data: URIs almacenados en la DB. */}
+                  {ingreso.comprobante_url && isValidUrl(ingreso.comprobante_url) ? (
                     <Anchor
                       href={ingreso.comprobante_url}
                       target="_blank"
@@ -55,6 +58,10 @@ export function IngresosTable({
                     >
                       Ver archivo
                     </Anchor>
+                  ) : ingreso.comprobante_url ? (
+                    <Text size="xs" c="dimmed" title="Comprobante con URL invalida">
+                      URL invalida
+                    </Text>
                   ) : (
                     <Text size="xs" c="dimmed">
                       -

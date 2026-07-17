@@ -19,9 +19,7 @@ class MonitoringRepository:
 
     # ── SUGERENCIA CRUD ────────────────────────
 
-    def get_sugerencia_by_id(
-        self, db: Session, sugerencia_id: uuid.UUID
-    ) -> Optional[Sugerencia]:
+    def get_sugerencia_by_id(self, db: Session, sugerencia_id: uuid.UUID) -> Optional[Sugerencia]:
         stmt = select(Sugerencia).where(Sugerencia.id == sugerencia_id)
         return db.execute(stmt).scalar_one_or_none()
 
@@ -46,9 +44,7 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
-        )
+        items_stmt = base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -71,9 +67,7 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
-        )
+        items_stmt = base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -127,9 +121,7 @@ class MonitoringRepository:
 
         # Count by whether the sugerencia has a usuario_id (interna) or not (ciudadana)
         ciudadanas: int = db.execute(
-            select(func.count())
-            .select_from(Sugerencia)
-            .where(Sugerencia.usuario_id.is_(None))
+            select(func.count()).select_from(Sugerencia).where(Sugerencia.usuario_id.is_(None))
         ).scalar_one()
         internas = total - ciudadanas
 
@@ -171,9 +163,7 @@ class MonitoringRepository:
         db.flush()
         return analysis
 
-    def get_analysis_by_id(
-        self, db: Session, analysis_id: uuid.UUID
-    ) -> Optional[AnalisisGee]:
+    def get_analysis_by_id(self, db: Session, analysis_id: uuid.UUID) -> Optional[AnalisisGee]:
         stmt = select(AnalisisGee).where(AnalisisGee.id == analysis_id)
         return db.execute(stmt).scalar_one_or_none()
 
@@ -194,9 +184,7 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(AnalisisGee.created_at.desc()).offset(offset).limit(limit)
-        )
+        items_stmt = base.order_by(AnalisisGee.created_at.desc()).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -226,9 +214,7 @@ class MonitoringRepository:
         total_denuncias = sum(denuncias_por_estado.values())
 
         # Tramites total
-        total_tramites: int = db.execute(
-            select(func.count()).select_from(Tramite)
-        ).scalar_one()
+        total_tramites: int = db.execute(select(func.count()).select_from(Tramite)).scalar_one()
 
         # Sugerencias total
         total_sugerencias: int = db.execute(
@@ -236,12 +222,8 @@ class MonitoringRepository:
         ).scalar_one()
 
         # Financial summary
-        total_gastos = db.execute(
-            select(func.coalesce(func.sum(Gasto.monto), 0))
-        ).scalar_one()
-        total_ingresos = db.execute(
-            select(func.coalesce(func.sum(Ingreso.monto), 0))
-        ).scalar_one()
+        total_gastos = db.execute(select(func.coalesce(func.sum(Gasto.monto), 0))).scalar_one()
+        total_ingresos = db.execute(select(func.coalesce(func.sum(Ingreso.monto), 0))).scalar_one()
 
         # Latest analyses
         latest = self.get_latest_analyses(db, limit=5)

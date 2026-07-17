@@ -38,11 +38,22 @@ async def _run_blocking(func, *args, **kwargs):
 
 HISTORIC_FLOODS = [
     {
+        "id": "mar_2015",
+        "name": "Inundacion Marzo 2015",
+        "date": "2015-03-15",
+        "description": "Evento historico para revisar con Landsat 8/Landsat 7 y Sentinel-1",
+        "severity": "alta",
+        "sensor": "landsat8",
+        "max_cloud": 80,
+        "days_buffer": 30,
+    },
+    {
         "id": "feb_2017",
         "name": "Inundacion Febrero 2017",
         "date": "2017-02-20",
         "description": "Gran inundacion que afecto Bell Ville y zona rural",
         "severity": "alta",
+        "sensor": "sentinel2",
     },
     {
         "id": "sep_2025",
@@ -66,8 +77,8 @@ async def get_sentinel2_tiles_impl(
     *,
     start_date: date,
     end_date: date,
-    max_cloud: int,
-    ensure_gee,
+    max_cloud: int = 80,
+    ensure_gee=None,
 ):
     svc = ensure_gee()
     try:
@@ -124,9 +135,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
     except AppException:
         raise
     except Exception as e:
-        logger.error(
-            "Error obteniendo caminos por consorcio", codigo=codigo, error=str(e)
-        )
+        logger.error("Error obteniendo caminos por consorcio", codigo=codigo, error=str(e))
         raise AppException(
             message=get_safe_error_detail(e, "caminos del consorcio"),
             code="GEE_CAMINOS_ERROR",
@@ -134,9 +143,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
         )
 
 
-async def get_caminos_por_nombre_consorcio_impl(
-    *, nombre: str, ensure_gee
-) -> JSONResponse:
+async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> JSONResponse:
     svc = ensure_gee()
     try:
         geojson = await _run_blocking(svc["get_caminos_by_consorcio_nombre"], nombre)
@@ -251,8 +258,8 @@ async def get_available_image_dates_impl(
     year: int,
     month: int,
     sensor: str,
-    max_cloud: int,
-    ensure_gee,
+    max_cloud: int = 80,
+    ensure_gee=None,
 ):
     svc = ensure_gee()
     try:
@@ -282,14 +289,12 @@ async def get_sentinel2_image_impl(
     *,
     target_date: date,
     days_buffer: int,
-    max_cloud: int,
-    visualization: str,
-    ensure_gee,
+    max_cloud: int = 80,
+    visualization: str = "rgb",
+    ensure_gee=None,
 ):
     cache = get_cache()
-    cache_key = (
-        f"gee:s2:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
-    )
+    cache_key = f"gee:s2:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
@@ -327,27 +332,98 @@ async def get_sentinel1_image_impl(
     visualization: str,
     ensure_gee,
 ):
+    return await get_satellite_image_impl(
+        sensor="sentinel1",
+        target_date=target_date,
+        days_buffer=days_buffer,
+        max_cloud=100,
+        visualization=visualization,
+        ensure_gee=ensure_gee,
+    )
+
+
+async def get_satellite_image_impl(
+    *,
+    sensor: str,
+    target_date: date,
+    days_buffer: int,
+    max_cloud: int = 80,
+    visualization: str = "rgb",
+    mode: str = "scene",
+    ensure_gee=None,
+):
+    cache = get_cache()
+    cache_key = f"gee:image:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}:{mode}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
     svc = ensure_gee()
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
-            explorer.get_sentinel1_image,
+            explorer.get_image,
+            sensor=sensor,
             target_date=target_date,
             days_buffer=days_buffer,
+            max_cloud=max_cloud,
             visualization=visualization,
+            mode=mode,
         )
         if "error" in result:
             raise NotFoundError(
                 message=result.get("error", "Imagen no encontrada"),
-                code="SENTINEL1_NOT_FOUND",
+                code="SATELLITE_IMAGE_NOT_FOUND",
             )
+        await cache.set(cache_key, result, ttl_seconds=GEE_SENTINEL2_TTL)
         return result
     except AppException:
         raise
     except Exception as e:
         raise AppException(
-            message=get_safe_error_detail(e, "imagen Sentinel-1"),
+            message=get_safe_error_detail(e, f"imagen {sensor}"),
             code="IMAGE_EXPLORER_ERROR",
+            status_code=500,
+        )
+
+
+async def get_image_scenes_impl(
+    *,
+    sensor: str,
+    target_date: date,
+    days_buffer: int = 1,
+    max_cloud: int = 80,
+    visualization: str = "rgb",
+    ensure_gee=None,
+):
+    cache = get_cache()
+    cache_key = f"gee:image-scenes:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
+    svc = ensure_gee()
+    try:
+        explorer = svc["get_image_explorer"]()
+        result = await _run_blocking(
+            explorer.get_image_scenes,
+            sensor=sensor,
+            target_date=target_date,
+            days_buffer=days_buffer,
+            max_cloud=max_cloud,
+            visualization=visualization,
+        )
+        if "error" in result:
+            raise NotFoundError(
+                message=result.get("error", "Escenas no encontradas"),
+                code="SATELLITE_SCENES_NOT_FOUND",
+            )
+        await cache.set(cache_key, result, ttl_seconds=GEE_SENTINEL2_TTL)
+        return result
+    except AppException:
+        raise
+    except Exception as e:
+        raise AppException(
+            message=get_safe_error_detail(e, f"escenas {sensor}"),
+            code="IMAGE_SCENES_ERROR",
             status_code=500,
         )
 
@@ -417,15 +493,21 @@ async def get_historic_flood_tiles_impl(
     try:
         explorer = svc["get_image_explorer"]()
         flood_date = date.fromisoformat(flood["date"])
-        days_buffer = 30 if flood_date.year < 2020 else 15
+        days_buffer = int(flood.get("days_buffer") or (30 if flood_date.year < 2020 else 15))
+        sensor = str(flood.get("sensor") or "sentinel2")
+        max_cloud = int(flood.get("max_cloud") or 60)
 
+        # Historic floods always composite (temporal median) for optical sensors
+        # so transient clouds are rejected — this is the original use_median=True
+        # behavior. SAR (Sentinel-1) has no optical clouds, so it stays scene.
         result = await _run_blocking(
-            explorer.get_sentinel2_image,
+            explorer.get_image,
+            sensor=sensor,
             target_date=flood_date,
             days_buffer=days_buffer,
-            max_cloud=60,
+            max_cloud=max_cloud,
             visualization=visualization,
-            use_median=True,
+            mode="scene" if sensor == "sentinel1" else "composite",
         )
 
         if "error" in result:
@@ -436,6 +518,12 @@ async def get_historic_flood_tiles_impl(
                 visualization="vv_flood",
             )
 
+        # Tag composite so a persisted flood selection regenerates with the
+        # median (cloud-free) path on reload instead of drifting back to mosaic.
+        # Check the RESULT sensor, not the requested one, so the SAR fallback
+        # (which is scene/mosaic, no optical clouds) is never mislabeled.
+        if "error" not in result and result.get("sensor") != "Sentinel-1":
+            result.setdefault("composition_mode", "composite")
         result["flood_info"] = flood
         return result
     except AppException:
@@ -464,7 +552,5 @@ async def export_qgis_project_impl():
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={
-            "Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'
-        },
+        headers={"Content-Disposition": 'attachment; filename="consorcio-canalero.qgz"'},
     )

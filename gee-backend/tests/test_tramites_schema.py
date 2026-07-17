@@ -67,9 +67,7 @@ class TestTramiteCreateRequired:
 
     def test_rejects_missing_descripcion(self):
         with pytest.raises(ValidationError):
-            TramiteCreate(
-                tipo="obra", titulo="Titulo OK x 5", solicitante="Solicitante"
-            )  # type: ignore[call-arg]
+            TramiteCreate(tipo="obra", titulo="Titulo OK x 5", solicitante="Solicitante")  # type: ignore[call-arg]
 
     def test_rejects_missing_solicitante(self):
         with pytest.raises(ValidationError):

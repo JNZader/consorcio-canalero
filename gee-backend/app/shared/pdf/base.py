@@ -83,9 +83,7 @@ class BrandingInfo:
 def get_branding(db: Session) -> BrandingInfo:
     """Fetch branding info from SettingsService."""
     svc = SettingsService()
-    nombre = svc.get_setting(
-        db, "general/nombre_organizacion", default="Consorcio Canalero"
-    )
+    nombre = svc.get_setting(db, "general/nombre_organizacion", default="Consorcio Canalero")
     logo_url = svc.get_setting(db, "branding/logo_url", default=None)
     color = svc.get_setting(db, "branding/color_primario", default="#1976D2")
 
@@ -93,9 +91,7 @@ def get_branding(db: Session) -> BrandingInfo:
     logo_path = None
     if logo_url:
         # logo_url is like "/static/logo.png" — resolve to filesystem
-        base_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        )
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         candidate = os.path.join(base_dir, logo_url.lstrip("/"))
         if os.path.exists(candidate):
             logo_path = candidate
@@ -274,9 +270,7 @@ class BrandedPDF:
         self.styles = get_pdf_styles(branding)
         self._primary = _hex_to_color(branding.color_primario)
         self._font = _register_fonts()
-        self._font_bold = (
-            "DejaVuSans-Bold" if self._font == "DejaVuSans" else "Helvetica-Bold"
-        )
+        self._font_bold = "DejaVuSans-Bold" if self._font == "DejaVuSans" else "Helvetica-Bold"
 
     def _header_footer(self, canvas, doc):
         """Draw header and footer on each page."""
@@ -350,8 +344,6 @@ class BrandedPDF:
             leftMargin=1.5 * cm,
             rightMargin=1.5 * cm,
         )
-        doc.build(
-            flowables, onFirstPage=self._header_footer, onLaterPages=self._header_footer
-        )
+        doc.build(flowables, onFirstPage=self._header_footer, onLaterPages=self._header_footer)
         buffer.seek(0)
         return buffer

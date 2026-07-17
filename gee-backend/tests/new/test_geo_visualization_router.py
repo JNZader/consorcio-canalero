@@ -11,6 +11,7 @@ Layer resolution happens inside VisualizationService via DB lookup.
 
 TDD cycle: RED → GREEN → REFACTOR
 """
+
 from __future__ import annotations
 
 import sys
@@ -26,14 +27,19 @@ from fastapi.responses import Response
 # Stub pyvista so renderer.py can be imported without a display
 # ---------------------------------------------------------------------------
 
+
 def _make_pyvista_stub() -> types.ModuleType:
     pv = types.ModuleType("pyvista")
 
     class _StructuredGrid:
         def __init__(self, *a, **kw):
             self._data: dict = {}
-        def __setitem__(self, k, v): self._data[k] = v
-        def __getitem__(self, k): return self._data[k]
+
+        def __setitem__(self, k, v):
+            self._data[k] = v
+
+        def __getitem__(self, k):
+            return self._data[k]
 
     class _PolyData:
         def __init__(self, *a, **kw):
@@ -43,7 +49,9 @@ def _make_pyvista_stub() -> types.ModuleType:
     class _Plotter:
         def __init__(self, *a, **kw): ...
         def add_mesh(self, *a, **kw): ...
-        def screenshot(self, *a, **kw): return b"PNG_BYTES"
+        def screenshot(self, *a, **kw):
+            return b"PNG_BYTES"
+
         def open_movie(self, path, *a, **kw): ...
         def write_frame(self, *a, **kw): ...
         def close(self, *a, **kw): ...
@@ -63,6 +71,7 @@ sys.modules.setdefault("pyvista", _make_pyvista_stub())
 # Shared mock helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_service(
     cuencas_bytes: bytes = b"PNG_CUENCAS",
     escorrentia_bytes: bytes = b"PNG_ESCORRENTIA",
@@ -81,6 +90,7 @@ def _make_service(
 # ---------------------------------------------------------------------------
 # GET /cuencas
 # ---------------------------------------------------------------------------
+
 
 class TestRenderCuencasEndpoint:
     """GET /render/cuencas — no path params, optional area_id only."""
@@ -178,6 +188,7 @@ class TestRenderCuencasEndpoint:
 # GET /escorrentia
 # ---------------------------------------------------------------------------
 
+
 class TestRenderEscorrentiaEndpoint:
     """GET /render/escorrentia → 200 + image/png."""
 
@@ -262,6 +273,7 @@ class TestRenderEscorrentiaEndpoint:
 # GET /riesgo
 # ---------------------------------------------------------------------------
 
+
 class TestRenderRiesgoEndpoint:
     """GET /render/riesgo → 200 + image/png."""
 
@@ -329,6 +341,7 @@ class TestRenderRiesgoEndpoint:
 # ---------------------------------------------------------------------------
 # GET /animacion
 # ---------------------------------------------------------------------------
+
 
 class TestRenderAnimacionEndpoint:
     """GET /render/animacion → 200 + video/mp4."""
@@ -413,6 +426,7 @@ class TestRenderAnimacionEndpoint:
 # Auth dependency helpers
 # ---------------------------------------------------------------------------
 
+
 class TestRouterAuthHelpers:
     """Smoke tests for auth helpers."""
 
@@ -438,6 +452,7 @@ class TestRouterAuthHelpers:
 # ---------------------------------------------------------------------------
 # HTTPException(404) from service propagates correctly
 # ---------------------------------------------------------------------------
+
 
 class TestLayerNotFoundPropagation:
     """Service HTTPException(404) must propagate unmodified."""
@@ -523,6 +538,7 @@ class TestLayerNotFoundPropagation:
 # ---------------------------------------------------------------------------
 # Router is thin — no business logic
 # ---------------------------------------------------------------------------
+
 
 class TestRouterIsThin:
     """Verify router contains no business logic."""

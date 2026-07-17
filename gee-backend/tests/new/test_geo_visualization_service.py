@@ -12,6 +12,7 @@ Strategy:
 
 TDD cycle: RED → GREEN → REFACTOR per task 3.1–3.6 (updated for DB-layer wiring).
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,6 +28,7 @@ from fastapi import HTTPException
 # ---------------------------------------------------------------------------
 # Stub pyvista so renderer.py can be imported (same pattern as renderer tests)
 # ---------------------------------------------------------------------------
+
 
 def _make_pyvista_stub() -> types.ModuleType:
     pv = types.ModuleType("pyvista")
@@ -49,7 +51,9 @@ def _make_pyvista_stub() -> types.ModuleType:
     class _Plotter:
         def __init__(self, *args, **kwargs): ...
         def add_mesh(self, *args, **kwargs): ...
-        def screenshot(self, *args, **kwargs): return b"PNG_BYTES"
+        def screenshot(self, *args, **kwargs):
+            return b"PNG_BYTES"
+
         def open_movie(self, path, *args, **kwargs): ...
         def write_frame(self, *args, **kwargs): ...
         def close(self, *args, **kwargs): ...
@@ -79,6 +83,7 @@ _REPO_MODULE = "app.domains.geo.visualization.service.GeoRepository"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_fake_layer(path: str) -> MagicMock:
     """Return a mock GeoLayer with the given archivo_path."""
     layer = MagicMock()
@@ -89,6 +94,7 @@ def _make_fake_layer(path: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -131,6 +137,7 @@ def mock_rasterio_dataset() -> MagicMock:
     elevation = np.ones((10, 10), dtype=np.float32) * 42.0
 
     from collections import namedtuple
+
     Affine = namedtuple("Affine", ["a", "b", "c", "d", "e", "f"])
     transform = Affine(a=30.0, b=0.0, c=0.0, d=0.0, e=-30.0, f=300.0)
 
@@ -165,6 +172,7 @@ def service() -> VisualizationService:
 # ---------------------------------------------------------------------------
 # _get_layer_path helper tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetLayerPath:
     """VisualizationService._get_layer_path — DB-based layer resolution."""
@@ -219,11 +227,13 @@ class TestGetLayerPath:
 # render_cuencas tests
 # ---------------------------------------------------------------------------
 
+
 class TestRenderCuencas:
     """VisualizationService.render_cuencas — DB layer lookup + rendering."""
 
     def _patch_repo(self, dem_path: str, flow_acc_path: str):
         """Context manager factory that patches GeoRepository for cuencas."""
+
         def _repo_side_effect(*args, tipo_filter=None, **kwargs):
             mapping = {
                 TipoGeoLayer.DEM_RAW: ([_make_fake_layer(dem_path)], 1),
@@ -236,8 +246,13 @@ class TestRenderCuencas:
         return mock_repo_instance
 
     def test_returns_bytes(
-        self, service, db, dem_path, flow_acc_path,
-        mock_rasterio_dataset, empty_cuencas_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -252,8 +267,13 @@ class TestRenderCuencas:
         assert len(result) > 0
 
     def test_calls_generar_zonificacion(
-        self, service, db, dem_path, flow_acc_path,
-        mock_rasterio_dataset, empty_cuencas_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -261,16 +281,19 @@ class TestRenderCuencas:
                 with patch(
                     f"{_CALC_MODULE}.generar_zonificacion", return_value=empty_cuencas_gdf
                 ) as mock_gen:
-                    with patch.object(
-                        _renderer_module, "render_cuencas_3d", return_value=b"PNG"
-                    ):
+                    with patch.object(_renderer_module, "render_cuencas_3d", return_value=b"PNG"):
                         service.render_cuencas(db)
 
         mock_gen.assert_called_once()
 
     def test_calls_renderer_with_numpy_array(
-        self, service, db, dem_path, flow_acc_path,
-        mock_rasterio_dataset, empty_cuencas_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -286,17 +309,20 @@ class TestRenderCuencas:
         assert isinstance(elevation_arg, np.ndarray)
 
     def test_renderer_return_value_is_propagated(
-        self, service, db, dem_path, flow_acc_path,
-        mock_rasterio_dataset, empty_cuencas_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
     ):
         expected = b"EXPECTED_PNG"
         repo_instance = self._patch_repo(dem_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
             with patch("rasterio.open", return_value=mock_rasterio_dataset):
                 with patch(f"{_CALC_MODULE}.generar_zonificacion", return_value=empty_cuencas_gdf):
-                    with patch.object(
-                        _renderer_module, "render_cuencas_3d", return_value=expected
-                    ):
+                    with patch.object(_renderer_module, "render_cuencas_3d", return_value=expected):
                         result = service.render_cuencas(db)
 
         assert result == expected
@@ -335,6 +361,7 @@ class TestRenderCuencas:
 # 404 when no layers found in DB
 # ---------------------------------------------------------------------------
 
+
 class TestLayerNotFoundRaises404:
     """HTTPException(404) is raised when the DB has no matching layer."""
 
@@ -371,6 +398,7 @@ class TestLayerNotFoundRaises404:
 # render_escorrentia tests
 # ---------------------------------------------------------------------------
 
+
 class TestRenderEscorrentia:
     """VisualizationService.render_escorrentia — DB lookup + simular_escorrentia."""
 
@@ -388,8 +416,14 @@ class TestRenderEscorrentia:
         return mock_repo_instance
 
     def test_returns_bytes(
-        self, service, db, dem_path, flow_dir_path, flow_acc_path,
-        mock_rasterio_dataset, sample_escorrentia_geojson,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_dir_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        sample_escorrentia_geojson,
     ):
         repo_instance = self._patch_repo(dem_path, flow_dir_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -406,8 +440,14 @@ class TestRenderEscorrentia:
         assert isinstance(result, bytes)
 
     def test_calls_simular_escorrentia_with_correct_params(
-        self, service, db, dem_path, flow_dir_path, flow_acc_path,
-        mock_rasterio_dataset, sample_escorrentia_geojson,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_dir_path,
+        flow_acc_path,
+        mock_rasterio_dataset,
+        sample_escorrentia_geojson,
     ):
         repo_instance = self._patch_repo(dem_path, flow_dir_path, flow_acc_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -423,12 +463,20 @@ class TestRenderEscorrentia:
 
         mock_sim.assert_called_once()
         args, kwargs = mock_sim.call_args
-        all_kwargs = {**dict(zip(["flow_dir_path", "flow_acc_path", "punto_inicio", "lluvia_mm"], args)), **kwargs}
+        all_kwargs = {
+            **dict(zip(["flow_dir_path", "flow_acc_path", "punto_inicio", "lluvia_mm"], args)),
+            **kwargs,
+        }
         punto = all_kwargs.get("punto_inicio") or (args[2] if len(args) > 2 else None)
         assert punto == (-63.0, -31.0)
 
     def test_passes_geojson_to_renderer(
-        self, service, db, dem_path, flow_dir_path, flow_acc_path,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_dir_path,
+        flow_acc_path,
         mock_rasterio_dataset,
     ):
         sentinel_geojson = {"type": "FeatureCollection", "features": [{"sentinel": True}]}
@@ -449,6 +497,7 @@ class TestRenderEscorrentia:
 # render_riesgo tests
 # ---------------------------------------------------------------------------
 
+
 class TestRenderRiesgo:
     """VisualizationService.render_riesgo — DB lookup + detectar_puntos_conflicto."""
 
@@ -466,8 +515,14 @@ class TestRenderRiesgo:
         return mock_repo_instance
 
     def test_returns_bytes(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -484,8 +539,14 @@ class TestRenderRiesgo:
         assert isinstance(result, bytes)
 
     def test_calls_detectar_puntos_conflicto(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -494,9 +555,7 @@ class TestRenderRiesgo:
                     f"{_CALC_MODULE}.detectar_puntos_conflicto",
                     return_value=empty_conflictos_gdf,
                 ) as mock_detect:
-                    with patch.object(
-                        _renderer_module, "render_riesgo_3d", return_value=b"PNG"
-                    ):
+                    with patch.object(_renderer_module, "render_riesgo_3d", return_value=b"PNG"):
                         service.render_riesgo(db)
 
         mock_detect.assert_called_once()
@@ -506,8 +565,14 @@ class TestRenderRiesgo:
         assert slope_path in all_str_args
 
     def test_calls_renderer(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -528,6 +593,7 @@ class TestRenderRiesgo:
 # render_animacion tests
 # ---------------------------------------------------------------------------
 
+
 class TestRenderAnimacion:
     """VisualizationService.render_animacion — DB lookup + both calc functions."""
 
@@ -545,8 +611,15 @@ class TestRenderAnimacion:
         return mock_repo_instance
 
     def test_returns_bytes(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_cuencas_gdf, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -564,8 +637,15 @@ class TestRenderAnimacion:
         assert isinstance(result, bytes)
 
     def test_calls_generar_zonificacion(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_cuencas_gdf, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -585,8 +665,15 @@ class TestRenderAnimacion:
         mock_gen.assert_called_once()
 
     def test_calls_detectar_puntos_conflicto(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_cuencas_gdf, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -604,8 +691,15 @@ class TestRenderAnimacion:
         mock_detect.assert_called_once()
 
     def test_calls_renderer(
-        self, service, db, dem_path, flow_acc_path, slope_path,
-        mock_rasterio_dataset, empty_cuencas_gdf, empty_conflictos_gdf,
+        self,
+        service,
+        db,
+        dem_path,
+        flow_acc_path,
+        slope_path,
+        mock_rasterio_dataset,
+        empty_cuencas_gdf,
+        empty_conflictos_gdf,
     ):
         repo_instance = self._patch_repo(dem_path, flow_acc_path, slope_path)
         with patch(_REPO_MODULE, return_value=repo_instance):
@@ -626,6 +720,7 @@ class TestRenderAnimacion:
 # ---------------------------------------------------------------------------
 # _load_dem private helper tests
 # ---------------------------------------------------------------------------
+
 
 class TestLoadDemHelper:
     """VisualizationService._load_dem helper."""
@@ -659,6 +754,7 @@ class TestLoadDemHelper:
 # Calculation imports smoke test
 # ---------------------------------------------------------------------------
 
+
 class TestServiceImports:
     """Verify module-level imports in the service module.
 
@@ -670,4 +766,5 @@ class TestServiceImports:
 
     def test_service_module_imports_tipo_geo_layer(self):
         import app.domains.geo.visualization.service as svc_mod
+
         assert hasattr(svc_mod, "TipoGeoLayer")

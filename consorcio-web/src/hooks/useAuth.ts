@@ -36,6 +36,7 @@ import {
   signOut,
   signUpWithEmail,
 } from '../lib/auth';
+import { safeGetUserRole } from '../lib/typeGuards';
 import { type StoreUser, type UserRole, useAuthStore } from '../stores/authStore';
 import type { Usuario } from '../types';
 
@@ -158,7 +159,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   // Derived state
   const isLoading = loading || !initialized;
   const isAuthenticated = !!user && !loading && initialized;
-  const role: UserRole | null = (profile?.rol as UserRole) || null;
+  // Runtime-validated (no blind cast): returns null for unknown role strings.
+  const role: UserRole | null = safeGetUserRole(profile?.rol);
 
   // Role checking utilities - memoized to prevent unnecessary re-renders
   const hasRole = useCallback(

@@ -336,7 +336,7 @@ export function assertValid<T>(
 /**
  * Valid sensor types for satellite imagery.
  */
-const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2'] as const;
+const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2', 'Landsat 8', 'Landsat 7', 'Landsat 5'] as const;
 
 /**
  * Validates if a value is a valid SelectedImage from localStorage.
@@ -345,10 +345,13 @@ const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2'] as const;
 export interface SelectedImageShape {
   tile_url: string;
   target_date: string;
-  sensor: 'Sentinel-1' | 'Sentinel-2';
+  sensor: (typeof VALID_SENSORS)[number];
   visualization: string;
   visualization_description: string;
   collection: string;
+  days_buffer?: number;
+  max_cloud?: number | null;
+  mode?: 'scene' | 'composite';
   images_count: number;
   selected_at: string;
   flood_info?: {
@@ -382,24 +385,38 @@ export function isValidSelectedImage(value: unknown): value is SelectedImageShap
   // Required number field
   if (typeof obj.images_count !== 'number' || obj.images_count < 0) return false;
 
-  // Validate tile_url is a valid URL pattern (basic security check)
+  // tile_url comes from localStorage (attacker-writable): restrict to the
+  // exact Earth Engine tile hosts instead of accepting any https origin
+  // (auditoría 2026-07-09, hallazgo 3).
   try {
     // Allow template placeholders by temporarily replacing them
     const testUrl = (obj.tile_url as string).replace(/\{[xyz]\}/g, '0');
     const parsed = new URL(testUrl);
-    // Only allow HTTPS or valid Earth Engine URLs (by hostname)
-    const hostname = parsed.hostname;
     const isEarthEngineHost = (ALLOWED_EARTH_ENGINE_HOSTNAMES as readonly string[]).includes(
-      hostname
+      parsed.hostname
     );
-    if (
-      parsed.protocol !== 'https:' ||
-      (!isEarthEngineHost && hostname.endsWith('.googleapis.com'))
-    ) {
-      // Require HTTPS always, and only allow Earth Engine traffic to known hostnames
+    if (parsed.protocol !== 'https:' || !isEarthEngineHost) {
       return false;
     }
   } catch {
+    return false;
+  }
+
+  // Optional persisted search params (used to regenerate the exact tile)
+  if (
+    obj.days_buffer !== undefined &&
+    (typeof obj.days_buffer !== 'number' || obj.days_buffer < 1 || obj.days_buffer > 30)
+  ) {
+    return false;
+  }
+  if (
+    obj.max_cloud !== undefined &&
+    obj.max_cloud !== null &&
+    (typeof obj.max_cloud !== 'number' || obj.max_cloud < 0 || obj.max_cloud > 100)
+  ) {
+    return false;
+  }
+  if (obj.mode !== undefined && obj.mode !== 'scene' && obj.mode !== 'composite') {
     return false;
   }
 

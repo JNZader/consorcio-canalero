@@ -127,9 +127,7 @@ def add_seguimiento(
     user=Depends(_require_operator()),
 ):
     """Agregar seguimiento a un tramite (requiere operador)."""
-    return service.add_seguimiento(
-        db, tramite_id, payload, operator_id=uuid.UUID(str(user.id))
-    )
+    return service.add_seguimiento(db, tramite_id, payload, operator_id=uuid.UUID(str(user.id)))
 
 
 # ──────────────────────────────────────────────

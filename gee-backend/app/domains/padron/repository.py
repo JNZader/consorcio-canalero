@@ -15,9 +15,7 @@ class PadronRepository:
 
     # ── READ ──────────────────────────────────
 
-    def get_by_id(
-        self, db: Session, consorcista_id: uuid.UUID
-    ) -> Optional[Consorcista]:
+    def get_by_id(self, db: Session, consorcista_id: uuid.UUID) -> Optional[Consorcista]:
         """Return a single consorcista, or None."""
         stmt = select(Consorcista).where(Consorcista.id == consorcista_id)
         return db.execute(stmt).scalar_one_or_none()

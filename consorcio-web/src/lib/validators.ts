@@ -162,6 +162,35 @@ export const validators = {
 };
 
 // ===========================================
+// PASSWORD VALIDATION
+// ===========================================
+
+/**
+ * Minimum password length used across all password forms.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Shared password validator for Mantine forms (register, reset, change).
+ * Rules: min 8 chars, at least one number and one letter.
+ * Keep register and reset flows in sync — do NOT duplicate these rules inline.
+ * @param value - The password value
+ * @returns Error message or null if valid
+ */
+export function validatePassword(value: string): string | null {
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return `La contrasena debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`;
+  }
+  if (!/[0-9]/.test(value)) {
+    return 'La contrasena debe incluir al menos un numero';
+  }
+  if (!/[a-zA-Z]/.test(value)) {
+    return 'La contrasena debe incluir al menos una letra';
+  }
+  return null;
+}
+
+// ===========================================
 // URL VALIDATION
 // ===========================================
 
@@ -179,6 +208,20 @@ export function isValidUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Validates an optional http(s) URL for Mantine form validation.
+ * Empty values are allowed (field is optional); non-empty values must
+ * be a valid URL with http:// or https:// scheme (blocks javascript:,
+ * data:, etc. from ending up in an <a href>).
+ * @param value - The URL value
+ * @returns Error message or null if valid
+ */
+export function validateOptionalHttpUrl(value: string): string | null {
+  if (!value) return null;
+  if (!isValidUrl(value)) return 'Debe ser una URL valida que empiece con http:// o https://';
+  return null;
 }
 
 /**

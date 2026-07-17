@@ -169,9 +169,7 @@ class SettingsService:
         """Return all settings."""
         return self.repo.get_all(db)
 
-    def get_settings_by_category(
-        self, db: Session, categoria: str
-    ) -> list[SystemSettings]:
+    def get_settings_by_category(self, db: Session, categoria: str) -> list[SystemSettings]:
         """Return all settings in a category."""
         return self.repo.get_by_category(db, categoria)
 

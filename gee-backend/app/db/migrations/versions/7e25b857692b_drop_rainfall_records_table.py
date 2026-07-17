@@ -24,12 +24,8 @@ def upgrade() -> None:
     """Drop the dead rainfall_records table and its auxiliary indexes."""
     op.drop_index("ix_rainfall_records_date", table_name="rainfall_records")
     op.drop_index("ix_rainfall_records_zona_date", table_name="rainfall_records")
-    op.drop_index(
-        "ix_rainfall_records_zona_operativa_id", table_name="rainfall_records"
-    )
-    op.drop_constraint(
-        "uq_rainfall_zona_date_source", "rainfall_records", type_="unique"
-    )
+    op.drop_index("ix_rainfall_records_zona_operativa_id", table_name="rainfall_records")
+    op.drop_constraint("uq_rainfall_zona_date_source", "rainfall_records", type_="unique")
     op.drop_table("rainfall_records")
 
 

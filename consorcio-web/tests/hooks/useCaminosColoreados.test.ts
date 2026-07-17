@@ -166,7 +166,7 @@ describe('useCaminosColoreados', () => {
 
   describe('Response validation', () => {
     it('catches BooleanLiteral mutation: should check response.ok', async () => {
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
+      mockFetch.mockImplementation(() => Promise.resolve({
         ok: false,
         status: 400,
         json: async () => mockResponse,
@@ -182,7 +182,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches ConditionalExpression mutation: should error on HTTP 500', async () => {
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
+      mockFetch.mockImplementation(() => Promise.resolve({
         ok: false,
         status: 500,
         json: async () => mockResponse,
@@ -211,7 +211,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches StringLiteral mutation: should include status in error message', async () => {
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
+      mockFetch.mockImplementation(() => Promise.resolve({
         ok: false,
         status: 403,
         json: async () => mockResponse,
@@ -249,7 +249,7 @@ describe('useCaminosColoreados', () => {
 
   describe('Error handling', () => {
     it('should handle fetch errors gracefully', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      mockFetch.mockRejectedValue(new Error('Network error'));
 
       const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
@@ -259,7 +259,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('should handle HTTP response errors', async () => {
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
+      mockFetch.mockImplementation(() => Promise.resolve({
         ok: false,
         status: 500,
       }));
@@ -272,7 +272,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches mutation: should set loading false on error', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      mockFetch.mockRejectedValue(new Error('Network error'));
 
       const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
@@ -282,7 +282,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches StringLiteral mutation: should use exact error message prefix', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('API Error'));
+      mockFetch.mockRejectedValue(new Error('API Error'));
 
       const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
@@ -293,7 +293,7 @@ describe('useCaminosColoreados', () => {
     });
 
     it('catches StringLiteral mutation: should not use empty error prefix', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Test error'));
+      mockFetch.mockRejectedValue(new Error('Test error'));
 
       const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
 
