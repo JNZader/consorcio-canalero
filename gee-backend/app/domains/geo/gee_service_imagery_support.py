@@ -199,6 +199,22 @@ def mask_clouds_landsat(ee_module):
     return _mask
 
 
+def mask_landsat_haze(blue_band: str, threshold: float = 0.15):
+    """Screen out haze remnants that QA_PIXEL misses.
+
+    Thin haze is blue-bright (TOA blue over land sits at ~0.06–0.12; haze and
+    cloud edges exceed ~0.15) but often not flagged as cloud in QA_PIXEL, so it
+    survived into composites as glowing milky smears — which the percentile
+    stretch then amplified. Only for multi-date composites: on a single scene
+    this would punch holes with nothing to fill them.
+    """
+
+    def _mask(image):
+        return image.updateMask(image.select(blue_band).lt(threshold))
+
+    return _mask
+
+
 def build_landsat_collection(
     ee_module, zona, sensor: str, start_date: date, end_date: date, max_cloud: int
 ):
@@ -319,18 +335,19 @@ def build_landsat_payload(
     composition_mode = "scene"
     notes = cfg.get("notes")
 
-    # Cloud masking only makes sense when several dates can backfill the holes
-    # it punches (composite/gap-fill). On a single-date scene mosaic it would
-    # leave black gaps with nothing to fill, so scene mode stays raw.
+    # Cloud + haze masking only makes sense when several dates can backfill the
+    # holes they punch (composite/gap-fill). On a single-date scene mosaic they
+    # would leave black gaps with nothing to fill, so scene mode stays raw.
     mask = mask_clouds_landsat(ee_module)
+    haze = mask_landsat_haze(cfg["rgb"][2])
 
     if use_median and sensor == "landsat7":
-        # Cloud-masked temporal median, then focal-fill the residual SLC-off
-        # stripes. The gaps sit in the same place across a path's few scenes in
-        # a 20-day window, so the median alone can't fill them; interpolating
-        # each hole from nearby valid pixels (iterated, widening reach) closes
-        # the thin/medium stripes. Real data is kept; only holes are filled.
-        median = collection.map(mask).median()
+        # Cloud/haze-masked temporal median, then focal-fill the residual
+        # SLC-off stripes. The gaps sit in the same place across a path's few
+        # scenes in a 20-day window, so the median alone can't fill them;
+        # interpolating each hole from nearby valid pixels (iterated, widening
+        # reach) closes the thin/medium stripes. Only holes are filled.
+        median = collection.map(mask).map(haze).median()
         filled = median
         for radius in (1.5, 3.0, 6.0):
             neighborhood = filled.focal_mean(radius, "circle", "pixels", 2)
@@ -342,7 +359,7 @@ def build_landsat_payload(
             "de franjas SLC-off; los huecos anchos pueden quedar suavizados."
         )
     elif use_median:
-        composite = collection.map(mask).median().clip(explorer.zona)
+        composite = collection.map(mask).map(haze).median().clip(explorer.zona)
         composition_mode = "composite"
     else:
         composite = collection.mosaic().clip(explorer.zona)
