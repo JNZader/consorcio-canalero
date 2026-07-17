@@ -134,6 +134,23 @@ def build_sentinel1_collection(ee_module, zona, start_date: date, end_date: date
     )
 
 
+def mask_clouds_landsat(ee_module):
+    """Per-pixel cloud/shadow mask from the Landsat C02 QA_PIXEL band.
+
+    Without this the Landsat path composited whole scenes including haze, so a
+    56%-cloud scene bled a bluish cast over the mosaic. QA_PIXEL bitmask:
+    bit1=dilated cloud, bit3=cloud, bit4=cloud shadow — drop those pixels so
+    the median/gap-fill draws only from clear observations.
+    """
+
+    def _mask(image):
+        qa = image.select("QA_PIXEL")
+        contaminated = qa.bitwiseAnd(1 << 1).Or(qa.bitwiseAnd(1 << 3)).Or(qa.bitwiseAnd(1 << 4))
+        return image.updateMask(contaminated.eq(0))
+
+    return _mask
+
+
 def build_landsat_collection(
     ee_module, zona, sensor: str, start_date: date, end_date: date, max_cloud: int
 ):
@@ -267,42 +284,33 @@ def build_landsat_payload(
     composition_mode = "scene"
     notes = cfg.get("notes")
 
+    # Cloud masking only makes sense when several dates can backfill the holes
+    # it punches (composite/gap-fill). On a single-date scene mosaic it would
+    # leave black gaps with nothing to fill, so scene mode stays raw.
+    mask = mask_clouds_landsat(ee_module)
+
     if use_median and sensor == "landsat7":
-        primary = explorer._landsat_collection(
-            sensor, target_date, target_date + timedelta(days=1), max_cloud
+        # Cloud-masked temporal median, then focal-fill the residual SLC-off
+        # stripes. The gaps sit in the same place across a path's few scenes in
+        # a 20-day window, so the median alone can't fill them; interpolating
+        # each hole from nearby valid pixels (iterated, widening reach) closes
+        # the thin/medium stripes. Real data is kept; only holes are filled.
+        median = collection.map(mask).median()
+        filled = median
+        for radius in (1.5, 3.0, 6.0):
+            neighborhood = filled.focal_mean(radius, "circle", "pixels", 2)
+            filled = filled.unmask(neighborhood)
+        composite = median.unmask(filled).clip(explorer.zona)
+        composition_mode = "composite"
+        notes = (
+            "Landsat 7 compuesto temporal (mediana sin nubes) con relleno focal "
+            "de franjas SLC-off; los huecos anchos pueden quedar suavizados."
         )
-        primary_count = primary.size().getInfo()
-        fill_image = collection.median()
-        if primary_count > 0:
-            # Landsat 7 SLC-off leaves masked gaps. Preserve the selected-day
-            # scene and use the temporal median only where that scene has no
-            # data — histogram-matched to the primary so the filled stripes
-            # take its tone instead of showing seams from other dates.
-            optical_bands = ["B1", "B2", "B3", "B4", "B5", "B7"]
-            primary_mosaic = primary.mosaic()
-            fill_matched = _match_fill_to_primary(
-                ee_module, primary_mosaic, fill_image, optical_bands, explorer.zona
-            )
-            composite = (
-                primary_mosaic.select(optical_bands).unmask(fill_matched).clip(explorer.zona)
-            )
-            composition_mode = "gapfill"
-            notes = (
-                "Landsat 7 gap-fill: escena del dia preservada; franjas "
-                "SLC-off rellenadas con imagenes cercanas igualadas "
-                "radiometricamente a la escena base."
-            )
-        else:
-            composite = fill_image.clip(explorer.zona)
-            composition_mode = "composite"
-            notes = (
-                "Landsat 7 compuesto temporal: no habia escena exacta del dia; "
-                "se uso mediana de la ventana seleccionada."
-            )
+    elif use_median:
+        composite = collection.map(mask).median().clip(explorer.zona)
+        composition_mode = "composite"
     else:
-        composite = (collection.median() if use_median else collection.mosaic()).clip(explorer.zona)
-        if use_median:
-            composition_mode = "composite"
+        composite = collection.mosaic().clip(explorer.zona)
 
     image, vis_params, description = _render_landsat_image(composite, cfg, visualization)
 
