@@ -364,9 +364,14 @@ def build_landsat_payload(
     else:
         composite = collection.mosaic().clip(explorer.zona)
 
+    # Percentile stretch ONLY for single-date scene mosaics: there the band
+    # statistics are coherent and it gives the vivid desktop-GIS look. On
+    # multi-date composites (median + haze mask + focal fill) stretching each
+    # band independently breaks the inter-band ratios and produces garish
+    # neon output — verified visually on falso color/agricultura.
     stretch = None
     composite_bands = landsat_composite_bands(cfg, visualization)
-    if composite_bands is not None:
+    if composite_bands is not None and composition_mode == "scene":
         stretch = compute_stretch_range(
             ee_module,
             composite,
