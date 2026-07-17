@@ -238,6 +238,21 @@ def landsat_composite_bands(cfg: Dict[str, Any], visualization: str) -> List[str
     return list(cfg[band_key])
 
 
+def landsat_needed_bands(cfg: Dict[str, Any], visualization: str) -> List[str]:
+    """Minimal band set a visualization actually reads — the LLHM gap fill is
+    O(bands × fills × kernel²) per tile, so filling unused bands rate-limited
+    the tile server (GEE 429s)."""
+    composite = landsat_composite_bands(cfg, visualization)
+    if composite is not None:
+        return composite
+    if visualization in {"ndwi", "inundacion"}:
+        return list(cfg["ndwi"])
+    if visualization == "mndwi":
+        return list(cfg["mndwi"])
+    # ndvi: nir + red
+    return [cfg["false_color"][0], cfg["rgb"][0]]
+
+
 def _render_landsat_image(image, cfg: Dict[str, Any], visualization: str, stretch=None):
     if visualization == "ndwi":
         rendered = image.normalizedDifference(cfg["ndwi"]).rename("index")
@@ -375,19 +390,22 @@ def build_landsat_payload(
         # A final focal pass closes only the residual specks where every date
         # is missing data. Texture is preserved — verified against a desktop
         # gap-filled reference the user provided.
-        optical = ["B1", "B2", "B3", "B4", "B5", "B7"]
+        # Cost control (GEE tile 429s made the map crawl): fill ONLY the bands
+        # this visualization reads, 2 fill dates, 12px regression window —
+        # ~8× lighter than the first cut (6 bands × 3 fills × 20px).
+        needed = landsat_needed_bands(cfg, visualization)
 
         def day_mosaic(day_str: str):
             day = date.fromisoformat(day_str)
             day_col = explorer._landsat_collection(sensor, day, day + timedelta(days=1), max_cloud)
-            return haze(mask(day_col.mosaic())).select(optical)
+            return haze(mask(day_col.mosaic())).select(needed)
 
         ordered_dates = sorted(
             dates_list, key=lambda d: abs((date.fromisoformat(d) - target_date).days)
         )
         filled = day_mosaic(ordered_dates[0])
-        for fill_date in ordered_dates[1:4]:
-            filled = _llhm_gap_fill(ee_module, filled, day_mosaic(fill_date), optical)
+        for fill_date in ordered_dates[1:3]:
+            filled = _llhm_gap_fill(ee_module, filled, day_mosaic(fill_date), needed, kernel_px=12)
         for radius in (1.5, 3.0, 6.0):
             filled = filled.unmask(filled.focal_mean(radius, "circle", "pixels", 2))
         composite = filled.clip(explorer.zona)
