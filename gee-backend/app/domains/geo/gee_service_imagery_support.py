@@ -222,35 +222,6 @@ def _landsat_scene_metadata(props: Dict[str, Any], fallback_id: str) -> Dict[str
     }
 
 
-def _match_fill_to_primary(ee_module, primary, fill, bands: List[str], zona):
-    """Linear histogram match (per-band mean/std) of the gap-fill mosaic to the
-    primary scene.
-
-    Raw temporal medians come from different atmospheric conditions and sun
-    angles, so unmasking SLC-off stripes with them leaves visible tonal seams.
-    Normalizing the fill to the primary's statistics over the zona makes the
-    filled stripes take the tone of the selected-day scene.
-    """
-    reducer = ee_module.Reducer.mean().combine(ee_module.Reducer.stdDev(), sharedInputs=True)
-    region_kwargs = {"geometry": zona, "scale": 120, "bestEffort": True, "maxPixels": 1e8}
-    stats_primary = primary.select(bands).reduceRegion(reducer=reducer, **region_kwargs)
-    stats_fill = fill.select(bands).reduceRegion(reducer=reducer, **region_kwargs)
-    mean_names = [f"{b}_mean" for b in bands]
-    std_names = [f"{b}_stdDev" for b in bands]
-    floor = ee_module.Image.constant(1e-6)
-    mean_primary = stats_primary.toImage(mean_names).rename(bands)
-    std_primary = stats_primary.toImage(std_names).rename(bands).max(floor)
-    mean_fill = stats_fill.toImage(mean_names).rename(bands)
-    std_fill = stats_fill.toImage(std_names).rename(bands).max(floor)
-    return (
-        fill.select(bands)
-        .subtract(mean_fill)
-        .divide(std_fill)
-        .multiply(std_primary)
-        .add(mean_primary)
-    )
-
-
 def build_landsat_payload(
     explorer,
     ee_module,
