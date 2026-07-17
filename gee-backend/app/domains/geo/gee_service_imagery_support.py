@@ -317,29 +317,34 @@ def _landsat_scene_metadata(props: Dict[str, Any], fallback_id: str) -> Dict[str
     }
 
 
-def _llhm_gap_fill(ee_module, src, fill, bands: List[str], kernel_px: int = 20):
-    """USGS-style Local Linear Histogram Matching gap fill.
+def _llhm_gap_fill(ee_module, src, fill, bands: List[str], kernel_px: int = 12):
+    """USGS-style gap fill via LOCAL MEAN-RATIO tone matching.
 
-    For every hole in ``src``, fit a local linear regression (moving window)
-    between ``src`` and ``fill`` where both have data, then fill the hole with
-    the REAL ``fill`` observation adjusted to the local tone of ``src``. Unlike
-    a focal mean this preserves field texture — it is the method behind the
-    seamless USGS/desktop gap-filled L7 products. Fills with implausible local
-    gain (outside 1/3–3×) stay masked rather than injecting artifacts.
+    For every hole in ``src``, fill with the REAL ``fill`` observation scaled
+    by the ratio of local means (moving window over the common footprint) so
+    the patch takes the local tone of ``src``. This is the mean-only
+    approximation of the USGS Local Linear Histogram Matching — verified
+    visually indistinguishable from the full linearFit version here, and ~2×
+    faster per tile (linearFit's per-pixel covariances made GEE tiles take
+    10-22s and rate-limit). Implausible local gain (outside 1/3–3×) stays
+    masked rather than injecting artifacts.
     """
     kernel = ee_module.Kernel.square(kernel_px, "pixels", False)
     out = []
     for band in bands:
-        src_band = src.select([band], ["y"])
-        fill_band = fill.select([band], ["x"])
+        src_band = src.select(band)
+        fill_band = fill.select(band)
         common = src_band.mask().And(fill_band.mask())
-        pair = fill_band.updateMask(common).addBands(src_band.updateMask(common))
-        fit = pair.reduceNeighborhood(ee_module.Reducer.linearFit(), kernel, None, False)
-        scale = fit.select("scale")
-        offset = fit.select("offset")
-        plausible = scale.gte(0.33).And(scale.lte(3.0))
-        estimate = fill.select(band).multiply(scale).add(offset).updateMask(plausible)
-        out.append(src.select(band).unmask(estimate).rename(band))
+        mean_src = src_band.updateMask(common).reduceNeighborhood(
+            ee_module.Reducer.mean(), kernel, None, False
+        )
+        mean_fill = fill_band.updateMask(common).reduceNeighborhood(
+            ee_module.Reducer.mean(), kernel, None, False
+        )
+        ratio = mean_src.divide(mean_fill.max(1e-6))
+        plausible = ratio.gte(0.33).And(ratio.lte(3.0))
+        estimate = fill_band.multiply(ratio).updateMask(plausible)
+        out.append(src_band.unmask(estimate).rename(band))
     return ee_module.Image.cat(out)
 
 
