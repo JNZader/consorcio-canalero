@@ -145,9 +145,12 @@ const defaultVisibleVectors: Record<string, boolean> = {
 // relevados) visible affordable on every viewer. The user sees a
 // consistent map between the 2D and 3D toggles instead of a fresh-looking
 // blank scene when they switch from 2D.
-const defaultMap3dVisibleVectors: Record<string, boolean> = {
+// Exported so the 3D viewer derives its startup visibility from THIS record
+// instead of keeping a divergent copy (single source of truth for defaults).
+export const MAP3D_DEFAULT_VISIBLE_VECTORS: Record<string, boolean> = {
   ...defaultVisibleVectors,
 };
+const defaultMap3dVisibleVectors = MAP3D_DEFAULT_VISIBLE_VECTORS;
 
 const inMemoryStorage = {
   getItem: (_name: string) => null,

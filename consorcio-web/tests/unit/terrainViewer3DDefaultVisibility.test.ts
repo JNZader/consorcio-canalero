@@ -3,9 +3,11 @@
  *
  * Phase 0 (Batch A) of `pilar-verde-y-canales-3d` — 3D terrain defaults.
  *
- * The 3D `TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY` derives shared layer ids
- * from `mapLayerSyncStore`, then applies a lightweight 3D startup policy:
- * expensive vector families stay off until the user enables them.
+ * The 3D `TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY` derives BOTH its layer ids
+ * and its values from `mapLayerSyncStore`'s unified map3d defaults (acb1d23):
+ * the store is the single source of truth for startup visibility; the
+ * constant only adds shape/fallback keys, excludes `zona` and forces
+ * `cuencas` off in 3D.
  *
  * Companion to Task 0.5 (smoke test for the `mapLayerSyncStore.map3d` slice
  * shape) — both share this single suite to avoid spinning up two near-empty
@@ -43,24 +45,30 @@ describe('TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY', () => {
     }
   });
 
-  it('starts in lightweight 3D mode (Canales and all 5 PV layers OFF)', () => {
+  it('mirrors the unified map3d store defaults (acb1d23 — no divergent copy)', () => {
+    // Single source of truth: the constant derives from
+    // MAP3D_DEFAULT_VISIBLE_VECTORS, so every store-tracked key must match
+    // (except `zona`, excluded in 3D, and `cuencas`, forced off in 3D).
+    const storeDefaults = useMapLayerSyncStore.getState().map3d.visibleVectors;
+    for (const [key, value] of Object.entries(storeDefaults)) {
+      if (key === 'zona' || key === 'cuencas') continue;
+      expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY[key], key).toBe(value);
+    }
+    // Spot-checks of the unified policy: core context layers start VISIBLE.
     expect(PILAR_AZUL_DEFAULT_VISIBILITY.canales_relevados).toBe(true);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_relevados).toBe(false);
+    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_relevados).toBe(true);
+    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.roads).toBe(true);
+    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.waterways).toBe(true);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.canales_propuestos).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_bpa_historico).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_agro_aceptada).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_agro_presentada).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_agro_zonas).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.pilar_verde_porcentaje_forestacion).toBe(false);
   });
 
   it('preserves the existing terrain base defaults', () => {
-    // Sanity: the merge must not regress the original `TerrainVectorLayerVisibility` keys.
+    // Sanity: keys not tracked by the store keep their fallback, and the
+    // 3D-specific overrides hold.
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.approved_zones).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.cuencas).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.basins).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.roads).toBe(false);
-    expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.waterways).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.soil).toBe(false);
     expect(TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY.catastro).toBe(false);
   });

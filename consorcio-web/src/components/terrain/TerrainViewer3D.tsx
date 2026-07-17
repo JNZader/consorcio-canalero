@@ -36,6 +36,7 @@ import { getSupported3DRasterLayers } from './terrainLayerConfig';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
+  type TerrainVectorLayerVisibility,
   buildCuencasCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
@@ -172,7 +173,17 @@ export default function TerrainViewer3D({
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [vectorLayerVisibility, setVectorLayerVisibility] = useState<Record<string, boolean>>(
-    TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
+    () => {
+      // Seed from the LIVE store (persisted user prefs included) so the first
+      // frame already matches what the mirror effect below will converge to —
+      // no hidden→visible flash from a stale local default. zustand persist
+      // rehydrates in a microtask after store creation; if this ever mounts
+      // before that flush (SSR / eager-mount route), the mirror effect on
+      // sharedVisibleVectors still guarantees convergence one render later.
+      const { cuencas: _cuencas, zona: _zona, ...shared } =
+        useMapLayerSyncStore.getState().map3d.visibleVectors;
+      return { ...TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY, ...shared, cuencas: false };
+    }
   );
   // Phase 5 (Batch F) — click results surfaced by `useTerrainInteractionEffects`.
   // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
@@ -404,7 +415,13 @@ export default function TerrainViewer3D({
   };
 
   useEffect(() => {
-    const { cuencas: _ignoredCuencas, ...supportedVectors } = sharedVisibleVectors;
+    // zona excluded like in the seed above — 3D never renders it and letting
+    // it leak in would silently follow a future 2D default flip.
+    const {
+      cuencas: _ignoredCuencas,
+      zona: _ignoredZona,
+      ...supportedVectors
+    } = sharedVisibleVectors;
     setVectorLayerVisibility((prev) => ({
       ...prev,
       ...supportedVectors,
@@ -797,7 +814,7 @@ export default function TerrainViewer3D({
         soilCollection,
         catastroCollection,
       },
-      vectorLayerVisibility as typeof TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY
+      vectorLayerVisibility as TerrainVectorLayerVisibility
     );
   }, [
     approvedZonesCollection,
