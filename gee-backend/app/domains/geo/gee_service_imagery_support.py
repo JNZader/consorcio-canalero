@@ -122,6 +122,38 @@ def mask_s2_cloudscore(ee_module, collection):
     )
 
 
+def compute_stretch_range(ee_module, image, bands: List[str], zona, *, default_min, default_max):
+    """Per-band 2–98% percentile stretch over the zona, like desktop GIS viewers.
+
+    Fixed min/max windows waste most of the color range (e.g. a band whose real
+    values span 0.09–0.15 rendered on a 0–0.35 window looks washed out). Using
+    the scene's own histogram gives the vivid, high-contrast look of QGIS/
+    EarthExplorer exports. Falls back to the preset window on any failure or
+    degenerate range so rendering never breaks.
+    """
+    try:
+        stats = (
+            image.select(bands)
+            .reduceRegion(
+                reducer=ee_module.Reducer.percentile([2, 98]),
+                geometry=zona,
+                scale=120,
+                bestEffort=True,
+                maxPixels=1e8,
+            )
+            .getInfo()
+        )
+        mins = [stats.get(f"{b}_p2") for b in bands]
+        maxs = [stats.get(f"{b}_p98") for b in bands]
+        if any(v is None for v in mins + maxs):
+            return default_min, default_max
+        if any(hi - lo <= 0 for lo, hi in zip(mins, maxs)):
+            return default_min, default_max
+        return mins, maxs
+    except Exception:
+        return default_min, default_max
+
+
 def collection_dates(collection, distinct_collection_dates_fn) -> list[str]:
     dates = distinct_collection_dates_fn(collection)
     return sorted(dates) if dates else []
@@ -179,7 +211,18 @@ def build_landsat_collection(
     )
 
 
-def _render_landsat_image(image, cfg: Dict[str, Any], visualization: str):
+def landsat_composite_bands(cfg: Dict[str, Any], visualization: str) -> List[str] | None:
+    """Bands of a band-composite visualization, or None for index-based ones."""
+    if visualization in {"ndwi", "mndwi", "ndvi", "inundacion"}:
+        return None
+    band_key = {
+        "falso_color": "false_color",
+        "agricultura": "agriculture",
+    }.get(visualization, "rgb")
+    return list(cfg[band_key])
+
+
+def _render_landsat_image(image, cfg: Dict[str, Any], visualization: str, stretch=None):
     if visualization == "ndwi":
         rendered = image.normalizedDifference(cfg["ndwi"]).rename("index")
         vis_params: Dict[str, Any] = {
@@ -217,7 +260,12 @@ def _render_landsat_image(image, cfg: Dict[str, Any], visualization: str):
             "agricultura": "agriculture",
         }.get(visualization, "rgb")
         rendered = image
-        vis_params = {"bands": cfg[band_key], "min": 0, "max": cfg["max"]}
+        bands = cfg[band_key]
+        if stretch is not None:
+            mins, maxs = stretch
+            vis_params = {"bands": bands, "min": mins, "max": maxs, "gamma": 1.1}
+        else:
+            vis_params = {"bands": bands, "min": 0, "max": cfg["max"]}
         description = OPTICAL_VISUALIZATION_DESCRIPTIONS.get(
             visualization, OPTICAL_VISUALIZATION_DESCRIPTIONS["rgb"]
         )
@@ -299,7 +347,21 @@ def build_landsat_payload(
     else:
         composite = collection.mosaic().clip(explorer.zona)
 
-    image, vis_params, description = _render_landsat_image(composite, cfg, visualization)
+    stretch = None
+    composite_bands = landsat_composite_bands(cfg, visualization)
+    if composite_bands is not None:
+        stretch = compute_stretch_range(
+            ee_module,
+            composite,
+            composite_bands,
+            explorer.zona,
+            default_min=0,
+            default_max=cfg["max"],
+        )
+
+    image, vis_params, description = _render_landsat_image(
+        composite, cfg, visualization, stretch=stretch
+    )
 
     map_id = image.getMapId(vis_params)
     return {
@@ -355,11 +417,27 @@ def build_landsat_scenes_payload(
     metadata_items = collection_list.getInfo()
     scenes = []
 
+    # One shared stretch from the whole window's mosaic: consistent tones
+    # across the scene cards and a single reduceRegion instead of one per scene.
+    stretch = None
+    composite_bands = landsat_composite_bands(cfg, visualization)
+    if composite_bands is not None:
+        stretch = compute_stretch_range(
+            ee_module,
+            collection.mosaic().clip(explorer.zona),
+            composite_bands,
+            explorer.zona,
+            default_min=0,
+            default_max=cfg["max"],
+        )
+
     for index, item in enumerate(metadata_items):
         props = item.get("properties", {}) if isinstance(item, dict) else {}
         metadata = _landsat_scene_metadata(props, item.get("id", str(index)))
         raw_image = ee_module.Image(collection_list.get(index)).clip(explorer.zona)
-        image, vis_params, description = _render_landsat_image(raw_image, cfg, visualization)
+        image, vis_params, description = _render_landsat_image(
+            raw_image, cfg, visualization, stretch=stretch
+        )
         map_id = image.getMapId(vis_params)
         scene_id = str(metadata["id"])
         path = metadata.get("path")
@@ -524,6 +602,11 @@ def build_sentinel2_payload(
         }
     else:
         image = composite
+        # NOTE: no percentile stretch here on purpose. It was tried and looked
+        # WORSE for S2 true color (pastel/overexposed — the histogram is
+        # dominated by bright bare soil); the fixed DN windows in VIS_PRESETS
+        # are already tuned for S2. The stretch lives in the Landsat path,
+        # whose fixed reflectance window really was washing scenes out.
         vis_params = {
             "bands": preset["bands"],
             "min": preset["min"],
