@@ -1,5 +1,6 @@
 """Core geo router endpoints for jobs, layers, bundles and approved basins."""
 
+import os
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
     _get_repo,
@@ -31,6 +33,34 @@ from app.domains.geo.service import GeoJobDispatchError, dispatch_job
 from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(tags=["Geo Processing"])
+
+PUBLIC_TILE_CAPABLE_TYPES = {
+    "dem_raw",
+    "slope",
+    "aspect",
+    "twi",
+    "hand",
+    "flow_acc",
+    "flow_dir",
+    "terrain_class",
+    "flood_risk",
+    "drainage_need",
+}
+
+
+def _truthy_env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _public_map_layer_eval_enabled() -> bool:
+    from app.config import _is_production_env, settings
+
+    # Review/evaluation flag only; it is not a production publication policy.
+    # Requires frontend VITE_PUBLIC_MAP_LAYER_EVAL=true so anonymous map UI requests it.
+    return (
+        _truthy_env_flag("PUBLIC_MAP_LAYER_EVAL")
+        and not _is_production_env(settings.environment)
+    )
 
 
 @router.post("/jobs", response_model=GeoJobResponse, status_code=201)
@@ -147,26 +177,45 @@ def list_public_geo_layers(
 
     Currently intended for non-authenticated base visualization only.
     """
-    allowed_types = {"dem_raw"}
+    eval_enabled = _public_map_layer_eval_enabled()
+    allowed_types = PUBLIC_TILE_CAPABLE_TYPES if eval_enabled else {"dem_raw"}
     if tipo and tipo not in allowed_types:
         return PaginatedResponse[GeoLayerListResponse].create(
             items=[], total=0, page=page, limit=limit
         )
 
-    items, total = repo.get_layers(
-        db,
-        page=page,
-        limit=limit,
-        tipo_filter=tipo or "dem_raw",
-        fuente_filter=fuente,
-        area_id_filter=area_id,
-    )
-    filtered_items = [layer for layer in items if layer.tipo in allowed_types]
+    if eval_enabled:
+        # Local review mode only: expose the same DEM-pipeline raster overlays
+        # that authenticated users can toggle, without turning this endpoint into
+        # a general public metadata catalog for every GeoLayer source.
+        query = db.query(GeoLayer).filter(
+            GeoLayer.fuente == "dem_pipeline",
+            GeoLayer.tipo.in_(allowed_types),
+        )
+        if tipo:
+            query = query.filter(GeoLayer.tipo == tipo)
+        if area_id:
+            query = query.filter(GeoLayer.area_id == area_id)
+        total = query.count()
+        items = (
+            query.order_by(GeoLayer.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+        )
+    else:
+        items, total = repo.get_layers(
+            db,
+            page=page,
+            limit=limit,
+            tipo_filter="dem_raw",
+            fuente_filter=fuente,
+            area_id_filter=area_id,
+        )
+
     return PaginatedResponse[GeoLayerListResponse].create(
-        items=[
-            GeoLayerListResponse.model_validate(layer) for layer in filtered_items
-        ],
-        total=len(filtered_items),
+        items=[GeoLayerListResponse.model_validate(layer) for layer in items],
+        total=total,
         page=page,
         limit=limit,
     )
