@@ -62,7 +62,14 @@ export const mapImageApi = {
    * Returns the full image result including the fresh tile_url.
    */
   regenerateTile: async (params: ImagenMapaParams) => {
-    const sensorEndpoint = params.sensor === 'Sentinel-1' ? 'sentinel1' : 'sentinel2';
+    const sensorEndpointByLabel: Record<string, string> = {
+      'Sentinel-1': 'sentinel1',
+      'Sentinel-2': 'sentinel2',
+      'Landsat 8': 'landsat8',
+      'Landsat 7': 'landsat7',
+      'Landsat 5': 'landsat5',
+    };
+    const sensorEndpoint = sensorEndpointByLabel[params.sensor] ?? 'sentinel2';
 
     const queryParams = new URLSearchParams({
       target_date: params.target_date,
@@ -70,10 +77,10 @@ export const mapImageApi = {
       visualization: params.visualization,
     });
 
-    if (params.sensor === 'Sentinel-2') {
-      // Backend requires max_cloud as a query param; default to 20% cloud cover
-      // when the saved tile params do not have one persisted.
-      queryParams.append('max_cloud', String(params.max_cloud ?? 20));
+    if (params.sensor !== 'Sentinel-1') {
+      // Optical sensors require max_cloud as a query param; default to the
+      // Image Explorer's permissive 80% when saved params do not include it.
+      queryParams.append('max_cloud', String(params.max_cloud ?? 80));
     }
 
     return apiFetch<{

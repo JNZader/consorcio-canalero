@@ -10,7 +10,12 @@ import {
   IconSatellite,
   IconX,
 } from '../../ui/icons';
-import type { ImageResultLike } from './imageExplorerUtils';
+import {
+  type ImageResultLike,
+  type ImageSceneLike,
+  type ImageSensor,
+  isOpticalSensor,
+} from './imageExplorerUtils';
 
 interface HistoricFlood {
   id: string;
@@ -33,7 +38,11 @@ interface ImageExplorerInfoPanelsProps {
   onClearSelectedImage: () => void;
   comparisonReady: boolean;
   onClearComparison: () => void;
-  sensor: 'sentinel2' | 'sentinel1';
+  sensor: ImageSensor;
+  scenes: ImageSceneLike[];
+  selectedSceneId: string | null;
+  onSelectScene: (scene: ImageSceneLike) => void;
+  compositionMode: 'scene' | 'composite';
 }
 
 export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
@@ -51,6 +60,10 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
     comparisonReady,
     onClearComparison,
     sensor,
+    scenes,
+    selectedSceneId,
+    onSelectScene,
+    compositionMode,
   } = props;
 
   return (
@@ -83,6 +96,11 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
                 {result.images_count} imagen{result.images_count !== 1 ? 'es' : ''} |{' '}
                 {result.collection}
               </Text>
+              {result.notes && (
+                <Text size="xs" c="orange.7">
+                  {result.notes}
+                </Text>
+              )}
             </Group>
             <Group gap="sm" wrap="wrap">
               <Button
@@ -119,6 +137,57 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
               </Tooltip>
             </Group>
           </Group>
+        </Paper>
+      )}
+
+      {scenes.length > 0 && (
+        <Paper p="md" withBorder radius="md">
+          <Group justify="space-between" mb="sm">
+            <Title order={5}>Escenas individuales</Title>
+            {sensor === 'landsat7' && (
+              <Badge color={compositionMode === 'composite' ? 'green' : 'orange'} variant="light">
+                {compositionMode === 'composite'
+                  ? 'Vista actual: compuesto experimental'
+                  : 'Vista actual: escena real'}
+              </Badge>
+            )}
+          </Group>
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+            {scenes.map((scene) => (
+              <Card key={scene.id} padding="sm" radius="md" withBorder>
+                <Group justify="space-between" mb="xs">
+                  <Text size="sm" fw={500} lineClamp={1}>
+                    {scene.label}
+                  </Text>
+                  {selectedSceneId === scene.id && (
+                    <Badge color="green" size="sm">
+                      activa
+                    </Badge>
+                  )}
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {scene.cloud_cover != null ? `Nubes: ${Math.round(scene.cloud_cover)}%` : ''}
+                  {scene.path != null && scene.row != null ? ` · P${scene.path}/R${scene.row}` : ''}
+                </Text>
+                <Button
+                  mt="sm"
+                  size="xs"
+                  variant={selectedSceneId === scene.id ? 'light' : 'outline'}
+                  onClick={() => onSelectScene(scene)}
+                  fullWidth
+                >
+                  Ver esta escena
+                </Button>
+              </Card>
+            ))}
+          </SimpleGrid>
+          {sensor === 'landsat7' && (
+            <Text size="xs" c="orange.7" mt="sm">
+              Landsat 7 desde 2003 trae franjas SLC-off. El compuesto puede ayudar en algunas
+              fechas, pero puede verse peor; para marzo 2015 conviene revisar Landsat 8 o
+              Sentinel-1 y usar L7 sólo como escena individual de referencia.
+            </Text>
+          )}
         </Paper>
       )}
 
@@ -238,10 +307,11 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           <Text size="sm" fw={500}>
             Visualizaciones:
           </Text>
-          {sensor === 'sentinel2' ? (
+          {isOpticalSensor(sensor) ? (
             <Text size="sm" c="dimmed">
-              RGB = Color natural | NDWI/MNDWI = Agua en azul | NDVI = Vegetacion en verde |
-              Inundacion = Agua detectada
+              RGB = Color natural | Falso color = vegetacion en rojo | NDWI/MNDWI = Agua |
+              Inundacion = NDWI &gt; 0
+              {sensor === 'landsat7' ? ' | Landsat 7 puede tener gaps SLC-off' : ''}
             </Text>
           ) : (
             <Text size="sm" c="dimmed">

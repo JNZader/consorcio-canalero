@@ -53,6 +53,53 @@ VIS_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
+
+LANDSAT_SENSORS: Dict[str, Dict[str, Any]] = {
+    "landsat8": {
+        "label": "Landsat 8",
+        "collection": "LANDSAT/LC08/C02/T1_TOA",
+        "rgb": ["B4", "B3", "B2"],
+        "false_color": ["B5", "B4", "B3"],
+        "agriculture": ["B6", "B5", "B2"],
+        "ndwi": ["B3", "B5"],
+        "mndwi": ["B3", "B6"],
+        "max": 0.35,
+        "notes": None,
+    },
+    "landsat7": {
+        "label": "Landsat 7",
+        "collection": "LANDSAT/LE07/C02/T1_TOA",
+        "rgb": ["B3", "B2", "B1"],
+        "false_color": ["B4", "B3", "B2"],
+        "agriculture": ["B5", "B4", "B1"],
+        "ndwi": ["B2", "B4"],
+        "mndwi": ["B2", "B5"],
+        "max": 0.35,
+        "notes": "Landsat 7 puede mostrar franjas/gaps por SLC-off desde 2003.",
+    },
+    "landsat5": {
+        "label": "Landsat 5",
+        "collection": "LANDSAT/LT05/C02/T1_TOA",
+        "rgb": ["B3", "B2", "B1"],
+        "false_color": ["B4", "B3", "B2"],
+        "agriculture": ["B5", "B4", "B1"],
+        "ndwi": ["B2", "B4"],
+        "mndwi": ["B2", "B5"],
+        "max": 0.35,
+        "notes": None,
+    },
+}
+
+OPTICAL_VISUALIZATION_DESCRIPTIONS: Dict[str, str] = {
+    "rgb": "Color natural (RGB)",
+    "falso_color": "Falso color (vegetacion en rojo)",
+    "agricultura": "Agricultura / humedad (SWIR-NIR-azul)",
+    "ndwi": "Indice de agua NDWI",
+    "mndwi": "Indice de agua modificado MNDWI",
+    "ndvi": "Indice de vegetacion NDVI",
+    "inundacion": "Deteccion de agua (NDWI > 0)",
+}
+
 def mask_clouds_s2(image) -> Any:
     scl = image.select("SCL")
     mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))
@@ -87,6 +134,226 @@ def build_sentinel1_collection(ee_module, zona, start_date: date, end_date: date
         .filter(ee_module.Filter.eq("instrumentMode", "IW"))
         .filter(ee_module.Filter.listContains("transmitterReceiverPolarisation", "VV"))
     )
+
+
+def build_landsat_collection(
+    ee_module, zona, sensor: str, start_date: date, end_date: date, max_cloud: int
+):
+    cfg = LANDSAT_SENSORS[sensor]
+    return (
+        ee_module.ImageCollection(cfg["collection"])
+        .filterBounds(zona)
+        .filterDate(start_date.isoformat(), end_date.isoformat())
+        .filter(ee_module.Filter.lt("CLOUD_COVER", max_cloud))
+    )
+
+
+def _render_landsat_image(image, cfg: Dict[str, Any], visualization: str):
+    if visualization == "ndwi":
+        rendered = image.normalizedDifference(cfg["ndwi"]).rename("index")
+        vis_params: Dict[str, Any] = {
+            "min": -0.5,
+            "max": 0.5,
+            "palette": ["brown", "white", "blue"],
+        }
+        description = OPTICAL_VISUALIZATION_DESCRIPTIONS["ndwi"]
+    elif visualization == "mndwi":
+        rendered = image.normalizedDifference(cfg["mndwi"]).rename("index")
+        vis_params = {
+            "min": -0.5,
+            "max": 0.5,
+            "palette": ["brown", "white", "cyan"],
+        }
+        description = OPTICAL_VISUALIZATION_DESCRIPTIONS["mndwi"]
+    elif visualization == "ndvi":
+        nir = cfg["false_color"][0]
+        red = cfg["rgb"][0]
+        rendered = image.normalizedDifference([nir, red]).rename("index")
+        vis_params = {
+            "min": -0.2,
+            "max": 0.8,
+            "palette": ["red", "yellow", "green", "darkgreen"],
+        }
+        description = OPTICAL_VISUALIZATION_DESCRIPTIONS["ndvi"]
+    elif visualization == "inundacion":
+        ndwi = image.normalizedDifference(cfg["ndwi"])
+        rendered = ndwi.gt(0).selfMask().rename("index")
+        vis_params = {"palette": ["0000FF"]}
+        description = OPTICAL_VISUALIZATION_DESCRIPTIONS["inundacion"]
+    else:
+        band_key = {
+            "falso_color": "false_color",
+            "agricultura": "agriculture",
+        }.get(visualization, "rgb")
+        rendered = image
+        vis_params = {"bands": cfg[band_key], "min": 0, "max": cfg["max"]}
+        description = OPTICAL_VISUALIZATION_DESCRIPTIONS.get(
+            visualization, OPTICAL_VISUALIZATION_DESCRIPTIONS["rgb"]
+        )
+    return rendered, vis_params, description
+
+
+def _landsat_scene_metadata(props: Dict[str, Any], fallback_id: str) -> Dict[str, Any]:
+    timestamp = props.get("system:time_start")
+    scene_date = None
+    if isinstance(timestamp, (int, float)):
+        scene_date = (date(1970, 1, 1) + timedelta(milliseconds=int(timestamp))).isoformat()
+    return {
+        "id": props.get("system:index") or fallback_id,
+        "date": scene_date,
+        "cloud_cover": props.get("CLOUD_COVER"),
+        "path": props.get("WRS_PATH"),
+        "row": props.get("WRS_ROW"),
+    }
+
+
+def build_landsat_payload(
+    explorer,
+    *,
+    sensor: str,
+    target_date: date,
+    days_buffer: int,
+    max_cloud: int,
+    visualization: str,
+    use_median: bool,
+) -> Dict[str, Any]:
+    cfg = LANDSAT_SENSORS[sensor]
+    start_date = target_date - timedelta(days=days_buffer)
+    end_date = target_date + timedelta(days=days_buffer)
+    collection = explorer._landsat_collection(sensor, start_date, end_date, max_cloud)
+
+    count = collection.size().getInfo()
+    if count == 0:
+        return {
+            "error": f"No se encontraron imagenes {cfg['label']} para la fecha seleccionada",
+            "target_date": target_date.isoformat(),
+            "days_buffer": days_buffer,
+            "max_cloud": max_cloud,
+            "sugerencia": "Intenta aumentar days_buffer o max_cloud, o probar otro Landsat/Sentinel-1.",
+        }
+
+    dates_list = explorer._collection_dates(collection)
+    composition_mode = "scene"
+    notes = cfg.get("notes")
+
+    if use_median and sensor == "landsat7":
+        primary = explorer._landsat_collection(
+            sensor, target_date, target_date + timedelta(days=1), max_cloud
+        )
+        primary_count = primary.size().getInfo()
+        fill_image = collection.median()
+        if primary_count > 0:
+            # Landsat 7 SLC-off leaves masked gaps. Preserve the selected-day
+            # scene and use the temporal median only where that scene has no data.
+            composite = primary.mosaic().unmask(fill_image).clip(explorer.zona)
+            composition_mode = "gapfill"
+            notes = (
+                "Landsat 7 gap-fill: escena del dia preservada; "
+                "imagenes cercanas solo rellenan franjas/gaps SLC-off."
+            )
+        else:
+            composite = fill_image.clip(explorer.zona)
+            composition_mode = "composite"
+            notes = (
+                "Landsat 7 compuesto temporal: no habia escena exacta del dia; "
+                "se uso mediana de la ventana seleccionada."
+            )
+    else:
+        composite = (collection.median() if use_median else collection.mosaic()).clip(explorer.zona)
+        if use_median:
+            composition_mode = "composite"
+
+    image, vis_params, description = _render_landsat_image(composite, cfg, visualization)
+
+    map_id = image.getMapId(vis_params)
+    return {
+        "tile_url": map_id["tile_fetcher"].url_format,
+        "target_date": target_date.isoformat(),
+        "dates_available": dates_list,
+        "images_count": count,
+        "visualization": visualization,
+        "visualization_description": description,
+        "sensor": cfg["label"],
+        "collection": cfg["collection"],
+        "composition_mode": composition_mode,
+        "notes": notes,
+    }
+
+
+def build_landsat_scenes_payload(
+    explorer,
+    ee_module,
+    *,
+    sensor: str,
+    target_date: date,
+    days_buffer: int,
+    max_cloud: int,
+    visualization: str,
+    limit: int = 12,
+) -> Dict[str, Any]:
+    cfg = LANDSAT_SENSORS[sensor]
+    start_date = target_date - timedelta(days=days_buffer)
+    end_date = target_date + timedelta(days=days_buffer)
+    collection = explorer._landsat_collection(sensor, start_date, end_date, max_cloud).sort(
+        "system:time_start"
+    )
+    count = collection.size().getInfo()
+    if count == 0:
+        return {
+            "target_date": target_date.isoformat(),
+            "sensor": cfg["label"],
+            "collection": cfg["collection"],
+            "scenes": [],
+            "total": 0,
+            "notes": cfg.get("notes"),
+        }
+
+    safe_limit = max(1, min(limit, 24))
+    list_size = min(count, safe_limit)
+    collection_list = collection.toList(list_size)
+    metadata_items = collection_list.getInfo()
+    scenes = []
+
+    for index, item in enumerate(metadata_items):
+        props = item.get("properties", {}) if isinstance(item, dict) else {}
+        metadata = _landsat_scene_metadata(props, item.get("id", str(index)))
+        raw_image = ee_module.Image(collection_list.get(index)).clip(explorer.zona)
+        image, vis_params, description = _render_landsat_image(raw_image, cfg, visualization)
+        map_id = image.getMapId(vis_params)
+        scene_id = str(metadata["id"])
+        path = metadata.get("path")
+        row = metadata.get("row")
+        label_parts = [metadata.get("date") or target_date.isoformat(), scene_id]
+        if path is not None and row is not None:
+            label_parts.append(f"P{path}/R{row}")
+        scenes.append(
+            {
+                "id": scene_id,
+                "label": " · ".join(str(part) for part in label_parts if part),
+                "tile_url": map_id["tile_fetcher"].url_format,
+                "target_date": metadata.get("date") or target_date.isoformat(),
+                "visualization": visualization,
+                "visualization_description": description,
+                "sensor": cfg["label"],
+                "collection": cfg["collection"],
+                "images_count": 1,
+                "composition_mode": "scene",
+                "cloud_cover": metadata.get("cloud_cover"),
+                "path": path,
+                "row": row,
+                "notes": cfg.get("notes"),
+            }
+        )
+
+    return {
+        "target_date": target_date.isoformat(),
+        "sensor": cfg["label"],
+        "collection": cfg["collection"],
+        "scenes": scenes,
+        "total": count,
+        "returned": len(scenes),
+        "notes": cfg.get("notes"),
+    }
 
 
 def build_dem_download_payload(
@@ -291,20 +558,35 @@ def build_available_dates_payload(
     end_date = date(year, month, __import__("calendar").monthrange(year, month)[1])
     end_date_exclusive = end_date + timedelta(days=1)
 
-    if sensor == "sentinel2":
+    normalized_sensor = sensor.lower()
+
+    if normalized_sensor == "sentinel2":
         _, collection = explorer._sentinel2_collection(
             start_date,
             end_date_exclusive,
             max_cloud,
             use_toa=year < 2019,
         )
-    else:
+    elif normalized_sensor == "sentinel1":
         collection = explorer._sentinel1_collection(start_date, end_date_exclusive)
+    elif normalized_sensor in LANDSAT_SENSORS:
+        collection = explorer._landsat_collection(
+            normalized_sensor, start_date, end_date_exclusive, max_cloud
+        )
+    else:
+        return {
+            "dates": [],
+            "sensor": sensor,
+            "year": year,
+            "month": month,
+            "total": 0,
+            "error": f"Sensor no soportado: {sensor}",
+        }
 
     dates_list = explorer._collection_dates(collection)
     return {
         "dates": dates_list if dates_list else [],
-        "sensor": sensor,
+        "sensor": normalized_sensor,
         "year": year,
         "month": month,
         "total": len(dates_list) if dates_list else 0,

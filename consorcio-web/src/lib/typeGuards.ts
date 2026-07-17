@@ -336,7 +336,7 @@ export function assertValid<T>(
 /**
  * Valid sensor types for satellite imagery.
  */
-const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2'] as const;
+const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2', 'Landsat 8', 'Landsat 7', 'Landsat 5'] as const;
 
 /**
  * Validates if a value is a valid SelectedImage from localStorage.
@@ -345,7 +345,7 @@ const VALID_SENSORS = ['Sentinel-1', 'Sentinel-2'] as const;
 export interface SelectedImageShape {
   tile_url: string;
   target_date: string;
-  sensor: 'Sentinel-1' | 'Sentinel-2';
+  sensor: (typeof VALID_SENSORS)[number];
   visualization: string;
   visualization_description: string;
   collection: string;

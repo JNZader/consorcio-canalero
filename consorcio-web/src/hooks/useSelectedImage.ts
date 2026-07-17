@@ -17,10 +17,12 @@ import { isValidSelectedImage } from '../lib/typeGuards';
 
 const STORAGE_KEY = 'consorcio_selected_image';
 
+export type SatelliteSensorLabel = 'Sentinel-1' | 'Sentinel-2' | 'Landsat 8' | 'Landsat 7' | 'Landsat 5';
+
 export interface SelectedImage {
   tile_url: string;
   target_date: string;
-  sensor: 'Sentinel-1' | 'Sentinel-2';
+  sensor: SatelliteSensorLabel;
   visualization: string;
   visualization_description: string;
   collection: string;
@@ -297,7 +299,7 @@ async function restoreFromBackend(): Promise<SelectedImage | null> {
     return {
       tile_url: result.tile_url,
       target_date: result.target_date,
-      sensor: result.sensor as 'Sentinel-1' | 'Sentinel-2',
+      sensor: result.sensor as SatelliteSensorLabel,
       visualization: result.visualization,
       visualization_description: result.visualization_description,
       collection: result.collection,
