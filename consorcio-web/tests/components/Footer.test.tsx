@@ -36,7 +36,7 @@ describe('Footer', () => {
     );
 
     expect(
-      screen.getByText('Gestion de cuencas hidricas en Bell Ville, Cordoba')
+      screen.getByText('Gestión de cuencas hídricas en Marcos Juárez, Córdoba')
     ).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe('Footer', () => {
       </MantineProvider>
     );
 
-    expect(screen.getByText('Bell Ville, Cordoba')).toBeInTheDocument();
+    expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
     expect(screen.getByText('Argentina')).toBeInTheDocument();
   });
 
@@ -258,9 +258,9 @@ describe('Footer', () => {
         </MantineProvider>
       );
 
-      const description = screen.getByText('Gestion de cuencas hidricas en Bell Ville, Cordoba');
+      const description = screen.getByText('Gestión de cuencas hídricas en Marcos Juárez, Córdoba');
       expect(description).toBeInTheDocument();
-      expect(description.textContent).toBe('Gestion de cuencas hidricas en Bell Ville, Cordoba');
+      expect(description.textContent).toBe('Gestión de cuencas hídricas en Marcos Juárez, Córdoba');
     });
 
     it('should display section headers with correct text and styling', () => {

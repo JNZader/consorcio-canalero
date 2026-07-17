@@ -114,7 +114,9 @@ describe('mapLayerSyncStore — map3d slice shape (Phase 0 smoke)', () => {
       expect(visible).toHaveProperty(layerId);
     }
 
-    expect(visible.canales_relevados).toBe(false);
+    // Store map3d defaults mirror map2d since acb1d23 ('unify 2D and 3D
+    // viewer layer behaviour'): canales relevados start visible.
+    expect(visible.canales_relevados).toBe(true);
     expect(visible.canales_propuestos).toBe(false);
   });
 });

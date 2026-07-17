@@ -4,19 +4,40 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HomePage, HomeContent } from '../../src/components/HomePage';
 import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mock basePath
 vi.mock('../../src/lib/basePath', () => ({
   withBasePath: (path: string) => path,
 }));
 
-// Wrapper con MantineProvider
+// useCanales controlable por test: default sin data (los tests de placeholder
+// dependen de relevados=null); el test de éxito le inyecta features reales.
+const canalesResultMock = {
+  relevados: null as unknown,
+  propuestas: null,
+  index: null,
+  isLoading: false,
+  isError: false,
+};
+vi.mock('../../src/hooks/useCanales', () => ({
+  useCanales: () => canalesResultMock,
+}));
+
+// Wrapper con MantineProvider + QueryClientProvider (useLandingStats usa react-query)
 const renderWithMantine = (component: React.ReactNode) => {
-  return render(<MantineProvider>{component}</MantineProvider>);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>{component}</MantineProvider>
+    </QueryClientProvider>
+  );
 };
 
 describe('HomePage', () => {
@@ -24,7 +45,7 @@ describe('HomePage', () => {
     describe('hero section', () => {
       it('should render hero section with badge', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Bell Ville, Cordoba')).toBeInTheDocument();
+        expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
       });
 
       it('should render main title', () => {
@@ -57,16 +78,94 @@ describe('HomePage', () => {
     describe('stats section', () => {
       it('should render hectareas stat', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('88,277')).toBeInTheDocument();
+        expect(screen.getByText('88.484')).toBeInTheDocument();
         expect(screen.getByText('Hectareas')).toBeInTheDocument();
         expect(screen.getByText('Area total del consorcio')).toBeInTheDocument();
       });
 
-      it('should render kilometros stat', () => {
+      it('should render kilometros stats (placeholder while geojson loads)', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('749')).toBeInTheDocument();
-        expect(screen.getByText('Kilometros')).toBeInTheDocument();
+        // caminosKm / canalesKm son runtime-derived; sin data quedan en '—'
+        expect(screen.getAllByText('—').length).toBe(2);
+        expect(screen.getAllByText('Kilometros').length).toBe(2);
         expect(screen.getByText('Red de caminos rurales')).toBeInTheDocument();
+        expect(screen.getByText('Canales existentes relevados')).toBeInTheDocument();
+      });
+
+      it('should render computed km values when geojson data resolves', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+          if (String(input).includes('caminos.geojson')) {
+            // 1° de longitud sobre el ecuador ≈ 111,32 km (haversine)
+            return new Response(
+              JSON.stringify({
+                type: 'FeatureCollection',
+                features: [
+                  {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: [
+                        [0, 0],
+                        [1, 0],
+                      ],
+                    },
+                  },
+                ],
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+          return new Response('{}', { status: 404 });
+        });
+        canalesResultMock.relevados = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                nombre: 'Canal A',
+                longitud_m: 4000,
+                tramo_folder: null,
+                source_style: null,
+              },
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [0, 0],
+                  [0, 0.01],
+                ],
+              },
+            },
+            {
+              type: 'Feature',
+              properties: {
+                nombre: 'Canal B',
+                longitud_m: 2600,
+                tramo_folder: null,
+                source_style: null,
+              },
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [0, 0],
+                  [0, 0.01],
+                ],
+              },
+            },
+          ],
+        };
+        try {
+          renderWithMantine(<HomeContent />);
+          // caminos: 111,32 km → es-AR 0 decimales → '111'
+          await waitFor(() => expect(screen.getByText('111')).toBeInTheDocument());
+          // canales: 4000 m + 2600 m = 6,6 km → '7'
+          expect(screen.getByText('7')).toBeInTheDocument();
+          expect(screen.queryByText('—')).not.toBeInTheDocument();
+        } finally {
+          fetchSpy.mockRestore();
+          canalesResultMock.relevados = null;
+        }
       });
     });
 
@@ -76,43 +175,51 @@ describe('HomePage', () => {
         expect(screen.getByRole('heading', { name: /Funcionalidades/i })).toBeInTheDocument();
       });
 
-      it('should render Mapa Interactivo feature', () => {
+      it('should render Mapa feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Mapa Interactivo')).toBeInTheDocument();
-        expect(screen.getByText(/Visualiza cuencas, hidrografia, caminos rurales/i)).toBeInTheDocument();
+        expect(screen.getByText('Visualizá tus cuencas en tiempo real')).toBeInTheDocument();
+        expect(
+          screen.getByText(/Mapa interactivo con cuencas, caminos rurales, suelos/i)
+        ).toBeInTheDocument();
       });
 
-      it('should render Reportar un Problema feature', () => {
+      it('should render Reportar feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Reportar un Problema')).toBeInTheDocument();
-        expect(screen.getByText(/Reporta problemas en caminos, canales o alcantarillas/i)).toBeInTheDocument();
+        expect(screen.getByText('Reportá problemas desde el campo')).toBeInTheDocument();
+        expect(
+          screen.getByText(/Alcantarillas tapadas, caminos rotos o canales sin mantenimiento/i)
+        ).toBeInTheDocument();
       });
 
       it('should render Sugerencias feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Sugerencias')).toBeInTheDocument();
-        expect(screen.getByText(/Propone mejoras o reporta necesidades/i)).toBeInTheDocument();
+        expect(screen.getByText('Sugerí mejoras para tu zona')).toBeInTheDocument();
+        expect(
+          screen.getByText(/Marcá la ubicación exacta y proponé mejoras/i)
+        ).toBeInTheDocument();
       });
 
-      it('should render Panel de Gestion feature', () => {
+      it('should render Gestion interna feature', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Panel de Gestion')).toBeInTheDocument();
-        expect(screen.getByText(/tramites, reuniones, finanzas y padron/i)).toBeInTheDocument();
+        expect(screen.getByText('Gestión interna del consorcio')).toBeInTheDocument();
+        expect(
+          screen.getByText(/Trámites, reuniones, finanzas y padrón de consorcistas/i)
+        ).toBeInTheDocument();
       });
 
       it('should render feature links with correct hrefs', () => {
         renderWithMantine(<HomeContent />);
 
-        const mapaLink = screen.getByRole('link', { name: /Mapa Interactivo/i });
+        const mapaLink = screen.getByRole('link', { name: /Visualizá tus cuencas/i });
         expect(mapaLink).toHaveAttribute('href', '/mapa');
 
-        const reportarLink = screen.getByRole('link', { name: /Reportar un Problema/i });
+        const reportarLink = screen.getByRole('link', { name: /Reportá problemas desde el campo/i });
         expect(reportarLink).toHaveAttribute('href', '/reportes');
 
-        const sugerenciasLink = screen.getByRole('link', { name: /Sugerencias/i });
+        const sugerenciasLink = screen.getByRole('link', { name: /Sugerí mejoras para tu zona/i });
         expect(sugerenciasLink).toHaveAttribute('href', '/sugerencias');
 
-        const adminLink = screen.getByRole('link', { name: /Panel de Gestion/i });
+        const adminLink = screen.getByRole('link', { name: /Gestión interna del consorcio/i });
         expect(adminLink).toHaveAttribute('href', '/admin');
       });
     });
@@ -140,7 +247,7 @@ describe('HomePage', () => {
         const user = userEvent.setup();
         renderWithMantine(<HomeContent />);
 
-        const mapaLink = screen.getByRole('link', { name: /Mapa Interactivo/i });
+        const mapaLink = screen.getByRole('link', { name: /Visualizá tus cuencas/i });
         expect(mapaLink).toBeEnabled();
         await user.click(mapaLink);
       });
@@ -189,10 +296,10 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
 
         // Check for specific feature descriptions
-        expect(screen.getByText(/Visualiza cuencas/i)).toBeInTheDocument();
-        expect(screen.getByText(/Reporta problemas en caminos/i)).toBeInTheDocument();
-        expect(screen.getByText(/Propone mejoras/i)).toBeInTheDocument();
-        expect(screen.getByText(/tramites, reuniones, finanzas/i)).toBeInTheDocument();
+        expect(screen.getByText(/Mapa interactivo con cuencas/i)).toBeInTheDocument();
+        expect(screen.getByText(/Alcantarillas tapadas/i)).toBeInTheDocument();
+        expect(screen.getByText(/proponé mejoras/i)).toBeInTheDocument();
+        expect(screen.getByText(/Trámites, reuniones, finanzas/i)).toBeInTheDocument();
       });
     });
 
@@ -201,15 +308,14 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
 
         // Hero badge
-        expect(screen.getByText('Bell Ville, Cordoba')).toBeInTheDocument();
+        expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
 
         // Stats
-        expect(screen.getByText('88,277')).toBeInTheDocument();
-        expect(screen.getByText('749')).toBeInTheDocument();
+        expect(screen.getByText('88.484')).toBeInTheDocument();
 
         // Features
-        expect(screen.getByText('Mapa Interactivo')).toBeInTheDocument();
-        expect(screen.getByText('Panel de Gestion')).toBeInTheDocument();
+        expect(screen.getByText('Visualizá tus cuencas en tiempo real')).toBeInTheDocument();
+        expect(screen.getByText('Gestión interna del consorcio')).toBeInTheDocument();
 
         // CTA
         expect(screen.getByText(/Ayuda a mantener/i)).toBeInTheDocument();
@@ -219,10 +325,10 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
 
         const features = [
-          'Mapa Interactivo',
-          'Reportar un Problema',
-          'Sugerencias',
-          'Panel de Gestion',
+          'Visualizá tus cuencas en tiempo real',
+          'Reportá problemas desde el campo',
+          'Sugerí mejoras para tu zona',
+          'Gestión interna del consorcio',
         ];
 
         features.forEach((feature) => {

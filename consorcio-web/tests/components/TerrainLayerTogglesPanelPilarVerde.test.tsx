@@ -54,10 +54,20 @@ function makeBaseProps(overrides?: {
       pilar_verde_porcentaje_forestacion: false,
       canales_relevados: true,
       canales_propuestos: false,
+      canal_relevado_norte: true,
+      canal_propuesto_sur: false,
     },
     onVectorLayerToggle: overrides?.onVectorLayerToggle ?? vi.fn(),
     onClose: vi.fn(),
     hasApprovedZones: false,
+    // The shared CanalesLayerSection renders nothing without per-canal
+    // entries (masters were replaced by bulk "Encender/Apagar todos" rows).
+    canalesRelevadosItems: [
+      { kind: 'leaf', id: 'canal_relevado_norte', label: 'Canal Norte' },
+    ] as const,
+    canalesPropuestosItems: [
+      { kind: 'leaf', id: 'canal_propuesto_sur', label: 'Canal Sur' },
+    ] as const,
   };
 }
 
@@ -112,8 +122,10 @@ describe('<TerrainLayerTogglesPanel /> — Canales section', () => {
   it('renders 2 master checkboxes with the correct defaults (relevados ON, propuestos OFF)', () => {
     renderWithMantine(<TerrainLayerTogglesPanel {...makeBaseProps()} />);
 
-    const relevados = screen.getByLabelText('Canales relevados');
-    const propuestos = screen.getByLabelText('Canales propuestos');
+    // Shared CanalesLayerSection (893ab58): masters are bulk toggles whose
+    // label flips between "Encender/Apagar todos los {side}".
+    const relevados = screen.getByLabelText('Apagar todos los relevados');
+    const propuestos = screen.getByLabelText('Encender todos los propuestos');
 
     expect(relevados).toBeChecked();
     expect(propuestos).not.toBeChecked();
@@ -125,7 +137,7 @@ describe('<TerrainLayerTogglesPanel /> — Canales section', () => {
       <TerrainLayerTogglesPanel {...makeBaseProps({ onVectorLayerToggle })} />,
     );
 
-    fireEvent.click(screen.getByLabelText('Canales propuestos'));
+    fireEvent.click(screen.getByLabelText('Encender todos los propuestos'));
 
     expect(onVectorLayerToggle).toHaveBeenCalledWith('canales_propuestos', true);
   });
