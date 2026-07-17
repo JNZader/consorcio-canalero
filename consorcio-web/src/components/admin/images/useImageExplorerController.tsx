@@ -231,32 +231,33 @@ export function useImageExplorerController() {
     [updateTileLayer]
   );
 
+  // Compute both fields from current state and set each purely. Nesting
+  // setCalendarYear inside a setCalendarMonth updater made the year jump by 2
+  // on Dec↔Jan crossings: StrictMode double-invokes updaters, firing the
+  // nested year setter twice.
   const handlePrevMonth = useCallback(() => {
-    setCalendarMonth((prev) => {
-      if (prev === 0) {
-        setCalendarYear((y) => y - 1);
-        return 11;
-      }
-      return prev - 1;
-    });
+    if (calendarMonth === 0) {
+      setCalendarMonth(11);
+      setCalendarYear(calendarYear - 1);
+    } else {
+      setCalendarMonth(calendarMonth - 1);
+    }
     setSelectedDay(null);
-  }, []);
+  }, [calendarMonth, calendarYear]);
 
   const handleNextMonth = useCallback(() => {
     const today = new Date();
-    setCalendarMonth((prev) => {
-      const nextMonth = prev === 11 ? 0 : prev + 1;
-      const nextYear = prev === 11 ? calendarYear + 1 : calendarYear;
-      if (
-        nextYear > today.getFullYear() ||
-        (nextYear === today.getFullYear() && nextMonth > today.getMonth())
-      )
-        return prev;
-      if (prev === 11) setCalendarYear((y) => y + 1);
-      return nextMonth;
-    });
+    const nextMonth = calendarMonth === 11 ? 0 : calendarMonth + 1;
+    const nextYear = calendarMonth === 11 ? calendarYear + 1 : calendarYear;
+    if (
+      nextYear > today.getFullYear() ||
+      (nextYear === today.getFullYear() && nextMonth > today.getMonth())
+    )
+      return;
+    setCalendarMonth(nextMonth);
+    setCalendarYear(nextYear);
     setSelectedDay(null);
-  }, [calendarYear]);
+  }, [calendarMonth, calendarYear]);
 
   const handleMonthYearChange = useCallback((year: number, month: number) => {
     setCalendarYear(year);

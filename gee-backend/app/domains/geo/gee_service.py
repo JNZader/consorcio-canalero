@@ -43,6 +43,7 @@ from app.domains.geo.gee_service_support import (
     compute_ndwi_baselines_payload,
     get_landcover_c_payload,
     mask_clouds_s2,
+    mask_s2_cloudscore,
 )
 
 
@@ -336,6 +337,9 @@ class ImageExplorer:
 
     def _mask_clouds_s2(self, image: ee.Image) -> ee.Image:
         return mask_clouds_s2(image)
+
+    def _mask_s2_cloudscore(self, collection):
+        return mask_s2_cloudscore(ee, collection)
 
     def _collection_dates(self, collection) -> list[str]:
         return collection_dates(collection, _distinct_collection_dates)

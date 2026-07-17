@@ -106,6 +106,22 @@ def mask_clouds_s2(image) -> Any:
     return image.updateMask(mask)
 
 
+# Cloud Score+ (Google) — per-pixel clear-confidence, far better than SCL at
+# thin cloud/haze. Linked to S2_HARMONIZED by granule id, so it works for both
+# TOA and SR collections and covers the whole S2 archive (2015-06→).
+CLOUD_SCORE_PLUS_ID = "GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED"
+CLOUD_SCORE_BAND = "cs"
+CLOUD_SCORE_CLEAR_THRESHOLD = 0.6
+
+
+def mask_s2_cloudscore(ee_module, collection):
+    """Keep only pixels whose Cloud Score+ clear-score ≥ threshold."""
+    cs = ee_module.ImageCollection(CLOUD_SCORE_PLUS_ID)
+    return collection.linkCollection(cs, [CLOUD_SCORE_BAND]).map(
+        lambda img: img.updateMask(img.select(CLOUD_SCORE_BAND).gte(CLOUD_SCORE_CLEAR_THRESHOLD))
+    )
+
+
 def collection_dates(collection, distinct_collection_dates_fn) -> list[str]:
     dates = distinct_collection_dates_fn(collection)
     return sorted(dates) if dates else []
@@ -480,15 +496,15 @@ def build_sentinel2_payload(
         }
 
     dates_list = explorer._collection_dates(collection)
-    if use_toa:
-        composite = collection.mosaic().clip(explorer.zona)
-    else:
-        masked_collection = collection.map(explorer._mask_clouds_s2)
-        composite = (
-            masked_collection.median().clip(explorer.zona)
-            if use_median
-            else masked_collection.mosaic().clip(explorer.zona)
-        )
+    # Cloud Score+ masks thin cloud/haze that SCL missed (it left white blobs on
+    # the map drape). Applies to TOA and SR alike; median composite over the
+    # window then yields a clean, cloud-free background.
+    masked_collection = explorer._mask_s2_cloudscore(collection)
+    composite = (
+        masked_collection.median().clip(explorer.zona)
+        if use_median
+        else masked_collection.mosaic().clip(explorer.zona)
+    )
 
     preset = explorer.VIS_PRESETS.get(visualization, explorer.VIS_PRESETS["rgb"])
     if "index" in preset:

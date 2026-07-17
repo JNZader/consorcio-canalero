@@ -24,6 +24,7 @@ from app.domains.geo.gee_service_imagery_support import (
     build_sentinel2_tiles_payload,
     collection_dates,
     mask_clouds_s2,
+    mask_s2_cloudscore,
 )
 
 __all__ = [
@@ -48,4 +49,5 @@ __all__ = [
     "compute_ndwi_baselines_payload",
     "get_landcover_c_payload",
     "mask_clouds_s2",
+    "mask_s2_cloudscore",
 ]
