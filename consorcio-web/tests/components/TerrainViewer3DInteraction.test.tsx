@@ -521,9 +521,14 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     });
 
     expect(screen.getByTestId('canal-card')).toBeTruthy();
-    // The toggles+legends panel is now ALWAYS visible in the bottom bar
-    // (no toggle button). The fact that `canal-card` renders confirms the
-    // InfoPanel overlay coexists with the embedded panels without breaking.
+    // The panels now live inside MapWorkspace (same shell as the 2D map). In
+    // jsdom the media query resolves MOBILE, so the controls sit inside a
+    // Drawer that must be opened via the burger — same interaction a phone
+    // user performs. InfoPanel coexisting with the opened Drawer is exactly
+    // the regression this test guards.
+    await act(async () => {
+      screen.getByTestId('map-workspace-burger').click();
+    });
     expect(screen.getByTestId('terrain-3d-bottom-bar-toggles')).toBeTruthy();
   });
 });

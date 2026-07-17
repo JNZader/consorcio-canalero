@@ -8,6 +8,7 @@ Phase 4.6:     Integration test against a running server (pytest.mark.integratio
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 import xml.etree.ElementTree as ET
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -424,20 +425,29 @@ class TestExportQgisEndpointUnit:
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    os.environ.get("TEST_LIVE_BACKEND") != "1",
+    reason=(
+        "Requires a live backend (TEST_LIVE_BACKEND=1 + TEST_BACKEND_URL). "
+        "The dev stack publishes 127.0.0.1:18000, not the hardcoded 8000, so "
+        "running this by default made the suite red on every checkout."
+    ),
+)
 class TestExportQgisIntegration:
     """
     Real HTTP integration test.
 
     Requires:
-    - A running backend at localhost:8000
+    - A running backend (TEST_BACKEND_URL, default http://localhost:8000)
     - An operator user with known credentials (read from env or hardcoded test user)
     - MARTIN_PUBLIC_URL set in the backend environment
 
     Run with:
-        pytest tests/new/test_geo_export.py -m integration
+        TEST_LIVE_BACKEND=1 TEST_BACKEND_URL=http://127.0.0.1:18000 \
+            pytest tests/new/test_geo_export.py
     """
 
-    BASE_URL = "http://localhost:8000"
+    BASE_URL = os.environ.get("TEST_BACKEND_URL", "http://localhost:8000")
 
     def _get_operator_token(self) -> str:
         """Obtain an operator JWT by logging in via the auth endpoint."""

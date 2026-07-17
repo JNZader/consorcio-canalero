@@ -202,7 +202,10 @@ export function TerrainLayerTogglesPanel({
                 "clear to null". */}
           </Box>
 
-          <Box>
+          {/* pb reserves room for the Slider's mark labels — they render
+              absolutely ~20px below the track and were overlapping the
+              "Capas vectoriales 3D" section title. */}
+          <Box pb={20}>
             <Text size="xs" fw={600} mb={4}>
               Opacidad del overlay
             </Text>

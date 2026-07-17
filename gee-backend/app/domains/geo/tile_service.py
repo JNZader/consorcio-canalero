@@ -36,6 +36,7 @@ from app.domains.geo.tile_service_support import (
     render_flat_terrain_rgb_png as _render_flat_terrain_rgb_png,
     render_terrain_rgb_png as _render_terrain_rgb_png,
     smooth_elevation_tile as _smooth_elevation_tile,
+    zona_clip_mask as _zona_clip_mask,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,8 +127,10 @@ def get_tile(
     # Build a cache key that fully describes the rendered output. Every
     # parameter that influences the bytes must appear here, otherwise we'd
     # serve a cached tile from a different request shape.
+    # v2: visual (non terrain-rgb) tiles are clipped to the consorcio zona —
+    # bump so pre-clip cached renders never get served.
     cache_key = (
-        f"v1:{layer_id}:{z}:{x}:{y}"
+        f"v2:{layer_id}:{z}:{x}:{y}"
         f":enc={encoding or '-'}"
         f":cmap={colormap or '-'}"
         f":hc={_normalise_csv(hide_classes)}"
@@ -219,6 +222,12 @@ def get_tile(
             return Response(status_code=204)
 
         raw, mask = tile_data
+        # Clip the visual overlay to the consorcio outline — the pipeline
+        # rasters cover the whole processing bbox (terrain-rgb keeps its
+        # full extent; only the painted overlay is clipped).
+        zona_mask = _zona_clip_mask(x, y, z, tilesize=256)
+        if zona_mask is not None:
+            mask = mask & zona_mask
         content = _render_categorical_png(
             raw,
             mask,
@@ -231,6 +240,14 @@ def get_tile(
                 img = src.tile(x, y, z, tilesize=256)
         except TileOutsideBounds:
             return Response(status_code=204)
+        zona_mask = _zona_clip_mask(x, y, z, tilesize=256)
+        if zona_mask is not None:
+            # rio-tiler ≥4 exposes ``mask`` as a COMPUTED property — item
+            # assignment mutates a temporary and silently does nothing.
+            # Rebuild the underlying masked array instead.
+            arr = img.array
+            hidden = np.broadcast_to(~zona_mask, arr.shape)
+            img.array = np.ma.MaskedArray(arr.data, mask=np.ma.getmaskarray(arr) | hidden)
 
     if encoding != "terrain-rgb" and layer.tipo not in CATEGORICAL_TYPES:
         cmap_name = colormap or DEFAULT_COLORMAPS.get(layer.tipo, "viridis")

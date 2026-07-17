@@ -224,6 +224,9 @@ services:
     volumes:
       - ./gee-backend/app:/app/app:ro
       - ./gee-backend/data/waterways:/app/data/waterways:ro
+      # Zona outline for clipping visual raster tiles to the consorcio —
+      # single source of truth: the same geojson the frontend serves.
+      - ./consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson:/app/data/zona/zona_ampliada.geojson:ro
       - ./gee-backend/supervisord-geo.conf:/etc/supervisor/conf.d/geo.conf:ro
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
@@ -267,6 +270,13 @@ services:
     # longer matches the postgres data volume after credential rotation.
     env_file:
       - ./gee-backend/.env
+    environment:
+      # Overrides the env_file's DATABASE_URL: that one can drift to external
+      # hosts (staging/experiments) and a recreated martin then dies in a
+      # DNS-lookup restart loop. Defaults to the compose-local postgres built
+      # from POSTGRES_* parts (same construction as the migrate service);
+      # MARTIN_DB_URL is the explicit escape hatch — same var prod uses.
+      - DATABASE_URL=${MARTIN_DB_URL:-postgresql://${POSTGRES_USER:-consorcio}:${POSTGRES_PASSWORD:-consorcio_dev}@postgres:5432/${POSTGRES_DB:-consorcio}}
     volumes:
       - ./martin/config.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
@@ -276,7 +286,10 @@ services:
     networks:
       - consorcio-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      # 127.0.0.1, NOT localhost: inside the container localhost resolves to
+      # ::1 (IPv6) first and Martin binds IPv4 0.0.0.0 only, so the wget got
+      # connection-refused and marked a perfectly healthy Martin unhealthy.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 5

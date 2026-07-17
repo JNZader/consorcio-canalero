@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -238,6 +240,68 @@ def tile_bounds_3857(x: int, y: int, z: int) -> tuple[float, float, float, float
     top = WEB_MERCATOR_HALF_WORLD - (y * tile_span)
     bottom = top - tile_span
     return left, bottom, right, top
+
+
+# ── Zona clip mask ───────────────────────────────────────────────────────────
+# Visual raster overlays (colormaps/categoricals) are rendered from pipeline
+# GeoTIFFs whose extent is the PROCESSING bbox — noticeably larger than the
+# consorcio. Only the GEE satellite image was clipped server-side, so every
+# other overlay bled over the whole province. This mask clips the rendered
+# tiles to the consorcio outline. Terrain-RGB elevation tiles are NOT clipped
+# (the 3D mesh geometry must keep its full extent).
+
+ZONA_CLIP_GEOJSON_ENV = "ZONA_CLIP_GEOJSON"
+_ZONA_CLIP_DEFAULT_PATH = "/app/data/zona/zona_ampliada.geojson"
+
+
+@lru_cache(maxsize=1)
+def _zona_geometry_3857():
+    """Union of the zona polygons reprojected to EPSG:3857, or None.
+
+    Cached for the process lifetime. Missing/invalid file → None, and tiles
+    render unclipped (graceful degradation, never a 500 over a mask).
+    """
+    path = Path(os.environ.get(ZONA_CLIP_GEOJSON_ENV, _ZONA_CLIP_DEFAULT_PATH))
+    if not path.exists():
+        logger.warning("Zona clip geojson not found at %s — tiles render unclipped", path)
+        return None
+    try:
+        from pyproj import Transformer
+        from shapely.geometry import shape
+        from shapely.ops import transform as shp_transform, unary_union
+
+        data = json.loads(path.read_text())
+        features = data.get("features", [data] if data.get("type") == "Feature" else [])
+        geoms = [shape(f["geometry"]) for f in features if f.get("geometry")]
+        if not geoms:
+            return None
+        union = unary_union(geoms)
+        to_3857 = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
+        return shp_transform(to_3857, union)
+    except Exception as exc:  # pragma: no cover — defensive: bad file must not kill tiles
+        logger.warning("Could not load zona clip geometry: %s", exc)
+        return None
+
+
+def zona_clip_mask(x: int, y: int, z: int, tilesize: int = 256) -> Optional[np.ndarray]:
+    """Boolean (tilesize, tilesize) mask — True inside the consorcio zona.
+
+    Returns None when the zona geometry is unavailable or the tile does not
+    intersect it at all is handled by the all-False mask (renders empty).
+    """
+    geom = _zona_geometry_3857()
+    if geom is None:
+        return None
+    from rasterio import features as rio_features
+
+    west, south, east, north = tile_bounds_3857(x, y, z)
+    tile_transform = from_bounds(west, south, east, north, tilesize, tilesize)
+    return rio_features.geometry_mask(
+        [geom],
+        out_shape=(tilesize, tilesize),
+        transform=tile_transform,
+        invert=True,
+    )
 
 
 def bounds_intersect(
