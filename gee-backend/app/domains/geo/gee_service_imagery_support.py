@@ -302,6 +302,32 @@ def _landsat_scene_metadata(props: Dict[str, Any], fallback_id: str) -> Dict[str
     }
 
 
+def _llhm_gap_fill(ee_module, src, fill, bands: List[str], kernel_px: int = 20):
+    """USGS-style Local Linear Histogram Matching gap fill.
+
+    For every hole in ``src``, fit a local linear regression (moving window)
+    between ``src`` and ``fill`` where both have data, then fill the hole with
+    the REAL ``fill`` observation adjusted to the local tone of ``src``. Unlike
+    a focal mean this preserves field texture — it is the method behind the
+    seamless USGS/desktop gap-filled L7 products. Fills with implausible local
+    gain (outside 1/3–3×) stay masked rather than injecting artifacts.
+    """
+    kernel = ee_module.Kernel.square(kernel_px, "pixels", False)
+    out = []
+    for band in bands:
+        src_band = src.select([band], ["y"])
+        fill_band = fill.select([band], ["x"])
+        common = src_band.mask().And(fill_band.mask())
+        pair = fill_band.updateMask(common).addBands(src_band.updateMask(common))
+        fit = pair.reduceNeighborhood(ee_module.Reducer.linearFit(), kernel, None, False)
+        scale = fit.select("scale")
+        offset = fit.select("offset")
+        plausible = scale.gte(0.33).And(scale.lte(3.0))
+        estimate = fill.select(band).multiply(scale).add(offset).updateMask(plausible)
+        out.append(src.select(band).unmask(estimate).rename(band))
+    return ee_module.Image.cat(out)
+
+
 def build_landsat_payload(
     explorer,
     ee_module,
@@ -342,21 +368,34 @@ def build_landsat_payload(
     haze = mask_landsat_haze(cfg["rgb"][2])
 
     if use_median and sensor == "landsat7":
-        # Cloud/haze-masked temporal median, then focal-fill the residual
-        # SLC-off stripes. The gaps sit in the same place across a path's few
-        # scenes in a 20-day window, so the median alone can't fill them;
-        # interpolating each hole from nearby valid pixels (iterated, widening
-        # reach) closes the thin/medium stripes. Only holes are filled.
-        median = collection.map(mask).map(haze).median()
-        filled = median
+        # USGS-style gap fill: pick the closest date as the primary scene and
+        # fill its SLC-off stripes/cloud holes with REAL observations from up
+        # to 3 neighboring dates via local linear histogram matching (adjacent
+        # paths have their gaps in different positions, so they complement).
+        # A final focal pass closes only the residual specks where every date
+        # is missing data. Texture is preserved — verified against a desktop
+        # gap-filled reference the user provided.
+        optical = ["B1", "B2", "B3", "B4", "B5", "B7"]
+
+        def day_mosaic(day_str: str):
+            day = date.fromisoformat(day_str)
+            day_col = explorer._landsat_collection(sensor, day, day + timedelta(days=1), max_cloud)
+            return haze(mask(day_col.mosaic())).select(optical)
+
+        ordered_dates = sorted(
+            dates_list, key=lambda d: abs((date.fromisoformat(d) - target_date).days)
+        )
+        filled = day_mosaic(ordered_dates[0])
+        for fill_date in ordered_dates[1:4]:
+            filled = _llhm_gap_fill(ee_module, filled, day_mosaic(fill_date), optical)
         for radius in (1.5, 3.0, 6.0):
-            neighborhood = filled.focal_mean(radius, "circle", "pixels", 2)
-            filled = filled.unmask(neighborhood)
-        composite = median.unmask(filled).clip(explorer.zona)
+            filled = filled.unmask(filled.focal_mean(radius, "circle", "pixels", 2))
+        composite = filled.clip(explorer.zona)
         composition_mode = "composite"
         notes = (
-            "Landsat 7 compuesto temporal (mediana sin nubes) con relleno focal "
-            "de franjas SLC-off; los huecos anchos pueden quedar suavizados."
+            "Landsat 7 con relleno de franjas SLC-off por regresion local "
+            "(datos reales de fechas vecinas ajustados al tono de la escena "
+            f"base {ordered_dates[0]}); huecos residuales interpolados."
         )
     elif use_median:
         composite = collection.map(mask).map(haze).median().clip(explorer.zona)
