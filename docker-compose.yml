@@ -224,6 +224,9 @@ services:
     volumes:
       - ./gee-backend/app:/app/app:ro
       - ./gee-backend/data/waterways:/app/data/waterways:ro
+      # Zona outline for clipping visual raster tiles to the consorcio —
+      # single source of truth: the same geojson the frontend serves.
+      - ./consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson:/app/data/zona/zona_ampliada.geojson:ro
       - ./gee-backend/supervisord-geo.conf:/etc/supervisor/conf.d/geo.conf:ro
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
