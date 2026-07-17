@@ -217,7 +217,10 @@ def build_landsat_payload(
 ) -> Dict[str, Any]:
     cfg = LANDSAT_SENSORS[sensor]
     start_date = target_date - timedelta(days=days_buffer)
-    end_date = target_date + timedelta(days=days_buffer)
+    # GEE filterDate is END-EXCLUSIVE: add one day so the edge of the
+    # +days_buffer window is actually included (a Landsat scene landing
+    # exactly on target+buffer was silently dropped otherwise).
+    end_date = target_date + timedelta(days=days_buffer + 1)
     collection = explorer._landsat_collection(sensor, start_date, end_date, max_cloud)
 
     count = collection.size().getInfo()
@@ -293,7 +296,10 @@ def build_landsat_scenes_payload(
 ) -> Dict[str, Any]:
     cfg = LANDSAT_SENSORS[sensor]
     start_date = target_date - timedelta(days=days_buffer)
-    end_date = target_date + timedelta(days=days_buffer)
+    # GEE filterDate is END-EXCLUSIVE: add one day so the edge of the
+    # +days_buffer window is actually included (a Landsat scene landing
+    # exactly on target+buffer was silently dropped otherwise).
+    end_date = target_date + timedelta(days=days_buffer + 1)
     collection = explorer._landsat_collection(sensor, start_date, end_date, max_cloud).sort(
         "system:time_start"
     )
@@ -431,7 +437,10 @@ def build_sentinel2_payload(
     use_median: bool,
 ) -> Dict[str, Any]:
     start_date = target_date - timedelta(days=days_buffer)
-    end_date = target_date + timedelta(days=days_buffer)
+    # GEE filterDate is END-EXCLUSIVE: add one day so the edge of the
+    # +days_buffer window is actually included (a Landsat scene landing
+    # exactly on target+buffer was silently dropped otherwise).
+    end_date = target_date + timedelta(days=days_buffer + 1)
 
     use_toa = target_date.year < 2019
     collection_name, collection = explorer._sentinel2_collection(
@@ -511,7 +520,10 @@ def build_sentinel1_payload(
     visualization: str,
 ) -> Dict[str, Any]:
     start_date = target_date - timedelta(days=days_buffer)
-    end_date = target_date + timedelta(days=days_buffer)
+    # GEE filterDate is END-EXCLUSIVE: add one day so the edge of the
+    # +days_buffer window is actually included (a Landsat scene landing
+    # exactly on target+buffer was silently dropped otherwise).
+    end_date = target_date + timedelta(days=days_buffer + 1)
     collection = explorer._sentinel1_collection(start_date, end_date)
 
     count = collection.size().getInfo()
