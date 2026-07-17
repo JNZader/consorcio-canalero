@@ -135,7 +135,14 @@
   - **Files**: revisión de `map2d/*` hooks
   - **Dependencies**: 3.x
 
-- [ ] **4.3 Validación manual + typecheck**
+- [x] **4.3 Validación manual + typecheck**
   - `npm run typecheck` + smoke manual: sidebar/Drawer en desktop y mobile reales, opacidad, buscador, paridad 2D/3D.
   - **AC**: typecheck verde; UX validada en ambos viewports.
   - **Dependencies**: 4.1, 4.2
+  - **Cerrada 2026-07-17**: validación visual del usuario sobre el stack local
+    (2D y 3D). Salieron y se corrigieron en el PR #8: banner de actualización
+    tapando contenido (ahora descartable con re-arme por SHA), colisión de
+    labels del slider de opacidad 3D, y DOS extensiones de paridad que el
+    usuario pidió en la validación: el visor 3D adoptó el mismo MapWorkspace
+    responsive del 2D, y los overlays raster del pipeline DEM se recortan al
+    contorno del consorcio (antes solo la imagen GEE respetaba el límite).
