@@ -180,7 +180,9 @@ async def upload_denuncia_photo(
     except Exception as exc:
         # COMMIT succeeded. Preserve both files and the committed pointer;
         # refresh failure only makes the response acknowledgement ambiguous.
-        raise HTTPException(status_code=503, detail="La foto fue guardada; reintente la consulta") from exc
+        raise HTTPException(
+            status_code=503, detail="La foto fue guardada; reintente la consulta"
+        ) from exc
 
     if previous_photo_url:
         previous_key = photo_key_from_url(previous_photo_url)

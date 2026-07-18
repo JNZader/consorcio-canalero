@@ -331,7 +331,7 @@ def photo_key_from_url(photo_url: str, public_base: str | None = None) -> str | 
     prefix = f"{base}/"
     if not path.startswith(prefix):
         return None
-    relative = path[len(prefix):]
+    relative = path[len(prefix) :]
     suffix = Path(relative).suffix.lower().lstrip(".")
     if suffix not in set(MIME_TO_EXTENSION.values()):
         return None

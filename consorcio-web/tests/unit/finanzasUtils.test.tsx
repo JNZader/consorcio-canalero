@@ -39,7 +39,7 @@ describe('finanzasUtils', () => {
       ),
     ).toEqual({
       categoryOptions: ['combustible'],
-      sourceOptions: ['subsidio'],
+      sourceOptions: ['cuotas_extra'],
     });
 
     expect(getFinanzasOptions([], [], ['obras'], ['cuotas_extra'])).toEqual({

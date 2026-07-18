@@ -138,7 +138,9 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
         start_date = _date.fromisoformat(str(start_raw))
         end_date = _date.fromisoformat(str(end_raw))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail="start_date y end_date deben usar YYYY-MM-DD") from exc
+        raise HTTPException(
+            status_code=422, detail="start_date y end_date deben usar YYYY-MM-DD"
+        ) from exc
     if start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
 
