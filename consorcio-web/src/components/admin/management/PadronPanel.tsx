@@ -1,14 +1,9 @@
 import {
-  ActionIcon,
-  Badge,
-  Box,
   Button,
   Container,
-  Divider,
   FileInput,
   Group,
   Modal,
-  NumberInput,
   Paper,
   SimpleGrid,
   Stack,
@@ -16,7 +11,6 @@ import {
   Text,
   TextInput,
   Title,
-  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
@@ -26,7 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
 import { LoadingState } from '../../ui/LoadingState';
-import { IconCreditCard, IconPlus, IconSearch, IconUser } from '../../ui/icons';
+import { IconPlus, IconSearch, IconUser } from '../../ui/icons';
 
 const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
 const PADRON_APELLIDO_ERROR_ID = 'padron-apellido-error';
@@ -38,17 +32,8 @@ interface Consorcista {
   nombre: string;
   apellido: string;
   cuit: string;
-  representa_a?: string;
   email?: string;
   telefono?: string;
-}
-
-interface Pago {
-  id: string;
-  anio: number;
-  monto: number;
-  estado: 'pagado' | 'pendiente';
-  fecha_pago?: string;
 }
 
 interface PadronImportResult {
@@ -64,13 +49,7 @@ export default function PadronPanel() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const [selectedConsorcista, setSelectedConsorcista] = useState<Consorcista | null>(null);
-  const [pagos, setPagos] = useState<Pago[]>([]);
-  const [nuevoPagoAnio, setNuevoPagoAnio] = useState<number>(new Date().getFullYear());
-  const [nuevoPagoMonto, setNuevoPagoMonto] = useState<number | ''>('');
-
   const [opened, { open, close }] = useDisclosure(false);
-  const [pagoOpened, { open: openPago, close: closePago }] = useDisclosure(false);
   const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
@@ -94,80 +73,16 @@ export default function PadronPanel() {
     }
   }, [search]);
 
-  const fetchPagos = async (id: string) => {
-    try {
-      // TODO: Pagos endpoint not implemented in v2 padron yet
-      const response = await apiFetch<Pago[] | { items: Pago[] }>(`/padron/${id}/pagos`).catch(
-        () => [] as Pago[]
-      );
-      const data = Array.isArray(response) ? response : (response.items ?? []);
-      setPagos(data);
-    } catch (err) {
-      handleError(err, {
-        title: 'Error al cargar pagos',
-        context: 'PadronPanel.fetchPagos',
-      });
-    }
-  };
-
   useEffect(() => {
     const timer = setTimeout(() => fetchConsorcistas(), 300);
     return () => clearTimeout(timer);
   }, [fetchConsorcistas]);
-
-  const handleViewPagos = (c: Consorcista) => {
-    setSelectedConsorcista(c);
-    setNuevoPagoAnio(new Date().getFullYear());
-    setNuevoPagoMonto('');
-    fetchPagos(c.id);
-    openPago();
-  };
-
-  const handleRegistrarPago = async () => {
-    if (!selectedConsorcista || !nuevoPagoMonto || nuevoPagoMonto <= 0) {
-      notifications.show({
-        title: 'Datos incompletos',
-        message: 'Ingrese anio y monto validos para registrar el pago',
-        color: 'yellow',
-      });
-      return;
-    }
-
-    try {
-      // TODO: Pagos creation not implemented in v2 padron yet
-      await apiFetch('/padron/pagos', {
-        method: 'POST',
-        body: JSON.stringify({
-          consorcista_id: selectedConsorcista.id,
-          anio: nuevoPagoAnio,
-          monto: Number(nuevoPagoMonto),
-          estado: 'pagado',
-          fecha_pago: new Date().toISOString().slice(0, 10),
-        }),
-      });
-
-      notifications.show({
-        title: 'Pago registrado',
-        message: `Cuota ${nuevoPagoAnio} registrada para ${selectedConsorcista.apellido}, ${selectedConsorcista.nombre}`,
-        color: 'green',
-      });
-
-      await fetchPagos(selectedConsorcista.id);
-      setNuevoPagoMonto('');
-    } catch (err) {
-      handleError(err, {
-        title: 'Error al registrar pago',
-        context: 'PadronPanel.handleRegistrarPago',
-      });
-    }
-  };
 
   const form = useForm({
     initialValues: {
       nombre: '',
       apellido: '',
       cuit: '',
-      representa_a: '',
       email: '',
       telefono: '',
     },
@@ -246,7 +161,7 @@ export default function PadronPanel() {
       <Group justify="space-between" mb="xl">
         <div>
           <Title order={2}>Padrón de Consorcistas</Title>
-          <Text c="dimmed">Administración de socios y recaudación de cuotas anuales</Text>
+          <Text c="dimmed">Administración de socios y datos del padrón</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open} color="blue">
           Nuevo Consorcista
@@ -266,6 +181,12 @@ export default function PadronPanel() {
         />
       </Paper>
 
+      <Paper withBorder p="sm" radius="md" mb="md">
+        <Text size="sm" c="dimmed">
+          La gestion de pagos y cuotas no esta disponible en esta version.
+        </Text>
+      </Paper>
+
       <Paper withBorder radius="md">
         <Table.ScrollContainer minWidth={680} type="native">
           <Table verticalSpacing="sm" highlightOnHover aria-label="Tabla de consorcistas">
@@ -273,8 +194,6 @@ export default function PadronPanel() {
               <Table.Tr>
                 <Table.Th>Consorcista</Table.Th>
                 <Table.Th>CUIT</Table.Th>
-                <Table.Th>Representación</Table.Th>
-                <Table.Th>Acciones</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -290,25 +209,6 @@ export default function PadronPanel() {
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">{c.cuit}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" fs="italic" c="dimmed">
-                      {c.representa_a || '-'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <Tooltip label="Ver Pagos / Cuotas">
-                        <ActionIcon
-                          variant="light"
-                          color="green"
-                          onClick={() => handleViewPagos(c)}
-                          aria-label={`Ver pagos y cuotas de ${c.apellido}, ${c.nombre}`}
-                        >
-                          <IconCreditCard size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -356,12 +256,6 @@ export default function PadronPanel() {
               'aria-live': 'assertive',
             }}
           />
-          <TextInput
-            label="En representación de..."
-            placeholder="Empresa, Sucesión o Establecimiento"
-            mt="sm"
-            {...form.getInputProps('representa_a')}
-          />
           <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm">
             <TextInput
               label="Email"
@@ -374,95 +268,6 @@ export default function PadronPanel() {
             Guardar en Padrón
           </Button>
         </form>
-      </Modal>
-
-      {/* Modal Pagos */}
-      <Modal opened={pagoOpened} onClose={closePago} title="Estado de Cuotas Anuales" size="lg">
-        {selectedConsorcista && (
-          <Stack gap="md">
-            <Box>
-              <Text fw={700} size="lg">
-                {selectedConsorcista.apellido}, {selectedConsorcista.nombre}
-              </Text>
-              <Text size="sm" c="dimmed">
-                CUIT: {selectedConsorcista.cuit}
-              </Text>
-            </Box>
-
-            <Table.ScrollContainer minWidth={520} type="native">
-              <Table
-                withColumnBorders
-                aria-label={`Cuotas anuales de ${selectedConsorcista.apellido}, ${selectedConsorcista.nombre}`}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Año</Table.Th>
-                    <Table.Th>Monto</Table.Th>
-                    <Table.Th>Estado</Table.Th>
-                    <Table.Th>Fecha Pago</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {[2026, 2025, 2024].map((anio) => {
-                    const pago = pagos.find((p) => p.anio === anio);
-                    return (
-                      <Table.Tr key={anio}>
-                        <Table.Td fw={600}>{anio}</Table.Td>
-                        <Table.Td>${pago?.monto || '-'}</Table.Td>
-                        <Table.Td>
-                          <Badge
-                            color={pago?.estado === 'pagado' ? 'green' : 'red'}
-                            variant="light"
-                          >
-                            {pago?.estado || 'PENDIENTE'}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          {pago?.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString() : '-'}
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-
-            <Divider label="Registrar Nuevo Pago" labelPosition="center" />
-            <Paper p="sm" bg="gray.0">
-              <Group grow align="flex-end" wrap="wrap">
-                <NumberInput
-                  label="Año"
-                  value={nuevoPagoAnio}
-                  onChange={(value) => setNuevoPagoAnio(Number(value) || new Date().getFullYear())}
-                  hideControls
-                  min={2000}
-                  max={2100}
-                />
-                <NumberInput
-                  label="Monto"
-                  placeholder="$"
-                  hideControls
-                  value={nuevoPagoMonto}
-                  onChange={(value) => {
-                    if (typeof value === 'number') {
-                      setNuevoPagoMonto(value);
-                      return;
-                    }
-                    setNuevoPagoMonto('');
-                  }}
-                  min={0}
-                />
-                <Button
-                  color="green"
-                  leftSection={<IconCreditCard size={14} />}
-                  onClick={handleRegistrarPago}
-                >
-                  Registrar
-                </Button>
-              </Group>
-            </Paper>
-          </Stack>
-        )}
       </Modal>
 
       <Modal

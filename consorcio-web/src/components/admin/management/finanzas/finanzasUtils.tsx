@@ -13,7 +13,7 @@ export function getFinanzasOptions(
   defaultSources: string[]
 ) {
   const cats = [...new Set(gastos.map((g) => g.categoria).filter(Boolean))];
-  const srcs = [...new Set(ingresos.map((i) => i.fuente).filter(Boolean))];
+  const srcs = [...new Set(ingresos.map((i) => i.categoria).filter(Boolean))];
 
   return {
     categoryOptions: cats.length > 0 ? cats : defaultCategories,

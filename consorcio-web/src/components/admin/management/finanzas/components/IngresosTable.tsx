@@ -1,28 +1,23 @@
-import { ActionIcon, Anchor, Paper, Table, Text } from '@mantine/core';
-import { isValidUrl } from '../../../../../lib/validators';
+import { ActionIcon, Paper, Table, Text } from '@mantine/core';
 import { IconEdit } from '../../../../ui/icons';
 import type { Ingreso } from '../finanzasTypes';
-import { renderFuenteBadge } from '../finanzasUtils';
+import { renderCategoriaBadge } from '../finanzasUtils';
 
 export function IngresosTable({
   ingresos,
   onEdit,
-}: Readonly<{
-  ingresos: Ingreso[];
-  onEdit: (ingreso: Ingreso) => void;
-}>) {
+}: Readonly<{ ingresos: Ingreso[]; onEdit: (ingreso: Ingreso) => void }>) {
   return (
     <Paper withBorder radius="md">
-      <Table.ScrollContainer minWidth={760} type="native">
+      <Table.ScrollContainer minWidth={680} type="native">
         <Table verticalSpacing="sm" aria-label="Libro de ingresos">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Fecha</Table.Th>
               <Table.Th>Descripcion</Table.Th>
-              <Table.Th>Fuente</Table.Th>
+              <Table.Th>Categoria</Table.Th>
               <Table.Th>Monto</Table.Th>
-              <Table.Th>Pagador</Table.Th>
-              <Table.Th>Comprobante</Table.Th>
+              <Table.Th>Consorcista</Table.Th>
               <Table.Th>Acciones</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -35,7 +30,7 @@ export function IngresosTable({
                     {ingreso.descripcion}
                   </Text>
                 </Table.Td>
-                <Table.Td>{renderFuenteBadge(ingreso.fuente)}</Table.Td>
+                <Table.Td>{renderCategoriaBadge(ingreso.categoria)}</Table.Td>
                 <Table.Td>
                   <Text fw={700} c="green.7">
                     +${ingreso.monto.toLocaleString()}
@@ -43,30 +38,8 @@ export function IngresosTable({
                 </Table.Td>
                 <Table.Td>
                   <Text size="xs" c="dimmed">
-                    {ingreso.pagador || '-'}
+                    {ingreso.consorcista_id || '-'}
                   </Text>
-                </Table.Td>
-                <Table.Td>
-                  {/* Solo renderizar como link si el esquema es http(s):
-                      evita javascript:/data: URIs almacenados en la DB. */}
-                  {ingreso.comprobante_url && isValidUrl(ingreso.comprobante_url) ? (
-                    <Anchor
-                      href={ingreso.comprobante_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="sm"
-                    >
-                      Ver archivo
-                    </Anchor>
-                  ) : ingreso.comprobante_url ? (
-                    <Text size="xs" c="dimmed" title="Comprobante con URL invalida">
-                      URL invalida
-                    </Text>
-                  ) : (
-                    <Text size="xs" c="dimmed">
-                      -
-                    </Text>
-                  )}
                 </Table.Td>
                 <Table.Td>
                   <ActionIcon

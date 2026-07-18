@@ -3,11 +3,10 @@ import {
   Badge,
   Button,
   Container,
-  Divider,
   Group,
   Modal,
   Paper,
-  Select,
+  NativeSelect,
   Stack,
   Table,
   Text,
@@ -20,54 +19,72 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
 import { type TramiteEstadoCanonico, formatTramiteEstado } from '../../../constants/tramites';
-import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
+import { apiFetch } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LoadingState } from '../../ui/LoadingState';
-import { IconDownload, IconExternalLink, IconHistory, IconPlus } from '../../ui/icons';
-import { type RawTramiteItem, filterCanonicalTramites } from './tramitesCanonical';
+import { IconHistory, IconPlus } from '../../ui/icons';
 
-interface Tramite {
+interface TramiteListItem {
   id: string;
+  tipo: string;
   titulo: string;
-  numero_expediente: string;
+  solicitante: string;
   estado: TramiteEstadoCanonico;
-  ultima_actualizacion: string;
+  prioridad: string;
+  fecha_ingreso: string;
+  fecha_resolucion: string | null;
+  created_at: string;
 }
 
-const TRAMITE_TITLE_ERROR_ID = 'tramite-title-error';
-
-interface Avance {
+interface Seguimiento {
   id: string;
-  fecha: string;
-  titulo_avance: string;
+  tramite_id: string;
+  estado_anterior: string;
+  estado_nuevo: string;
   comentario: string;
+  usuario_id: string;
+  created_at: string;
+}
+
+interface TramiteDetail extends TramiteListItem {
+  descripcion: string;
+  resolucion: string | null;
+  usuario_id: string;
+  updated_at: string;
+  seguimiento: Seguimiento[];
+}
+
+interface TramiteFormValues {
+  tipo: string;
+  titulo: string;
+  descripcion: string;
+  solicitante: string;
+  prioridad: string;
+  fecha_ingreso: string;
+}
+
+const TRAMITE_TYPES = ['obra', 'permiso', 'habilitacion', 'reclamo', 'otro'];
+const TRAMITE_PRIORITIES = ['baja', 'media', 'alta', 'urgente'];
+
+function formatDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 export default function TramitesPanel() {
-  const [tramites, setTramites] = useState<Tramite[]>([]);
+  const [tramites, setTramites] = useState<TramiteListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
-  const [selectedTramite, setSelectedTramite] = useState<(Tramite & { avances: Avance[] }) | null>(
-    null
-  );
+  const [selectedTramite, setSelectedTramite] = useState<TramiteDetail | null>(null);
+  const [newSeguimiento, setNewSeguimiento] = useState('');
+  const [addingSeguimiento, setAddingSeguimiento] = useState(false);
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
   const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await apiFetch<{ items: RawTramiteItem[]; total: number }>('/tramites');
-      const data = response.items ?? [];
-      const { canonical, discarded } = filterCanonicalTramites(data);
-
-      for (const tramite of discarded) {
-        logger.warn('Discarding tramite with non-canonical state', {
-          tramiteId: tramite.id,
-          estado: tramite.estado,
-        });
-      }
-
-      setTramites(canonical as Tramite[]);
+      const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
+      setTramites(response.items ?? []);
     } catch (err) {
       logger.error('Error fetching tramites:', err);
     } finally {
@@ -75,31 +92,11 @@ export default function TramitesPanel() {
     }
   }, []);
 
-  const handleExport = async (id: string) => {
-    setExporting(true);
-    try {
-      const token = await getAuthToken();
-      // TODO: v2 does not have a dedicated tramite export-pdf endpoint yet
-      const response = await fetch(`${API_URL}/api/v2/tramites/${id}/export-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Resumen_Expediente_${id.slice(0, 8)}.pdf`;
-      a.click();
-    } catch (err) {
-      logger.error('Error exporting tramite:', err);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const fetchDetalle = async (id: string) => {
     try {
-      const data = await apiFetch<Tramite & { avances: Avance[] }>(`/tramites/${id}`);
-      setSelectedTramite(data);
+      const detail = await apiFetch<TramiteDetail>(`/tramites/${id}`);
+      setSelectedTramite({ ...detail, seguimiento: detail.seguimiento ?? [] });
+      setNewSeguimiento('');
       openHistory();
     } catch (err) {
       logger.error('Error fetching tramite detail:', err);
@@ -110,30 +107,74 @@ export default function TramitesPanel() {
     fetchTramites();
   }, [fetchTramites]);
 
-  const form = useForm({
+  const form = useForm<TramiteFormValues>({
     initialValues: {
+      tipo: '',
       titulo: '',
-      numero_expediente: '',
       descripcion: '',
-      prioridad: 'normal',
+      solicitante: '',
+      prioridad: 'media',
+      fecha_ingreso: '',
     },
     validate: {
-      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
+      tipo: (value) => (value ? null : 'Tipo requerido'),
+      titulo: (value) =>
+        value.trim().length < 5 ? 'El titulo debe tener al menos 5 caracteres' : null,
+      descripcion: (value) =>
+        value.trim().length < 10 ? 'La descripcion debe tener al menos 10 caracteres' : null,
+      solicitante: (value) =>
+        value.trim().length < 2 ? 'El solicitante debe tener al menos 2 caracteres' : null,
     },
   });
 
-  const handleCreate = async (values: typeof form.values) => {
+  const handleCreate = async (values: TramiteFormValues) => {
     try {
       await apiFetch('/tramites', {
         method: 'POST',
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          tipo: values.tipo,
+          titulo: values.titulo.trim(),
+          descripcion: values.descripcion.trim(),
+          solicitante: values.solicitante.trim(),
+          prioridad: values.prioridad,
+          ...(values.fecha_ingreso ? { fecha_ingreso: values.fecha_ingreso } : {}),
+        }),
       });
       close();
-      fetchTramites();
       form.reset();
+      await fetchTramites();
     } catch (err) {
       logger.error('Error creating tramite:', err);
     }
+  };
+
+  const handleAddSeguimiento = async () => {
+    if (!selectedTramite || newSeguimiento.trim().length < 5) return;
+
+    setAddingSeguimiento(true);
+    try {
+      const seguimiento = await apiFetch<Seguimiento>(
+        `/tramites/${selectedTramite.id}/seguimiento`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ comentario: newSeguimiento.trim() }),
+        }
+      );
+      setSelectedTramite((current) =>
+        current ? { ...current, seguimiento: [...current.seguimiento, seguimiento] } : current
+      );
+      setNewSeguimiento('');
+    } catch (err) {
+      logger.error('Error adding tramite follow-up:', err);
+    } finally {
+      setAddingSeguimiento(false);
+    }
+  };
+
+  const handleCloseHistory = () => {
+    setSelectedTramite(null);
+    setNewSeguimiento('');
+    closeHistory();
   };
 
   if (loading) return <LoadingState />;
@@ -142,62 +183,57 @@ export default function TramitesPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Gestion de Expedientes</Title>
-          <Text c="dimmed">Seguimiento de tramites en Recursos Hidricos de la Provincia</Text>
+          <Title order={2}>Gestion de Tramites</Title>
+          <Text c="dimmed">Seguimiento de tramites del Consorcio Canalero</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open}>
-          Nuevo Expediente
+          Nuevo Tramite
         </Button>
       </Group>
 
       <Paper withBorder radius="md">
         <Table.ScrollContainer minWidth={680} type="native">
-          <Table verticalSpacing="sm" aria-label="Tabla de expedientes provinciales">
+          <Table verticalSpacing="sm" aria-label="Tabla de tramites">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Titulo / Expediente</Table.Th>
+                <Table.Th>Tramite</Table.Th>
                 <Table.Th>Estado</Table.Th>
-                <Table.Th>Ultima Actualizacion</Table.Th>
+                <Table.Th>Prioridad</Table.Th>
+                <Table.Th>Fecha de ingreso</Table.Th>
                 <Table.Th>Acciones</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {tramites.map((t) => (
-                <Table.Tr key={t.id}>
+              {tramites.map((tramite) => (
+                <Table.Tr key={tramite.id}>
                   <Table.Td>
                     <Stack gap={0}>
                       <Text fw={500} size="sm">
-                        {t.titulo}
+                        {tramite.titulo}
                       </Text>
                       <Text size="xs" c="dimmed">
-                        Nro: {t.numero_expediente || 'S/N'}
+                        {tramite.tipo} · {tramite.solicitante}
                       </Text>
                     </Stack>
                   </Table.Td>
                   <Table.Td>
-                    <Badge variant="light">{formatTramiteEstado(t.estado)}</Badge>
+                    <Badge variant="light">{formatTramiteEstado(tramite.estado)}</Badge>
                   </Table.Td>
                   <Table.Td>
-                    <Text size="xs">{new Date(t.ultima_actualizacion).toLocaleDateString()}</Text>
+                    <Text size="sm">{tramite.prioridad}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <ActionIcon
-                        variant="light"
-                        color="blue"
-                        onClick={() => fetchDetalle(t.id)}
-                        aria-label={`Ver historial del expediente ${t.numero_expediente || t.titulo}`}
-                      >
-                        <IconHistory size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="light"
-                        color="gray"
-                        aria-label={`Abrir expediente externo ${t.numero_expediente || t.titulo}`}
-                      >
-                        <IconExternalLink size={16} />
-                      </ActionIcon>
-                    </Group>
+                    <Text size="sm">{formatDate(tramite.fecha_ingreso)}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <ActionIcon
+                      variant="light"
+                      color="blue"
+                      onClick={() => fetchDetalle(tramite.id)}
+                      aria-label={`Ver seguimiento de ${tramite.titulo}`}
+                    >
+                      <IconHistory size={16} />
+                    </ActionIcon>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -206,91 +242,89 @@ export default function TramitesPanel() {
         </Table.ScrollContainer>
       </Paper>
 
-      {/* Modal Nuevo Expediente */}
-      <Modal opened={opened} onClose={close} title="Registrar Nuevo Expediente Provincial">
+      <Modal opened={opened} onClose={close} title="Registrar Nuevo Tramite">
         <form onSubmit={form.onSubmit(handleCreate)} noValidate>
           <Stack gap="sm">
-            <TextInput
-              label="Titulo del Tramite"
-              placeholder="Ej: Obra Canal San Marcos"
+            <NativeSelect
+              label="Tipo"
+              data={TRAMITE_TYPES}
               required
-              {...form.getInputProps('titulo')}
-              errorProps={{
-                id: TRAMITE_TITLE_ERROR_ID,
-                role: 'alert',
-                'aria-live': 'assertive',
-              }}
+              {...form.getInputProps('tipo')}
             />
-            <TextInput
-              label="Numero de Expediente"
-              placeholder="Ej: 0416-00123/2026"
-              {...form.getInputProps('numero_expediente')}
-            />
-            <Textarea
-              label="Descripcion Inicial"
-              placeholder="Objetivo del tramite..."
-              {...form.getInputProps('descripcion')}
-            />
-            <Select
+            <TextInput label="Titulo del Tramite" required {...form.getInputProps('titulo')} />
+            <Textarea label="Descripcion" required {...form.getInputProps('descripcion')} />
+            <TextInput label="Solicitante" required {...form.getInputProps('solicitante')} />
+            <NativeSelect
               label="Prioridad"
-              data={['baja', 'normal', 'alta', 'urgente']}
+              data={TRAMITE_PRIORITIES}
+              required
               {...form.getInputProps('prioridad')}
             />
+            <TextInput
+              type="date"
+              label="Fecha de ingreso"
+              {...form.getInputProps('fecha_ingreso')}
+            />
             <Button type="submit" fullWidth mt="md">
-              Crear Expediente
+              Crear Tramite
             </Button>
           </Stack>
         </form>
       </Modal>
 
-      {/* Modal Historial de Avances */}
       <Modal
         opened={historyOpened}
-        onClose={closeHistory}
-        title="Linea de Tiempo del Expediente"
+        onClose={handleCloseHistory}
+        title="Seguimiento del Tramite"
         size="lg"
       >
         {selectedTramite && (
           <Stack gap="md">
-            <Group justify="space-between">
-              <div>
-                <Text fw={700} size="lg">
-                  {selectedTramite.titulo}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Expediente: {selectedTramite.numero_expediente}
-                </Text>
-              </div>
-              <Button
-                size="xs"
-                variant="outline"
-                leftSection={<IconDownload size={14} />}
-                onClick={() => handleExport(selectedTramite.id)}
-                loading={exporting}
-              >
-                Exportar Resumen
-              </Button>
-            </Group>
-            <Divider />
-            <Timeline active={0} lineWidth={2}>
-              {selectedTramite.avances.map((a) => (
-                <Timeline.Item key={a.id} title={a.titulo_avance}>
-                  <Text c="dimmed" size="sm">
-                    {a.comentario}
-                  </Text>
-                  <Text size="xs" mt={4}>
-                    {new Date(a.fecha).toLocaleString()}
-                  </Text>
-                </Timeline.Item>
-              ))}
-              <Timeline.Item title="Inicio de Tramite">
-                <Text size="xs" mt={4}>
-                  Expediente creado en el sistema
-                </Text>
-              </Timeline.Item>
-            </Timeline>
-            <Button variant="light" fullWidth>
-              Agregar Nuevo Avance
+            <div>
+              <Text fw={700} size="lg">
+                {selectedTramite.titulo}
+              </Text>
+              <Text size="sm" c="dimmed">
+                {selectedTramite.tipo} · {selectedTramite.solicitante}
+              </Text>
+            </div>
+
+            {selectedTramite.seguimiento.length > 0 ? (
+              <Timeline active={selectedTramite.seguimiento.length} lineWidth={2}>
+                {selectedTramite.seguimiento.map((item) => (
+                  <Timeline.Item
+                    key={item.id}
+                    title={`${formatTramiteEstado(item.estado_anterior as TramiteEstadoCanonico)} → ${formatTramiteEstado(item.estado_nuevo as TramiteEstadoCanonico)}`}
+                  >
+                    <Text c="dimmed" size="sm">
+                      {item.comentario}
+                    </Text>
+                    <Text size="xs" mt={4}>
+                      {new Date(item.created_at).toLocaleString()}
+                    </Text>
+                  </Timeline.Item>
+                ))}
+              </Timeline>
+            ) : (
+              <Text c="dimmed" size="sm">
+                Este tramite todavia no tiene entradas de seguimiento.
+              </Text>
+            )}
+
+            <Textarea
+              label="Nuevo seguimiento"
+              value={newSeguimiento}
+              onChange={(event) => setNewSeguimiento(event.currentTarget.value)}
+              minRows={3}
+            />
+            <Button
+              variant="light"
+              fullWidth
+              onClick={handleAddSeguimiento}
+              loading={addingSeguimiento}
+              disabled={newSeguimiento.trim().length < 5}
+            >
+              Agregar Seguimiento
             </Button>
           </Stack>
         )}
