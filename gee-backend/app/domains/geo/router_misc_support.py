@@ -122,7 +122,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
         sar_temporal_task,
         supervised_classification_task,
     )
-    from app.domains.geo.models import TipoAnalisisGee
+    from app.domains.geo.models import EstadoGeoJob, TipoAnalisisGee
 
     valid_tipos = [t.value for t in TipoAnalisisGee]
     if payload.tipo not in valid_tipos:
@@ -130,32 +130,74 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
             status_code=422,
             detail=f"Tipo invalido '{payload.tipo}'. Valores validos: {valid_tipos}",
         )
+
+    parametros = dict(payload.parametros)
+    start_raw = parametros.get("start_date", _date.today().isoformat())
+    end_raw = parametros.get("end_date", _date.today().isoformat())
+    try:
+        start_date = _date.fromisoformat(str(start_raw))
+        end_date = _date.fromisoformat(str(end_raw))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="start_date y end_date deben usar YYYY-MM-DD") from exc
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
+
+    method = parametros.get("method", "fusion")
+    if payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
+        if method not in {"fusion", "sar_only", "optical_only"}:
+            raise HTTPException(status_code=422, detail="method invalido")
+    if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
+        try:
+            scale = int(parametros.get("scale", 100))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="scale debe ser un entero") from exc
+        if not 1 <= scale <= 10_000:
+            raise HTTPException(status_code=422, detail="scale fuera de rango")
+    else:
+        scale = 100
+
+    start_date_str = start_date.isoformat()
+    end_date_str = end_date.isoformat()
     analisis = repo.create_analisis(
         db,
         tipo=payload.tipo,
         fecha_analisis=_date.today(),
-        parametros=payload.parametros,
+        parametros=parametros,
     )
     db.commit()
     db.refresh(analisis)
-    start_date = payload.parametros.get("start_date", _date.today().isoformat())
-    end_date = payload.parametros.get("end_date", _date.today().isoformat())
-    method = payload.parametros.get("method", "fusion")
-    if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
-        if start_date > end_date:
-            raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
-        task = sar_temporal_task.delay(
-            start_date,
-            end_date,
-            payload.parametros.get("scale", 100),
-            analisis_id=str(analisis.id),
+
+    try:
+        if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
+            task = sar_temporal_task.delay(
+                start_date_str,
+                end_date_str,
+                scale,
+                analisis_id=str(analisis.id),
+            )
+        elif payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
+            task = analyze_flood_task.delay(
+                start_date_str,
+                end_date_str,
+                method,
+                analisis_id=str(analisis.id),
+            )
+        else:
+            task = supervised_classification_task.delay(
+                start_date_str,
+                end_date_str,
+                analisis_id=str(analisis.id),
+            )
+    except Exception as exc:
+        repo.update_analisis_status(
+            db,
+            analisis.id,
+            estado=EstadoGeoJob.FAILED,
+            error="No se pudo encolar el análisis GEE; reintente más tarde",
         )
-    elif payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
-        task = analyze_flood_task.delay(start_date, end_date, method, analisis_id=str(analisis.id))
-    else:
-        task = supervised_classification_task.delay(
-            start_date, end_date, analisis_id=str(analisis.id)
-        )
+        db.commit()
+        raise HTTPException(status_code=503, detail="No se pudo encolar el análisis GEE") from exc
+
     repo.update_analisis_status(db, analisis.id, celery_task_id=task.id)
     db.commit()
     db.refresh(analisis)

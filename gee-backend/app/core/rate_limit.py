@@ -46,6 +46,7 @@ class DistributedRateLimiter:
         max_requests: int = 100,
         window_seconds: int = 60,
         key_prefix: str = "ratelimit:",
+        redis_retry_cooldown_seconds: float = 5.0,
     ):
         """
         Initialize the rate limiter.
@@ -60,10 +61,12 @@ class DistributedRateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.key_prefix = key_prefix
+        self.redis_retry_cooldown_seconds = redis_retry_cooldown_seconds
 
         # Redis client (lazy initialization)
         self._redis: Optional["redis.asyncio.Redis"] = None
         self._redis_available: Optional[bool] = None
+        self._redis_retry_at = 0.0
 
         # In-memory fallback storage
         self._memory_store: dict[str, list[float]] = defaultdict(list)
@@ -76,10 +79,23 @@ class DistributedRateLimiter:
             redis_configured=bool(redis_url),
         )
 
+    async def _mark_redis_unavailable(self) -> None:
+        client = self._redis
+        self._redis = None
+        self._redis_available = False
+        self._redis_retry_at = time.monotonic() + self.redis_retry_cooldown_seconds
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
     async def _get_redis(self) -> Optional["redis.asyncio.Redis"]:
-        """Get Redis client, initializing if necessary."""
+        """Get Redis client, retrying transient failures after a cooldown."""
         if self._redis_available is False:
-            return None
+            if time.monotonic() < self._redis_retry_at:
+                return None
+            self._redis_available = None
 
         if self._redis is None and self.redis_url:
             try:
@@ -103,7 +119,7 @@ class DistributedRateLimiter:
                     "Redis connection failed, using in-memory rate limiting",
                     error=str(e),
                 )
-                self._redis_available = False
+                await self._mark_redis_unavailable()
                 return None
 
         return self._redis
@@ -187,6 +203,7 @@ class DistributedRateLimiter:
                 error=str(e),
                 identifier=identifier,
             )
+            await self._mark_redis_unavailable()
             # Fallback to memory on Redis error
             return await self._check_memory(identifier, cost)
 
@@ -284,6 +301,7 @@ class DistributedRateLimiter:
                 return True
             except Exception as e:
                 logger.error("Failed to reset rate limit in Redis", error=str(e))
+                await self._mark_redis_unavailable()
                 return False
         else:
             async with self._memory_lock:
@@ -324,6 +342,7 @@ class DistributedRateLimiter:
                 return current_count, self.max_requests, max(1, reset_time)
             except Exception as e:
                 logger.error("Failed to get rate limit status from Redis", error=str(e))
+                await self._mark_redis_unavailable()
 
         # Fallback to memory
         async with self._memory_lock:

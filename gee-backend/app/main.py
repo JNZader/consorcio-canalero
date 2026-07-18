@@ -35,12 +35,7 @@ from app.core.middleware import (
     RequestLoggingMiddleware,
 )
 from app.core.rate_limit import get_auth_rate_limiter, get_rate_limiter
-from app.core.health import (
-    check_alembic_health,
-    check_database_health,
-    check_gee_health,
-    check_redis_health,
-)
+from app.core.health import run_health_checks
 
 APP_VERSION = "2.0.0"
 
@@ -234,7 +229,7 @@ os.makedirs(settings.uploads_root, exist_ok=True)
 
 _DENUNCIA_FILENAME_RE = re.compile(
     r"^(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-    r"\.(?:jpg|jpeg|png|webp)$",
+    r"(?:-[0-9a-f]{32})?\.(?:jpg|jpeg|png|webp)$",
     re.IGNORECASE,
 )
 
@@ -360,15 +355,8 @@ async def ready(response: Response):
     fingerprinting information. Operators who need the breakdown should
     hit ``/admin/ready/detailed`` (operator+ auth required).
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    alembic_health = await check_alembic_health()
-
-    critical_ok = (
-        db_health["status"] == "healthy"
-        and redis_health["status"] == "healthy"
-        and alembic_health["status"] == "healthy"
-    )
+    services = await run_health_checks()
+    critical_ok = all(service["status"] == "healthy" for service in services.values())
 
     if not critical_ok:
         response.status_code = 503
@@ -387,15 +375,8 @@ async def health():
     operator auth (it leaked PostGIS version + Alembic SHA + GCP project
     id to unauthenticated callers).
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    alembic_health = await check_alembic_health()
-
-    is_healthy = (
-        db_health["status"] == "healthy"
-        and redis_health["status"] == "healthy"
-        and alembic_health["status"] == "healthy"
-    )
+    services = await run_health_checks()
+    is_healthy = all(service["status"] == "healthy" for service in services.values())
 
     return {"status": "healthy" if is_healthy else "degraded"}
 
@@ -412,19 +393,8 @@ async def ready_detailed(
     because that information is useful for debugging but actively useful
     to an attacker doing reconnaissance.
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    gee_health = await check_gee_health()
-    alembic_health = await check_alembic_health()
-    return {
-        "services": {
-            "database": db_health,
-            "redis": redis_health,
-            "gee": gee_health,
-            "alembic": alembic_health,
-        },
-        "version": APP_VERSION,
-    }
+    services = await run_health_checks(include_gee=True)
+    return {"services": services, "version": APP_VERSION}
 
 
 if __name__ == "__main__":

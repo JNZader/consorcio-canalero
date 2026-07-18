@@ -5,6 +5,7 @@ import ee
 import json
 import logging as _logging
 import threading
+import time
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -49,6 +50,12 @@ from app.domains.geo.gee_service_support import (
 
 _gee_initialized = False
 _gee_init_error: str | None = None
+_gee_init_retry_at = 0.0
+_gee_init_failures = 0
+_gee_init_permanent_error = False
+GEE_INIT_RETRY_BASE_SECONDS = 5.0
+GEE_INIT_RETRY_MAX_SECONDS = 300.0
+_monotonic = time.monotonic
 # Guard against the thundering-herd cold-start: N concurrent requests
 # entering _ensure_initialized at once would all call ee.Initialize()
 # (a 2-5 s blocking OAuth handshake) in parallel and stall the event loop.
@@ -88,57 +95,61 @@ def _empty_feature_collection() -> Any:
     return ee.FeatureCollection(ee.List([]))
 
 
+def _is_permanent_init_error(exc: Exception) -> bool:
+    """Return True for credential/configuration failures that need operator action."""
+    if isinstance(exc, (json.JSONDecodeError, KeyError)):
+        return True
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "invalid credential",
+            "invalid_grant",
+            "unauthorized_client",
+            "malformed credential",
+            "private key",
+        )
+    )
+
+
 def _ensure_initialized() -> None:
-    """Lazy-init GEE on first call. Raises RuntimeError if init failed before.
+    """Lazy-init GEE, retrying transient failures after bounded backoff."""
+    global _gee_initialized, _gee_init_error, _gee_init_retry_at
+    global _gee_init_failures, _gee_init_permanent_error
 
-    Thread-safe via _gee_init_lock with double-checked locking so concurrent
-    callers do not all execute the blocking ee.Initialize() handshake.
-    """
-    global _gee_initialized, _gee_init_error
-
-    # Fast path — no lock when already initialized
     if _gee_initialized:
         return
-
     if _gee_init_error:
-        raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+        if _gee_init_permanent_error:
+            raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+        if _monotonic() < _gee_init_retry_at:
+            raise RuntimeError(f"GEE no disponible temporalmente: {_gee_init_error}")
 
     with _gee_init_lock:
-        # Re-check inside the lock — another caller may have completed init
-        # while we were waiting on the mutex.
         if _gee_initialized:
             return
         if _gee_init_error:
-            raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+            if _gee_init_permanent_error:
+                raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+            if _monotonic() < _gee_init_retry_at:
+                raise RuntimeError(f"GEE no disponible temporalmente: {_gee_init_error}")
 
         try:
-            # Option 1: key file on disk
             if settings.gee_key_file_path:
                 key_path = Path(settings.gee_key_file_path)
                 if key_path.exists():
-                    credentials = ee.ServiceAccountCredentials(
-                        email=None,
-                        key_file=str(key_path),
-                    )
+                    credentials = ee.ServiceAccountCredentials(email=None, key_file=str(key_path))
                     ee.Initialize(credentials, project=settings.gee_project_id)
                     _gee_initialized = True
-                    return
 
-            # Option 2: JSON string in env var
-            if settings.gee_service_account_key:
+            if not _gee_initialized and settings.gee_service_account_key:
                 key_json = settings.gee_service_account_key.strip()
                 try:
                     key_data = json.loads(key_json)
                 except json.JSONDecodeError:
-                    # .env files often mangle JSON — double quotes get stripped
-                    # by shell expansion or dotenv parsers. Fix unquoted keys/values:
                     import re
 
-                    fixed = re.sub(
-                        r"(?<=\{|,)\s*(\w+)\s*:",
-                        r' "\1":',
-                        key_json,
-                    )
+                    fixed = re.sub(r"(?<=\{|,)\s*(\w+)\s*:", r' "\1":', key_json)
                     fixed = re.sub(
                         r':\s*([^",\{\}\[\]\d][^,\}\]]*?)(?=[,\}])',
                         lambda m: f': "{m.group(1).strip()}"',
@@ -152,14 +163,25 @@ def _ensure_initialized() -> None:
                 )
                 ee.Initialize(credentials, project=settings.gee_project_id)
                 _gee_initialized = True
-                return
 
-            # Option 3: default auth (local development)
-            ee.Initialize(project=settings.gee_project_id)
-            _gee_initialized = True
+            if not _gee_initialized:
+                ee.Initialize(project=settings.gee_project_id)
+                _gee_initialized = True
 
+            _gee_init_error = None
+            _gee_init_retry_at = 0.0
+            _gee_init_failures = 0
+            _gee_init_permanent_error = False
         except Exception as exc:
             _gee_init_error = str(exc)
+            _gee_init_permanent_error = _is_permanent_init_error(exc)
+            if not _gee_init_permanent_error:
+                _gee_init_failures += 1
+                delay = min(
+                    GEE_INIT_RETRY_BASE_SECONDS * (2 ** (_gee_init_failures - 1)),
+                    GEE_INIT_RETRY_MAX_SECONDS,
+                )
+                _gee_init_retry_at = _monotonic() + delay
             raise ValueError(
                 "No se pudo inicializar GEE. Verifica credenciales o conectividad del servicio"
             ) from exc
