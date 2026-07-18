@@ -134,12 +134,36 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # --- One-shot uploads ownership repair ---
+  # Named volumes outlive image rebuilds, so Dockerfile ownership only applies
+  # when a volume is first created. Run as root on every deployment to repair
+  # an existing volume, then require successful completion before backend starts.
+  uploads-init:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-uploads-init
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /app/uploads
+        chmod 0750 /app/uploads
+    volumes:
+      - denuncia-uploads:/app/uploads
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Backend FastAPI ---
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Exact reverse-proxy IP(s), comma-separated. Defaults to loopback so an
+      # unrelated container cannot spoof X-Forwarded-* headers.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -171,7 +195,7 @@ services:
             exit 1;
           fi;
           HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
-          wget --no-verbose --tries=1 --spider --header="Host: $$HOST" http://localhost:8000/live || exit 1
+          curl --fail --silent --show-error --header "Host: $$HOST" http://localhost:8000/live >/dev/null || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -181,6 +205,8 @@ services:
       start_period: 60s
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      uploads-init:
         condition: service_completed_successfully
       geo-worker:
         condition: service_started
