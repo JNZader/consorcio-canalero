@@ -50,7 +50,12 @@ export default function FinanzasPanel() {
           </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="balance">
-          <FinanzasSummaryTab balance={controller.balance} currentYear={controller.currentYear} />
+          <FinanzasSummaryTab
+            balance={controller.balance}
+            currentYear={controller.currentYear}
+            exportingPdf={controller.exportingSummaryPdf}
+            onDownloadPdf={controller.handleDownloadSummaryPdf}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="gastos">
           <GastosTable gastos={controller.gastos} onEdit={controller.handleOpenEditCategory} />

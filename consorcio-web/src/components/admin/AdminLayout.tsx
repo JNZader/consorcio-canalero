@@ -53,6 +53,12 @@ const NAV_SECTIONS = [
   },
 ];
 
+export const ADMIN_ACCOUNT_MENU_ITEMS = {
+  profile: { label: 'Perfil', to: '/perfil' },
+  site: { label: 'Volver al sitio', to: '/' },
+  logout: { label: 'Cerrar sesion', to: '/login' },
+} as const;
+
 interface AdminLayoutProps {
   readonly children: React.ReactNode;
   readonly currentPath?: string;
@@ -141,21 +147,28 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
 
                 <Menu.Dropdown>
                   <Menu.Label>Cuenta</Menu.Label>
-                  <Menu.Item component={Link} to="/perfil" leftSection={<IconUser size={16} />}>
-                    Perfil
+                  <Menu.Item
+                    component={Link}
+                    to={ADMIN_ACCOUNT_MENU_ITEMS.profile.to}
+                    leftSection={<IconUser size={16} />}
+                  >
+                    {ADMIN_ACCOUNT_MENU_ITEMS.profile.label}
                   </Menu.Item>
-                  <Menu.Item leftSection={<IconSettings size={16} />}>Configuracion</Menu.Item>
                   <Menu.Divider />
-                  <Menu.Item component={Link} to="/" leftSection={<IconHome size={16} />}>
-                    Volver al sitio
+                  <Menu.Item
+                    component={Link}
+                    to={ADMIN_ACCOUNT_MENU_ITEMS.site.to}
+                    leftSection={<IconHome size={16} />}
+                  >
+                    {ADMIN_ACCOUNT_MENU_ITEMS.site.label}
                   </Menu.Item>
                   <Menu.Item
                     color="red"
                     component={Link}
-                    to="/login"
+                    to={ADMIN_ACCOUNT_MENU_ITEMS.logout.to}
                     leftSection={<IconLogout size={16} />}
                   >
-                    Cerrar sesion
+                    {ADMIN_ACCOUNT_MENU_ITEMS.logout.label}
                   </Menu.Item>
                 </Menu.Dropdown>
               </Menu>

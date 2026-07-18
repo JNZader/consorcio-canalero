@@ -4,17 +4,9 @@
  * Target kill rate: ≥80%
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import {
-  queryClient,
-  queryKeys,
-  QueryError,
-  invalidateDashboardStats,
-  invalidateReports,
-  invalidateLayers,
-  invalidateAll,
-} from '../../../src/lib/../../src/lib/query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryError, queryClient, queryKeys } from '../../../src/lib/../../src/lib/query';
 import type { ReportFilters } from '../../../src/lib/../../src/lib/query';
 
 describe('query - queryClient configuration', () => {
@@ -55,9 +47,9 @@ describe('query - queryClient configuration', () => {
     expect(defaultOptions.queries?.refetchOnReconnect).toBe(true);
   });
 
-  it('should have mutation retry configured', () => {
+  it('does not retry mutations by default', () => {
     const defaultOptions = queryClient.getDefaultOptions();
-    expect(defaultOptions.mutations?.retry).toBe(1);
+    expect(defaultOptions.mutations?.retry).toBe(false);
   });
 
   // MUTATION CATCHING: Configuration values
@@ -330,5 +322,54 @@ describe('query - Retry strategy', () => {
 
     const veryHighDelay = retryDelayFn(10);
     expect(veryHighDelay).toBeLessThanOrEqual(30000);
+  });
+});
+
+async function executeMutation<T>(
+  client: QueryClient,
+  mutationFn: () => Promise<T>,
+  retry?: number | false
+): Promise<T> {
+  const mutation = client.getMutationCache().build<T, Error, void, unknown>(client, {
+    mutationFn,
+    retry,
+    retryDelay: 0,
+  });
+  return mutation.execute(undefined);
+}
+
+describe('query - Mutation retry safety', () => {
+  beforeEach(() => {
+    queryClient.clear();
+  });
+
+  it('invokes a default mutation exactly once when it fails', async () => {
+    const mutationFn = vi.fn().mockRejectedValue(new Error('transient'));
+
+    await expect(executeMutation(queryClient, mutationFn)).rejects.toThrow('transient');
+
+    expect(mutationFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows an explicitly safe idempotent mutation to retry a transient failure', async () => {
+    const mutationFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary outage'))
+      .mockResolvedValueOnce('ok');
+
+    await expect(executeMutation(queryClient, mutationFn, 1)).resolves.toBe('ok');
+
+    expect(mutationFn).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['authentication', new QueryError('Unauthorized', 401)],
+    ['validation', new QueryError('Invalid payload', 422)],
+  ])('does not retry %s failures without an explicit safe opt-in', async (_kind, error) => {
+    const mutationFn = vi.fn().mockRejectedValue(error);
+
+    await expect(executeMutation(queryClient, mutationFn)).rejects.toBe(error);
+
+    expect(mutationFn).toHaveBeenCalledTimes(1);
   });
 });

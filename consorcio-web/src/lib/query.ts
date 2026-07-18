@@ -27,7 +27,9 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: true,
     },
     mutations: {
-      retry: 1,
+      // Mutations are not assumed idempotent. A retry must be opted into at
+      // the individual call site only when the operation is explicitly safe.
+      retry: false,
     },
   },
 });

@@ -4,11 +4,13 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import FinanzasPanel from '../../src/components/admin/management/FinanzasPanel';
-import { apiFetch } from '../../src/lib/api';
+import { API_URL, apiFetch, getAuthToken } from '../../src/lib/api';
 import contracts from '../fixtures/admin-api-contracts.json';
 
 vi.mock('../../src/lib/api', () => ({
+  API_URL: 'http://localhost:8000',
   apiFetch: vi.fn(),
+  getAuthToken: vi.fn().mockResolvedValue('token'),
 }));
 
 vi.mock('@mantine/notifications', () => ({
@@ -76,6 +78,18 @@ describe('FinanzasPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFinanceApi();
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:financial-summary'),
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLAnchorElement.prototype, 'click', {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   it('renders backend-shaped financial rows', async () => {
@@ -237,4 +251,72 @@ describe('FinanzasPanel', () => {
       });
     });
   });
+
+  it('downloads the authenticated year-specific financial summary PDF', async () => {
+    const user = userEvent.setup();
+    const currentYear = new Date().getFullYear();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Blob(['pdf'], { type: 'application/pdf' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const appendSpy = vi.spyOn(document.body, 'appendChild');
+
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+
+    await user.click(
+      screen.getByRole('button', { name: /descargar resumen financiero pdf/i })
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_URL}/api/v2/finanzas/resumen/${currentYear}/export-pdf`,
+        {
+          headers: {
+            Accept: 'application/pdf',
+            Authorization: 'Bearer token',
+          },
+        }
+      );
+    });
+    expect(getAuthToken).toHaveBeenCalledTimes(1);
+
+    const appendedAnchor = appendSpy.mock.calls
+      .map(([node]) => node)
+      .find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+    expect(appendedAnchor?.download).toBe(`resumen_financiero_${currentYear}.pdf`);
+    expect(appendedAnchor?.href).toContain('blob:financial-summary');
+  });
+
+  it('reports a truthful error when the financial PDF cannot be downloaded', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'unavailable' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
+
+    renderPanel();
+    await screen.findByText('Administracion Financiera');
+    await user.click(
+      screen.getByRole('button', { name: /descargar resumen financiero pdf/i })
+    );
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo descargar el resumen',
+          color: 'red',
+        })
+      );
+    });
+  });
+
 });

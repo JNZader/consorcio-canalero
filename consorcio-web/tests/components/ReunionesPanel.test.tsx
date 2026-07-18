@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReunionesPanel from '../../src/components/admin/management/ReunionesPanel';
@@ -289,4 +289,97 @@ describe('ReunionesPanel', () => {
       );
     });
   });
+
+  it('confirms and deletes the exact agenda item through the 204 endpoint', async () => {
+    const user = userEvent.setup();
+    let deleted = false;
+    let resolveDelete: (() => void) | undefined;
+
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/reuniones' && !options) {
+        return [
+          {
+            id: 'r1',
+            titulo: 'Reunion mensual',
+            fecha_reunion: '2026-03-01T10:00:00.000Z',
+            lugar: 'Sede central',
+            estado: 'planificada',
+          },
+        ];
+      }
+      if (path === '/denuncias?limit=50') return { items: [] };
+      if (path === '/tramites') return { data: [] };
+      if (path === '/reuniones/r1/agenda' && !options) {
+        return deleted
+          ? []
+          : [
+              {
+                id: 'a1',
+                titulo: 'Reparacion compuerta',
+                descripcion: 'Definir responsables',
+                referencias: [],
+              },
+            ];
+      }
+      if (path === '/reuniones/r1/agenda/a1' && options?.method === 'DELETE') {
+        return new Promise<void>((resolve) => {
+          resolveDelete = () => {
+            deleted = true;
+            resolve();
+          };
+        });
+      }
+      return {};
+    });
+
+    const confirmSpy = vi
+      .fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      value: confirmSpy,
+    });
+
+    renderPanel();
+    await screen.findByText('Reuniones de Comision');
+    await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
+
+    const deleteButton = await screen.findByRole('button', {
+      name: 'Eliminar tema 1: Reparacion compuerta',
+    });
+
+    await user.click(deleteButton);
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Reparacion compuerta')
+    );
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/reuniones/r1/agenda/a1',
+      expect.objectContaining({ method: 'DELETE' })
+    );
+
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith('/reuniones/r1/agenda/a1', {
+        method: 'DELETE',
+      });
+      expect(deleteButton).toBeDisabled();
+    });
+
+    await act(async () => {
+      resolveDelete?.();
+    });
+
+    expect(
+      await screen.findByText(/no hay temas en la agenda todavia/i)
+    ).toBeInTheDocument();
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Tema eliminado',
+        color: 'green',
+      })
+    );
+  });
+
 });

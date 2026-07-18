@@ -2,7 +2,7 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../../../../lib/api';
+import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { GASTO_CATEGORIES, INGRESO_CATEGORIES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
@@ -27,9 +27,11 @@ export function useFinanzasController() {
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>('balance');
   const [editingGasto, setEditingGasto] = useState<Gasto | null>(null);
   const [editingIngreso, setEditingIngreso] = useState<Ingreso | null>(null);
+  const currentYear = new Date().getFullYear();
 
   const [gastoOpened, gastoModal] = useDisclosure(false);
   const [editGastoOpened, editGastoModal] = useDisclosure(false);
@@ -74,7 +76,7 @@ export function useFinanzasController() {
       const [gastosRaw, ingresosRaw, balanceData] = await Promise.all([
         apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos'),
         apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos'),
-        apiFetch<Balance>(`/finanzas/resumen/${new Date().getFullYear()}`),
+        apiFetch<Balance>(`/finanzas/resumen/${currentYear}`),
       ]);
       setGastos(normalizeArray(gastosRaw));
       setIngresos(normalizeArray(ingresosRaw));
@@ -84,7 +86,7 @@ export function useFinanzasController() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentYear]);
 
   useEffect(() => {
     fetchFinanzas();
@@ -179,6 +181,45 @@ export function useFinanzasController() {
     }
   };
 
+  const handleDownloadSummaryPdf = async () => {
+    setExportingSummaryPdf(true);
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/api/v2/finanzas/resumen/${currentYear}/export-pdf`, {
+        headers: {
+          Accept: 'application/pdf',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Error al descargar el resumen financiero (${response.status})`);
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/pdf')) {
+        throw new Error('El servidor no devolvio un documento PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `resumen_financiero_${currentYear}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      logger.error('Error downloading financial summary PDF:', error);
+      notifications.show({
+        title: 'No se pudo descargar el resumen',
+        message: error instanceof Error ? error.message : 'Intenta nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setExportingSummaryPdf(false);
+    }
+  };
+
   return {
     gastos,
     ingresos,
@@ -189,7 +230,8 @@ export function useFinanzasController() {
     editingIngreso,
     categoryData: buildOptionData([...GASTO_CATEGORIES]),
     ingresoCategoryData: buildOptionData([...INGRESO_CATEGORIES]),
-    currentYear: new Date().getFullYear(),
+    currentYear,
+    exportingSummaryPdf,
     gastoOpened,
     editGastoOpened,
     ingresoOpened,
@@ -208,5 +250,6 @@ export function useFinanzasController() {
     handleCreateIngreso,
     handleOpenEditIngreso,
     handleUpdateIngreso,
+    handleDownloadSummaryPdf,
   };
 }
