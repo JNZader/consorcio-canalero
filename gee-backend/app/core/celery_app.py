@@ -116,6 +116,14 @@ celery_app.conf.update(
             "schedule": crontab(minute="30", hour="4"),
             "options": {"queue": "celery"},
         },
+        # Reclaim immutable replacement versions left behind by ambiguous
+        # commits or failed post-commit cleanup. The reconciler has its own
+        # 24-hour safety grace and bounded batch; run it daily at 04:45 UTC.
+        "reconcile-orphaned-denuncia-photos": {
+            "task": "denuncias.reconcile_orphaned_photos",
+            "schedule": crontab(minute="45", hour="4"),
+            "options": {"queue": "celery"},
+        },
         "reconcile-stale-geo-jobs": {
             "task": "geo.reconcile_stale_jobs",
             "schedule": crontab(minute="*/15"),
@@ -165,6 +173,24 @@ def purge_soft_deleted_denuncias_task() -> int:
     async def _run() -> int:
         async with AsyncSessionLocal() as session:
             return await purge_soft_deleted_denuncias(session)
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="denuncias.reconcile_orphaned_photos")
+def reconcile_orphaned_denuncia_photos_task() -> int:
+    """Reclaim old immutable photo versions that no DB row references.
+
+    See the prefork-pool note on the refresh-token task above.
+    """
+    import asyncio
+
+    from app.auth.cleanup_tasks import reconcile_orphaned_denuncia_photos
+    from app.db.session import AsyncSessionLocal
+
+    async def _run() -> int:
+        async with AsyncSessionLocal() as session:
+            return await reconcile_orphaned_denuncia_photos(session)
 
     return asyncio.run(_run())
 

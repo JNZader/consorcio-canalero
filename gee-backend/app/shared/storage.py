@@ -168,6 +168,8 @@ MIME_TO_EXTENSION = {
     "image/webp": "webp",
 }
 
+_PHOTO_EXTENSIONS = tuple(sorted(set(MIME_TO_EXTENSION.values())))
+
 MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -219,6 +221,11 @@ class LocalPhotoStorage:
         # Create lazily — production volume already exists; in tests the
         # tmp_path fixture makes it cheap to create per-test.
         self._root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def root(self) -> Path:
+        """Filesystem root managed by this storage instance."""
+        return self._root
 
     async def save(self, file: UploadFile, key: str) -> str:
         # Caller (router) is expected to have validated MIME + size already,
@@ -297,17 +304,57 @@ class LocalPhotoStorage:
         # We do not know the extension at delete time (the DB stores the
         # full URL, not the bare key). Try all known extensions; ignore
         # FileNotFoundError because the consumer doesn't care if it's
-        # already gone.
-        for ext in set(MIME_TO_EXTENSION.values()):
-            candidate = self._root / f"{key}.{ext}"
+        # already gone. The containing directory is fsynced even on an
+        # absent retry: an earlier unlink may have succeeded while its fsync
+        # acknowledgement was lost, so the retry must still make that
+        # namespace change durable.
+        key_path = Path(key)
+        if key_path.is_absolute() or not key_path.parts or ".." in key_path.parts:
+            raise ValueError("Photo storage keys must be safe relative paths")
+
+        root = self._root.resolve()
+        directory = self._root / key_path.parent
+        try:
+            directory.resolve().relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Photo storage key resolves outside the managed root") from exc
+
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            directory_fd = os.open(directory, flags)
+        except FileNotFoundError:
+            # No containing directory means no possible file or namespace
+            # mutation to make durable.
+            return
+
+        delete_error: OSError | None = None
+        try:
+            for ext in _PHOTO_EXTENSIONS:
+                candidate_name = f"{key_path.name}.{ext}"
+                try:
+                    # Use the opened directory rather than resolving the
+                    # path again. This keeps deletion inside the directory
+                    # whose durability is acknowledged below.
+                    os.unlink(candidate_name, dir_fd=directory_fd)
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    delete_error = exc
+                    break
+
             try:
-                candidate.unlink()
-            except FileNotFoundError:
-                continue
-            except OSError:
-                # Preserve the failure so callers do not erase the DB pointer
-                # while sensitive bytes remain on disk.
+                os.fsync(directory_fd)
+            except OSError as fsync_error:
+                if delete_error is not None:
+                    raise fsync_error from delete_error
                 raise
+
+            if delete_error is not None:
+                # Completed unlinks were fsynced before surfacing the later
+                # extension failure, so a retry can safely continue.
+                raise delete_error
+        finally:
+            os.close(directory_fd)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -333,7 +380,7 @@ def photo_key_from_url(photo_url: str, public_base: str | None = None) -> str | 
         return None
     relative = path[len(prefix) :]
     suffix = Path(relative).suffix.lower().lstrip(".")
-    if suffix not in set(MIME_TO_EXTENSION.values()):
+    if suffix not in _PHOTO_EXTENSIONS:
         return None
     key = relative[: -(len(suffix) + 1)]
     if not key.startswith("denuncias/") or ".." in Path(key).parts:

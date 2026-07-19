@@ -125,3 +125,15 @@ class TestEnvVarConfiguration:
             assert isinstance(entry["schedule"], crontab), (
                 f"Beat entry '{name}' should use crontab schedule"
             )
+
+
+def test_orphaned_denuncia_photo_reconciler_is_registered_and_scheduled():
+    from app.core.celery_app import (
+        celery_app,
+        reconcile_orphaned_denuncia_photos_task,
+    )
+
+    entry = celery_app.conf.beat_schedule["reconcile-orphaned-denuncia-photos"]
+    assert entry["task"] == "denuncias.reconcile_orphaned_photos"
+    assert entry["options"]["queue"] == "celery"
+    assert reconcile_orphaned_denuncia_photos_task.name == "denuncias.reconcile_orphaned_photos"
