@@ -1,21 +1,28 @@
 import { MantineProvider } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TramitesPanel from '../../src/components/admin/management/TramitesPanel';
+import { API_URL, getAuthToken } from '../../src/lib/api';
 import contracts from '../fixtures/admin-api-contracts.json';
 
-const { mockApiFetch } = vi.hoisted(() => ({
+const { mockApiFetch, mockGetAuthToken } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
+  mockGetAuthToken: vi.fn(),
 }));
 
-vi.mock('../../src/lib/api', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../src/lib/api')>();
-  return {
-    ...original,
-    apiFetch: mockApiFetch,
-  };
-});
+vi.mock('../../src/lib/api', () => ({
+  API_URL: 'http://localhost:8000',
+  apiFetch: mockApiFetch,
+  getAuthToken: mockGetAuthToken,
+}));
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: {
+    show: vi.fn(),
+  },
+}));
 
 vi.mock('../../src/lib/logger', () => ({
   logger: {
@@ -44,6 +51,19 @@ async function chooseOption(input: HTMLElement, name: string) {
 describe('TramitesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetAuthToken.mockResolvedValue('token');
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:tramite-pdf'),
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLAnchorElement.prototype, 'click', {
+      configurable: true,
+      value: vi.fn(),
+    });
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
       if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
       if (path === `/tramites/${tramite.id}` && !options) return tramite;
@@ -51,10 +71,20 @@ describe('TramitesPanel', () => {
         return { id: '44444444-4444-4444-8444-444444444444', message: 'ok', estado: 'ingresado' };
       }
       if (path === `/tramites/${tramite.id}/seguimiento` && options?.method === 'POST') {
-        return { ...tramite.seguimiento[0], id: '55555555-5555-4555-8555-555555555555' };
+        const body = JSON.parse(String(options.body)) as { comentario: string };
+        return {
+          ...tramite.seguimiento[0],
+          id: '55555555-5555-4555-8555-555555555555',
+          comentario: body.comentario,
+          created_at: '2026-03-03T10:00:00Z',
+        };
       }
       return [];
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('renders backend-shaped tramite list fields', async () => {
@@ -126,7 +156,7 @@ describe('TramitesPanel', () => {
     );
   });
 
-  it('renders seguimiento from tramite detail and posts a real follow-up', async () => {
+  it('prepends a newly posted follow-up to the existing backend history', async () => {
     const user = userEvent.setup();
     renderPanel();
 
@@ -134,7 +164,8 @@ describe('TramitesPanel', () => {
     await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
 
     const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
-    expect(within(modal).getByText(contracts.tramites.seguimiento_create.comentario)).toBeInTheDocument();
+    const existingComment = contracts.tramites.seguimiento_create.comentario;
+    expect(within(modal).getByText(existingComment)).toBeInTheDocument();
     expect(mockApiFetch).toHaveBeenCalledWith(`/tramites/${tramite.id}`);
 
     const newComment = 'Se adjunto el informe tecnico';
@@ -147,6 +178,97 @@ describe('TramitesPanel', () => {
         body: JSON.stringify({ comentario: newComment }),
       });
     });
+
+    const newEntry = await within(modal).findByText(newComment);
+    const previousEntry = within(modal).getByText(existingComment);
+    expect(newEntry.compareDocumentPosition(previousEntry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('downloads the authenticated tramite PDF with loading state and cleanup', async () => {
+    const user = userEvent.setup();
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const responsePromise = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const fetchMock = vi.fn(() => responsePromise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    const downloadButton = within(modal).getByRole('button', { name: /descargar pdf/i });
+    const appendSpy = vi.spyOn(document.body, 'appendChild');
+
+    await user.click(downloadButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_URL}/api/v2/tramites/${tramite.id}/export-pdf`,
+        {
+          headers: {
+            Accept: 'application/pdf',
+            Authorization: 'Bearer token',
+          },
+        }
+      );
+    });
+    expect(downloadButton).toBeDisabled();
+    expect(getAuthToken).toHaveBeenCalledTimes(1);
+
+    resolveResponse?.(
+      new Response(new Blob(['pdf'], { type: 'application/pdf' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+    );
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'PDF descargado', color: 'green' })
+      );
+      expect(downloadButton).toBeEnabled();
+    });
+
+    const appendedAnchor = appendSpy.mock.calls
+      .map(([node]) => node)
+      .find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+    expect(appendedAnchor?.download).toBe(`tramite-${tramite.id}.pdf`);
+    expect(appendedAnchor?.href).toContain('blob:tramite-pdf');
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:tramite-pdf'), {
+      timeout: 1600,
+    });
+    appendSpy.mockRestore();
+  });
+
+  it('reports a truthful error when the tramite PDF cannot be downloaded', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'unavailable' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
+
+    renderPanel();
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    await user.click(within(modal).getByRole('button', { name: /descargar pdf/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo descargar el tramite',
+          message: expect.stringContaining('503'),
+          color: 'red',
+        })
+      );
+    });
+    expect(window.URL.createObjectURL).not.toHaveBeenCalled();
+  });
 });

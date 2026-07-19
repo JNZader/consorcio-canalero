@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 
 const ROUTES = [
   { path: '/', name: 'Homepage' },
@@ -82,7 +82,9 @@ test.describe('Navegacion por teclado', () => {
     await gotoAndWait(page, '/');
 
     const focusableElements = await page
-      .locator('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      .locator(
+        'a[href]:visible, button:not([disabled]):visible, input:not([disabled]):visible, select:not([disabled]):visible, textarea:not([disabled]):visible, [tabindex]:not([tabindex="-1"]):visible'
+      )
       .all();
     expect(focusableElements.length).toBeGreaterThan(0);
 
@@ -261,6 +263,7 @@ test.describe('Carga, contraste y responsive', () => {
       expect(ariaAtomic === 'true' || ariaAtomic === null).toBe(true);
     }
 
+    await page.setViewportSize({ width: 640, height: 800 });
     await gotoAndWait(page, '/');
     expect(
       (await new AxeBuilder({ page }).withRules(['color-contrast']).analyze()).violations

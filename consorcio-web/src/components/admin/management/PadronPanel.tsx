@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
+import { useUserRole } from '../../../stores/authStore';
 import { LoadingState } from '../../ui/LoadingState';
 import { IconPlus, IconSearch, IconUser } from '../../ui/icons';
 
@@ -39,12 +40,14 @@ interface Consorcista {
 interface PadronImportResult {
   filename: string;
   processed: number;
-  upserted: number;
+  created: number;
   skipped: number;
   errors: Array<{ row: number; error: string }>;
 }
 
 export default function PadronPanel() {
+  const userRole = useUserRole();
+  const canImportPadron = userRole === 'admin';
   const [consorcistas, setConsorcistas] = useState<Consorcista[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -141,7 +144,7 @@ export default function PadronPanel() {
 
       notifications.show({
         title: 'Importacion completada',
-        message: `Procesadas ${result.processed} filas, ${result.upserted} aplicadas`,
+        message: `Procesadas ${result.processed} filas; registros creados: ${result.created}; filas omitidas: ${result.skipped}`,
         color: result.errors.length > 0 ? 'yellow' : 'green',
       });
     } catch (err) {
@@ -166,9 +169,11 @@ export default function PadronPanel() {
         <Button leftSection={<IconPlus size={18} />} onClick={open} color="blue">
           Nuevo Consorcista
         </Button>
-        <Button variant="outline" onClick={openImport}>
-          Importar CSV/XLS
-        </Button>
+        {canImportPadron && (
+          <Button variant="outline" onClick={openImport}>
+            Importar CSV/XLS
+          </Button>
+        )}
       </Group>
 
       <Paper shadow="sm" p="md" radius="md" mb="md">
@@ -270,46 +275,49 @@ export default function PadronPanel() {
         </form>
       </Modal>
 
-      <Modal
-        opened={importOpened}
-        onClose={closeImport}
-        title="Importar padron desde archivo"
-        size="lg"
-      >
-        <Stack gap="md">
-          <Text size="sm" c="dimmed">
-            Formatos soportados: CSV, XLS y XLSX. El sistema actualiza o crea consorcistas por CUIT.
-          </Text>
-          <FileInput
-            label="Archivo"
-            placeholder="Selecciona un archivo"
-            value={importFile}
-            onChange={setImportFile}
-            accept=".csv,.xls,.xlsx"
-            clearable
-          />
-          <Button loading={importLoading} onClick={handleImportPadron}>
-            Procesar importacion
-          </Button>
+      {canImportPadron && (
+        <Modal
+          opened={importOpened}
+          onClose={closeImport}
+          title="Importar padron desde archivo"
+          size="lg"
+        >
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              Formatos soportados: CSV, XLS y XLSX. Los CUIT nuevos se crean; los existentes o
+              duplicados se omiten sin modificar datos.
+            </Text>
+            <FileInput
+              label="Archivo"
+              placeholder="Selecciona un archivo"
+              value={importFile}
+              onChange={setImportFile}
+              accept=".csv,.xls,.xlsx"
+              clearable
+            />
+            <Button loading={importLoading} onClick={handleImportPadron}>
+              Procesar importacion
+            </Button>
 
-          {importResult && (
-            <Paper withBorder p="sm" radius="md">
-              <Text size="sm">Archivo: {importResult.filename}</Text>
-              <Text size="sm">Filas procesadas: {importResult.processed}</Text>
-              <Text size="sm">Upserts aplicados: {importResult.upserted}</Text>
-              <Text size="sm">Filas omitidas: {importResult.skipped}</Text>
-              {importResult.errors.length > 0 && (
-                <Text size="xs" c="red.7" mt="xs">
-                  {`Errores: ${importResult.errors
-                    .slice(0, 5)
-                    .map((item) => `fila ${item.row}: ${item.error}`)
-                    .join(' | ')}`}
-                </Text>
-              )}
-            </Paper>
-          )}
-        </Stack>
-      </Modal>
+            {importResult && (
+              <Paper withBorder p="sm" radius="md">
+                <Text size="sm">Archivo: {importResult.filename}</Text>
+                <Text size="sm">Filas procesadas: {importResult.processed}</Text>
+                <Text size="sm">Registros creados: {importResult.created}</Text>
+                <Text size="sm">Filas omitidas: {importResult.skipped}</Text>
+                {importResult.errors.length > 0 && (
+                  <Text size="xs" c="red.7" mt="xs">
+                    {`Errores: ${importResult.errors
+                      .slice(0, 5)
+                      .map((item) => `fila ${item.row}: ${item.error}`)
+                      .join(' | ')}`}
+                  </Text>
+                )}
+              </Paper>
+            )}
+          </Stack>
+        </Modal>
+      )}
     </Container>
   );
 }

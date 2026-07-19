@@ -5,8 +5,8 @@ import {
   Container,
   Group,
   Modal,
-  Paper,
   NativeSelect,
+  Paper,
   Stack,
   Table,
   Text,
@@ -17,12 +17,13 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { type TramiteEstadoCanonico, formatTramiteEstado } from '../../../constants/tramites';
-import { apiFetch } from '../../../lib/api';
+import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LoadingState } from '../../ui/LoadingState';
-import { IconHistory, IconPlus } from '../../ui/icons';
+import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
 
 interface TramiteListItem {
   id: string;
@@ -77,6 +78,7 @@ export default function TramitesPanel() {
   const [selectedTramite, setSelectedTramite] = useState<TramiteDetail | null>(null);
   const [newSeguimiento, setNewSeguimiento] = useState('');
   const [addingSeguimiento, setAddingSeguimiento] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
@@ -161,7 +163,7 @@ export default function TramitesPanel() {
         }
       );
       setSelectedTramite((current) =>
-        current ? { ...current, seguimiento: [...current.seguimiento, seguimiento] } : current
+        current ? { ...current, seguimiento: [seguimiento, ...current.seguimiento] } : current
       );
       setNewSeguimiento('');
     } catch (err) {
@@ -175,6 +177,54 @@ export default function TramitesPanel() {
     setSelectedTramite(null);
     setNewSeguimiento('');
     closeHistory();
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selectedTramite) return;
+
+    setDownloadingPdf(true);
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/api/v2/tramites/${selectedTramite.id}/export-pdf`, {
+        headers: {
+          Accept: 'application/pdf',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Error al descargar el tramite (${response.status})`);
+      }
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/pdf')) {
+        throw new Error('El servidor no devolvio un documento PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `tramite-${selectedTramite.id}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+
+      notifications.show({
+        title: 'PDF descargado',
+        message: `Se descargo el expediente de ${selectedTramite.titulo}`,
+        color: 'green',
+      });
+    } catch (error) {
+      logger.error('Error downloading tramite PDF:', error);
+      notifications.show({
+        title: 'No se pudo descargar el tramite',
+        message: error instanceof Error ? error.message : 'Intenta nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   if (loading) return <LoadingState />;
@@ -288,6 +338,15 @@ export default function TramitesPanel() {
                 {selectedTramite.tipo} · {selectedTramite.solicitante}
               </Text>
             </div>
+
+            <Button
+              variant="outline"
+              leftSection={<IconDownload size={16} />}
+              onClick={handleDownloadPdf}
+              loading={downloadingPdf}
+            >
+              Descargar PDF
+            </Button>
 
             {selectedTramite.seguimiento.length > 0 ? (
               <Timeline active={selectedTramite.seguimiento.length} lineWidth={2}>

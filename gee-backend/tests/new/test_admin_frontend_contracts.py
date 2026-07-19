@@ -7,6 +7,7 @@ from app.domains.finanzas.models import CATEGORIAS_GASTO, CATEGORIAS_INGRESO
 from app.domains.finanzas.router import router as finanzas_router
 from app.domains.finanzas.schemas import GastoCreate, IngresoCreate
 from app.domains.padron.router import router as padron_router
+from app.domains.padron.schemas import CsvImportResponse
 from app.domains.tramites.router import router as tramites_router
 from app.domains.tramites.schemas import SeguimientoCreate, TramiteCreate, TramiteResponse
 
@@ -60,7 +61,15 @@ def test_tramites_frontend_payloads_and_detail_match_backend_schemas() -> None:
     )
 
 
+def test_padron_frontend_import_result_matches_backend_schema() -> None:
+    contract = _contracts()["padron"]["import_result"]
+
+    assert CsvImportResponse.model_validate(contract).model_dump(mode="json") == contract
+    assert ("/padron/import", "POST") in _route_surface(padron_router)
+
+
 def test_admin_frontend_only_uses_routes_implemented_by_backend() -> None:
     assert ("/finanzas/comprobantes/upload", "POST") not in _route_surface(finanzas_router)
     assert ("/tramites/{tramite_id}/seguimiento", "POST") in _route_surface(tramites_router)
+    assert ("/tramites/{tramite_id}/export-pdf", "GET") in _route_surface(tramites_router)
     assert not any("pagos" in path for path, _method in _route_surface(padron_router))
