@@ -3,7 +3,7 @@
 The contract:
   - ``create_code_for_token`` returns a unique 8-char uppercase
     alphanumeric code, persists the mapping with a 15-min TTL.
-  - ``exchange_code_for_token`` returns the token ONLY on the
+  - ``consume_email_code`` returns the token ONLY on the
     happy path (valid + matching purpose + not expired + not
     consumed), ``None`` everywhere else.
   - Failure paths return ``None`` consistently — no leak between
@@ -12,11 +12,12 @@ The contract:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 
 from app.auth.email_codes import (
     CODE_ALPHABET,
@@ -24,8 +25,8 @@ from app.auth.email_codes import (
     EmailCode,
     RESET_PURPOSE,
     VERIFY_PURPOSE,
+    consume_email_code,
     create_code_for_token,
-    exchange_code_for_token,
     generate_short_code,
 )
 from app.auth.models import User, UserRole
@@ -136,7 +137,7 @@ async def test_create_code_persists_row(test_engine):
 
 
 @pytest.mark.asyncio
-async def test_exchange_happy_path_returns_token(test_engine):
+async def test_exchange_without_exchange_id_remains_one_shot(test_engine):
     _ = test_engine
     engine, SessionLocal = _make_session_factory()
     user = await _seed_user_async(SessionLocal)
@@ -151,14 +152,243 @@ async def test_exchange_happy_path_returns_token(test_engine):
             await session.commit()
 
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
+            result = await consume_email_code(session, code=code, purpose=RESET_PURPOSE)
             await session.commit()
         assert result == "real-reset-token-value"
 
         # Second exchange must fail — one-shot semantics.
         async with SessionLocal() as session:
-            again = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
+            again = await consume_email_code(session, code=code, purpose=RESET_PURPOSE)
         assert again is None
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_exchange_same_exchange_id_recovers_token_and_stores_only_digest(test_engine):
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    exchange_id = uuid.uuid4()
+    token = "idempotent-reset-token"
+    try:
+        async with SessionLocal() as session:
+            code = await create_code_for_token(
+                session,
+                user=user,
+                purpose=RESET_PURPOSE,
+                token=token,
+            )
+            await session.commit()
+
+        async with SessionLocal() as session:
+            first = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=exchange_id,
+            )
+            await session.commit()
+
+        async with SessionLocal() as session:
+            replay = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=exchange_id,
+            )
+            await session.commit()
+
+        assert first == token
+        assert replay == token
+
+        async with SessionLocal() as session:
+            row = (
+                await session.execute(select(EmailCode).where(EmailCode.code == code))
+            ).scalar_one()
+            assert row.exchange_id_digest is not None
+            assert len(row.exchange_id_digest) == 64
+            assert set(row.exchange_id_digest) <= set("0123456789abcdef")
+            assert row.exchange_id_digest != str(exchange_id)
+            assert row.exchange_id_digest != token
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_exchange_different_exchange_id_cannot_recover_token(test_engine):
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    try:
+        async with SessionLocal() as session:
+            code = await create_code_for_token(
+                session,
+                user=user,
+                purpose=VERIFY_PURPOSE,
+                token="verify-token",
+            )
+            await session.commit()
+
+        async with SessionLocal() as session:
+            first = await consume_email_code(
+                session,
+                code=code,
+                purpose=VERIFY_PURPOSE,
+                exchange_id=uuid.uuid4(),
+            )
+            await session.commit()
+        assert first == "verify-token"
+
+        async with SessionLocal() as session:
+            replay = await consume_email_code(
+                session,
+                code=code,
+                purpose=VERIFY_PURPOSE,
+                exchange_id=uuid.uuid4(),
+            )
+        assert replay is None
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_exchange_same_exchange_id_cannot_recover_expired_code(test_engine):
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    exchange_id = uuid.uuid4()
+    try:
+        async with SessionLocal() as session:
+            code = await create_code_for_token(
+                session,
+                user=user,
+                purpose=RESET_PURPOSE,
+                token="expiring-token",
+            )
+            await session.commit()
+
+        async with SessionLocal() as session:
+            first = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=exchange_id,
+            )
+            await session.commit()
+        assert first == "expiring-token"
+
+        async with SessionLocal() as session:
+            await session.execute(
+                sa_update(EmailCode)
+                .where(EmailCode.code == code)
+                .values(expires_at=datetime.now(tz=timezone.utc) - timedelta(seconds=1))
+            )
+            await session.commit()
+
+        async with SessionLocal() as session:
+            replay = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=exchange_id,
+            )
+        assert replay is None
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_exchange_same_exchange_id_returns_token_to_both_callers(test_engine):
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    exchange_id = uuid.uuid4()
+    token = "concurrent-token"
+    try:
+        async with SessionLocal() as session:
+            code = await create_code_for_token(
+                session,
+                user=user,
+                purpose=RESET_PURPOSE,
+                token=token,
+            )
+            await session.commit()
+
+        async def exchange() -> str | None:
+            async with SessionLocal() as session:
+                result = await consume_email_code(
+                    session,
+                    code=code,
+                    purpose=RESET_PURPOSE,
+                    exchange_id=exchange_id,
+                )
+                await session.commit()
+                return result
+
+        results = await asyncio.gather(exchange(), exchange())
+        assert results == [token, token]
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_exchange_distinct_ids_allows_only_winner_recovery(test_engine):
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    exchange_ids = [uuid.uuid4(), uuid.uuid4()]
+    token = "distinct-id-concurrent-token"
+    try:
+        async with SessionLocal() as session:
+            code = await create_code_for_token(
+                session,
+                user=user,
+                purpose=RESET_PURPOSE,
+                token=token,
+            )
+            await session.commit()
+
+        async def exchange(exchange_id: uuid.UUID) -> str | None:
+            async with SessionLocal() as session:
+                result = await consume_email_code(
+                    session,
+                    code=code,
+                    purpose=RESET_PURPOSE,
+                    exchange_id=exchange_id,
+                )
+                await session.commit()
+                return result
+
+        results = await asyncio.gather(*(exchange(exchange_id) for exchange_id in exchange_ids))
+        assert results.count(token) == 1
+        assert results.count(None) == 1
+
+        winner_id = exchange_ids[results.index(token)]
+        loser_id = exchange_ids[results.index(None)]
+
+        async with SessionLocal() as session:
+            winner_replay = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=winner_id,
+            )
+        assert winner_replay == token
+
+        async with SessionLocal() as session:
+            loser_replay = await consume_email_code(
+                session,
+                code=code,
+                purpose=RESET_PURPOSE,
+                exchange_id=loser_id,
+            )
+        assert loser_replay is None
     finally:
         await _cleanup_user_async(SessionLocal, user.id)
         await engine.dispose()
@@ -182,7 +412,7 @@ async def test_exchange_wrong_purpose_returns_none(test_engine):
             await session.commit()
 
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(session, code=code, purpose=RESET_PURPOSE)
+            result = await consume_email_code(session, code=code, purpose=RESET_PURPOSE)
         assert result is None, (
             "Cross-purpose use of a code must fail — otherwise the "
             "verify code could be swapped into the reset flow."
@@ -199,7 +429,7 @@ async def test_exchange_unknown_code_returns_none(test_engine):
     engine, SessionLocal = _make_session_factory()
     try:
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(session, code="NEVERWAS", purpose=VERIFY_PURPOSE)
+            result = await consume_email_code(session, code="NEVERWAS", purpose=VERIFY_PURPOSE)
         assert result is None
     finally:
         await engine.dispose()
@@ -212,9 +442,7 @@ async def test_exchange_invalid_purpose_returns_none():
     engine, SessionLocal = _make_session_factory()
     try:
         async with SessionLocal() as session:
-            result = await exchange_code_for_token(
-                session, code="ANYCODEZ", purpose="something-else"
-            )
+            result = await consume_email_code(session, code="ANYCODEZ", purpose="something-else")
         assert result is None
     finally:
         await engine.dispose()

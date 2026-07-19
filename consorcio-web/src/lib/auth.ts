@@ -3,6 +3,12 @@
  */
 
 import { type UserRole, useAuthStore } from '../stores/authStore';
+import {
+  type EmailCodeExchangeRecord,
+  type EmailCodePurpose,
+  clearEmailCodeExchange,
+  getOrCreateEmailCodeExchange,
+} from './auth/emailCodeExchangeStorage';
 import { authAdapter } from './auth/index';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
@@ -235,46 +241,86 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   }
 }
 
-/**
- * Phase 5 / F5-E: trade a short SMTP-body code for the real verify
- * / reset JWT token.
- *
- * The backend stopped putting the long verify/reset JWT in email
- * bodies (provider logs retain those for 30+ days, leaking valid
- * one-shot credentials). Emails now carry an 8-char alphanumeric
- * code that the SPA exchanges for the original token via this
- * endpoint. The token is then fed to the existing fastapi-users
- * ``reset-password`` / ``verify`` endpoints as before.
- *
- * Returns the original token on success, or ``null`` on any failure
- * (unknown / wrong purpose / expired / already consumed). The
- * backend collapses all failure modes to HTTP 400 so the caller
- * can't enumerate codes by status — we mirror that and surface a
- * single user-facing error message at the call site.
- *
- * Backwards compat: while ``USE_ONE_TIME_CODES`` is off on the
- * backend, emails still embed the long token directly in the URL
- * and the code-exchange endpoint isn't hit. Callers should accept
- * BOTH ``?token=`` and ``?code=`` query parameters and only fire
- * this helper when ``?code=`` is present.
- */
-export async function exchangeCodeForToken(
-  code: string,
-  purpose: 'verify' | 'reset'
-): Promise<string | null> {
+export type EmailCodeExchangeResult =
+  | { status: 'success'; token: string }
+  | { status: 'terminal-error'; reason: 'invalid-or-expired' }
+  | { status: 'retryable-error'; reason: 'network' | 'server' | 'malformed-response' };
+
+const inFlightEmailCodeExchanges = new Map<string, Promise<EmailCodeExchangeResult>>();
+
+async function performEmailCodeExchange(
+  exchange: EmailCodeExchangeRecord
+): Promise<EmailCodeExchangeResult> {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  let response: Response;
+
   try {
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    const res = await fetch(`${API_URL}/api/v2/auth/exchange-code`, {
+    response = await fetch(`${API_URL}/api/v2/auth/exchange-code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, purpose }),
+      body: JSON.stringify({
+        code: exchange.code,
+        purpose: exchange.purpose,
+        exchange_id: exchange.exchangeId,
+      }),
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { token?: string };
-    return data.token ?? null;
-  } catch (err) {
-    logger.error('Error al intercambiar código:', err);
-    return null;
+  } catch {
+    logger.error('Error de red al intercambiar el código de email.');
+    return { status: 'retryable-error', reason: 'network' };
+  }
+
+  if (response.status >= 400 && response.status < 500) {
+    clearEmailCodeExchange(exchange);
+    return { status: 'terminal-error', reason: 'invalid-or-expired' };
+  }
+
+  if (!response.ok) {
+    logger.warn('El servidor no pudo intercambiar el código de email temporalmente.');
+    return { status: 'retryable-error', reason: 'server' };
+  }
+
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    return { status: 'retryable-error', reason: 'malformed-response' };
+  }
+
+  if (
+    typeof data !== 'object' ||
+    data === null ||
+    typeof (data as { token?: unknown }).token !== 'string' ||
+    !(data as { token: string }).token.trim()
+  ) {
+    return { status: 'retryable-error', reason: 'malformed-response' };
+  }
+
+  clearEmailCodeExchange(exchange);
+  return { status: 'success', token: (data as { token: string }).token };
+}
+
+/**
+ * Trades a short email code for the original verify/reset token. A purpose-scoped
+ * exchange ID survives reloads so retryable failures can safely repeat the request.
+ * Legacy ``?token=`` callers bypass this helper and retain their existing behavior.
+ */
+export async function exchangeEmailCode(
+  code: string,
+  purpose: EmailCodePurpose
+): Promise<EmailCodeExchangeResult> {
+  const exchange = getOrCreateEmailCodeExchange(code, purpose);
+  const existingRequest = inFlightEmailCodeExchanges.get(exchange.exchangeId);
+  if (existingRequest) return existingRequest;
+
+  const request = performEmailCodeExchange(exchange);
+  inFlightEmailCodeExchanges.set(exchange.exchangeId, request);
+
+  try {
+    return await request;
+  } finally {
+    if (inFlightEmailCodeExchanges.get(exchange.exchangeId) === request) {
+      inFlightEmailCodeExchanges.delete(exchange.exchangeId);
+    }
   }
 }
 

@@ -37,6 +37,8 @@ against DB read, only against SMTP-body exfiltration.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 import string
 import uuid
@@ -48,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.models import User
+from app.config import settings
 from app.db.base import Base, UUIDMixin
 
 
@@ -81,6 +84,19 @@ class EmailCode(UUIDMixin, Base):
         DateTime(timezone=True), nullable=False, index=True
     )
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exchange_id_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+_EXCHANGE_ID_DOMAIN = b"email-code-exchange-id:v1:"
+
+
+def _digest_exchange_id(exchange_id: uuid.UUID) -> str:
+    """Return a domain-separated keyed digest without retaining the raw UUID."""
+    return hmac.new(
+        key=settings.jwt_secret.encode("utf-8"),
+        msg=_EXCHANGE_ID_DOMAIN + exchange_id.bytes,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
 
 
 def generate_short_code(length: int = CODE_LENGTH) -> str:
@@ -170,40 +186,56 @@ async def invalidate_open_codes_for_user(
     return int(getattr(result, "rowcount", 0) or 0)
 
 
-async def exchange_code_for_token(
+async def consume_email_code(
     session: AsyncSession,
     *,
     code: str,
     purpose: str,
+    exchange_id: uuid.UUID | None = None,
 ) -> str | None:
-    """Look up the code, mark it consumed, return the original token.
+    """Atomically consume a code, with optional idempotent token recovery.
 
-    Returns ``None`` on any failure path (unknown / wrong purpose /
-    expired / already consumed). The caller maps that to HTTP 400 —
-    we deliberately do NOT distinguish between failure modes so
-    enumeration attacks can't tell "this code never existed" from
-    "this code expired 2 min ago".
-
-    Caller commits or rolls back. The consume step is INSIDE this
-    function so even if the caller forgets to commit, the next call
-    with the same code finds it still consumable — that's not great
-    but the row is also short-lived (15 min TTL) so the window is
-    bounded.
+    A supplied exchange UUID is stored only as a keyed digest. Concurrent
+    or later requests carrying that same UUID can recover the token while
+    the code remains unexpired. Omitting the UUID preserves strict one-shot
+    behavior. All failure modes return None to keep enumeration blind.
     """
     if purpose not in _VALID_PURPOSES:
         return None
 
-    stmt = select(EmailCode).where(EmailCode.code == code.upper())
-    row = (await session.execute(stmt)).scalar_one_or_none()
-    if row is None:
-        return None
-    if row.purpose != purpose:
-        return None
-    if row.consumed_at is not None:
-        return None
-    if row.expires_at <= datetime.now(tz=timezone.utc):
-        return None
+    from sqlalchemy import update as sa_update
 
-    row.consumed_at = datetime.now(tz=timezone.utc)
-    await session.flush()
-    return row.token
+    normalized_code = code.upper()
+    claim_now = datetime.now(tz=timezone.utc)
+    exchange_id_digest = _digest_exchange_id(exchange_id) if exchange_id is not None else None
+
+    claimed = await session.execute(
+        sa_update(EmailCode)
+        .where(
+            EmailCode.code == normalized_code,
+            EmailCode.purpose == purpose,
+            EmailCode.consumed_at.is_(None),
+            EmailCode.expires_at > claim_now,
+        )
+        .values(
+            consumed_at=claim_now,
+            exchange_id_digest=exchange_id_digest,
+        )
+        .returning(EmailCode.token)
+    )
+    token = claimed.scalar_one_or_none()
+
+    if token is not None or exchange_id_digest is None:
+        return token
+
+    recovery_now = datetime.now(tz=timezone.utc)
+    recovered = await session.execute(
+        select(EmailCode.token).where(
+            EmailCode.code == normalized_code,
+            EmailCode.purpose == purpose,
+            EmailCode.consumed_at.is_not(None),
+            EmailCode.expires_at > recovery_now,
+            EmailCode.exchange_id_digest == exchange_id_digest,
+        )
+    )
+    return recovered.scalar_one_or_none()
