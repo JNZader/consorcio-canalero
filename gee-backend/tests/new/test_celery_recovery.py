@@ -107,3 +107,63 @@ def test_reconcile_stale_geo_jobs_marks_only_old_active_rows(db) -> None:
     assert stale_analysis.estado == EstadoGeoJob.FAILED
     assert recent_job.estado == EstadoGeoJob.PENDING
     assert completed_job.estado == EstadoGeoJob.COMPLETED
+
+
+def test_geo_job_claim_cannot_resurrect_a_reconciled_job(db) -> None:
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+    from app.domains.geo.repository import GeoRepository
+
+    repo = GeoRepository()
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+
+    fresh = repo.create_job(
+        db,
+        tipo=TipoGeoJob.DEM_PIPELINE,
+        parametros={"area_id": "fresh"},
+    )
+    stale = GeoJob(
+        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+        estado=EstadoGeoJob.PENDING,
+        parametros={"area_id": "stale"},
+        updated_at=now - timedelta(hours=2),
+    )
+    db.add(stale)
+    db.flush()
+
+    assert repo.update_job_status_if_current(
+        db,
+        fresh.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    assert not repo.update_job_status_if_current(
+        db,
+        fresh.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+
+    reconciled = reconcile_stale_geo_jobs(
+        db,
+        now=now,
+        stale_after=timedelta(minutes=90),
+    )
+    db.flush()
+    db.refresh(stale)
+    assert reconciled["geo_jobs"] == 1
+    assert stale.estado == EstadoGeoJob.FAILED
+
+    assert not repo.update_job_status_if_current(
+        db,
+        stale.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    assert not repo.update_job_status_if_current(
+        db,
+        stale.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.COMPLETED,
+    )
+    db.refresh(stale)
+    assert stale.estado == EstadoGeoJob.FAILED

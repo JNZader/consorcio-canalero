@@ -96,7 +96,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             )
             await session.commit()
 
-            template = build_reset_email(code=code, frontend_url=settings.frontend_url)
+            template = build_reset_email(
+                credential=code, frontend_url=settings.frontend_url, query_parameter="code"
+            )
             try:
                 await send_email(to_email=user.email, **template)
             except Exception:
@@ -113,7 +115,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         else:
             # Legacy path — embeds the token in the URL. The frontend
             # still uses this until F5-E rollout flips the flag.
-            template = build_reset_email(code=token, frontend_url=settings.frontend_url)
+            template = build_reset_email(
+                credential=token, frontend_url=settings.frontend_url, query_parameter="token"
+            )
             await send_email(to_email=user.email, **template)
 
     async def on_after_request_verify(
@@ -157,7 +161,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             )
             await session.commit()
 
-            template = build_verification_email(code=code, frontend_url=settings.frontend_url)
+            template = build_verification_email(
+                credential=code, frontend_url=settings.frontend_url, query_parameter="code"
+            )
             try:
                 await send_email(to_email=user.email, **template)
             except Exception:
@@ -170,7 +176,9 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 raise
         else:
             # Legacy path — token in URL, same as pre-F5-E.
-            template = build_verification_email(code=token, frontend_url=settings.frontend_url)
+            template = build_verification_email(
+                credential=token, frontend_url=settings.frontend_url, query_parameter="token"
+            )
             await send_email(to_email=user.email, **template)
 
     async def on_after_register(self, user: User, request: Request | None = None) -> None:

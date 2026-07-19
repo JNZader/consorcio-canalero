@@ -140,28 +140,39 @@ class TestDispatchJobMapping:
         mock_repo.update_job_status.assert_not_called()
 
     @patch("app.domains.geo.service.repo")
-    def test_dispatch_job_rolls_back_when_task_queue_fails(self, mock_repo):
-        """Broker/Celery failures should not leave a stale pending job."""
-        from app.domains.geo.models import TipoGeoJob
+    def test_dispatch_job_persists_failure_when_task_queue_fails(self, mock_repo):
+        """Broker failures should leave a durable, diagnosable failed job."""
+        from app.domains.geo.models import EstadoGeoJob, TipoGeoJob
         from app.domains.geo.service import GeoJobDispatchError, dispatch_job
 
         mock_db = MagicMock()
         mock_job = MagicMock()
         mock_job.id = "test-uuid"
         mock_repo.create_job.return_value = mock_job
+        mock_repo.update_job_status_if_current.return_value = True
+        publication_error = ConnectionError("redis down")
 
         with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
-            mock_launcher = MagicMock(side_effect=ConnectionError("redis down"))
+            mock_launcher = MagicMock(side_effect=publication_error)
             mock_map.return_value = {TipoGeoJob.DEM_FULL_PIPELINE: mock_launcher}
 
-            with pytest.raises(GeoJobDispatchError):
+            with pytest.raises(GeoJobDispatchError) as raised:
                 dispatch_job(
                     mock_db,
                     tipo=TipoGeoJob.DEM_FULL_PIPELINE,
                     parametros={"area_id": "zona_principal"},
                 )
 
-        mock_db.rollback.assert_called_once()
+        assert raised.value.__cause__ is publication_error
+        assert mock_db.commit.call_count == 2
+        mock_db.rollback.assert_not_called()
+        mock_repo.update_job_status_if_current.assert_called_once_with(
+            mock_db,
+            "test-uuid",
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.FAILED,
+            error="Celery publication failed: ConnectionError: redis down",
+        )
         mock_repo.update_job_status.assert_not_called()
 
 

@@ -143,7 +143,9 @@ def test_production_proxy_and_healthcheck_are_narrow_and_runnable() -> None:
 
     assert "172.16.0.0/12" not in dockerfile
     assert "FORWARDED_ALLOW_IPS=127.0.0.1" in dockerfile
-    assert "FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}" in backend_block
+    assert 'CMD ["python", "-m", "app.server"]' in dockerfile
+    assert "FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}" in backend_block
+    assert "FORWARDED_ALLOW_IPS=127.0.0.1,caddy" in _read_repo_file(".env.prod.example")
     assert "curl --fail --silent --show-error" in backend_block
     assert "wget " not in backend_block
 
@@ -165,11 +167,11 @@ def test_one_time_email_links_match_spa_routes_and_exchange_flows() -> None:
     frontend_url = "https://consorcio.example"
     verify_link = re.search(
         r"https://[^\s]+\?code=[A-Z0-9]+",
-        build_verification_email("VERIFY42", frontend_url)["body_text"],
+        build_verification_email("VERIFY42", frontend_url, query_parameter="code")["body_text"],
     )
     reset_link = re.search(
         r"https://[^\s]+\?code=[A-Z0-9]+",
-        build_reset_email("RESET42", frontend_url)["body_text"],
+        build_reset_email("RESET42", frontend_url, query_parameter="code")["body_text"],
     )
 
     assert verify_link is not None

@@ -1,8 +1,53 @@
-import { describe, expect, it } from 'vitest';
+import { MantineProvider } from '@mantine/core';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { forwardRef, type ComponentPropsWithoutRef } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN_ACCOUNT_MENU_ITEMS } from '../../src/components/admin/AdminLayout';
+import {
+  ADMIN_ACCOUNT_MENU_ITEMS,
+  AdminLayoutContent,
+} from '../../src/components/admin/AdminLayout';
+
+const { navigateMock, signOutMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  signOutMock: vi.fn(),
+}));
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: forwardRef<
+    HTMLAnchorElement,
+    ComponentPropsWithoutRef<'a'> & { to: string }
+  >(function MockLink({ to, ...props }, ref) {
+    return <a ref={ref} href={to} {...props} />;
+  }),
+  useNavigate: () => navigateMock,
+}));
+
+vi.mock('../../src/lib/auth', () => ({
+  signOut: signOutMock,
+}));
+
+function renderLayout() {
+  return render(
+    <MantineProvider>
+      <AdminLayoutContent>
+        <div>Contenido</div>
+      </AdminLayoutContent>
+    </MantineProvider>
+  );
+}
+
+async function clickLogout() {
+  fireEvent.click(screen.getByRole('button', { name: /admin/i }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesion' }));
+}
 
 describe('AdminLayout account navigation', () => {
+  beforeEach(() => {
+    navigateMock.mockReset().mockResolvedValue(undefined);
+    signOutMock.mockReset().mockResolvedValue({ success: true });
+  });
+
   it('exposes only real account destinations and omits inert Configuracion', () => {
     expect(ADMIN_ACCOUNT_MENU_ITEMS).toEqual({
       profile: { label: 'Perfil', to: '/perfil' },
@@ -12,5 +57,30 @@ describe('AdminLayout account navigation', () => {
 
     const labels = Object.values(ADMIN_ACCOUNT_MENU_ITEMS).map((item) => item.label);
     expect(labels).not.toContain('Configuracion');
+  });
+
+  it('clears the auth session before navigating to login', async () => {
+    renderLayout();
+    await clickLogout();
+
+    await waitFor(() => {
+      expect(signOutMock).toHaveBeenCalledOnce();
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
+    });
+
+    expect(signOutMock.mock.invocationCallOrder[0]).toBeLessThan(
+      navigateMock.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('still navigates when session cleanup rejects unexpectedly', async () => {
+    signOutMock.mockRejectedValueOnce(new Error('logout failed'));
+
+    renderLayout();
+    await clickLogout();
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
+    });
   });
 });

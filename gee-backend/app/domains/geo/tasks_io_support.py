@@ -3,6 +3,8 @@ from __future__ import annotations
 import traceback
 from pathlib import Path
 
+from app.domains.geo.tasks_fencing import GeoJobFenceLost
+
 
 def download_dem_from_gee_task_impl(
     *,
@@ -17,8 +19,14 @@ def download_dem_from_gee_task_impl(
     estado_geo_job,
     logger,
 ) -> dict:
-    if job_id:
-        update_job(job_id, estado=estado_geo_job.RUNNING, progreso=5)
+    if job_id and not update_job(
+        job_id,
+        expected_estado=estado_geo_job.PENDING,
+        estado=estado_geo_job.RUNNING,
+        progreso=5,
+    ):
+        return {"job_id": job_id, "status": "skipped"}
+
     try:
         gee_svc = get_gee_service()
         zona_geojson = gee_svc.zona.geometry().getInfo()
@@ -37,13 +45,25 @@ def download_dem_from_gee_task_impl(
             archivo_path=dem_path,
             area_id=area_id,
         )
-        if job_id:
-            update_job(job_id, progreso=15)
+        if job_id and not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            progreso=15,
+        ):
+            raise GeoJobFenceLost(f"job {job_id} is no longer running")
         logger.info("download_dem_from_gee.done", area_id=area_id, dem_path=dem_path)
         return {"dem_path": dem_path, "area_id": area_id}
+    except GeoJobFenceLost:
+        logger.warning("download_dem_from_gee.fence_lost", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped"}
     except Exception:
         if job_id:
-            update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
+            update_job(
+                job_id,
+                expected_estado=estado_geo_job.RUNNING,
+                estado=estado_geo_job.FAILED,
+                error=traceback.format_exc(),
+            )
         raise
 
 
@@ -64,8 +84,13 @@ def delineate_basins_task_impl(
     get_db,
     logger,
 ) -> dict:
-    if job_id:
-        update_job(job_id, estado=estado_geo_job.RUNNING)
+    if job_id and not update_job(
+        job_id,
+        expected_estado=estado_geo_job.PENDING,
+        estado=estado_geo_job.RUNNING,
+    ):
+        return {"job_id": job_id, "status": "skipped"}
+
     try:
         output_dir = Path(flow_dir_path).parent
         basins_raster = str(output_dir / "basins.tif")
@@ -107,8 +132,13 @@ def delineate_basins_task_impl(
                 db.commit()
             finally:
                 db.close()
-        if job_id:
-            update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100)
+        if job_id and not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            estado=estado_geo_job.COMPLETED,
+            progreso=100,
+        ):
+            raise GeoJobFenceLost(f"job {job_id} cannot complete after losing its fence")
         logger.info(
             "delineate_basins.done",
             area_id=area_id,
@@ -120,7 +150,15 @@ def delineate_basins_task_impl(
             "basins_raster": basins_raster,
             "zonas_created": zonas_created,
         }
+    except GeoJobFenceLost:
+        logger.warning("delineate_basins.fence_lost", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped"}
     except Exception:
         if job_id:
-            update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
+            update_job(
+                job_id,
+                expected_estado=estado_geo_job.RUNNING,
+                estado=estado_geo_job.FAILED,
+                error=traceback.format_exc(),
+            )
         raise

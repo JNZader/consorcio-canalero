@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.domains.geo.geo_repository_support import paginated_results
@@ -76,6 +76,36 @@ class GeoRepositoryJobsLayersMixin:
             job.error = error
         db.flush()
         return job
+
+    def update_job_status_if_current(
+        self,
+        db: Session,
+        job_id: uuid.UUID,
+        *,
+        expected_estado: str,
+        estado: Optional[str] = None,
+        progreso: Optional[int] = None,
+        resultado: Optional[dict] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Compare-and-set a job transition without resurrecting stale work."""
+        values: dict[str, object] = {"updated_at": func.now()}
+        if estado is not None:
+            values["estado"] = estado
+        if progreso is not None:
+            values["progreso"] = progreso
+        if resultado is not None:
+            values["resultado"] = resultado
+        if error is not None:
+            values["error"] = error
+
+        result = db.execute(
+            update(GeoJob)
+            .where(GeoJob.id == job_id, GeoJob.estado == expected_estado)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        return int(result.rowcount or 0) == 1
 
     def get_layer_by_id(self, db: Session, layer_id: uuid.UUID) -> Optional[GeoLayer]:
         return db.execute(select(GeoLayer).where(GeoLayer.id == layer_id)).scalar_one_or_none()

@@ -234,6 +234,33 @@ _DENUNCIA_FILENAME_RE = re.compile(
 )
 
 
+def _is_current_live_denuncia_photo(denuncia, filename: str) -> bool:
+    """Bind a requested immutable filename to the row's current live pointer."""
+    from urllib.parse import urlsplit
+
+    from app.shared.storage import photo_key_from_url
+
+    if getattr(denuncia, "deleted_at", None) is not None:
+        return False
+
+    current_url = getattr(denuncia, "foto_url", None)
+    if not current_url:
+        return False
+
+    requested_url = f"{settings.uploads_public_base.rstrip('/')}/denuncias/{filename}"
+    requested_key = photo_key_from_url(requested_url)
+    current_key = photo_key_from_url(current_url)
+    current_filename = Path(urlsplit(current_url).path).name.lower()
+
+    # photo_key_from_url intentionally strips extensions for deletion.
+    # Compare the full filename too, so a same-stem stale extension cannot pass.
+    return (
+        requested_key is not None
+        and requested_key == current_key
+        and filename.lower() == current_filename
+    )
+
+
 @app.get(
     f"{settings.uploads_public_base}/denuncias/{{filename}}",
     response_class=Response,
@@ -277,13 +304,15 @@ async def get_denuncia_photo(
     db: _Session = next(db_gen)
     try:
         denuncia = db.get(Denuncia, denuncia_id)
-        if denuncia is None:
+        if denuncia is None or denuncia.deleted_at is not None:
             return Response(status_code=404)
         is_operator = getattr(user, "role", None) in {UserRole.ADMIN, UserRole.OPERADOR}
         is_owner = denuncia.user_id is not None and str(denuncia.user_id) == str(
             getattr(user, "id", None)
         )
         if not (is_operator or is_owner):
+            return Response(status_code=404)
+        if not _is_current_live_denuncia_photo(denuncia, filename):
             return Response(status_code=404)
     finally:
         db_gen.close()

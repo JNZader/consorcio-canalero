@@ -11,8 +11,9 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
+import { signOut } from '../../lib/auth';
 import ThemeToggle from '../ThemeToggle';
 import {
   IconArrowLeft,
@@ -70,6 +71,15 @@ interface AdminLayoutProps {
  */
 export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLayoutProps) {
   const [opened, setOpened] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await signOut();
+    } finally {
+      await navigate({ to: ADMIN_ACCOUNT_MENU_ITEMS.logout.to, replace: true });
+    }
+  };
 
   return (
     <AppShell
@@ -164,8 +174,9 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                   </Menu.Item>
                   <Menu.Item
                     color="red"
-                    component={Link}
-                    to={ADMIN_ACCOUNT_MENU_ITEMS.logout.to}
+                    onClick={() => {
+                      void handleLogout().catch(() => undefined);
+                    }}
                     leftSection={<IconLogout size={16} />}
                   >
                     {ADMIN_ACCOUNT_MENU_ITEMS.logout.label}
