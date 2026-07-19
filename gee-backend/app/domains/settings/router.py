@@ -120,7 +120,7 @@ def get_public_branding(
 
 
 # ──────────────────────────────────────────────
-# MAP IMAGE SELECTION (public read, operator+ write)
+# MAP IMAGE SELECTION (authenticated legacy read, operator+ write)
 # ──────────────────────────────────────────────
 
 
@@ -128,8 +128,9 @@ def get_public_branding(
 def get_public_mapa_imagen(
     db: Session = Depends(get_db),
     service: SettingsService = Depends(get_service),
+    _user=Depends(_require_operator()),
 ):
-    """Get saved map image parameters (public, no auth)."""
+    """Legacy parameter response retained for authenticated operator clients."""
     principal_raw = service.get_setting(db, "mapa/imagen_principal")
     comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
 

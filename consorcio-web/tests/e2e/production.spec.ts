@@ -207,25 +207,34 @@ test.describe('Authenticated CRUD', () => {
 });
 
 test.describe('Google Earth Engine', () => {
-  test('layers and selected geojson endpoints respond', async ({ request }) => {
-    const layers = await expectOk(request.get(apiUrl('/api/v2/geo/gee/layers')));
-    const layerBody = await layers.json();
-    expect(Array.isArray(layerBody)).toBeTruthy();
-    expect(layerBody[0]).toEqual(expect.objectContaining({ id: expect.anything(), nombre: expect.anything() }));
-
+  test('public map is allowlisted and complete GEE surface requires admin auth', async ({ request }) => {
     for (const path of [
-      '/api/v2/geo/gee/layers/zona',
-      '/api/v2/geo/gee/layers/candil',
-      '/api/v2/geo/gee/layers/norte',
-      '/api/v2/geo/gee/layers/ml',
-      '/api/v2/geo/gee/layers/noroeste',
-      '/api/v2/geo/gee/layers/caminos/coloreados',
+      '/api/v2/public/map/gee/zona',
+      '/api/v2/public/map/gee/caminos',
+      '/api/v2/public/map/gee/current-image',
     ]) {
-      const res = await expectOk(request.get(apiUrl(path)));
-      expect((await res.json()).type).toBe('FeatureCollection');
+      const response = await expectOk(request.get(apiUrl(path)));
+      expect(['available', 'unavailable']).toContain((await response.json()).status);
     }
 
-    const visualizations = await expectOk(request.get(apiUrl('/api/v2/geo/gee/images/visualizations')));
+    const unauthenticated = await request.get(apiUrl('/api/v2/geo/gee/layers/zona'));
+    expect(unauthenticated.status()).toBe(401);
+
+    const token = await loginAsAdmin(request);
+    const headers = { Authorization: `Bearer ${token}` };
+    const layers = await expectOk(
+      request.get(apiUrl('/api/v2/geo/gee/layers'), { headers })
+    );
+    expect(Array.isArray(await layers.json())).toBeTruthy();
+
+    const zona = await expectOk(
+      request.get(apiUrl('/api/v2/geo/gee/layers/zona'), { headers })
+    );
+    expect((await zona.json()).type).toBe('FeatureCollection');
+
+    const visualizations = await expectOk(
+      request.get(apiUrl('/api/v2/geo/gee/images/visualizations'), { headers })
+    );
     expect(Array.isArray(await visualizations.json())).toBeTruthy();
   });
 });

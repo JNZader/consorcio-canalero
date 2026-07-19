@@ -48,7 +48,12 @@ describe('useCaminosColoreados', () => {
     // Set default mock response
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => mockResponse,
+      json: async () => ({
+        status: 'available',
+        projection: 'caminos',
+        data: mockResponse,
+        reason: null,
+      }),
     });
   });
 
@@ -147,7 +152,7 @@ describe('useCaminosColoreados', () => {
       // Verify the exact URL was called (check the first call)
       const calls = mockFetch.mock.calls;
       expect(calls.length).toBeGreaterThan(0);
-      expect(calls[0][0]).toBe('http://localhost:8000/api/v2/geo/gee/layers/caminos/coloreados');
+      expect(calls[0][0]).toBe('http://localhost:8000/api/v2/public/map/gee/caminos');
     });
 
     it('catches StringLiteral mutation: should not call with empty URL', async () => {
@@ -200,7 +205,12 @@ describe('useCaminosColoreados', () => {
       mockFetch.mockImplementationOnce(() => Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => mockResponse,
+        json: async () => ({
+          status: 'available',
+          projection: 'caminos',
+          data: mockResponse,
+          reason: null,
+        }),
       }));
 
       const { result } = renderHook(() => useCaminosColoreados(), { wrapper });
@@ -321,7 +331,12 @@ describe('useCaminosColoreados', () => {
 
       mockFetch.mockImplementationOnce(() => Promise.resolve({
         ok: true,
-        json: async () => mockResponse,
+        json: async () => ({
+          status: 'available',
+          projection: 'caminos',
+          data: mockResponse,
+          reason: null,
+        }),
       }));
 
       const reloadResult = result.current.reload();

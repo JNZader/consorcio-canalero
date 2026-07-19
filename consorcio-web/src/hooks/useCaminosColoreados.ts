@@ -1,6 +1,6 @@
 /**
- * Hook para cargar caminos con colores por consorcio caminero.
- * Cada camino tiene un color asignado segun su consorcio para visualizacion diferenciada.
+ * Hook para cargar la proyeccion publica fija de caminos coloreados.
+ * Cada camino tiene un color asignado segun su consorcio caminero.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +9,6 @@ import { useMemo } from 'react';
 import { API_URL } from '../lib/api';
 import { queryKeys } from '../lib/query';
 
-// Tipo para la informacion de un consorcio
 export interface ConsorcioInfo {
   nombre: string;
   codigo: string;
@@ -18,7 +17,6 @@ export interface ConsorcioInfo {
   longitud_km: number;
 }
 
-// Tipo para la respuesta del endpoint
 export interface CaminosColoreados {
   type: 'FeatureCollection';
   features: FeatureCollection['features'];
@@ -30,22 +28,32 @@ export interface CaminosColoreados {
   consorcios: ConsorcioInfo[];
 }
 
+interface PublicCaminosProjectionResponse {
+  status: 'available' | 'unavailable';
+  projection: 'caminos';
+  data: CaminosColoreados | null;
+  reason: 'temporarily_unavailable' | null;
+}
+
+const PUBLIC_CAMINOS_URL = `${API_URL}/api/v2/public/map/gee/caminos`;
+
 export function useCaminosColoreados() {
   const query = useQuery({
     queryKey: queryKeys.caminosColoreados(),
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/v2/geo/gee/layers/caminos/coloreados`);
-
+      const response = await fetch(PUBLIC_CAMINOS_URL);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      return (await response.json()) as CaminosColoreados;
+      const envelope = (await response.json()) as PublicCaminosProjectionResponse;
+      if (envelope.status !== 'available' || !envelope.data) {
+        throw new Error(`Proyeccion no disponible: ${envelope.reason ?? 'unknown'}`);
+      }
+      return envelope.data;
     },
     staleTime: 1000 * 60 * 10,
     // Public geo layer that degrades gracefully (inline error + `reload`).
-    // One retry covers transient blips without the global retry-3
-    // exponential-backoff pile-up on a hard failure.
     retry: 1,
   });
 

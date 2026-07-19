@@ -17,7 +17,12 @@ import { isValidSelectedImage } from '../lib/typeGuards';
 
 const STORAGE_KEY = 'consorcio_selected_image';
 
-export type SatelliteSensorLabel = 'Sentinel-1' | 'Sentinel-2' | 'Landsat 8' | 'Landsat 7' | 'Landsat 5';
+export type SatelliteSensorLabel =
+  | 'Sentinel-1'
+  | 'Sentinel-2'
+  | 'Landsat 8'
+  | 'Landsat 7'
+  | 'Landsat 5';
 
 export interface SelectedImage {
   tile_url: string;
@@ -191,10 +196,10 @@ function isTileStale(image: SelectedImage): boolean {
  * Hook to listen for selected image changes without ability to modify.
  * Useful for map components that just need to display the layer.
  *
- * If localStorage is empty on mount, attempts to fetch saved params from
- * the backend and regenerate the tile URL from GEE.
- * If the cached tile URL is older than GEE_TILE_MAX_AGE_MS, it regenerates
- * from the backend even when localStorage has data (GEE map IDs expire).
+ * If localStorage is empty on mount, requests the backend's fixed public
+ * projection of the operator-approved current image. If the cached tile URL
+ * is older than GEE_TILE_MAX_AGE_MS, it refreshes that same fixed projection
+ * (GEE map IDs expire). Public callers never send GEE parameters.
  */
 export function useSelectedImageListener() {
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
@@ -287,38 +292,34 @@ export function useSelectedImageListener() {
 }
 
 /**
- * Fetch saved params from backend and regenerate a fresh tile URL from GEE.
- * Returns a full SelectedImage or null if nothing is saved / regeneration fails.
+ * Fetch the server-approved public image projection. Returns null when no image
+ * is configured, the stored configuration is unsafe, or GEE is degraded.
  */
 async function restoreFromBackend(): Promise<SelectedImage | null> {
   try {
-    const response = await mapImageApi.getImageParams();
-    const params = response.imagen_principal;
-
-    if (!params || !params.sensor || !params.target_date) {
+    const response = await mapImageApi.getPublicCurrentImage();
+    const image = response.image;
+    if (response.status !== 'available' || !image) {
       return null;
     }
 
-    // Regenerate the tile URL by calling the GEE imagery endpoint
-    const result = await mapImageApi.regenerateTile(params);
-
     return {
-      tile_url: result.tile_url,
-      target_date: result.target_date,
-      sensor: result.sensor as SatelliteSensorLabel,
-      visualization: result.visualization,
-      visualization_description: result.visualization_description,
-      collection: result.collection,
-      images_count: result.images_count,
-      // Carry the saved search params forward so the next persist round-trip
-      // keeps regenerating the same tile instead of drifting back to defaults.
-      days_buffer: params.days_buffer,
-      max_cloud: params.max_cloud ?? null,
-      mode: params.mode ?? undefined,
+      tile_url: image.tile_url,
+      target_date: image.target_date,
+      sensor: image.sensor as SatelliteSensorLabel,
+      visualization: image.visualization,
+      visualization_description: image.visualization_description,
+      // The public projection deliberately withholds Earth Engine collection
+      // and asset identifiers; callers only need a stable display label.
+      collection: 'server-approved',
+      images_count: image.images_count,
+      days_buffer: image.days_buffer,
+      max_cloud: image.max_cloud,
+      mode: image.mode,
       selected_at: new Date().toISOString(),
     };
   } catch (err) {
-    logger.warn('Could not restore image from backend:', err);
+    logger.warn('Could not restore public image from backend:', err);
     return null;
   }
 }
