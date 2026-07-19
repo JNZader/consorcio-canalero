@@ -5,12 +5,12 @@ Handles long-running GEE operations in the background.
 These tasks run on the DEFAULT queue (not geo queue) because GEE
 is cloud-based, not GDAL-based — no heavy local computation needed.
 
-Each task:
-  1. Creates/updates an AnalisisGeo record (estado → running)
+Each tracked task:
+  1. Atomically claims its AnalisisGeo or GeoJob row (pending → running)
   2. Initializes GEE and uses ImageExplorer / GEEService
   3. Runs analysis (flood comparison, NDVI classification, etc.)
-  4. Persists resultado JSON to AnalisisGeo record
-  5. Updates estado to completed (or failed on error)
+  4. Persists the result only while the tracker remains running
+  5. Fences completed/failed writes against reconciliation and duplicate delivery
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from app.domains.geo.gee_tasks_support import (
     build_flood_analysis_result,
     build_sar_temporal_result,
     detect_vv_anomalies_impl,
-    update_status_if_needed,
 )
 
 logger = get_task_logger(__name__)
@@ -59,6 +58,67 @@ def _get_gee():
     }
 
 
+def _update_tracking(
+    *,
+    analisis_id: str | None,
+    job_id: str | None,
+    expected_estado: str,
+    estado: str | None = None,
+    progreso: int | None = None,
+    resultado: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> bool:
+    """Atomically update exactly one durable tracker and close its transaction."""
+    if analisis_id and job_id:
+        raise ValueError("analisis_id and job_id are mutually exclusive")
+
+    tracking_id = analisis_id or job_id
+    if not tracking_id:
+        return True
+
+    tracking_uuid = uuid.UUID(tracking_id)
+    deps = _get_deps()
+    db = deps["SessionLocal"]()
+    repo = deps["repo"]
+
+    try:
+        if analisis_id:
+            updated = repo.update_analisis_status_if_current(
+                db,
+                tracking_uuid,
+                expected_estado=expected_estado,
+                estado=estado,
+                resultado=resultado,
+                error=error,
+            )
+        else:
+            updated = repo.update_job_status_if_current(
+                db,
+                tracking_uuid,
+                expected_estado=expected_estado,
+                estado=estado,
+                progreso=progreso,
+                resultado=resultado,
+                error=error,
+            )
+        db.commit()
+        return updated
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _skipped_result(*, analisis_id: str | None, job_id: str | None) -> dict[str, str]:
+    result = {"status": "skipped"}
+    if analisis_id:
+        result["analisis_id"] = analisis_id
+    if job_id:
+        result["job_id"] = job_id
+    return result
+
+
 @celery_app.task(name="gee.analyze_flood", bind=True)
 def analyze_flood_task(
     self,
@@ -68,33 +128,17 @@ def analyze_flood_task(
     analisis_id: str | None = None,
     job_id: str | None = None,
 ):
-    """
-    Analyze floods using SAR and Optical imagery via GEE.
+    """Analyze floods using SAR and optical imagery via GEE."""
+    Estado = _get_deps()["EstadoGeoJob"]
+    tracked = bool(analisis_id or job_id)
 
-    Uses ImageExplorer to fetch Sentinel-1 (SAR) and Sentinel-2 (optical)
-    imagery, then runs flood comparison and NDWI-based water detection.
-
-    Args:
-        start_date_str: Analysis start date (ISO format).
-        end_date_str: Analysis end date (ISO format).
-        method: Analysis method — "fusion" (SAR+optical), "sar_only", "optical_only".
-        analisis_id: Optional AnalisisGeo record ID for status tracking.
-        job_id: Optional GeoJob ID (from dispatch_job).
-    """
-    deps = _get_deps()
-    db = deps["SessionLocal"]()
-    repo = deps["repo"]
-    Estado = deps["EstadoGeoJob"]
-
-    if analisis_id:
-        update_status_if_needed(
-            analisis_id=analisis_id,
-            repo=repo,
-            db=db,
-            uuid_module=uuid,
-            estado=Estado.RUNNING,
-        )
-        db.commit()
+    if tracked and not _update_tracking(
+        analisis_id=analisis_id,
+        job_id=job_id,
+        expected_estado=Estado.PENDING,
+        estado=Estado.RUNNING,
+    ):
+        return _skipped_result(analisis_id=analisis_id, job_id=job_id)
 
     try:
         from datetime import date
@@ -116,20 +160,20 @@ def analyze_flood_task(
         resultado["end_date"] = end_date_str
         resultado["status"] = "completed"
 
-        if analisis_id:
-            update_status_if_needed(
-                analisis_id=analisis_id,
-                repo=repo,
-                db=db,
-                uuid_module=uuid,
-                estado=Estado.COMPLETED,
-                resultado=resultado,
-            )
-            db.commit()
+        if tracked and not _update_tracking(
+            analisis_id=analisis_id,
+            job_id=job_id,
+            expected_estado=Estado.RUNNING,
+            estado=Estado.COMPLETED,
+            progreso=100,
+            resultado=resultado,
+        ):
+            return _skipped_result(analisis_id=analisis_id, job_id=job_id)
 
         logger.info(
-            "analyze_flood_task.completed analisis_id=%s method=%s",
+            "analyze_flood_task.completed analisis_id=%s job_id=%s method=%s",
             analisis_id,
+            job_id,
             method,
         )
         return resultado
@@ -138,23 +182,23 @@ def analyze_flood_task(
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
         logger.error("analyze_flood_task.failed: %s", exc)
 
-        if analisis_id:
+        if tracked:
             try:
-                update_status_if_needed(
+                _update_tracking(
                     analisis_id=analisis_id,
-                    repo=repo,
-                    db=db,
-                    uuid_module=uuid,
+                    job_id=job_id,
+                    expected_estado=Estado.RUNNING,
                     estado=Estado.FAILED,
                     error=error_msg[:2000],
                 )
-                db.commit()
             except Exception:
-                db.rollback()
+                logger.exception(
+                    "analyze_flood_task.status_update_failed analisis_id=%s job_id=%s",
+                    analisis_id,
+                    job_id,
+                )
 
         raise
-    finally:
-        db.close()
 
 
 @celery_app.task(name="gee.supervised_classification", bind=True)
@@ -165,33 +209,17 @@ def supervised_classification_task(
     analisis_id: str | None = None,
     job_id: str | None = None,
 ):
-    """
-    Land-use classification using NDVI from Sentinel-2.
+    """Classify land use from Sentinel-2 NDVI/NDWI imagery."""
+    Estado = _get_deps()["EstadoGeoJob"]
+    tracked = bool(analisis_id or job_id)
 
-    Uses ImageExplorer to fetch NDVI imagery, then runs
-    clasificar_terreno_dinamico() for pixel-level classification
-    (water, dense vegetation, sparse vegetation, bare soil).
-
-    Args:
-        start_date_str: Analysis start date (ISO format).
-        end_date_str: Analysis end date (ISO format).
-        analisis_id: Optional AnalisisGeo record ID for status tracking.
-        job_id: Optional GeoJob ID (from dispatch_job).
-    """
-    deps = _get_deps()
-    db = deps["SessionLocal"]()
-    repo = deps["repo"]
-    Estado = deps["EstadoGeoJob"]
-
-    if analisis_id:
-        update_status_if_needed(
-            analisis_id=analisis_id,
-            repo=repo,
-            db=db,
-            uuid_module=uuid,
-            estado=Estado.RUNNING,
-        )
-        db.commit()
+    if tracked and not _update_tracking(
+        analisis_id=analisis_id,
+        job_id=job_id,
+        expected_estado=Estado.PENDING,
+        estado=Estado.RUNNING,
+    ):
+        return _skipped_result(analisis_id=analisis_id, job_id=job_id)
 
     try:
         from datetime import date
@@ -217,20 +245,20 @@ def supervised_classification_task(
         resultado["end_date"] = end_date_str
         resultado["status"] = "completed"
 
-        if analisis_id:
-            update_status_if_needed(
-                analisis_id=analisis_id,
-                repo=repo,
-                db=db,
-                uuid_module=uuid,
-                estado=Estado.COMPLETED,
-                resultado=resultado,
-            )
-            db.commit()
+        if tracked and not _update_tracking(
+            analisis_id=analisis_id,
+            job_id=job_id,
+            expected_estado=Estado.RUNNING,
+            estado=Estado.COMPLETED,
+            progreso=100,
+            resultado=resultado,
+        ):
+            return _skipped_result(analisis_id=analisis_id, job_id=job_id)
 
         logger.info(
-            "supervised_classification_task.completed analisis_id=%s",
+            "supervised_classification_task.completed analisis_id=%s job_id=%s",
             analisis_id,
+            job_id,
         )
         return resultado
 
@@ -238,23 +266,23 @@ def supervised_classification_task(
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
         logger.error("supervised_classification_task.failed: %s", exc)
 
-        if analisis_id:
+        if tracked:
             try:
-                update_status_if_needed(
+                _update_tracking(
                     analisis_id=analisis_id,
-                    repo=repo,
-                    db=db,
-                    uuid_module=uuid,
+                    job_id=job_id,
+                    expected_estado=Estado.RUNNING,
                     estado=Estado.FAILED,
                     error=error_msg[:2000],
                 )
-                db.commit()
             except Exception:
-                db.rollback()
+                logger.exception(
+                    "supervised_classification_task.status_update_failed analisis_id=%s job_id=%s",
+                    analisis_id,
+                    job_id,
+                )
 
         raise
-    finally:
-        db.close()
 
 
 # ── Pure function: anomaly detection ──────────────────────
@@ -280,32 +308,17 @@ def sar_temporal_task(
     scale: int = 100,
     analisis_id: str | None = None,
 ):
-    """
-    SAR temporal analysis: VV backscatter time series + anomaly detection.
+    """Compute a Sentinel-1 VV time series and anomaly detection."""
+    Estado = _get_deps()["EstadoGeoJob"]
+    tracked = bool(analisis_id)
 
-    Computes mean VV per Sentinel-1 image over the zona geometry,
-    then flags dates where VV drops below baseline - 2*std.
-
-    Args:
-        start_date_str: Analysis start date (ISO format).
-        end_date_str: Analysis end date (ISO format).
-        scale: Pixel scale in meters for reduceRegion (default 100).
-        analisis_id: Optional AnalisisGeo record ID for status tracking.
-    """
-    deps = _get_deps()
-    db = deps["SessionLocal"]()
-    repo = deps["repo"]
-    Estado = deps["EstadoGeoJob"]
-
-    if analisis_id:
-        update_status_if_needed(
-            analisis_id=analisis_id,
-            repo=repo,
-            db=db,
-            uuid_module=uuid,
-            estado=Estado.RUNNING,
-        )
-        db.commit()
+    if tracked and not _update_tracking(
+        analisis_id=analisis_id,
+        job_id=None,
+        expected_estado=Estado.PENDING,
+        estado=Estado.RUNNING,
+    ):
+        return _skipped_result(analisis_id=analisis_id, job_id=None)
 
     try:
         from datetime import date
@@ -324,16 +337,14 @@ def sar_temporal_task(
             detect_fn=detect_vv_anomalies_impl,
         )
 
-        if analisis_id:
-            update_status_if_needed(
-                analisis_id=analisis_id,
-                repo=repo,
-                db=db,
-                uuid_module=uuid,
-                estado=Estado.COMPLETED,
-                resultado=resultado,
-            )
-            db.commit()
+        if tracked and not _update_tracking(
+            analisis_id=analisis_id,
+            job_id=None,
+            expected_estado=Estado.RUNNING,
+            estado=Estado.COMPLETED,
+            resultado=resultado,
+        ):
+            return _skipped_result(analisis_id=analisis_id, job_id=None)
 
         logger.info(
             "sar_temporal_task.completed analisis_id=%s image_count=%s",
@@ -346,20 +357,19 @@ def sar_temporal_task(
         error_msg = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
         logger.error("sar_temporal_task.failed: %s", exc)
 
-        if analisis_id:
+        if tracked:
             try:
-                update_status_if_needed(
+                _update_tracking(
                     analisis_id=analisis_id,
-                    repo=repo,
-                    db=db,
-                    uuid_module=uuid,
+                    job_id=None,
+                    expected_estado=Estado.RUNNING,
                     estado=Estado.FAILED,
                     error=error_msg[:2000],
                 )
-                db.commit()
             except Exception:
-                db.rollback()
+                logger.exception(
+                    "sar_temporal_task.status_update_failed analisis_id=%s",
+                    analisis_id,
+                )
 
         raise
-    finally:
-        db.close()

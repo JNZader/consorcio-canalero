@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -11,10 +12,13 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.domains.geo.models import GeoLayer
+from app.core.logging import get_logger
+from app.domains.geo.models import EstadoGeoJob, GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import AnalisisGeoListResponse
 from app.shared.pagination import PaginatedResponse
+
+logger = get_logger(__name__)
 
 
 def export_geo_bundle_impl(
@@ -114,6 +118,41 @@ def export_current_map_approved_basin_zones_pdf_impl(payload, db: Session):
     )
 
 
+def _record_gee_publication_failure(
+    db: Session,
+    repo: GeoRepository,
+    *,
+    analisis_id: uuid.UUID,
+    publication_error: Exception,
+) -> None:
+    """Mark an unclaimed durable analysis failed without masking the broker error."""
+    try:
+        marked_failed = repo.update_analisis_status_if_current(
+            db,
+            analisis_id,
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.FAILED,
+            error="No se pudo encolar el análisis GEE; reintente más tarde",
+        )
+        db.commit()
+    except Exception as persistence_error:
+        db.rollback()
+        logger.exception(
+            "gee_analysis.publication_failure_persist_failed",
+            analisis_id=str(analisis_id),
+            publication_error=str(publication_error),
+            persistence_error=str(persistence_error),
+        )
+        return
+
+    if not marked_failed:
+        logger.warning(
+            "gee_analysis.publication_failure_analysis_already_claimed",
+            analisis_id=str(analisis_id),
+            publication_error=str(publication_error),
+        )
+
+
 def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
     from datetime import date as _date
 
@@ -122,7 +161,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
         sar_temporal_task,
         supervised_classification_task,
     )
-    from app.domains.geo.models import EstadoGeoJob, TipoAnalisisGee
+    from app.domains.geo.models import TipoAnalisisGee
 
     valid_tipos = [t.value for t in TipoAnalisisGee]
     if payload.tipo not in valid_tipos:
@@ -191,16 +230,15 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
                 analisis_id=str(analisis.id),
             )
     except Exception as exc:
-        repo.update_analisis_status(
+        _record_gee_publication_failure(
             db,
-            analisis.id,
-            estado=EstadoGeoJob.FAILED,
-            error="No se pudo encolar el análisis GEE; reintente más tarde",
+            repo,
+            analisis_id=analisis.id,
+            publication_error=exc,
         )
-        db.commit()
         raise HTTPException(status_code=503, detail="No se pudo encolar el análisis GEE") from exc
 
-    repo.update_analisis_status(db, analisis.id, celery_task_id=task.id)
+    repo.update_analisis_metadata(db, analisis.id, celery_task_id=task.id)
     db.commit()
     db.refresh(analisis)
     return analisis

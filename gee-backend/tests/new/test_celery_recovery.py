@@ -167,3 +167,94 @@ def test_geo_job_claim_cannot_resurrect_a_reconciled_job(db) -> None:
     )
     db.refresh(stale)
     assert stale.estado == EstadoGeoJob.FAILED
+
+
+def test_analisis_claim_cannot_resurrect_or_overwrite_terminal_rows(db) -> None:
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+    from app.domains.geo.repository import GeoRepository
+
+    repo = GeoRepository()
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+
+    fresh = repo.create_analisis(
+        db,
+        tipo=TipoAnalisisGee.FLOOD,
+        fecha_analisis=date.today(),
+    )
+    stale = AnalisisGeo(
+        tipo=TipoAnalisisGee.SAR_TEMPORAL,
+        fecha_analisis=date.today(),
+        estado=EstadoGeoJob.PENDING,
+        updated_at=now - timedelta(hours=2),
+    )
+    completed = AnalisisGeo(
+        tipo=TipoAnalisisGee.CLASSIFICATION,
+        fecha_analisis=date.today(),
+        estado=EstadoGeoJob.COMPLETED,
+        resultado={"winner": True},
+        updated_at=now - timedelta(hours=2),
+    )
+    db.add_all([stale, completed])
+    db.flush()
+
+    assert repo.update_analisis_status_if_current(
+        db,
+        fresh.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    assert not repo.update_analisis_status_if_current(
+        db,
+        fresh.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+
+    reconciled = reconcile_stale_geo_jobs(
+        db,
+        now=now,
+        stale_after=timedelta(minutes=90),
+    )
+    db.flush()
+    db.refresh(stale)
+
+    assert reconciled["gee_analyses"] == 1
+    assert stale.estado == EstadoGeoJob.FAILED
+    reconciled_error = stale.error
+
+    assert not repo.update_analisis_status_if_current(
+        db,
+        stale.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    assert not repo.update_analisis_status_if_current(
+        db,
+        stale.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.COMPLETED,
+        resultado={"late": True},
+    )
+    assert not repo.update_analisis_status_if_current(
+        db,
+        stale.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.FAILED,
+        error="late worker error",
+    )
+    assert not repo.update_analisis_status_if_current(
+        db,
+        completed.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.FAILED,
+        error="late worker error",
+    )
+
+    db.refresh(stale)
+    db.refresh(completed)
+    assert stale.estado == EstadoGeoJob.FAILED
+    assert stale.error == reconciled_error
+    assert stale.resultado is None
+    assert completed.estado == EstadoGeoJob.COMPLETED
+    assert completed.resultado == {"winner": True}
+    assert completed.error is None

@@ -7,19 +7,6 @@ import traceback
 from typing import Any
 
 
-def update_status_if_needed(
-    *, analisis_id, repo, db, uuid_module, estado, resultado=None, error=None
-) -> None:
-    if not analisis_id:
-        return
-    kwargs = {"estado": estado}
-    if resultado is not None:
-        kwargs["resultado"] = resultado
-    if error is not None:
-        kwargs["error"] = error
-    repo.update_analisis_status(db, uuid_module.UUID(analisis_id), **kwargs)
-
-
 def filtered_result(payload: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in payload.items() if k != "error"}
 
