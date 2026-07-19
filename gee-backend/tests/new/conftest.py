@@ -91,6 +91,7 @@ from app.db.base import Base  # noqa: E402
 # pass and their tables vanish from the test schema.
 from app.auth import email_codes as _email_codes_model  # noqa: F401, E402
 from app.shared import audit_log as _audit_log_model  # noqa: F401, E402
+from app.shared import celery_outbox as _celery_outbox_model  # noqa: F401, E402
 
 
 @pytest.fixture(scope="session")
