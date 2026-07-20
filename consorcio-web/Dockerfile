@@ -85,25 +85,24 @@ RUN npm prune --production --legacy-peer-deps
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.25-alpine AS runtime
+FROM nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
+# BusyBox wget handles health checks; remove curl inherited from the base image.
+RUN apk --no-network del curl
 
 # Remove default nginx config
 RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 
 # Copy custom nginx configuration
 COPY <<'EOF' /etc/nginx/nginx.conf
-user nginx;
 worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
+error_log /dev/stderr warn;
+pid /tmp/nginx.pid;
 
 events {
     worker_connections 1024;
@@ -115,13 +114,20 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
+    # Keep every writable nginx runtime path under /tmp for the non-root master.
+    client_body_temp_path /tmp/nginx/client_temp;
+    proxy_temp_path /tmp/nginx/proxy_temp;
+    fastcgi_temp_path /tmp/nginx/fastcgi_temp;
+    uwsgi_temp_path /tmp/nginx/uwsgi_temp;
+    scgi_temp_path /tmp/nginx/scgi_temp;
+
     # Logging format
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" "$http_x_forwarded_for" '
                     'rt=$request_time';
 
-    access_log /var/log/nginx/access.log main;
+    access_log /dev/stdout main;
 
     # Performance optimizations
     sendfile on;
@@ -175,8 +181,8 @@ http {
     limit_conn_zone $binary_remote_addr zone=addr:10m;
 
     server {
-        listen 80;
-        listen [::]:80;
+        listen 8080;
+        listen [::]:8080;
         server_name _;
         root /usr/share/nginx/html;
         index index.html;
@@ -209,21 +215,6 @@ http {
             add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate";
         }
 
-        # API proxy (if needed)
-        location /api/ {
-            proxy_pass http://backend:8000/;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_cache_bypass $http_upgrade;
-            proxy_read_timeout 300;
-            proxy_connect_timeout 300;
-        }
-
         # SPA fallback - serve index.html for all routes
         location / {
             try_files $uri $uri/ /index.html =404;
@@ -253,16 +244,21 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 RUN chown -R nginx:nginx /usr/share/nginx/html \
     && chmod -R 755 /usr/share/nginx/html
 
-# Create non-root user directories
-RUN mkdir -p /var/cache/nginx /var/run \
-    && chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx
+# Create and own every nginx runtime temp directory before dropping privileges.
+RUN mkdir -p \
+        /tmp/nginx/client_temp \
+        /tmp/nginx/proxy_temp \
+        /tmp/nginx/fastcgi_temp \
+        /tmp/nginx/uwsgi_temp \
+        /tmp/nginx/scgi_temp \
+    && chown -R nginx:nginx /tmp/nginx
 
-# Expose port
-EXPOSE 80
+# Expose the unprivileged HTTP port
+EXPOSE 8080
 
-# Health check
+# Health check uses the BusyBox wget already provided by Alpine.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl --fail --silent http://localhost/health || exit 1
+    CMD wget -q -T 5 --spider http://127.0.0.1:8080/health || exit 1
 
 # Run as non-root (nginx user)
 USER nginx

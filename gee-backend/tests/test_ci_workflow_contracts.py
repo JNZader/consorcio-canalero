@@ -9,6 +9,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+NGINX_RUNTIME_IMAGE = (
+    "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+)
 
 
 def _read(path: str) -> str:
@@ -58,6 +61,54 @@ def test_frontend_docker_build_has_every_required_input_before_build() -> None:
     assert "VITE_API_URL=$VITE_API_URL" in dockerfile
     assert "VITE_MARTIN_URL=$VITE_MARTIN_URL" in dockerfile
     assert "CF_PAGES_COMMIT_SHA=$BUILD_COMMIT_SHA" in dockerfile
+
+
+def test_geo_worker_bootstraps_verified_non_root_user_tools() -> None:
+    dockerfile = _read("gee-backend/Dockerfile.geo")
+    install = dockerfile.split("apt-get install -y --no-install-recommends", 1)[1].split(
+        "&& rm -rf /var/lib/apt/lists/*", 1
+    )[0]
+
+    assert "FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3" in dockerfile
+    assert re.search(r"(?m)^\s+adduser\s+\\$", install)
+
+    check_group = dockerfile.index("command -v addgroup")
+    check_user = dockerfile.index("command -v adduser")
+    create_group = dockerfile.index("addgroup --system app")
+    create_user = dockerfile.index("adduser --system --ingroup app app")
+    assert check_group < create_group < create_user
+    assert check_user < create_user
+    assert dockerfile.rsplit("USER ", 1)[1].startswith("app\n")
+
+
+def test_frontend_runtime_is_pinned_standalone_and_non_root() -> None:
+    dockerfile = _read("consorcio-web/Dockerfile")
+    runtime = dockerfile.split("# Stage 4: Runtime", 1)[1]
+
+    assert f"FROM {NGINX_RUNTIME_IMAGE} AS runtime" in runtime
+    assert "user nginx;" not in runtime
+    assert "pid /tmp/nginx.pid;" in runtime
+    for directive in (
+        "client_body_temp_path /tmp/nginx/client_temp;",
+        "proxy_temp_path /tmp/nginx/proxy_temp;",
+        "fastcgi_temp_path /tmp/nginx/fastcgi_temp;",
+        "uwsgi_temp_path /tmp/nginx/uwsgi_temp;",
+        "scgi_temp_path /tmp/nginx/scgi_temp;",
+    ):
+        assert directive in runtime
+
+    assert "listen 8080;" in runtime
+    assert "listen [::]:8080;" in runtime
+    assert "EXPOSE 8080" in runtime
+    assert "wget -q -T 5 --spider http://127.0.0.1:8080/health" in runtime
+    assert "apk add" not in runtime
+    assert "apk --no-network del curl" in runtime
+    assert "CMD curl" not in runtime
+    assert "location /api/" not in runtime
+    assert "proxy_pass" not in runtime
+    assert "error_log /dev/stderr warn;" in runtime
+    assert "access_log /dev/stdout main;" in runtime
+    assert runtime.rsplit("USER ", 1)[1].startswith("nginx\n")
 
 
 def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:

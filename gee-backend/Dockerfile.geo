@@ -9,6 +9,7 @@ WORKDIR /app
 
 # Install Python pip, build essentials, and supervisord
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    adduser \
     python3-pip \
     python3-dev \
     supervisor \
@@ -40,7 +41,10 @@ COPY supervisord-geo.conf /etc/supervisor/conf.d/geo.conf
 RUN mkdir -p /data/geo /var/log/supervisor
 
 # Create non-root user (mirrors gee-backend/Dockerfile production stage)
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN command -v addgroup >/dev/null \
+    && command -v adduser >/dev/null \
+    && addgroup --system app \
+    && adduser --system --ingroup app app
 
 # Writable paths for the app user:
 # - /app: workdir
