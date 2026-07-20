@@ -84,9 +84,7 @@ def test_legacy_map_parameter_route_is_authenticated_backward_compatibility(app_
     app, client = app_client
     assert client.get("/api/v2/public/settings/mapa/imagen").status_code == 401
 
-    app.dependency_overrides[current_active_user] = lambda: SimpleNamespace(
-        role=UserRole.OPERADOR
-    )
+    app.dependency_overrides[current_active_user] = lambda: SimpleNamespace(role=UserRole.OPERADOR)
     app.dependency_overrides[get_db] = lambda: object()
     app.dependency_overrides[get_service] = FakeSettingsService
 

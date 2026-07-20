@@ -209,7 +209,7 @@ def _maybe_logtail_handler() -> Optional[logging.Handler]:
     if not settings.betterstack_token:
         return None
     try:
-        from logtail import LogtailHandler  # type: ignore[import-untyped]
+        from logtail import LogtailHandler
     except ImportError:
         # Lib not installed in this environment; fall back silently.
         return None
