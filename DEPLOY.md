@@ -18,7 +18,8 @@ Si los dejás privados, el server va a necesitar `docker login ghcr.io` con un t
 
 | Variable | Valor |
 |----------|-------|
-| `DEPLOY_WEBHOOK_URL` | URL del webhook del server (ver paso 3.4) — podés dejarlo vacío por ahora |
+| `ENABLE_PRODUCTION_DEPLOY` | `true` únicamente cuando quieras habilitar el rollout automático; dejala sin definir o en `false` por defecto |
+| `DEPLOY_WEBHOOK_URL` | URL del webhook del server (ver paso 3.4); por sí sola no habilita el deploy |
 
 ### 1.3 Repository Secrets (Settings → Secrets and variables → Actions → Secrets)
 
@@ -58,7 +59,9 @@ Verificá en la pestaña **Actions** que los dos jobs terminen en verde. El geo-
 
 5. **Custom domain**: configurá `consorcio.TUDOMINIO` en la pestaña Domains.
 
-> CF Pages buildea automáticamente en cada push a `main`. No necesitás hacer nada más acá.
+> CF Pages buildea automáticamente en cada push a `main`. El workflow
+> `frontend.yml` de GitHub valida pull requests y ejecuciones manuales, pero no
+> despliega ni reemplaza la integración de Cloudflare.
 
 ---
 
@@ -205,13 +208,23 @@ Y abrí `https://consorcio.TUDOMINIO` en el browser.
 
 ---
 
-## Deploys futuros (automático)
+## Deploys futuros
 
-Cada `git push origin main` que toque `gee-backend/**`:
-1. GitHub Actions corre lint + tests
-2. Buildea y pushea las imágenes a GHCR
-3. (Opcional) Llama al webhook del server → `docker compose pull && docker compose up -d`
+Cada `git push origin main` que toque `gee-backend/**` o
+`.github/workflows/deploy.yml`:
 
-Para activar el auto-deploy via webhook, configurá el servidor webhook de la Fase 2 de la guía y completá `DEPLOY_WEBHOOK_URL` en las Repository Variables de GitHub.
+1. GitHub Actions corre el quality gate completo.
+2. Si pasa, buildea y publica las imágenes de backend y geo-worker en GHCR.
+3. Solo llama al webhook si `ENABLE_PRODUCTION_DEPLOY=true` **y**
+   `DEPLOY_WEBHOOK_URL` está configurada.
 
-Para el frontend, cada `git push` dispara un nuevo deploy en Cloudflare Pages automáticamente.
+El workflow de publicación es deliberadamente push-only: ni los pull requests ni
+`workflow_dispatch` pueden publicar imágenes. Para habilitar el rollout
+automático, configurá el webhook del servidor, cargá
+`DEPLOY_WEBHOOK_SECRET` como Repository Secret, cargá la URL como Repository
+Variable y recién entonces establecé `ENABLE_PRODUCTION_DEPLOY=true`. Una URL
+existente, sin ese opt-in explícito, deja el job de deploy deshabilitado.
+
+Para el frontend, Cloudflare Pages despliega desde el repositorio conectado. El
+workflow `frontend.yml` ejecuta el gate completo en pull requests a `main` y
+en ejecuciones manuales, incluida la matriz de accesibilidad Chromium/Firefox/WebKit.

@@ -326,9 +326,9 @@ def test_one_time_email_links_match_spa_routes_and_exchange_flows() -> None:
 
     assert "path: '/verify-email'" in route_tree
     assert "path: '/reset-password'" in route_tree
-    assert "exchangeCodeForToken(code, 'verify')" in verify_page
-    assert "verifyEmailWithToken(resolvedToken)" in verify_page
-    assert "exchangeCodeForToken(code, 'reset')" in reset_page
+    assert "exchangeEmailCode(code, 'verify')" in verify_page
+    assert "verifyEmailWithToken(exchange.token)" in verify_page
+    assert "exchangeEmailCode(code, 'reset')" in reset_page
     assert "resetPasswordWithToken(effectiveToken" in reset_page
 
 

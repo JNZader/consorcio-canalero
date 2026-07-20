@@ -82,7 +82,7 @@ jobs:
 
   mutation:
     name: Mutation tests (stryker)
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [typecheck, smoke]
@@ -96,11 +96,40 @@ jobs:
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run mutation:run
 
+  accessibility:
+    name: Accessibility matrix (Playwright)
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [typecheck, smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - name: Install locked Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Run accessibility matrix
+        run: CI=1 npm run test:a11y
+      - name: Upload accessibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-a11y-${{ github.run_id }}
+          path: |
+            consorcio-web/a11y-report/
+            consorcio-web/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
   build:
     name: Build
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    needs: [lint, test, typecheck, smoke, mutation]
+    needs: [lint, test, typecheck, smoke, mutation, accessibility]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

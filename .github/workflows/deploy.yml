@@ -6,7 +6,6 @@ on:
     paths:
       - 'gee-backend/**'
       - '.github/workflows/deploy.yml'
-  workflow_dispatch:
 
 # Frontend: Cloudflare Pages buildea y deployea automaticamente desde este repo.
 # Este workflow solo buildea y publica las imagenes Docker del backend y geo-worker.
@@ -68,14 +67,16 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: ruff check .
       - run: mypy app/auth app/domains/padron app/domains/denuncias  # mypy.ini strict scope
-      - run: python3 -m pytest tests/test_reports_contract.py tests/test_tramites_schema.py tests/test_sugerencias_contract.py -q
-      # Phase 4 / F4-D: auth-gate regression test. ANY commit that
-      # accidentally drops a Depends() from a sensitive endpoint
-      # (padron / denuncias / finanzas / monitoring / uploads /
-      # admin) blocks the deploy at this step before the Docker image
-      # builds. No DB required — every assertion runs at the middleware
-      # / dependency layer.
-      - run: python3 -m pytest tests/new/test_auth_gates.py -q --no-header
+      - name: Run release contract and security tests
+        run: >-
+          python3 -m pytest
+          tests/test_ci_workflow_contracts.py
+          tests/test_tramites_schema.py
+          tests/new/test_admin_frontend_contracts.py
+          tests/new/test_auth_gates.py
+          tests/new/test_gee_public_contract.py
+          tests/new/test_production_security_config.py
+          -q --no-header --tb=short
       # Phase 4 / F4-A: backend coverage gate at 60% on the full
       # ``tests/new/`` suite. The .coveragerc omits the geo-worker
       # modules (composites / processing / tile_service /
@@ -86,11 +87,53 @@ jobs:
       # surface; the 60% floor gives us a regression cushion.
       - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short
 
+  mutation-backend:
+    name: Backend mutation gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [quality-backend]
+    defaults:
+      run:
+        working-directory: gee-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: gee-backend/requirements.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.30
+
+  security-backend:
+    name: Backend security gate (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [quality-backend]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: gee-backend
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
   build-backend:
     name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [quality-backend]
+    needs: [quality-backend, mutation-backend, security-backend]
     permissions:
       contents: read
       packages: write
@@ -144,7 +187,7 @@ jobs:
     name: Build Geo Worker Image
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [quality-backend]
+    needs: [quality-backend, mutation-backend, security-backend]
     permissions:
       contents: read
       packages: write
@@ -192,8 +235,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-backend, build-geo-worker]
-    # Solo deployar si el webhook esta configurado en el repo
-    if: ${{ vars.DEPLOY_WEBHOOK_URL != '' }}
+    # Production rollout is opt-in even when a webhook URL exists.
+    if: ${{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}
     steps:
       - name: Trigger redeploy via webhook
         run: |
