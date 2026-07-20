@@ -12,6 +12,7 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
 )
+PYTHON_RUNTIME_IMAGE = "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
 
 
 def _read(path: str) -> str:
@@ -109,6 +110,36 @@ def test_frontend_runtime_is_pinned_standalone_and_non_root() -> None:
     assert "error_log /dev/stderr warn;" in runtime
     assert "access_log /dev/stdout main;" in runtime
     assert runtime.rsplit("USER ", 1)[1].startswith("nginx\n")
+
+
+def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
+    dockerfile = _read("gee-backend/Dockerfile")
+    build = dockerfile.split("# --- Build stage", 1)[1].split("# --- Development stage", 1)[0]
+    production = dockerfile.split("# --- Production stage", 1)[1]
+
+    assert f"FROM {PYTHON_RUNTIME_IMAGE} AS build" in build
+    assert f"FROM {PYTHON_RUNTIME_IMAGE} AS production" in production
+    assert not re.search(r"apt-get install -y(?! --no-install-recommends)", dockerfile)
+
+    runtime_install = production.split("apt-get install -y --no-install-recommends", 1)[1].split(
+        "&& rm -rf /var/lib/apt/lists/*", 1
+    )[0]
+    assert "gcc" in build
+    assert "libgdal-dev" in build
+    for package in (
+        "libgdal-dev",
+        "libmariadb-dev",
+        "libmariadb-dev-compat",
+        "libxml2-dev",
+        "linux-libc-dev",
+    ):
+        assert package not in runtime_install
+
+    assert "libosmesa6" in runtime_install
+    assert "ENV VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow" in production
+    assert "COPY --from=build /usr/local/lib/python3.11/site-packages" in production
+    assert production.rsplit("USER ", 1)[1].startswith("app\n")
+    assert 'CMD ["python", "-m", "app.server"]' in production
 
 
 def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
