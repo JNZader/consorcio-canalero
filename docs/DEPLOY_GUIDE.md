@@ -39,6 +39,8 @@ Archivos principales:
 - `docker-compose.prod.yml`
 - `.env.prod.example`
 - `martin/config.prod.yaml`
+- `scripts/provision_martin_reader.sql`
+- `docs/MARTIN_DB_ROLE.md`
 - `DEPLOY.md`
 
 Preparación en el servidor:
@@ -55,8 +57,13 @@ cp .env.prod.example /home/javier/stacks/consorcio/.env
 Editar `/home/javier/stacks/consorcio/.env` con valores reales:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://consorcio:PASSWORD@shared-postgres:5432/consorcio_canalero
-MARTIN_DB_URL=postgresql://consorcio:PASSWORD@shared-postgres:5432/consorcio_canalero
+POSTGRES_HOST=shared-postgres
+POSTGRES_USER=consorcio
+POSTGRES_PASSWORD=PASSWORD_APP
+POSTGRES_DB=consorcio_canalero
+USE_PGBOUNCER=false
+DATABASE_URL=postgresql://consorcio:PASSWORD_APP@shared-postgres:5432/consorcio_canalero
+MARTIN_DB_URL=postgresql://consorcio_martin:PASSWORD_MARTIN_INDEPENDIENTE@shared-postgres:5432/consorcio_canalero
 REDIS_URL=redis://:PASSWORD@shared-redis:6379/0
 JWT_SECRET=<openssl rand -hex 32>
 CORS_ORIGINS=https://consorcio.DOMINIO,https://consorcio-canalero.pages.dev
@@ -65,13 +72,28 @@ API_BASE_URL=https://api.consorcio.DOMINIO
 MARTIN_PUBLIC_URL=https://tiles.consorcio.DOMINIO
 ```
 
-Levantar stack:
+El backend usa `consorcio`; Martin usa siempre el rol independiente
+`consorcio_martin`. Este último solo puede leer `vt_zonas_operativas`,
+`vt_puntos_conflicto`, `vt_denuncias` y `vt_canal_network`; no puede consultar
+tablas base, escribir, usar secuencias ni ejecutar funciones de aplicación.
 
-```bash
+Migrar, provisionar y recién después iniciar:
+
+~~~bash
+cd /home/javier/stacks/consorcio
+docker compose pull backend
+docker compose run --rm migrate
+~~~
+
+Ejecutar a continuación el procedimiento de
+[`docs/MARTIN_DB_ROLE.md`](MARTIN_DB_ROLE.md), incluida la carga interactiva de
+la contraseña (nunca en argumentos del shell). Luego:
+
+~~~bash
 cd /home/javier/stacks/consorcio
 docker compose up -d
 docker compose ps
-```
+~~~
 
 ## Proxy y DNS
 

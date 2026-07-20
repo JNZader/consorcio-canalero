@@ -96,35 +96,60 @@ nano /home/javier/stacks/consorcio/.env
 Reemplazá TODOS los `CAMBIAR_*` y `TUDOMINIO`:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://consorcio:PASSWORD_REAL@shared-postgres:5432/consorcio_canalero
+POSTGRES_HOST=shared-postgres
+POSTGRES_USER=consorcio
+POSTGRES_PASSWORD=PASSWORD_APP_REAL
+POSTGRES_DB=consorcio_canalero
+USE_PGBOUNCER=false
+DATABASE_URL=postgresql://consorcio:PASSWORD_APP_REAL@shared-postgres:5432/consorcio_canalero
 REDIS_URL=redis://:PASSWORD_REDIS_REAL@shared-redis:6379/0
 JWT_SECRET=<output de: openssl rand -hex 32>
 CORS_ORIGINS=https://consorcio.TUDOMINIO,https://consorcio-canalero.pages.dev
 MARTIN_PUBLIC_URL=https://tiles.consorcio.TUDOMINIO
-MARTIN_DB_URL=postgresql://consorcio:PASSWORD_REAL@shared-postgres:5432/consorcio_canalero
+MARTIN_DB_URL=postgresql://consorcio_martin:PASSWORD_MARTIN_INDEPENDIENTE@shared-postgres:5432/consorcio_canalero
 FRONTEND_URL=https://consorcio.TUDOMINIO
 API_BASE_URL=https://api.consorcio.TUDOMINIO
 ```
 
-> El password de consorcio en shared-postgres es el que pusiste en el `init-databases.sh` de la Fase 3.
+> `DATABASE_URL` usa el rol de aplicación `consorcio`; `MARTIN_DB_URL` usa
+> siempre `consorcio_martin` con otra contraseña. Usá URLs canónicas
+> `postgresql://`; la aplicación deriva internamente el driver async.
 
-### 3.4 Levantar el stack
+Martin recibe `SELECT` solo sobre `vt_zonas_operativas`, `vt_puntos_conflicto`,
+`vt_denuncias` y `vt_canal_network`. No recibe tablas base, escritura, secuencias
+ni funciones de aplicación. El procedimiento y sus chequeos están en
+[`docs/MARTIN_DB_ROLE.md`](docs/MARTIN_DB_ROLE.md).
 
-```bash
+### 3.4 Migrar, provisionar Martin y levantar el stack
+
+Aplicá primero las migraciones, antes de crear o reparar los permisos del lector:
+
+~~~bash
+cd /home/javier/stacks/consorcio
+docker compose pull backend
+docker compose run --rm migrate
+~~~
+
+Después seguí [`docs/MARTIN_DB_ROLE.md`](docs/MARTIN_DB_ROLE.md) para ejecutar
+`scripts/provision_martin_reader.sql` contra `shared-postgres` y establecer la
+contraseña con `\password consorcio_martin` dentro de una sesión interactiva de
+`psql`. Nunca pongas la contraseña real en argumentos del shell.
+
+Cuando la migración, el aprovisionamiento y sus cuatro contadores en cero hayan
+terminado:
+
+~~~bash
 cd /home/javier/stacks/consorcio
 docker compose up -d
 
 # Verificar que todo arrancó
 docker compose ps
 
-# Verificar que Alembic corrió las migraciones
-docker logs consorcio-backend --tail 50 | grep -i migrat
-
 # Verificar endpoints
 curl -s http://localhost:8000/health
 curl -s http://localhost:3000/health
 curl -s http://localhost:8001/health
-```
+~~~
 
 ### 3.5 Agregar las entradas al Caddyfile del server
 

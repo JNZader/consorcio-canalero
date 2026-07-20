@@ -1,12 +1,64 @@
-# Martin Vector Tile Server — Hetzner production
-# Copied to ~/stacks/consorcio/martin-config.yaml on deploy
+# Martin Vector Tile Server - legacy embedded production stack
+# docker-compose.deploy.yml injects DATABASE_URL from MARTIN_DB_URL.
+# Keep this exact allowlist aligned with martin/config.prod.yaml.
 
 listen_addresses: '0.0.0.0:3000'
 
 postgres:
   connection_string: ${DATABASE_URL}
 
-  auto_publish:
-    tables:
-      from: public
-    functions: false
+  # Never discover schemas automatically: Martin's hostname is public and
+  # PostgreSQL table columns become vector-tile properties. Only sanitized
+  # projection views are publishable.
+  auto_publish: false
+  functions: {}
+  tables:
+    vt_zonas_operativas:
+      schema: public
+      table: vt_zonas_operativas
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        id: Public identifier
+        nombre: Zone name
+        cuenca: Basin name
+        superficie_ha: Area in hectares
+    vt_puntos_conflicto:
+      schema: public
+      table: vt_puntos_conflicto
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        id: Public identifier
+        tipo: Conflict type
+        severidad: Severity
+        descripcion: Public description
+        acumulacion_valor: Accumulation metric
+        pendiente_valor: Slope metric
+    vt_denuncias:
+      schema: public
+      table: vt_denuncias
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      properties:
+        id: Public identifier
+        tipo: Report type
+        estado: Public status
+        cuenca: Basin name
+        created_at: Creation timestamp
+    vt_canal_network:
+      schema: public
+      table: vt_canal_network
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      properties:
+        id: Public identifier
+        nombre: Canal name
+        tipo: Canal type
+        source: Topology source node
+        target: Topology target node
+        cost: Routing cost
