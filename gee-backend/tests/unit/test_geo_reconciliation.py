@@ -39,6 +39,17 @@ def test_geo_reconciliation_uses_one_outbox_aware_set_based_update() -> None:
     assert "geo_jobs.estado IN" not in geo_sql
 
     analysis_statement = db.execute.call_args_list[1].args[0]
-    analysis_sql = str(analysis_statement.compile(dialect=postgresql.dialect()))
+    analysis_compiled = analysis_statement.compile(dialect=postgresql.dialect())
+    analysis_sql = str(analysis_compiled)
     assert "UPDATE geo_analisis_gee" in analysis_sql
-    assert "geo_analisis_gee.estado IN" in analysis_sql
+    assert "celery_task_outbox" in analysis_sql
+    assert "NOT (EXISTS" in analysis_sql
+    assert "celery_task_outbox.published_at IS NULL" in analysis_sql
+    assert "celery_task_outbox.published_at >=" in analysis_sql
+    assert "geo_analisis_gee.celery_task_id" in analysis_sql
+    assert EstadoGeoJob.RUNNING in analysis_compiled.params.values()
+    assert EstadoGeoJob.PENDING in analysis_compiled.params.values()
+    assert analysis_sql.count("geo_analisis_gee.estado =") == 2
+    assert " OR geo_analisis_gee.estado =" in analysis_sql
+    assert " AND NOT (EXISTS" in analysis_sql
+    assert "geo_analisis_gee.estado IN" not in analysis_sql

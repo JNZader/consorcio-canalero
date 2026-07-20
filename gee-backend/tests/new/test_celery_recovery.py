@@ -92,6 +92,31 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
         intent.published_at = published_at
         return job
 
+    def add_outboxed_analysis(
+        tipo: TipoAnalisisGee,
+        *,
+        estado: EstadoGeoJob = EstadoGeoJob.PENDING,
+        published_at: datetime | None = None,
+    ) -> AnalisisGeo:
+        task_id = uuid.uuid4()
+        analysis = AnalisisGeo(
+            id=uuid.uuid4(),
+            tipo=tipo,
+            fecha_analisis=date.today(),
+            estado=estado,
+            celery_task_id=str(task_id),
+            updated_at=stale_at,
+        )
+        db.add(analysis)
+        intent = enqueue_celery_task(
+            db,
+            celery_task_id=task_id,
+            task_key=CeleryTaskKey.ANALYZE_FLOOD,
+            task_kwargs={"analisis_id": str(analysis.id)},
+        )
+        intent.published_at = published_at
+        return analysis
+
     unpublished = add_outboxed_job(TipoGeoJob.DEM_PIPELINE)
     recently_published = add_outboxed_job(
         TipoGeoJob.SLOPE,
@@ -120,13 +145,47 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
         estado=EstadoGeoJob.COMPLETED,
         updated_at=stale_at,
     )
-    stale_analysis = AnalisisGeo(
-        tipo=TipoAnalisisGee.FLOOD,
+    unpublished_analysis = add_outboxed_analysis(TipoAnalisisGee.FLOOD)
+    recently_published_analysis = add_outboxed_analysis(
+        TipoAnalisisGee.CLASSIFICATION,
+        published_at=recent_at,
+    )
+    stale_published_analysis = add_outboxed_analysis(
+        TipoAnalisisGee.CUSTOM,
+        published_at=stale_at,
+    )
+    stale_running_analysis = add_outboxed_analysis(
+        TipoAnalisisGee.SAR_TEMPORAL,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    legacy_pending_analysis = AnalisisGeo(
+        tipo=TipoAnalisisGee.VEGETATION,
         fecha_analisis=date.today(),
         estado=EstadoGeoJob.PENDING,
         updated_at=stale_at,
     )
-    db.add_all([legacy_pending, recent_pending, completed_job, stale_analysis])
+    recent_pending_analysis = AnalisisGeo(
+        tipo=TipoAnalisisGee.NDVI,
+        fecha_analisis=date.today(),
+        estado=EstadoGeoJob.PENDING,
+        updated_at=recent_at,
+    )
+    completed_analysis = AnalisisGeo(
+        tipo=TipoAnalisisGee.CLASSIFICATION,
+        fecha_analisis=date.today(),
+        estado=EstadoGeoJob.COMPLETED,
+        updated_at=stale_at,
+    )
+    db.add_all(
+        [
+            legacy_pending,
+            recent_pending,
+            completed_job,
+            legacy_pending_analysis,
+            recent_pending_analysis,
+            completed_analysis,
+        ]
+    )
     db.flush()
 
     reconciled = reconcile_stale_geo_jobs(
@@ -143,11 +202,17 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
         legacy_pending,
         recent_pending,
         completed_job,
-        stale_analysis,
+        unpublished_analysis,
+        recently_published_analysis,
+        stale_published_analysis,
+        stale_running_analysis,
+        legacy_pending_analysis,
+        recent_pending_analysis,
+        completed_analysis,
     ):
         db.refresh(tracker)
 
-    assert reconciled == {"geo_jobs": 3, "gee_analyses": 1}
+    assert reconciled == {"geo_jobs": 3, "gee_analyses": 3}
     assert unpublished.estado == EstadoGeoJob.PENDING
     assert recently_published.estado == EstadoGeoJob.PENDING
     assert stale_running.estado == EstadoGeoJob.FAILED
@@ -159,7 +224,18 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     assert "stale" in (stale_published.error or "").lower()
     assert legacy_pending.estado == EstadoGeoJob.FAILED
     assert "stale" in (legacy_pending.error or "").lower()
-    assert stale_analysis.estado == EstadoGeoJob.FAILED
+
+    assert unpublished_analysis.estado == EstadoGeoJob.PENDING
+    assert recently_published_analysis.estado == EstadoGeoJob.PENDING
+    assert recent_pending_analysis.estado == EstadoGeoJob.PENDING
+    assert completed_analysis.estado == EstadoGeoJob.COMPLETED
+
+    assert stale_published_analysis.estado == EstadoGeoJob.FAILED
+    assert "stale" in (stale_published_analysis.error or "").lower()
+    assert stale_running_analysis.estado == EstadoGeoJob.FAILED
+    assert "stale" in (stale_running_analysis.error or "").lower()
+    assert legacy_pending_analysis.estado == EstadoGeoJob.FAILED
+    assert "stale" in (legacy_pending_analysis.error or "").lower()
 
 
 def test_reconciliation_terminalizes_worker_loss_and_fences_redelivery(db) -> None:
@@ -292,9 +368,11 @@ def test_geo_job_claim_cannot_resurrect_a_reconciled_job(db) -> None:
 def test_analisis_claim_cannot_resurrect_or_overwrite_terminal_rows(db) -> None:
     from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
     from app.domains.geo.repository import GeoRepository
+    from app.shared.celery_outbox import CeleryTaskKey, enqueue_celery_task
 
     repo = GeoRepository()
     now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+    task_id = uuid.uuid4()
 
     fresh = repo.create_analisis(
         db,
@@ -302,9 +380,11 @@ def test_analisis_claim_cannot_resurrect_or_overwrite_terminal_rows(db) -> None:
         fecha_analisis=date.today(),
     )
     stale = AnalisisGeo(
+        id=uuid.uuid4(),
         tipo=TipoAnalisisGee.SAR_TEMPORAL,
         fecha_analisis=date.today(),
-        estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+        celery_task_id=str(task_id),
         updated_at=now - timedelta(hours=2),
     )
     completed = AnalisisGeo(
@@ -315,6 +395,13 @@ def test_analisis_claim_cannot_resurrect_or_overwrite_terminal_rows(db) -> None:
         updated_at=now - timedelta(hours=2),
     )
     db.add_all([stale, completed])
+    intent = enqueue_celery_task(
+        db,
+        celery_task_id=task_id,
+        task_key=CeleryTaskKey.SAR_TEMPORAL,
+        task_kwargs={"analisis_id": str(stale.id)},
+    )
+    intent.published_at = now - timedelta(minutes=5)
     db.flush()
 
     assert repo.update_analisis_status_if_current(

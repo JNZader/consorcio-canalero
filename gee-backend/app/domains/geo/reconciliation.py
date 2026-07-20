@@ -21,18 +21,17 @@ def reconcile_stale_geo_jobs(
 ) -> dict[str, int]:
     """Fail stale trackers without racing durable GeoJob publication.
 
-    Stale RUNNING GeoJobs are terminalized so worker loss cannot orphan them;
+    Stale RUNNING trackers are terminalized so worker loss cannot orphan them;
     late or redelivered workers are fenced by their expected-state updates. Old
-    PENDING GeoJobs remain retryable while an unpublished outbox intent exists,
+    PENDING trackers remain retryable while an unpublished outbox intent exists,
     and receive a full ``stale_after`` grace period from publication. Legacy
-    PENDING jobs without an intent, or jobs whose publication grace expired,
-    fail in the same set-based update. AnalisisGeo keeps its pre-outbox
-    reconciliation behavior until its dedicated producer is migrated.
+    PENDING trackers without an intent, or trackers whose publication grace
+    expired, fail in one set-based update per tracker table.
     """
     now = now or datetime.now(timezone.utc)
     cutoff = now - stale_after
 
-    protected_intent = exists(
+    protected_job_intent = exists(
         select(1)
         .select_from(CeleryTaskOutbox)
         .where(
@@ -44,6 +43,18 @@ def reconcile_stale_geo_jobs(
         )
     ).correlate(GeoJob)
 
+    protected_analysis_intent = exists(
+        select(1)
+        .select_from(CeleryTaskOutbox)
+        .where(
+            CeleryTaskOutbox.celery_task_id == AnalisisGeo.celery_task_id,
+            or_(
+                CeleryTaskOutbox.published_at.is_(None),
+                CeleryTaskOutbox.published_at >= cutoff,
+            ),
+        )
+    ).correlate(AnalisisGeo)
+
     job_result = db.execute(
         update(GeoJob)
         .where(
@@ -52,7 +63,7 @@ def reconcile_stale_geo_jobs(
                 GeoJob.estado == EstadoGeoJob.RUNNING,
                 and_(
                     GeoJob.estado == EstadoGeoJob.PENDING,
-                    ~protected_intent,
+                    ~protected_job_intent,
                 ),
             ),
         )
@@ -62,8 +73,14 @@ def reconcile_stale_geo_jobs(
     analysis_result = db.execute(
         update(AnalisisGeo)
         .where(
-            AnalisisGeo.estado.in_((EstadoGeoJob.PENDING, EstadoGeoJob.RUNNING)),
             AnalisisGeo.updated_at < cutoff,
+            or_(
+                AnalisisGeo.estado == EstadoGeoJob.RUNNING,
+                and_(
+                    AnalisisGeo.estado == EstadoGeoJob.PENDING,
+                    ~protected_analysis_intent,
+                ),
+            ),
         )
         .values(estado=EstadoGeoJob.FAILED, error=_STALE_ERROR, updated_at=now)
         .execution_options(synchronize_session=False)
