@@ -7,115 +7,75 @@ Bridges the FastAPI world (request/response) with Celery tasks and the repositor
 from __future__ import annotations
 
 import uuid
-from typing import Callable, Optional
+from collections.abc import Mapping
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.domains.geo.models import (
-    EstadoGeoJob,
     GeoJob,
     GeoLayer,
     TipoGeoJob,
 )
 from app.domains.geo.repository import GeoRepository
+from app.shared.celery_outbox import (
+    CeleryTaskKey,
+    enqueue_celery_task,
+    try_publish_celery_task,
+)
 
 logger = get_logger(__name__)
 
 repo = GeoRepository()
 
 
-class GeoJobDispatchError(RuntimeError):
-    """Raised when a GeoJob was created but its Celery task could not be queued."""
-
-
-def _record_publication_failure(
-    db: Session,
-    *,
-    job_id: uuid.UUID,
-    operation: str,
-    publication_error: Exception,
-) -> None:
-    """Mark an unclaimed durable job failed without masking the broker error."""
-    diagnostic = (
-        f"Celery publication failed: {type(publication_error).__name__}: {publication_error}"
-    )
-    try:
-        marked_failed = repo.update_job_status_if_current(
-            db,
-            job_id,
-            expected_estado=EstadoGeoJob.PENDING,
-            estado=EstadoGeoJob.FAILED,
-            error=diagnostic,
-        )
-        db.commit()
-    except Exception as persistence_error:
-        db.rollback()
-        logger.exception(
-            "geo_job.publication_failure_persist_failed",
-            operation=operation,
-            job_id=str(job_id),
-            publication_error=str(publication_error),
-            persistence_error=str(persistence_error),
-        )
-        return
-
-    if not marked_failed:
-        logger.warning(
-            "geo_job.publication_failure_job_already_claimed",
-            operation=operation,
-            job_id=str(job_id),
-            publication_error=str(publication_error),
-        )
-
-
 # ---------------------------------------------------------------------------
-# Task dispatch map (lazy imports to avoid circular deps at module level)
+# Task-key mapping
 # ---------------------------------------------------------------------------
 
 
-def _get_task_dispatch_map() -> dict[str, Callable]:
-    """Return a mapping from TipoGeoJob value to a callable that dispatches
-    the corresponding Celery task via ``.delay()``.
-
-    Imports are deferred so the module can be imported without pulling in
-    Celery task registrations at startup.
-    """
-    from app.domains.geo.gee_tasks import (
-        analyze_flood_task,
-        supervised_classification_task,
-    )
-    from app.domains.geo.tasks import (
-        classify_terrain,
-        composite_analysis_task,
-        compute_aspect,
-        compute_flow_accumulation,
-        compute_flow_direction,
-        compute_hand,
-        compute_slope,
-        compute_twi,
-        delineate_basins_task,
-        extract_drainage_network,
-        process_dem_pipeline,
-        run_full_dem_pipeline,
-    )
-
+def _get_task_key_map() -> Mapping[TipoGeoJob, CeleryTaskKey]:
+    """Map every accepted GeoJob type to a fixed outbox allowlist key."""
     return {
-        TipoGeoJob.DEM_PIPELINE: lambda p: process_dem_pipeline.delay(**p),
-        TipoGeoJob.SLOPE: lambda p: compute_slope.delay(**p),
-        TipoGeoJob.ASPECT: lambda p: compute_aspect.delay(**p),
-        TipoGeoJob.FLOW_DIR: lambda p: compute_flow_direction.delay(**p),
-        TipoGeoJob.FLOW_ACC: lambda p: compute_flow_accumulation.delay(**p),
-        TipoGeoJob.TWI: lambda p: compute_twi.delay(**p),
-        TipoGeoJob.HAND: lambda p: compute_hand.delay(**p),
-        TipoGeoJob.DRAINAGE: lambda p: extract_drainage_network.delay(**p),
-        TipoGeoJob.TERRAIN_CLASS: lambda p: classify_terrain.delay(**p),
-        TipoGeoJob.GEE_FLOOD: lambda p: analyze_flood_task.delay(**p),
-        TipoGeoJob.GEE_CLASSIFICATION: lambda p: supervised_classification_task.delay(**p),
-        TipoGeoJob.DEM_FULL_PIPELINE: lambda p: run_full_dem_pipeline.delay(**p),
-        TipoGeoJob.BASIN_DELINEATION: lambda p: delineate_basins_task.delay(**p),
-        TipoGeoJob.COMPOSITE_ANALYSIS: lambda p: composite_analysis_task.delay(**p),
+        TipoGeoJob.DEM_PIPELINE: CeleryTaskKey.PROCESS_DEM_PIPELINE,
+        TipoGeoJob.SLOPE: CeleryTaskKey.COMPUTE_SLOPE,
+        TipoGeoJob.ASPECT: CeleryTaskKey.COMPUTE_ASPECT,
+        TipoGeoJob.FLOW_DIR: CeleryTaskKey.COMPUTE_FLOW_DIRECTION,
+        TipoGeoJob.FLOW_ACC: CeleryTaskKey.COMPUTE_FLOW_ACCUMULATION,
+        TipoGeoJob.TWI: CeleryTaskKey.COMPUTE_TWI,
+        TipoGeoJob.HAND: CeleryTaskKey.COMPUTE_HAND,
+        TipoGeoJob.DRAINAGE: CeleryTaskKey.EXTRACT_DRAINAGE_NETWORK,
+        TipoGeoJob.TERRAIN_CLASS: CeleryTaskKey.CLASSIFY_TERRAIN,
+        TipoGeoJob.GEE_FLOOD: CeleryTaskKey.ANALYZE_FLOOD,
+        TipoGeoJob.GEE_CLASSIFICATION: CeleryTaskKey.SUPERVISED_CLASSIFICATION,
+        TipoGeoJob.DEM_FULL_PIPELINE: CeleryTaskKey.RUN_FULL_DEM_PIPELINE,
+        TipoGeoJob.BASIN_DELINEATION: CeleryTaskKey.DELINEATE_BASINS,
+        TipoGeoJob.COMPOSITE_ANALYSIS: CeleryTaskKey.COMPOSITE_ANALYSIS,
     }
+
+
+def _resolve_task_key(tipo: str | TipoGeoJob) -> tuple[TipoGeoJob, CeleryTaskKey]:
+    """Resolve and validate a task key before any database row is created."""
+    try:
+        normalized_tipo = TipoGeoJob(tipo)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Unsupported GeoJob type") from exc
+
+    task_key = _get_task_key_map().get(normalized_tipo)
+    if task_key is None:
+        raise ValueError("Unsupported GeoJob type")
+    return normalized_tipo, task_key
+
+
+def _rollback_dispatch_quietly(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception as rollback_error:
+        logger.error(
+            "geo_job.dispatch_rollback_failed",
+            error_type=type(rollback_error).__name__,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -126,68 +86,53 @@ def _get_task_dispatch_map() -> dict[str, Callable]:
 def dispatch_job(
     db: Session,
     *,
-    tipo: str,
+    tipo: str | TipoGeoJob,
     parametros: dict | None = None,
     usuario_id: uuid.UUID | None = None,
 ) -> GeoJob:
-    """Create a GeoJob, dispatch the matching Celery task, and return the job.
-
-    Args:
-        db: Active database session.
-        tipo: A ``TipoGeoJob`` value indicating which task to dispatch.
-        parametros: JSON-serialisable dict of task parameters.
-        usuario_id: Optional user who submitted the job.
-
-    Returns:
-        The newly created GeoJob with ``celery_task_id`` set (when a
-        matching task exists in the dispatch map).
-    """
-    parametros = parametros or {}
-
-    job = repo.create_job(
-        db,
-        tipo=tipo,
-        parametros=parametros,
-        usuario_id=usuario_id,
-    )
-    db.flush()
-    job_id = job.id
-
-    # The worker claims jobs in a separate transaction. Publish only after the
-    # row is durable so even an immediately-started worker can observe it.
-    db.commit()
-
-    dispatch_map = _get_task_dispatch_map()
-    task_launcher = dispatch_map.get(tipo)
-
-    if task_launcher is None:
-        logger.warning("dispatch_job.no_task_mapping", tipo=tipo, job_id=str(job_id))
-        return job
+    """Atomically persist a GeoJob and its durable Celery publication intent."""
+    normalized_tipo, task_key = _resolve_task_key(tipo)
+    stored_parameters = parametros or {}
+    celery_task_id = uuid.uuid4()
 
     try:
-        result = task_launcher({**parametros, "job_id": str(job_id)})
-    except Exception as exc:
-        _record_publication_failure(
+        job = repo.create_job(
             db,
-            job_id=job_id,
-            operation="dispatch_job",
-            publication_error=exc,
+            tipo=normalized_tipo,
+            parametros=stored_parameters,
+            usuario_id=usuario_id,
+            celery_task_id=str(celery_task_id),
         )
-        logger.exception(
-            "dispatch_job.task_dispatch_failed",
-            tipo=tipo,
-            job_id=str(job_id),
-            error=str(exc),
+        outbox = enqueue_celery_task(
+            db,
+            celery_task_id=celery_task_id,
+            task_key=task_key,
+            task_kwargs={**stored_parameters, "job_id": str(job.id)},
         )
-        raise GeoJobDispatchError(
-            "No se pudo encolar el trabajo geoespacial. "
-            "Revisá Redis/Celery y el worker correspondiente."
-        ) from exc
+        db.commit()
+    except Exception:
+        _rollback_dispatch_quietly(db)
+        raise
 
-    # Celery can start the worker before ``delay`` returns. This metadata-only
-    # update deliberately has no expected lifecycle state and never writes it.
-    repo.update_job_status(db, job_id, celery_task_id=result.id)
-    db.commit()
+    db.refresh(job)
+    try:
+        published = try_publish_celery_task(outbox.id)
+    except Exception as publication_error:
+        published = False
+        logger.error(
+            "geo_job.outbox_immediate_publish_failed",
+            job_id=str(job.id),
+            outbox_id=str(outbox.id),
+            error_type=type(publication_error).__name__,
+        )
+
+    if not published:
+        logger.warning(
+            "geo_job.outbox_publication_deferred",
+            job_id=str(job.id),
+            outbox_id=str(outbox.id),
+            task_key=task_key.value,
+        )
     return job
 
 
@@ -204,65 +149,18 @@ def submit_pipeline_job(
     area_id: str | None = None,
     user_id: uuid.UUID | None = None,
 ) -> GeoJob:
-    """Create a GeoJob, dispatch the Celery pipeline task, and return the job.
-
-    Args:
-        db: Active database session.
-        dem_path: Path to the input DEM GeoTIFF.
-        bbox: Optional bounding box [minx, miny, maxx, maxy].
-        area_id: Identifier for the processing area.
-        user_id: User who submitted the job.
-
-    Returns:
-        The newly created GeoJob (estado=PENDING, celery_task_id set).
-    """
-    from app.domains.geo.tasks import process_dem_pipeline
-
-    area_id = area_id or str(uuid.uuid4())[:8]
-
-    job = repo.create_job(
+    """Submit the standard DEM pipeline through the generic durable producer."""
+    resolved_area_id = area_id or str(uuid.uuid4())[:8]
+    return dispatch_job(
         db,
         tipo=TipoGeoJob.DEM_PIPELINE,
-        parametros={"dem_path": dem_path, "bbox": bbox, "area_id": area_id},
+        parametros={
+            "dem_path": dem_path,
+            "bbox": bbox,
+            "area_id": resolved_area_id,
+        },
         usuario_id=user_id,
     )
-    db.flush()
-    job_id = job.id
-
-    # Make the row visible before an eager/fast worker attempts its CAS claim.
-    db.commit()
-
-    try:
-        result = process_dem_pipeline.delay(
-            area_id=area_id,
-            dem_path=dem_path,
-            bbox=bbox,
-            job_id=str(job_id),
-        )
-    except Exception as exc:
-        _record_publication_failure(
-            db,
-            job_id=job_id,
-            operation="submit_pipeline_job",
-            publication_error=exc,
-        )
-        logger.exception(
-            "submit_pipeline_job.task_dispatch_failed",
-            job_id=str(job_id),
-            error=str(exc),
-        )
-        raise
-
-    # Do not predicate task-id persistence on PENDING: the worker may already
-    # be RUNNING (or even terminal) by the time publication returns.
-    repo.update_job_status(
-        db,
-        job_id,
-        celery_task_id=result.id,
-    )
-    db.commit()
-
-    return job
 
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,6 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Task 1.1: TipoGeoJob enum completeness
@@ -64,116 +62,85 @@ class TestTipoGeoJobEnum:
 
 
 class TestDispatchJobMapping:
-    """Verify the task dispatch map covers every TipoGeoJob value."""
+    """Verify every GeoJob type resolves to a durable outbox task key."""
+
+    def test_task_key_map_covers_all_tipos(self):
+        from app.domains.geo.models import TipoGeoJob
+        from app.domains.geo.service import _get_task_key_map
+        from app.shared.celery_outbox import CeleryTaskKey
+
+        task_keys = _get_task_key_map()
+
+        assert set(task_keys) == set(TipoGeoJob)
+        assert all(isinstance(task_key, CeleryTaskKey) for task_key in task_keys.values())
 
     @patch("app.domains.geo.service.repo")
-    def test_dispatch_map_covers_all_tipos(self, mock_repo):
-        """Every TipoGeoJob value must have a corresponding task launcher."""
-        from app.domains.geo.models import TipoGeoJob
-        from app.domains.geo.service import _get_task_dispatch_map
+    def test_dispatch_job_creates_job_and_outbox(self, mock_repo):
+        import uuid
+        from types import SimpleNamespace
 
-        dispatch_map = _get_task_dispatch_map()
-
-        for member in TipoGeoJob:
-            assert member in dispatch_map or member.value in dispatch_map, (
-                f"TipoGeoJob.{member.name} ({member.value}) is not in the dispatch map"
-            )
-
-    @patch("app.domains.geo.service.repo")
-    def test_dispatch_job_creates_job_and_dispatches(self, mock_repo):
-        """dispatch_job should create a job record and call the task."""
-        from app.domains.geo.models import TipoGeoJob
+        from app.domains.geo.models import EstadoGeoJob, TipoGeoJob
         from app.domains.geo.service import dispatch_job
+        from app.shared.celery_outbox import CeleryTaskKey
 
         mock_db = MagicMock()
-        mock_job = MagicMock()
-        mock_job.id = "test-uuid-1234"
-        mock_repo.create_job.return_value = mock_job
+        job = SimpleNamespace(
+            id=uuid.uuid4(),
+            tipo=TipoGeoJob.SLOPE,
+            estado=EstadoGeoJob.PENDING,
+            celery_task_id=None,
+        )
 
-        # Mock the Celery task result
-        mock_celery_result = MagicMock()
-        mock_celery_result.id = "celery-task-id-5678"
+        def create_job(_db, **kwargs):
+            job.celery_task_id = kwargs["celery_task_id"]
+            return job
 
-        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
-            mock_launcher = MagicMock(return_value=mock_celery_result)
-            mock_map.return_value = {TipoGeoJob.SLOPE: mock_launcher}
-
-            dispatch_job(
+        mock_repo.create_job.side_effect = create_job
+        outbox = SimpleNamespace(id=uuid.uuid4())
+        with (
+            patch(
+                "app.domains.geo.service.enqueue_celery_task",
+                return_value=outbox,
+            ) as enqueue,
+            patch(
+                "app.domains.geo.service.try_publish_celery_task",
+                return_value=False,
+            ) as publish,
+        ):
+            returned = dispatch_job(
                 mock_db,
                 tipo=TipoGeoJob.SLOPE,
-                parametros={
-                    "dem_path": "/tmp/dem.tif",
-                    "output_path": "/tmp/slope.tif",
-                },
+                parametros={"dem_path": "/tmp/dem.tif"},
             )
 
-        # Job was created
-        mock_repo.create_job.assert_called_once()
-        # Task was dispatched
-        mock_launcher.assert_called_once()
-        # celery_task_id was stored
-        mock_repo.update_job_status.assert_called_once()
-        call_kwargs = mock_repo.update_job_status.call_args
-        assert call_kwargs[1]["celery_task_id"] == "celery-task-id-5678"
+        assert returned is job
+        task_id = uuid.UUID(job.celery_task_id)
+        enqueue.assert_called_once_with(
+            mock_db,
+            celery_task_id=task_id,
+            task_key=CeleryTaskKey.COMPUTE_SLOPE,
+            task_kwargs={"dem_path": "/tmp/dem.tif", "job_id": str(job.id)},
+        )
+        mock_db.commit.assert_called_once_with()
+        publish.assert_called_once_with(outbox.id)
+        mock_repo.update_job_status.assert_not_called()
 
     @patch("app.domains.geo.service.repo")
-    def test_dispatch_job_unknown_tipo_still_creates_job(self, mock_repo):
-        """An unmapped tipo should still create the job, just skip dispatch."""
+    def test_dispatch_job_unknown_tipo_fails_before_create(self, mock_repo):
         from app.domains.geo.service import dispatch_job
 
         mock_db = MagicMock()
-        mock_job = MagicMock()
-        mock_job.id = "test-uuid"
-        mock_repo.create_job.return_value = mock_job
+        with patch("app.domains.geo.service.enqueue_celery_task") as enqueue:
+            try:
+                dispatch_job(mock_db, tipo="nonexistent_tipo", parametros={})
+            except ValueError as error:
+                assert str(error) == "Unsupported GeoJob type"
+            else:
+                raise AssertionError("Unknown GeoJob type must be rejected")
 
-        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
-            mock_map.return_value = {}  # empty map
-
-            dispatch_job(
-                mock_db,
-                tipo="nonexistent_tipo",
-                parametros={},
-            )
-
-        mock_repo.create_job.assert_called_once()
-        # No task dispatched, so update_job_status should NOT be called
-        mock_repo.update_job_status.assert_not_called()
-
-    @patch("app.domains.geo.service.repo")
-    def test_dispatch_job_persists_failure_when_task_queue_fails(self, mock_repo):
-        """Broker failures should leave a durable, diagnosable failed job."""
-        from app.domains.geo.models import EstadoGeoJob, TipoGeoJob
-        from app.domains.geo.service import GeoJobDispatchError, dispatch_job
-
-        mock_db = MagicMock()
-        mock_job = MagicMock()
-        mock_job.id = "test-uuid"
-        mock_repo.create_job.return_value = mock_job
-        mock_repo.update_job_status_if_current.return_value = True
-        publication_error = ConnectionError("redis down")
-
-        with patch("app.domains.geo.service._get_task_dispatch_map") as mock_map:
-            mock_launcher = MagicMock(side_effect=publication_error)
-            mock_map.return_value = {TipoGeoJob.DEM_FULL_PIPELINE: mock_launcher}
-
-            with pytest.raises(GeoJobDispatchError) as raised:
-                dispatch_job(
-                    mock_db,
-                    tipo=TipoGeoJob.DEM_FULL_PIPELINE,
-                    parametros={"area_id": "zona_principal"},
-                )
-
-        assert raised.value.__cause__ is publication_error
-        assert mock_db.commit.call_count == 2
-        mock_db.rollback.assert_not_called()
-        mock_repo.update_job_status_if_current.assert_called_once_with(
-            mock_db,
-            "test-uuid",
-            expected_estado=EstadoGeoJob.PENDING,
-            estado=EstadoGeoJob.FAILED,
-            error="Celery publication failed: ConnectionError: redis down",
-        )
-        mock_repo.update_job_status.assert_not_called()
+        mock_repo.create_job.assert_not_called()
+        enqueue.assert_not_called()
+        mock_db.commit.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

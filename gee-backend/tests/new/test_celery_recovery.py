@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import uuid
 
 from app.core.celery_app import celery_app
 from app.domains.geo.intelligence import models as _intelligence_models  # noqa: F401
@@ -59,25 +60,63 @@ def test_delivery_policy_is_scoped_and_timeouts_are_compatible() -> None:
     )
 
 
-def test_reconcile_stale_geo_jobs_marks_only_old_active_rows(db) -> None:
+def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+    from app.shared.celery_outbox import CeleryTaskKey, enqueue_celery_task
 
     now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
     stale_at = now - timedelta(hours=2)
     recent_at = now - timedelta(minutes=5)
 
-    stale_job = GeoJob(
-        tipo=TipoGeoJob.DEM_PIPELINE,
+    def add_outboxed_job(
+        tipo: TipoGeoJob,
+        *,
+        estado: EstadoGeoJob = EstadoGeoJob.PENDING,
+        published_at: datetime | None = None,
+    ) -> GeoJob:
+        task_id = uuid.uuid4()
+        job = GeoJob(
+            id=uuid.uuid4(),
+            tipo=tipo,
+            estado=estado,
+            celery_task_id=str(task_id),
+            updated_at=stale_at,
+        )
+        db.add(job)
+        intent = enqueue_celery_task(
+            db,
+            celery_task_id=task_id,
+            task_key=CeleryTaskKey.PROCESS_DEM_PIPELINE,
+            task_kwargs={"job_id": str(job.id)},
+        )
+        intent.published_at = published_at
+        return job
+
+    unpublished = add_outboxed_job(TipoGeoJob.DEM_PIPELINE)
+    recently_published = add_outboxed_job(
+        TipoGeoJob.SLOPE,
+        published_at=recent_at,
+    )
+    stale_published = add_outboxed_job(
+        TipoGeoJob.ASPECT,
+        published_at=stale_at,
+    )
+    stale_running = add_outboxed_job(
+        TipoGeoJob.DEM_FULL_PIPELINE,
         estado=EstadoGeoJob.RUNNING,
+    )
+    legacy_pending = GeoJob(
+        tipo=TipoGeoJob.TWI,
+        estado=EstadoGeoJob.PENDING,
         updated_at=stale_at,
     )
-    recent_job = GeoJob(
-        tipo=TipoGeoJob.SLOPE,
+    recent_pending = GeoJob(
+        tipo=TipoGeoJob.HAND,
         estado=EstadoGeoJob.PENDING,
         updated_at=recent_at,
     )
     completed_job = GeoJob(
-        tipo=TipoGeoJob.ASPECT,
+        tipo=TipoGeoJob.FLOW_ACC,
         estado=EstadoGeoJob.COMPLETED,
         updated_at=stale_at,
     )
@@ -87,7 +126,7 @@ def test_reconcile_stale_geo_jobs_marks_only_old_active_rows(db) -> None:
         estado=EstadoGeoJob.PENDING,
         updated_at=stale_at,
     )
-    db.add_all([stale_job, recent_job, completed_job, stale_analysis])
+    db.add_all([legacy_pending, recent_pending, completed_job, stale_analysis])
     db.flush()
 
     reconciled = reconcile_stale_geo_jobs(
@@ -96,17 +135,98 @@ def test_reconcile_stale_geo_jobs_marks_only_old_active_rows(db) -> None:
         stale_after=timedelta(minutes=90),
     )
     db.flush()
-    db.refresh(stale_job)
-    db.refresh(recent_job)
-    db.refresh(completed_job)
-    db.refresh(stale_analysis)
+    for tracker in (
+        unpublished,
+        recently_published,
+        stale_published,
+        stale_running,
+        legacy_pending,
+        recent_pending,
+        completed_job,
+        stale_analysis,
+    ):
+        db.refresh(tracker)
 
-    assert reconciled == {"geo_jobs": 1, "gee_analyses": 1}
-    assert stale_job.estado == EstadoGeoJob.FAILED
-    assert "stale" in (stale_job.error or "").lower()
-    assert stale_analysis.estado == EstadoGeoJob.FAILED
-    assert recent_job.estado == EstadoGeoJob.PENDING
+    assert reconciled == {"geo_jobs": 3, "gee_analyses": 1}
+    assert unpublished.estado == EstadoGeoJob.PENDING
+    assert recently_published.estado == EstadoGeoJob.PENDING
+    assert stale_running.estado == EstadoGeoJob.FAILED
+    assert "stale" in (stale_running.error or "").lower()
+    assert recent_pending.estado == EstadoGeoJob.PENDING
     assert completed_job.estado == EstadoGeoJob.COMPLETED
+
+    assert stale_published.estado == EstadoGeoJob.FAILED
+    assert "stale" in (stale_published.error or "").lower()
+    assert legacy_pending.estado == EstadoGeoJob.FAILED
+    assert "stale" in (legacy_pending.error or "").lower()
+    assert stale_analysis.estado == EstadoGeoJob.FAILED
+
+
+def test_reconciliation_terminalizes_worker_loss_and_fences_redelivery(db) -> None:
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+    from app.domains.geo.repository import GeoRepository
+    from app.shared.celery_outbox import CeleryTaskKey, enqueue_celery_task
+
+    repo = GeoRepository()
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+    task_id = uuid.uuid4()
+    orphaned = GeoJob(
+        id=uuid.uuid4(),
+        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
+        estado=EstadoGeoJob.RUNNING,
+        celery_task_id=str(task_id),
+        parametros={"area_id": "worker-loss"},
+        updated_at=now - timedelta(hours=2),
+    )
+    db.add(orphaned)
+    intent = enqueue_celery_task(
+        db,
+        celery_task_id=task_id,
+        task_key=CeleryTaskKey.RUN_FULL_DEM_PIPELINE,
+        task_kwargs={"area_id": "worker-loss", "job_id": str(orphaned.id)},
+    )
+    intent.published_at = now - timedelta(minutes=5)
+    db.flush()
+
+    reconciled = reconcile_stale_geo_jobs(
+        db,
+        now=now,
+        stale_after=timedelta(minutes=90),
+    )
+    db.flush()
+    db.refresh(orphaned)
+
+    assert reconciled["geo_jobs"] == 1
+    assert orphaned.estado == EstadoGeoJob.FAILED
+    reconciled_error = orphaned.error
+    assert "stale" in (reconciled_error or "").lower()
+
+    # A late-ack redelivery cannot re-claim the terminalized tracker.
+    assert not repo.update_job_status_if_current(
+        db,
+        orphaned.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    )
+    # Nor can the lost worker overwrite reconciliation if it returns late.
+    assert not repo.update_job_status_if_current(
+        db,
+        orphaned.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.COMPLETED,
+        resultado={"late": True},
+    )
+    assert not repo.update_job_status_if_current(
+        db,
+        orphaned.id,
+        expected_estado=EstadoGeoJob.RUNNING,
+        estado=EstadoGeoJob.FAILED,
+        error="late worker error",
+    )
+    db.refresh(orphaned)
+    assert orphaned.estado == EstadoGeoJob.FAILED
+    assert orphaned.error == reconciled_error
+    assert orphaned.resultado is None
 
 
 def test_geo_job_claim_cannot_resurrect_a_reconciled_job(db) -> None:

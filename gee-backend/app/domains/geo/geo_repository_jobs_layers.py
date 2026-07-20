@@ -39,12 +39,14 @@ class GeoRepositoryJobsLayersMixin:
         tipo: str,
         parametros: Optional[dict] = None,
         usuario_id: Optional[uuid.UUID] = None,
+        celery_task_id: Optional[str] = None,
     ) -> GeoJob:
         job = GeoJob(
             tipo=tipo,
             estado=EstadoGeoJob.PENDING,
             parametros=parametros,
             usuario_id=usuario_id,
+            celery_task_id=celery_task_id,
         )
         db.add(job)
         db.flush()

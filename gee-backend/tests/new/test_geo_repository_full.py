@@ -56,11 +56,18 @@ def repo() -> GeoRepository:
 
 class TestJobCrud:
     def test_create_job(self, db: Session, repo: GeoRepository):
-        job = repo.create_job(db, tipo="dem_pipeline", parametros={"test": True})
+        celery_task_id = str(uuid.uuid4())
+        job = repo.create_job(
+            db,
+            tipo="dem_pipeline",
+            parametros={"test": True},
+            celery_task_id=celery_task_id,
+        )
         assert job.id is not None
         assert job.tipo == "dem_pipeline"
         assert job.estado == EstadoGeoJob.PENDING
         assert job.parametros == {"test": True}
+        assert job.celery_task_id == celery_task_id
 
     def test_get_job_by_id(self, db: Session, repo: GeoRepository):
         job = repo.create_job(db, tipo="slope")
