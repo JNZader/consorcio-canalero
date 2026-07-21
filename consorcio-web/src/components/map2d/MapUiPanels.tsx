@@ -8,14 +8,14 @@ import { ExportPngModal } from './ExportPngModal';
 import { InfoPanel } from './InfoPanel';
 import {
   type CanalToggleEntry,
-  type LayerFineControl,
   LayerControlsPanel,
+  type LayerFineControl,
 } from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
-import type { LayerCategory } from './map2dDerived';
 import { SuggestedZonesPanel } from './SuggestedZonesPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
+import type { LayerCategory } from './map2dDerived';
 
 interface LayerItem {
   id: string;

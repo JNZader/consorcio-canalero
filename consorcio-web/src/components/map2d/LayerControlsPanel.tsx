@@ -32,9 +32,9 @@ import {
   IconRoute,
   IconSearch,
 } from '../ui/icons';
+import { LayerOrderSection } from './LayerOrderSection';
 import { getActiveAttributions } from './layerAttributions';
 import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
-import { LayerOrderSection } from './LayerOrderSection';
 import { LAYER_CATEGORY, type LayerCategory } from './map2dDerived';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
@@ -556,11 +556,7 @@ export function LayerControlsPanel({
             onChange={(event) => setQuery(event.currentTarget.value)}
             rightSection={
               isSearching ? (
-                <CloseButton
-                  size="sm"
-                  aria-label="Limpiar búsqueda"
-                  onClick={() => setQuery('')}
-                />
+                <CloseButton size="sm" aria-label="Limpiar búsqueda" onClick={() => setQuery('')} />
               ) : null
             }
           />

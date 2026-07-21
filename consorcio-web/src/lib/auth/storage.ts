@@ -99,9 +99,7 @@ export async function clearApiServiceWorkerCaches(): Promise<void> {
   try {
     const names = await window.caches.keys();
     await Promise.all(
-      names
-        .filter((name) => name.startsWith('api-'))
-        .map((name) => window.caches.delete(name)),
+      names.filter((name) => name.startsWith('api-')).map((name) => window.caches.delete(name))
     );
   } catch {
     // SW disabled or storage quota error — best-effort, no fallback needed.

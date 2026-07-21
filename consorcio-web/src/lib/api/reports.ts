@@ -151,10 +151,7 @@ export const publicApi = {
    * Photo failure is non-fatal in the form: the denuncia stays saved
    * and the user gets a yellow toast.
    */
-  uploadPhoto: async (
-    denunciaId: string,
-    file: File
-  ): Promise<{ photo_url: string }> => {
+  uploadPhoto: async (denunciaId: string, file: File): Promise<{ photo_url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -163,15 +160,12 @@ export const publicApi = {
 
     try {
       const token = await getAuthToken();
-      const response = await fetch(
-        `${API_URL}${API_PREFIX}/denuncias/${denunciaId}/photo`,
-        {
-          method: 'POST',
-          body: formData,
-          signal: controller.signal,
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        }
-      );
+      const response = await fetch(`${API_URL}${API_PREFIX}/denuncias/${denunciaId}/photo`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -207,8 +201,7 @@ export const publicApi = {
    * rolling). Espejo del flujo `sugerenciasApi.checkLimit` — el
    * backend cuenta sobre la base, no sobre Redis.
    */
-  checkLimit: (): Promise<ReportRateLimitInfo> =>
-    apiFetch('/denuncias/rate-limit'),
+  checkLimit: (): Promise<ReportRateLimitInfo> => apiFetch('/denuncias/rate-limit'),
 };
 
 export interface ReportRateLimitInfo {

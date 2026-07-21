@@ -32,8 +32,8 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { API_URL, publicApi } from '../../lib/api';
-import { logger } from '../../lib/logger';
 import { formatDate } from '../../lib/formatters';
+import { logger } from '../../lib/logger';
 import type { Report, ReportHistory } from '../../types';
 
 const PAGE_SIZE = 5;

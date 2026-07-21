@@ -217,8 +217,7 @@ export function ReportDetailModal({
               <Select
                 label="Cambiar Estado"
                 description={
-                  selectedReport.estado === 'resuelto' ||
-                  selectedReport.estado === 'descartado'
+                  selectedReport.estado === 'resuelto' || selectedReport.estado === 'descartado'
                     ? 'La denuncia está cerrada — no admite más cambios de estado.'
                     : undefined
                 }
@@ -226,8 +225,7 @@ export function ReportDetailModal({
                 value={newStatus}
                 onChange={(v) => setNewStatus(v || selectedReport.estado)}
                 disabled={
-                  selectedReport.estado === 'resuelto' ||
-                  selectedReport.estado === 'descartado'
+                  selectedReport.estado === 'resuelto' || selectedReport.estado === 'descartado'
                 }
               />
               <Textarea

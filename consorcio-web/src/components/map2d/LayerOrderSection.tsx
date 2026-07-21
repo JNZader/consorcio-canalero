@@ -17,7 +17,6 @@
  * React Compiler is active → no manual `useMemo`/`useCallback`/`memo`.
  */
 
-import { ActionIcon, Box, Group, Stack, Text, Tooltip } from '@mantine/core';
 import {
   DndContext,
   type DragEndEvent,
@@ -26,19 +25,16 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { ActionIcon, Box, Group, Stack, Text, Tooltip } from '@mantine/core';
 
+import { IconArrowsSort, IconGripVertical } from '../ui/icons';
 import {
   DEFAULT_LAYER_ORDER,
   RENDERABLE_UI_LAYER_IDS,
   type RenderableUiLayerId,
 } from './layerRenderRegistry';
-import { IconArrowsSort, IconGripVertical } from '../ui/icons';
 
 /**
  * Human-readable fallback labels for the reorderable layers. When a matching
@@ -175,7 +171,11 @@ function SortableLayerRow({ id, label, active }: SortableLayerRowProps) {
         {label}
       </Text>
       {!active && (
-        <Text size="9px" c="dimmed" title="Capa oculta — se muestra para mantener el orden completo">
+        <Text
+          size="9px"
+          c="dimmed"
+          title="Capa oculta — se muestra para mantener el orden completo"
+        >
           oculta
         </Text>
       )}

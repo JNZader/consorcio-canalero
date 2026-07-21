@@ -68,13 +68,7 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
    * `status`, `source`, raw `member_basin_ids` UUID array) and keeps only
    * what an operator actually reads.
    */
-  'approved-zones': [
-    'nombre',
-    'cuenca',
-    'superficie_ha',
-    'basin_count',
-    'member_basin_names',
-  ],
+  'approved-zones': ['nombre', 'cuenca', 'superficie_ha', 'basin_count', 'member_basin_names'],
 } as const;
 
 /**

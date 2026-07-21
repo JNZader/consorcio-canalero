@@ -11,7 +11,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { StrictMode, type ReactNode, useEffect } from 'react';
+import { type ReactNode, StrictMode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 

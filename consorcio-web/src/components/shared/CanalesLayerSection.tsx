@@ -71,10 +71,7 @@ function CanalGroupRow({
   onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   onChildActivated?: () => void;
 }) {
-  const visibleCount = tramos.reduce(
-    (n, c) => n + (vectorVisibility[c.id] ? 1 : 0),
-    0
-  );
+  const visibleCount = tramos.reduce((n, c) => n + (vectorVisibility[c.id] ? 1 : 0), 0);
   const allOn = visibleCount === tramos.length;
   const allOff = visibleCount === 0;
   const indeterminate = !allOn && !allOff;
@@ -164,9 +161,7 @@ export function CanalesLayerSection({
   onLayerVisibilityChange,
 }: CanalesLayerSectionProps) {
   const bulk = computeBulkState(entries, vectorVisibility);
-  const masterLabel = bulk.allOn
-    ? `Apagar todos los ${side}`
-    : `Encender todos los ${side}`;
+  const masterLabel = bulk.allOn ? `Apagar todos los ${side}` : `Encender todos los ${side}`;
   if (!entries || entries.length === 0) return null;
   return (
     <Stack gap={4}>

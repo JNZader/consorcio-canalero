@@ -11,8 +11,8 @@
  * when the ETL re-runs the geojson generation.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
+import { useMemo } from 'react';
 
 import { CONSORCIO_AREA_HA } from '../constants';
 import { useCanales } from './useCanales';
@@ -25,8 +25,7 @@ function haversineMeters(a: number[], b: number[]): number {
   const lat2 = toRad(b[1]!);
   const dLat = lat2 - lat1;
   const dLon = toRad(b[0]! - a[0]!);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 

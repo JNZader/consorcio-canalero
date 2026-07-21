@@ -81,8 +81,8 @@ export function SuccessScreen({
         </Text>
         {showRemainingBadge && (
           <Badge color="blue" size="lg">
-            Te {remainingToday === 1 ? 'queda' : 'quedan'} {remainingToday}{' '}
-            sugerencia{remainingToday === 1 ? '' : 's'} en las próximas 24 horas
+            Te {remainingToday === 1 ? 'queda' : 'quedan'} {remainingToday} sugerencia
+            {remainingToday === 1 ? '' : 's'} en las próximas 24 horas
           </Badge>
         )}
         <Button onClick={onReset}>Enviar otra sugerencia</Button>

@@ -29,9 +29,9 @@
  * applied — the untouched default MUST stay byte-identical to today.
  */
 
+import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
 import { SOURCE_IDS } from './map2dConfig';
-import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 
 /** MapLibre opacity paint property, keyed by layer geometry type. */
 export const OPACITY_PROP = {
