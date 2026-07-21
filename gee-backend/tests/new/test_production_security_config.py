@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from fastapi.routing import APIRoute
+from tests.route_contracts import EffectiveAPIRoute, iter_effective_api_routes
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -71,7 +71,7 @@ def test_martin_production_example_uses_a_dedicated_reader_identity() -> None:
     assert "CAMBIAR_PASSWORD_MARTIN" in martin_url
 
 
-def _route_has_operator_guard(route: APIRoute) -> bool:
+def _route_has_operator_guard(route: EffectiveAPIRoute) -> bool:
     from app.auth.dependencies import require_operator
 
     pending = list(route.dependant.dependencies)
@@ -95,7 +95,7 @@ def test_global_geo_and_gee_routes_use_operator_guard() -> None:
         "/gee/analysis",
         "/gee/analysis/{analisis_id}",
     }
-    routes = {route.path: route for route in router.routes if isinstance(route, APIRoute)}
+    routes = {route.path: route for route in iter_effective_api_routes(router)}
 
     assert guarded_paths <= routes.keys()
     assert all(_route_has_operator_guard(routes[path]) for path in guarded_paths)
@@ -106,9 +106,7 @@ def test_every_dynamically_registered_gee_route_uses_operator_guard() -> None:
     from app.domains.geo.router import router
 
     gee_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/gee/")
+        route for route in iter_effective_api_routes(router) if route.path.startswith("/gee/")
     ]
 
     assert gee_routes

@@ -8,6 +8,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -51,11 +52,15 @@ describe('<LeyendaPanel /> — collapsible Leyenda block', () => {
     expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('toggles via Enter key on the header', () => {
+  it('toggles via Enter key on the header', async () => {
+    const user = userEvent.setup();
+
     renderWithMantine(<LeyendaPanel pilarVerdeBpaHistoricoVisible />);
 
     const header = screen.getByTestId('leyenda-header');
-    fireEvent.keyDown(header, { key: 'Enter' });
+    header.focus();
+    expect(header).toHaveFocus();
+    await user.keyboard('{Enter}');
 
     expect(screen.queryByText('Zona Consorcio')).not.toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
