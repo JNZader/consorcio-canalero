@@ -3,12 +3,19 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VerifyEmailPage from '../../src/components/auth/VerifyEmailPage';
-import { exchangeEmailCode, verifyEmailWithToken } from '../../src/lib/auth';
+import { completeEmailCodeExchange, exchangeEmailCode, verifyEmailWithToken } from '../../src/lib/auth';
 
 vi.mock('../../src/lib/auth', () => ({
+  completeEmailCodeExchange: vi.fn(),
   exchangeEmailCode: vi.fn(),
   verifyEmailWithToken: vi.fn(),
 }));
+
+const VERIFY_EXCHANGE_HANDLE = {
+  code: 'VERIFY42',
+  purpose: 'verify' as const,
+  exchangeId: '00000000-0000-4000-8000-000000000042',
+};
 
 function renderPage({ code = '', token = '' }: { code?: string; token?: string }) {
   return render(
@@ -27,6 +34,7 @@ describe('VerifyEmailPage', () => {
     vi.mocked(exchangeEmailCode).mockResolvedValue({
       status: 'success',
       token: 'resolved-verify-token',
+      handle: VERIFY_EXCHANGE_HANDLE,
     });
     vi.mocked(verifyEmailWithToken).mockResolvedValue({ success: true });
 
@@ -37,13 +45,35 @@ describe('VerifyEmailPage', () => {
       expect(verifyEmailWithToken).toHaveBeenCalledWith('resolved-verify-token');
     });
     expect(await screen.findByText(/correo verificado/i)).toBeInTheDocument();
+    expect(completeEmailCodeExchange).toHaveBeenCalledWith(VERIFY_EXCHANGE_HANDLE);
+  });
+
+  it('retains recovery metadata when downstream verification fails', async () => {
+    vi.mocked(exchangeEmailCode).mockResolvedValue({
+      status: 'success',
+      token: 'resolved-verify-token',
+      handle: VERIFY_EXCHANGE_HANDLE,
+    });
+    vi.mocked(verifyEmailWithToken).mockResolvedValue({
+      success: false,
+      error: 'temporary downstream failure',
+    });
+
+    renderPage({ code: 'VERIFY42' });
+
+    expect(await screen.findByText('temporary downstream failure')).toBeInTheDocument();
+    expect(completeEmailCodeExchange).not.toHaveBeenCalled();
   });
 
   it('offers a retry after a temporary failure instead of declaring the link invalid', async () => {
     const user = userEvent.setup();
     vi.mocked(exchangeEmailCode)
       .mockResolvedValueOnce({ status: 'retryable-error', reason: 'network' })
-      .mockResolvedValueOnce({ status: 'success', token: 'resolved-after-retry' });
+      .mockResolvedValueOnce({
+        status: 'success',
+        token: 'resolved-after-retry',
+        handle: VERIFY_EXCHANGE_HANDLE,
+      });
     vi.mocked(verifyEmailWithToken).mockResolvedValue({ success: true });
 
     renderPage({ code: 'VERIFY42' });

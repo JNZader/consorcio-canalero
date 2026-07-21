@@ -12,7 +12,12 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { exchangeEmailCode, resetPasswordWithToken } from '../../lib/auth';
+import {
+  type EmailCodeExchangeHandle,
+  completeEmailCodeExchange,
+  exchangeEmailCode,
+  resetPasswordWithToken,
+} from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { validatePassword } from '../../lib/validators';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
@@ -40,6 +45,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     code && !token ? 'loading' : 'idle'
   );
   const [effectiveToken, setEffectiveToken] = useState<string>(token);
+  const [exchangeHandle, setExchangeHandle] = useState<EmailCodeExchangeHandle | null>(null);
   const mountedRef = useRef(true);
   const exchangeInFlightRef = useRef(false);
 
@@ -62,6 +68,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
 
       if (exchange.status === 'success') {
         setEffectiveToken(exchange.token);
+        setExchangeHandle(exchange.handle);
         setExchangeState('idle');
       } else if (exchange.status === 'terminal-error') {
         setExchangeState('terminal-error');
@@ -78,6 +85,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
   useEffect(() => {
     if (token) {
       setEffectiveToken(token);
+      setExchangeHandle(null);
       setExchangeState('idle');
       return;
     }
@@ -108,6 +116,9 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
       const result = await resetPasswordWithToken(effectiveToken, values.password);
 
       if (result.success) {
+        if (code && !token && exchangeHandle) {
+          completeEmailCodeExchange(exchangeHandle);
+        }
         setSuccess(true);
       } else {
         setError(result.error || 'Error al restablecer la contrasena.');

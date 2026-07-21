@@ -8,8 +8,9 @@ import {
   AdminLayoutContent,
 } from '../../src/components/admin/AdminLayout';
 
-const { navigateMock, signOutMock } = vi.hoisted(() => ({
+const { navigateMock, notificationsShowMock, signOutMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
+  notificationsShowMock: vi.fn(),
   signOutMock: vi.fn(),
 }));
 
@@ -25,6 +26,10 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../../src/lib/auth', () => ({
   signOut: signOutMock,
+}));
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: notificationsShowMock },
 }));
 
 function renderLayout() {
@@ -73,14 +78,33 @@ describe('AdminLayout account navigation', () => {
     );
   });
 
-  it('still navigates when session cleanup rejects unexpectedly', async () => {
-    signOutMock.mockRejectedValueOnce(new Error('logout failed'));
+  it('keeps the authenticated route and surfaces a failed server logout', async () => {
+    signOutMock.mockResolvedValueOnce({ success: false, error: 'logout failed' });
 
     renderLayout();
     await clickLogout();
 
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
+      expect(notificationsShowMock).toHaveBeenCalledWith({
+        title: 'No se pudo cerrar la sesión',
+        message: 'logout failed',
+        color: 'red',
+      });
     });
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('also keeps the route when signOut rejects unexpectedly', async () => {
+    signOutMock.mockRejectedValueOnce(new Error('unexpected logout failure'));
+
+    renderLayout();
+    await clickLogout();
+
+    await waitFor(() => {
+      expect(notificationsShowMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'unexpected logout failure', color: 'red' })
+      );
+    });
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

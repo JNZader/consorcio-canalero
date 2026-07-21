@@ -127,20 +127,20 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    const token = getStoredAccessToken();
+    let token = getStoredAccessToken();
 
-    if (token) {
-      try {
-        await fetch(`${AUTH_BASE}/auth/jwt/logout-all`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      } catch {
-        // Logout even if backend call fails
-      }
+    if (!token) {
+      token = await this.refreshAccessTokenForLogout();
+    }
+
+    let response = await this.revokeRefreshSessions(token);
+    if (response.status === 401) {
+      token = await this.refreshAccessTokenForLogout();
+      response = await this.revokeRefreshSessions(token);
+    }
+
+    if (!response.ok) {
+      throw new Error('No se pudo cerrar la sesión en el servidor.');
     }
 
     this.clearStorage();
@@ -176,6 +176,37 @@ export class JWTAuthAdapter implements AuthAdapter {
     return () => {
       this.listeners.delete(callback);
     };
+  }
+
+  private async refreshAccessTokenForLogout(): Promise<string> {
+    const response = await fetch(`${AUTH_BASE}/auth/jwt/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('No se pudo renovar la sesión para cerrarla.');
+    }
+
+    const payload: unknown = await response.json().catch(() => null);
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      typeof (payload as { access_token?: unknown }).access_token !== 'string' ||
+      !(payload as { access_token: string }).access_token
+    ) {
+      throw new Error('El servidor no devolvió una sesión válida para cerrarla.');
+    }
+    return (payload as { access_token: string }).access_token;
+  }
+
+  private revokeRefreshSessions(token: string): Promise<Response> {
+    return fetch(`${AUTH_BASE}/auth/jwt/logout-all`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
   }
 
   private async fetchCurrentUser(token: string): Promise<AuthUser> {
