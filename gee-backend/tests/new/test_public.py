@@ -646,7 +646,7 @@ class TestMartinCatalogIntegration:
 
         assert result.count > 0
         layer_ids = [layer.id for layer in result.layers]
-        for expected in ("vt_zonas_operativas", "vt_puntos_conflicto", "vt_denuncias"):
+        for expected in ("vt_zonas_operativas", "vt_puntos_conflicto", "vt_canal_network"):
             assert expected in layer_ids, f"Expected layer '{expected}' not found in catalog"
 
     @pytest.mark.asyncio

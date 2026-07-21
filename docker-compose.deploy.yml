@@ -107,6 +107,9 @@ services:
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Trust only loopback and the exact Caddy peer resolved by app.server.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
     volumes:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro
@@ -144,6 +147,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- One-shot Celery Beat schedule ownership repair ---
+  celery-beat-init:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-celery-beat-init
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /var/run/celery
+        chmod 0750 /var/run/celery
+    volumes:
+      - celery-beat-schedule:/var/run/celery
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. See docker-compose.prod.yml for the rationale.
   celery-beat:
@@ -162,6 +185,8 @@ services:
       - consorcio-internal
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      celery-beat-init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -304,6 +329,6 @@ volumes:
     name: consorcio-denuncia-uploads
   redis-data:
     name: consorcio-redis-data
-  # Phase 3 / F3-L: scratch dir for celery-beat schedule db.
+  # Durable singleton Celery Beat schedule state; never recreated by init.
   celery-beat-schedule:
     name: consorcio-celery-beat-schedule

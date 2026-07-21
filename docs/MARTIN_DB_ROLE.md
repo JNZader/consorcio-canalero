@@ -9,13 +9,12 @@ mutaciones.
 | Componente | Rol | Alcance |
 |---|---|---|
 | Backend y migraciones | `consorcio` | Propietario de la aplicación |
-| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre cuatro vistas |
+| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre tres vistas |
 
 El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 
 - `public.vt_zonas_operativas`
 - `public.vt_puntos_conflicto`
-- `public.vt_denuncias`
 - `public.vt_canal_network`
 
 No recibe escritura sobre esas vistas, acceso a otras relaciones, secuencias,
@@ -29,7 +28,7 @@ los `GRANT` y `REVOKE` verificados por
 
 ## Antes de aplicar
 
-1. Hacé un backup y confirmá que las migraciones vigentes crean las cuatro vistas.
+1. Hacé un backup y confirmá que las migraciones vigentes están aplicadas y crean las tres vistas permitidas.
 2. Auditá otros roles que usen privilegios heredados de `PUBLIC`. El script cierra
    `CONNECT`, `TEMPORARY`, relaciones y secuencias públicas en esta base. Otorgá
    permisos explícitos a cualquier integración legítima antes de ejecutarlo.
@@ -129,10 +128,10 @@ La salida del script incluye:
 - atributos del rol: solo `rolcanlogin` debe ser verdadero;
 - base/esquema: `db_connect` y `schema_usage` verdaderos; creación y temporales
   falsos;
-- cuatro vistas: `can_select=true` y todas las columnas de escritura falsas;
+- tres vistas: `can_select=true` y todas las columnas de escritura falsas;
 - cuatro contadores `unexpected_*`: todos deben ser `0`.
 
-Confirmá además que Martin anuncia únicamente las cuatro fuentes:
+Confirmá además que Martin anuncia únicamente las tres fuentes:
 
 ~~~bash
 curl --fail --silent http://localhost:3000/health

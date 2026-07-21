@@ -613,3 +613,30 @@ def test_compose_healthcheck_change_preserves_migration_celery_and_upload_invari
     assert "- denuncia-uploads:/app/uploads" in uploads
     assert "network_mode: none" in uploads
     assert "read_only: true" in uploads
+
+
+def test_celery_beat_schedule_volume_is_owned_by_nonroot_app_in_production_stacks() -> None:
+    dockerfile = _read("gee-backend/Dockerfile")
+    mkdir_position = dockerfile.index("mkdir -p credentials uploads /var/run/celery")
+    user_position = dockerfile.index("USER app")
+
+    assert mkdir_position < user_position
+    assert "chown -R app:app /app /var/run/celery" in dockerfile[mkdir_position:user_position]
+
+    for compose_path in ("docker-compose.prod.yml", "docker-compose.deploy.yml"):
+        compose = _read(compose_path)
+        init = _compose_service_block(compose, "celery-beat-init")
+        beat = _compose_service_block(compose, "celery-beat")
+
+        assert 'user: "0:0"' in init
+        assert "chown -R app:app /var/run/celery" in init
+        assert "chmod 0750 /var/run/celery" in init
+        assert "- celery-beat-schedule:/var/run/celery" in init
+        assert "network_mode: none" in init
+        assert "read_only: true" in init
+        assert 'restart: "no"' in init
+
+        assert "celery-beat-init:" in beat
+        assert "condition: service_completed_successfully" in beat
+        assert "user: " not in beat
+        assert "- celery-beat-schedule:/var/run/celery" in beat

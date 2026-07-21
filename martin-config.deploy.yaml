@@ -37,18 +37,6 @@ postgres:
         descripcion: Public description
         acumulacion_valor: Accumulation metric
         pendiente_valor: Slope metric
-    vt_denuncias:
-      schema: public
-      table: vt_denuncias
-      srid: 4326
-      geometry_column: geom
-      id_column: id
-      properties:
-        id: Public identifier
-        tipo: Report type
-        estado: Public status
-        cuenca: Basin name
-        created_at: Creation timestamp
     vt_canal_network:
       schema: public
       table: vt_canal_network
