@@ -1,5 +1,5 @@
 # FastAPI
-fastapi>=0.115.0
+fastapi>=0.115.0,!=0.137.0,!=0.137.1
 uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.0
 pydantic[email]>=2.11.0
@@ -18,6 +18,7 @@ geoalchemy2>=0.17.0
 
 # GeoJSON/Geospatial
 geojson>=3.2.0
+geopandas>=1.0.0
 shapely>=2.0.0
 rasterstats>=0.20.0
 rasterio>=1.4.0
