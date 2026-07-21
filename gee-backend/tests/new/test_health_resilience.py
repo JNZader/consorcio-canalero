@@ -46,7 +46,9 @@ async def test_health_checks_run_concurrently_and_apply_per_check_timeout(monkey
 
     assert elapsed < 0.04
     assert set(results) == {"database", "redis", "alembic"}
-    assert all(result == {"status": "unhealthy", "error": "check_timeout"} for result in results.values())
+    assert all(
+        result == {"status": "unhealthy", "error": "check_timeout"} for result in results.values()
+    )
 
 
 @pytest.mark.asyncio

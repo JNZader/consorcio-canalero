@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from fastapi.routing import APIRoute
+from tests.route_contracts import EffectiveAPIRoute, iter_effective_api_routes
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -32,7 +32,9 @@ def test_database_urls_are_derived_for_the_correct_sqlalchemy_driver() -> None:
 
 def test_production_example_uses_canonical_sync_database_url() -> None:
     env_example = _read_repo_file(".env.prod.example")
-    database_line = next(line for line in env_example.splitlines() if line.startswith("DATABASE_URL="))
+    database_line = next(
+        line for line in env_example.splitlines() if line.startswith("DATABASE_URL=")
+    )
 
     assert database_line.startswith("DATABASE_URL=postgresql://")
     assert "+asyncpg" not in database_line
@@ -41,7 +43,9 @@ def test_production_example_uses_canonical_sync_database_url() -> None:
 @pytest.mark.parametrize("config_path", ["martin/config.yaml", "martin/config.prod.yaml"])
 def test_martin_only_publishes_explicit_sanitized_views(config_path: str) -> None:
     config = _read_repo_file(config_path)
-    configured_sources = set(re.findall(r"^    (vt_[a-z0-9_]+):\n      schema:", config, re.MULTILINE))
+    configured_sources = set(
+        re.findall(r"^    (vt_[a-z0-9_]+):\n      schema:", config, re.MULTILINE)
+    )
 
     assert "auto_publish: false" in config
     assert configured_sources == {
@@ -50,20 +54,24 @@ def test_martin_only_publishes_explicit_sanitized_views(config_path: str) -> Non
         "vt_puntos_conflicto",
         "vt_zonas_operativas",
     }
-    assert not re.search(r"^    (denuncias|geo_jobs|geo_layers|geo_analisis_gee):", config, re.MULTILINE)
+    assert not re.search(
+        r"^    (denuncias|geo_jobs|geo_layers|geo_analisis_gee):", config, re.MULTILINE
+    )
 
 
 def test_martin_production_example_uses_a_dedicated_reader_identity() -> None:
     env_example = _read_repo_file(".env.prod.example")
     app_url = next(line for line in env_example.splitlines() if line.startswith("DATABASE_URL="))
-    martin_url = next(line for line in env_example.splitlines() if line.startswith("MARTIN_DB_URL="))
+    martin_url = next(
+        line for line in env_example.splitlines() if line.startswith("MARTIN_DB_URL=")
+    )
 
     assert "postgresql://consorcio:" in app_url
     assert "postgresql://consorcio_martin:" in martin_url
     assert "CAMBIAR_PASSWORD_MARTIN" in martin_url
 
 
-def _route_has_operator_guard(route: APIRoute) -> bool:
+def _route_has_operator_guard(route: EffectiveAPIRoute) -> bool:
     from app.auth.dependencies import require_operator
 
     pending = list(route.dependant.dependencies)
@@ -87,7 +95,7 @@ def test_global_geo_and_gee_routes_use_operator_guard() -> None:
         "/gee/analysis",
         "/gee/analysis/{analisis_id}",
     }
-    routes = {route.path: route for route in router.routes if isinstance(route, APIRoute)}
+    routes = {route.path: route for route in iter_effective_api_routes(router)}
 
     assert guarded_paths <= routes.keys()
     assert all(_route_has_operator_guard(routes[path]) for path in guarded_paths)
@@ -98,9 +106,7 @@ def test_every_dynamically_registered_gee_route_uses_operator_guard() -> None:
     from app.domains.geo.router import router
 
     gee_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/gee/")
+        route for route in iter_effective_api_routes(router) if route.path.startswith("/gee/")
     ]
 
     assert gee_routes
@@ -147,7 +153,6 @@ def test_production_image_prepares_upload_directory_before_switching_user() -> N
 
     assert mkdir_position < user_position
     assert "chown -R app:app /app" in dockerfile[mkdir_position:user_position]
-
 
 
 def test_one_time_email_links_match_spa_routes_and_exchange_flows() -> None:
@@ -203,7 +208,5 @@ def test_production_upload_volume_init_repairs_existing_volume_and_gates_backend
     assert "chown -R app:app /app/uploads" in init_block
     assert "chmod 0750 /app/uploads" in init_block
     assert "uploads-init:" in backend_block
-    assert "condition: service_completed_successfully" in backend_block.split(
-        "uploads-init:", 1
-    )[1]
+    assert "condition: service_completed_successfully" in backend_block.split("uploads-init:", 1)[1]
     assert "USER app" in dockerfile

@@ -95,7 +95,9 @@ async def test_atomic_write_failure_leaves_old_photo_untouched(tmp_path, monkeyp
     user_id = uuid.uuid4()
     old_url, old_bytes = await _seed_old_photo(storage, denuncia_id)
     denuncia = SimpleNamespace(user_id=user_id, foto_url=old_url)
-    monkeypatch.setattr("app.shared.storage.os.replace", MagicMock(side_effect=OSError("disk full")))
+    monkeypatch.setattr(
+        "app.shared.storage.os.replace", MagicMock(side_effect=OSError("disk full"))
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await upload_denuncia_photo(
