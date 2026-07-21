@@ -18,6 +18,7 @@ import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import { API_URL } from '../../../../lib/api';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
+import { AuthenticatedImage } from '../../../shared/AuthenticatedImage';
 
 /**
  * Resolve a server-relative photo URL (e.g. `/uploads/denuncias/<id>.png`,
@@ -41,15 +42,25 @@ function resolvePhotoUrl(url: string): string {
  * - `imagenes` (string[]) — legacy multi-photo array some old reports
  *   carry. We accept both so existing data keeps rendering.
  */
-function gatherPhotoUrls(report: Report): string[] {
-  const out: string[] = [];
+interface ReportPhoto {
+  authenticated: boolean;
+  url: string;
+}
+
+function gatherPhotoUrls(report: Report): ReportPhoto[] {
+  const photos: ReportPhoto[] = [];
   if (report.imagenes && report.imagenes.length > 0) {
-    out.push(...report.imagenes);
+    photos.push(
+      ...report.imagenes.map((url) => ({
+        authenticated: false,
+        url: resolvePhotoUrl(url),
+      }))
+    );
   }
   if (report.foto_url) {
-    out.push(report.foto_url);
+    photos.push({ authenticated: true, url: report.foto_url });
   }
-  return out.map(resolvePhotoUrl);
+  return photos;
 }
 import { IconHistory } from '../../../ui/icons';
 import type { SeguimientoEntry } from '../reportsPanelTypes';
@@ -157,16 +168,22 @@ export function ReportDetailModal({
                   Imagenes adjuntas
                 </Text>
                 <SimpleGrid cols={3} aria-labelledby="imagenes-label">
-                  {photoUrls.map((url) => (
-                    <Card key={url} padding={0} radius="sm">
-                      <Image
-                        src={url}
-                        alt={`Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicacion no especificada'}`}
-                        height={100}
-                        fit="cover"
-                      />
-                    </Card>
-                  ))}
+                  {photoUrls.map((photo) => {
+                    const alt = `Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicacion no especificada'}`;
+                    return (
+                      <Card
+                        key={`${photo.authenticated ? 'protected' : 'legacy'}:${photo.url}`}
+                        padding={0}
+                        radius="sm"
+                      >
+                        {photo.authenticated ? (
+                          <AuthenticatedImage src={photo.url} alt={alt} h={100} fit="cover" />
+                        ) : (
+                          <Image src={photo.url} alt={alt} height={100} fit="cover" />
+                        )}
+                      </Card>
+                    );
+                  })}
                 </SimpleGrid>
               </div>
             );

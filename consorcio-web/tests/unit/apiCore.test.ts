@@ -22,7 +22,8 @@ describe('api core', () => {
   it('caches auth token and sends Authorization header', async () => {
     mockGetAccessToken.mockResolvedValue('jwt-123');
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true, headers: new Headers(),
+      ok: true,
+      headers: new Headers(),
       json: async () => ({ ok: true }),
     });
 
@@ -74,6 +75,44 @@ describe('api core', () => {
     expect(mockReplaceAccessToken).toHaveBeenCalledOnce();
     expect(global.fetch).toHaveBeenCalledTimes(3);
     const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0][1].headers.Authorization).toBe('Bearer expired-token');
+    expect(calls[1][0]).toContain('/api/v2/auth/jwt/refresh');
+    expect(calls[2][1].headers.Authorization).toBe('Bearer fresh-token');
+  });
+
+  it('loads a protected photo as a blob with Bearer refresh semantics', async () => {
+    const photoBlob = new Blob(['photo'], { type: 'image/png' });
+    mockGetAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValue('fresh-token');
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: async () => ({ detail: 'Expired' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({ access_token: 'fresh-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'image/png' }),
+        blob: async () => photoBlob,
+      });
+
+    const { fetchAuthenticatedBlob, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+
+    await expect(fetchAuthenticatedBlob('/uploads/denuncias/report-photo.png')).resolves.toBe(
+      photoBlob
+    );
+
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0][0]).toBe('http://localhost:8000/uploads/denuncias/report-photo.png');
+    expect(String(calls[0][0])).not.toContain('access_token');
     expect(calls[0][1].headers.Authorization).toBe('Bearer expired-token');
     expect(calls[1][0]).toContain('/api/v2/auth/jwt/refresh');
     expect(calls[2][1].headers.Authorization).toBe('Bearer fresh-token');
@@ -147,7 +186,8 @@ describe('api core', () => {
   it('supports FormData bodies without forcing JSON content-type', async () => {
     mockGetAccessToken.mockResolvedValue(null);
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true, headers: new Headers(),
+      ok: true,
+      headers: new Headers(),
       json: async () => ({ uploaded: true }),
     });
     const { apiFetch } = await import('../../src/lib/api/core');
@@ -170,7 +210,8 @@ describe('api core', () => {
     await expect(apiFetch('/stats')).rejects.toThrow(/tiempo limite/i);
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: false, headers: new Headers(),
+      ok: false,
+      headers: new Headers(),
       status: 400,
       json: async () => ({ detail: 'Payload invalido' }),
     });
@@ -180,7 +221,8 @@ describe('api core', () => {
   it('maps generic backend error envelopes to user-facing messages', async () => {
     mockGetAccessToken.mockResolvedValue(null);
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false, headers: new Headers(),
+      ok: false,
+      headers: new Headers(),
       status: 500,
       json: async () => ({
         error: {

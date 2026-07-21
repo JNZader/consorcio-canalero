@@ -29,6 +29,7 @@ export {
   GEE_TIMEOUT,
   HEALTH_TIMEOUT,
   apiFetch,
+  fetchAuthenticatedBlob,
   getAuthToken,
   clearAuthTokenCache,
   healthCheck,
