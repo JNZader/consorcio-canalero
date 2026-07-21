@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from tests.route_contracts import EffectiveAPIRoute, iter_effective_api_routes
+
 os.environ.setdefault("UPLOADS_ROOT", "/tmp/uploads-test-gee-public-contract")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
 os.environ.setdefault("FRONTEND_URL", "http://localhost:5173")
@@ -98,7 +100,7 @@ def test_complete_gee_route_family_keeps_operator_guard() -> None:
     from app.auth.dependencies import require_operator
     from app.domains.geo.router import router
 
-    def has_operator_guard(route: APIRoute) -> bool:
+    def has_operator_guard(route: EffectiveAPIRoute) -> bool:
         pending = list(route.dependant.dependencies)
         while pending:
             dependency = pending.pop()
@@ -108,9 +110,7 @@ def test_complete_gee_route_family_keeps_operator_guard() -> None:
         return False
 
     gee_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/gee/")
+        route for route in iter_effective_api_routes(router) if route.path.startswith("/gee/")
     ]
 
     assert gee_routes

@@ -37,11 +37,6 @@ FROM build AS development
 # Install dev dependencies (if any)
 RUN pip install --no-cache-dir watchfiles
 
-# Install curl for healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy application code and alembic config
 COPY app/ ./app/
 COPY alembic.ini ./
@@ -54,7 +49,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD ["python", "-m", "app.healthcheck"]
 
 # Run with hot reload
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -76,7 +71,6 @@ ENV FORWARDED_ALLOW_IPS=127.0.0.1
 # Install only measured shared runtime dependencies. OSMesa provides the
 # software OpenGL backend required by /api/v2/geo/render without an X server.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
     libexpat1 \
     libosmesa6 \
     && rm -rf /var/lib/apt/lists/*
@@ -119,7 +113,7 @@ USER app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD ["python", "-m", "app.healthcheck"]
 
 # Run without reload
 # Phase 3 / F3-J: 2 workers (out of 4 vCPU on the prod CX33). Each
