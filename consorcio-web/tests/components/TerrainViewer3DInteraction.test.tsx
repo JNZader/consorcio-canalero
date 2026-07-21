@@ -64,7 +64,7 @@ vi.mock('../../src/hooks/useGeoLayers', () => ({
   buildTileUrl: () => 'https://tiles.test/{z}/{x}/{y}.png',
 }));
 vi.mock('../../src/hooks/useGEELayers', () => ({
-  useGEELayers: () => ({ layers: {} }),
+  useGEELayers: () => ({ layers: {}, unavailableLayers: [] }),
   GEE_LAYER_COLORS: { candil: '#000', ml: '#000', noroeste: '#000', norte: '#000' },
 }));
 vi.mock('../../src/hooks/useBasins', () => ({ useBasins: () => ({ basins: null }) }));

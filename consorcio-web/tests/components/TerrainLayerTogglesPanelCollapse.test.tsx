@@ -8,6 +8,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -64,11 +65,15 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
     expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('toggles via Enter key on the header', () => {
+  it('toggles via Enter key on the header', async () => {
+    const user = userEvent.setup();
+
     renderWithMantine(<TerrainLayerTogglesPanel {...baseProps} />);
 
     const header = screen.getByTestId('terrain-3d-toggles-header');
-    fireEvent.keyDown(header, { key: 'Enter' });
+    header.focus();
+    expect(header).toHaveFocus();
+    await user.keyboard('{Enter}');
 
     expect(screen.queryByText(/Capas vectoriales 3D/i)).not.toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
