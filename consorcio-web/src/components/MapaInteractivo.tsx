@@ -41,12 +41,24 @@ function MapaErrorFallback() {
         background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))',
       }}
     >
-      <Alert color="red" title="Error al cargar el mapa" variant="light" radius="md">
-        <Text size="sm">
-          No se pudo cargar el componente del mapa. Por favor, recarga la pagina o intenta mas
-          tarde.
-        </Text>
-      </Alert>
+      <Stack gap="sm" maw={560} p="md">
+        <Alert color="red" title="Error al cargar el mapa" variant="light" radius="md">
+          <Text size="sm">
+            No se pudo cargar el componente del mapa. Por favor, recarga la pagina o intenta mas
+            tarde.
+          </Text>
+        </Alert>
+        <Box component="section" role="region" aria-label="descripcion textual del mapa">
+          <Text size="sm" fw={600}>
+            Descripcion textual del mapa
+          </Text>
+          <Text size="sm">
+            El mapa interactivo permite explorar cuencas, canales e infraestructura del Consorcio.
+            En un dispositivo compatible, usa sus controles de capas para consultar cada elemento
+            territorial.
+          </Text>
+        </Box>
+      </Stack>
     </Box>
   );
 }
