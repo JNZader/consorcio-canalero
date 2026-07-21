@@ -13,6 +13,8 @@ NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
 )
 PYTHON_RUNTIME_IMAGE = "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
+SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
+WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
 
 def _read(path: str) -> str:
@@ -195,9 +197,82 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
 
     assert "libosmesa6" in runtime_install
     assert "ENV VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow" in production
-    assert "COPY --from=build /usr/local/lib/python3.11/site-packages" in production
+
+    cleanup = production.index("RUN rm -rf")
+    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.11/site-packages")
+    for stale_artifact in (
+        "setuptools",
+        "setuptools-*.dist-info",
+        "pkg_resources",
+        "wheel",
+        "wheel-*.dist-info",
+        "_distutils_hack",
+        "distutils-precedence.pth",
+    ):
+        assert (
+            f"/usr/local/lib/python3.11/site-packages/{stale_artifact}"
+            in production[cleanup:packages_copy]
+        )
+    assert cleanup < packages_copy
     assert production.rsplit("USER ", 1)[1].startswith("app\n")
     assert 'CMD ["python", "-m", "app.server"]' in production
+
+
+def test_container_runtimes_pin_safe_pkg_resources_tooling() -> None:
+    for path in ("gee-backend/Dockerfile", "gee-backend/Dockerfile.geo"):
+        dockerfile = _read(path)
+
+        assert dockerfile.count(SETUPTOOLS_RUNTIME_PIN) == 1
+        assert dockerfile.count(WHEEL_RUNTIME_PIN) == 1
+
+
+def test_geo_worker_keeps_osgeo_numpy_abi_constraints_scoped() -> None:
+    backend = _read("gee-backend/Dockerfile")
+    geo = _read("gee-backend/Dockerfile.geo")
+    geo_dependency_install = geo.split("RUN pip install --no-cache-dir", 1)[1].split(
+        "# Pre-download WhiteboxTools", 1
+    )[0]
+
+    for constraint in (
+        '"numpy<2"',
+        '"opencv-python-headless<4.12"',
+        '"rasterio<1.5"',
+        '"rioxarray<0.22"',
+        '"scipy<1.17"',
+    ):
+        assert geo.count(constraint) == 1
+        assert constraint in geo_dependency_install
+        assert constraint not in backend
+    assert "--ignore-installed numpy" in geo_dependency_install
+
+
+def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
+    dockerfile = _read("gee-backend/Dockerfile.geo")
+    install_marker = "apt-get install -y --no-install-recommends"
+    install_start = dockerfile.index(install_marker)
+    install_end = dockerfile.index("&& rm -rf /var/lib/apt/lists/*", install_start)
+    install = dockerfile[install_start:install_end]
+
+    for package in (
+        "gpgv",
+        "libssl3t64",
+        "openssl",
+        "libtiff6",
+        "python3-dev",
+    ):
+        assert re.search(rf"(?m)^\s+{re.escape(package)}\s+\\$", install)
+
+    pip_install = dockerfile.index("pip install --no-cache-dir")
+    whitebox_setup = dockerfile.index("import whitebox; wbt = whitebox.WhiteboxTools()")
+    purge = dockerfile.index("apt-get purge -y --auto-remove python3-dev")
+    final_cleanup = dockerfile.index("rm -rf /var/lib/apt/lists/* /var/cache/apt/*", purge)
+    assert install_start < pip_install < whitebox_setup < purge < final_cleanup
+    purge_end = purge + len("apt-get purge -y --auto-remove python3-dev")
+    assert dockerfile.find("python3-dev", purge_end) == -1
+    assert "libc6-dev" not in dockerfile
+    assert "linux-libc-dev" not in dockerfile
+    assert "apt-get upgrade" not in dockerfile
+    assert "apt-get dist-upgrade" not in dockerfile
 
 
 def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
