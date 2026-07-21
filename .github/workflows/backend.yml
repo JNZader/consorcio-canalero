@@ -123,3 +123,68 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+
+  image-backend:
+    name: Final Backend Image Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+    env:
+      CANDIDATE_IMAGE: "local/consorcio-backend:${{ github.sha }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend candidate image
+        uses: docker/build-push-action@v5
+        with:
+          context: gee-backend
+          file: gee-backend/Dockerfile
+          target: production
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=max,scope=backend-image
+      - name: Scan backend candidate image
+        # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  image-geo-worker:
+    name: Final Geo Worker Image Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+    env:
+      CANDIDATE_IMAGE: "local/consorcio-geo-worker:${{ github.sha }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build geo-worker candidate image
+        uses: docker/build-push-action@v5
+        with:
+          context: gee-backend
+          file: gee-backend/Dockerfile.geo
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          cache-from: type=gha,scope=geo-worker-image
+          cache-to: type=gha,mode=max,scope=geo-worker-image
+      - name: Scan geo-worker candidate image
+        # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'

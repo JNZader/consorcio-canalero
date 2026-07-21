@@ -48,6 +48,64 @@ def _assert_fail_closed_trivy(job: str) -> None:
     assert "if: always()" in job[job.index(upload) :]
 
 
+def _assert_fail_closed_image_trivy(job: str) -> None:
+    assert f"uses: {TRIVY_ACTION}" in job
+    assert "scan-type: image" in job
+    assert "image-ref: ${{ env.CANDIDATE_IMAGE }}" in job
+    assert "severity: CRITICAL,HIGH" in job
+    assert "exit-code: '1'" in job
+    assert "ignore-unfixed:" not in job
+    assert "continue-on-error: true" not in job
+
+
+def _assert_non_publishing_image_gate(job: str, dockerfile: str, candidate: str) -> None:
+    build = "uses: docker/build-push-action@v5"
+    scan = f"uses: {TRIVY_ACTION}"
+
+    assert f'CANDIDATE_IMAGE: "{candidate}"' in job
+    assert f"file: {dockerfile}" in job
+    assert job.count(build) == 1
+    assert job.index(build) < job.index(scan)
+    assert "load: true" in job
+    assert "tags: ${{ env.CANDIDATE_IMAGE }}" in job
+    assert "push: true" not in job
+    assert "docker push" not in job
+    assert "docker/login-action" not in job
+    assert "contents: read" in job
+    assert "packages: write" not in job
+    assert not re.search(r"(?m)^\s+if:", job)
+    _assert_fail_closed_image_trivy(job)
+
+
+def _assert_scanned_artifact_is_published(job: str, candidate: str, latest: str) -> None:
+    build = "uses: docker/build-push-action@v5"
+    scan = f"uses: {TRIVY_ACTION}"
+    login = "uses: docker/login-action@v3"
+    push_candidate = 'docker push "$CANDIDATE_IMAGE"'
+    tag_latest = 'docker tag "$CANDIDATE_IMAGE" "$LATEST_IMAGE"'
+    push_latest = 'docker push "$LATEST_IMAGE"'
+
+    assert f'CANDIDATE_IMAGE: "{candidate}"' in job
+    assert f'LATEST_IMAGE: "{latest}"' in job
+    assert job.count(build) == 1
+    assert "load: true" in job
+    assert "tags: ${{ env.CANDIDATE_IMAGE }}" in job
+    assert "push: true" not in job
+    _assert_fail_closed_image_trivy(job)
+
+    build_index = job.index(build)
+    scan_index = job.index(scan)
+    login_index = job.index(login)
+    push_index = job.index(push_candidate)
+    assert build_index < scan_index < login_index < push_index
+    assert "docker push" not in job[:scan_index]
+    assert "docker login" not in job[:scan_index]
+    assert build not in job[scan_index + len(scan) :]
+    assert "docker build" not in job[scan_index:]
+    assert not re.search(r"(?m)^\s+if:", job)
+    assert push_index < job.index(tag_latest) < job.index(push_latest)
+
+
 def test_frontend_docker_build_has_every_required_input_before_build() -> None:
     dockerfile = _read("consorcio-web/Dockerfile")
     version_script = _read("consorcio-web/scripts/gen-version.mjs")
@@ -165,6 +223,37 @@ def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
         assert script in frontend
 
 
+def test_branch_and_pr_workflows_scan_every_final_image_without_publishing() -> None:
+    frontend = _read(".github/workflows/frontend.yml")
+    backend = _read(".github/workflows/backend.yml")
+
+    assert "push:" in frontend
+    assert "pull_request:" in frontend
+    assert "      - 'consorcio-web/**'" in frontend
+    assert "push:" in backend
+    assert "pull_request:" in backend
+    assert "      - 'gee-backend/**'" in backend
+    assert _needs(frontend, "image") == {"lint", "test", "typecheck", "smoke"}
+    assert _needs(backend, "image-backend") == {"lint", "typecheck", "test"}
+    assert _needs(backend, "image-geo-worker") == {"lint", "typecheck", "test"}
+
+    _assert_non_publishing_image_gate(
+        _job_block(frontend, "image"),
+        "consorcio-web/Dockerfile",
+        "local/consorcio-frontend:${{ github.sha }}",
+    )
+    _assert_non_publishing_image_gate(
+        _job_block(backend, "image-backend"),
+        "gee-backend/Dockerfile",
+        "local/consorcio-backend:${{ github.sha }}",
+    )
+    _assert_non_publishing_image_gate(
+        _job_block(backend, "image-geo-worker"),
+        "gee-backend/Dockerfile.geo",
+        "local/consorcio-geo-worker:${{ github.sha }}",
+    )
+
+
 def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> None:
     frontend = _read(".github/workflows/frontend.yml")
     accessibility = _job_block(frontend, "accessibility")
@@ -226,17 +315,29 @@ def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
     _assert_fail_closed_trivy(security)
 
     publish_gates = {"quality-backend", "mutation-backend", "security-backend"}
-    for job in ("build-backend", "build-geo-worker"):
-        build = _job_block(deploy, job)
-        assert _needs(deploy, job) == publish_gates
-        assert "push: true" in build
+    backend_publish = _job_block(deploy, "build-backend")
+    geo_publish = _job_block(deploy, "build-geo-worker")
+    assert _needs(deploy, "build-backend") == publish_gates
+    assert _needs(deploy, "build-geo-worker") == publish_gates
+    _assert_scanned_artifact_is_published(
+        backend_publish,
+        "ghcr.io/${{ github.repository }}/backend:${{ github.sha }}",
+        "ghcr.io/${{ github.repository }}/backend:latest",
+    )
+    _assert_scanned_artifact_is_published(
+        geo_publish,
+        "ghcr.io/${{ github.repository }}/geo-worker:${{ github.sha }}",
+        "ghcr.io/${{ github.repository }}/geo-worker:latest",
+    )
 
     rollout = _job_block(deploy, "deploy")
     assert _needs(deploy, "deploy") == {"build-backend", "build-geo-worker"}
     assert "vars.ENABLE_PRODUCTION_DEPLOY == 'true'" in rollout
     assert "vars.DEPLOY_WEBHOOK_URL != ''" in rollout
     assert "secrets.DEPLOY_WEBHOOK_SECRET" in rollout
-    assert deploy.count("push: true") == 2
+    assert deploy.count("scan-type: image") == 2
+    assert deploy.count('docker push "$CANDIDATE_IMAGE"') == 2
+    assert "push: true" not in deploy
 
 
 def test_deploy_quality_gate_only_references_current_contract_tests() -> None:
