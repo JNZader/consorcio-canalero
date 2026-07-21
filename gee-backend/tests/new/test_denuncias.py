@@ -132,6 +132,20 @@ class TestDenunciaModel:
 # ──────────────────────────────────────────────
 
 
+def test_create_payload_cannot_install_a_photo_deletion_pointer() -> None:
+    payload = DenunciaCreate.model_validate(
+        {
+            "tipo": "desborde",
+            "descripcion": "Canal desbordado con una descripcion valida.",
+            "latitud": -33.7,
+            "longitud": -63.9,
+            "foto_url": "/uploads/denuncias/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png",
+        }
+    )
+
+    assert "foto_url" not in payload.model_dump()
+
+
 class TestDenunciaRepository:
     """Repository tests against real DB (rolled-back transactions)."""
 
