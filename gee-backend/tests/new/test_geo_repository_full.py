@@ -56,11 +56,18 @@ def repo() -> GeoRepository:
 
 class TestJobCrud:
     def test_create_job(self, db: Session, repo: GeoRepository):
-        job = repo.create_job(db, tipo="dem_pipeline", parametros={"test": True})
+        celery_task_id = str(uuid.uuid4())
+        job = repo.create_job(
+            db,
+            tipo="dem_pipeline",
+            parametros={"test": True},
+            celery_task_id=celery_task_id,
+        )
         assert job.id is not None
         assert job.tipo == "dem_pipeline"
         assert job.estado == EstadoGeoJob.PENDING
         assert job.parametros == {"test": True}
+        assert job.celery_task_id == celery_task_id
 
     def test_get_job_by_id(self, db: Session, repo: GeoRepository):
         job = repo.create_job(db, tipo="slope")
@@ -325,13 +332,16 @@ class TestApprovedZoning:
 
 class TestAnalisisGeo:
     def test_create_analisis(self, db: Session, repo: GeoRepository):
+        celery_task_id = str(uuid.uuid4())
         analisis = repo.create_analisis(
             db,
             tipo="flood",
             fecha_analisis=date.today(),
+            celery_task_id=celery_task_id,
         )
         assert analisis.id is not None
         assert analisis.estado == EstadoGeoJob.PENDING
+        assert analisis.celery_task_id == celery_task_id
 
     def test_get_analisis_by_id(self, db: Session, repo: GeoRepository):
         analisis = repo.create_analisis(db, tipo="classification", fecha_analisis=date.today())

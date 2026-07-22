@@ -117,6 +117,7 @@ class GeoRepositoryZoningAnalysisMixin:
         fecha_analisis: date,
         parametros: Optional[dict] = None,
         usuario_id: Optional[uuid.UUID] = None,
+        celery_task_id: Optional[str] = None,
     ) -> AnalisisGeo:
         analisis = AnalisisGeo(
             tipo=tipo,
@@ -124,6 +125,7 @@ class GeoRepositoryZoningAnalysisMixin:
             estado=EstadoGeoJob.PENDING,
             parametros=parametros,
             usuario_id=usuario_id,
+            celery_task_id=celery_task_id,
         )
         db.add(analisis)
         db.flush()

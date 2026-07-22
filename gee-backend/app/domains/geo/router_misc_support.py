@@ -4,6 +4,7 @@ import io
 import json
 import uuid
 import zipfile
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -13,9 +14,14 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.domains.geo.models import EstadoGeoJob, GeoLayer
+from app.domains.geo.models import GeoLayer, TipoAnalisisGee
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import AnalisisGeoListResponse
+from app.shared.celery_outbox import (
+    CeleryTaskKey,
+    enqueue_celery_task,
+    try_publish_celery_task,
+)
 from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
@@ -118,129 +124,136 @@ def export_current_map_approved_basin_zones_pdf_impl(payload, db: Session):
     )
 
 
-def _record_gee_publication_failure(
-    db: Session,
-    repo: GeoRepository,
+def _get_gee_task_key_map() -> Mapping[TipoAnalisisGee, CeleryTaskKey]:
+    """Map every accepted analysis family to a fixed outbox task key."""
+    return {
+        TipoAnalisisGee.FLOOD: CeleryTaskKey.ANALYZE_FLOOD,
+        TipoAnalisisGee.VEGETATION: CeleryTaskKey.SUPERVISED_CLASSIFICATION,
+        TipoAnalisisGee.CLASSIFICATION: CeleryTaskKey.SUPERVISED_CLASSIFICATION,
+        TipoAnalisisGee.NDVI: CeleryTaskKey.SUPERVISED_CLASSIFICATION,
+        TipoAnalisisGee.CUSTOM: CeleryTaskKey.ANALYZE_FLOOD,
+        TipoAnalisisGee.SAR_TEMPORAL: CeleryTaskKey.SAR_TEMPORAL,
+    }
+
+
+def _resolve_gee_task_plan(
+    tipo: str | TipoAnalisisGee,
+    parametros: dict,
     *,
-    analisis_id: uuid.UUID,
-    publication_error: Exception,
-) -> None:
-    """Mark an unclaimed durable analysis failed without masking the broker error."""
+    today: date,
+) -> tuple[TipoAnalisisGee, CeleryTaskKey, dict[str, object]]:
+    """Validate a submission and build broker kwargs before persistence."""
+    valid_tipos = [member.value for member in TipoAnalisisGee]
     try:
-        marked_failed = repo.update_analisis_status_if_current(
-            db,
-            analisis_id,
-            expected_estado=EstadoGeoJob.PENDING,
-            estado=EstadoGeoJob.FAILED,
-            error="No se pudo encolar el análisis GEE; reintente más tarde",
-        )
-        db.commit()
-    except Exception as persistence_error:
-        db.rollback()
-        logger.exception(
-            "gee_analysis.publication_failure_persist_failed",
-            analisis_id=str(analisis_id),
-            publication_error=str(publication_error),
-            persistence_error=str(persistence_error),
-        )
-        return
-
-    if not marked_failed:
-        logger.warning(
-            "gee_analysis.publication_failure_analysis_already_claimed",
-            analisis_id=str(analisis_id),
-            publication_error=str(publication_error),
-        )
-
-
-def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
-    from datetime import date as _date
-
-    from app.domains.geo.gee_tasks import (
-        analyze_flood_task,
-        sar_temporal_task,
-        supervised_classification_task,
-    )
-    from app.domains.geo.models import TipoAnalisisGee
-
-    valid_tipos = [t.value for t in TipoAnalisisGee]
-    if payload.tipo not in valid_tipos:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Tipo invalido '{payload.tipo}'. Valores validos: {valid_tipos}",
-        )
-
-    parametros = dict(payload.parametros)
-    start_raw = parametros.get("start_date", _date.today().isoformat())
-    end_raw = parametros.get("end_date", _date.today().isoformat())
-    try:
-        start_date = _date.fromisoformat(str(start_raw))
-        end_date = _date.fromisoformat(str(end_raw))
+        normalized_tipo = TipoAnalisisGee(tipo)
     except (TypeError, ValueError) as exc:
         raise HTTPException(
-            status_code=422, detail="start_date y end_date deben usar YYYY-MM-DD"
+            status_code=422,
+            detail=f"Tipo invalido '{tipo}'. Valores validos: {valid_tipos}",
+        ) from exc
+
+    task_key = _get_gee_task_key_map().get(normalized_tipo)
+    if task_key is None:
+        raise RuntimeError("Unsupported GEE analysis task mapping")
+
+    start_raw = parametros.get("start_date", today.isoformat())
+    end_raw = parametros.get("end_date", today.isoformat())
+    try:
+        start_date = date.fromisoformat(str(start_raw))
+        end_date = date.fromisoformat(str(end_raw))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="start_date y end_date deben usar YYYY-MM-DD",
         ) from exc
     if start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date debe ser anterior a end_date")
 
-    method = parametros.get("method", "fusion")
-    if payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
-        if method not in {"fusion", "sar_only", "optical_only"}:
+    task_kwargs: dict[str, object] = {
+        "start_date_str": start_date.isoformat(),
+        "end_date_str": end_date.isoformat(),
+    }
+    if normalized_tipo in (TipoAnalisisGee.FLOOD, TipoAnalisisGee.CUSTOM):
+        method = parametros.get("method", "fusion")
+        if not isinstance(method, str) or method not in {
+            "fusion",
+            "sar_only",
+            "optical_only",
+        }:
             raise HTTPException(status_code=422, detail="method invalido")
-    if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
+        task_kwargs["method"] = method
+    elif normalized_tipo == TipoAnalisisGee.SAR_TEMPORAL:
         try:
             scale = int(parametros.get("scale", 100))
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail="scale debe ser un entero") from exc
         if not 1 <= scale <= 10_000:
             raise HTTPException(status_code=422, detail="scale fuera de rango")
-    else:
-        scale = 100
+        task_kwargs["scale"] = scale
 
-    start_date_str = start_date.isoformat()
-    end_date_str = end_date.isoformat()
-    analisis = repo.create_analisis(
-        db,
-        tipo=payload.tipo,
-        fecha_analisis=_date.today(),
-        parametros=parametros,
+    return normalized_tipo, task_key, task_kwargs
+
+
+def _rollback_gee_submission_quietly(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception as rollback_error:
+        logger.error(
+            "gee_analysis.submission_rollback_failed",
+            error_type=type(rollback_error).__name__,
+        )
+
+
+def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
+    """Atomically persist an AnalisisGeo and its Celery publication intent."""
+    today = date.today()
+    stored_parameters = dict(payload.parametros)
+    normalized_tipo, task_key, base_task_kwargs = _resolve_gee_task_plan(
+        payload.tipo,
+        stored_parameters,
+        today=today,
     )
-    db.commit()
-    db.refresh(analisis)
+    celery_task_id = uuid.uuid4()
 
     try:
-        if payload.tipo == TipoAnalisisGee.SAR_TEMPORAL.value:
-            task = sar_temporal_task.delay(
-                start_date_str,
-                end_date_str,
-                scale,
-                analisis_id=str(analisis.id),
-            )
-        elif payload.tipo in (TipoAnalisisGee.FLOOD.value, TipoAnalisisGee.CUSTOM.value):
-            task = analyze_flood_task.delay(
-                start_date_str,
-                end_date_str,
-                method,
-                analisis_id=str(analisis.id),
-            )
-        else:
-            task = supervised_classification_task.delay(
-                start_date_str,
-                end_date_str,
-                analisis_id=str(analisis.id),
-            )
-    except Exception as exc:
-        _record_gee_publication_failure(
+        analisis = repo.create_analisis(
             db,
-            repo,
-            analisis_id=analisis.id,
-            publication_error=exc,
+            tipo=normalized_tipo,
+            fecha_analisis=today,
+            parametros=stored_parameters,
+            usuario_id=None,
+            celery_task_id=str(celery_task_id),
         )
-        raise HTTPException(status_code=503, detail="No se pudo encolar el análisis GEE") from exc
+        outbox = enqueue_celery_task(
+            db,
+            celery_task_id=celery_task_id,
+            task_key=task_key,
+            task_kwargs={**base_task_kwargs, "analisis_id": str(analisis.id)},
+        )
+        db.commit()
+    except Exception:
+        _rollback_gee_submission_quietly(db)
+        raise
 
-    repo.update_analisis_metadata(db, analisis.id, celery_task_id=task.id)
-    db.commit()
     db.refresh(analisis)
+    try:
+        published = try_publish_celery_task(outbox.id)
+    except Exception as publication_error:
+        published = False
+        logger.error(
+            "gee_analysis.outbox_immediate_publish_failed",
+            analisis_id=str(analisis.id),
+            outbox_id=str(outbox.id),
+            error_type=type(publication_error).__name__,
+        )
+
+    if not published:
+        logger.warning(
+            "gee_analysis.outbox_publication_deferred",
+            analisis_id=str(analisis.id),
+            outbox_id=str(outbox.id),
+            task_key=task_key.value,
+        )
     return analisis
 
 
