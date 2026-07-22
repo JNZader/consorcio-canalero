@@ -14,6 +14,7 @@ TDD cycle: RED → GREEN → REFACTOR
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 import types
 from unittest.mock import MagicMock
@@ -21,6 +22,10 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import Response
+
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_ROUTER_PATH = _BACKEND_ROOT / "app/domains/geo/visualization/router.py"
 
 
 # ---------------------------------------------------------------------------
@@ -544,36 +549,18 @@ class TestRouterIsThin:
     """Verify router contains no business logic."""
 
     def test_router_has_no_rasterio_import(self):
-        from pathlib import Path
-
-        router_path = Path(
-            "/home/javier/programacion/consorcio-canalero/gee-backend"
-            "/app/domains/geo/visualization/router.py"
-        )
-        source = router_path.read_text()
+        source = _ROUTER_PATH.read_text(encoding="utf-8")
 
         assert "import rasterio" not in source
 
     def test_router_has_no_pyvista_import(self):
-        from pathlib import Path
-
-        router_path = Path(
-            "/home/javier/programacion/consorcio-canalero/gee-backend"
-            "/app/domains/geo/visualization/router.py"
-        )
-        source = router_path.read_text()
+        source = _ROUTER_PATH.read_text(encoding="utf-8")
 
         assert "import pyvista" not in source
 
     def test_router_has_no_path_params(self):
         """Router must NOT accept dem_path, flow_acc_path, etc. as query params."""
-        from pathlib import Path
-
-        router_path = Path(
-            "/home/javier/programacion/consorcio-canalero/gee-backend"
-            "/app/domains/geo/visualization/router.py"
-        )
-        source = router_path.read_text()
+        source = _ROUTER_PATH.read_text(encoding="utf-8")
 
         assert "dem_path" not in source
         assert "flow_acc_path" not in source
