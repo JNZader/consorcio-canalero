@@ -112,6 +112,55 @@ async function attemptTokenRefresh(): Promise<boolean> {
   return _refreshInFlight;
 }
 
+interface RequestAbortScope {
+  signal: AbortSignal;
+  cleanup: () => void;
+}
+
+function createRequestAbortScope(
+  timeout: number,
+  callerSignal?: AbortSignal | null
+): RequestAbortScope {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      callerSignal?.removeEventListener('abort', abortFromCaller);
+    },
+  };
+}
+
+function waitForWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException('The operation was aborted', 'AbortError'));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException('The operation was aborted', 'AbortError'));
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      }
+    );
+  });
+}
+
 function hasItemsArray<T>(data: unknown): data is { items: T[] } {
   return (
     typeof data === 'object' &&
@@ -144,11 +193,14 @@ function getApiErrorMessage(error: unknown, status: number): string {
  */
 export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
   const url = `${API_URL}${API_PREFIX}${endpoint}`;
-  const { timeout = DEFAULT_TIMEOUT, skipAuth = false, ...fetchOptions } = options;
-
-  // Crear AbortController para timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const {
+    timeout = DEFAULT_TIMEOUT,
+    skipAuth = false,
+    __alreadyRetried = false,
+    signal: callerSignal,
+    ...fetchOptions
+  } = options;
+  const abortScope = createRequestAbortScope(timeout, callerSignal);
 
   try {
     // Get auth token if not skipped
@@ -167,7 +219,7 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
 
     const response = await fetch(url, {
       ...fetchOptions,
-      signal: controller.signal,
+      signal: abortScope.signal,
       headers: {
         ...defaultHeaders,
         ...authHeaders,
@@ -182,12 +234,8 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       // access token now lives 15 min instead of 60 min, so we expect
       // a lot more 401s during normal use. Try to silently refresh
       // via the HttpOnly cookie before forcing the user back to login.
-      if (
-        response.status === 401 &&
-        !skipAuth &&
-        !options.__alreadyRetried
-      ) {
-        const refreshed = await attemptTokenRefresh();
+      if (response.status === 401 && !skipAuth && !__alreadyRetried) {
+        const refreshed = await waitForWithSignal(attemptTokenRefresh(), abortScope.signal);
         if (refreshed) {
           // Retry the original call exactly once with the new token.
           // The ``__alreadyRetried`` flag stops a refresh loop if the
@@ -224,11 +272,14 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
     return response.json();
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      if (callerSignal?.aborted) {
+        throw error;
+      }
       throw new Error(`La solicitud excedio el tiempo limite (${timeout / 1000}s)`);
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    abortScope.cleanup();
   }
 }
 

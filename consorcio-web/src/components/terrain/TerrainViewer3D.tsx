@@ -18,11 +18,10 @@ import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
 import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
-import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
-import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
+import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
@@ -30,6 +29,7 @@ import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
@@ -60,9 +60,7 @@ const DEFAULT_ZOOM_MOBILE = 9;
 const MOBILE_BREAKPOINT_PX = 768;
 function getDefaultZoom(): number {
   if (typeof window === 'undefined') return DEFAULT_ZOOM_DESKTOP;
-  return window.innerWidth <= MOBILE_BREAKPOINT_PX
-    ? DEFAULT_ZOOM_MOBILE
-    : DEFAULT_ZOOM_DESKTOP;
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX ? DEFAULT_ZOOM_MOBILE : DEFAULT_ZOOM_DESKTOP;
 }
 
 const MIN_EXAGGERATION = 1;
@@ -148,9 +146,7 @@ export default function TerrainViewer3D({
     // hydrated on the next tick — the swap was visible to the user as a
     // brief DEM→Sentinel flash.
     () =>
-      hasPersistedSentinelImage()
-        ? SELECTED_IMAGE_LAYER_ID
-        : (textureLayerId ?? demLayerId ?? null)
+      hasPersistedSentinelImage() ? SELECTED_IMAGE_LAYER_ID : (textureLayerId ?? demLayerId ?? null)
   );
   // ``.current = value`` lives in a post-commit effect (not a bare
   // write during render) so the React Compiler can safely memoise
@@ -180,8 +176,11 @@ export default function TerrainViewer3D({
       // rehydrates in a microtask after store creation; if this ever mounts
       // before that flush (SSR / eager-mount route), the mirror effect on
       // sharedVisibleVectors still guarantees convergence one render later.
-      const { cuencas: _cuencas, zona: _zona, ...shared } =
-        useMapLayerSyncStore.getState().map3d.visibleVectors;
+      const {
+        cuencas: _cuencas,
+        zona: _zona,
+        ...shared
+      } = useMapLayerSyncStore.getState().map3d.visibleVectors;
       return { ...TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY, ...shared, cuencas: false };
     }
   );
@@ -193,7 +192,7 @@ export default function TerrainViewer3D({
   // the 3D viewer no longer renders a Zona Consorcio outline (the 3D mesh
   // IS the consorcio area, so the outline was redundant). Only the 4 GEE
   // sub-cuencas (Candil / ML / Noroeste / Norte) feed the cuencas build.
-  const { layers: geeLayers } = useGEELayers({
+  const { layers: geeLayers, unavailableLayers: unavailableGeeLayers } = useGEELayers({
     layerNames: TERRAIN_GEE_LAYER_NAMES,
   });
   const { basins } = useBasins();
@@ -206,9 +205,7 @@ export default function TerrainViewer3D({
   // (or the catastro/soil layer) on, ``enabled`` flips to true and the
   // query runs. Default 2D callers keep eager behaviour by omitting the
   // option (see hook signatures).
-  const sharedMap3dVectors = useMapLayerSyncStore(
-    (state) => state.map3d.visibleVectors
-  );
+  const sharedMap3dVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
   const pilarVerdeNeeded = !!(
     sharedMap3dVectors.pilar_verde_bpa_historico ||
     sharedMap3dVectors.pilar_verde_agro_aceptada ||
@@ -269,9 +266,7 @@ export default function TerrainViewer3D({
   // map preference. Switching it on/off updates the `terrain-rgb` source's
   // tile URL via `setTiles()` in a dedicated effect, so we never remount the
   // whole `maplibregl.Map` instance.
-  const terrainSmoothingEnabled = useMapLayerSyncStore(
-    (state) => state.terrainSmoothingEnabled
-  );
+  const terrainSmoothingEnabled = useMapLayerSyncStore((state) => state.terrainSmoothingEnabled);
   const setTerrainSmoothingEnabled = useMapLayerSyncStore(
     (state) => state.setTerrainSmoothingEnabled
   );
@@ -441,16 +436,10 @@ export default function TerrainViewer3D({
   // single state change of TerrainViewer3D (a lot — opacity sliders,
   // exaggeration slider, ready flag, etc.).
   const approvedZonesCollection = approvedZones;
-  const cuencasCollection = useMemo(
-    () => buildCuencasCollection(geeLayers),
-    [geeLayers]
-  );
+  const cuencasCollection = useMemo(() => buildCuencasCollection(geeLayers), [geeLayers]);
   const roadsCollection = caminos;
   const soilCollection = useMemo(() => buildSoilCollection(soilMap), [soilMap]);
-  const waterwaysCollection = useMemo(
-    () => buildWaterwaysCollection(waterways),
-    [waterways]
-  );
+  const waterwaysCollection = useMemo(() => buildWaterwaysCollection(waterways), [waterways]);
   const catastroCollection = catastroMap;
 
   const handleClassToggle = (layerType: string, classIndex: number, visible: boolean) => {
@@ -564,7 +553,10 @@ export default function TerrainViewer3D({
             // layer hidden to avoid an unwanted burst of tile requests on
             // first render.
             layout: {
-              visibility: activeRasterTileUrlRef.current && overlayOpacityRef.current >= 1 ? 'none' : 'visible',
+              visibility:
+                activeRasterTileUrlRef.current && overlayOpacityRef.current >= 1
+                  ? 'none'
+                  : 'visible',
             },
             paint: { 'raster-opacity': 1 },
           },
@@ -693,10 +685,7 @@ export default function TerrainViewer3D({
     if (terrainRebuildInProgressRef.current) return;
     terrainRebuildInProgressRef.current = true;
     try {
-      const newUrl = buildTerrainRgbUrl(
-        terrainSmoothingEnabled,
-        terrainSmoothingThreshold
-      );
+      const newUrl = buildTerrainRgbUrl(terrainSmoothingEnabled, terrainSmoothingThreshold);
 
       // Capture the active terrain config (exaggeration, etc.) so we can
       // re-apply it after replacing the source.
@@ -738,8 +727,7 @@ export default function TerrainViewer3D({
 
   // Puntos de conflicto — same layer/source the 2D viewer consumes via
   // Martin. Visibility tracks ``vectorLayerVisibility.puntos_conflicto``.
-  const puntosConflictoVisible =
-    !!sharedMap3dVectors.puntos_conflicto && intersectionsLength > 0;
+  const puntosConflictoVisible = !!sharedMap3dVectors.puntos_conflicto && intersectionsLength > 0;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -759,9 +747,7 @@ export default function TerrainViewer3D({
     // initial raster even after the user picked a different layer.
     if (!map || !activeRasterTileUrl || !ready) return;
 
-    const source = map.getSource('terrain-texture') as
-      | maplibregl.RasterTileSource
-      | undefined;
+    const source = map.getSource('terrain-texture') as maplibregl.RasterTileSource | undefined;
     if (source && typeof source.setTiles === 'function') {
       // Hot-swap the tile URL — preserves viewport, requested tiles, and
       // anything else MapLibre has cached for this source.
@@ -890,6 +876,16 @@ export default function TerrainViewer3D({
 
   return (
     <Stack gap="sm">
+      {unavailableGeeLayers.length > 0 && (
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Subcuencas GEE no disponibles en el mapa publico"
+          color="yellow"
+        >
+          Esta vista omite {unavailableGeeLayers.join(', ')} porque no forman parte de la superficie
+          publica permitida.
+        </Alert>
+      )}
       {errorMessage && (
         <Alert icon={<IconAlertTriangle size={16} />} title="Error cargando terreno 3D" color="red">
           {errorMessage}

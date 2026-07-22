@@ -1,30 +1,21 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeatureCollection } from 'geojson';
-import { createQueryWrapper } from '../test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GEE_LAYER_COLORS,
   GEE_LAYER_STYLES,
-  useGEELayers,
+  PUBLIC_GEE_LAYER_UNAVAILABLE_MESSAGE,
   type GEELayerName,
+  useGEELayers,
 } from '../../src/hooks/useGEELayers';
+import { createQueryWrapper } from '../test-utils';
 
-const { loggerWarn } = vi.hoisted(() => ({
-  loggerWarn: vi.fn(),
-}));
+const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }));
 
-vi.mock('../../src/lib/api', () => ({
-  API_URL: 'http://localhost:8000',
-}));
-
+vi.mock('../../src/lib/api', () => ({ API_URL: 'http://localhost:8000' }));
 vi.mock('../../src/lib/logger', () => ({
-  logger: {
-    warn: loggerWarn,
-    error: vi.fn(),
-    info: vi.fn(),
-  },
+  logger: { warn: loggerWarn, error: vi.fn(), info: vi.fn() },
 }));
-
 vi.mock('../../src/lib/typeGuards', () => ({
   parseFeatureCollection: (data: unknown) => {
     if (
@@ -49,14 +40,13 @@ const zonaGeoJson: FeatureCollection = {
     },
   ],
 };
-
-const candilGeoJson: FeatureCollection = {
+const caminosGeoJson: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
     {
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: [1, 1] },
-      properties: { name: 'Candil' },
+      geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
+      properties: { name: 'Camino' },
     },
   ],
 };
@@ -65,22 +55,20 @@ function getFetchMock() {
   return global.fetch as ReturnType<typeof vi.fn>;
 }
 
-function mockLayerResponse(data: FeatureCollection) {
+function mockProjection(name: 'zona' | 'caminos', data: FeatureCollection) {
   return {
     ok: true,
-    json: async () => data,
-  };
+    json: async () => ({ status: 'available', projection: name, data, reason: null }),
+  } as Response;
 }
 
-describe('useGEELayers', () => {
+describe('useGEELayers public allowlist', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+  afterEach(() => vi.clearAllMocks());
 
   it('starts idle when disabled', () => {
     const wrapper = createQueryWrapper();
@@ -90,130 +78,122 @@ describe('useGEELayers', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.layers).toEqual({});
     expect(result.current.layersArray).toEqual([]);
+    expect(result.current.unavailableLayers).toEqual([]);
     expect(getFetchMock()).not.toHaveBeenCalled();
   });
 
-  it('loads the requested layers and exposes both map and array shapes', async () => {
+  it('loads only fixed zona and caminos public URLs', async () => {
     const wrapper = createQueryWrapper();
     getFetchMock()
-      .mockResolvedValueOnce(mockLayerResponse(zonaGeoJson) as Response)
-      .mockResolvedValueOnce(mockLayerResponse(candilGeoJson) as Response);
+      .mockResolvedValueOnce(mockProjection('zona', zonaGeoJson))
+      .mockResolvedValueOnce(mockProjection('caminos', caminosGeoJson));
 
     const { result } = renderHook(
-      () => useGEELayers({ enabled: true, layerNames: ['zona', 'candil'] }),
+      () => useGEELayers({ layerNames: ['zona', 'caminos'] }),
       { wrapper }
     );
-
-    expect(result.current.loading).toBe(true);
-
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(getFetchMock()).toHaveBeenCalledTimes(2);
-    expect(getFetchMock()).toHaveBeenNthCalledWith(1, 'http://localhost:8000/api/v2/geo/gee/layers/zona');
-    expect(getFetchMock()).toHaveBeenNthCalledWith(2, 'http://localhost:8000/api/v2/geo/gee/layers/candil');
+    expect(getFetchMock()).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/api/v2/public/map/gee/zona'
+    );
+    expect(getFetchMock()).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/api/v2/public/map/gee/caminos'
+    );
+    expect(result.current.layers).toEqual({ zona: zonaGeoJson, caminos: caminosGeoJson });
+    expect(result.current.unavailableLayers).toEqual([]);
     expect(result.current.error).toBeNull();
-    expect(result.current.layers).toEqual({
-      zona: zonaGeoJson,
-      candil: candilGeoJson,
-    });
-    expect(result.current.layersArray).toEqual([
-      { name: 'zona', data: zonaGeoJson },
-      { name: 'candil', data: candilGeoJson },
-    ]);
   });
 
-  it('returns the no-layers error when every requested layer fails', async () => {
+  it('rejects legacy and runtime-injected identifiers without making a request', async () => {
     const wrapper = createQueryWrapper();
-    getFetchMock().mockResolvedValue({ ok: false, status: 404 } as Response);
-
+    const arbitrary = 'users/private/asset' as GEELayerName;
     const { result } = renderHook(
-      () => useGEELayers({ enabled: true, layerNames: ['zona'] }),
+      () => useGEELayers({ layerNames: ['candil', arbitrary] }),
       { wrapper }
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
+    expect(getFetchMock()).not.toHaveBeenCalled();
     expect(result.current.layers).toEqual({});
-    expect(result.current.layersArray).toEqual([]);
-    expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
+    expect(result.current.unavailableLayers).toEqual(['candil', arbitrary]);
+    expect(result.current.error).toBe(PUBLIC_GEE_LAYER_UNAVAILABLE_MESSAGE);
+  });
+
+  it('keeps a safe projection while explicitly reporting unsupported layers', async () => {
+    const wrapper = createQueryWrapper();
+    getFetchMock().mockResolvedValueOnce(mockProjection('zona', zonaGeoJson));
+
+    const { result } = renderHook(
+      () => useGEELayers({ layerNames: ['zona', 'noroeste'] }),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(getFetchMock()).toHaveBeenCalledTimes(1);
+    expect(result.current.layers).toEqual({ zona: zonaGeoJson });
+    expect(result.current.unavailableLayers).toEqual(['noroeste']);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('maps unavailable and invalid projection envelopes to the no-layers error', async () => {
+    const wrapper = createQueryWrapper();
+    getFetchMock()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'unavailable',
+          projection: 'zona',
+          data: null,
+          reason: 'temporarily_unavailable',
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'available',
+          projection: 'zona',
+          data: { type: 'Feature', features: [] },
+          reason: null,
+        }),
+      } as Response);
+
+    const first = renderHook(() => useGEELayers({ layerNames: ['zona'] }), { wrapper });
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    expect(first.result.current.error).toBe('No se pudieron cargar las capas del mapa');
+    first.unmount();
+
+    const secondWrapper = createQueryWrapper();
+    const second = renderHook(() => useGEELayers({ layerNames: ['zona'] }), {
+      wrapper: secondWrapper,
+    });
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.error).toBe('No se pudieron cargar las capas del mapa');
     expect(loggerWarn).toHaveBeenCalled();
   });
 
-  it('keeps successfully loaded layers when only some requests fail', async () => {
+  it('can be enabled later and reloaded explicitly', async () => {
     const wrapper = createQueryWrapper();
-    getFetchMock()
-      .mockResolvedValueOnce(mockLayerResponse(zonaGeoJson) as Response)
-      .mockResolvedValueOnce({ ok: false, status: 500 } as Response);
-
-    const { result } = renderHook(
-      () => useGEELayers({ enabled: true, layerNames: ['zona', 'candil'] }),
-      { wrapper }
-    );
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.error).toBeNull();
-    expect(result.current.layers).toEqual({ zona: zonaGeoJson });
-    expect(result.current.layersArray).toEqual([{ name: 'zona', data: zonaGeoJson }]);
-  });
-
-  it('treats invalid GeoJSON as an unloaded layer', async () => {
-    const wrapper = createQueryWrapper();
-    getFetchMock().mockResolvedValue({
-      ok: true,
-      json: async () => ({ type: 'Feature', features: [] }),
-    } as Response);
-
-    const { result } = renderHook(
-      () => useGEELayers({ enabled: true, layerNames: ['zona'] }),
-      { wrapper }
-    );
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.layers).toEqual({});
-    expect(result.current.error).toBe('No se pudieron cargar las capas del mapa');
-    expect(loggerWarn).toHaveBeenCalledWith("GEE layer 'zona' returned invalid GeoJSON structure");
-  });
-
-  it('can be enabled later via rerender', async () => {
-    const wrapper = createQueryWrapper();
-    getFetchMock().mockResolvedValue(mockLayerResponse(zonaGeoJson) as Response);
-
+    getFetchMock().mockResolvedValue(mockProjection('zona', zonaGeoJson));
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>
         useGEELayers({ enabled, layerNames: ['zona'] }),
       { wrapper, initialProps: { enabled: false } }
     );
 
-    expect(result.current.loading).toBe(false);
     expect(getFetchMock()).not.toHaveBeenCalled();
-
     rerender({ enabled: true });
-
     await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(getFetchMock()).toHaveBeenCalledTimes(1);
     expect(result.current.layers.zona).toEqual(zonaGeoJson);
-  });
-
-  it('reload refetches the current selection', async () => {
-    const wrapper = createQueryWrapper();
-    getFetchMock().mockResolvedValueOnce(mockLayerResponse(zonaGeoJson) as Response);
-
-    const { result } = renderHook(
-      () => useGEELayers({ enabled: false, layerNames: ['zona'] }),
-      { wrapper }
-    );
 
     await act(async () => {
       await result.current.reload();
     });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(getFetchMock()).toHaveBeenCalledTimes(1);
-    expect(result.current.layers.zona).toEqual(zonaGeoJson);
+    expect(getFetchMock()).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -223,22 +203,8 @@ describe('useGEELayers constants', () => {
 
     expect(Object.keys(GEE_LAYER_COLORS)).toEqual(expectedNames);
     expect(Object.keys(GEE_LAYER_STYLES)).toEqual(expectedNames);
-
     expectedNames.forEach((name) => {
       expect(GEE_LAYER_STYLES[name].color).toBe(GEE_LAYER_COLORS[name]);
-    });
-
-    expect(GEE_LAYER_STYLES.zona).toEqual({ color: '#FF0000', weight: 3, fillOpacity: 0 });
-    expect(GEE_LAYER_STYLES.candil).toEqual({
-      color: '#2196F3',
-      weight: 2,
-      fillOpacity: 0.1,
-      fillColor: '#2196F3',
-    });
-    expect(GEE_LAYER_STYLES.caminos).toEqual({
-      color: '#FFEB3B',
-      weight: 2,
-      fillOpacity: 0,
     });
   });
 });

@@ -11,8 +11,8 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useState } from 'react';
-import { exchangeCodeForToken, resetPasswordWithToken } from '../../lib/auth';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { exchangeEmailCode, resetPasswordWithToken } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { validatePassword } from '../../lib/validators';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
@@ -30,40 +30,62 @@ interface ResetPasswordFormProps {
   code?: string;
 }
 
+type CodeExchangeState = 'idle' | 'loading' | 'retryable-error' | 'terminal-error';
+
 export default function ResetPasswordForm({ token, code }: ResetPasswordFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // F5-E: when the URL carries ``?code=`` instead of ``?token=``, hit
-  // the exchange endpoint first to get the real JWT, then proceed as
-  // before. ``effectiveToken`` is what the password-reset call uses.
-  // ``exchanging`` gates the UI behind a loader so the user doesn't
-  // see "Invalid link" while the network round-trip is in flight.
-  const [exchanging, setExchanging] = useState<boolean>(!!code && !token);
+  const [exchangeState, setExchangeState] = useState<CodeExchangeState>(
+    code && !token ? 'loading' : 'idle'
+  );
   const [effectiveToken, setEffectiveToken] = useState<string>(token);
+  const mountedRef = useRef(true);
+  const exchangeInFlightRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!effectiveToken && code) {
-      setExchanging(true);
-      exchangeCodeForToken(code, 'reset')
-        .then((resolved) => {
-          if (cancelled) return;
-          if (resolved) {
-            setEffectiveToken(resolved);
-          }
-          setExchanging(false);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setExchanging(false);
-        });
-    }
+    mountedRef.current = true;
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
-  }, [code, effectiveToken]);
+  }, []);
+
+  const exchangeCode = useCallback(async () => {
+    if (!code || token || exchangeInFlightRef.current) return;
+
+    exchangeInFlightRef.current = true;
+    if (mountedRef.current) setExchangeState('loading');
+
+    try {
+      const exchange = await exchangeEmailCode(code, 'reset');
+      if (!mountedRef.current) return;
+
+      if (exchange.status === 'success') {
+        setEffectiveToken(exchange.token);
+        setExchangeState('idle');
+      } else if (exchange.status === 'terminal-error') {
+        setExchangeState('terminal-error');
+      } else {
+        setExchangeState('retryable-error');
+      }
+    } catch {
+      if (mountedRef.current) setExchangeState('retryable-error');
+    } finally {
+      exchangeInFlightRef.current = false;
+    }
+  }, [code, token]);
+
+  useEffect(() => {
+    if (token) {
+      setEffectiveToken(token);
+      setExchangeState('idle');
+      return;
+    }
+
+    if (code && !effectiveToken) {
+      void exchangeCode();
+    }
+  }, [code, effectiveToken, exchangeCode, token]);
 
   const form = useForm({
     initialValues: {
@@ -97,10 +119,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     }
   };
 
-  // F5-E: code is being exchanged for the real token. Show a loader
-  // so the user doesn't see the "Invalid link" state during the
-  // round-trip.
-  if (exchanging) {
+  if (exchangeState === 'loading') {
     return (
       <Center mih="80vh">
         <Paper shadow="md" p="xl" radius="md" w={400}>
@@ -115,14 +134,43 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     );
   }
 
-  if (!effectiveToken) {
+  if (exchangeState === 'retryable-error') {
+    return (
+      <Center mih="80vh">
+        <Paper shadow="md" p="xl" radius="md" w={400}>
+          <Stack gap="md">
+            <Alert
+              color="yellow"
+              icon={<IconAlertCircle size={16} />}
+              title="No pudimos verificar el enlace"
+            >
+              Hubo un problema temporal de conexión. El enlace sigue disponible para reintentar.
+            </Alert>
+            <Button type="button" fullWidth onClick={exchangeCode}>
+              Reintentar verificación
+            </Button>
+            <Button
+              variant="subtle"
+              fullWidth
+              component="a"
+              href={withBasePath('/forgot-password')}
+            >
+              Solicitar nuevo enlace
+            </Button>
+          </Stack>
+        </Paper>
+      </Center>
+    );
+  }
+
+  if (exchangeState === 'terminal-error' || !effectiveToken) {
     return (
       <Center mih="80vh">
         <Paper shadow="md" p="xl" radius="md" w={400}>
           <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace invalido">
             <Text size="sm">
-              Este enlace de recuperacion es invalido o expiró. Solicita uno
-              nuevo desde la pagina de login.
+              Este enlace de recuperacion es invalido o expiró. Solicita uno nuevo desde la pagina
+              de login.
             </Text>
           </Alert>
           <Button

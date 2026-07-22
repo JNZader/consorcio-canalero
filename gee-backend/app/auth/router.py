@@ -1,5 +1,7 @@
 """Auth router — JWT login/register + Google OAuth."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -232,6 +234,7 @@ async def logout_all_sessions(
 class _ExchangeCodeRequest(BaseModel):
     code: str
     purpose: str  # "verify" or "reset"
+    exchange_id: UUID | None = None
 
 
 class _ExchangeCodeResponse(BaseModel):
@@ -254,9 +257,14 @@ async def exchange_code(
     modes into one shape so enumeration can't distinguish "never
     existed" from "expired two minutes ago".
     """
-    from app.auth.email_codes import exchange_code_for_token
+    from app.auth.email_codes import consume_email_code
 
-    token = await exchange_code_for_token(session, code=payload.code, purpose=payload.purpose)
+    token = await consume_email_code(
+        session,
+        code=payload.code,
+        purpose=payload.purpose,
+        exchange_id=payload.exchange_id,
+    )
     await session.commit()
     if token is None:
         raise HTTPException(status_code=400, detail="Código inválido o expirado.")

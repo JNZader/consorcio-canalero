@@ -3,7 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
-import { API_URL } from '../../../lib/api';
+import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { useConfigStore } from '../../../stores/configStore';
 
@@ -87,6 +87,7 @@ export function useImageExplorerMap() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
+    const controller = new AbortController();
     const addZona = (geojson: unknown) => {
       const sourceId = 'zona-boundary';
       const layerId = 'zona-boundary-line';
@@ -104,17 +105,20 @@ export function useImageExplorerMap() {
       zonaLayerIdRef.current = layerId;
     };
     const doFetch = () => {
-      fetch(`${API_URL}/api/v2/geo/gee/layers/zona`)
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error('No se pudo cargar la capa zona');
-        })
+      apiFetch<unknown>('/geo/gee/layers/zona', {
+        signal: controller.signal,
+        timeout: GEE_TIMEOUT,
+      })
         .then(addZona)
-        .catch((err) => logger.warn('Error cargando capa zona:', err));
+        .catch((err) => {
+          if (!controller.signal.aborted) logger.warn('Error cargando capa zona:', err);
+        });
     };
     if (map.isStyleLoaded()) doFetch();
     else map.once('load', doFetch);
     return () => {
+      controller.abort();
+      map.off('load', doFetch);
       const current = mapInstanceRef.current;
       if (current && zonaLayerIdRef.current) {
         if (current.getLayer(zonaLayerIdRef.current)) current.removeLayer(zonaLayerIdRef.current);

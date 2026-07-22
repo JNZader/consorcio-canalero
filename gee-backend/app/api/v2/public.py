@@ -31,6 +31,7 @@ from app.domains.capas.repository import CapasRepository
 from app.domains.denuncias.models import Denuncia
 from app.domains.denuncias.service import DenunciaService
 from app.domains.monitoring.models import Sugerencia
+from app.domains.geo.public_map import router as public_map_router
 
 # ──────────────────────────────────────────────
 # ROUTERS
@@ -38,6 +39,7 @@ from app.domains.monitoring.models import Sugerencia
 
 public_router = APIRouter(prefix="/public", tags=["public"])
 admin_publish_router = APIRouter(prefix="/admin/publish", tags=["admin-publish"])
+public_router.include_router(public_map_router)
 
 
 # ──────────────────────────────────────────────

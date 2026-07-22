@@ -3,15 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useImageComparison } from '../../../hooks/useImageComparison';
 import { useSelectedImage } from '../../../hooks/useSelectedImage';
-import { API_URL } from '../../../lib/api';
+import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import {
   type ImageResultLike,
   type ImageSceneLike,
   type ImageSensor,
   buildVisualizationOptions,
-  isOpticalSensor,
   createSelectedImageFromResult,
+  isOpticalSensor,
 } from './imageExplorerUtils';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
@@ -70,7 +70,7 @@ function isImageScene(value: unknown): value is ImageSceneLike {
   );
 }
 
-const API_BASE = `${API_URL}/api/v2/geo/gee/images`;
+const API_BASE = '/geo/gee/images';
 
 export function useImageExplorerController() {
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -138,14 +138,10 @@ export function useImageExplorerController() {
           mode: isLandsat7Composite ? 'composite' : 'scene',
         });
         if (isOpticalSensor(sensor)) params.append('max_cloud', maxCloud);
-        const response = await fetch(`${API_BASE}/${endpoint}?${params}`, {
+        const data = await apiFetch<ImageResultLike>(`${API_BASE}/${endpoint}?${params}`, {
           signal: controller.signal,
+          timeout: GEE_TIMEOUT,
         });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Error fetching image');
-        }
-        const data: ImageResultLike = await response.json();
         if (controller.signal.aborted) return;
         setResult(data);
         setSelectedSceneId(null);
@@ -168,15 +164,10 @@ export function useImageExplorerController() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(
+        const data = await apiFetch<ImageResultLike>(
           `${API_BASE}/historic-floods/${floodId}?visualization=${visualization}`,
-          { signal: controller.signal }
+          { signal: controller.signal, timeout: GEE_TIMEOUT }
         );
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Error fetching historic flood');
-        }
-        const data: ImageResultLike = await response.json();
         if (controller.signal.aborted) return;
         setResult(data);
         updateTileLayer(data.tile_url);
@@ -269,25 +260,19 @@ export function useImageExplorerController() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/visualizations`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Error fetching visualizations (${res.status})`);
-        return res.json();
-      })
-      .then((data: unknown) => {
+    const controller = new AbortController();
+    apiFetch<unknown>(`${API_BASE}/visualizations`, { signal: controller.signal })
+      .then((data) => {
         const items = Array.isArray(data) ? data.filter(isVisualization) : [];
         setVisualizations(items);
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         logger.error('Error fetching visualizations:', err);
         setVisualizations([]);
       });
-    fetch(`${API_BASE}/historic-floods`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Error fetching historic floods (${res.status})`);
-        return res.json();
-      })
-      .then((data: unknown) => {
+    apiFetch<unknown>(`${API_BASE}/historic-floods`, { signal: controller.signal })
+      .then((data) => {
         const floods =
           data && typeof data === 'object' && Array.isArray((data as { floods?: unknown[] }).floods)
             ? (data as { floods: unknown[] }).floods.filter(isHistoricFlood)
@@ -295,9 +280,11 @@ export function useImageExplorerController() {
         setHistoricFloods(floods);
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         logger.error('Error fetching historic floods:', err);
         setHistoricFloods([]);
       });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -312,12 +299,11 @@ export function useImageExplorerController() {
       sensor,
     });
     if (isOpticalSensor(sensor)) params.append('max_cloud', maxCloud);
-    fetch(`${API_BASE}/available-dates?${params}`, { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('Error fetching available dates');
-        return res.json();
-      })
-      .then((data: AvailableDatesResponse) => setAvailableDates(normalizeUniqueDates(data.dates)))
+    apiFetch<AvailableDatesResponse>(`${API_BASE}/available-dates?${params}`, {
+      signal: controller.signal,
+      timeout: GEE_TIMEOUT,
+    })
+      .then((data) => setAvailableDates(normalizeUniqueDates(data.dates)))
       .catch((err) => {
         if (controller.signal.aborted) return;
         logger.error('Error fetching available dates:', err);
@@ -354,12 +340,11 @@ export function useImageExplorerController() {
       visualization,
       max_cloud: maxCloud,
     });
-    fetch(`${API_BASE}/scenes/${sensor}?${params}`, { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('Error fetching scenes');
-        return res.json();
-      })
-      .then((data: ScenesResponse) => {
+    apiFetch<ScenesResponse>(`${API_BASE}/scenes/${sensor}?${params}`, {
+      signal: controller.signal,
+      timeout: GEE_TIMEOUT,
+    })
+      .then((data) => {
         const safeScenes = Array.isArray(data.scenes) ? data.scenes.filter(isImageScene) : [];
         setScenes(safeScenes);
       })

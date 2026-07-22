@@ -26,6 +26,7 @@ export {
   API_PREFIX,
   DEFAULT_TIMEOUT,
   LONG_TIMEOUT,
+  GEE_TIMEOUT,
   HEALTH_TIMEOUT,
   apiFetch,
   getAuthToken,
@@ -73,6 +74,9 @@ export type {
   ImagenMapaParams,
   ImagenComparacionParams,
   ImagenMapaResponse,
+  MapImageResult,
+  PublicCurrentMapImage,
+  PublicCurrentMapImageResponse,
 } from './mapImage';
 
 // ===========================================

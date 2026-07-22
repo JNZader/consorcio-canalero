@@ -11,6 +11,11 @@ const { isValidSelectedImageMock, loggerMock, mapImageApiMock } = vi.hoisted(() 
   },
   mapImageApiMock: {
     getImageParams: vi.fn().mockResolvedValue({ imagen_principal: null, imagen_comparacion: null }),
+    getPublicCurrentImage: vi.fn().mockResolvedValue({
+      status: 'unavailable',
+      image: null,
+      reason: 'not_configured',
+    }),
     saveImagenPrincipal: vi.fn().mockResolvedValue({}),
     saveImagenComparacion: vi.fn().mockResolvedValue({}),
     regenerateTile: vi.fn().mockResolvedValue({}),
@@ -63,15 +68,10 @@ describe('useSelectedImage', () => {
     });
 
     isValidSelectedImageMock.mockReturnValue(true);
-    mapImageApiMock.getImageParams.mockResolvedValue({ imagen_principal: null, imagen_comparacion: null });
-    mapImageApiMock.regenerateTile.mockResolvedValue({
-      tile_url: 'https://tiles.test/restored',
-      target_date: '2026-03-05',
-      sensor: 'Sentinel-2',
-      visualization: 'true_color',
-      visualization_description: 'Natural color',
-      collection: 'sentinel-2',
-      images_count: 2,
+    mapImageApiMock.getPublicCurrentImage.mockResolvedValue({
+      status: 'unavailable',
+      image: null,
+      reason: 'not_configured',
     });
   });
 
@@ -204,29 +204,29 @@ describe('useSelectedImageListener', () => {
   });
 
   it('restores from backend when there is no local image or the tile is stale', async () => {
-    mapImageApiMock.getImageParams.mockResolvedValue({
-      imagen_principal: {
-        sensor: 'Sentinel-2',
+    mapImageApiMock.getPublicCurrentImage.mockResolvedValue({
+      status: 'available',
+      image: {
+        tile_url: 'https://tiles.test/restored',
         target_date: '2026-03-05',
+        sensor: 'Sentinel-2',
         visualization: 'true_color',
+        visualization_description: 'Natural color',
+        images_count: 2,
+        days_buffer: 10,
+        max_cloud: 40,
+        mode: 'scene',
       },
-      imagen_comparacion: null,
-    });
-    mapImageApiMock.regenerateTile.mockResolvedValue({
-      tile_url: 'https://tiles.test/restored',
-      target_date: '2026-03-05',
-      sensor: 'Sentinel-2',
-      visualization: 'true_color',
-      visualization_description: 'Natural color',
-      collection: 'sentinel-2',
-      images_count: 2,
+      reason: null,
     });
 
     const { result } = renderHook(() => useSelectedImageListener());
 
     await waitFor(() => expect(result.current?.tile_url).toBe('https://tiles.test/restored'));
-    expect(mapImageApiMock.getImageParams).toHaveBeenCalled();
-    expect(mapImageApiMock.regenerateTile).toHaveBeenCalled();
+    expect(mapImageApiMock.getPublicCurrentImage).toHaveBeenCalledTimes(1);
+    expect(mapImageApiMock.getImageParams).not.toHaveBeenCalled();
+    expect(mapImageApiMock.regenerateTile).not.toHaveBeenCalled();
+    expect(result.current?.collection).toBe('server-approved');
   });
 });
 

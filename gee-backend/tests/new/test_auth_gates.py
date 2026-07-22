@@ -12,6 +12,8 @@ lands, add it here in the same PR.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -216,6 +218,62 @@ class TestExchangeCodeEndpoint:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 400
+
+    def test_exchange_code_forwards_optional_uuid_exchange_id(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        from app.auth import email_codes
+
+        calls: list[tuple[str, str, uuid.UUID | None]] = []
+
+        async def fake_consume_email_code(
+            session,
+            *,
+            code: str,
+            purpose: str,
+            exchange_id: uuid.UUID | None,
+        ) -> str:
+            _ = session
+            calls.append((code, purpose, exchange_id))
+            return "fake-jwt-token"
+
+        monkeypatch.setattr(email_codes, "consume_email_code", fake_consume_email_code)
+
+        omitted = client.post(
+            "/api/v2/auth/exchange-code",
+            json={"code": "LEGACY01", "purpose": "reset"},
+        )
+        assert omitted.status_code == 200
+        assert omitted.json() == {"token": "fake-jwt-token"}
+
+        exchange_id = uuid.uuid4()
+        supplied = client.post(
+            "/api/v2/auth/exchange-code",
+            json={
+                "code": "RETRY001",
+                "purpose": "verify",
+                "exchange_id": str(exchange_id),
+            },
+        )
+        assert supplied.status_code == 200
+        assert supplied.json() == {"token": "fake-jwt-token"}
+        assert calls == [
+            ("LEGACY01", "reset", None),
+            ("RETRY001", "verify", exchange_id),
+        ]
+
+        malformed = client.post(
+            "/api/v2/auth/exchange-code",
+            json={
+                "code": "BADUUID1",
+                "purpose": "reset",
+                "exchange_id": "not-a-uuid",
+            },
+        )
+        assert malformed.status_code == 422
+        assert len(calls) == 2
 
 
 class TestForceRevokeAuthGate:

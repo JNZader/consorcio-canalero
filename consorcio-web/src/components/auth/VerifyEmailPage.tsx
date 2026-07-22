@@ -1,6 +1,10 @@
 import { Alert, Button, Center, Loader, Paper, Stack, Text, Title } from '@mantine/core';
-import { useEffect, useState } from 'react';
-import { exchangeCodeForToken, verifyEmailWithToken } from '../../lib/auth';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type EmailCodeExchangeResult,
+  exchangeEmailCode,
+  verifyEmailWithToken,
+} from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { IconAlertCircle, IconCheck } from '../ui/icons';
 
@@ -11,41 +15,73 @@ interface VerifyEmailPageProps {
   code?: string;
 }
 
-type VerificationState = 'loading' | 'success' | 'error';
+type VerificationState = 'loading' | 'success' | 'terminal-error' | 'retryable-error';
+
+const INVALID_LINK_MESSAGE = 'El enlace de verificación es inválido o expiró.';
+
+function resolveVerificationToken(
+  token: string,
+  code?: string
+): Promise<EmailCodeExchangeResult> | EmailCodeExchangeResult {
+  if (token) return { status: 'success', token };
+  if (!code) return { status: 'terminal-error', reason: 'invalid-or-expired' };
+  return exchangeEmailCode(code, 'verify');
+}
 
 export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
   const [state, setState] = useState<VerificationState>('loading');
-  const [error, setError] = useState('El enlace de verificación es inválido o expiró.');
+  const [error, setError] = useState(INVALID_LINK_MESSAGE);
+  const mountedRef = useRef(true);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
-    let active = true;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-    async function verifyEmail() {
-      let resolvedToken = token;
-      if (!resolvedToken && code) {
-        resolvedToken = (await exchangeCodeForToken(code, 'verify')) ?? '';
+  const verifyEmail = useCallback(async () => {
+    if (inFlightRef.current) return;
+
+    inFlightRef.current = true;
+    if (mountedRef.current) {
+      setState('loading');
+      setError(INVALID_LINK_MESSAGE);
+    }
+
+    try {
+      const exchange = await resolveVerificationToken(token, code);
+      if (!mountedRef.current) return;
+
+      if (exchange.status === 'retryable-error') {
+        setState('retryable-error');
+        return;
       }
-
-      if (!resolvedToken) {
-        if (active) setState('error');
+      if (exchange.status === 'terminal-error') {
+        setState('terminal-error');
         return;
       }
 
-      const result = await verifyEmailWithToken(resolvedToken);
-      if (!active) return;
+      const result = await verifyEmailWithToken(exchange.token);
+      if (!mountedRef.current) return;
+
       if (result.success) {
         setState('success');
       } else {
-        setError(result.error || 'El enlace de verificación es inválido o expiró.');
-        setState('error');
+        setError(result.error || INVALID_LINK_MESSAGE);
+        setState('terminal-error');
       }
+    } catch {
+      if (mountedRef.current) setState('retryable-error');
+    } finally {
+      inFlightRef.current = false;
     }
-
-    void verifyEmail();
-    return () => {
-      active = false;
-    };
   }, [code, token]);
+
+  useEffect(() => {
+    void verifyEmail();
+  }, [verifyEmail]);
 
   return (
     <Center mih="80vh">
@@ -73,7 +109,25 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
           </Stack>
         )}
 
-        {state === 'error' && (
+        {state === 'retryable-error' && (
+          <Stack gap="md">
+            <Alert
+              color="yellow"
+              icon={<IconAlertCircle size={16} />}
+              title="No pudimos verificar el enlace"
+            >
+              Hubo un problema temporal de conexión. El enlace sigue disponible para reintentar.
+            </Alert>
+            <Button type="button" fullWidth onClick={verifyEmail}>
+              Reintentar verificación
+            </Button>
+            <Button component="a" href={withBasePath('/login')} variant="subtle" fullWidth>
+              Volver al inicio de sesión
+            </Button>
+          </Stack>
+        )}
+
+        {state === 'terminal-error' && (
           <Stack gap="md">
             <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
               {error}

@@ -1,6 +1,9 @@
 /**
- * Hook for loading GeoJSON layers from GEE backend.
- * Centralizes layer loading logic used across multiple map components.
+ * Hook for loading the narrow public-map GeoJSON projections.
+ *
+ * The complete GEE layer family is operator-only. Public callers may request
+ * only the fixed zona and caminos projections; legacy sub-basin identifiers are
+ * reported as unavailable and are never interpolated into a URL.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -16,9 +19,29 @@ import {
   shouldSetError,
 } from './geeLayerHelpers';
 
-// Default layer names available from GEE
 export const GEE_LAYER_NAMES = ['zona', 'candil', 'ml', 'noroeste', 'norte', 'caminos'] as const;
 export type GEELayerName = (typeof GEE_LAYER_NAMES)[number];
+
+export const PUBLIC_GEE_LAYER_NAMES = ['zona', 'caminos'] as const;
+export type PublicGEELayerName = (typeof PUBLIC_GEE_LAYER_NAMES)[number];
+export const PUBLIC_GEE_LAYER_UNAVAILABLE_MESSAGE =
+  'Las capas GEE solicitadas no estan disponibles en el mapa publico';
+
+const PUBLIC_GEE_LAYER_ENDPOINTS: Record<PublicGEELayerName, string> = {
+  zona: '/api/v2/public/map/gee/zona',
+  caminos: '/api/v2/public/map/gee/caminos',
+};
+
+interface PublicMapProjectionResponse {
+  status: 'available' | 'unavailable';
+  projection: PublicGEELayerName;
+  data: unknown;
+  reason: 'not_configured' | 'configuration_not_approved' | 'temporarily_unavailable' | null;
+}
+
+function isPublicGEELayerName(name: GEELayerName): name is PublicGEELayerName {
+  return (PUBLIC_GEE_LAYER_NAMES as readonly string[]).includes(name);
+}
 
 // Layer colors for styling and legends
 export const GEE_LAYER_COLORS: Record<GEELayerName, string> = {
@@ -30,9 +53,7 @@ export const GEE_LAYER_COLORS: Record<GEELayerName, string> = {
   caminos: '#FFEB3B',
 };
 
-/** GEE layer paint properties for MapLibre GL rendering.
- *  Previously named GEE_LAYER_STYLES and typed as Leaflet PathOptions — now
- *  typed as plain MapLibre-compatible paint descriptors. */
+/** GEE layer paint properties for MapLibre GL rendering. */
 export interface GEELayerPaint {
   color: string;
   weight: number;
@@ -49,52 +70,64 @@ export const GEE_LAYER_STYLES: Record<GEELayerName, GEELayerPaint> = {
   caminos: { color: '#FFEB3B', weight: 2, fillOpacity: 0 },
 };
 
-// Layer data structure
 export interface GEELayerData {
   name: GEELayerName;
   data: FeatureCollection;
 }
 
-// Layers map type
 export type GEELayersMap = Partial<Record<GEELayerName, FeatureCollection>>;
 
 interface UseGEELayersOptions {
-  /** Layer names to load. Defaults to all layers. */
+  /** Layer names to load. Publicly allowlisted names are zona and caminos. */
   layerNames?: readonly GEELayerName[];
   /** Whether to load layers immediately. Defaults to true. */
   enabled?: boolean;
 }
 
-async function loadLayer(name: GEELayerName): Promise<[GEELayerName, FeatureCollection | null]> {
+async function loadPublicLayer(
+  name: PublicGEELayerName
+): Promise<[GEELayerName, FeatureCollection | null]> {
   try {
-    const response = await fetch(`${API_URL}/api/v2/geo/gee/layers/${name}`);
-    if (response.ok) {
-      const rawData = await response.json();
-      const validatedData = parseFeatureCollection(rawData);
-      if (!validatedData) {
-        logger.warn(`GEE layer '${name}' returned invalid GeoJSON structure`);
-        return [name, null];
-      }
-      return [name, validatedData];
+    const response = await fetch(`${API_URL}${PUBLIC_GEE_LAYER_ENDPOINTS[name]}`);
+    if (!response.ok) {
+      logger.warn(`Public GEE projection '${name}' not available: ${response.status}`);
+      return [name, null];
     }
-    logger.warn(`GEE layer '${name}' not available: ${response.status}`);
-    return [name, null];
+
+    const envelope = (await response.json()) as PublicMapProjectionResponse;
+    if (envelope.status !== 'available') {
+      logger.warn(
+        `Public GEE projection '${name}' is unavailable: ${envelope.reason ?? 'unknown'}`
+      );
+      return [name, null];
+    }
+    const validatedData = parseFeatureCollection(envelope.data);
+    if (!validatedData) {
+      logger.warn(`Public GEE projection '${name}' returned invalid GeoJSON structure`);
+      return [name, null];
+    }
+    return [name, validatedData];
   } catch (err) {
-    logger.warn(`Error loading GEE layer '${name}'`, err);
+    logger.warn(`Error loading public GEE projection '${name}'`, err);
     return [name, null];
   }
 }
 
 export function useGEELayers(options: UseGEELayersOptions = {}) {
-  const { layerNames = GEE_LAYER_NAMES, enabled = true } = options;
+  const { layerNames = PUBLIC_GEE_LAYER_NAMES, enabled = true } = options;
+  const publicLayerNames = layerNames.filter(isPublicGEELayerName);
+  const unavailableLayers = layerNames.filter((name) => !isPublicGEELayerName(name));
 
   const query = useQuery({
     queryKey: queryKeys.geeLayers(layerNames),
     queryFn: async () => {
-      const results = await Promise.all(layerNames.map(loadLayer));
-      const { layers: newLayers, loadedCount } = processLoadResults(results);
+      if (publicLayerNames.length === 0 && unavailableLayers.length > 0) {
+        throw new Error(PUBLIC_GEE_LAYER_UNAVAILABLE_MESSAGE);
+      }
 
-      if (shouldSetError(loadedCount, layerNames.length)) {
+      const results = await Promise.all(publicLayerNames.map(loadPublicLayer));
+      const { layers: newLayers, loadedCount } = processLoadResults(results);
+      if (shouldSetError(loadedCount, publicLayerNames.length)) {
         throw new Error(NO_LAYERS_ERROR_MESSAGE);
       }
       return newLayers;
@@ -109,6 +142,7 @@ export function useGEELayers(options: UseGEELayersOptions = {}) {
   return {
     layers,
     layersArray,
+    unavailableLayers,
     loading: query.isLoading,
     error: query.error?.message ?? null,
     reload: query.refetch,
