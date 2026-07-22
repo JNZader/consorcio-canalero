@@ -147,6 +147,9 @@ describe('accessibility helpers', () => {
     await userEvent.click(screen.getByRole('button', { name: /buscar/i }));
     await waitFor(() => {
       expect(screen.getByText(/No se encontro la direccion/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /buscar/i }).querySelector('[aria-hidden="true"]')
+      ).not.toBeInTheDocument();
     });
   });
 
