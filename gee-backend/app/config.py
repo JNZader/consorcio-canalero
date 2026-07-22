@@ -18,6 +18,33 @@ INSECURE_DEFAULTS = {
 MIN_JWT_SECRET_LENGTH = 64  # bytes — matches `openssl rand -hex 32` recommendation
 
 
+def database_sync_url(value: str) -> str:
+    """Return a URL that is safe for SQLAlchemy's synchronous engine.
+
+    DATABASE_URL is canonical and documented with the synchronous PostgreSQL
+    driver. The former asyncpg spelling remains accepted for compatibility,
+    but it is normalized before any create_engine call.
+    """
+    driver, separator, remainder = value.partition("://")
+    if not separator:
+        raise ValueError("DATABASE_URL must be an absolute SQLAlchemy URL")
+    if driver in {"postgres", "postgresql+asyncpg"}:
+        driver = "postgresql"
+    return f"{driver}://{remainder}"
+
+
+def database_async_url(value: str) -> str:
+    """Derive the asyncpg URL used exclusively by create_async_engine."""
+    driver, separator, remainder = value.partition("://")
+    if not separator:
+        raise ValueError("DATABASE_URL must be an absolute SQLAlchemy URL")
+    if driver in {"postgres", "postgresql", "postgresql+psycopg", "postgresql+psycopg2"}:
+        driver = "postgresql+asyncpg"
+    if driver != "postgresql+asyncpg":
+        raise ValueError("Async database access requires a PostgreSQL DATABASE_URL")
+    return f"{driver}://{remainder}"
+
+
 class Settings(BaseSettings):
     """Configuracion de la aplicacion."""
 
@@ -38,15 +65,11 @@ class Settings(BaseSettings):
     # because psycopg2 does NOT use server-side prepares by default.
     # Leave ``False`` for direct-to-postgres deploys.
     use_pgbouncer: bool = False
-    # Phase 5 / F5-E: SMTP-body PII hardening. When ``True``, verify
-    # and reset emails carry an 8-char alphanumeric code that the SPA
-    # exchanges for the JWT token via ``POST /auth/exchange-code``.
-    # When ``False`` (DEFAULT), the legacy behaviour is preserved —
-    # the email URL still embeds the token directly so existing
-    # SPA versions keep working. Flip to ``True`` only AFTER the SPA
-    # is updated to handle the ``?code=`` query parameter, otherwise
-    # users clicking the email link land on a page the SPA ignores.
-    use_one_time_codes: bool = False
+    # Phase 5 / F5-E: SMTP-body PII hardening. By default, verify and
+    # reset emails carry an 8-char alphanumeric code that the SPA exchanges
+    # for the JWT token via POST /auth/exchange-code. The current SPA accepts
+    # both ?code= and legacy ?token=; false is a compatibility escape hatch.
+    use_one_time_codes: bool = True
 
     # Google Earth Engine
     gee_key_file_path: Optional[str] = None
@@ -137,6 +160,16 @@ class Settings(BaseSettings):
     # when persisting; `app.mount("/uploads", StaticFiles(...))` serves it.
     uploads_root: str = "/app/uploads"
     uploads_public_base: str = "/uploads"
+
+    @property
+    def database_sync_url(self) -> str:
+        """Canonical URL for sync SQLAlchemy consumers and Alembic."""
+        return database_sync_url(self.database_url)
+
+    @property
+    def database_async_url(self) -> str:
+        """Deterministically derived asyncpg URL for fastapi-users."""
+        return database_async_url(self.database_url)
 
     @property
     def cors_origins_list(self) -> list[str]:

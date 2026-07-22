@@ -36,12 +36,7 @@ from app.core.middleware import (
     RequestLoggingMiddleware,
 )
 from app.core.rate_limit import get_auth_rate_limiter, get_rate_limiter
-from app.core.health import (
-    check_alembic_health,
-    check_database_health,
-    check_gee_health,
-    check_redis_health,
-)
+from app.core.health import run_health_checks
 
 APP_VERSION = "2.0.0"
 
@@ -235,12 +230,12 @@ os.makedirs(settings.uploads_root, exist_ok=True)
 
 _DENUNCIA_FILENAME_RE = re.compile(
     r"(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-    r"\.(?P<extension>jpg|jpeg|png|webp)",
+    r"(?:-(?P<suffix>[0-9a-f]{32}))?\.(?P<extension>jpg|jpeg|png|webp)",
     re.IGNORECASE,
 )
 
 
-def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str] | None:
+def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str, str] | None:
     """Return a canonical denuncia id and allow-listed extension.
 
     fullmatch is intentional: the dollar anchor alone also matches immediately
@@ -251,6 +246,9 @@ def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str] | Non
     match = _DENUNCIA_FILENAME_RE.fullmatch(filename)
     if match is None:
         return None
+
+    suffix_value = match.group("suffix")
+    canonical_suffix = "" if suffix_value is None else f"-{int(suffix_value, 16):032x}"
 
     extension_value = match.group("extension").lower()
     if extension_value == "jpg":
@@ -264,7 +262,7 @@ def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str] | Non
     else:  # pragma: no cover - defence in depth if the regex changes
         return None
 
-    return uuid.UUID(match.group("uuid")), extension
+    return uuid.UUID(match.group("uuid")), canonical_suffix, extension
 
 
 def _read_denuncia_photo_bytes(uploads_root: str, canonical_filename: str) -> bytes | None:
@@ -369,7 +367,7 @@ async def get_denuncia_photo(
         # Either an attempt at path traversal or just a bad URL - both
         # respond 404 so the surface stays uniform.
         return Response(status_code=404)
-    denuncia_id, extension = parsed_filename
+    denuncia_id, canonical_suffix, extension = parsed_filename
 
     # We need a DB session here but the dependency tree above didn't
     # give us one. Open a short-lived session manually rather than
@@ -393,7 +391,7 @@ async def get_denuncia_photo(
     # Reconstruct the disk key from the trusted database UUID and a constant
     # allow-listed extension. Never use the request string or foto_url as a
     # path: the latter is legacy display metadata, not an authority source.
-    canonical_filename = f"{uuid.UUID(str(denuncia.id))}.{extension}"
+    canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
     content = await asyncio.to_thread(
         _read_denuncia_photo_bytes,
         settings.uploads_root,
@@ -458,15 +456,8 @@ async def ready(response: Response):
     fingerprinting information. Operators who need the breakdown should
     hit ``/admin/ready/detailed`` (operator+ auth required).
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    alembic_health = await check_alembic_health()
-
-    critical_ok = (
-        db_health["status"] == "healthy"
-        and redis_health["status"] == "healthy"
-        and alembic_health["status"] == "healthy"
-    )
+    services = await run_health_checks()
+    critical_ok = all(service["status"] == "healthy" for service in services.values())
 
     if not critical_ok:
         response.status_code = 503
@@ -485,15 +476,8 @@ async def health():
     operator auth (it leaked PostGIS version + Alembic SHA + GCP project
     id to unauthenticated callers).
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    alembic_health = await check_alembic_health()
-
-    is_healthy = (
-        db_health["status"] == "healthy"
-        and redis_health["status"] == "healthy"
-        and alembic_health["status"] == "healthy"
-    )
+    services = await run_health_checks()
+    is_healthy = all(service["status"] == "healthy" for service in services.values())
 
     return {"status": "healthy" if is_healthy else "degraded"}
 
@@ -510,19 +494,8 @@ async def ready_detailed(
     because that information is useful for debugging but actively useful
     to an attacker doing reconnaissance.
     """
-    db_health = await check_database_health()
-    redis_health = await check_redis_health()
-    gee_health = await check_gee_health()
-    alembic_health = await check_alembic_health()
-    return {
-        "services": {
-            "database": db_health,
-            "redis": redis_health,
-            "gee": gee_health,
-            "alembic": alembic_health,
-        },
-        "version": APP_VERSION,
-    }
+    services = await run_health_checks(include_gee=True)
+    return {"services": services, "version": APP_VERSION}
 
 
 if __name__ == "__main__":

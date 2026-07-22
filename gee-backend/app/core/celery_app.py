@@ -13,6 +13,37 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # Configurable periodic task intervals (hours)
 GEO_ALERT_EVAL_HOURS = int(os.environ.get("GEO_ALERT_EVAL_HOURS", "6"))
 GEO_MATVIEW_REFRESH_HOURS = int(os.environ.get("GEO_MATVIEW_REFRESH_HOURS", "6"))
+# Recoverable geo/GEE tasks may legitimately run for hours. Keep the soft/hard
+# limits below Redis visibility, and reconciliation beyond visibility, so a
+# healthy long task is neither duplicated nor declared stale.
+LONG_TASK_SOFT_TIME_LIMIT_SECONDS = int(
+    os.environ.get("LONG_TASK_SOFT_TIME_LIMIT_SECONDS", "10800")
+)
+LONG_TASK_TIME_LIMIT_SECONDS = int(os.environ.get("LONG_TASK_TIME_LIMIT_SECONDS", "11100"))
+CELERY_VISIBILITY_TIMEOUT_SECONDS = int(
+    os.environ.get("CELERY_VISIBILITY_TIMEOUT_SECONDS", "14400")
+)
+GEO_STALE_JOB_MINUTES = int(os.environ.get("GEO_STALE_JOB_MINUTES", "300"))
+
+RECOVERABLE_LONG_TASKS = frozenset(
+    {
+        "geo.process_dem_pipeline",
+        "geo.run_full_dem_pipeline",
+        "gee.analyze_flood",
+        "gee.supervised_classification",
+        "gee.sar_temporal",
+    }
+)
+RECOVERABLE_TASK_ANNOTATIONS = {
+    task_name: {
+        "acks_late": True,
+        "acks_on_failure_or_timeout": True,
+        "reject_on_worker_lost": True,
+        "soft_time_limit": LONG_TASK_SOFT_TIME_LIMIT_SECONDS,
+        "time_limit": LONG_TASK_TIME_LIMIT_SECONDS,
+    }
+    for task_name in RECOVERABLE_LONG_TASKS
+}
 
 # Create Celery instance
 celery_app = Celery(
@@ -30,6 +61,16 @@ celery_app = Celery(
 # Optional configuration
 celery_app.conf.update(
     task_track_started=True,
+    # Early acknowledgement is the safe default: several intelligence tasks
+    # create rows and are not idempotent. Only the explicit allowlist below is
+    # eligible for worker-loss redelivery.
+    task_acks_late=False,
+    task_reject_on_worker_lost=False,
+    task_annotations=RECOVERABLE_TASK_ANNOTATIONS,
+    worker_prefetch_multiplier=1,
+    broker_transport_options={"visibility_timeout": CELERY_VISIBILITY_TIMEOUT_SECONDS},
+    result_backend_transport_options={"visibility_timeout": CELERY_VISIBILITY_TIMEOUT_SECONDS},
+    visibility_timeout=CELERY_VISIBILITY_TIMEOUT_SECONDS,
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
@@ -73,6 +114,11 @@ celery_app.conf.update(
         "purge-soft-deleted-denuncias": {
             "task": "denuncias.purge_soft_deleted_denuncias",
             "schedule": crontab(minute="30", hour="4"),
+            "options": {"queue": "celery"},
+        },
+        "reconcile-stale-geo-jobs": {
+            "task": "geo.reconcile_stale_jobs",
+            "schedule": crontab(minute="*/15"),
             "options": {"queue": "celery"},
         },
     },
@@ -121,6 +167,23 @@ def purge_soft_deleted_denuncias_task() -> int:
             return await purge_soft_deleted_denuncias(session)
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="geo.reconcile_stale_jobs")
+def reconcile_stale_geo_jobs_task() -> dict[str, int]:
+    """Fail DB jobs that remained active well beyond the delivery window."""
+    from datetime import timedelta
+
+    from app.db.session import SessionLocal
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+
+    with SessionLocal() as db:
+        counts = reconcile_stale_geo_jobs(
+            db,
+            stale_after=timedelta(minutes=GEO_STALE_JOB_MINUTES),
+        )
+        db.commit()
+        return counts
 
 
 if __name__ == "__main__":

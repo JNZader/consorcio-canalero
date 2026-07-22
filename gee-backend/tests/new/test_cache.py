@@ -127,3 +127,23 @@ async def test_cache_get_handles_corrupt_json_as_miss():
     with _patch_aioredis_from_url(stub):
         result = await cache.get("k")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_cache_retries_redis_after_cooldown(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("app.core.cache.time.monotonic", lambda: clock[0])
+    failed = _stub_redis(ping_ok=False)
+    recovered = _stub_redis()
+    recovered.get.return_value = json.dumps({"recovered": True})
+    cache = JSONCache(redis_url="redis://fake", redis_retry_cooldown_seconds=5.0)
+
+    import redis.asyncio as aioredis
+
+    with patch.object(aioredis, "from_url", side_effect=[failed, recovered]) as from_url:
+        assert await cache.get("k") is None
+        assert await cache.get("k") is None
+        assert from_url.call_count == 1
+        clock[0] += 5.1
+        assert await cache.get("k") == {"recovered": True}
+        assert from_url.call_count == 2

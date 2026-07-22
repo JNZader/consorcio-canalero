@@ -26,6 +26,7 @@ import io
 import os
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Protocol
 
 from fastapi import HTTPException, UploadFile
@@ -266,8 +267,25 @@ class LocalPhotoStorage:
         # images. Returns the re-encoded bytes ready to write to disk.
         sanitized_bytes = _validate_and_strip_exif(bytes(buffer), content_type)
 
-        with full_path.open("wb") as out:
-            out.write(sanitized_bytes)
+        # Write beside the destination so os.replace is atomic on the mounted
+        # filesystem. fsync the file and parent directory before publishing the URL.
+        temp_path = full_path.with_name(f".{full_path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temp_path.open("xb") as out:
+                out.write(sanitized_bytes)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(temp_path, full_path)
+            directory_fd = os.open(full_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
 
         # Public URL: relative path under the StaticFiles mount. We persist
         # the relative form (`/uploads/denuncias/<uuid>.jpg`) so swapping
@@ -287,9 +305,9 @@ class LocalPhotoStorage:
             except FileNotFoundError:
                 continue
             except OSError:
-                # Permissions / disk error — log via the caller; storage
-                # stays best-effort.
-                continue
+                # Preserve the failure so callers do not erase the DB pointer
+                # while sensitive bytes remain on disk.
+                raise
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -297,9 +315,30 @@ class LocalPhotoStorage:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def make_denuncia_photo_key(denuncia_id: uuid.UUID | str) -> str:
-    """Canonical storage key for a denuncia photo. Stable across backends."""
-    return f"denuncias/{denuncia_id}"
+def make_denuncia_photo_key(
+    denuncia_id: uuid.UUID | str,
+    version: str | None = None,
+) -> str:
+    """Build a photo key; replacements use immutable versioned filenames."""
+    base = f"denuncias/{denuncia_id}"
+    return f"{base}-{version}" if version else base
+
+
+def photo_key_from_url(photo_url: str, public_base: str | None = None) -> str | None:
+    """Recover the exact extension-less storage key from a persisted URL."""
+    base = (public_base or settings.uploads_public_base).rstrip("/")
+    path = urlsplit(photo_url).path
+    prefix = f"{base}/"
+    if not path.startswith(prefix):
+        return None
+    relative = path[len(prefix) :]
+    suffix = Path(relative).suffix.lower().lstrip(".")
+    if suffix not in set(MIME_TO_EXTENSION.values()):
+        return None
+    key = relative[: -(len(suffix) + 1)]
+    if not key.startswith("denuncias/") or ".." in Path(key).parts:
+        return None
+    return key
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -335,6 +374,7 @@ __all__ = [
     "PhotoStorage",
     "get_photo_storage",
     "make_denuncia_photo_key",
+    "photo_key_from_url",
     "override_photo_storage",
 ]
 

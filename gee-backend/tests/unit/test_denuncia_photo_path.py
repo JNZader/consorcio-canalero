@@ -19,6 +19,8 @@ from app.auth.models import UserRole  # noqa: E402
 
 
 PHOTO_ID = uuid.UUID("abcdef12-3456-7890-abcd-ef1234567890")
+PHOTO_SUFFIX = "ABCDEF0123456789ABCDEF0123456789"
+CANONICAL_SUFFIX = f"-{int(PHOTO_SUFFIX, 16):032x}"
 
 
 @pytest.mark.parametrize(
@@ -29,23 +31,30 @@ PHOTO_ID = uuid.UUID("abcdef12-3456-7890-abcd-ef1234567890")
         f"%2e%2e%2f{PHOTO_ID}.jpg",
         unquote(f"%2e%2e%2f{PHOTO_ID}.jpg"),
         f"{PHOTO_ID}.jpg\n",
+        f"{PHOTO_ID}-{'a' * 31}.jpg",
+        f"{PHOTO_ID}-{'a' * 33}.jpg",
+        f"{PHOTO_ID}-{'g' * 32}.jpg",
     ],
 )
 def test_filename_parser_rejects_traversal_encoded_and_final_lf(filename: str):
     assert main._parse_denuncia_photo_filename(filename) is None
 
 
-def test_filename_parser_canonicalizes_uuid_and_extension():
-    parsed = main._parse_denuncia_photo_filename(f"{str(PHOTO_ID).upper()}.JPEG")
+def test_filename_parser_canonicalizes_uuid_suffix_and_extension():
+    without_suffix = main._parse_denuncia_photo_filename(f"{str(PHOTO_ID).upper()}.JPEG")
+    with_suffix = main._parse_denuncia_photo_filename(
+        f"{str(PHOTO_ID).upper()}-{PHOTO_SUFFIX}.WEBP"
+    )
 
-    assert parsed == (PHOTO_ID, "jpeg")
+    assert without_suffix == (PHOTO_ID, "", "jpeg")
+    assert with_suffix == (PHOTO_ID, CANONICAL_SUFFIX, "webp")
 
 
 def test_confined_reader_accepts_a_canonical_regular_file(tmp_path: Path):
     uploads_root = tmp_path / "uploads"
     photo_root = uploads_root / "denuncias"
     photo_root.mkdir(parents=True)
-    canonical_filename = f"{PHOTO_ID}.jpg"
+    canonical_filename = f"{PHOTO_ID}{CANONICAL_SUFFIX}.jpg"
     expected = b"canonical-photo"
     (photo_root / canonical_filename).write_bytes(expected)
 
@@ -87,7 +96,7 @@ async def test_owner_reads_canonical_file_without_using_database_foto_url(
     uploads_root = tmp_path / "uploads"
     photo_root = uploads_root / "denuncias"
     photo_root.mkdir(parents=True)
-    canonical_filename = f"{PHOTO_ID}.jpeg"
+    canonical_filename = f"{PHOTO_ID}{CANONICAL_SUFFIX}.jpeg"
     (photo_root / canonical_filename).write_bytes(b"canonical-photo")
     outside = tmp_path / "outside.jpg"
     outside.write_bytes(b"must-not-be-read")
@@ -103,7 +112,7 @@ async def test_owner_reads_canonical_file_without_using_database_foto_url(
     user = SimpleNamespace(id=owner_id, role=UserRole.CIUDADANO)
 
     response = await main.get_denuncia_photo(
-        f"{str(PHOTO_ID).upper()}.JPEG",
+        f"{str(PHOTO_ID).upper()}-{PHOTO_SUFFIX}.JPEG",
         request=None,
         user=user,
     )

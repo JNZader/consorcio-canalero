@@ -62,6 +62,9 @@ WORKDIR /app
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+# Uvicorn reads this variable when --proxy-headers is enabled. Trust only
+# loopback by default; production may inject the exact reverse-proxy IP.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
 
 # Install runtime dependencies (curl for healthcheck, gdal for rasterio/rasterstats)
 RUN apt-get update && apt-get install -y \
@@ -77,8 +80,9 @@ COPY --from=build /usr/local/bin /usr/local/bin
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
 
-# Create credentials directory
-RUN mkdir -p credentials
+# Prepare writable runtime directories before the named uploads volume is
+# initialized and before the image switches to the non-root user.
+RUN mkdir -p credentials uploads
 
 # Copy application code and alembic config
 COPY app/ ./app/
@@ -103,11 +107,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # GEE auth state is duplicated. The pool sizes in app/db/session.py
 # were bumped in F3-K so 2 workers stay below max_connections.
 #
-# --forwarded-allow-ips: only trust X-Forwarded-* headers from Caddy on the
-# Docker "proxy" network. That network is external (`docker network create
-# proxy`, no explicit subnet in the composes), so we trust the RFC1918 range
-# Docker allocates bridge networks from (172.16.0.0/12) instead of "*",
-# which let ANY client spoof X-Forwarded-For.
-# TODO: narrow to the actual proxy subnet on the server
-# (`docker network inspect proxy -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "172.16.0.0/12"]
+# Proxy headers are accepted only from FORWARDED_ALLOW_IPS. The image default
+# is loopback; docker-compose.prod.yml may inject the exact fixed IP assigned
+# to Caddy. Never use a whole RFC1918 range or "*".
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]

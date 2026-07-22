@@ -36,6 +36,7 @@ const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
 const SugerenciasPage = lazy(() => import('./components/SugerenciasPage'));
 const ForgotPasswordForm = lazy(() => import('./components/auth/ForgotPasswordForm'));
 const ResetPasswordForm = lazy(() => import('./components/auth/ResetPasswordForm'));
+const VerifyEmailPage = lazy(() => import('./components/auth/VerifyEmailPage'));
 const PrivacyPolicyPage = lazy(() => import('./components/PrivacyPolicyPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
@@ -199,6 +200,30 @@ const resetPasswordRoute = createRoute({
       >
         <Suspense fallback={<PageLoader />}>
           <ResetPasswordForm token={token} code={code} />
+        </Suspense>
+      </RootLayout>
+    );
+  },
+});
+
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/verify-email',
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: (search.token as string) || '',
+    code: (search.code as string) || '',
+  }),
+  component: () => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const { token, code } = verifyEmailRoute.useSearch();
+    return (
+      <RootLayout
+        title="Verificar Correo"
+        description="Verifica tu correo para activar tu cuenta del Consorcio Canalero 10 de Mayo."
+        noindex={true}
+      >
+        <Suspense fallback={<PageLoader />}>
+          <VerifyEmailPage token={token} code={code} />
         </Suspense>
       </RootLayout>
     );
@@ -607,6 +632,7 @@ export const routeTree = rootRouteWithComponent.addChildren([
   privacyPolicyRoute,
   forgotPasswordRoute,
   resetPasswordRoute,
+  verifyEmailRoute,
   mapaRoute,
   reportesRoute,
   sugerenciasRoute,
