@@ -12,7 +12,6 @@ from sqlalchemy import text
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = (
     "vt_canal_network",
-    "vt_denuncias",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",
 )
@@ -232,7 +231,7 @@ def test_martin_reader_script_repairs_drift_and_keeps_exact_view_access(
                     "AND relation.relkind IN ('r', 'p', 'v', 'm', 'f') "
                     "AND relation.relname NOT IN "
                     "('vt_zonas_operativas', 'vt_puntos_conflicto', "
-                    "'vt_denuncias', 'vt_canal_network') "
+                    "'vt_canal_network') "
                     "AND ("
                     "has_table_privilege(:reader, relation.oid, 'SELECT') OR "
                     "has_table_privilege(:reader, relation.oid, 'INSERT') OR "

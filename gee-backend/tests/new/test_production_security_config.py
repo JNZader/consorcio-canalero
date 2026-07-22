@@ -15,7 +15,6 @@ from tests.route_contracts import EffectiveAPIRoute, iter_effective_api_routes
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = {
     "vt_canal_network",
-    "vt_denuncias",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",
 }
@@ -280,6 +279,29 @@ def test_production_proxy_and_healthcheck_are_narrow_and_runnable() -> None:
     assert 'test: ["CMD", "python", "-m", "app.healthcheck"]' in backend_block
     assert "curl" not in backend_block
     assert "wget " not in backend_block
+
+
+def test_legacy_deploy_proxy_trust_matches_primary_production_without_wildcards() -> None:
+    env = _read_env_example(".env.deploy.example")
+    backend = _compose_service_block("docker-compose.deploy.yml", "backend")
+
+    assert env["FORWARDED_ALLOW_IPS"] == "127.0.0.1,caddy"
+    assert "FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}" in backend
+    assert "*" not in env["FORWARDED_ALLOW_IPS"]
+    assert "0.0.0.0/0" not in env["FORWARDED_ALLOW_IPS"]
+    assert "::/0" not in env["FORWARDED_ALLOW_IPS"]
+
+
+def test_exact_denuncia_geometry_is_removed_by_additive_migration() -> None:
+    migration = _read_repo_file(
+        "gee-backend/app/db/migrations/versions/zz_remove_public_denuncia_tiles.py"
+    )
+
+    assert 'revision = "zz_remove_public_denuncia_tiles"' in migration
+    assert 'down_revision = "zz_celery_task_outbox"' in migration
+    assert "DROP VIEW IF EXISTS public.vt_denuncias" in migration
+    assert "CREATE VIEW public.vt_denuncias" in migration
+    assert "deleted_at IS NULL" in migration
 
 
 def test_production_image_prepares_upload_directory_before_switching_user() -> None:

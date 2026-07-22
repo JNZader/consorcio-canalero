@@ -54,7 +54,6 @@ BEGIN
           VALUES
               ('vt_zonas_operativas'),
               ('vt_puntos_conflicto'),
-              ('vt_denuncias'),
               ('vt_canal_network')
       ) AS expected(name)
      WHERE to_regclass(format('%I.%I', 'public', expected.name)) IS NULL;
@@ -204,7 +203,6 @@ BEGIN
         'GRANT SELECT ON TABLE '
         'public.vt_zonas_operativas, '
         'public.vt_puntos_conflicto, '
-        'public.vt_denuncias, '
         'public.vt_canal_network TO %I',
         reader_name
     );
@@ -231,7 +229,7 @@ SELECT has_database_privilege(:'martin_role', current_database(), 'CONNECT') AS 
        has_schema_privilege(:'martin_role', 'public', 'USAGE') AS schema_usage,
        has_schema_privilege(:'martin_role', 'public', 'CREATE') AS schema_create;
 
-\echo 'Four allowlisted views (SELECT true; all write columns false)'
+\echo 'Three allowlisted views (SELECT true; all write columns false)'
 SELECT relation.relname,
        has_table_privilege(:'martin_role', relation.oid, 'SELECT') AS can_select,
        has_table_privilege(:'martin_role', relation.oid, 'INSERT') AS can_insert,
@@ -246,7 +244,6 @@ SELECT relation.relname,
    AND relation.relname IN (
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
-       'vt_denuncias',
        'vt_canal_network'
    )
  ORDER BY relation.relname;
@@ -260,7 +257,6 @@ SELECT count(*) AS unexpected_relation_privileges
    AND relation.relname NOT IN (
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
-       'vt_denuncias',
        'vt_canal_network'
    )
    AND (

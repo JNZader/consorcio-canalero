@@ -96,14 +96,14 @@ RUN addgroup --system app && adduser --system --ingroup app app
 
 # Prepare writable runtime directories before the named uploads volume is
 # initialized and before the image switches to the non-root user.
-RUN mkdir -p credentials uploads
+RUN mkdir -p credentials uploads /var/run/celery
 
 # Copy application code and alembic config
 COPY app/ ./app/
 COPY alembic.ini ./
 
 # Set ownership for the app user
-RUN chown -R app:app /app
+RUN chown -R app:app /app /var/run/celery
 
 # Expose port
 EXPOSE 8000

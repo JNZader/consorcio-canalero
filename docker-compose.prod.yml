@@ -245,6 +245,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- One-shot Celery Beat schedule ownership repair ---
+  # The named volume is durable across image rebuilds. Repair ownership
+  # idempotently before every Beat start so existing root-owned volumes do not
+  # prevent the non-root app user from opening the schedule database.
+  celery-beat-init:
+    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    container_name: consorcio-celery-beat-init
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /var/run/celery
+        chmod 0750 /var/run/celery
+    volumes:
+      - celery-beat-schedule:/var/run/celery
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. Without this service the beat_schedule entries in
   # app/core/celery_app.py never fire: alert evaluation, materialised-view
@@ -266,14 +286,16 @@ services:
     command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
     env_file: .env
     volumes:
-      # Scratch dir for the celerybeat-schedule db (no need to persist
-      # across container rebuilds — beat re-reads schedule from code).
+      # Durable singleton schedule state. The bounded init service repairs
+      # ownership without deleting or recreating existing scheduler state.
       - celery-beat-schedule:/var/run/celery
     networks:
       - backend
       - consorcio-internal
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      celery-beat-init:
         condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
