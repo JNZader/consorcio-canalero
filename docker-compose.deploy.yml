@@ -9,8 +9,8 @@
 #
 # Uso:
 #   cd ~/stacks/consorcio
-#   cp .env.example .env  # editar valores reales
-#   docker compose -f docker-compose.hetzner.yml up -d --build
+#   cp .env.deploy.example .env  # editar valores reales
+#   docker compose -f docker-compose.deploy.yml up -d --build
 # ===========================================
 
 services:
@@ -270,8 +270,11 @@ services:
     container_name: consorcio-martin
     restart: unless-stopped
     volumes:
-      - ./martin-config.yaml:/config/config.yaml:ro
+      - ./martin-config.deploy.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
+    environment:
+      # Fail closed: never inherit or fall back to the application owner URL.
+      DATABASE_URL: ${MARTIN_DB_URL:?MARTIN_DB_URL is required for the dedicated read-only Martin role}
     networks:
       - proxy
       - consorcio-internal

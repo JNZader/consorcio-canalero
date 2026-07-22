@@ -53,9 +53,28 @@ The file `consorcio-web/public/_headers` adds production headers to Cloudflare P
 
 Every push to a non-production branch generates a preview URL at `<branch>.<project>.pages.dev`. Use different `VITE_API_URL` values for Preview vs Production environments in the dashboard.
 
-## GitHub Actions
+## GitHub Actions Quality Gates
 
-No GitHub Actions workflows are currently present in the repository. Cloudflare Pages handles CI/CD via its own build system triggered by git pushes.
+Cloudflare Pages remains responsible for building and deploying the frontend from
+the connected repository. GitHub Actions provides a separate, non-deploying
+quality gate in `.github/workflows/frontend.yml`:
+
+- pull requests to `main` and manual `workflow_dispatch` runs execute lint,
+  unit tests, type checking, smoke tests, Stryker mutation tests, the Playwright
+  accessibility matrix, and the production build
+- Playwright comes from `package-lock.json`; CI installs the matching Chromium,
+  Firefox, and WebKit engines and uploads the HTML/report artifacts
+- the workflow never runs the production-writing E2E suite
+
+The accessibility projects are defined in
+`consorcio-web/tests/accessibility/playwright.config.ts`. Cloudflare preview
+and production deployments still use the dashboard environment variables
+documented above; the GitHub workflow does not deploy the frontend or store
+`VITE_*` values as secrets.
+
+After the first green pull-request run, configure branch protection in GitHub to
+require the frontend and backend quality checks appropriate for `main`. That
+remote repository setting is not created by these workflow files.
 
 ## PWA Considerations
 

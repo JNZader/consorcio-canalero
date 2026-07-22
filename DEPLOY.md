@@ -18,7 +18,8 @@ Si los dejás privados, el server va a necesitar `docker login ghcr.io` con un t
 
 | Variable | Valor |
 |----------|-------|
-| `DEPLOY_WEBHOOK_URL` | URL del webhook del server (ver paso 3.4) — podés dejarlo vacío por ahora |
+| `ENABLE_PRODUCTION_DEPLOY` | `true` únicamente cuando quieras habilitar el rollout automático; dejala sin definir o en `false` por defecto |
+| `DEPLOY_WEBHOOK_URL` | URL del webhook del server (ver paso 3.4); por sí sola no habilita el deploy |
 
 ### 1.3 Repository Secrets (Settings → Secrets and variables → Actions → Secrets)
 
@@ -58,7 +59,9 @@ Verificá en la pestaña **Actions** que los dos jobs terminen en verde. El geo-
 
 5. **Custom domain**: configurá `consorcio.TUDOMINIO` en la pestaña Domains.
 
-> CF Pages buildea automáticamente en cada push a `main`. No necesitás hacer nada más acá.
+> CF Pages buildea automáticamente en cada push a `main`. El workflow
+> `frontend.yml` de GitHub valida pull requests y ejecuciones manuales, pero no
+> despliega ni reemplaza la integración de Cloudflare.
 
 ---
 
@@ -96,35 +99,60 @@ nano /home/javier/stacks/consorcio/.env
 Reemplazá TODOS los `CAMBIAR_*` y `TUDOMINIO`:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://consorcio:PASSWORD_REAL@shared-postgres:5432/consorcio_canalero
+POSTGRES_HOST=shared-postgres
+POSTGRES_USER=consorcio
+POSTGRES_PASSWORD=PASSWORD_APP_REAL
+POSTGRES_DB=consorcio_canalero
+USE_PGBOUNCER=false
+DATABASE_URL=postgresql://consorcio:PASSWORD_APP_REAL@shared-postgres:5432/consorcio_canalero
 REDIS_URL=redis://:PASSWORD_REDIS_REAL@shared-redis:6379/0
 JWT_SECRET=<output de: openssl rand -hex 32>
 CORS_ORIGINS=https://consorcio.TUDOMINIO,https://consorcio-canalero.pages.dev
 MARTIN_PUBLIC_URL=https://tiles.consorcio.TUDOMINIO
-MARTIN_DB_URL=postgresql://consorcio:PASSWORD_REAL@shared-postgres:5432/consorcio_canalero
+MARTIN_DB_URL=postgresql://consorcio_martin:PASSWORD_MARTIN_INDEPENDIENTE@shared-postgres:5432/consorcio_canalero
 FRONTEND_URL=https://consorcio.TUDOMINIO
 API_BASE_URL=https://api.consorcio.TUDOMINIO
 ```
 
-> El password de consorcio en shared-postgres es el que pusiste en el `init-databases.sh` de la Fase 3.
+> `DATABASE_URL` usa el rol de aplicación `consorcio`; `MARTIN_DB_URL` usa
+> siempre `consorcio_martin` con otra contraseña. Usá URLs canónicas
+> `postgresql://`; la aplicación deriva internamente el driver async.
 
-### 3.4 Levantar el stack
+Martin recibe `SELECT` solo sobre `vt_zonas_operativas`, `vt_puntos_conflicto`,
+`vt_denuncias` y `vt_canal_network`. No recibe tablas base, escritura, secuencias
+ni funciones de aplicación. El procedimiento y sus chequeos están en
+[`docs/MARTIN_DB_ROLE.md`](docs/MARTIN_DB_ROLE.md).
 
-```bash
+### 3.4 Migrar, provisionar Martin y levantar el stack
+
+Aplicá primero las migraciones, antes de crear o reparar los permisos del lector:
+
+~~~bash
+cd /home/javier/stacks/consorcio
+docker compose pull backend
+docker compose run --rm migrate
+~~~
+
+Después seguí [`docs/MARTIN_DB_ROLE.md`](docs/MARTIN_DB_ROLE.md) para ejecutar
+`scripts/provision_martin_reader.sql` contra `shared-postgres` y establecer la
+contraseña con `\password consorcio_martin` dentro de una sesión interactiva de
+`psql`. Nunca pongas la contraseña real en argumentos del shell.
+
+Cuando la migración, el aprovisionamiento y sus cuatro contadores en cero hayan
+terminado:
+
+~~~bash
 cd /home/javier/stacks/consorcio
 docker compose up -d
 
 # Verificar que todo arrancó
 docker compose ps
 
-# Verificar que Alembic corrió las migraciones
-docker logs consorcio-backend --tail 50 | grep -i migrat
-
 # Verificar endpoints
 curl -s http://localhost:8000/health
 curl -s http://localhost:3000/health
 curl -s http://localhost:8001/health
-```
+~~~
 
 ### 3.5 Agregar las entradas al Caddyfile del server
 
@@ -180,13 +208,23 @@ Y abrí `https://consorcio.TUDOMINIO` en el browser.
 
 ---
 
-## Deploys futuros (automático)
+## Deploys futuros
 
-Cada `git push origin main` que toque `gee-backend/**`:
-1. GitHub Actions corre lint + tests
-2. Buildea y pushea las imágenes a GHCR
-3. (Opcional) Llama al webhook del server → `docker compose pull && docker compose up -d`
+Cada `git push origin main` que toque `gee-backend/**` o
+`.github/workflows/deploy.yml`:
 
-Para activar el auto-deploy via webhook, configurá el servidor webhook de la Fase 2 de la guía y completá `DEPLOY_WEBHOOK_URL` en las Repository Variables de GitHub.
+1. GitHub Actions corre el quality gate completo.
+2. Si pasa, buildea y publica las imágenes de backend y geo-worker en GHCR.
+3. Solo llama al webhook si `ENABLE_PRODUCTION_DEPLOY=true` **y**
+   `DEPLOY_WEBHOOK_URL` está configurada.
 
-Para el frontend, cada `git push` dispara un nuevo deploy en Cloudflare Pages automáticamente.
+El workflow de publicación es deliberadamente push-only: ni los pull requests ni
+`workflow_dispatch` pueden publicar imágenes. Para habilitar el rollout
+automático, configurá el webhook del servidor, cargá
+`DEPLOY_WEBHOOK_SECRET` como Repository Secret, cargá la URL como Repository
+Variable y recién entonces establecé `ENABLE_PRODUCTION_DEPLOY=true`. Una URL
+existente, sin ese opt-in explícito, deja el job de deploy deshabilitado.
+
+Para el frontend, Cloudflare Pages despliega desde el repositorio conectado. El
+workflow `frontend.yml` ejecuta el gate completo en pull requests a `main` y
+en ejecuciones manuales, incluida la matriz de accesibilidad Chromium/Firefox/WebKit.

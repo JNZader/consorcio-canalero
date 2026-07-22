@@ -341,8 +341,8 @@ services:
       - ./martin-config.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
     environment:
-      # Martin necesita URL sin +asyncpg (postgresql://, no postgresql+asyncpg://)
-      - DATABASE_URL=${MARTIN_DB_URL}
+      # Fail closed: Martin must use its dedicated synchronous reader URL.
+      DATABASE_URL: ${MARTIN_DB_URL:?MARTIN_DB_URL is required for the dedicated read-only Martin role}
     networks:
       - backend
       - proxy

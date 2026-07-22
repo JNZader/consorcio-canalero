@@ -540,19 +540,27 @@ The frontend and backend are intentionally decoupled so the public web app can d
 
 ## CI/CD Notes
 
-The repository includes GitHub Actions workflows for backend, frontend, deploy, GitHub Pages, Fly, and CodeQL concerns (`.github/workflows/`).
+The repository has four GitHub Actions workflows: frontend, backend, backend
+image publication, and CodeQL (`.github/workflows/`).
 
 At a high level:
 
-- Frontend pushes can trigger Cloudflare Pages builds automatically.
-- Backend changes run CI checks and can build/publish container images.
-- Production rollout is documented in `DEPLOY.md`, including optional webhook-based server updates.
-- The first build path documented in `DEPLOY.md` publishes backend and geo-worker images to GHCR.
+- Pull requests to `main` and manual frontend runs cover lint, unit/smoke
+  tests, type checking, mutation testing, the locked Playwright accessibility
+  matrix, and the production build.
+- Pull requests to `main` and manual backend runs cover Ruff, scoped strict
+  mypy, the full Pytest coverage gate, Cosmic Ray mutation testing, and Trivy.
+- CodeQL keeps JavaScript/TypeScript and Python analysis on pull requests and
+  its scheduled run.
+- Backend and geo-worker images are published only by a push to `main` after
+  the deploy workflow's quality gate passes.
+- The production webhook rollout is disabled unless both its URL and
+  `ENABLE_PRODUCTION_DEPLOY=true` are configured. See `DEPLOY.md`.
+- Cloudflare Pages owns frontend deployment from the connected repository; the
+  GitHub frontend workflow is a quality gate and does not deploy.
 
 ## License
 
 MIT License. See [LICENSE](LICENSE).
 
 Built for **Consorcio Canalero 10 de Mayo** in Bell Ville, Córdoba, Argentina.
-</content>
-</invoke>

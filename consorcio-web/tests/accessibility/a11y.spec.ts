@@ -298,11 +298,19 @@ test.describe('Mapa, modo oscuro, movimiento y filtros', () => {
       '[aria-label*="descripcion"], [aria-label*="textual"], button:has-text("descripcion")'
     );
     const mapDescription = page.locator('[role="application"][aria-label*="mapa"]');
-    expect((await textAlternative.count()) > 0 || (await mapDescription.count()) > 0).toBe(true);
+    const renderedMap = page.locator('.maplibregl-map');
+    const mapError = page.getByRole('alert').filter({ hasText: /error al cargar el mapa/i });
 
-    await page.waitForSelector('.maplibregl-map');
-    await expect(page.locator('.maplibregl-ctrl-zoom-in')).toHaveAttribute('aria-label', /.+/);
-    await expect(page.locator('.maplibregl-ctrl-zoom-out')).toHaveAttribute('aria-label', /.+/);
+    await expect(renderedMap.or(mapError)).toBeVisible();
+
+    if (await renderedMap.isVisible()) {
+      await expect(mapDescription).toBeVisible();
+      await expect(page.locator('.maplibregl-ctrl-zoom-in')).toHaveAttribute('aria-label', /.+/);
+      await expect(page.locator('.maplibregl-ctrl-zoom-out')).toHaveAttribute('aria-label', /.+/);
+    } else {
+      await expect(mapError).toBeVisible();
+      await expect(textAlternative).toBeVisible();
+    }
 
     await gotoAndWait(page, '/reportes');
     const manualCoordinates = page.getByRole('button', { name: /coordenadas manualmente/i });

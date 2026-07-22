@@ -61,15 +61,20 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy all source files
 COPY package.json package-lock.json ./
 COPY vite.config.ts tsconfig.json biome.json index.html ./
+COPY scripts/gen-version.mjs ./scripts/gen-version.mjs
 COPY public ./public
 COPY src ./src
 
-# Build arguments for environment (matching Vite VITE_ prefix)
+# Build arguments for public build-time values (never secrets)
 ARG VITE_API_URL
+ARG VITE_MARTIN_URL
+ARG BUILD_COMMIT_SHA
 
 # Set environment variables for build
 ENV NODE_ENV=production \
-    VITE_API_URL=$VITE_API_URL
+    VITE_API_URL=$VITE_API_URL \
+    VITE_MARTIN_URL=$VITE_MARTIN_URL \
+    CF_PAGES_COMMIT_SHA=$BUILD_COMMIT_SHA
 
 # Build the application
 RUN npm run build
