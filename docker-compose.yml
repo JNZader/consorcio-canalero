@@ -68,13 +68,9 @@ services:
       # opt in. Activation requires this flag on BOTH backend and
       # worker (the worker dispatches the actual SMTP send).
       - USE_ONE_TIME_CODES=${USE_ONE_TIME_CODES:-false}
-      # F4-F + F5-F deploy fix: TrustedHostMiddleware rejects
-      # ``localhost`` in production, so a ``curl http://localhost:8000``
-      # healthcheck returns 400 "Invalid host header". The healthcheck
-      # below forges the public hostname so the internal probe is
-      # accepted. ``HEALTHCHECK_HOST`` is a public hostname, NOT a
-      # secret — hardcoding the default avoids carrying any extra
-      # env-file plumbing.
+      # TrustedHostMiddleware needs an explicit accepted Host header even
+      # though the healthcheck transport stays on loopback. This public,
+      # non-secret override defaults to localhost for local development.
       - HEALTHCHECK_HOST=${HEALTHCHECK_HOST:-localhost}
     env_file:
       - ./gee-backend/.env
@@ -87,14 +83,9 @@ services:
       - consorcio-network
     healthcheck:
       # Liveness only — ``/live`` does NOT touch DB / Redis / GEE, so a
-      # transient outage downstream doesn't kill this container. Mirrors
-      # the prod healthcheck contract in ``docker-compose.prod.yml``.
-      test:
-        - "CMD-SHELL"
-        - >-
-          curl -fsS -o /dev/null
-          -H "Host: $${HEALTHCHECK_HOST}"
-          http://localhost:8000/live || exit 1
+      # transient outage downstream doesn't kill this container. The Python
+      # probe connects to loopback and supplies the configured Host header.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3

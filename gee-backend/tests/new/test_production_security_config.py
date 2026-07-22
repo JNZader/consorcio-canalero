@@ -277,7 +277,8 @@ def test_production_proxy_and_healthcheck_are_narrow_and_runnable() -> None:
     assert 'CMD ["python", "-m", "app.server"]' in dockerfile
     assert "FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}" in backend_block
     assert "FORWARDED_ALLOW_IPS=127.0.0.1,caddy" in _read_repo_file(".env.prod.example")
-    assert "curl --fail --silent --show-error" in backend_block
+    assert 'test: ["CMD", "python", "-m", "app.healthcheck"]' in backend_block
+    assert "curl" not in backend_block
     assert "wget " not in backend_block
 
 

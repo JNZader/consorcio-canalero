@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -19,6 +20,15 @@ WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
 def _read(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
+
+
+def _compose_service_block(compose: str, service: str) -> str:
+    match = re.search(
+        rf"(?ms)^  {re.escape(service)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|^networks:\n)",
+        compose,
+    )
+    assert match is not None, f"service {service!r} is missing"
+    return match.group("body")
 
 
 def _job_block(workflow: str, job: str) -> str:
@@ -472,3 +482,134 @@ def test_codeql_keeps_javascript_and_python_security_scans() -> None:
     assert "pull_request:" in codeql
     assert "schedule:" in codeql
     assert "github/codeql-action/analyze@" in codeql
+
+
+def test_backend_runtime_manifest_owns_geopandas_and_skips_bad_fastapi_patches() -> None:
+    requirements = _read("gee-backend/requirements.txt")
+    geo_requirements = _read("gee-backend/requirements-geo.txt")
+    dev_requirements = _read("gee-backend/requirements-dev.txt")
+
+    assert requirements.count("geopandas>=1.0.0") == 1
+    assert "geopandas" not in geo_requirements.lower()
+    assert "-r requirements.txt" in dev_requirements
+    assert "fastapi>=0.115.0,!=0.137.0,!=0.137.1" in requirements
+
+    for path in ("gee-backend/Dockerfile.geo", "gee-backend/Dockerfile.worker"):
+        dockerfile = _read(path)
+        assert "COPY requirements.txt requirements-geo.txt ./" in dockerfile
+        assert "-r requirements.txt" in dockerfile
+        assert "-r requirements-geo.txt" in dockerfile
+
+    trainer_dockerfile = _read("gee-backend/Dockerfile.trainer")
+    assert "COPY requirements-geo.txt ./" in trainer_dockerfile
+    assert "-r requirements-geo.txt" in trainer_dockerfile
+    assert "requirements.txt" not in trainer_dockerfile
+
+    trainer_tree = ast.parse(_read("gee-backend/scripts/train_water_unet.py"))
+    trainer_imports = {
+        alias.name.partition(".")[0]
+        for node in ast.walk(trainer_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    trainer_imports.update(
+        node.module.partition(".")[0]
+        for node in ast.walk(trainer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    assert "geopandas" not in trainer_imports
+
+
+def test_route_contract_helper_uses_only_public_fastapi_compatibility_surface() -> None:
+    helper = _read("gee-backend/tests/route_contracts.py")
+
+    assert "iter_route_contexts" in helper
+    assert "_IncludedRouter" not in helper
+
+
+def test_backend_images_use_dependency_free_python_healthchecks_without_curl() -> None:
+    dockerfile = _read("gee-backend/Dockerfile")
+    development = dockerfile.split("# --- Development stage ---", 1)[1].split(
+        "# --- Production stage", 1
+    )[0]
+    production = dockerfile.split("# --- Production stage", 1)[1]
+
+    assert "curl" not in dockerfile.lower()
+    assert dockerfile.count('CMD ["python", "-m", "app.healthcheck"]') == 2
+    assert 'CMD ["python", "-m", "app.healthcheck"]' in development
+    assert 'CMD ["python", "-m", "app.healthcheck"]' in production
+
+    healthcheck_tree = ast.parse(_read("gee-backend/app/healthcheck.py"))
+    imported_roots = {
+        alias.name.partition(".")[0]
+        for node in ast.walk(healthcheck_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imported_roots.update(
+        node.module.partition(".")[0]
+        for node in ast.walk(healthcheck_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    assert imported_roots <= {"__future__", "collections", "http", "os", "urllib"}
+
+
+def test_backend_compose_healthchecks_are_exec_form_and_geo_checks_are_unchanged() -> None:
+    compose_paths = (
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "docker-compose.deploy.yml",
+    )
+    for path in compose_paths:
+        compose = _read(path)
+        backend = _compose_service_block(compose, "backend")
+
+        assert 'test: ["CMD", "python", "-m", "app.healthcheck"]' in backend
+        assert "CMD-SHELL" not in backend
+        assert "curl" not in backend.lower()
+        assert "wget" not in backend.lower()
+
+    base_geo = _compose_service_block(_read("docker-compose.yml"), "geo-worker")
+    prod_geo = _compose_service_block(_read("docker-compose.prod.yml"), "geo-worker")
+    deploy_geo = _compose_service_block(_read("docker-compose.deploy.yml"), "geo-worker")
+    assert 'test: ["CMD", "curl", "-f", "http://localhost:8001/health"]' in base_geo
+    assert "wget --no-verbose --tries=1 --spider http://localhost:8001/health" in prod_geo
+    assert "curl -sf http://localhost:8001/health" in deploy_geo
+
+
+def test_compose_healthcheck_change_preserves_migration_celery_and_upload_invariants() -> None:
+    base = _read("docker-compose.yml")
+    production = _read("docker-compose.prod.yml")
+    deploy = _read("docker-compose.deploy.yml")
+
+    base_migrate = _compose_service_block(base, "migrate")
+    assert 'profiles: ["migrate"]' in base_migrate
+    assert "command: alembic upgrade head" in base_migrate
+    assert "USE_PGBOUNCER=false" in base_migrate
+
+    production_migrate = _compose_service_block(production, "migrate")
+    assert "command: alembic upgrade head" in production_migrate
+    assert 'USE_PGBOUNCER: "false"' in production_migrate
+    assert 'restart: "no"' in production_migrate
+
+    deploy_migrate = _compose_service_block(deploy, "migrate")
+    assert "command: alembic upgrade head" in deploy_migrate
+    assert 'restart: "no"' in deploy_migrate
+
+    for compose in (production, deploy):
+        worker = _compose_service_block(compose, "celery-worker")
+        beat = _compose_service_block(compose, "celery-beat")
+        assert "celery -A app.core.celery_app worker --pool=prefork" in worker
+        assert "celery -A app.core.celery_app beat --loglevel=info" in beat
+        assert "condition: service_completed_successfully" in worker
+        assert "condition: service_completed_successfully" in beat
+
+    uploads = _compose_service_block(production, "uploads-init")
+    assert 'user: "0:0"' in uploads
+    assert "- sh" in uploads
+    assert "- -ec" in uploads
+    assert "chown -R app:app /app/uploads" in uploads
+    assert "chmod 0750 /app/uploads" in uploads
+    assert "- denuncia-uploads:/app/uploads" in uploads
+    assert "network_mode: none" in uploads
+    assert "read_only: true" in uploads

@@ -180,22 +180,9 @@ services:
       # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
       # outage downstream must NOT kill this container. /ready (with
       # real dep checks + 503) is for load balancers, not Docker.
-      #
-      # We forge the Host header to match ``API_BASE_URL`` because
-      # ``TrustedHostMiddleware`` no longer accepts ``localhost`` (any
-      # container on the same Docker network could have used it to
-      # impersonate the API). ``HEALTHCHECK_HOST`` falls back to the
-      # hostname stripped out of ``API_BASE_URL`` so a single env var
-      # drives both the public URL and the internal probe.
-      test:
-        - "CMD-SHELL"
-        - >-
-          if [ -z "$${HEALTHCHECK_HOST:-}$${API_BASE_URL:-}" ]; then
-            echo "healthcheck: neither HEALTHCHECK_HOST nor API_BASE_URL is set" >&2;
-            exit 1;
-          fi;
-          HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
-          curl --fail --silent --show-error --header "Host: $$HOST" http://localhost:8000/live >/dev/null || exit 1
+      # The Python probe always connects to loopback, resolves the Host header
+      # from HEALTHCHECK_HOST or API_BASE_URL, and fails closed in production.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3

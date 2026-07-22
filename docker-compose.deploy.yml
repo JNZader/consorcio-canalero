@@ -118,18 +118,9 @@ services:
       - consorcio-internal
     healthcheck:
       # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
-      # outage downstream must NOT kill this container. Host header
-      # forged from API_BASE_URL because TrustedHostMiddleware doesn't
-      # accept localhost (see comment in docker-compose.prod.yml).
-      test:
-        - "CMD-SHELL"
-        - >-
-          if [ -z "$${HEALTHCHECK_HOST:-}$${API_BASE_URL:-}" ]; then
-            echo "healthcheck: neither HEALTHCHECK_HOST nor API_BASE_URL is set" >&2;
-            exit 1;
-          fi;
-          HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
-          curl -sf --resolve "$$HOST:8000:127.0.0.1" "http://$$HOST:8000/live" || exit 1
+      # outage downstream must NOT kill this container. The Python probe
+      # keeps transport on loopback and derives a TrustedHost-safe Host header.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
