@@ -11,8 +11,9 @@ import app._sentry_bootstrap  # noqa: F401 — import-side-effect only
 import asyncio
 import os
 import re
+import stat
+import uuid
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -228,10 +229,116 @@ os.makedirs(settings.uploads_root, exist_ok=True)
 
 
 _DENUNCIA_FILENAME_RE = re.compile(
-    r"^(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-    r"(?:-[0-9a-f]{32})?\.(?:jpg|jpeg|png|webp)$",
+    r"(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"(?:-(?P<suffix>[0-9a-f]{32}))?\.(?P<extension>jpg|jpeg|png|webp)",
     re.IGNORECASE,
 )
+
+
+def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str, str] | None:
+    """Return a canonical denuncia id and allow-listed extension.
+
+    fullmatch is intentional: the dollar anchor alone also matches immediately
+    before a trailing newline, which would leave a suffix outside the validated
+    span. Constant comparisons make the extension allow-list explicit to static
+    analysis instead of carrying the request value into a filesystem path.
+    """
+    match = _DENUNCIA_FILENAME_RE.fullmatch(filename)
+    if match is None:
+        return None
+
+    suffix_value = match.group("suffix")
+    canonical_suffix = "" if suffix_value is None else f"-{int(suffix_value, 16):032x}"
+
+    extension_value = match.group("extension").lower()
+    if extension_value == "jpg":
+        extension = "jpg"
+    elif extension_value == "jpeg":
+        extension = "jpeg"
+    elif extension_value == "png":
+        extension = "png"
+    elif extension_value == "webp":
+        extension = "webp"
+    else:  # pragma: no cover - defence in depth if the regex changes
+        return None
+
+    return uuid.UUID(match.group("uuid")), canonical_suffix, extension
+
+
+def _read_denuncia_photo_bytes(uploads_root: str, canonical_filename: str) -> bytes | None:
+    """Read one direct child of the denuncia upload root without following links.
+
+    Both paths are normalised before the explicit prefix check so CodeQL can
+    recognise the confinement guard. On platforms with dir_fd and O_NOFOLLOW
+    support, the actual open is anchored to the already-opened directory and
+    cannot follow a swapped final-component symlink. The lstat/fstat identity
+    check provides the corresponding safe fallback.
+    """
+    root_path = os.path.realpath(os.path.join(uploads_root, "denuncias"))
+    candidate_path = os.path.realpath(os.path.join(root_path, canonical_filename))
+    root_prefix = os.path.join(root_path, "")
+
+    # Normalise first, then enforce containment using the CodeQL-documented
+    # safe-access shape. The dirname equality narrows this endpoint to one
+    # direct child even if its caller ever stops supplying canonical names.
+    if not candidate_path.startswith(root_prefix):
+        return None
+    if os.path.dirname(candidate_path) != root_path:
+        return None
+    if os.path.basename(canonical_filename) != canonical_filename:
+        return None
+
+    read_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+    no_follow_flag = getattr(os, "O_NOFOLLOW", 0)
+    if no_follow_flag:
+        read_flags |= no_follow_flag
+
+    directory_fd: int | None = None
+    photo_fd: int | None = None
+    try:
+        supports_open_at = os.open in os.supports_dir_fd
+        if supports_open_at:
+            directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            if no_follow_flag:
+                directory_flags |= no_follow_flag
+            directory_fd = os.open(root_path, directory_flags)
+
+            if os.stat in os.supports_dir_fd and os.stat in os.supports_follow_symlinks:
+                before_open = os.stat(
+                    canonical_filename,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+            else:
+                before_open = os.lstat(os.path.join(root_path, canonical_filename))
+
+            if stat.S_ISLNK(before_open.st_mode) or not stat.S_ISREG(before_open.st_mode):
+                return None
+            photo_fd = os.open(canonical_filename, read_flags, dir_fd=directory_fd)
+        else:
+            lexical_candidate = os.path.join(root_path, canonical_filename)
+            before_open = os.lstat(lexical_candidate)
+            if stat.S_ISLNK(before_open.st_mode) or not stat.S_ISREG(before_open.st_mode):
+                return None
+            photo_fd = os.open(candidate_path, read_flags)
+
+        after_open = os.fstat(photo_fd)
+        if not stat.S_ISREG(after_open.st_mode):
+            return None
+        if (before_open.st_dev, before_open.st_ino) != (after_open.st_dev, after_open.st_ino):
+            return None
+
+        photo_file = os.fdopen(photo_fd, "rb")
+        photo_fd = None
+        with photo_file:
+            return photo_file.read()
+    except OSError:
+        return None
+    finally:
+        if photo_fd is not None:
+            os.close(photo_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
 
 
 @app.get(
@@ -249,25 +356,18 @@ async def get_denuncia_photo(
     Returns 404 (not 403) when the caller isn't authorised, so the
     endpoint doesn't leak whether the file exists.
     """
-    import uuid as _uuid
-
     from sqlalchemy.orm import Session as _Session
 
     from app.db.session import get_db as _get_db
     from app.domains.denuncias.models import Denuncia
     from app.auth.models import UserRole
 
-    match = _DENUNCIA_FILENAME_RE.match(filename)
-    if match is None:
-        # Either an attempt at path traversal or just a bad URL — both
+    parsed_filename = _parse_denuncia_photo_filename(filename)
+    if parsed_filename is None:
+        # Either an attempt at path traversal or just a bad URL - both
         # respond 404 so the surface stays uniform.
         return Response(status_code=404)
-    denuncia_id = _uuid.UUID(match.group("uuid"))
-    # On-disk filenames are always lowercase (storage normalises via
-    # ``uuid.UUID(...)`` before writing). The route regex is
-    # case-insensitive so the auth check still works for an uppercased
-    # URL — but the disk lookup would 404 without this normalisation.
-    filename = filename.lower()
+    denuncia_id, canonical_suffix, extension = parsed_filename
 
     # We need a DB session here but the dependency tree above didn't
     # give us one. Open a short-lived session manually rather than
@@ -288,24 +388,25 @@ async def get_denuncia_photo(
     finally:
         db_gen.close()
 
-    photo_path = Path(settings.uploads_root) / "denuncias" / filename
-    if not photo_path.is_file():
+    # Reconstruct the disk key from the trusted database UUID and a constant
+    # allow-listed extension. Never use the request string or foto_url as a
+    # path: the latter is legacy display metadata, not an authority source.
+    canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
+    content = await asyncio.to_thread(
+        _read_denuncia_photo_bytes,
+        settings.uploads_root,
+        canonical_filename,
+    )
+    if content is None:
         return Response(status_code=404)
 
-    # Map extension → content type. ``image/webp`` is the only one
-    # the FastAPI/uvicorn default doesn't infer reliably.
-    ext = photo_path.suffix.lower().lstrip(".")
     media_type = {
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
         "png": "image/png",
         "webp": "image/webp",
-    }.get(ext, "application/octet-stream")
+    }[extension]
 
-    # Read on a worker thread so the 10 MB blocking I/O doesn't stall
-    # the asyncio event loop. Bounded at MAX_PHOTO_BYTES on the write
-    # path, so a single allocation is safe.
-    content = await asyncio.to_thread(photo_path.read_bytes)
     return Response(
         content=content,
         media_type=media_type,
