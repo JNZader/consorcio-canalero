@@ -278,6 +278,29 @@ export async function exchangeCodeForToken(
   }
 }
 
+/** Verify an email with the token resolved from an email code. */
+export async function verifyEmailWithToken(token: string): Promise<AuthResult> {
+  try {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const res = await fetch(`${API_URL}/api/v2/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'VERIFY_USER_BAD_TOKEN');
+    }
+
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error al verificar el correo.';
+    logger.error('Error al verificar correo con token:', err);
+    return { success: false, error: translateAuthError(message) };
+  }
+}
+
 /**
  * Restablecer contrasena usando token de reset (desde enlace de email).
  * Calls POST /api/v2/auth/reset-password with the token and new password.

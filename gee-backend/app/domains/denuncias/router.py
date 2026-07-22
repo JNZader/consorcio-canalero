@@ -26,6 +26,7 @@ from app.shared.storage import (
     PhotoStorage,
     get_photo_storage,
     make_denuncia_photo_key,
+    photo_key_from_url,
 )
 
 router = APIRouter(prefix="/denuncias", tags=["denuncias"])
@@ -156,19 +157,43 @@ async def upload_denuncia_photo(
             ),
         )
 
-    storage_key = make_denuncia_photo_key(denuncia_id)
-    await storage.delete(storage_key)
-    photo_url = await storage.save(file, storage_key)
+    previous_photo_url = denuncia.foto_url
+    storage_key = make_denuncia_photo_key(denuncia_id, uuid.uuid4().hex)
+    try:
+        photo_url = await storage.save(file, storage_key)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="No se pudo guardar la foto") from exc
 
     denuncia.foto_url = photo_url
-    db.commit()
-    db.refresh(denuncia)
+    try:
+        db.commit()
+    except Exception as exc:
+        # A disconnect can be reported after PostgreSQL made COMMIT durable.
+        # Never delete the new file here: an orphan is recoverable, while a
+        # durable DB pointer to a deleted file is permanent data loss.
+        db.rollback()
+        denuncia.foto_url = previous_photo_url
+        raise HTTPException(status_code=503, detail="No se pudo confirmar la foto") from exc
+
+    try:
+        db.refresh(denuncia)
+    except Exception as exc:
+        # COMMIT succeeded. Preserve both files and the committed pointer;
+        # refresh failure only makes the response acknowledgement ambiguous.
+        raise HTTPException(
+            status_code=503, detail="La foto fue guardada; reintente la consulta"
+        ) from exc
+
+    if previous_photo_url:
+        previous_key = photo_key_from_url(previous_photo_url)
+        if previous_key:
+            await storage.delete(previous_key)
 
     return DenunciaPhotoResponse(photo_url=photo_url)
 
 
 @router.delete("/{denuncia_id}/mine", status_code=204)
-def delete_my_denuncia(
+async def delete_my_denuncia(
     denuncia_id: uuid.UUID,
     db: Session = Depends(get_db),
     storage: PhotoStorage = Depends(get_photo_storage),
@@ -189,7 +214,6 @@ def delete_my_denuncia(
     """
     from datetime import datetime, timezone
     from sqlalchemy import select as sa_select
-    import asyncio
 
     stmt = sa_select(Denuncia).where(Denuncia.id == denuncia_id)
     denuncia = db.execute(stmt).scalar_one_or_none()
@@ -205,14 +229,15 @@ def delete_my_denuncia(
     # license plate, etc.). The DB row stays for audit but no bytes
     # remain on disk.
     if denuncia.foto_url:
-        photo_key = make_denuncia_photo_key(denuncia_id)
-        # The storage interface is async; we're in a sync route. Run
-        # the delete in a fresh event loop — best-effort, never blocks
-        # the soft delete below.
+        photo_key = photo_key_from_url(denuncia.foto_url) or make_denuncia_photo_key(denuncia_id)
         try:
-            asyncio.run(storage.delete(photo_key))
-        except Exception:  # noqa: BLE001
-            pass
+            await storage.delete(photo_key)
+        except OSError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="No se pudo eliminar la foto; reintente más tarde",
+            ) from exc
         denuncia.foto_url = None
 
     denuncia.deleted_at = datetime.now(tz=timezone.utc)

@@ -8,9 +8,58 @@ postgres:
   # in one place. Martin v0.14.2 supports ${VAR} interpolation in config.
   connection_string: ${DATABASE_URL}
 
-  # Auto-discover all tables and views with geometry columns
-  auto_publish:
-    tables:
-      from: public
-      # Martin will discover both raw tables and vt_ views
-    functions: false
+  # Never discover schemas automatically: Martin's hostname is public and
+  # PostgreSQL table columns become vector-tile properties. Only sanitized
+  # projection views are publishable.
+  auto_publish: false
+  functions: {}
+  tables:
+    vt_zonas_operativas:
+      schema: public
+      table: vt_zonas_operativas
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        id: Public identifier
+        nombre: Zone name
+        cuenca: Basin name
+        superficie_ha: Area in hectares
+    vt_puntos_conflicto:
+      schema: public
+      table: vt_puntos_conflicto
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        id: Public identifier
+        tipo: Conflict type
+        severidad: Severity
+        descripcion: Public description
+        acumulacion_valor: Accumulation metric
+        pendiente_valor: Slope metric
+    vt_denuncias:
+      schema: public
+      table: vt_denuncias
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      properties:
+        id: Public identifier
+        tipo: Report type
+        estado: Public status
+        cuenca: Basin name
+        created_at: Creation timestamp
+    vt_canal_network:
+      schema: public
+      table: vt_canal_network
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      properties:
+        id: Public identifier
+        nombre: Canal name
+        tipo: Canal type
+        source: Topology source node
+        target: Topology target node
+        cost: Routing cost

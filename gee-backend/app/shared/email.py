@@ -134,7 +134,7 @@ def build_verification_email(code: str, frontend_url: str) -> dict[str, str]:
     for 30+ days now only see a code that expires in 15 minutes and
     is one-shot.
     """
-    link = f"{frontend_url.rstrip('/')}/auth/verify?code={code}"
+    link = f"{frontend_url.rstrip('/')}/verify-email?code={code}"
     text = (
         "Hola,\n\n"
         "Recibimos tu registro en el Consorcio Canalero 10 de Mayo. "
@@ -170,7 +170,7 @@ def build_reset_email(code: str, frontend_url: str) -> dict[str, str]:
     Phase 5 / F5-E: same hardening as the verify email — body carries
     a short ``code``, not the JWT reset token.
     """
-    link = f"{frontend_url.rstrip('/')}/auth/reset?code={code}"
+    link = f"{frontend_url.rstrip('/')}/reset-password?code={code}"
     text = (
         "Hola,\n\n"
         "Alguien (probablemente vos) pidió restablecer la contraseña de "

@@ -17,7 +17,6 @@ from app.domains.geo.router_common import (
     _get_repo,
     _get_tile_client,
     _require_admin,
-    _require_authenticated,
     _require_operator,
 )
 from app.domains.geo.schemas import (
@@ -94,7 +93,7 @@ def list_geo_jobs(
     tipo: Optional[str] = None,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ) -> PaginatedResponse[GeoJobListResponse]:
     """List geo processing jobs with pagination and filters."""
     items, total = repo.get_jobs(
@@ -117,7 +116,7 @@ def get_geo_job(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ):
     """Get geo job detail by ID."""
     job = repo.get_job_by_id(db, job_id)
@@ -140,7 +139,7 @@ def list_geo_layers(
     area_id: Optional[str] = None,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ) -> PaginatedResponse[GeoLayerListResponse]:
     """List available geo layers with pagination and filters."""
     items, total = repo.get_layers(
@@ -222,7 +221,7 @@ def get_geo_layer(
     layer_id: uuid.UUID,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ):
     """Get geo layer detail by ID."""
     layer = repo.get_layer_by_id(db, layer_id)
@@ -236,7 +235,7 @@ def get_geo_layer_file(
     layer_id: uuid.UUID,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ):
     """Serve a GeoLayer file (GeoTIFF or GeoJSON) for download or frontend rendering.
 

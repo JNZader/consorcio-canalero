@@ -1,5 +1,6 @@
 """Health check functions for external services."""
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict
 
@@ -18,24 +19,27 @@ logger = get_logger(__name__)
 ALEMBIC_INI_PATH = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
-async def check_database_health() -> Dict[str, Any]:
-    """Check PostgreSQL + PostGIS connection health."""
+def check_database_health_sync() -> Dict[str, Any]:
+    """Run blocking PostgreSQL/PostGIS probes in a synchronous worker."""
     try:
         db = SessionLocal()
         try:
             result = db.execute(text("SELECT 1"))
             result.close()
-
             postgis = db.execute(text("SELECT PostGIS_Version()"))
             version = postgis.scalar()
             postgis.close()
-
             return {"status": "healthy", "postgis_version": version}
         finally:
             db.close()
     except Exception as e:
         logger.error("Database health check failed", error=str(e))
         return {"status": "unhealthy", "error": "database_check_failed"}
+
+
+async def check_database_health() -> Dict[str, Any]:
+    """Check PostgreSQL/PostGIS without blocking the Uvicorn event loop."""
+    return await asyncio.to_thread(check_database_health_sync)
 
 
 async def check_redis_health() -> Dict[str, Any]:
@@ -163,8 +167,7 @@ def check_alembic_health_sync(db: Session) -> Dict[str, Any]:
     }
 
 
-async def check_alembic_health() -> Dict[str, Any]:
-    """Async wrapper around :func:`check_alembic_health_sync`."""
+def _check_alembic_health_with_session() -> Dict[str, Any]:
     try:
         db = SessionLocal()
         try:
@@ -174,3 +177,48 @@ async def check_alembic_health() -> Dict[str, Any]:
     except Exception as e:
         logger.error("Alembic health check failed", error=str(e))
         return {"status": "unhealthy", "error": "alembic_check_failed"}
+
+
+async def check_alembic_health() -> Dict[str, Any]:
+    """Run the sync Alembic/SQL probe in a worker thread."""
+    return await asyncio.to_thread(_check_alembic_health_with_session)
+
+
+async def run_health_checks(
+    *,
+    include_gee: bool = False,
+    per_check_timeout: float = 2.0,
+    overall_timeout: float = 3.0,
+) -> dict[str, Dict[str, Any]]:
+    """Run independent probes concurrently with per-check and overall deadlines."""
+    checks = {
+        "database": check_database_health,
+        "redis": check_redis_health,
+        "alembic": check_alembic_health,
+    }
+    if include_gee:
+        checks["gee"] = check_gee_health
+
+    async def bounded(check):
+        try:
+            return await asyncio.wait_for(check(), timeout=per_check_timeout)
+        except TimeoutError:
+            return {"status": "unhealthy", "error": "check_timeout"}
+        except Exception as exc:
+            logger.error("Health check crashed", error=str(exc))
+            return {"status": "unhealthy", "error": "check_failed"}
+
+    tasks = {name: asyncio.create_task(bounded(check)) for name, check in checks.items()}
+    done, pending = await asyncio.wait(tasks.values(), timeout=overall_timeout)
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    results: dict[str, Dict[str, Any]] = {}
+    for name, task in tasks.items():
+        if task in done:
+            results[name] = task.result()
+        else:
+            results[name] = {"status": "unhealthy", "error": "overall_timeout"}
+    return results

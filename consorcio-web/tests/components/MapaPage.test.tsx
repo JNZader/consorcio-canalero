@@ -8,6 +8,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MapaContent } from '../../src/components/MapaPage';
 import { MantineProvider } from '@mantine/core';
 
+const { mockDashboardStats } = vi.hoisted(() => ({
+  mockDashboardStats: vi.fn(),
+}));
+
 // Mock basePath
 vi.mock('../../src/lib/basePath', () => ({
   withBasePath: (path: string) => path,
@@ -15,15 +19,7 @@ vi.mock('../../src/lib/basePath', () => ({
 
 // Mock query hook
 vi.mock('../../src/lib/query', () => ({
-  useDashboardStats: vi.fn(() => ({
-    stats: {
-      denuncias: {
-        pendiente: 5,
-        resuelto: 3,
-      },
-    },
-    isLoading: false,
-  })),
+  useDashboardStats: mockDashboardStats,
 }));
 
 // Mock auth store
@@ -79,6 +75,15 @@ describe('MapaPage', () => {
   describe('MapaContent', () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      mockDashboardStats.mockReturnValue({
+        stats: {
+          denuncias: {
+            pendiente: 5,
+            resuelto: 3,
+          },
+        },
+        isLoading: false,
+      });
     });
 
     describe('header section', () => {
@@ -158,12 +163,13 @@ describe('MapaPage', () => {
 
     describe('loading state', () => {
       it('should show skeleton while loading', () => {
-        const { useDashboardStats } = vi.importActual('../../src/lib/query') as any;
-        
-        renderWithMantine(<MapaContent />);
-        
-        // When loading, component should still render
+        mockDashboardStats.mockReturnValue({ stats: null, isLoading: true });
+
+        const { container } = renderWithMantine(<MapaContent />);
+
         expect(screen.getByText(/Mapa Interactivo/i)).toBeInTheDocument();
+        expect(container.querySelectorAll('.mantine-Skeleton-root')).toHaveLength(4);
+        expect(screen.queryByText(/Denuncias activas/i)).not.toBeInTheDocument();
       });
     });
 

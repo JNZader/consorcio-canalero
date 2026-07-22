@@ -48,13 +48,13 @@ _MAX_OVERFLOW = 5 if _IS_CELERY_PROCESS else 20
 
 if settings.use_pgbouncer:
     engine = create_engine(
-        settings.database_url,
+        settings.database_sync_url,
         echo=settings.database_echo,
         poolclass=NullPool,
     )
 else:
     engine = create_engine(
-        settings.database_url,
+        settings.database_sync_url,
         echo=settings.database_echo,
         pool_pre_ping=True,
         # See module-level note on ``_IS_CELERY_PROCESS`` — backend keeps
@@ -78,7 +78,7 @@ def get_db() -> Generator[Session, None, None]:
 
 # --- Async engine (required by fastapi-users) ---
 
-_async_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
+_async_url = settings.database_async_url
 
 # Phase 4 / F4-F: PgBouncer transaction-pool compatibility.
 #

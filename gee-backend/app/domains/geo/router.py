@@ -30,7 +30,6 @@ from app.domains.geo.router_common import (
     _get_tile_client,
     _get_user_display_name,
     _require_admin,
-    _require_authenticated,
     _require_operator,
     _serialize_approved_zoning,
 )
@@ -211,7 +210,11 @@ async def proxy_tile(
     )
 
 
-gee_router = APIRouter(prefix="/gee", tags=["GEE"])
+gee_router = APIRouter(
+    prefix="/gee",
+    tags=["GEE"],
+    dependencies=[Depends(_require_operator())],
+)
 
 
 def _lazy_gee_service():
@@ -341,7 +344,7 @@ def list_gee_analyses(
     estado: Optional[str] = None,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ) -> PaginatedResponse[AnalisisGeoListResponse]:
     return list_gee_analyses_impl(page, limit, tipo, estado, db, repo)
 
@@ -351,7 +354,7 @@ def get_gee_analysis(
     analisis_id: uuid.UUID,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_authenticated()),
+    _user=Depends(_require_operator()),
 ):
     return get_gee_analysis_impl(analisis_id, db, repo)
 

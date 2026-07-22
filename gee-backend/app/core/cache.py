@@ -12,6 +12,7 @@ call site, not in this module.
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING, Any, Optional
 
 from app.core.logging import get_logger
@@ -30,17 +31,37 @@ class JSONCache:
     caller's logic continues to work (cache miss path always runs).
     """
 
-    def __init__(self, redis_url: Optional[str] = None, key_prefix: str = "cache:"):
+    def __init__(
+        self,
+        redis_url: Optional[str] = None,
+        key_prefix: str = "cache:",
+        redis_retry_cooldown_seconds: float = 5.0,
+    ):
         self.redis_url = redis_url
         self.key_prefix = key_prefix
+        self.redis_retry_cooldown_seconds = redis_retry_cooldown_seconds
         self._redis: Optional["redis.asyncio.Redis"] = None
         self._redis_available: Optional[bool] = None
+        self._redis_retry_at = 0.0
         logger.info("JSON cache initialized", redis_configured=bool(redis_url))
 
+    async def _mark_redis_unavailable(self) -> None:
+        client = self._redis
+        self._redis = None
+        self._redis_available = False
+        self._redis_retry_at = time.monotonic() + self.redis_retry_cooldown_seconds
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
     async def _get_redis(self) -> Optional["redis.asyncio.Redis"]:
-        """Initialize Redis lazily. Returns None when unreachable."""
+        """Initialize Redis lazily and retry after a bounded cooldown."""
         if self._redis_available is False:
-            return None
+            if time.monotonic() < self._redis_retry_at:
+                return None
+            self._redis_available = None
         if self._redis is None and self.redis_url:
             try:
                 import redis.asyncio as aioredis
@@ -62,7 +83,7 @@ class JSONCache:
                     "Redis connection failed for JSON cache, operating as no-op",
                     error=str(exc),
                 )
-                self._redis_available = False
+                await self._mark_redis_unavailable()
                 return None
         return self._redis
 
@@ -78,6 +99,7 @@ class JSONCache:
             raw = await client.get(self._full_key(key))
         except Exception as exc:
             logger.warning("Redis GET failed, treating as miss", key=key, error=str(exc))
+            await self._mark_redis_unavailable()
             return None
         if raw is None:
             return None
@@ -112,6 +134,7 @@ class JSONCache:
             return True
         except Exception as exc:
             logger.warning("Redis SETEX failed", key=key, error=str(exc))
+            await self._mark_redis_unavailable()
             return False
 
     async def delete(self, key: str) -> bool:
@@ -124,6 +147,7 @@ class JSONCache:
             return removed > 0
         except Exception as exc:
             logger.warning("Redis DELETE failed", key=key, error=str(exc))
+            await self._mark_redis_unavailable()
             return False
 
     async def delete_pattern(self, pattern: str) -> int:
@@ -143,6 +167,7 @@ class JSONCache:
                     deleted += 1
         except Exception as exc:
             logger.warning("Redis SCAN/DELETE failed", pattern=pattern, error=str(exc))
+            await self._mark_redis_unavailable()
         return deleted
 
     async def close(self) -> None:
@@ -188,16 +213,36 @@ class BytesCache:
     so the handler keeps working.
     """
 
-    def __init__(self, redis_url: Optional[str] = None, key_prefix: str = "bytes:"):
+    def __init__(
+        self,
+        redis_url: Optional[str] = None,
+        key_prefix: str = "bytes:",
+        redis_retry_cooldown_seconds: float = 5.0,
+    ):
         self.redis_url = redis_url
         self.key_prefix = key_prefix
+        self.redis_retry_cooldown_seconds = redis_retry_cooldown_seconds
         self._redis: Optional[Any] = None
         self._redis_available: Optional[bool] = None
+        self._redis_retry_at = 0.0
         logger.info("Bytes cache initialized", redis_configured=bool(redis_url))
+
+    def _mark_redis_unavailable(self) -> None:
+        client = self._redis
+        self._redis = None
+        self._redis_available = False
+        self._redis_retry_at = time.monotonic() + self.redis_retry_cooldown_seconds
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     def _get_redis(self) -> Optional[Any]:
         if self._redis_available is False:
-            return None
+            if time.monotonic() < self._redis_retry_at:
+                return None
+            self._redis_available = None
         if self._redis is None and self.redis_url:
             try:
                 import redis  # type: ignore[import-not-found]
@@ -218,7 +263,7 @@ class BytesCache:
                     "Redis connection failed for bytes cache, operating as no-op",
                     error=str(exc),
                 )
-                self._redis_available = False
+                self._mark_redis_unavailable()
                 return None
         return self._redis
 
@@ -233,6 +278,7 @@ class BytesCache:
             return client.get(self._full_key(key))
         except Exception as exc:
             logger.warning("Redis GET failed, treating as miss", key=key, error=str(exc))
+            self._mark_redis_unavailable()
             return None
 
     def set(self, key: str, value: bytes, ttl_seconds: int) -> bool:
@@ -246,6 +292,7 @@ class BytesCache:
             return True
         except Exception as exc:
             logger.warning("Redis SETEX failed", key=key, error=str(exc))
+            self._mark_redis_unavailable()
             return False
 
     def delete_pattern(self, pattern: str) -> int:
@@ -266,6 +313,7 @@ class BytesCache:
                     deleted += 1
         except Exception as exc:
             logger.warning("Redis SCAN/DELETE failed", pattern=pattern, error=str(exc))
+            self._mark_redis_unavailable()
         return deleted
 
 

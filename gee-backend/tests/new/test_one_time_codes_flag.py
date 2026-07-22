@@ -15,8 +15,8 @@ The contract being pinned:
     sent to the user contains the 8-char ``code``, NEVER the JWT.
   - An ``email_codes`` row is persisted with the JWT mapped to the
     code, so the SPA's ``/auth/exchange-code`` round-trip works.
-  - When the flag is False, behaviour is the legacy token-in-body
-    path — regression guard so flipping the flag stays opt-in.
+  - When the flag is explicitly False, behaviour is the legacy
+    token-in-body compatibility path.
 """
 
 from __future__ import annotations
@@ -206,16 +206,15 @@ async def test_request_verify_flag_on_emails_code_not_token(test_engine, monkeyp
 
 
 # ---------------------------------------------------------------------------
-# Flag OFF — regression guard for the legacy path
+# Flag OFF — regression guard for the explicit compatibility fallback
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_forgot_password_flag_off_uses_legacy_token_in_body(test_engine, monkeypatch):
-    """USE_ONE_TIME_CODES=False (default) → the legacy path runs: the
-    email body carries the JWT directly, no email_codes row exists.
-    This is the regression guard that prevents an accidental flip of
-    the default from going unnoticed."""
+    """USE_ONE_TIME_CODES=False (explicit compatibility fallback) runs
+    the legacy path: the email body carries the JWT directly and no
+    email_codes row exists. This guard keeps that fallback available."""
     _ = test_engine
     from app.config import settings
 
