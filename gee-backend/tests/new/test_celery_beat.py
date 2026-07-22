@@ -137,3 +137,45 @@ def test_orphaned_denuncia_photo_reconciler_is_registered_and_scheduled():
     assert entry["task"] == "denuncias.reconcile_orphaned_photos"
     assert entry["options"]["queue"] == "celery"
     assert reconcile_orphaned_denuncia_photos_task.name == "denuncias.reconcile_orphaned_photos"
+
+
+def test_outbox_publisher_is_registered_and_scheduled():
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from app.core.celery_app import (
+        CELERY_OUTBOX_BATCH_SIZE,
+        CELERY_OUTBOX_CLEANUP_BATCH_SIZE,
+        CELERY_OUTBOX_LEASE_SECONDS,
+        CELERY_OUTBOX_RETENTION_DAYS,
+        celery_app,
+        publish_pending_celery_tasks_task,
+    )
+
+    entry = celery_app.conf.beat_schedule["publish-celery-outbox"]
+    assert entry["task"] == "outbox.publish_pending"
+    assert entry["options"]["queue"] == "celery"
+    assert entry["schedule"].minute == set(range(60))
+    assert publish_pending_celery_tasks_task.name == "outbox.publish_pending"
+
+    expected = {
+        "claimed": 0,
+        "published": 0,
+        "failed": 0,
+        "finalize_lost": 0,
+        "claim_errors": 0,
+        "cleaned": 0,
+    }
+    with patch(
+        "app.shared.celery_outbox.publish_due_celery_tasks",
+        return_value=expected,
+    ) as publish:
+        result = publish_pending_celery_tasks_task.run()
+
+    assert result == expected
+    publish.assert_called_once_with(
+        batch_size=CELERY_OUTBOX_BATCH_SIZE,
+        lease_for=timedelta(seconds=CELERY_OUTBOX_LEASE_SECONDS),
+        retention=timedelta(days=CELERY_OUTBOX_RETENTION_DAYS),
+        cleanup_batch_size=CELERY_OUTBOX_CLEANUP_BATCH_SIZE,
+    )

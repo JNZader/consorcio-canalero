@@ -354,23 +354,85 @@ class TestAnalisisGeo:
         items, total = repo.get_analisis_list(db, tipo_filter="ndvi")
         assert total >= 1
 
-    def test_update_analisis_status(self, db: Session, repo: GeoRepository):
+    def test_update_analisis_metadata_does_not_change_estado(
+        self, db: Session, repo: GeoRepository
+    ):
         analisis = repo.create_analisis(db, tipo="flood", fecha_analisis=date.today())
-        updated = repo.update_analisis_status(
+
+        updated = repo.update_analisis_metadata(
             db,
             analisis.id,
-            estado="completed",
             celery_task_id="task-abc",
-            resultado={"areas_affected": 5},
         )
-        assert updated.estado == "completed"
+
+        assert updated is not None
+        assert updated.estado == EstadoGeoJob.PENDING
         assert updated.celery_task_id == "task-abc"
 
-    def test_update_analisis_status_not_found(self, db: Session, repo: GeoRepository):
-        result = repo.update_analisis_status(db, uuid.uuid4(), estado="failed")
-        assert result is None
+    def test_update_analisis_status_if_current_matches_expected_state(
+        self, db: Session, repo: GeoRepository
+    ):
+        analisis = repo.create_analisis(db, tipo="flood", fecha_analisis=date.today())
 
-    def test_update_analisis_error(self, db: Session, repo: GeoRepository):
+        assert repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.RUNNING,
+        )
+        assert not repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.RUNNING,
+        )
+        assert repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.RUNNING,
+            estado=EstadoGeoJob.COMPLETED,
+            resultado={"areas_affected": 5},
+        )
+
+        db.refresh(analisis)
+        assert analisis.estado == EstadoGeoJob.COMPLETED
+        assert analisis.resultado == {"areas_affected": 5}
+
+    def test_update_analisis_status_if_current_preserves_terminal_payload(
+        self, db: Session, repo: GeoRepository
+    ):
         analisis = repo.create_analisis(db, tipo="custom", fecha_analisis=date.today())
-        updated = repo.update_analisis_status(db, analisis.id, estado="failed", error="GEE timeout")
-        assert updated.error == "GEE timeout"
+        assert repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.RUNNING,
+        )
+        assert repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.RUNNING,
+            estado=EstadoGeoJob.COMPLETED,
+            resultado={"status": "complete"},
+        )
+
+        assert not repo.update_analisis_status_if_current(
+            db,
+            analisis.id,
+            expected_estado=EstadoGeoJob.RUNNING,
+            estado=EstadoGeoJob.FAILED,
+            error="late failure",
+        )
+
+        db.refresh(analisis)
+        assert analisis.estado == EstadoGeoJob.COMPLETED
+        assert analisis.resultado == {"status": "complete"}
+        assert analisis.error is None
+
+    def test_update_analisis_status_if_current_not_found(self, db: Session, repo: GeoRepository):
+        assert not repo.update_analisis_status_if_current(
+            db,
+            uuid.uuid4(),
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.RUNNING,
+        )

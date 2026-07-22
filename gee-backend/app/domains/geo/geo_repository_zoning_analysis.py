@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.domains.geo.geo_repository_support import (
@@ -129,26 +129,47 @@ class GeoRepositoryZoningAnalysisMixin:
         db.flush()
         return analisis
 
-    def update_analisis_status(
+    def update_analisis_metadata(
         self,
         db: Session,
         analisis_id: uuid.UUID,
         *,
-        estado: Optional[str] = None,
-        celery_task_id: Optional[str] = None,
-        resultado: Optional[dict] = None,
-        error: Optional[str] = None,
+        celery_task_id: str,
     ) -> Optional[AnalisisGeo]:
+        """Attach producer metadata without depending on lifecycle state."""
         analisis = self.get_analisis_by_id(db, analisis_id)
         if analisis is None:
             return None
-        if estado is not None:
-            analisis.estado = estado
-        if celery_task_id is not None:
-            analisis.celery_task_id = celery_task_id
-        if resultado is not None:
-            analisis.resultado = resultado
-        if error is not None:
-            analisis.error = error
+        analisis.celery_task_id = celery_task_id
         db.flush()
         return analisis
+
+    def update_analisis_status_if_current(
+        self,
+        db: Session,
+        analisis_id: uuid.UUID,
+        *,
+        expected_estado: str,
+        estado: Optional[str] = None,
+        resultado: Optional[dict] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Compare-and-set analysis lifecycle without reviving stale work."""
+        values: dict[str, object] = {"updated_at": func.now()}
+        if estado is not None:
+            values["estado"] = estado
+        if resultado is not None:
+            values["resultado"] = resultado
+        if error is not None:
+            values["error"] = error
+
+        result = db.execute(
+            update(AnalisisGeo)
+            .where(
+                AnalisisGeo.id == analisis_id,
+                AnalisisGeo.estado == expected_estado,
+            )
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1

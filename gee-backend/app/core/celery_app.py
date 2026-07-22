@@ -24,6 +24,22 @@ CELERY_VISIBILITY_TIMEOUT_SECONDS = int(
     os.environ.get("CELERY_VISIBILITY_TIMEOUT_SECONDS", "14400")
 )
 GEO_STALE_JOB_MINUTES = int(os.environ.get("GEO_STALE_JOB_MINUTES", "300"))
+CELERY_OUTBOX_BATCH_SIZE = max(
+    1,
+    min(int(os.environ.get("CELERY_OUTBOX_BATCH_SIZE", "25")), 100),
+)
+CELERY_OUTBOX_LEASE_SECONDS = max(
+    30,
+    min(int(os.environ.get("CELERY_OUTBOX_LEASE_SECONDS", "300")), 3600),
+)
+CELERY_OUTBOX_RETENTION_DAYS = max(
+    1,
+    min(int(os.environ.get("CELERY_OUTBOX_RETENTION_DAYS", "30")), 365),
+)
+CELERY_OUTBOX_CLEANUP_BATCH_SIZE = max(
+    1,
+    min(int(os.environ.get("CELERY_OUTBOX_CLEANUP_BATCH_SIZE", "500")), 1000),
+)
 
 RECOVERABLE_LONG_TASKS = frozenset(
     {
@@ -124,6 +140,11 @@ celery_app.conf.update(
             "schedule": crontab(minute="45", hour="4"),
             "options": {"queue": "celery"},
         },
+        "publish-celery-outbox": {
+            "task": "outbox.publish_pending",
+            "schedule": crontab(minute="*"),
+            "options": {"queue": "celery"},
+        },
         "reconcile-stale-geo-jobs": {
             "task": "geo.reconcile_stale_jobs",
             "schedule": crontab(minute="*/15"),
@@ -193,6 +214,21 @@ def reconcile_orphaned_denuncia_photos_task() -> int:
             return await reconcile_orphaned_denuncia_photos(session)
 
     return asyncio.run(_run())
+
+
+@celery_app.task(name="outbox.publish_pending")
+def publish_pending_celery_tasks_task() -> dict[str, int]:
+    """Publish and retain a bounded batch of durable Celery intents."""
+    from datetime import timedelta
+
+    from app.shared.celery_outbox import publish_due_celery_tasks
+
+    return publish_due_celery_tasks(
+        batch_size=CELERY_OUTBOX_BATCH_SIZE,
+        lease_for=timedelta(seconds=CELERY_OUTBOX_LEASE_SECONDS),
+        retention=timedelta(days=CELERY_OUTBOX_RETENTION_DAYS),
+        cleanup_batch_size=CELERY_OUTBOX_CLEANUP_BATCH_SIZE,
+    )
 
 
 @celery_app.task(name="geo.reconcile_stale_jobs")
