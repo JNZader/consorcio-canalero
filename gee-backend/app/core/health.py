@@ -5,18 +5,26 @@ from pathlib import Path
 from typing import Any, Dict
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.logging import get_logger
 from app.core.rate_limit import get_rate_limiter
-from app.db.session import SessionLocal
+from app.db.session import AsyncSessionLocal, SessionLocal
 
 logger = get_logger(__name__)
 
 # alembic.ini lives at gee-backend/alembic.ini.
 # This file is at gee-backend/app/core/health.py, so parents[2] == gee-backend/.
 ALEMBIC_INI_PATH = Path(__file__).resolve().parents[2] / "alembic.ini"
+
+# The outer health coordinator has a per-probe deadline. Each individual
+# database operation also has a driver-side cancellation deadline, while
+# PostgreSQL gets a transaction-local statement timeout. This prevents a
+# canceled health response from leaving SQL or a pool checkout alive.
+DATABASE_DRIVER_TIMEOUT_SECONDS = 1.0
+DATABASE_STATEMENT_TIMEOUT_MS = 750
 
 
 def check_database_health_sync() -> Dict[str, Any]:
@@ -37,9 +45,43 @@ def check_database_health_sync() -> Dict[str, Any]:
         return {"status": "unhealthy", "error": "database_check_failed"}
 
 
+async def _execute_with_driver_timeout(
+    db: AsyncSession,
+    statement: Any,
+    parameters: dict[str, object] | None = None,
+) -> Any:
+    """Execute one async SQL operation with a cancellable driver deadline."""
+    async with asyncio.timeout(DATABASE_DRIVER_TIMEOUT_SECONDS):
+        if parameters is None:
+            return await db.execute(statement)
+        return await db.execute(statement, parameters)
+
+
+async def _configure_statement_timeout(db: AsyncSession) -> None:
+    result = await _execute_with_driver_timeout(
+        db,
+        text("SELECT set_config('statement_timeout', :timeout, true)"),
+        {"timeout": f"{DATABASE_STATEMENT_TIMEOUT_MS}ms"},
+    )
+    result.close()
+
+
 async def check_database_health() -> Dict[str, Any]:
-    """Check PostgreSQL/PostGIS without blocking the Uvicorn event loop."""
-    return await asyncio.to_thread(check_database_health_sync)
+    """Check PostgreSQL/PostGIS with cancellable async driver operations."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await _configure_statement_timeout(db)
+
+            result = await _execute_with_driver_timeout(db, text("SELECT 1"))
+            result.close()
+
+            postgis = await _execute_with_driver_timeout(db, text("SELECT PostGIS_Version()"))
+            version = postgis.scalar()
+            postgis.close()
+            return {"status": "healthy", "postgis_version": version}
+    except Exception as e:
+        logger.error("Database health check failed", error=str(e))
+        return {"status": "unhealthy", "error": "database_check_failed"}
 
 
 async def check_redis_health() -> Dict[str, Any]:
@@ -78,42 +120,8 @@ async def check_gee_health() -> Dict[str, Any]:
         return {"status": "unhealthy", "error": "gee_check_failed"}
 
 
-def check_alembic_health_sync(db: Session) -> Dict[str, Any]:
-    """
-    Verify that alembic_version.version_num in the DB exists in the migration
-    script tree.
-
-    Catches phantom revisions introduced by manual ``alembic stamp <sha>`` with a
-    fabricated ID (the root cause of the incident fixed in commits fce8c66 /
-    95f59db / 3b08635). A broken stamp does NOT prevent the app from serving
-    requests, but it DOES block future migrations, so we surface it on /health
-    instead of failing startup.
-
-    Returns dict shape:
-      - healthy: {"status": "healthy", "current_rev": str, "is_head": bool, "heads": list[str]}
-      - unhealthy: {"status": "unhealthy", "error": str, "current_rev": str | None}
-    """
-    # 1. Read the current stamp from the DB. Use a raw text query so this does
-    #    not depend on alembic's context being initialized.
-    try:
-        result = db.execute(text("SELECT version_num FROM alembic_version"))
-        row = result.first()
-    except Exception as e:
-        logger.error("Alembic health check: DB query failed", error=str(e))
-        return {
-            "status": "unhealthy",
-            "error": f"Failed to query alembic_version: {e}",
-        }
-
-    if row is None:
-        return {
-            "status": "unhealthy",
-            "error": "alembic_version table exists but is empty",
-        }
-
-    current_rev = row[0]
-
-    # 2. Load the alembic script tree from the repo.
+def _check_alembic_revision(current_rev: str) -> Dict[str, Any]:
+    """Compare one database revision with the local Alembic script tree."""
     try:
         from alembic.config import Config
         from alembic.script import ScriptDirectory
@@ -128,11 +136,9 @@ def check_alembic_health_sync(db: Session) -> Dict[str, Any]:
             "current_rev": current_rev,
         }
 
-    # 3. Check the current rev exists in the script tree.
     try:
         revision_obj = script_dir.get_revision(current_rev)
     except Exception as e:
-        # alembic.util.exc.CommandError is raised for "Can't locate revision"
         logger.error(
             "Alembic health check: phantom revision detected",
             current_rev=current_rev,
@@ -155,33 +161,65 @@ def check_alembic_health_sync(db: Session) -> Dict[str, Any]:
             "current_rev": current_rev,
         }
 
-    # 4. Report whether the stamp is at head (false => pending migrations).
     heads = set(script_dir.get_heads())
-    is_head = current_rev in heads
-
     return {
         "status": "healthy",
         "current_rev": current_rev,
-        "is_head": is_head,
+        "is_head": current_rev in heads,
         "heads": sorted(heads),
     }
 
 
-def _check_alembic_health_with_session() -> Dict[str, Any]:
+def check_alembic_health_sync(db: Session) -> Dict[str, Any]:
+    """Compatibility helper for synchronous callers and migration tests."""
     try:
-        db = SessionLocal()
-        try:
-            return check_alembic_health_sync(db)
-        finally:
-            db.close()
+        result = db.execute(text("SELECT version_num FROM alembic_version"))
+        row = result.first()
+        result.close()
     except Exception as e:
-        logger.error("Alembic health check failed", error=str(e))
-        return {"status": "unhealthy", "error": "alembic_check_failed"}
+        logger.error("Alembic health check: DB query failed", error=str(e))
+        return {
+            "status": "unhealthy",
+            "error": f"Failed to query alembic_version: {e}",
+        }
+
+    if row is None:
+        return {
+            "status": "unhealthy",
+            "error": "alembic_version table exists but is empty",
+        }
+
+    return _check_alembic_revision(str(row[0]))
 
 
 async def check_alembic_health() -> Dict[str, Any]:
-    """Run the sync Alembic/SQL probe in a worker thread."""
-    return await asyncio.to_thread(_check_alembic_health_with_session)
+    """Read the DB stamp asynchronously, then inspect the local script tree."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await _configure_statement_timeout(db)
+            result = await _execute_with_driver_timeout(
+                db,
+                text("SELECT version_num FROM alembic_version"),
+            )
+            row = result.first()
+            result.close()
+    except Exception as e:
+        logger.error("Alembic health check: DB query failed", error=str(e))
+        return {
+            "status": "unhealthy",
+            "error": f"Failed to query alembic_version: {e}",
+        }
+
+    if row is None:
+        return {
+            "status": "unhealthy",
+            "error": "alembic_version table exists but is empty",
+        }
+
+    # Loading and traversing local migration files is bounded local work; no
+    # worker thread is needed, and there is no database operation left alive
+    # if the surrounding health task is canceled.
+    return _check_alembic_revision(str(row[0]))
 
 
 async def run_health_checks(
@@ -208,7 +246,10 @@ async def run_health_checks(
             logger.error("Health check crashed", error=str(exc))
             return {"status": "unhealthy", "error": "check_failed"}
 
-    tasks = {name: asyncio.create_task(bounded(check)) for name, check in checks.items()}
+    tasks = {
+        name: asyncio.create_task(bounded(check), name=f"health:{name}")
+        for name, check in checks.items()
+    }
     done, pending = await asyncio.wait(tasks.values(), timeout=overall_timeout)
     for task in pending:
         task.cancel()
@@ -217,7 +258,10 @@ async def run_health_checks(
 
     results: dict[str, Dict[str, Any]] = {}
     for name, task in tasks.items():
-        if task in done:
+        # A task can finish in the narrow window between asyncio.wait
+        # returning and cancellation. Preserve that completed result rather
+        # than overwriting it with an overall timeout.
+        if task in done or (task.done() and not task.cancelled()):
             results[name] = task.result()
         else:
             results[name] = {"status": "unhealthy", "error": "overall_timeout"}

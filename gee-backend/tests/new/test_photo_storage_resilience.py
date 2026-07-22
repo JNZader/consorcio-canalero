@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import io
+import os
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,6 +15,10 @@ from fastapi import HTTPException, UploadFile
 from PIL import Image
 from starlette.datastructures import Headers
 
+from app.auth.cleanup_tasks import (
+    ORPHANED_DENUNCIA_PHOTO_GRACE,
+    reconcile_orphaned_denuncia_photos,
+)
 from app.domains.denuncias.router import delete_my_denuncia, upload_denuncia_photo
 from app.shared.storage import LocalPhotoStorage, make_denuncia_photo_key
 
@@ -62,8 +69,111 @@ class _UploadDB:
 
 async def _seed_old_photo(storage: LocalPhotoStorage, denuncia_id: uuid.UUID) -> tuple[str, bytes]:
     old_url = await storage.save(_upload(_png_bytes("red")), make_denuncia_photo_key(denuncia_id))
-    old_path = storage._root / old_url.removeprefix("/uploads/")
+    old_path = storage.root / old_url.removeprefix("/uploads/")
     return old_url, old_path.read_bytes()
+
+
+class _ReferenceResult:
+    def __init__(self, urls: list[str]) -> None:
+        self._urls = urls
+
+    def scalars(self):
+        return self
+
+    def all(self) -> list[str]:
+        return self._urls
+
+
+class _ReferenceDB:
+    def __init__(self, urls: list[str]) -> None:
+        self.urls = urls
+        self.execute_calls = 0
+
+    async def execute(self, _statement) -> _ReferenceResult:
+        self.execute_calls += 1
+        return _ReferenceResult(self.urls)
+
+
+@pytest.mark.asyncio
+async def test_delete_fsyncs_parent_after_unlink_and_absent_retry(tmp_path, monkeypatch) -> None:
+    storage = LocalPhotoStorage(root=str(tmp_path), public_base="/uploads")
+    photo_dir = tmp_path / "denuncias"
+    photo_dir.mkdir()
+    key = f"denuncias/{uuid.uuid4()}-{uuid.uuid4().hex}"
+    photo_path = tmp_path / f"{key}.jpg"
+    photo_path.write_bytes(b"photo")
+
+    real_fsync = os.fsync
+    fsync_spy = MagicMock(side_effect=real_fsync)
+    monkeypatch.setattr("app.shared.storage.os.fsync", fsync_spy)
+
+    await storage.delete(key)
+    await storage.delete(key)
+
+    assert not photo_path.exists()
+    assert fsync_spy.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_partial_multi_extension_delete_fsyncs_before_raising(tmp_path, monkeypatch) -> None:
+    storage = LocalPhotoStorage(root=str(tmp_path), public_base="/uploads")
+    photo_dir = tmp_path / "denuncias"
+    photo_dir.mkdir()
+    key = f"denuncias/{uuid.uuid4()}-{uuid.uuid4().hex}"
+    jpg_path = tmp_path / f"{key}.jpg"
+    png_path = tmp_path / f"{key}.png"
+    jpg_path.write_bytes(b"jpg")
+    png_path.write_bytes(b"png")
+
+    real_unlink = os.unlink
+    real_fsync = os.fsync
+    fsync_spy = MagicMock(side_effect=real_fsync)
+
+    def fail_png(path, *, dir_fd=None):
+        if str(path).endswith(".png"):
+            raise OSError("permission denied")
+        return real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr("app.shared.storage.os.unlink", fail_png)
+    monkeypatch.setattr("app.shared.storage.os.fsync", fsync_spy)
+
+    with pytest.raises(OSError, match="permission denied"):
+        await storage.delete(key)
+
+    assert not jpg_path.exists()
+    assert png_path.exists()
+    fsync_spy.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_directory_fsync_failure_propagates_and_absent_retry_fsyncs(
+    tmp_path, monkeypatch
+) -> None:
+    storage = LocalPhotoStorage(root=str(tmp_path), public_base="/uploads")
+    photo_dir = tmp_path / "denuncias"
+    photo_dir.mkdir()
+    key = f"denuncias/{uuid.uuid4()}-{uuid.uuid4().hex}"
+    photo_path = tmp_path / f"{key}.webp"
+    photo_path.write_bytes(b"photo")
+
+    real_fsync = os.fsync
+    fsync_calls = 0
+
+    def fail_once(directory_fd: int) -> None:
+        nonlocal fsync_calls
+        fsync_calls += 1
+        if fsync_calls == 1:
+            raise OSError("directory sync failed")
+        real_fsync(directory_fd)
+
+    monkeypatch.setattr("app.shared.storage.os.fsync", fail_once)
+
+    with pytest.raises(OSError, match="directory sync failed"):
+        await storage.delete(key)
+
+    assert not photo_path.exists()
+    await storage.delete(key)
+    assert fsync_calls == 2
 
 
 @pytest.mark.asyncio
@@ -170,6 +280,40 @@ async def test_refresh_failure_after_commit_never_deletes_committed_photo(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_post_commit_old_delete_failure_returns_committed_new_pointer(
+    monkeypatch,
+) -> None:
+    denuncia_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    old_url = f"/uploads/denuncias/{denuncia_id}-{uuid.uuid4().hex}.png"
+    new_url = f"/uploads/denuncias/{denuncia_id}-{uuid.uuid4().hex}.png"
+    denuncia = SimpleNamespace(user_id=user_id, foto_url=old_url)
+    db = _UploadDB(denuncia)
+    storage = SimpleNamespace(
+        save=AsyncMock(return_value=new_url),
+        delete=AsyncMock(side_effect=OSError("directory sync failed")),
+    )
+    logger = MagicMock()
+    router_module = importlib.import_module("app.domains.denuncias.router")
+    monkeypatch.setattr(router_module, "logger", logger)
+
+    response = await upload_denuncia_photo(
+        denuncia_id,
+        _upload(b"storage validates in production"),
+        db,
+        storage,
+        SimpleNamespace(id=user_id),
+    )
+
+    assert response.photo_url == new_url
+    assert denuncia.foto_url == new_url
+    assert db.commit_calls == 1
+    assert db.rollback_calls == 0
+    storage.delete.assert_awaited_once()
+    logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_delete_failure_preserves_photo_pointer_and_soft_delete_state() -> None:
     denuncia_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -197,3 +341,108 @@ async def test_delete_failure_preserves_photo_pointer_and_soft_delete_state() ->
     assert denuncia.foto_url is not None
     assert denuncia.deleted_at is None
     db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_orphan_reconciler_is_bounded_idempotent_and_conservative(tmp_path) -> None:
+    storage = LocalPhotoStorage(root=str(tmp_path), public_base="/uploads")
+    photo_dir = tmp_path / "denuncias"
+    photo_dir.mkdir()
+    now = datetime(2026, 7, 19, 12, tzinfo=timezone.utc)
+    old_timestamp = (now - ORPHANED_DENUNCIA_PHOTO_GRACE - timedelta(hours=1)).timestamp()
+
+    denuncia_id = uuid.UUID(int=1)
+
+    def version_stem(version: int) -> str:
+        return f"{denuncia_id}-{version:032x}"
+
+    def create_old(stem: str, extension: str = "jpg"):
+        path = photo_dir / f"{stem}.{extension}"
+        path.write_bytes(b"photo")
+        os.utime(path, (old_timestamp, old_timestamp))
+        return path
+
+    eligible = [create_old(version_stem(version)) for version in (1, 2, 3)]
+    referenced = create_old(version_stem(4))
+    recent = photo_dir / f"{version_stem(5)}.jpg"
+    recent.write_bytes(b"recent")
+
+    legacy = create_old(str(denuncia_id))
+    ambiguous = create_old(f"{denuncia_id}-not-a-version")
+
+    outside_file = tmp_path / "outside-photo"
+    outside_file.write_bytes(b"outside")
+    unsafe_symlink = photo_dir / f"{version_stem(6)}.jpg"
+    unsafe_symlink.symlink_to(outside_file)
+
+    mixed_old = create_old(version_stem(7), "jpg")
+    mixed_recent = photo_dir / f"{version_stem(7)}.png"
+    mixed_recent.write_bytes(b"recent")
+
+    # Current pointers remain authoritative even when their persisted base
+    # predates the currently configured /uploads prefix.
+    db = _ReferenceDB([f"https://old.example/legacy-uploads/denuncias/{version_stem(4)}.jpg"])
+
+    assert (
+        await reconcile_orphaned_denuncia_photos(
+            db,
+            storage,
+            now=now,
+            batch_size=2,
+        )
+        == 2
+    )
+    assert not eligible[0].exists()
+    assert not eligible[1].exists()
+    assert eligible[2].exists()
+
+    assert referenced.exists()
+    assert recent.exists()
+    assert legacy.exists()
+    assert ambiguous.exists()
+    assert unsafe_symlink.is_symlink()
+    assert outside_file.exists()
+    assert mixed_old.exists()
+    assert mixed_recent.exists()
+
+    assert (
+        await reconcile_orphaned_denuncia_photos(
+            db,
+            storage,
+            now=now,
+            batch_size=2,
+        )
+        == 1
+    )
+    assert not eligible[2].exists()
+    assert (
+        await reconcile_orphaned_denuncia_photos(
+            db,
+            storage,
+            now=now,
+            batch_size=2,
+        )
+        == 0
+    )
+    assert db.execute_calls == 3
+
+
+@pytest.mark.asyncio
+async def test_orphan_reconciler_never_follows_managed_directory_symlink(tmp_path) -> None:
+    root = tmp_path / "uploads"
+    storage = LocalPhotoStorage(root=str(root), public_base="/uploads")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    stem = f"{uuid.UUID(int=2)}-{1:032x}"
+    outside_photo = outside / f"{stem}.jpg"
+    outside_photo.write_bytes(b"outside")
+    (root / "denuncias").symlink_to(outside, target_is_directory=True)
+
+    reconciled = await reconcile_orphaned_denuncia_photos(
+        _ReferenceDB([]),
+        storage,
+        now=datetime(2026, 7, 19, 12, tzinfo=timezone.utc),
+    )
+
+    assert reconciled == 0
+    assert outside_photo.read_bytes() == b"outside"

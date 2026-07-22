@@ -98,13 +98,14 @@ class TestHelpers:
             from app.domains.geo.tasks import _update_job
 
             job_id = str(uuid.uuid4())
-            _update_job(job_id, estado="running")
-            mock_repo.update_job_status.assert_called_once()
+            mock_repo.update_job_status_if_current.return_value = True
+            _update_job(job_id, expected_estado="pending", estado="running")
+            mock_repo.update_job_status_if_current.assert_called_once()
             mock_db.commit.assert_called_once()
             mock_db.close.assert_called_once()
 
     def test_update_job_closes_db_on_error(self, mock_db, mock_repo):
-        mock_repo.update_job_status.side_effect = RuntimeError("boom")
+        mock_repo.update_job_status_if_current.side_effect = RuntimeError("boom")
         with (
             patch("app.domains.geo.tasks._get_db", return_value=mock_db),
             patch("app.domains.geo.tasks.repo", mock_repo),
@@ -112,7 +113,11 @@ class TestHelpers:
             from app.domains.geo.tasks import _update_job
 
             with pytest.raises(RuntimeError):
-                _update_job(str(uuid.uuid4()), estado="running")
+                _update_job(
+                    str(uuid.uuid4()),
+                    expected_estado="pending",
+                    estado="running",
+                )
             mock_db.close.assert_called_once()
 
     def test_register_layer_upserts_and_returns_id(self, mock_db, mock_repo):

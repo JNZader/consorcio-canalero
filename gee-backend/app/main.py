@@ -265,6 +265,25 @@ def _parse_denuncia_photo_filename(filename: str) -> tuple[uuid.UUID, str, str] 
     return uuid.UUID(match.group("uuid")), canonical_suffix, extension
 
 
+def _is_current_live_denuncia_photo(denuncia, canonical_filename: str) -> bool:
+    """Bind a canonical immutable filename to the row's current live pointer."""
+    from urllib.parse import urlsplit
+
+    if getattr(denuncia, "deleted_at", None) is not None:
+        return False
+
+    current_url = getattr(denuncia, "foto_url", None)
+    if not current_url:
+        return False
+
+    expected_url = f"{settings.uploads_public_base.rstrip('/')}/denuncias/{canonical_filename}"
+
+    # Compare URL paths exactly, including the extension. The storage deletion
+    # helper intentionally recognises only extensions emitted by new uploads,
+    # while this read endpoint also supports legacy `.jpeg` pointers.
+    return urlsplit(current_url).path == urlsplit(expected_url).path
+
+
 def _read_denuncia_photo_bytes(uploads_root: str, canonical_filename: str) -> bytes | None:
     """Read one direct child of the denuncia upload root without following links.
 
@@ -377,7 +396,7 @@ async def get_denuncia_photo(
     db: _Session = next(db_gen)
     try:
         denuncia = db.get(Denuncia, denuncia_id)
-        if denuncia is None:
+        if denuncia is None or denuncia.deleted_at is not None:
             return Response(status_code=404)
         is_operator = getattr(user, "role", None) in {UserRole.ADMIN, UserRole.OPERADOR}
         is_owner = denuncia.user_id is not None and str(denuncia.user_id) == str(
@@ -385,13 +404,16 @@ async def get_denuncia_photo(
         )
         if not (is_operator or is_owner):
             return Response(status_code=404)
+
+        # Derive the storage filename only from the trusted row UUID and the
+        # parser's canonical suffix/extension. Neither the request string nor
+        # foto_url is ever passed to the filesystem reader.
+        canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
+        if not _is_current_live_denuncia_photo(denuncia, canonical_filename):
+            return Response(status_code=404)
     finally:
         db_gen.close()
 
-    # Reconstruct the disk key from the trusted database UUID and a constant
-    # allow-listed extension. Never use the request string or foto_url as a
-    # path: the latter is legacy display metadata, not an authority source.
-    canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
     content = await asyncio.to_thread(
         _read_denuncia_photo_bytes,
         settings.uploads_root,

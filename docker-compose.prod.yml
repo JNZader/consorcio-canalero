@@ -161,9 +161,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      # Exact reverse-proxy IP(s), comma-separated. Defaults to loopback so an
-      # unrelated container cannot spoof X-Forwarded-* headers.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # Exact proxy IPs/CIDRs or Docker DNS names. The launcher resolves
+      # "caddy" to its current peer IP before binding; no subnet or wildcard.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

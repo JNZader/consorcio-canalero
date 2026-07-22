@@ -53,5 +53,19 @@
         }
       ]
     }
+  },
+  "padron": {
+    "import_result": {
+      "filename": "padron.csv",
+      "processed": 3,
+      "created": 2,
+      "skipped": 1,
+      "errors": [
+        {
+          "row": 2,
+          "error": "CUIT invalido"
+        }
+      ]
+    }
   }
 }

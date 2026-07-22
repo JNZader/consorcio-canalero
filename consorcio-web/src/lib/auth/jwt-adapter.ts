@@ -6,6 +6,13 @@
 const API_URL =
   import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
 const AUTH_BASE = `${API_URL}/api/v2`;
+import {
+  clearApiServiceWorkerCaches,
+  clearAuthStorage,
+  getStoredAccessToken,
+  getStoredAuthSession,
+  persistAuthSession,
+} from './storage';
 import type {
   AuthAdapter,
   AuthSession,
@@ -14,13 +21,6 @@ import type {
   LoginCredentials,
   RegisterCredentials,
 } from './types';
-import {
-  clearApiServiceWorkerCaches,
-  clearAuthStorage,
-  getStoredAccessToken,
-  getStoredAuthSession,
-  persistAuthSession,
-} from './storage';
 
 export class JWTAuthAdapter implements AuthAdapter {
   private listeners: Set<AuthStateChangeCallback> = new Set();
@@ -131,11 +131,11 @@ export class JWTAuthAdapter implements AuthAdapter {
 
     if (token) {
       try {
-        await fetch(`${AUTH_BASE}/auth/jwt/logout`, {
+        await fetch(`${AUTH_BASE}/auth/jwt/logout-all`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
           },
         });
       } catch {

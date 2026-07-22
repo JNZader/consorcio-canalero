@@ -89,7 +89,7 @@ def _install_fake_db(monkeypatch: pytest.MonkeyPatch, denuncia: SimpleNamespace)
 
 
 @pytest.mark.asyncio
-async def test_owner_reads_canonical_file_without_using_database_foto_url(
+async def test_owner_reads_current_canonical_file_from_uppercase_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -98,14 +98,12 @@ async def test_owner_reads_canonical_file_without_using_database_foto_url(
     photo_root.mkdir(parents=True)
     canonical_filename = f"{PHOTO_ID}{CANONICAL_SUFFIX}.jpeg"
     (photo_root / canonical_filename).write_bytes(b"canonical-photo")
-    outside = tmp_path / "outside.jpg"
-    outside.write_bytes(b"must-not-be-read")
-
     owner_id = uuid.uuid4()
     denuncia = SimpleNamespace(
         id=PHOTO_ID,
         user_id=owner_id,
-        foto_url=str(outside),
+        foto_url=f"/uploads/denuncias/{canonical_filename}",
+        deleted_at=None,
     )
     _install_fake_db(monkeypatch, denuncia)
     monkeypatch.setattr(main.settings, "uploads_root", str(uploads_root))
@@ -127,7 +125,12 @@ async def test_authorization_happens_before_filesystem_io(
     monkeypatch: pytest.MonkeyPatch,
 ):
     owner_id = uuid.uuid4()
-    denuncia = SimpleNamespace(id=PHOTO_ID, user_id=owner_id, foto_url=None)
+    denuncia = SimpleNamespace(
+        id=PHOTO_ID,
+        user_id=owner_id,
+        foto_url=f"/uploads/denuncias/{PHOTO_ID}.jpg",
+        deleted_at=None,
+    )
     _install_fake_db(monkeypatch, denuncia)
     user = SimpleNamespace(id=uuid.uuid4(), role=UserRole.CIUDADANO)
     filesystem_called = False
@@ -141,6 +144,48 @@ async def test_authorization_happens_before_filesystem_io(
 
     response = await main.get_denuncia_photo(
         f"{PHOTO_ID}.jpg",
+        request=None,
+        user=user,
+    )
+
+    assert response.status_code == 404
+    assert filesystem_called is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("requested_filename", "deleted_at"),
+    [
+        (f"{PHOTO_ID}-{'1' * 32}.jpg", None),
+        (f"{PHOTO_ID}{CANONICAL_SUFFIX}.jpg", "2026-07-18T12:00:00Z"),
+    ],
+)
+async def test_stale_or_deleted_photo_is_rejected_before_filesystem_io(
+    requested_filename: str,
+    deleted_at: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    current_filename = f"{PHOTO_ID}{CANONICAL_SUFFIX}.jpg"
+    owner_id = uuid.uuid4()
+    denuncia = SimpleNamespace(
+        id=PHOTO_ID,
+        user_id=owner_id,
+        foto_url=f"/uploads/denuncias/{current_filename}",
+        deleted_at=deleted_at,
+    )
+    _install_fake_db(monkeypatch, denuncia)
+    user = SimpleNamespace(id=owner_id, role=UserRole.CIUDADANO)
+    filesystem_called = False
+
+    def fail_if_called(_uploads_root: str, _canonical_filename: str):
+        nonlocal filesystem_called
+        filesystem_called = True
+        raise AssertionError("stale or deleted photos must not reach storage")
+
+    monkeypatch.setattr(main, "_read_denuncia_photo_bytes", fail_if_called)
+
+    response = await main.get_denuncia_photo(
+        requested_filename,
         request=None,
         user=user,
     )

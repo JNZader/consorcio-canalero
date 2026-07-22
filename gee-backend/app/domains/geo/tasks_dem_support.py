@@ -5,6 +5,8 @@ from pathlib import Path
 
 import structlog
 
+from app.domains.geo.tasks_fencing import GeoJobFenceLost
+
 logger = structlog.get_logger(__name__)
 
 
@@ -31,7 +33,16 @@ def process_dem_pipeline_impl(
             parametros={"area_id": area_id, "dem_path": dem_path, "bbox": bbox},
         )
 
-    update_job(job_id, estado=estado_geo_job.RUNNING, progreso=0)
+    claimed = update_job(
+        job_id,
+        expected_estado=estado_geo_job.PENDING,
+        estado=estado_geo_job.RUNNING,
+        progreso=0,
+    )
+    if not claimed:
+        logger.info("dem_pipeline.not_claimed", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": {}}
+
     output_dir = Path(dem_path).parent / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -43,7 +54,12 @@ def process_dem_pipeline_impl(
     def _progress():
         nonlocal step
         step += 1
-        update_job(job_id, progreso=int((step / total_steps) * 100))
+        if not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            progreso=int((step / total_steps) * 100),
+        ):
+            raise GeoJobFenceLost(f"job {job_id} is no longer running")
 
     try:
         if bbox:
@@ -210,11 +226,26 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
+        if not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            estado=estado_geo_job.COMPLETED,
+            progreso=100,
+            resultado=outputs,
+        ):
+            raise GeoJobFenceLost(f"job {job_id} cannot complete after losing its fence")
         logger.info("dem_pipeline.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
+    except GeoJobFenceLost:
+        logger.warning("dem_pipeline.fence_lost", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": outputs}
     except Exception:
-        update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
+        update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            estado=estado_geo_job.FAILED,
+            error=traceback.format_exc(),
+        )
         logger.error("dem_pipeline.failed", area_id=area_id, job_id=job_id, exc_info=True)
         raise
 
@@ -239,24 +270,41 @@ def run_full_dem_pipeline_impl(
             parametros={"area_id": area_id, "min_basin_area_ha": min_basin_area_ha},
         )
 
-    update_job(job_id, estado=estado_geo_job.RUNNING, progreso=0)
+    claimed = update_job(
+        job_id,
+        expected_estado=estado_geo_job.PENDING,
+        estado=estado_geo_job.RUNNING,
+        progreso=0,
+    )
+    if not claimed:
+        logger.info("full_dem_pipeline.not_claimed", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": {}}
+
     cleanup_full_dem_state(area_id)
+
+    def _update_running(**kwargs):
+        if not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            **kwargs,
+        ):
+            raise GeoJobFenceLost(f"job {job_id} is no longer running")
 
     try:
         logger.info("full_dem_pipeline.stage1_download", area_id=area_id)
-        update_job(job_id, progreso=5)
+        _update_running(progreso=5)
         output_dir = Path(f"/data/geo/{area_id}")
         dem_path, prepared_dem_path = prepare_full_pipeline_dem(area_id)
-        update_job(job_id, progreso=15)
+        _update_running(progreso=15)
 
         logger.info("full_dem_pipeline.stage1b_prepare", area_id=area_id)
-        update_job(job_id, progreso=20)
+        _update_running(progreso=20)
 
         logger.info("full_dem_pipeline.stage2_terrain", area_id=area_id)
         pipeline_result = process_dem_pipeline(
             area_id=area_id, dem_path=prepared_dem_path, bbox=None, job_id=None
         )
-        update_job(job_id, progreso=85)
+        _update_running(progreso=85)
 
         logger.info("full_dem_pipeline.stage3_basins", area_id=area_id)
         zonas_created, basins_raster, basins_geojson = generate_auto_basins(
@@ -272,7 +320,11 @@ def run_full_dem_pipeline_impl(
             "zonas_created": zonas_created,
             **pipeline_result.get("outputs", {}),
         }
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=all_outputs)
+        _update_running(
+            estado=estado_geo_job.COMPLETED,
+            progreso=100,
+            resultado=all_outputs,
+        )
         logger.info(
             "full_dem_pipeline.done",
             area_id=area_id,
@@ -280,8 +332,16 @@ def run_full_dem_pipeline_impl(
             zonas_created=zonas_created,
         )
         return {"job_id": job_id, "status": "completed", "outputs": all_outputs}
+    except GeoJobFenceLost:
+        logger.warning("full_dem_pipeline.fence_lost", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": {}}
     except Exception:
-        update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
+        update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            estado=estado_geo_job.FAILED,
+            error=traceback.format_exc(),
+        )
         logger.error("full_dem_pipeline.failed", area_id=area_id, exc_info=True)
         raise
 

@@ -56,7 +56,9 @@ const KilometrosTooltip = (
   </Stack>
 );
 
-function CanalesTooltipContent({ rows }: { rows: { label: string; tramos: number; km: number }[] }) {
+function CanalesTooltipContent({
+  rows,
+}: { rows: { label: string; tramos: number; km: number }[] }) {
   return (
     <Stack gap={4}>
       <Text size="xs" fw={600} mb={4}>
@@ -258,9 +260,7 @@ export function HomeContent() {
                     <Text size="lg" fw={600}>
                       {stat.label}
                     </Text>
-                    {hasTooltip && (
-                      <IconInfoCircle size={16} color="var(--mantine-color-gray-5)" />
-                    )}
+                    {hasTooltip && <IconInfoCircle size={16} color="var(--mantine-color-gray-5)" />}
                   </Group>
                   <Text size="sm" c="gray.6" ta="center">
                     {stat.sublabel}
@@ -342,10 +342,9 @@ export function HomeContent() {
           <Title order={2} ta="center">
             Sobre el consorcio
           </Title>
-          <Text size="lg" c="gray.7" ta="center" maw={720}>
-            Somos una entidad pública de gestión territorial focalizada en la
-            infraestructura hídrica y la red de caminos rurales del sudeste
-            cordobés.
+          <Text size="lg" c="dimmed" ta="center" maw={720}>
+            Somos una entidad pública de gestión territorial focalizada en la infraestructura
+            hídrica y la red de caminos rurales del sudeste cordobés.
           </Text>
           <Stack gap="sm" maw={720} w="100%">
             {ABOUT_BULLETS.map((bullet, idx) => (
@@ -353,7 +352,7 @@ export function HomeContent() {
                 <Badge size="lg" variant="light" color="institucional" radius="xl">
                   {idx + 1}
                 </Badge>
-                <Text size="md" c="gray.7" style={{ flex: 1 }}>
+                <Text size="md" c="dimmed" style={{ flex: 1 }}>
                   {bullet}
                 </Text>
               </Group>
@@ -375,8 +374,7 @@ export function HomeContent() {
               Preguntas frecuentes
             </Title>
             <Text size="lg" c="gray.6" ta="center" maw={600}>
-              Lo que la mayoría de los vecinos pregunta antes de su primer
-              reporte.
+              Lo que la mayoría de los vecinos pregunta antes de su primer reporte.
             </Text>
           </Stack>
           <Accordion variant="separated" radius="md">
@@ -403,8 +401,8 @@ export function HomeContent() {
             Contactanos
           </Title>
           <Text size="md" c="gray.6" ta="center" maw={500}>
-            ¿Dudas que no resolvió el FAQ? Escribinos directo — respondemos en
-            días hábiles dentro de las 48 horas.
+            ¿Dudas que no resolvió el FAQ? Escribinos directo — respondemos en días hábiles dentro
+            de las 48 horas.
           </Text>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" w="100%" maw={600}>
             <Card padding="lg" radius="md" shadow="sm" withBorder>

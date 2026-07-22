@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import traceback
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+from sqlalchemy import text
 
 import structlog
 
 from app.core.celery_app import celery_app
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 import app.auth.models  # noqa: F401 — register User table for FK resolution
 from app.domains.geo.models import (
     EstadoGeoJob,
@@ -51,13 +55,42 @@ def _get_db():
     return SessionLocal()
 
 
-def _update_job(job_id: str, **kwargs):
+def _update_job(
+    job_id: str,
+    *,
+    expected_estado: str,
+    **kwargs,
+) -> bool:
     db = _get_db()
     try:
-        repo.update_job_status(db, uuid.UUID(job_id), **kwargs)
+        updated = repo.update_job_status_if_current(
+            db,
+            uuid.UUID(job_id),
+            expected_estado=expected_estado,
+            **kwargs,
+        )
         db.commit()
+        return updated
     finally:
         db.close()
+
+
+@contextmanager
+def _area_execution_lock(area_id: str) -> Iterator[bool]:
+    """Serialize destructive full-DEM work for one area in PostgreSQL."""
+    lock_name = f"geo:full-dem:{area_id}"
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            acquired = bool(
+                connection.execute(
+                    text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_name, 0))"),
+                    {"lock_name": lock_name},
+                ).scalar()
+            )
+            yield acquired
+        finally:
+            transaction.rollback()
 
 
 def _register_layer(
@@ -180,16 +213,31 @@ def _run_simple_processing_task(
     job_id: str | None = None,
     **kwargs,
 ) -> dict:
-    if job_id:
-        _update_job(job_id, estado=EstadoGeoJob.RUNNING)
+    if job_id and not _update_job(
+        job_id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.RUNNING,
+    ):
+        return {"job_id": job_id, "status": "skipped"}
+
     try:
         result = getattr(_get_processing(), processing_method)(*args, **kwargs)
-        if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.COMPLETED, progreso=100)
+        if job_id and not _update_job(
+            job_id,
+            expected_estado=EstadoGeoJob.RUNNING,
+            estado=EstadoGeoJob.COMPLETED,
+            progreso=100,
+        ):
+            return {"job_id": job_id, "status": "skipped"}
         return {"output_path": result}
     except Exception:
         if job_id:
-            _update_job(job_id, estado=EstadoGeoJob.FAILED, error=traceback.format_exc())
+            _update_job(
+                job_id,
+                expected_estado=EstadoGeoJob.RUNNING,
+                estado=EstadoGeoJob.FAILED,
+                error=traceback.format_exc(),
+            )
         raise
 
 
@@ -426,19 +474,30 @@ def run_full_dem_pipeline(
     min_basin_area_ha: float = 5000.0,
     job_id: str | None = None,
 ) -> dict:
-    return run_full_dem_pipeline_impl(
-        area_id=area_id,
-        min_basin_area_ha=min_basin_area_ha,
-        job_id=job_id,
-        create_geo_job=_create_geo_job,
-        update_job=_update_job,
-        cleanup_full_dem_state=_cleanup_full_dem_state,
-        prepare_full_pipeline_dem=_prepare_full_pipeline_dem,
-        process_dem_pipeline=process_dem_pipeline,
-        generate_auto_basins=_generate_auto_basins,
-        tipo_geo_job=TipoGeoJob,
-        estado_geo_job=EstadoGeoJob,
-    )
+    with _area_execution_lock(area_id) as acquired:
+        if not acquired:
+            if job_id is not None:
+                _update_job(
+                    job_id,
+                    expected_estado=EstadoGeoJob.PENDING,
+                    estado=EstadoGeoJob.FAILED,
+                    error="Another full DEM pipeline is already running for this area",
+                )
+            return {"job_id": job_id, "status": "skipped", "outputs": {}}
+
+        return run_full_dem_pipeline_impl(
+            area_id=area_id,
+            min_basin_area_ha=min_basin_area_ha,
+            job_id=job_id,
+            create_geo_job=_create_geo_job,
+            update_job=_update_job,
+            cleanup_full_dem_state=_cleanup_full_dem_state,
+            prepare_full_pipeline_dem=_prepare_full_pipeline_dem,
+            process_dem_pipeline=process_dem_pipeline,
+            generate_auto_basins=_generate_auto_basins,
+            tipo_geo_job=TipoGeoJob,
+            estado_geo_job=EstadoGeoJob,
+        )
 
 
 def _get_composites():

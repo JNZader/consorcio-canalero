@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.denuncias.models import Denuncia
 from app.domains.denuncias.schemas import (
@@ -29,6 +30,7 @@ from app.shared.storage import (
     photo_key_from_url,
 )
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/denuncias", tags=["denuncias"])
 
 
@@ -187,7 +189,19 @@ async def upload_denuncia_photo(
     if previous_photo_url:
         previous_key = photo_key_from_url(previous_photo_url)
         if previous_key:
-            await storage.delete(previous_key)
+            try:
+                await storage.delete(previous_key)
+            except Exception as exc:
+                # The new pointer is already durable. Returning an error now
+                # would make a successful replacement look failed and invite a
+                # duplicate retry. Record the orphan for the scheduled
+                # reconciler instead; never revert the committed pointer.
+                logger.exception(
+                    "denuncia.previous_photo_cleanup_failed",
+                    denuncia_id=str(denuncia_id),
+                    previous_key=previous_key,
+                    error=str(exc),
+                )
 
     return DenunciaPhotoResponse(photo_url=photo_url)
 

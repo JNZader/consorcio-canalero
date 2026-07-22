@@ -213,11 +213,11 @@ class TestAlembicHealthIntegration:
 
 @pytest.mark.asyncio
 async def test_async_wrapper_handles_exceptions():
-    """The async wrapper catches SessionLocal() failures and returns unhealthy."""
+    """The async wrapper catches AsyncSessionLocal failures and returns unhealthy."""
     from app.core.health import check_alembic_health
 
-    with patch("app.core.health.SessionLocal", side_effect=Exception("db boom")):
+    with patch("app.core.health.AsyncSessionLocal", side_effect=Exception("db boom")):
         result = await check_alembic_health()
 
     assert result["status"] == "unhealthy"
-    assert result["error"] == "alembic_check_failed"
+    assert result["error"] == "Failed to query alembic_version: db boom"

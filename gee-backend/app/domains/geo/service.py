@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.domains.geo.models import (
+    EstadoGeoJob,
     GeoJob,
     GeoLayer,
     TipoGeoJob,
@@ -26,6 +27,46 @@ repo = GeoRepository()
 
 class GeoJobDispatchError(RuntimeError):
     """Raised when a GeoJob was created but its Celery task could not be queued."""
+
+
+def _record_publication_failure(
+    db: Session,
+    *,
+    job_id: uuid.UUID,
+    operation: str,
+    publication_error: Exception,
+) -> None:
+    """Mark an unclaimed durable job failed without masking the broker error."""
+    diagnostic = (
+        f"Celery publication failed: {type(publication_error).__name__}: {publication_error}"
+    )
+    try:
+        marked_failed = repo.update_job_status_if_current(
+            db,
+            job_id,
+            expected_estado=EstadoGeoJob.PENDING,
+            estado=EstadoGeoJob.FAILED,
+            error=diagnostic,
+        )
+        db.commit()
+    except Exception as persistence_error:
+        db.rollback()
+        logger.exception(
+            "geo_job.publication_failure_persist_failed",
+            operation=operation,
+            job_id=str(job_id),
+            publication_error=str(publication_error),
+            persistence_error=str(persistence_error),
+        )
+        return
+
+    if not marked_failed:
+        logger.warning(
+            "geo_job.publication_failure_job_already_claimed",
+            operation=operation,
+            job_id=str(job_id),
+            publication_error=str(publication_error),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -110,30 +151,42 @@ def dispatch_job(
         usuario_id=usuario_id,
     )
     db.flush()
+    job_id = job.id
+
+    # The worker claims jobs in a separate transaction. Publish only after the
+    # row is durable so even an immediately-started worker can observe it.
+    db.commit()
 
     dispatch_map = _get_task_dispatch_map()
     task_launcher = dispatch_map.get(tipo)
 
-    if task_launcher is not None:
-        try:
-            result = task_launcher({**parametros, "job_id": str(job.id)})
-        except Exception as exc:
-            db.rollback()
-            logger.exception(
-                "dispatch_job.task_dispatch_failed",
-                tipo=tipo,
-                job_id=str(job.id),
-                error=str(exc),
-            )
-            raise GeoJobDispatchError(
-                "No se pudo encolar el trabajo geoespacial. "
-                "Revisá Redis/Celery y el worker correspondiente."
-            ) from exc
+    if task_launcher is None:
+        logger.warning("dispatch_job.no_task_mapping", tipo=tipo, job_id=str(job_id))
+        return job
 
-        repo.update_job_status(db, job.id, celery_task_id=result.id)
-    else:
-        logger.warning("dispatch_job.no_task_mapping", tipo=tipo, job_id=str(job.id))
+    try:
+        result = task_launcher({**parametros, "job_id": str(job_id)})
+    except Exception as exc:
+        _record_publication_failure(
+            db,
+            job_id=job_id,
+            operation="dispatch_job",
+            publication_error=exc,
+        )
+        logger.exception(
+            "dispatch_job.task_dispatch_failed",
+            tipo=tipo,
+            job_id=str(job_id),
+            error=str(exc),
+        )
+        raise GeoJobDispatchError(
+            "No se pudo encolar el trabajo geoespacial. "
+            "Revisá Redis/Celery y el worker correspondiente."
+        ) from exc
 
+    # Celery can start the worker before ``delay`` returns. This metadata-only
+    # update deliberately has no expected lifecycle state and never writes it.
+    repo.update_job_status(db, job_id, celery_task_id=result.id)
     db.commit()
     return job
 
@@ -174,17 +227,37 @@ def submit_pipeline_job(
         usuario_id=user_id,
     )
     db.flush()
+    job_id = job.id
 
-    result = process_dem_pipeline.delay(
-        area_id=area_id,
-        dem_path=dem_path,
-        bbox=bbox,
-        job_id=str(job.id),
-    )
+    # Make the row visible before an eager/fast worker attempts its CAS claim.
+    db.commit()
 
+    try:
+        result = process_dem_pipeline.delay(
+            area_id=area_id,
+            dem_path=dem_path,
+            bbox=bbox,
+            job_id=str(job_id),
+        )
+    except Exception as exc:
+        _record_publication_failure(
+            db,
+            job_id=job_id,
+            operation="submit_pipeline_job",
+            publication_error=exc,
+        )
+        logger.exception(
+            "submit_pipeline_job.task_dispatch_failed",
+            job_id=str(job_id),
+            error=str(exc),
+        )
+        raise
+
+    # Do not predicate task-id persistence on PENDING: the worker may already
+    # be RUNNING (or even terminal) by the time publication returns.
     repo.update_job_status(
         db,
-        job.id,
+        job_id,
         celery_task_id=result.id,
     )
     db.commit()

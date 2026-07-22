@@ -107,7 +107,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # GEE auth state is duplicated. The pool sizes in app/db/session.py
 # were bumped in F3-K so 2 workers stay below max_connections.
 #
-# Proxy headers are accepted only from FORWARDED_ALLOW_IPS. The image default
-# is loopback; docker-compose.prod.yml may inject the exact fixed IP assigned
-# to Caddy. Never use a whole RFC1918 range or "*".
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+# Proxy headers are accepted only from FORWARDED_ALLOW_IPS. The production
+# launcher resolves configured Docker hostnames to their exact current IPs
+# before Uvicorn binds. Never use a whole RFC1918 range or "*".
+CMD ["python", "-m", "app.server"]

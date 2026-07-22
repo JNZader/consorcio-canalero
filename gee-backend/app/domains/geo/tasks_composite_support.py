@@ -5,6 +5,8 @@ from pathlib import Path
 
 import structlog
 
+from app.domains.geo.tasks_fencing import GeoJobFenceLost
+
 logger = structlog.get_logger(__name__)
 
 
@@ -29,7 +31,6 @@ def composite_analysis_task_impl(
     tipo_geo_layer,
     estado_geo_job,
 ) -> dict:
-    composites = get_composites()
     if job_id is None:
         job_id = create_geo_job(
             tipo=tipo_geo_job.COMPOSITE_ANALYSIS,
@@ -40,12 +41,30 @@ def composite_analysis_task_impl(
             },
         )
 
-    update_job(job_id, estado=estado_geo_job.RUNNING, progreso=0)
+    claimed = update_job(
+        job_id,
+        expected_estado=estado_geo_job.PENDING,
+        estado=estado_geo_job.RUNNING,
+        progreso=0,
+    )
+    if not claimed:
+        logger.info("composite_analysis.not_claimed", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": {}}
+
+    composites = get_composites()
+
+    def _update_running(**kwargs):
+        if not update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            **kwargs,
+        ):
+            raise GeoJobFenceLost(f"job {job_id} is no longer running")
 
     try:
         area_dir = resolve_composite_area_dir(area_id)
         validate_composite_prerequisites(area_dir)
-        update_job(job_id, progreso=10)
+        _update_running(progreso=10)
         outputs: dict[str, str] = {}
 
         flood_output = str(Path(area_dir) / "flood_risk.tif")
@@ -68,7 +87,7 @@ def composite_analysis_task_impl(
             else {"weights": flood_weights, "cog_error": "conversion failed"},
         )
         outputs["flood_risk"] = flood_output
-        update_job(job_id, progreso=30)
+        _update_running(progreso=30)
 
         merge_drainage_networks_if_available(
             job_id=job_id,
@@ -77,7 +96,7 @@ def composite_analysis_task_impl(
             composites=composites,
             outputs=outputs,
         )
-        update_job(job_id, progreso=40)
+        _update_running(progreso=40)
 
         drainage_output = str(Path(area_dir) / "drainage_need.tif")
         run_step(
@@ -99,7 +118,7 @@ def composite_analysis_task_impl(
             else {"weights": drainage_weights, "cog_error": "conversion failed"},
         )
         outputs["drainage_need"] = drainage_output
-        update_job(job_id, progreso=60)
+        _update_running(progreso=60)
 
         zonal_stats_count = store_composite_zonal_stats(
             area_id=area_id,
@@ -111,12 +130,24 @@ def composite_analysis_task_impl(
             drainage_weights=drainage_weights,
         )
         outputs["zonal_stats_count"] = str(zonal_stats_count)
-        update_job(job_id, progreso=90)
-        update_job(job_id, estado=estado_geo_job.COMPLETED, progreso=100, resultado=outputs)
+        _update_running(progreso=90)
+        _update_running(
+            estado=estado_geo_job.COMPLETED,
+            progreso=100,
+            resultado=outputs,
+        )
         logger.info("composite_analysis.done", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "completed", "outputs": outputs}
+    except GeoJobFenceLost:
+        logger.warning("composite_analysis.fence_lost", area_id=area_id, job_id=job_id)
+        return {"job_id": job_id, "status": "skipped", "outputs": {}}
     except Exception:
-        update_job(job_id, estado=estado_geo_job.FAILED, error=traceback.format_exc())
+        update_job(
+            job_id,
+            expected_estado=estado_geo_job.RUNNING,
+            estado=estado_geo_job.FAILED,
+            error=traceback.format_exc(),
+        )
         logger.error("composite_analysis.failed", area_id=area_id, job_id=job_id, exc_info=True)
         raise
 

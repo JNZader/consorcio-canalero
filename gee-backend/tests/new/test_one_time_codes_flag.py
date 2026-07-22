@@ -157,6 +157,9 @@ async def test_forgot_password_flag_on_emails_code_not_token(test_engine, monkey
                 f"the 8-char code {row.code!r} should appear in the "
                 f"email body so the user can paste it into the SPA."
             )
+            for body in (body_text, body_html):
+                assert f"/reset-password?code={row.code}" in body
+                assert "/reset-password?token=" not in body
     finally:
         await _cleanup_user_async(SessionLocal, user.id)
         await engine.dispose()
@@ -200,6 +203,9 @@ async def test_request_verify_flag_on_emails_code_not_token(test_engine, monkeyp
             assert row.token == jwt_token
             assert row.consumed_at is None
             assert row.code in body_text
+            for body in (body_text, body_html):
+                assert f"/verify-email?code={row.code}" in body
+                assert "/verify-email?token=" not in body
     finally:
         await _cleanup_user_async(SessionLocal, user.id)
         await engine.dispose()
@@ -233,10 +239,10 @@ async def test_forgot_password_flag_off_uses_legacy_token_in_body(test_engine, m
         )
 
         body_text = email["body_text"]
-        assert jwt_token in body_text, (
-            "Legacy path must keep the JWT in the body so SPA versions "
-            "that don't know about ``?code=`` continue to work."
-        )
+        body_html = email.get("body_html") or ""
+        for body in (body_text, body_html):
+            assert f"/reset-password?token={jwt_token}" in body
+            assert "/reset-password?code=" not in body
 
         async with SessionLocal() as session:
             rows = (
@@ -249,6 +255,44 @@ async def test_forgot_password_flag_off_uses_legacy_token_in_body(test_engine, m
                 f"Found {len(rows)} row(s) which leaks one-time-code "
                 f"infrastructure into the legacy path."
             )
+    finally:
+        await _cleanup_user_async(SessionLocal, user.id)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_request_verify_flag_off_uses_legacy_token_link(test_engine, monkeypatch):
+    """Legacy verification links route the JWT through the token query."""
+    _ = test_engine
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "use_one_time_codes", False)
+
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user_async(SessionLocal)
+    jwt_token = "LEGACY.JWT.VERIFY-TOKEN-EXPECTED-IN-LINK"
+
+    try:
+        email = await _invoke_hook_with_captured_email(
+            SessionLocal,
+            user,
+            hook_name="on_after_request_verify",
+            token=jwt_token,
+        )
+
+        body_text = email["body_text"]
+        body_html = email.get("body_html") or ""
+        for body in (body_text, body_html):
+            assert f"/verify-email?token={jwt_token}" in body
+            assert "/verify-email?code=" not in body
+
+        async with SessionLocal() as session:
+            rows = (
+                (await session.execute(select(EmailCode).where(EmailCode.user_id == user.id)))
+                .scalars()
+                .all()
+            )
+            assert rows == []
     finally:
         await _cleanup_user_async(SessionLocal, user.id)
         await engine.dispose()
