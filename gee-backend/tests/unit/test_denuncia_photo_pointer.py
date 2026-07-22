@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.main import _DENUNCIA_FILENAME_RE, _is_current_live_denuncia_photo
+from app.main import _is_current_live_denuncia_photo, _parse_denuncia_photo_filename
 
 
 DENUNCIA_ID = "11111111-1111-4111-8111-111111111111"
@@ -42,4 +42,4 @@ def test_soft_deleted_denuncia_is_rejected_even_for_current_filename() -> None:
 
 def test_missing_pointer_and_traversal_are_rejected() -> None:
     assert _is_current_live_denuncia_photo(_denuncia(foto_url=None), CURRENT_FILENAME) is False
-    assert _DENUNCIA_FILENAME_RE.fullmatch(f"../{CURRENT_FILENAME}") is None
+    assert _parse_denuncia_photo_filename(f"../{CURRENT_FILENAME}") is None
