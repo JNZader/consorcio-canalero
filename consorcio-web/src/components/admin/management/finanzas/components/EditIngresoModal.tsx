@@ -1,41 +1,31 @@
 import {
   Button,
-  FileInput,
   Modal,
   NumberInput,
-  Select,
+  NativeSelect,
   SimpleGrid,
   Stack,
   TextInput,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
-import { IconUpload } from '../../../../ui/icons';
 import type { IngresoFormValues } from './IngresoFormModal';
 
 const EDIT_INGRESO_DESCRIPTION_ERROR_ID = 'edit-ingreso-description-error';
 const EDIT_INGRESO_AMOUNT_ERROR_ID = 'edit-ingreso-amount-error';
-const EDIT_INGRESO_SOURCE_ERROR_ID = 'edit-ingreso-source-error';
+const EDIT_INGRESO_CATEGORY_ERROR_ID = 'edit-ingreso-category-error';
 
 export function EditIngresoModal({
   opened,
   onClose,
   form,
-  sourceData,
-  comprobanteFile,
-  setComprobanteFile,
-  onOpenSource,
+  categoryData,
   onSubmit,
-  loading,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<IngresoFormValues>;
-  sourceData: Array<{ value: string; label: string }>;
-  comprobanteFile: File | null;
-  setComprobanteFile: (file: File | null) => void;
-  onOpenSource: () => void;
+  categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: IngresoFormValues) => void | Promise<void>;
-  loading: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Editar ingreso">
@@ -63,42 +53,20 @@ export function EditIngresoModal({
                 'aria-live': 'assertive',
               }}
             />
-            <Select
-              label="Fuente"
-              placeholder="Selecciona fuente"
-              data={sourceData}
-              searchable
+            <NativeSelect
+              label="Categoria"
+              data={categoryData}
               required
-              {...form.getInputProps('fuente')}
+              {...form.getInputProps('categoria')}
               errorProps={{
-                id: EDIT_INGRESO_SOURCE_ERROR_ID,
+                id: EDIT_INGRESO_CATEGORY_ERROR_ID,
                 role: 'alert',
                 'aria-live': 'assertive',
               }}
             />
           </SimpleGrid>
-          <Button type="button" variant="subtle" size="xs" onClick={onOpenSource}>
-            Agregar fuente
-          </Button>
-          <SimpleGrid cols={2}>
-            <TextInput label="Pagador" {...form.getInputProps('pagador')} />
-            <TextInput type="date" label="Fecha" {...form.getInputProps('fecha')} />
-          </SimpleGrid>
-          <TextInput
-            label="Comprobante (URL foto/PDF)"
-            placeholder="https://..."
-            {...form.getInputProps('comprobante_url')}
-          />
-          <FileInput
-            label="Reemplazar comprobante"
-            placeholder="Imagen o PDF"
-            value={comprobanteFile}
-            onChange={setComprobanteFile}
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            leftSection={<IconUpload size={16} />}
-            clearable
-          />
-          <Button type="submit" fullWidth mt="md" loading={loading}>
+          <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
+          <Button type="submit" fullWidth mt="md">
             Actualizar ingreso
           </Button>
         </Stack>

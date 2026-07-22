@@ -34,6 +34,8 @@ export function AgendaModal({
   onExport,
   form,
   onAddTopic,
+  onDeleteTopic,
+  deletingAgendaItemId,
   availableEntities,
   loadingEntities,
 }: Readonly<{
@@ -45,6 +47,8 @@ export function AgendaModal({
   onExport: () => void | Promise<void>;
   form: UseFormReturnType<AgendaFormValues>;
   onAddTopic: (values: AgendaFormValues) => void | Promise<void>;
+  onDeleteTopic: (item: AgendaItem) => void | Promise<void>;
+  deletingAgendaItemId: string | null;
   availableEntities: EntityOption[];
   loadingEntities: boolean;
 }>) {
@@ -118,7 +122,15 @@ export function AgendaModal({
                         </Group>
                       )}
                     </div>
-                    <ActionIcon color="red" variant="subtle">
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      aria-label={`Eliminar tema ${index + 1}: ${item.titulo}`}
+                      title={`Eliminar ${item.titulo}`}
+                      onClick={() => onDeleteTopic(item)}
+                      loading={deletingAgendaItemId === item.id}
+                      disabled={deletingAgendaItemId !== null && deletingAgendaItemId !== item.id}
+                    >
                       <IconTrash size={16} />
                     </ActionIcon>
                   </Group>

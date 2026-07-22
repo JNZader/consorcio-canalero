@@ -4,8 +4,8 @@ export interface Gasto {
   descripcion: string;
   monto: number;
   categoria: string;
-  comprobante_url?: string;
-  infraestructura?: { nombre: string };
+  proveedor?: string | null;
+  created_at: string;
 }
 
 export interface Balance {
@@ -19,7 +19,7 @@ export interface Ingreso {
   fecha: string;
   descripcion: string;
   monto: number;
-  fuente: string;
-  comprobante_url?: string;
-  pagador?: string;
+  categoria: string;
+  consorcista_id?: string | null;
+  created_at: string;
 }

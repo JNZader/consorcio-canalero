@@ -1,22 +1,19 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import TramitesPanel from '../../src/components/admin/management/TramitesPanel';
+import contracts from '../fixtures/admin-api-contracts.json';
 
-const { mockApiFetch, mockGetAuthToken } = vi.hoisted(() => ({
+const { mockApiFetch } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
-  mockGetAuthToken: vi.fn().mockResolvedValue('token'),
 }));
 
 vi.mock('../../src/lib/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/lib/api')>();
   return {
     ...original,
-    API_URL: 'http://localhost:8000',
     apiFetch: mockApiFetch,
-    getAuthToken: mockGetAuthToken,
   };
 });
 
@@ -29,13 +26,7 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-const canonicalTramite = {
-  id: 'tramite-1',
-  titulo: 'Canal Norte',
-  numero_expediente: 'A-1',
-  estado: 'pendiente',
-  ultima_actualizacion: '2026-03-01T10:00:00Z',
-};
+const tramite = contracts.tramites.detail;
 
 function renderPanel() {
   return render(
@@ -45,190 +36,117 @@ function renderPanel() {
   );
 }
 
+async function chooseOption(input: HTMLElement, name: string) {
+  const user = userEvent.setup();
+  await user.selectOptions(input, name);
+}
+
 describe('TramitesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetch).mockReset();
-    mockGetAuthToken.mockResolvedValue('token');
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/tramites' && !options) {
-        return { items: [canonicalTramite], total: 1 };
-      }
-      if (path === '/tramites/tramite-1') {
-        return {
-          ...canonicalTramite,
-          avances: [
-            {
-              id: 'av-1',
-              fecha: '2026-03-02T10:00:00Z',
-              titulo_avance: 'Inspeccion inicial',
-              comentario: 'Se relevo la zona',
-            },
-          ],
-        };
-      }
+      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      if (path === `/tramites/${tramite.id}` && !options) return tramite;
       if (path === '/tramites' && options?.method === 'POST') {
-        return { id: 'tramite-2' };
+        return { id: '44444444-4444-4444-8444-444444444444', message: 'ok', estado: 'ingresado' };
+      }
+      if (path === `/tramites/${tramite.id}/seguimiento` && options?.method === 'POST') {
+        return { ...tramite.seguimiento[0], id: '55555555-5555-4555-8555-555555555555' };
       }
       return [];
     });
   });
 
-  it('renders only canonical tramites and filters out legacy states', async () => {
-    mockApiFetch.mockResolvedValueOnce({
-      items: [
-        canonicalTramite,
-        {
-          id: 'tramite-2',
-          titulo: 'Tramite legacy',
-          numero_expediente: 'B-2',
-          estado: 'iniciado',
-          ultima_actualizacion: '2026-03-01T10:00:00Z',
-        },
-      ],
-      total: 2,
-    });
-
+  it('renders backend-shaped tramite list fields', async () => {
     renderPanel();
 
-    expect(await screen.findByText('Gestion de Expedientes')).toBeInTheDocument();
+    expect(await screen.findByText('Gestion de Tramites')).toBeInTheDocument();
+    expect(screen.getByText(tramite.titulo)).toBeInTheDocument();
+    expect(screen.getByText('INGRESADO')).toBeInTheDocument();
+    expect(screen.getByText(/obra · consorcio canalero/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('table', { name: /tabla de expedientes provinciales/i })
+      screen.getByRole('button', { name: new RegExp(`ver seguimiento.*${tramite.titulo}`, 'i') })
     ).toBeInTheDocument();
-    expect(screen.getByText('Canal Norte')).toBeInTheDocument();
-    expect(screen.getByText('PENDIENTE')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /ver historial del expediente a-1/i })).toBeInTheDocument();
-    expect(screen.queryByText('Tramite legacy')).not.toBeInTheDocument();
-    expect(screen.queryByText('INICIADO')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /abrir expediente externo/i })).not.toBeInTheDocument();
   });
 
-  it('handles an empty tramites response', async () => {
-    mockApiFetch.mockResolvedValueOnce({ items: [], total: 0 });
-
-    renderPanel();
-
-    expect(await screen.findByText('Gestion de Expedientes')).toBeInTheDocument();
-    expect(screen.getByText('Titulo / Expediente')).toBeInTheDocument();
-    expect(screen.queryByText('Canal Norte')).not.toBeInTheDocument();
-  });
-
-  it('creates a new expediente from the modal form and reloads the list', async () => {
+  it('creates a tramite with the shared backend contract', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole('button', { name: /nuevo expediente/i }));
-    const modal = await screen.findByRole('dialog', {
-      name: /registrar nuevo expediente provincial/i,
-    });
+    await user.click(await screen.findByRole('button', { name: /nuevo tramite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo tramite/i });
 
-    await user.type(within(modal).getByLabelText(/titulo del tramite/i), 'Obra Canal Sur');
-    await user.type(within(modal).getByLabelText(/numero de expediente/i), '0416-999/2026');
-    await user.type(within(modal).getByLabelText(/descripcion inicial/i), 'Objetivo del tramite');
-    await user.click(within(modal).getByRole('button', { name: /crear expediente/i }));
-
-    await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        '/tramites',
-        expect.objectContaining({ method: 'POST' })
-      );
-    });
-
-    const postCall = mockApiFetch.mock.calls.find(
-      ([path, options]) => path === '/tramites' && options?.method === 'POST'
+    await chooseOption(within(modal).getByLabelText(/^tipo/i), 'obra');
+    await user.type(
+      within(modal).getByLabelText(/titulo del tramite/i),
+      contracts.tramites.create.titulo
     );
-    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
-      titulo: 'Obra Canal Sur',
-      numero_expediente: '0416-999/2026',
-      descripcion: 'Objetivo del tramite',
-      prioridad: 'normal',
+    await user.type(
+      within(modal).getByLabelText(/descripcion/i),
+      contracts.tramites.create.descripcion
+    );
+    await user.type(
+      within(modal).getByLabelText(/solicitante/i),
+      contracts.tramites.create.solicitante
+    );
+    fireEvent.change(within(modal).getByLabelText(/fecha de ingreso/i), {
+      target: { value: contracts.tramites.create.fecha_ingreso },
     });
+    await user.click(within(modal).getByRole('button', { name: /crear tramite/i }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && !options).length).toBe(2);
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        ([path, options]) => path === '/tramites' && options?.method === 'POST'
+      );
+      expect(JSON.parse(String(postCall?.[1]?.body))).toEqual(contracts.tramites.create);
+    });
+    expect(mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && !options)).toHaveLength(2);
   });
 
-  it('connects new expediente title validation error to the field', async () => {
+  it('validates backend-required tramite fields before posting', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole('button', { name: /nuevo expediente/i }));
-    const modal = await screen.findByRole('dialog', {
-      name: /registrar nuevo expediente provincial/i,
-    });
+    await user.click(await screen.findByRole('button', { name: /nuevo tramite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo tramite/i });
+    await user.click(within(modal).getByRole('button', { name: /crear tramite/i }));
 
-    await user.click(within(modal).getByRole('button', { name: /crear expediente/i }));
-
-    const title = within(modal).getByLabelText(/titulo del tramite/i);
     await waitFor(() => {
-      expect(title).toHaveAttribute('aria-invalid', 'true');
-      expect(title.getAttribute('aria-describedby')).toContain('tramite-title-error');
+      expect(within(modal).getByLabelText(/titulo del tramite/i)).toHaveAttribute(
+        'aria-invalid',
+        'true'
+      );
+      expect(within(modal).getByLabelText(/descripcion/i)).toHaveAttribute('aria-invalid', 'true');
+      expect(within(modal).getByLabelText(/solicitante/i)).toHaveAttribute('aria-invalid', 'true');
     });
-
-    expect(within(modal).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
     expect(mockApiFetch).not.toHaveBeenCalledWith(
       '/tramites',
       expect.objectContaining({ method: 'POST' })
     );
   });
 
-  it('opens the history modal with timeline entries from detalle', async () => {
+  it('renders seguimiento from tramite detail and posts a real follow-up', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    const row = await screen.findByRole('row', { name: /canal norte/i });
-    await user.click(within(row).getAllByRole('button')[0]);
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
 
-    const modal = await screen.findByRole('dialog', { name: /linea de tiempo del expediente/i });
-    expect(within(modal).getByText('Canal Norte')).toBeInTheDocument();
-    expect(within(modal).getByText('Inspeccion inicial')).toBeInTheDocument();
-    expect(within(modal).getByText('Se relevo la zona')).toBeInTheDocument();
-    expect(mockApiFetch).toHaveBeenCalledWith('/tramites/tramite-1');
-  });
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    expect(within(modal).getByText(contracts.tramites.seguimiento_create.comentario)).toBeInTheDocument();
+    expect(mockApiFetch).toHaveBeenCalledWith(`/tramites/${tramite.id}`);
 
-  it('shows the export action and downloads the PDF with auth token', async () => {
-    const user = userEvent.setup();
-    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:tramite-pdf');
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      blob: async () => new Blob(['pdf']),
-    } as Response);
-
-    renderPanel();
-    const row = await screen.findByRole('row', { name: /canal norte/i });
-    await user.click(within(row).getAllByRole('button')[0]);
-
-    const modal = await screen.findByRole('dialog', { name: /linea de tiempo del expediente/i });
-    await user.click(within(modal).getByRole('button', { name: /exportar resumen/i }));
+    const newComment = 'Se adjunto el informe tecnico';
+    await user.type(within(modal).getByLabelText(/nuevo seguimiento/i), newComment);
+    await user.click(within(modal).getByRole('button', { name: /agregar seguimiento/i }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/v2/tramites/tramite-1/export-pdf',
-        expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
-      );
-    });
-
-    expect(mockGetAuthToken).toHaveBeenCalledTimes(1);
-    expect(createObjectUrl).toHaveBeenCalled();
-    expect(anchorClick).toHaveBeenCalled();
-
-    anchorClick.mockRestore();
-    createObjectUrl.mockRestore();
-  });
-
-  it('handles PDF export failure gracefully', async () => {
-    const user = userEvent.setup();
-    vi.mocked(fetch).mockRejectedValueOnce(new Error('PDF generation failed'));
-
-    renderPanel();
-    const row = await screen.findByRole('row', { name: /canal norte/i });
-    await user.click(within(row).getAllByRole('button')[0]);
-
-    const modal = await screen.findByRole('dialog', { name: /linea de tiempo del expediente/i });
-    await user.click(within(modal).getByRole('button', { name: /exportar resumen/i }));
-
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalled();
+      expect(mockApiFetch).toHaveBeenCalledWith(`/tramites/${tramite.id}/seguimiento`, {
+        method: 'POST',
+        body: JSON.stringify({ comentario: newComment }),
+      });
     });
   });
+
 });

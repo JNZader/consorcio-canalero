@@ -1,28 +1,22 @@
 import {
   Button,
-  FileInput,
-  Group,
   Modal,
   NumberInput,
-  Select,
+  NativeSelect,
   SimpleGrid,
   Stack,
-  Text,
   TextInput,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
-import { IconUpload } from '../../../../ui/icons';
 
 const INGRESO_DESCRIPTION_ERROR_ID = 'ingreso-description-error';
 const INGRESO_AMOUNT_ERROR_ID = 'ingreso-amount-error';
-const INGRESO_SOURCE_ERROR_ID = 'ingreso-source-error';
+const INGRESO_CATEGORY_ERROR_ID = 'ingreso-category-error';
 
 export interface IngresoFormValues {
   descripcion: string;
   monto: number;
-  fuente: string;
-  pagador: string;
-  comprobante_url: string;
+  categoria: string;
   fecha: string;
 }
 
@@ -30,22 +24,14 @@ export function IngresoFormModal({
   opened,
   onClose,
   form,
-  sourceData,
-  comprobanteFile,
-  setComprobanteFile,
-  onOpenSource,
+  categoryData,
   onSubmit,
-  loading,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<IngresoFormValues>;
-  sourceData: Array<{ value: string; label: string }>;
-  comprobanteFile: File | null;
-  setComprobanteFile: (file: File | null) => void;
-  onOpenSource: () => void;
+  categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: IngresoFormValues) => void | Promise<void>;
-  loading: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar Ingreso">
@@ -53,7 +39,6 @@ export function IngresoFormModal({
         <Stack gap="sm">
           <TextInput
             label="Descripcion"
-            placeholder="Ej: Subsidio provincial"
             required
             {...form.getInputProps('descripcion')}
             errorProps={{
@@ -65,61 +50,25 @@ export function IngresoFormModal({
           <SimpleGrid cols={2}>
             <NumberInput
               label="Monto ($)"
-              placeholder="0.00"
               required
               hideControls
               {...form.getInputProps('monto')}
-              errorProps={{
-                id: INGRESO_AMOUNT_ERROR_ID,
-                role: 'alert',
-                'aria-live': 'assertive',
-              }}
+              errorProps={{ id: INGRESO_AMOUNT_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
             />
-            <Select
-              label="Fuente"
-              placeholder="Selecciona una fuente"
-              data={sourceData}
-              searchable
+            <NativeSelect
+              label="Categoria"
+              data={categoryData}
               required
-              {...form.getInputProps('fuente')}
+              {...form.getInputProps('categoria')}
               errorProps={{
-                id: INGRESO_SOURCE_ERROR_ID,
+                id: INGRESO_CATEGORY_ERROR_ID,
                 role: 'alert',
                 'aria-live': 'assertive',
               }}
             />
           </SimpleGrid>
-          <Group justify="space-between" gap="xs">
-            <Text size="xs" c="dimmed">
-              No aparece la fuente?
-            </Text>
-            <Button type="button" variant="subtle" size="xs" onClick={onOpenSource}>
-              Agregar fuente
-            </Button>
-          </Group>
-          <SimpleGrid cols={2}>
-            <TextInput
-              label="Pagador"
-              placeholder="Ej: Ministerio de Produccion"
-              {...form.getInputProps('pagador')}
-            />
-            <TextInput type="date" label="Fecha" {...form.getInputProps('fecha')} />
-          </SimpleGrid>
-          <TextInput
-            label="Comprobante (URL foto/PDF)"
-            placeholder="https://..."
-            {...form.getInputProps('comprobante_url')}
-          />
-          <FileInput
-            label="O subir comprobante"
-            placeholder="Imagen o PDF"
-            value={comprobanteFile}
-            onChange={setComprobanteFile}
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            leftSection={<IconUpload size={16} />}
-            clearable
-          />
-          <Button type="submit" fullWidth mt="md" color="green" loading={loading}>
+          <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
+          <Button type="submit" fullWidth mt="md" color="green">
             Guardar Ingreso
           </Button>
         </Stack>

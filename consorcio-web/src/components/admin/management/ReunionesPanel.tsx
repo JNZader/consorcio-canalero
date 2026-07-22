@@ -50,6 +50,8 @@ export default function ReunionesPanel() {
         onExport={controller.handleExportPDF}
         form={controller.itemForm}
         onAddTopic={controller.handleAddTopic}
+        onDeleteTopic={controller.handleDeleteTopic}
+        deletingAgendaItemId={controller.deletingAgendaItemId}
         availableEntities={controller.availableEntities}
         loadingEntities={controller.loadingEntities}
       />

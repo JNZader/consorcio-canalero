@@ -11,11 +11,11 @@
 
 import { Box, Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature } from 'geojson';
 
-import { ALL_ETAPAS } from '../types/canales';
-import { groupCanalesByFolder } from './shared/canalesGrouping';
 import maplibregl from 'maplibre-gl';
+import { ALL_ETAPAS, type Etapa } from '../types/canales';
+import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,10 +29,10 @@ import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
 import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
+import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
-import { useConflictos } from '../hooks/useConflictos';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
@@ -46,20 +46,17 @@ import styles from '../styles/components/map.module.css';
 import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
-import { MapWorkspace } from './map2d/MapWorkspace';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
+import { MapWorkspace } from './map2d/MapWorkspace';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
-import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import {
-  syncApprovedZoneLayers,
-  syncBasinLayers,
-  syncCanalesLayers,
-  syncEscuelasLayer,
-  syncRoadLayers,
-  syncWaterwayLayers,
-} from './map2d/mapLayerEffectHelpers';
+  type ComparisonOverlayController,
+  type ComparisonOverlaySyncInputs,
+  createComparisonOverlayController,
+} from './map2d/comparisonOverlay';
+import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
@@ -382,158 +379,86 @@ export default function MapaMapLibre() {
   // marker is auto-popped and the user can close it.
   useReportHighlight({ mapRef, mapReady });
 
+  const comparisonVisibleRelevadoIds = (canalesIndex?.relevados ?? [])
+    .map((canal) => canal.id)
+    .filter((slug) => {
+      const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
+      return vectorVisibility[key] !== false;
+    });
+  const comparisonVisiblePropuestaIds = useMapLayerSyncStore
+    .getState()
+    .getVisiblePropuestaIds('map2d');
+  const comparisonActiveEtapas = (Object.entries(propuestasEtapasVisibility) as [Etapa, boolean][])
+    .filter(([, visible]) => visible)
+    .map(([etapa]) => etapa);
+
+  const comparisonSyncInputs: ComparisonOverlaySyncInputs = {
+    leftTileUrl: comparison?.left?.tile_url ?? '',
+    isAdmin,
+    vectorVisibility,
+    waterwaysDefs: WATERWAY_DEFS,
+    soilCollection,
+    roadsCollection,
+    basins,
+    approvedZonesCollection,
+    pilarVerde,
+    canales: {
+      relevados: canalesRelevados,
+      propuestas: canalesPropuestas,
+      visibleRelevadoIds: comparisonVisibleRelevadoIds,
+      visiblePropuestaIds: comparisonVisiblePropuestaIds,
+      activeEtapas: comparisonActiveEtapas.length > 0 ? comparisonActiveEtapas : ALL_ETAPAS,
+    },
+    escuelasCollection,
+    opacityByLayer,
+    orderByLayer,
+  };
+  const comparisonSyncInputsRef = useRef(comparisonSyncInputs);
+  comparisonSyncInputsRef.current = comparisonSyncInputs;
+  const comparisonControllerRef = useRef<ComparisonOverlayController | null>(null);
+  const comparisonActive =
+    mapReady &&
+    viewMode === 'comparison' &&
+    !!comparison?.left?.tile_url &&
+    !!comparison?.right?.tile_url;
+
+  // The overlay map has a narrow lifecycle: it is created once for an active
+  // comparison and removed when the comparison closes. Vector/data/fine-control
+  // changes are synchronized by the separate effect below.
   useEffect(() => {
+    if (!comparisonActive) return;
+
     const baseMap = mapRef.current;
     const comparisonContainer = comparisonContainerRef.current;
-    const leftTileUrl = comparison?.left?.tile_url;
-    const rightTileUrl = comparison?.right?.tile_url;
-    const shouldShowComparisonMap =
-      mapReady &&
-      viewMode === 'comparison' &&
-      !!baseMap &&
-      !!comparisonContainer &&
-      !!leftTileUrl &&
-      !!rightTileUrl;
+    if (!baseMap || !comparisonContainer) return;
 
-    if (!shouldShowComparisonMap) {
-      comparisonMapRef.current?.remove();
-      comparisonMapRef.current = null;
-      return;
-    }
-
-    const overlayMap = new maplibregl.Map({
+    const controller = createComparisonOverlayController({
+      mapConstructor: maplibregl.Map,
       container: comparisonContainer,
-      interactive: false,
-      attributionControl: false,
-      style: {
-        version: 8,
-        sources: {},
-        layers: [
-          {
-            id: 'comparison-transparent-background',
-            type: 'background',
-            paint: { 'background-color': 'rgba(0,0,0,0)', 'background-opacity': 0 },
-          },
-        ],
-      },
-      center: baseMap.getCenter().toArray(),
-      zoom: baseMap.getZoom(),
-      bearing: baseMap.getBearing(),
-      pitch: baseMap.getPitch(),
+      baseMap,
+      initialInputs: comparisonSyncInputsRef.current,
     });
-
-    comparisonMapRef.current = overlayMap;
-
-    const syncLeftLayer = () => {
-      if (overlayMap.getLayer('comparison-left-layer')) {
-        overlayMap.removeLayer('comparison-left-layer');
-      }
-      if (overlayMap.getSource('comparison-left')) {
-        overlayMap.removeSource('comparison-left');
-      }
-      overlayMap.addSource('comparison-left', {
-        type: 'raster',
-        tiles: [leftTileUrl],
-        tileSize: 256,
-      });
-      overlayMap.addLayer({
-        id: 'comparison-left-layer',
-        type: 'raster',
-        source: 'comparison-left',
-        paint: { 'raster-opacity': 1 },
-      });
-    };
-
-    const syncOverlayVectors = () => {
-      // Mirror the same vector layers the user has visible on the main map
-      // so the comparison slider's left half doesn't blank out the
-      // non-raster context (sub-cuencas, cuencas, canales, escuelas, etc.).
-      syncWaterwayLayers(overlayMap, WATERWAY_DEFS, !!vectorVisibility.waterways);
-      syncRoadLayers(overlayMap, roadsCollection, !!vectorVisibility.roads);
-      syncBasinLayers(overlayMap, basins ?? null, !!vectorVisibility.basins);
-      syncApprovedZoneLayers(
-        overlayMap,
-        approvedZonesCollection ?? null,
-        !!vectorVisibility.approved_zones
-      );
-      syncEscuelasLayer(
-        overlayMap,
-        (escuelasCollection ?? null) as FeatureCollection<
-          GeoJSON.Point,
-          import('../types/escuelas').EscuelaFeatureProperties
-        > | null,
-        !!vectorVisibility.escuelas
-      );
-      // Per-canal visibility derives from the same store the main map uses,
-      // so toggles in the bottom-bar Capas panel apply to both halves.
-      const storeState = useMapLayerSyncStore.getState();
-      const allRelevadoSlugs = (canalesIndex?.relevados ?? []).map((r) => r.id);
-      const visibleRelevadoIds = allRelevadoSlugs.filter((slug) => {
-        const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
-        return storeState.map2d.visibleVectors[key] !== false;
-      });
-      const visiblePropuestaIds = storeState.getVisiblePropuestaIds('map2d');
-      const etapasState = storeState.propuestasEtapasVisibility;
-      const activeEtapas = (Object.entries(etapasState) as [import('../types/canales').Etapa, boolean][])
-        .filter(([, v]) => v)
-        .map(([k]) => k);
-      syncCanalesLayers(overlayMap, {
-        relevados: (canalesRelevados ?? null) as FeatureCollection<
-          GeoJSON.LineString,
-          import('../types/canales').CanalFeatureProperties
-        > | null,
-        propuestas: (canalesPropuestas ?? null) as FeatureCollection<
-          GeoJSON.LineString,
-          import('../types/canales').CanalFeatureProperties
-        > | null,
-        relevadosVisible: !!vectorVisibility.canales_relevados,
-        propuestasVisible: !!vectorVisibility.canales_propuestos,
-        visibleRelevadoIds,
-        visiblePropuestaIds,
-        activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
-      });
-    };
-
-    const syncView = () => {
-      overlayMap.jumpTo({
-        center: baseMap.getCenter(),
-        zoom: baseMap.getZoom(),
-        bearing: baseMap.getBearing(),
-        pitch: baseMap.getPitch(),
-      });
-    };
-
-    const handleResize = () => {
-      overlayMap.resize();
-      syncView();
-    };
-
-    overlayMap.once('load', () => {
-      syncLeftLayer();
-      syncOverlayVectors();
-      syncView();
-    });
-
-    baseMap.on('move', syncView);
-    baseMap.on('resize', handleResize);
+    comparisonControllerRef.current = controller;
+    comparisonMapRef.current = controller.map;
 
     return () => {
-      baseMap.off('move', syncView);
-      baseMap.off('resize', handleResize);
-      overlayMap.remove();
-      if (comparisonMapRef.current === overlayMap) {
+      controller.dispose();
+      if (comparisonControllerRef.current === controller) {
+        comparisonControllerRef.current = null;
+      }
+      if (comparisonMapRef.current === controller.map) {
         comparisonMapRef.current = null;
       }
     };
-  }, [
-    comparison?.left?.tile_url,
-    comparison?.right?.tile_url,
-    mapReady,
-    roadsCollection,
-    vectorVisibility.roads,
-    vectorVisibility.waterways,
-    viewMode,
-  ]);
+  }, [comparisonActive]);
+
+  // Idempotent synchronization intentionally runs after every render. This
+  // keeps the existing overlay instance current for data, visibility,
+  // sub-filter, opacity and order changes, while the controller retains the
+  // latest inputs until the style load event wins any startup race.
+  useEffect(() => {
+    comparisonControllerRef.current?.update(comparisonSyncInputs);
+  });
 
   /* ---------------------------------------------------------------------- */
   /*  Comparison slider — Task 2.11 (CSS clip-path on right image layer)    */
@@ -742,14 +667,18 @@ export default function MapaMapLibre() {
               onClassToggle={(layerType, classIndex, visible) =>
                 setHiddenClasses((prev) => {
                   const curr = prev[layerType] ?? [];
-                  const next = visible ? curr.filter((i) => i !== classIndex) : [...curr, classIndex];
+                  const next = visible
+                    ? curr.filter((i) => i !== classIndex)
+                    : [...curr, classIndex];
                   return { ...prev, [layerType]: next };
                 })
               }
               onRangeToggle={(layerType, rangeIndex, visible) =>
                 setHiddenRanges((prev) => {
                   const curr = prev[layerType] ?? [];
-                  const next = visible ? curr.filter((i) => i !== rangeIndex) : [...curr, rangeIndex];
+                  const next = visible
+                    ? curr.filter((i) => i !== rangeIndex)
+                    : [...curr, rangeIndex];
                   return { ...prev, [layerType]: next };
                 })
               }
@@ -782,7 +711,11 @@ export default function MapaMapLibre() {
                     color: 'green',
                   });
                 } catch (_err) {
-                  notifications.show({ title: 'Error', message: 'No se pudo restaurar', color: 'red' });
+                  notifications.show({
+                    title: 'Error',
+                    message: 'No se pudo restaurar',
+                    color: 'red',
+                  });
                 }
               }}
               onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
@@ -807,67 +740,67 @@ export default function MapaMapLibre() {
         controls={
           <Stack gap="sm" data-testid="map-controls-tree">
             <LayerControlsPanel
-            layerItems={vectorLayerItems}
-            vectorVisibility={vectorVisibility}
-            onLayerVisibilityChange={toggleLayer}
-            showIGNOverlay={showIGNOverlay}
-            onShowIGNOverlayChange={setShowIGNOverlay}
-            demEnabled={demLayers.length > 0}
-            showDemOverlay={showDemOverlay}
-            onShowDemOverlayChange={setShowDemOverlay}
-            activeDemLayerId={activeDemLayerId}
-            onActiveDemLayerIdChange={setActiveDemLayerId}
-            demOptions={demLayerOptions}
-            canalesRelevadosItems={canalesRelevadosItems}
-            canalesPropuestosItems={canalesPropuestosItems}
-            layerFineControl={layerFineControl}
-          />
+              layerItems={vectorLayerItems}
+              vectorVisibility={vectorVisibility}
+              onLayerVisibilityChange={toggleLayer}
+              showIGNOverlay={showIGNOverlay}
+              onShowIGNOverlayChange={setShowIGNOverlay}
+              demEnabled={demLayers.length > 0}
+              showDemOverlay={showDemOverlay}
+              onShowDemOverlayChange={setShowDemOverlay}
+              activeDemLayerId={activeDemLayerId}
+              onActiveDemLayerIdChange={setActiveDemLayerId}
+              demOptions={demLayerOptions}
+              canalesRelevadosItems={canalesRelevadosItems}
+              canalesPropuestosItems={canalesPropuestosItems}
+              layerFineControl={layerFineControl}
+            />
             {showLegend && (
               <>
                 <LeyendaPanel
-              consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
-              customItems={activeLegendItems}
-              embedded
-              data-testid="map-2d-external-leyenda-panel"
-              pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-              pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-              pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-              pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-              pilarVerdePorcentajeForestacionVisible={
-                !!vectorVisibility.pilar_verde_porcentaje_forestacion
-              }
-              pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
-              pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
-              pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
-              propuestasEtapasVisibility={propuestasEtapasVisibility}
-              onSetEtapaVisible={setEtapaVisible}
-            />
-            {visibleRasterLayers.length > 0 && (
-              <RasterLegend
-                layers={visibleRasterLayers}
-                hiddenClasses={hiddenClasses}
-                hiddenRanges={hiddenRanges}
-                floating={false}
-                onClassToggle={(layerType, classIndex, visible) =>
-                  setHiddenClasses((prev) => {
-                    const curr = prev[layerType] ?? [];
-                    const next = visible
-                      ? curr.filter((i) => i !== classIndex)
-                      : [...curr, classIndex];
-                    return { ...prev, [layerType]: next };
-                  })
-                }
-                onRangeToggle={(layerType, rangeIndex, visible) =>
-                  setHiddenRanges((prev) => {
-                    const curr = prev[layerType] ?? [];
-                    const next = visible
-                      ? curr.filter((i) => i !== rangeIndex)
-                      : [...curr, rangeIndex];
-                    return { ...prev, [layerType]: next };
-                  })
-                }
-              />
-            )}
+                  consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+                  customItems={activeLegendItems}
+                  embedded
+                  data-testid="map-2d-external-leyenda-panel"
+                  pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
+                  pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
+                  pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
+                  pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
+                  pilarVerdePorcentajeForestacionVisible={
+                    !!vectorVisibility.pilar_verde_porcentaje_forestacion
+                  }
+                  pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
+                  pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
+                  pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+                  propuestasEtapasVisibility={propuestasEtapasVisibility}
+                  onSetEtapaVisible={setEtapaVisible}
+                />
+                {visibleRasterLayers.length > 0 && (
+                  <RasterLegend
+                    layers={visibleRasterLayers}
+                    hiddenClasses={hiddenClasses}
+                    hiddenRanges={hiddenRanges}
+                    floating={false}
+                    onClassToggle={(layerType, classIndex, visible) =>
+                      setHiddenClasses((prev) => {
+                        const curr = prev[layerType] ?? [];
+                        const next = visible
+                          ? curr.filter((i) => i !== classIndex)
+                          : [...curr, classIndex];
+                        return { ...prev, [layerType]: next };
+                      })
+                    }
+                    onRangeToggle={(layerType, rangeIndex, visible) =>
+                      setHiddenRanges((prev) => {
+                        const curr = prev[layerType] ?? [];
+                        const next = visible
+                          ? curr.filter((i) => i !== rangeIndex)
+                          : [...curr, rangeIndex];
+                        return { ...prev, [layerType]: next };
+                      })
+                    }
+                  />
+                )}
               </>
             )}
           </Stack>

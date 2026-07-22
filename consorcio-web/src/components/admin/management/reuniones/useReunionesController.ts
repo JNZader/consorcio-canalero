@@ -17,6 +17,7 @@ export function useReunionesController() {
   const [exporting, setExporting] = useState(false);
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [deletingAgendaItemId, setDeletingAgendaItemId] = useState<string | null>(null);
   const [newChecklistPoint, setNewChecklistPoint] = useState('');
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
@@ -179,6 +180,36 @@ export function useReunionesController() {
     }
   };
 
+  const handleDeleteTopic = async (item: AgendaItem) => {
+    if (!selectedReunion) return;
+    const confirmed = window.confirm(
+      `Eliminar el tema "${item.titulo}" de la agenda? Esta accion no se puede deshacer.`
+    );
+    if (!confirmed) return;
+
+    setDeletingAgendaItemId(item.id);
+    try {
+      await apiFetch<void>(`/reuniones/${selectedReunion.id}/agenda/${item.id}`, {
+        method: 'DELETE',
+      });
+      await fetchAgenda(selectedReunion.id);
+      notifications.show({
+        title: 'Tema eliminado',
+        message: 'La agenda se actualizo correctamente',
+        color: 'green',
+      });
+    } catch (error) {
+      logger.error('Error deleting agenda topic:', error);
+      notifications.show({
+        title: 'No se pudo eliminar el tema',
+        message: 'Intenta nuevamente.',
+        color: 'red',
+      });
+    } finally {
+      setDeletingAgendaItemId(null);
+    }
+  };
+
   const handleExportPDF = async () => {
     if (!selectedReunion) return;
 
@@ -211,6 +242,7 @@ export function useReunionesController() {
     exporting,
     selectedReunion,
     agenda,
+    deletingAgendaItemId,
     newChecklistPoint,
     setNewChecklistPoint,
     availableEntities,
@@ -225,6 +257,7 @@ export function useReunionesController() {
     handleAddChecklistPoint,
     handleCreateReunion,
     handleAddTopic,
+    handleDeleteTopic,
     handleExportPDF,
   };
 }

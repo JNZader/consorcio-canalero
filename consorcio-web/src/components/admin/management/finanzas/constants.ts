@@ -1,10 +1,9 @@
-export const DEFAULT_CATEGORIES = [
+export const GASTO_CATEGORIES = [
   'obras',
-  'combustible',
-  'maquinaria',
-  'sueldos',
+  'mantenimiento',
+  'personal',
   'administrativo',
   'otros',
-];
+] as const;
 
-export const DEFAULT_INCOME_SOURCES = ['cuotas_extra', 'subsidio', 'alquiler', 'otros'];
+export const INGRESO_CATEGORIES = ['cuotas', 'subsidio', 'otros'] as const;

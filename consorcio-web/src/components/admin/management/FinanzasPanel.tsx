@@ -8,15 +8,11 @@ import { GastoFormModal } from './finanzas/components/GastoFormModal';
 import { GastosTable } from './finanzas/components/GastosTable';
 import { IngresoFormModal } from './finanzas/components/IngresoFormModal';
 import { IngresosTable } from './finanzas/components/IngresosTable';
-import { OptionModal } from './finanzas/components/OptionModal';
 import { useFinanzasController } from './finanzas/useFinanzasController';
 
 export default function FinanzasPanel() {
   const controller = useFinanzasController();
-
-  if (controller.loading && !controller.balance) {
-    return <LoadingState />;
-  }
+  if (controller.loading && !controller.balance) return <LoadingState />;
 
   return (
     <Container size="xl" py="md">
@@ -53,15 +49,17 @@ export default function FinanzasPanel() {
             Libro de Ingresos
           </Tabs.Tab>
         </Tabs.List>
-
         <Tabs.Panel value="balance">
-          <FinanzasSummaryTab balance={controller.balance} currentYear={controller.currentYear} />
+          <FinanzasSummaryTab
+            balance={controller.balance}
+            currentYear={controller.currentYear}
+            exportingPdf={controller.exportingSummaryPdf}
+            onDownloadPdf={controller.handleDownloadSummaryPdf}
+          />
         </Tabs.Panel>
-
         <Tabs.Panel value="gastos">
           <GastosTable gastos={controller.gastos} onEdit={controller.handleOpenEditCategory} />
         </Tabs.Panel>
-
         <Tabs.Panel value="ingresos">
           <IngresosTable ingresos={controller.ingresos} onEdit={controller.handleOpenEditIngreso} />
         </Tabs.Panel>
@@ -72,71 +70,28 @@ export default function FinanzasPanel() {
         onClose={controller.gastoModal.close}
         form={controller.form}
         categoryData={controller.categoryData}
-        comprobanteFile={controller.gastoComprobanteFile}
-        setComprobanteFile={controller.setGastoComprobanteFile}
-        onOpenCategory={controller.categoryModal.open}
         onSubmit={controller.handleCreateGasto}
-        loading={controller.uploadingComprobante}
       />
-
       <EditGastoModal
         opened={controller.editGastoOpened}
         onClose={controller.editGastoModal.close}
         form={controller.editCategoryForm}
         categoryData={controller.categoryData}
-        editingGasto={controller.editingGasto}
-        onEditingGastoChange={controller.setEditingGastoComprobanteUrl}
-        comprobanteFile={controller.gastoEditComprobanteFile}
-        setComprobanteFile={controller.setGastoEditComprobanteFile}
-        onOpenCategory={controller.categoryModal.open}
         onSubmit={controller.handleUpdateCategory}
-        loading={controller.uploadingComprobante}
       />
-
-      <OptionModal
-        opened={controller.categoryOpened}
-        onClose={controller.categoryModal.close}
-        title="Nueva categoria"
-        value={controller.newCategoryName}
-        onChange={controller.setNewCategoryName}
-        onSave={controller.handleAddCategory}
-        placeholder="Ej: viaticos"
-        saveLabel="Guardar categoria"
-      />
-
       <IngresoFormModal
         opened={controller.ingresoOpened}
         onClose={controller.ingresoModal.close}
         form={controller.ingresoForm}
-        sourceData={controller.sourceData}
-        comprobanteFile={controller.ingresoComprobanteFile}
-        setComprobanteFile={controller.setIngresoComprobanteFile}
-        onOpenSource={controller.sourceModal.open}
+        categoryData={controller.ingresoCategoryData}
         onSubmit={controller.handleCreateIngreso}
-        loading={controller.uploadingComprobante}
       />
-
       <EditIngresoModal
         opened={controller.editIngresoOpened}
         onClose={controller.editIngresoModal.close}
         form={controller.editIngresoForm}
-        sourceData={controller.sourceData}
-        comprobanteFile={controller.ingresoEditComprobanteFile}
-        setComprobanteFile={controller.setIngresoEditComprobanteFile}
-        onOpenSource={controller.sourceModal.open}
+        categoryData={controller.ingresoCategoryData}
         onSubmit={controller.handleUpdateIngreso}
-        loading={controller.uploadingComprobante}
-      />
-
-      <OptionModal
-        opened={controller.sourceOpened}
-        onClose={controller.sourceModal.close}
-        title="Nueva fuente de ingreso"
-        value={controller.newSourceName}
-        onChange={controller.setNewSourceName}
-        onSave={controller.handleAddSource}
-        placeholder="Ej: convenio"
-        saveLabel="Guardar fuente"
       />
     </Container>
   );

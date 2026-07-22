@@ -25,6 +25,7 @@ import { useConfigStore } from '../../stores/configStore';
 import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { IconDownload } from '../ui/icons';
+import { createDashboardJsonExport } from './adminDashboardExport';
 import { DashboardEstadisticas } from './management/DashboardEstadisticas';
 import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
 
@@ -64,24 +65,24 @@ export default function AdminDashboard() {
     refetchMonitoring();
   };
 
-  const handleExportPDF = async () => {
+  const handleExportDashboardData = async () => {
     setExporting(true);
     try {
       const token = await getAuthToken();
-      // TODO: export-integral not implemented in v2 yet
       const response = await fetch(`${API_URL}/api/v2/monitoring/dashboard`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      if (!response.ok) throw new Error('Error al generar PDF');
+      if (!response.ok) throw new Error('Error al exportar los datos del dashboard');
 
-      const blob = await response.blob();
+      const payload: unknown = await response.json();
+      const { blob, filename } = createDashboardJsonExport(payload);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `informe_gestion_integral_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -89,8 +90,8 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Export error:', error);
       notifications.show({
-        title: 'Error de exportacion',
-        message: 'No se pudo generar el PDF. Intenta nuevamente.',
+        title: 'Error al exportar datos',
+        message: 'No se pudieron descargar los datos del dashboard. Intenta nuevamente.',
         color: 'red',
       });
     } finally {
@@ -301,10 +302,10 @@ export default function AdminDashboard() {
             variant="filled"
             color="violet"
             leftSection={<IconDownload size={18} />}
-            onClick={handleExportPDF}
+            onClick={handleExportDashboardData}
             loading={exporting}
           >
-            Exportar Reporte Mensual
+            Descargar datos del dashboard (JSON)
           </Button>
         </Group>
       </Group>
