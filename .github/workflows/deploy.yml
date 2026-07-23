@@ -69,6 +69,7 @@ jobs:
         run: >-
           python3 -m pytest
           tests/test_ci_workflow_contracts.py
+          tests/test_image_security_policy.py
           tests/test_tramites_schema.py
           tests/new/test_admin_frontend_contracts.py
           tests/new/test_auth_gates.py
@@ -118,6 +119,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: gee-backend
+          version: v0.70.0
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -135,6 +137,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     env:
       CANDIDATE_IMAGE: "ghcr.io/${{ github.repository }}/backend:${{ github.sha }}"
       LATEST_IMAGE: "ghcr.io/${{ github.repository }}/backend:latest"
@@ -147,6 +150,7 @@ jobs:
           context: gee-backend
           file: gee-backend/Dockerfile
           target: production
+          platforms: linux/amd64
           load: true
           push: false
           tags: ${{ env.CANDIDATE_IMAGE }}
@@ -155,15 +159,48 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=backend-image
           cache-to: type=gha,mode=max,scope=backend-image
-      - name: Scan exact backend candidate image
-        # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+      - name: Prepare backend evidence directory
+        run: mkdir -p image-security
+      - name: Generate raw unsuppressed backend vulnerability report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
-          format: table
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: image-security/backend-trivy.json
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
+      - name: Derive backend SARIF from the raw report
+        run: trivy convert --format sarif --output image-security/backend-trivy.sarif image-security/backend-trivy.json
+      - name: Validate frozen backend image debt
+        run: |
+          EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 gee-backend/scripts/validate_image_security_policy.py validate \
+            --policy gee-backend/security/frozen-image-debt.json \
+            --report image-security/backend-trivy.json \
+            --image-role backend \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root .
+      - name: Upload backend image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-backend
+          path: |
+            image-security/backend-trivy.json
+            image-security/backend-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload backend image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: image-security/backend-trivy.sarif
       - name: Authenticate to GHCR after scan
         uses: docker/login-action@v3
         with:
@@ -181,18 +218,9 @@ jobs:
           {
             echo "### Backend image published"
             echo ""
-            echo "\`\`\`"
             echo "$IMAGE"
-            echo "\`\`\`"
             echo ""
-            echo "**To deploy this build on the Hetzner server:**"
-            echo ""
-            echo "1. Edit \`/home/javier/stacks/consorcio/.env\`:"
-            echo "   \`BACKEND_IMAGE=$IMAGE\`"
-            echo "2. Run: \`docker compose pull backend && docker compose up -d backend\`"
-            echo ""
-            echo "**To rollback** to a previous version, point BACKEND_IMAGE at the older SHA from"
-            echo "[the package registry](https://github.com/${{ github.repository }}/pkgs/container/consorcio-canalero%2Fbackend)."
+            echo "Set BACKEND_IMAGE=$IMAGE in the server environment to deploy this build."
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-geo-worker:
@@ -203,6 +231,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     env:
       CANDIDATE_IMAGE: "ghcr.io/${{ github.repository }}/geo-worker:${{ github.sha }}"
       LATEST_IMAGE: "ghcr.io/${{ github.repository }}/geo-worker:latest"
@@ -214,6 +243,7 @@ jobs:
         with:
           context: gee-backend
           file: gee-backend/Dockerfile.geo
+          platforms: linux/amd64
           load: true
           push: false
           tags: ${{ env.CANDIDATE_IMAGE }}
@@ -222,15 +252,48 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=geo-worker-image
           cache-to: type=gha,mode=max,scope=geo-worker-image
-      - name: Scan exact geo-worker candidate image
-        # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
+      - name: Prepare Geo evidence directory
+        run: mkdir -p image-security
+      - name: Generate raw unsuppressed Geo vulnerability report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
-          format: table
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: image-security/geo-worker-trivy.json
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
+      - name: Derive Geo SARIF from the raw report
+        run: trivy convert --format sarif --output image-security/geo-worker-trivy.sarif image-security/geo-worker-trivy.json
+      - name: Require an empty Geo finding set
+        run: |
+          EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 gee-backend/scripts/validate_image_security_policy.py validate \
+            --policy gee-backend/security/frozen-image-debt.json \
+            --report image-security/geo-worker-trivy.json \
+            --image-role geo-worker \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root .
+      - name: Upload Geo image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-geo-worker
+          path: |
+            image-security/geo-worker-trivy.json
+            image-security/geo-worker-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Geo image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: image-security/geo-worker-trivy.sarif
       - name: Authenticate to GHCR after scan
         uses: docker/login-action@v3
         with:
@@ -248,19 +311,47 @@ jobs:
           {
             echo "### Geo-worker image published"
             echo ""
-            echo "\`\`\`"
             echo "$IMAGE"
-            echo "\`\`\`"
             echo ""
-            echo "Set \`GEO_WORKER_IMAGE=$IMAGE\` in the server .env then"
-            echo "\`docker compose pull geo-worker && docker compose up -d geo-worker\`."
+            echo "Set GEO_WORKER_IMAGE=$IMAGE in the server environment to deploy this build."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  image-security-policy:
+    name: Image Security Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-backend, build-geo-worker]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    env:
+      BUILD_BACKEND_RESULT: ${{ needs.build-backend.result }}
+      BUILD_GEO_WORKER_RESULT: ${{ needs.build-geo-worker.result }}
+    steps:
+      - name: Require both image policy jobs
+        run: |
+          test "$BUILD_BACKEND_RESULT" = "success"
+          test "$BUILD_GEO_WORKER_RESULT" = "success"
+      - name: Download image security evidence
+        uses: actions/download-artifact@v4
+        if: always()
+        with:
+          pattern: image-security-*
+          path: evidence
+          merge-multiple: true
+      - name: Require every raw and SARIF report
+        if: always()
+        run: |
+          test -s evidence/backend-trivy.json
+          test -s evidence/backend-trivy.sarif
+          test -s evidence/geo-worker-trivy.json
+          test -s evidence/geo-worker-trivy.sarif
 
   deploy:
     name: Deploy to server
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [build-backend, build-geo-worker]
+    needs: [image-security-policy]
     # Production rollout is opt-in even when a webhook URL exists.
     if: ${{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}
     steps:

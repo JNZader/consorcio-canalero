@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "active": false,
+  "activation_blocker": "STAGE2B_REQUIRED: build and scan the final consolidated images, then replace every placeholder and the backend findings object before setting active=true",
+  "issue": "https://github.com/JNZader/consorcio-canalero/issues/9",
+  "owner": "JNZader",
+  "renewal_allowed": false,
+  "scanner": {
+    "name": "trivy",
+    "version": "0.70.0",
+    "report_schema_version": 2
+  },
+  "platform": "linux/amd64",
+  "source_repository": "https://github.com/JNZader/consorcio-canalero",
+  "deadlines": {
+    "CRITICAL": "2026-07-29T00:00:00Z",
+    "HIGH": "2026-08-05T00:00:00Z",
+    "absolute_sunset": "2026-08-21T00:00:00Z"
+  },
+  "images": {
+    "backend": {
+      "dockerfile": "gee-backend/Dockerfile",
+      "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
+      "allowed_repositories": [
+        "local/consorcio-backend",
+        "ghcr.io/JNZader/consorcio-canalero/backend"
+      ],
+      "baseline_generated_from": {
+        "source_revision": "__STAGE2B_FINAL_COMMIT_SHA_REQUIRED__",
+        "image_ref": "__STAGE2B_FINAL_BACKEND_IMAGE_REQUIRED__",
+        "image_id": "__STAGE2B_FINAL_BACKEND_IMAGE_ID_REQUIRED__",
+        "report_sha256": "__STAGE2B_FINAL_BACKEND_REPORT_SHA256_REQUIRED__",
+        "scanned_at": "__STAGE2B_FINAL_BACKEND_SCAN_TIME_REQUIRED__"
+      },
+      "findings": {
+        "unactivated": "STAGE2B must populate the exact normalized Counter from the final consolidated backend image; do not copy the former 44 findings"
+      }
+    },
+    "geo-worker": {
+      "dockerfile": "gee-backend/Dockerfile.geo",
+      "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",
+      "allowed_repositories": [
+        "local/consorcio-geo-worker",
+        "ghcr.io/JNZader/consorcio-canalero/geo-worker"
+      ],
+      "baseline_generated_from": {
+        "source_revision": "__STAGE2B_FINAL_COMMIT_SHA_REQUIRED__",
+        "image_ref": "__STAGE2B_FINAL_GEO_IMAGE_REQUIRED__",
+        "image_id": "__STAGE2B_FINAL_GEO_IMAGE_ID_REQUIRED__",
+        "report_sha256": "__STAGE2B_FINAL_GEO_REPORT_SHA256_REQUIRED__",
+        "scanned_at": "__STAGE2B_FINAL_GEO_SCAN_TIME_REQUIRED__"
+      },
+      "findings": []
+    }
+  }
+}

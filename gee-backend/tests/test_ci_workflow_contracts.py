@@ -10,6 +10,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+TRIVY_VERSION = "v0.70.0"
+GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
 )
@@ -53,6 +55,7 @@ def _assert_fail_closed_trivy(job: str) -> None:
     upload = "uses: github/codeql-action/upload-sarif@v3"
 
     assert f"uses: {TRIVY_ACTION}" in job
+    assert f"version: {TRIVY_VERSION}" in job
     assert "severity: CRITICAL,HIGH" in job
     assert "exit-code: '1'" in job
     assert "continue-on-error: true" not in job
@@ -60,7 +63,7 @@ def _assert_fail_closed_trivy(job: str) -> None:
     assert "if: always()" in job[job.index(upload) :]
 
 
-def _assert_fail_closed_image_trivy(job: str) -> None:
+def _assert_strict_image_trivy(job: str) -> None:
     assert f"uses: {TRIVY_ACTION}" in job
     assert "scan-type: image" in job
     assert "image-ref: ${{ env.CANDIDATE_IMAGE }}" in job
@@ -70,23 +73,147 @@ def _assert_fail_closed_image_trivy(job: str) -> None:
     assert "continue-on-error: true" not in job
 
 
-def _assert_non_publishing_image_gate(job: str, dockerfile: str, candidate: str) -> None:
+def _assert_frozen_image_policy(
+    job: str,
+    role: str,
+    *,
+    workspace_rooted: bool = False,
+) -> None:
+    relative_report = f"image-security/{role}-trivy.json"
+    relative_sarif = f"image-security/{role}-trivy.sarif"
+    if workspace_rooted:
+        report = f"{GITHUB_WORKSPACE}/{relative_report}"
+        sarif = f"{GITHUB_WORKSPACE}/{relative_sarif}"
+        convert = f'trivy convert --format sarif --output "{sarif}" "{report}"'
+        validate = (
+            f'python3 "{GITHUB_WORKSPACE}/gee-backend/scripts/'
+            'validate_image_security_policy.py" validate'
+        )
+        policy_arg = f'--policy "{GITHUB_WORKSPACE}/gee-backend/security/frozen-image-debt.json"'
+        report_arg = f'--report "{report}"'
+        repo_root_arg = f'--repo-root "{GITHUB_WORKSPACE}"'
+        expected_id_arg = '--expected-image-id "$EXPECTED_CONFIG_IMAGE_ID"'
+        assert job.count(f"working-directory: {GITHUB_WORKSPACE}") == 3
+        assert f'mkdir -p "{GITHUB_WORKSPACE}/image-security"' in job
+    else:
+        report = relative_report
+        sarif = relative_sarif
+        convert = f"trivy convert --format sarif --output {sarif} {report}"
+        validate = "python3 gee-backend/scripts/validate_image_security_policy.py validate"
+        policy_arg = "--policy gee-backend/security/frozen-image-debt.json"
+        report_arg = f"--report {report}"
+        repo_root_arg = "--repo-root ."
+        expected_id_arg = '--expected-image-id "$EXPECTED_IMAGE_ID"'
+    scan = f"uses: {TRIVY_ACTION}"
+
+    assert f"uses: {TRIVY_ACTION}" in job
+    assert "scan-type: image" in job
+    assert "image-ref: " + "$" + "{{ env.CANDIDATE_IMAGE }}" in job
+    assert f"version: {TRIVY_VERSION}" in job
+    assert "scanners: vuln" in job
+    assert "format: json" in job
+    assert f"output: {report}" in job
+    assert "severity: CRITICAL,HIGH" in job
+    assert "exit-code: '0'" in job
+    assert "ignore-unfixed:" not in job
+    assert "continue-on-error: true" not in job
+    assert ".trivyignore" not in job
+    assert "--expected-manifest-digest" not in job
+    assert convert in job
+    assert validate in job
+    assert policy_arg in job
+    assert report_arg in job
+    assert f"--image-role {role}" in job
+    assert '--expected-image-ref "$CANDIDATE_IMAGE"' in job
+    assert expected_id_arg in job
+    assert "docker image inspect --format '{{.Id}}'" in job
+    assert '--expected-source-revision "$GITHUB_SHA"' in job
+    assert '--expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"' in job
+    assert repo_root_arg in job
+    assert job.index(scan) < job.index(convert) < job.index(validate)
+
+    artifact = job.index("uses: actions/upload-artifact@v4")
+    artifact_tail = job[artifact:]
+    assert "if: always()" in artifact_tail
+    assert "if-no-files-found: error" in artifact_tail
+    assert report in artifact_tail
+    assert sarif in artifact_tail
+
+    upload_sarif = job.index("uses: github/codeql-action/upload-sarif@v3")
+    upload_tail = job[upload_sarif:]
+    assert "if: always()" in upload_tail
+    assert f"sarif_file: {sarif}" in upload_tail
+
+
+def _assert_image_policy_aggregate(
+    workflow: str,
+    producers: set[str],
+    *,
+    workspace_rooted: bool = False,
+) -> None:
+    aggregate = _job_block(workflow, "image-security-policy")
+
+    assert "name: Image Security Policy" in aggregate
+    assert _needs(workflow, "image-security-policy") == producers
+    always_expression = re.escape("$" + "{{ always() }}")
+    assert re.search(rf"(?m)^    if: {always_expression}$", aggregate)
+    for producer in producers:
+        env_name = producer.upper().replace("-", "_")
+        needs_expression = "$" + "{{ needs." + producer + ".result }}"
+        assert f"{env_name}_RESULT: {needs_expression}" in aggregate
+        result_check = 'test "$' + f'{env_name}_RESULT" = "success"'
+        assert result_check in aggregate
+    assert "uses: actions/download-artifact@v4" in aggregate
+    assert "pattern: image-security-*" in aggregate
+    assert "merge-multiple: true" in aggregate
+    if workspace_rooted:
+        evidence = f"{GITHUB_WORKSPACE}/evidence"
+        assert f"path: {evidence}" in aggregate
+        assert aggregate.count(f"working-directory: {GITHUB_WORKSPACE}") == 2
+        for role in ("backend", "geo-worker"):
+            assert f'test -s "{evidence}/{role}-trivy.json"' in aggregate
+            assert f'test -s "{evidence}/{role}-trivy.sarif"' in aggregate
+    else:
+        assert "path: evidence" in aggregate
+        for role in ("backend", "geo-worker"):
+            assert f"test -s evidence/{role}-trivy.json" in aggregate
+            assert f"test -s evidence/{role}-trivy.sarif" in aggregate
+
+
+def _assert_non_publishing_image_gate(
+    job: str,
+    dockerfile: str,
+    candidate: str,
+    policy_role: str | None = None,
+    *,
+    workspace_rooted: bool = False,
+) -> None:
     build = "uses: docker/build-push-action@v5"
     scan = f"uses: {TRIVY_ACTION}"
 
     assert f'CANDIDATE_IMAGE: "{candidate}"' in job
-    assert f"file: {dockerfile}" in job
+    expected_dockerfile = f"{GITHUB_WORKSPACE}/{dockerfile}" if workspace_rooted else dockerfile
+    assert f"file: {expected_dockerfile}" in job
+    if workspace_rooted:
+        assert f"context: {GITHUB_WORKSPACE}/gee-backend" in job
     assert job.count(build) == 1
     assert job.index(build) < job.index(scan)
     assert "load: true" in job
-    assert "tags: ${{ env.CANDIDATE_IMAGE }}" in job
+    assert "tags: " + "$" + "{{ env.CANDIDATE_IMAGE }}" in job
     assert "push: true" not in job
     assert "docker push" not in job
     assert "docker/login-action" not in job
     assert "contents: read" in job
     assert "packages: write" not in job
-    assert not re.search(r"(?m)^\s+if:", job)
-    _assert_fail_closed_image_trivy(job)
+    assert not re.search(r"(?m)^    if:", job)
+    if policy_role is None:
+        _assert_strict_image_trivy(job)
+    else:
+        _assert_frozen_image_policy(
+            job,
+            policy_role,
+            workspace_rooted=workspace_rooted,
+        )
 
 
 def _assert_scanned_artifact_is_published(job: str, candidate: str, latest: str) -> None:
@@ -101,10 +228,8 @@ def _assert_scanned_artifact_is_published(job: str, candidate: str, latest: str)
     assert f'LATEST_IMAGE: "{latest}"' in job
     assert job.count(build) == 1
     assert "load: true" in job
-    assert "tags: ${{ env.CANDIDATE_IMAGE }}" in job
+    assert "tags: " + "$" + "{{ env.CANDIDATE_IMAGE }}" in job
     assert "push: true" not in job
-    _assert_fail_closed_image_trivy(job)
-
     build_index = job.index(build)
     scan_index = job.index(scan)
     login_index = job.index(login)
@@ -114,8 +239,9 @@ def _assert_scanned_artifact_is_published(job: str, candidate: str, latest: str)
     assert "docker login" not in job[:scan_index]
     assert build not in job[scan_index + len(scan) :]
     assert "docker build" not in job[scan_index:]
-    assert not re.search(r"(?m)^\s+if:", job)
+    assert not re.search(r"(?m)^    if:", job)
     assert push_index < job.index(tag_latest) < job.index(push_latest)
+    _assert_frozen_image_policy(job, "backend" if "/backend:" in candidate else "geo-worker")
 
 
 def test_frontend_docker_build_has_every_required_input_before_build() -> None:
@@ -140,7 +266,10 @@ def test_geo_worker_bootstraps_verified_non_root_user_tools() -> None:
         "&& rm -rf /var/lib/apt/lists/*", 1
     )[0]
 
-    assert "FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3" in dockerfile
+    assert (
+        "FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469"
+        in dockerfile
+    )
     assert re.search(r"(?m)^\s+adduser\s+\\$", install)
 
     check_group = dockerfile.index("command -v addgroup")
@@ -236,24 +365,18 @@ def test_container_runtimes_pin_safe_pkg_resources_tooling() -> None:
         assert dockerfile.count(WHEEL_RUNTIME_PIN) == 1
 
 
-def test_geo_worker_keeps_osgeo_numpy_abi_constraints_scoped() -> None:
-    backend = _read("gee-backend/Dockerfile")
+def test_geo_worker_uses_gdal_313_numpy_2_abi_without_legacy_pins() -> None:
     geo = _read("gee-backend/Dockerfile.geo")
-    geo_dependency_install = geo.split("RUN pip install --no-cache-dir", 1)[1].split(
-        "# Pre-download WhiteboxTools", 1
-    )[0]
 
-    for constraint in (
+    assert "--ignore-installed numpy" not in geo
+    for obsolete_constraint in (
         '"numpy<2"',
         '"opencv-python-headless<4.12"',
         '"rasterio<1.5"',
         '"rioxarray<0.22"',
         '"scipy<1.17"',
     ):
-        assert geo.count(constraint) == 1
-        assert constraint in geo_dependency_install
-        assert constraint not in backend
-    assert "--ignore-installed numpy" in geo_dependency_install
+        assert obsolete_constraint not in geo
 
 
 def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
@@ -264,6 +387,7 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
     install = dockerfile[install_start:install_end]
 
     for package in (
+        "gcc",
         "gpgv",
         "libssl3t64",
         "openssl",
@@ -274,13 +398,14 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
 
     pip_install = dockerfile.index("pip install --no-cache-dir")
     whitebox_setup = dockerfile.index("import whitebox; wbt = whitebox.WhiteboxTools()")
-    purge = dockerfile.index("apt-get purge -y --auto-remove python3-dev")
+    purge = dockerfile.index("apt-get purge -y --auto-remove gcc python3-dev")
     final_cleanup = dockerfile.index("rm -rf /var/lib/apt/lists/* /var/cache/apt/*", purge)
     assert install_start < pip_install < whitebox_setup < purge < final_cleanup
-    purge_end = purge + len("apt-get purge -y --auto-remove python3-dev")
+    purge_end = purge + len("apt-get purge -y --auto-remove gcc python3-dev")
     assert dockerfile.find("python3-dev", purge_end) == -1
     assert "libc6-dev" not in dockerfile
     assert "linux-libc-dev" not in dockerfile
+    assert "rm -f /usr/bin/pebble" in dockerfile
     assert "apt-get upgrade" not in dockerfile
     assert "apt-get dist-upgrade" not in dockerfile
 
@@ -331,11 +456,20 @@ def test_branch_and_pr_workflows_scan_every_final_image_without_publishing() -> 
         _job_block(backend, "image-backend"),
         "gee-backend/Dockerfile",
         "local/consorcio-backend:${{ github.sha }}",
+        "backend",
+        workspace_rooted=True,
     )
     _assert_non_publishing_image_gate(
         _job_block(backend, "image-geo-worker"),
         "gee-backend/Dockerfile.geo",
         "local/consorcio-geo-worker:${{ github.sha }}",
+        "geo-worker",
+        workspace_rooted=True,
+    )
+    _assert_image_policy_aggregate(
+        backend,
+        {"image-backend", "image-geo-worker"},
+        workspace_rooted=True,
     )
 
 
@@ -414,9 +548,10 @@ def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
         "ghcr.io/${{ github.repository }}/geo-worker:${{ github.sha }}",
         "ghcr.io/${{ github.repository }}/geo-worker:latest",
     )
+    _assert_image_policy_aggregate(deploy, {"build-backend", "build-geo-worker"})
 
     rollout = _job_block(deploy, "deploy")
-    assert _needs(deploy, "deploy") == {"build-backend", "build-geo-worker"}
+    assert _needs(deploy, "deploy") == {"image-security-policy"}
     assert "vars.ENABLE_PRODUCTION_DEPLOY == 'true'" in rollout
     assert "vars.DEPLOY_WEBHOOK_URL != ''" in rollout
     assert "secrets.DEPLOY_WEBHOOK_SECRET" in rollout
@@ -437,6 +572,7 @@ def test_deploy_quality_gate_only_references_current_contract_tests() -> None:
     assert "tests/test_reports_contract.py" not in quality
     assert "tests/test_sugerencias_contract.py" not in quality
     assert "tests/test_ci_workflow_contracts.py" in quality
+    assert "tests/test_image_security_policy.py" in quality
     assert "tests/new/ --cov=app" in quality
     assert "ruff check ." in quality
     assert "mypy app/auth app/domains/padron app/domains/denuncias" in quality
@@ -640,3 +776,13 @@ def test_celery_beat_schedule_volume_is_owned_by_nonroot_app_in_production_stack
         assert "condition: service_completed_successfully" in beat
         assert "user: " not in beat
         assert "- celery-beat-schedule:/var/run/celery" in beat
+
+
+def test_image_policy_uses_no_trivy_ignore_file() -> None:
+    for directory in (REPO_ROOT, REPO_ROOT / "gee-backend"):
+        for filename in (".trivyignore", ".trivyignore.yaml", ".trivyignore.yml"):
+            assert not (directory / filename).exists()
+
+    backend_ignore = _read("gee-backend/.gitignore")
+    assert "!security/frozen-image-debt.json" in backend_ignore
+    assert "!tests/fixtures/image_security/*.json" in backend_ignore

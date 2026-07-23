@@ -3,7 +3,7 @@
 # terrain analysis (DEM pipeline) + tile service
 # ==============================================
 
-FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469
 
 WORKDIR /app
 
@@ -11,6 +11,7 @@ WORKDIR /app
 # packages, and temporary Python headers needed while resolving geo wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     adduser \
+    gcc \
     gpgv \
     libgl1 \
     libssl3t64 \
@@ -29,25 +30,18 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # The app code has deep import chains (tasks → auth → fastapi_users)
 # so the lean requirements-geo.txt approach causes missing module errors.
 COPY requirements.txt requirements-geo.txt ./
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+RUN pip install --no-cache-dir --break-system-packages \
     -r requirements.txt -r requirements-geo.txt \
     "setuptools==80.10.2" \
     "uvicorn[standard]>=0.30.0" \
     "wheel==0.46.3"
 
-# OSGeo GDAL 3.10.3's gdal_array extension targets the NumPy 1.x ABI.
-# Normalize the unconstrained application solve before Whitebox preparation.
-RUN pip install --no-cache-dir --break-system-packages \
-    "numpy<2" \
-    "opencv-python-headless<4.12" \
-    "rasterio<1.5" \
-    "rioxarray<0.22" \
-    "scipy<1.17"
 
 # Pre-download WhiteboxTools while the temporary Python headers are available,
 # then remove the complete build-only dependency closure from the final image.
 RUN python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())" \
-    && apt-get purge -y --auto-remove python3-dev \
+    && apt-get purge -y --auto-remove gcc python3-dev \
+    && rm -f /usr/bin/pebble \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
