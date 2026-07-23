@@ -173,13 +173,13 @@ jobs:
       - name: Validate frozen backend image debt
         working-directory: ${{ github.workspace }}
         run: |
-          EXPECTED_CONFIG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
           python3 "${{ github.workspace }}/gee-backend/scripts/validate_image_security_policy.py" validate \
             --policy "${{ github.workspace }}/gee-backend/security/frozen-image-debt.json" \
             --report "${{ github.workspace }}/image-security/backend-trivy.json" \
             --image-role backend \
             --expected-image-ref "$CANDIDATE_IMAGE" \
-            --expected-image-id "$EXPECTED_CONFIG_IMAGE_ID" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
             --expected-source-revision "$GITHUB_SHA" \
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root "${{ github.workspace }}"
@@ -246,13 +246,13 @@ jobs:
       - name: Require an empty Geo finding set
         working-directory: ${{ github.workspace }}
         run: |
-          EXPECTED_CONFIG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
           python3 "${{ github.workspace }}/gee-backend/scripts/validate_image_security_policy.py" validate \
             --policy "${{ github.workspace }}/gee-backend/security/frozen-image-debt.json" \
             --report "${{ github.workspace }}/image-security/geo-worker-trivy.json" \
             --image-role geo-worker \
             --expected-image-ref "$CANDIDATE_IMAGE" \
-            --expected-image-id "$EXPECTED_CONFIG_IMAGE_ID" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
             --expected-source-revision "$GITHUB_SHA" \
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root "${{ github.workspace }}"

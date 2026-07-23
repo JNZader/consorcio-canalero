@@ -92,7 +92,7 @@ def _assert_frozen_image_policy(
         policy_arg = f'--policy "{GITHUB_WORKSPACE}/gee-backend/security/frozen-image-debt.json"'
         report_arg = f'--report "{report}"'
         repo_root_arg = f'--repo-root "{GITHUB_WORKSPACE}"'
-        expected_id_arg = '--expected-image-id "$EXPECTED_CONFIG_IMAGE_ID"'
+        expected_id_arg = '--expected-image-id "$EXPECTED_DAEMON_IMAGE_ID"'
         assert job.count(f"working-directory: {GITHUB_WORKSPACE}") == 3
         assert f'mkdir -p "{GITHUB_WORKSPACE}/image-security"' in job
     else:
@@ -103,7 +103,7 @@ def _assert_frozen_image_policy(
         policy_arg = "--policy gee-backend/security/frozen-image-debt.json"
         report_arg = f"--report {report}"
         repo_root_arg = "--repo-root ."
-        expected_id_arg = '--expected-image-id "$EXPECTED_IMAGE_ID"'
+        expected_id_arg = '--expected-image-id "$EXPECTED_DAEMON_IMAGE_ID"'
     scan = f"uses: {TRIVY_ACTION}"
 
     assert f"uses: {TRIVY_ACTION}" in job
@@ -126,6 +126,7 @@ def _assert_frozen_image_policy(
     assert f"--image-role {role}" in job
     assert '--expected-image-ref "$CANDIDATE_IMAGE"' in job
     assert expected_id_arg in job
+    assert "EXPECTED_CONFIG_IMAGE_ID" not in job
     assert "docker image inspect --format '{{.Id}}'" in job
     assert '--expected-source-revision "$GITHUB_SHA"' in job
     assert '--expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"' in job

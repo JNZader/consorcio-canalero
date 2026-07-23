@@ -176,13 +176,13 @@ jobs:
         run: trivy convert --format sarif --output image-security/backend-trivy.sarif image-security/backend-trivy.json
       - name: Validate frozen backend image debt
         run: |
-          EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
           python3 gee-backend/scripts/validate_image_security_policy.py validate \
             --policy gee-backend/security/frozen-image-debt.json \
             --report image-security/backend-trivy.json \
             --image-role backend \
             --expected-image-ref "$CANDIDATE_IMAGE" \
-            --expected-image-id "$EXPECTED_IMAGE_ID" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
             --expected-source-revision "$GITHUB_SHA" \
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root .
@@ -269,13 +269,13 @@ jobs:
         run: trivy convert --format sarif --output image-security/geo-worker-trivy.sarif image-security/geo-worker-trivy.json
       - name: Require an empty Geo finding set
         run: |
-          EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
           python3 gee-backend/scripts/validate_image_security_policy.py validate \
             --policy gee-backend/security/frozen-image-debt.json \
             --report image-security/geo-worker-trivy.json \
             --image-role geo-worker \
             --expected-image-ref "$CANDIDATE_IMAGE" \
-            --expected-image-id "$EXPECTED_IMAGE_ID" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
             --expected-source-revision "$GITHUB_SHA" \
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root .

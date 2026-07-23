@@ -80,6 +80,13 @@ POLICY_FINDING_FIELDS = {
 }
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
+RFC3339_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})T"
+    r"(?P<time>\d{2}:\d{2}:\d{2})"
+    r"(?P<fraction>\.\d+)?"
+    r"(?P<zone>Z|[+-]\d{2}:\d{2})$"
+)
+CANONICAL_IMAGE_TARGET = "<image>"
 FindingKey = tuple[str, ...]
 
 
@@ -121,17 +128,32 @@ def _repository_digest(value: Any, label: str) -> str:
     return reference
 
 
-def _timestamp(value: Any, label: str) -> datetime:
+def _rfc3339(value: Any, label: str) -> tuple[datetime, str]:
     raw = _string(value, label)
-    if not raw.endswith("Z"):
-        raise PolicyError(f"{label} must be an explicit UTC timestamp ending in Z")
+    match = RFC3339_RE.fullmatch(raw)
+    if match is None:
+        raise PolicyError(f"{label} must be a timezone-aware RFC3339 timestamp")
+    zone = "+00:00" if match.group("zone") == "Z" else match.group("zone")
+    fraction = match.group("fraction") or ""
     try:
-        parsed = datetime.fromisoformat(raw[:-1] + "+00:00")
+        parsed = datetime.fromisoformat(
+            f"{match.group('date')}T{match.group('time')}{fraction}{zone}"
+        )
     except ValueError as exc:
         raise PolicyError(f"{label} is not a valid timestamp") from exc
-    if parsed.tzinfo != timezone.utc:
-        raise PolicyError(f"{label} must use UTC")
-    return parsed
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise PolicyError(f"{label} must include an explicit timezone")
+    utc = parsed.astimezone(timezone.utc)
+    normalized = f"{utc:%Y-%m-%dT%H:%M:%S}{fraction}Z"
+    return utc, normalized
+
+
+def _timestamp(value: Any, label: str) -> datetime:
+    return _rfc3339(value, label)[0]
+
+
+def _normalized_timestamp(value: Any, label: str) -> str:
+    return _rfc3339(value, label)[1]
 
 
 def _repository(image_ref: str) -> str:
@@ -141,6 +163,17 @@ def _repository(image_ref: str) -> str:
     if last_colon > last_slash:
         return without_digest[:last_colon]
     return without_digest
+
+
+def _normalize_target(target: str, artifact_name: str) -> str:
+    if target == artifact_name:
+        return CANONICAL_IMAGE_TARGET
+    if not target.startswith(artifact_name):
+        return target
+    suffix = target[len(artifact_name) :]
+    if re.fullmatch(r" \([^()\r\n]+\)", suffix) is None:
+        return target
+    return CANONICAL_IMAGE_TARGET + suffix
 
 
 def _read_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
@@ -253,17 +286,114 @@ def _validate_activation_provenance(image: dict[str, Any], role: str) -> None:
         image.get("baseline_generated_from"),
         f"policy {role} baseline_generated_from",
     )
+    required_fields = {
+        "source_revision",
+        "image_ref",
+        "image_id",
+        "platform_manifest_digest",
+        "config_digest",
+        "report_sha256",
+        "scanned_at",
+        "platform",
+        "base_image",
+        "scanner",
+    }
+    allowed_fields = required_fields | {"manifest_digest"}
+    missing = sorted(required_fields - set(provenance))
+    extra = sorted(set(provenance) - allowed_fields)
+    if missing or extra:
+        raise PolicyError(
+            f"policy {role} provenance fields mismatch; missing={missing}, extra={extra}"
+        )
+
     revision = _string(provenance.get("source_revision"), f"policy {role} source_revision")
     if REVISION_RE.fullmatch(revision) is None:
         raise PolicyError(f"policy {role} source_revision must be a 40-character git SHA")
     image_ref = _string(provenance.get("image_ref"), f"policy {role} image_ref")
     if _repository(image_ref) not in ROLE_BINDINGS[role]["allowed_repositories"]:
         raise PolicyError(f"policy {role} image provenance repository is not allowed")
-    _digest(provenance.get("image_id"), f"policy {role} image_id")
+    _digest(provenance.get("image_id"), f"policy {role} observed daemon image identity")
+    _digest(
+        provenance.get("platform_manifest_digest"),
+        f"policy {role} platform manifest digest",
+    )
+    _digest(provenance.get("config_digest"), f"policy {role} config digest")
     if "manifest_digest" in provenance:
-        _digest(provenance.get("manifest_digest"), f"policy {role} manifest_digest")
+        _digest(provenance.get("manifest_digest"), f"policy {role} manifest digest")
     _digest(provenance.get("report_sha256"), f"policy {role} report_sha256")
-    _timestamp(provenance.get("scanned_at"), f"policy {role} scanned_at")
+    scanned_at = _timestamp(provenance.get("scanned_at"), f"policy {role} scanned_at")
+    if provenance.get("platform") != PLATFORM:
+        raise PolicyError(f"policy {role} provenance platform binding mismatch")
+    if provenance.get("base_image") != ROLE_BINDINGS[role]["base_image"]:
+        raise PolicyError(f"policy {role} provenance base image binding mismatch")
+
+    scanner = _object(provenance.get("scanner"), f"policy {role} provenance scanner")
+    if set(scanner) != {"name", "version", "report_schema_version", "vulnerability_db"}:
+        raise PolicyError(f"policy {role} provenance scanner fields mismatch")
+    if scanner.get("name") != "trivy" or scanner.get("version") != TRIVY_VERSION:
+        raise PolicyError(f"policy {role} provenance scanner binding mismatch")
+    if scanner.get("report_schema_version") != TRIVY_REPORT_SCHEMA:
+        raise PolicyError(f"policy {role} provenance report schema mismatch")
+    database = _object(
+        scanner.get("vulnerability_db"),
+        f"policy {role} provenance vulnerability DB",
+    )
+    if set(database) != {"version", "updated_at", "downloaded_at", "next_update"}:
+        raise PolicyError(f"policy {role} vulnerability DB fields mismatch")
+    database_version = database.get("version")
+    if isinstance(database_version, bool) or not isinstance(database_version, int):
+        raise PolicyError(f"policy {role} vulnerability DB version must be an integer")
+    if database_version < 1:
+        raise PolicyError(f"policy {role} vulnerability DB version must be positive")
+    updated_at = _timestamp(database.get("updated_at"), f"policy {role} DB updated_at")
+    downloaded_at = _timestamp(
+        database.get("downloaded_at"),
+        f"policy {role} DB downloaded_at",
+    )
+    next_update = _timestamp(database.get("next_update"), f"policy {role} DB next_update")
+    if not updated_at <= downloaded_at <= scanned_at < next_update:
+        raise PolicyError(f"policy {role} vulnerability DB was not fresh at scan time")
+
+
+def _snapshot_scanner_provenance(
+    metadata: dict[str, Any],
+    *,
+    scanned_at: datetime,
+) -> dict[str, Any]:
+    if set(metadata) != {"Version", "VulnerabilityDB"}:
+        raise PolicyError("scanner metadata fields mismatch")
+    if metadata.get("Version") != TRIVY_VERSION:
+        raise PolicyError("scanner metadata version mismatch")
+    database = _object(metadata.get("VulnerabilityDB"), "scanner vulnerability DB metadata")
+    if set(database) != {"Version", "UpdatedAt", "DownloadedAt", "NextUpdate"}:
+        raise PolicyError("scanner vulnerability DB metadata fields mismatch")
+    database_version = database.get("Version")
+    if isinstance(database_version, bool) or not isinstance(database_version, int):
+        raise PolicyError("scanner vulnerability DB version must be an integer")
+    if database_version < 1:
+        raise PolicyError("scanner vulnerability DB version must be positive")
+    updated_at = _timestamp(database.get("UpdatedAt"), "scanner DB UpdatedAt")
+    downloaded_at = _timestamp(database.get("DownloadedAt"), "scanner DB DownloadedAt")
+    next_update = _timestamp(database.get("NextUpdate"), "scanner DB NextUpdate")
+    if not updated_at <= downloaded_at <= scanned_at < next_update:
+        raise PolicyError("scanner vulnerability DB was not fresh at scan time")
+    return {
+        "name": "trivy",
+        "version": TRIVY_VERSION,
+        "report_schema_version": TRIVY_REPORT_SCHEMA,
+        "vulnerability_db": {
+            "version": database_version,
+            "updated_at": _normalized_timestamp(database["UpdatedAt"], "scanner DB UpdatedAt"),
+            "downloaded_at": _normalized_timestamp(
+                database["DownloadedAt"],
+                "scanner DB DownloadedAt",
+            ),
+            "next_update": _normalized_timestamp(
+                database["NextUpdate"],
+                "scanner DB NextUpdate",
+            ),
+        },
+    }
 
 
 def _report_counter(
@@ -283,16 +413,17 @@ def _report_counter(
     for field in ("CreatedAt", "ArtifactID", "ReportID"):
         _string(report.get(field), f"report {field}")
     _timestamp(report["CreatedAt"], "report CreatedAt")
+    artifact_name = _string(report.get("ArtifactName"), "report ArtifactName")
 
     scanner = _object(report.get("Trivy"), "report scanner metadata")
     if scanner.get("Version") != TRIVY_VERSION:
         raise PolicyError("report scanner version mismatch")
 
     metadata = _object(report.get("Metadata"), "report metadata")
-    expected_image_id = _digest(expected_image_id, "expected image ID")
+    expected_image_id = _digest(expected_image_id, "expected daemon image identity")
     if metadata.get("ImageID") != expected_image_id:
-        raise PolicyError("report image ID binding mismatch")
-    if report.get("ArtifactName") != expected_image_ref:
+        raise PolicyError("report daemon image identity binding mismatch")
+    if artifact_name != expected_image_ref:
         raise PolicyError("report image reference binding mismatch")
     if metadata.get("Reference") != expected_image_ref:
         raise PolicyError("report metadata image reference binding mismatch")
@@ -340,7 +471,10 @@ def _report_counter(
     findings: Counter[FindingKey] = Counter()
     for result_index, raw_result in enumerate(results):
         result = _object(raw_result, f"report Results[{result_index}]")
-        target = _string(result.get("Target"), f"report Results[{result_index}].Target")
+        target = _normalize_target(
+            _string(result.get("Target"), f"report Results[{result_index}].Target"),
+            artifact_name,
+        )
         finding_class = _string(
             result.get("Class"),
             f"report Results[{result_index}].Class",
@@ -365,9 +499,12 @@ def _report_counter(
                 f"{label} PURL",
             )
             layer = _object(vulnerability.get("Layer"), f"{label} layer")
-            fixed = vulnerability.get("FixedVersion")
-            if not isinstance(fixed, str):
-                raise PolicyError(f"{label} FixedVersion must be a string")
+            if "FixedVersion" not in vulnerability:
+                fixed = ""
+            else:
+                fixed = vulnerability["FixedVersion"]
+                if not isinstance(fixed, str):
+                    raise PolicyError(f"{label} FixedVersion must be a string")
             status = _string(vulnerability.get("Status"), f"{label} status")
             if fixed.strip() or status.lower() == "fixed":
                 raise PolicyError(f"{label} has a fixed version or fixed status")
@@ -545,6 +682,9 @@ def snapshot(
     expected_image_id: str,
     expected_source_revision: str,
     expected_source_repository: str,
+    scanner_metadata: dict[str, Any],
+    platform_manifest_digest: str,
+    image_config_digest: str,
     expected_manifest_digest: str | None = None,
 ) -> dict[str, Any]:
     _validate_static_policy(policy, role, repo_root, require_active=False)
@@ -559,12 +699,24 @@ def snapshot(
     )
     if role == "geo-worker" and actual:
         raise PolicyError("geo-worker report must have an empty finding set")
+    scanned_at = _timestamp(report["CreatedAt"], "report CreatedAt")
     provenance = {
         "source_revision": expected_source_revision,
         "image_ref": expected_image_ref,
-        "image_id": expected_image_id,
+        "image_id": _digest(expected_image_id, "expected daemon image identity"),
+        "platform_manifest_digest": _digest(
+            platform_manifest_digest,
+            "observed platform manifest digest",
+        ),
+        "config_digest": _digest(image_config_digest, "observed image config digest"),
         "report_sha256": "sha256:" + hashlib.sha256(report_raw).hexdigest(),
-        "scanned_at": report["CreatedAt"],
+        "scanned_at": _normalized_timestamp(report["CreatedAt"], "report CreatedAt"),
+        "platform": PLATFORM,
+        "base_image": ROLE_BINDINGS[role]["base_image"],
+        "scanner": _snapshot_scanner_provenance(
+            scanner_metadata,
+            scanned_at=scanned_at,
+        ),
     }
     if expected_manifest_digest is not None:
         provenance["manifest_digest"] = expected_manifest_digest
@@ -586,7 +738,7 @@ def _parser() -> argparse.ArgumentParser:
         subparser.add_argument(
             "--expected-image-id",
             required=True,
-            help="Docker configuration image ID (not a registry manifest digest)",
+            help=("opaque Docker daemon/Trivy image identity (not a config or manifest digest)"),
         )
         subparser.add_argument(
             "--expected-manifest-digest",
@@ -597,6 +749,9 @@ def _parser() -> argparse.ArgumentParser:
         subparser.add_argument("--repo-root", type=Path, default=Path.cwd())
         subparser.add_argument("--now")
         if command == "snapshot":
+            subparser.add_argument("--scanner-metadata", type=Path, required=True)
+            subparser.add_argument("--platform-manifest-digest", required=True)
+            subparser.add_argument("--image-config-digest", required=True)
             subparser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -623,7 +778,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"image security policy valid for {args.image_role}: {count} findings")
             return 0
 
-        output = snapshot(**common, report_raw=report_raw)
+        scanner_metadata, _ = _read_json(args.scanner_metadata, "scanner metadata")
+        output = snapshot(
+            **common,
+            report_raw=report_raw,
+            scanner_metadata=scanner_metadata,
+            platform_manifest_digest=args.platform_manifest_digest,
+            image_config_digest=args.image_config_digest,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
             json.dumps(output, indent=2, sort_keys=True) + "\n",
