@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
+GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
 )
@@ -541,13 +542,13 @@ def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
     assert _needs(deploy, "build-geo-worker") == publish_gates
     _assert_scanned_artifact_is_published(
         backend_publish,
-        "ghcr.io/${{ github.repository }}/backend:${{ github.sha }}",
-        "ghcr.io/${{ github.repository }}/backend:latest",
+        f"{GHCR_ROOT}/backend:${{{{ github.sha }}}}",
+        f"{GHCR_ROOT}/backend:latest",
     )
     _assert_scanned_artifact_is_published(
         geo_publish,
-        "ghcr.io/${{ github.repository }}/geo-worker:${{ github.sha }}",
-        "ghcr.io/${{ github.repository }}/geo-worker:latest",
+        f"{GHCR_ROOT}/geo-worker:${{{{ github.sha }}}}",
+        f"{GHCR_ROOT}/geo-worker:latest",
     )
     _assert_image_policy_aggregate(deploy, {"build-backend", "build-geo-worker"})
 
@@ -559,6 +560,14 @@ def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
     assert deploy.count("scan-type: image") == 2
     assert deploy.count('docker push "$CANDIDATE_IMAGE"') == 2
     assert "push: true" not in deploy
+
+
+def test_deploy_image_paths_use_canonical_lowercase_ghcr_root() -> None:
+    deploy = _read(".github/workflows/deploy.yml")
+
+    assert "ghcr.io/${{ github.repository }}" not in deploy
+    assert deploy.count(f"{GHCR_ROOT}/backend:") == 2
+    assert deploy.count(f"{GHCR_ROOT}/geo-worker:") == 2
 
 
 def test_deploy_quality_gate_only_references_current_contract_tests() -> None:

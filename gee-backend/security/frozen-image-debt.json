@@ -22,7 +22,7 @@
       "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
       "allowed_repositories": [
         "local/consorcio-backend",
-        "ghcr.io/JNZader/consorcio-canalero/backend"
+        "ghcr.io/jnzader/consorcio-canalero/backend"
       ],
       "baseline_generated_from": {
         "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
@@ -564,7 +564,7 @@
       "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",
       "allowed_repositories": [
         "local/consorcio-geo-worker",
-        "ghcr.io/JNZader/consorcio-canalero/geo-worker"
+        "ghcr.io/jnzader/consorcio-canalero/geo-worker"
       ],
       "baseline_generated_from": {
         "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",

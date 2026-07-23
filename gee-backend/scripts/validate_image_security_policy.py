@@ -35,7 +35,7 @@ ROLE_BINDINGS = {
         ),
         "allowed_repositories": [
             "local/consorcio-backend",
-            "ghcr.io/JNZader/consorcio-canalero/backend",
+            "ghcr.io/jnzader/consorcio-canalero/backend",
         ],
     },
     "geo-worker": {
@@ -46,7 +46,7 @@ ROLE_BINDINGS = {
         ),
         "allowed_repositories": [
             "local/consorcio-geo-worker",
-            "ghcr.io/JNZader/consorcio-canalero/geo-worker",
+            "ghcr.io/jnzader/consorcio-canalero/geo-worker",
         ],
     },
 }

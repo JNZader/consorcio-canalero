@@ -148,7 +148,7 @@ def _active_policy() -> dict[str, Any]:
                 "base_image": BACKEND_BASE,
                 "allowed_repositories": [
                     "local/consorcio-backend",
-                    "ghcr.io/JNZader/consorcio-canalero/backend",
+                    "ghcr.io/jnzader/consorcio-canalero/backend",
                 ],
                 "baseline_generated_from": _provenance(
                     BACKEND_REF,
@@ -162,7 +162,7 @@ def _active_policy() -> dict[str, Any]:
                 "base_image": GEO_BASE,
                 "allowed_repositories": [
                     "local/consorcio-geo-worker",
-                    "ghcr.io/JNZader/consorcio-canalero/geo-worker",
+                    "ghcr.io/jnzader/consorcio-canalero/geo-worker",
                 ],
                 "baseline_generated_from": _provenance(
                     GEO_REF,
@@ -277,6 +277,14 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
 
     assert policy["active"] is True
     assert "activation_blocker" not in policy
+    assert backend["allowed_repositories"] == [
+        "local/consorcio-backend",
+        "ghcr.io/jnzader/consorcio-canalero/backend",
+    ]
+    assert geo["allowed_repositories"] == [
+        "local/consorcio-geo-worker",
+        "ghcr.io/jnzader/consorcio-canalero/geo-worker",
+    ]
     assert len(backend["findings"]) == 30
     assert sum(finding["count"] for finding in backend["findings"]) == 30
     assert {finding["count"] for finding in backend["findings"]} == {1}
