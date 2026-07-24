@@ -69,6 +69,32 @@ export function clearLocalLogoutTombstone(): void {
   }
 }
 
+export function subscribeToLocalLogout(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+
+  const handleStorage = (event: StorageEvent) => {
+    const localStorage = getLegacyLocalStorage();
+    if (
+      event.key !== LOCAL_LOGOUT_STATE.TOMBSTONE_KEY ||
+      event.newValue !== LOCAL_LOGOUT_STATE.TOMBSTONE_VALUE ||
+      (event.storageArea !== null && event.storageArea !== localStorage)
+    ) {
+      return;
+    }
+
+    logoutTombstonedInMemory = true;
+    try {
+      clearAuthStorage();
+    } catch {
+      // The durable marker and store reset still fail closed if storage cleanup is restricted.
+    }
+    listener();
+  };
+
+  window.addEventListener('storage', handleStorage);
+  return () => window.removeEventListener('storage', handleStorage);
+}
+
 export function storeLocalLogoutWarning(): void {
   logoutWarningInMemory = true;
   try {

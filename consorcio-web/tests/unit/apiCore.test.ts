@@ -50,6 +50,76 @@ describe('api core', () => {
     );
   });
 
+  it('does not send a bearer cached in another tab context after a durable logout', async () => {
+    mockGetAccessToken.mockResolvedValue('cached-before-logout');
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({ ok: true }),
+    });
+
+    const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+
+    await apiFetch('/before-other-tab-logout');
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) =>
+      key === 'consorcio_auth_logout_tombstone' ? 'logged-out' : null
+    );
+    await apiFetch('/after-other-tab-logout');
+    vi.mocked(window.localStorage.getItem).mockImplementation(() => null);
+
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[0][1].headers.Authorization).toBe('Bearer cached-before-logout');
+    expect(calls[1][1].headers.Authorization).toBeUndefined();
+    expect(mockGetAccessToken).toHaveBeenCalledOnce();
+  });
+
+  it('does not deliver a bearer when logout wins the race while the token is loading', async () => {
+    let resolveToken: ((token: string) => void) | undefined;
+    let markTokenReadStarted: (() => void) | undefined;
+    const tokenReadStarted = new Promise<void>((resolve) => {
+      markTokenReadStarted = resolve;
+    });
+    mockGetAccessToken.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveToken = resolve;
+          markTokenReadStarted?.();
+        })
+    );
+
+    const { getAuthToken, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+    const tokenRequest = getAuthToken();
+    await tokenReadStarted;
+
+    const { markLocalLogout } = await import('../../src/lib/auth/storage');
+    markLocalLogout();
+    resolveToken?.('must-not-be-delivered');
+
+    await expect(tokenRequest).resolves.toBeNull();
+    await expect(getAuthToken()).resolves.toBeNull();
+    expect(mockGetAccessToken).toHaveBeenCalledOnce();
+  });
+
+  it('strips a caller-provided bearer immediately before send when logout is durable', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({ ok: true }),
+    });
+    const { markLocalLogout } = await import('../../src/lib/auth/storage');
+    markLocalLogout();
+
+    const { apiFetch } = await import('../../src/lib/api/core');
+    await apiFetch('/manual-bearer', {
+      headers: { Authorization: 'Bearer stale-caller-token' },
+    });
+
+    const options = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(options.headers.Authorization).toBeUndefined();
+  });
+
   it('refreshes a protected Admin GEE request once and retries with the new Bearer token', async () => {
     mockGetAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValue('fresh-token');
     (global.fetch as ReturnType<typeof vi.fn>)

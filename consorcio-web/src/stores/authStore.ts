@@ -14,6 +14,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearAuthTokenCache } from '../lib/api';
 import { type AuthUser, authAdapter } from '../lib/auth/index';
+import { subscribeToLocalLogout } from '../lib/auth/storage';
 import { logger } from '../lib/logger';
 import { safeGetUserRole } from '../lib/typeGuards';
 import type { Usuario } from '../types';
@@ -75,6 +76,14 @@ let authListenerRegistered = false;
 /** Unsubscribe function for auth listener (for cleanup if needed) */
 let authListenerUnsubscribe: (() => void) | null = null;
 
+/** Unsubscribe function for cross-tab durable logout propagation */
+let localLogoutListenerUnsubscribe: (() => void) | null = null;
+
+function registerLocalLogoutListener(onLogout: () => void): void {
+  if (localLogoutListenerUnsubscribe) return;
+  localLogoutListenerUnsubscribe = subscribeToLocalLogout(onLogout);
+}
+
 const inMemoryAuthStorage = {
   getItem: (_name: string) => null,
   setItem: (_name: string, _value: string) => undefined,
@@ -133,6 +142,11 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       },
 
       initialize: async () => {
+        registerLocalLogoutListener(() => {
+          get().reset();
+          window.localStorage.removeItem('cc-auth-storage');
+        });
+
         // If already initialized, return immediately
         const { initialized } = get();
         if (initialized) return;
@@ -302,5 +316,9 @@ export function cleanupAuthListener() {
     authListenerUnsubscribe();
     authListenerUnsubscribe = null;
     authListenerRegistered = false;
+  }
+  if (localLogoutListenerUnsubscribe) {
+    localLogoutListenerUnsubscribe();
+    localLogoutListenerUnsubscribe = null;
   }
 }

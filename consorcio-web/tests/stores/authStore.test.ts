@@ -2,7 +2,7 @@
  * Unit tests for authStore selectors and hooks.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from '@testing-library/react';
 import {
   useAuthStore,
@@ -14,10 +14,16 @@ import {
 
 describe('authStore', () => {
   beforeEach(() => {
+    cleanupAuthListener();
+    window.sessionStorage.clear();
     // Reset store state before each test
     const store = useAuthStore.getState();
     store.reset();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanupAuthListener();
   });
 
   describe('initial state', () => {
@@ -56,7 +62,12 @@ describe('authStore', () => {
     });
 
     it('should set profile', () => {
-      const mockProfile = { id: 'test-id', email: 'test@example.com', nombre: 'Test', rol: 'ciudadano' as const };
+      const mockProfile = {
+        id: 'test-id',
+        email: 'test@example.com',
+        nombre: 'Test',
+        rol: 'ciudadano' as const,
+      };
 
       act(() => {
         useAuthStore.getState().setProfile(mockProfile);
@@ -237,6 +248,86 @@ describe('authStore', () => {
   describe('cleanupAuthListener', () => {
     it('should not throw when called', () => {
       expect(() => cleanupAuthListener()).not.toThrow();
+    });
+  });
+
+  describe('cross-tab durable logout', () => {
+    async function initializeAuthenticatedTab() {
+      useAuthStore.getState().setInitialized(false);
+      await useAuthStore.getState().initialize();
+      useAuthStore.getState().setUser({ id: 'other-tab-user', email: 'other@example.com' });
+      useAuthStore.getState().setSession({ access_token: 'other-tab-token' });
+      window.sessionStorage.setItem('consorcio_auth_token', 'other-tab-token');
+      window.sessionStorage.setItem('consorcio_auth_user', '{"id":"other-tab-user"}');
+      useAuthStore.getState().setProfile({
+        id: 'other-tab-user',
+        email: 'other@example.com',
+        rol: 'admin',
+      });
+    }
+
+    it('resets auth state when another tab writes the durable logout tombstone', async () => {
+      await initializeAuthenticatedTab();
+
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'consorcio_auth_logout_tombstone',
+          newValue: 'logged-out',
+        })
+      );
+
+      const state = useAuthStore.getState();
+      expect(state.user).toBeNull();
+      expect(state.session).toBeNull();
+      expect(state.profile).toBeNull();
+      expect(window.sessionStorage.getItem('consorcio_auth_token')).toBeNull();
+      expect(window.sessionStorage.getItem('consorcio_auth_user')).toBeNull();
+      expect(window.localStorage.removeItem).toHaveBeenCalledWith('cc-auth-storage');
+    });
+
+    it('ignores unrelated and malformed storage events', async () => {
+      await initializeAuthenticatedTab();
+
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'unrelated-setting',
+          newValue: 'logged-out',
+        })
+      );
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'consorcio_auth_logout_tombstone',
+          newValue: 'unexpected-value',
+        })
+      );
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'consorcio_auth_logout_tombstone',
+          newValue: 'logged-out',
+          storageArea: window.sessionStorage,
+        })
+      );
+
+      const state = useAuthStore.getState();
+      expect(state.user?.id).toBe('other-tab-user');
+      expect(state.session?.access_token).toBe('other-tab-token');
+      expect(state.profile?.rol).toBe('admin');
+    });
+
+    it('removes the cross-tab listener during auth cleanup', async () => {
+      await initializeAuthenticatedTab();
+      cleanupAuthListener();
+
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'consorcio_auth_logout_tombstone',
+          newValue: 'logged-out',
+        })
+      );
+
+      const state = useAuthStore.getState();
+      expect(state.user?.id).toBe('other-tab-user');
+      expect(state.session?.access_token).toBe('other-tab-token');
     });
   });
 });

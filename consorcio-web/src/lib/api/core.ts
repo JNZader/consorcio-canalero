@@ -31,11 +31,21 @@ let _handlingAuthExpiry = false;
  */
 export async function getAuthToken(): Promise<string | null> {
   try {
+    if (hasLocalLogoutTombstone()) {
+      cachedToken = null;
+      return null;
+    }
+
     if (cachedToken && Date.now() < cachedToken.expiresAt) {
       return cachedToken.token;
     }
 
     const token = await authAdapter.getAccessToken();
+
+    if (hasLocalLogoutTombstone()) {
+      cachedToken = null;
+      return null;
+    }
 
     if (token) {
       cachedToken = { token, expiresAt: Date.now() + TOKEN_CACHE_TTL };
@@ -227,14 +237,25 @@ async function authenticatedFetchResponse<T>(
       ? {}
       : { 'Content-Type': 'application/json' };
 
+    const requestHeaders = {
+      ...defaultHeaders,
+      ...authHeaders,
+      ...fetchOptions.headers,
+    } as Record<string, string>;
+
+    if (hasLocalLogoutTombstone()) {
+      clearAuthTokenCache();
+      for (const headerName of Object.keys(requestHeaders)) {
+        if (headerName.toLowerCase() === 'authorization') {
+          delete requestHeaders[headerName];
+        }
+      }
+    }
+
     const response = await fetch(url, {
       ...fetchOptions,
       signal: abortScope.signal,
-      headers: {
-        ...defaultHeaders,
-        ...authHeaders,
-        ...fetchOptions.headers,
-      },
+      headers: requestHeaders,
     });
 
     if (!response.ok) {
@@ -327,10 +348,8 @@ export async function fetchAuthenticatedBlob(
   resource: string,
   options: ApiFetchOptions = {}
 ): Promise<Blob> {
-  return authenticatedFetchResponse(
-    resolveProtectedPhotoUrl(resource),
-    options,
-    (response) => response.blob()
+  return authenticatedFetchResponse(resolveProtectedPhotoUrl(resource), options, (response) =>
+    response.blob()
   );
 }
 
