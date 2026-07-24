@@ -191,8 +191,10 @@ function getApiErrorMessage(error: unknown, status: number): string {
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
-export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
-  const url = `${API_URL}${API_PREFIX}${endpoint}`;
+async function authenticatedFetchResponse(
+  url: string,
+  options: ApiFetchOptions = {}
+): Promise<Response> {
   const {
     timeout = DEFAULT_TIMEOUT,
     skipAuth = false,
@@ -203,7 +205,6 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
   const abortScope = createRequestAbortScope(timeout, callerSignal);
 
   try {
-    // Get auth token if not skipped
     const authHeaders: Record<string, string> = {};
     if (!skipAuth) {
       const token = await getAuthToken();
@@ -230,22 +231,12 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
 
-      // Handle expired/invalid access token — Phase 2 / F2-K. The
-      // access token now lives 15 min instead of 60 min, so we expect
-      // a lot more 401s during normal use. Try to silently refresh
-      // via the HttpOnly cookie before forcing the user back to login.
       if (response.status === 401 && !skipAuth && !__alreadyRetried) {
         const refreshed = await waitForWithSignal(attemptTokenRefresh(), abortScope.signal);
         if (refreshed) {
-          // Retry the original call exactly once with the new token.
-          // The ``__alreadyRetried`` flag stops a refresh loop if the
-          // new token also gets a 401 (e.g. role revoked on the
-          // backend).
-          return apiFetch<T>(endpoint, { ...options, __alreadyRetried: true });
+          return authenticatedFetchResponse(url, { ...options, __alreadyRetried: true });
         }
 
-        // Refresh failed (no cookie, expired, replayed). Fall through
-        // to the legacy logout flow.
         if (!_handlingAuthExpiry) {
           _handlingAuthExpiry = true;
           logger.warn('Sesion expirada — redirigiendo a login');
@@ -262,14 +253,7 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       throw new Error(getApiErrorMessage(error, response.status));
     }
 
-    // 204 No Content / empty body: response.json() would throw a
-    // SyntaxError on an empty string. Callers of void-ish endpoints
-    // (DELETE, etc.) type these as ``apiFetch<void>`` / nullable T.
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-      return undefined as T;
-    }
-
-    return response.json();
+    return response;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       if (callerSignal?.aborted) {
@@ -281,6 +265,45 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
   } finally {
     abortScope.cleanup();
   }
+}
+
+export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
+  const response = await authenticatedFetchResponse(`${API_URL}${API_PREFIX}${endpoint}`, options);
+
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+
+  return response.json();
+}
+
+function resolveProtectedPhotoUrl(resource: string): string {
+  const apiBase = new URL(API_URL);
+  const resolved = new URL(resource, `${apiBase.origin}/`);
+
+  if (
+    resolved.origin !== apiBase.origin ||
+    !resolved.pathname.startsWith('/uploads/denuncias/') ||
+    resolved.username ||
+    resolved.password ||
+    resolved.searchParams.has('access_token')
+  ) {
+    throw new Error('La URL de la imagen protegida no pertenece al servidor autorizado.');
+  }
+
+  return resolved.toString();
+}
+
+/**
+ * Load a protected denuncia photo without putting bearer credentials in its URL.
+ * Uses the same one-shot refresh/retry and auth-expiry behavior as apiFetch.
+ */
+export async function fetchAuthenticatedBlob(
+  resource: string,
+  options: ApiFetchOptions = {}
+): Promise<Blob> {
+  const response = await authenticatedFetchResponse(resolveProtectedPhotoUrl(resource), options);
+  return response.blob();
 }
 
 /**
