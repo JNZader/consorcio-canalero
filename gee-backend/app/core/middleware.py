@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
@@ -32,9 +33,9 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
             algorithms=["HS256"],
             options={"verify_exp": True},
         )
-        user_id: Optional[str] = payload.get("sub")
-        return user_id if user_id else None
-    except JWTError:
+        user_id = payload.get("sub")
+        return user_id if isinstance(user_id, str) and user_id else None
+    except PyJWTError:
         return None
 
 

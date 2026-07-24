@@ -1,0 +1,37 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-07-23T00:00:00Z",
+  "ArtifactName": "local/consorcio-geo-worker:test",
+  "ArtifactType": "container_image",
+  "ArtifactID": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "ReportID": "22222222-2222-7222-8222-222222222222",
+  "Trivy": {
+    "Version": "0.70.0"
+  },
+  "Metadata": {
+    "ImageID": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "Reference": "local/consorcio-geo-worker:test",
+    "RepoTags": [
+      "local/consorcio-geo-worker:test"
+    ],
+    "RepoDigests": [],
+    "ImageConfig": {
+      "architecture": "amd64",
+      "os": "linux",
+      "config": {
+        "Labels": {
+          "org.opencontainers.image.source": "https://github.com/JNZader/consorcio-canalero",
+          "org.opencontainers.image.revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    }
+  },
+  "Results": [
+    {
+      "Target": "Ubuntu 26.04",
+      "Class": "os-pkgs",
+      "Type": "ubuntu",
+      "Packages": []
+    }
+  ]
+}

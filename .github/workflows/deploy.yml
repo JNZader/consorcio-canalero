@@ -12,8 +12,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ${{ github.repository }}/backend
-  GEO_WORKER_IMAGE: ${{ github.repository }}/geo-worker
 
 concurrency:
   group: deploy-production
@@ -71,6 +69,7 @@ jobs:
         run: >-
           python3 -m pytest
           tests/test_ci_workflow_contracts.py
+          tests/test_image_security_policy.py
           tests/test_tramites_schema.py
           tests/new/test_admin_frontend_contracts.py
           tests/new/test_auth_gates.py
@@ -120,6 +119,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: gee-backend
+          version: v0.70.0
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -130,116 +130,317 @@ jobs:
           sarif_file: trivy-results.sarif
 
   build-backend:
-    name: Build Backend Image
+    name: Build, Scan, and Publish Backend Image
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: [quality-backend, mutation-backend, security-backend]
     permissions:
       contents: read
       packages: write
+      security-events: write
+    outputs:
+      verified_digest: ${{ steps.publish.outputs.verified_digest }}
+      immutable_ref: ${{ steps.publish.outputs.immutable_ref }}
+    env:
+      IMAGE_REPOSITORY: "ghcr.io/jnzader/consorcio-canalero/backend"
+      CANDIDATE_IMAGE: "ghcr.io/jnzader/consorcio-canalero/backend:${{ github.sha }}"
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-      - uses: docker/build-push-action@v5
+      - name: Build backend candidate image once
+        id: build-image
+        uses: docker/build-push-action@v5
         with:
           context: gee-backend
           file: gee-backend/Dockerfile
           target: production
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Summary — image SHA + rollback hint
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=max,scope=backend-image
+      - name: Capture backend build manifest digest
+        id: capture-manifest
+        env:
+          BUILDX_METADATA: ${{ steps.build-image.outputs.metadata }}
         run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${SHORT_SHA}"
-          {
-            echo "### Backend image published"
-            echo ""
-            echo "\`\`\`"
-            echo "$IMAGE"
-            echo "\`\`\`"
-            echo ""
-            echo "**To deploy this build on the Hetzner server:**"
-            echo ""
-            echo "1. Edit \`/home/javier/stacks/consorcio/.env\`:"
-            echo "   \`BACKEND_IMAGE=$IMAGE\`"
-            echo "2. Run: \`docker compose pull backend && docker compose up -d backend\`"
-            echo ""
-            echo "**To rollback** to a previous version, point BACKEND_IMAGE at the older SHA from"
-            echo "[the package registry](https://github.com/${{ github.repository }}/pkgs/container/consorcio-canalero%2Fbackend)."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  build-geo-worker:
-    name: Build Geo Worker Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    needs: [quality-backend, mutation-backend, security-backend]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+          BUILD_DIGEST="$(jq -er '.["containerimage.digest"] | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' <<< "$BUILDX_METADATA")"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Prepare backend evidence directory
+        run: mkdir -p image-security
+      - name: Generate raw unsuppressed backend vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: image-security/backend-trivy.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+      - name: Derive backend SARIF from the raw report
+        run: trivy convert --format sarif --output image-security/backend-trivy.sarif image-security/backend-trivy.json
+      - name: Validate frozen backend image debt
+        run: |
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 gee-backend/scripts/validate_image_security_policy.py validate \
+            --policy gee-backend/security/frozen-image-debt.json \
+            --report image-security/backend-trivy.json \
+            --image-role backend \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root .
+      - name: Upload backend image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-backend
+          path: |
+            image-security/backend-trivy.json
+            image-security/backend-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload backend image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: image-security/backend-trivy.sarif
+      - name: Authenticate to GHCR after scan
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.GEO_WORKER_IMAGE }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-      - uses: docker/build-push-action@v5
+      - name: Publish and verify exact scanned backend image
+        id: publish
+        env:
+          BUILD_DIGEST: ${{ steps.capture-manifest.outputs.digest }}
+        run: |
+          docker push "$CANDIDATE_IMAGE"
+          REMOTE_DIGEST="$(docker buildx imagetools inspect "$CANDIDATE_IMAGE" --format '{{json .Manifest}}' | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          test "$REMOTE_DIGEST" = "$BUILD_DIGEST"
+          echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Summary — verified backend manifest
+        env:
+          IMAGE: ${{ steps.publish.outputs.immutable_ref }}
+        run: |
+          {
+            echo "### Backend image published"
+            echo ""
+            echo "$IMAGE"
+            echo ""
+            echo "Deploy only this verified manifest reference."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-geo-worker:
+    name: Build, Scan, and Publish Geo Worker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality-backend, mutation-backend, security-backend]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      verified_digest: ${{ steps.publish.outputs.verified_digest }}
+      immutable_ref: ${{ steps.publish.outputs.immutable_ref }}
+    env:
+      IMAGE_REPOSITORY: "ghcr.io/jnzader/consorcio-canalero/geo-worker"
+      CANDIDATE_IMAGE: "ghcr.io/jnzader/consorcio-canalero/geo-worker:${{ github.sha }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build geo-worker candidate image once
+        id: build-image
+        uses: docker/build-push-action@v5
         with:
           context: gee-backend
           file: gee-backend/Dockerfile.geo
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Summary — geo-worker image SHA
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=geo-worker-image
+          cache-to: type=gha,mode=max,scope=geo-worker-image
+      - name: Capture geo-worker build manifest digest
+        id: capture-manifest
+        env:
+          BUILDX_METADATA: ${{ steps.build-image.outputs.metadata }}
         run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE="${{ env.REGISTRY }}/${{ env.GEO_WORKER_IMAGE }}:${SHORT_SHA}"
+          BUILD_DIGEST="$(jq -er '.["containerimage.digest"] | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' <<< "$BUILDX_METADATA")"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Prepare Geo evidence directory
+        run: mkdir -p image-security
+      - name: Generate raw unsuppressed Geo vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: image-security/geo-worker-trivy.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+      - name: Derive Geo SARIF from the raw report
+        run: trivy convert --format sarif --output image-security/geo-worker-trivy.sarif image-security/geo-worker-trivy.json
+      - name: Require an empty Geo finding set
+        run: |
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 gee-backend/scripts/validate_image_security_policy.py validate \
+            --policy gee-backend/security/frozen-image-debt.json \
+            --report image-security/geo-worker-trivy.json \
+            --image-role geo-worker \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root .
+      - name: Upload Geo image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-geo-worker
+          path: |
+            image-security/geo-worker-trivy.json
+            image-security/geo-worker-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Geo image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: image-security/geo-worker-trivy.sarif
+      - name: Authenticate to GHCR after scan
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify exact scanned geo-worker image
+        id: publish
+        env:
+          BUILD_DIGEST: ${{ steps.capture-manifest.outputs.digest }}
+        run: |
+          docker push "$CANDIDATE_IMAGE"
+          REMOTE_DIGEST="$(docker buildx imagetools inspect "$CANDIDATE_IMAGE" --format '{{json .Manifest}}' | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          test "$REMOTE_DIGEST" = "$BUILD_DIGEST"
+          echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Summary — verified geo-worker manifest
+        env:
+          IMAGE: ${{ steps.publish.outputs.immutable_ref }}
+        run: |
           {
             echo "### Geo-worker image published"
             echo ""
-            echo "\`\`\`"
             echo "$IMAGE"
-            echo "\`\`\`"
             echo ""
-            echo "Set \`GEO_WORKER_IMAGE=$IMAGE\` in the server .env then"
-            echo "\`docker compose pull geo-worker && docker compose up -d geo-worker\`."
+            echo "Deploy only this verified manifest reference."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  image-security-policy:
+    name: Image Security Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-backend, build-geo-worker]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    env:
+      BUILD_BACKEND_RESULT: ${{ needs.build-backend.result }}
+      BUILD_GEO_WORKER_RESULT: ${{ needs.build-geo-worker.result }}
+    steps:
+      - name: Require both image policy jobs
+        run: |
+          test "$BUILD_BACKEND_RESULT" = "success"
+          test "$BUILD_GEO_WORKER_RESULT" = "success"
+      - name: Download image security evidence
+        uses: actions/download-artifact@v4
+        if: always()
+        with:
+          pattern: image-security-*
+          path: evidence
+          merge-multiple: true
+      - name: Require every raw and SARIF report
+        if: always()
+        run: |
+          test -s evidence/backend-trivy.json
+          test -s evidence/backend-trivy.sarif
+          test -s evidence/geo-worker-trivy.json
+          test -s evidence/geo-worker-trivy.sarif
+
+  promote-images:
+    name: Promote Verified Image Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-backend, build-geo-worker, image-security-policy]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_image: ${{ steps.promote.outputs.backend_image }}
+      geo_worker_image: ${{ steps.promote.outputs.geo_worker_image }}
+    env:
+      BACKEND_IMAGE: ${{ needs.build-backend.outputs.immutable_ref }}
+      BACKEND_DIGEST: ${{ needs.build-backend.outputs.verified_digest }}
+      GEO_WORKER_IMAGE: ${{ needs.build-geo-worker.outputs.immutable_ref }}
+      GEO_WORKER_DIGEST: ${{ needs.build-geo-worker.outputs.verified_digest }}
+      BACKEND_LATEST: "ghcr.io/jnzader/consorcio-canalero/backend:latest"
+      GEO_WORKER_LATEST: "ghcr.io/jnzader/consorcio-canalero/geo-worker:latest"
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - name: Authenticate to GHCR for promotion
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote and verify both latest aliases
+        id: promote
+        run: |
+          docker buildx imagetools create --prefer-index=false --tag "$BACKEND_LATEST" "$BACKEND_IMAGE"
+          PROMOTED_BACKEND_DIGEST="$(docker buildx imagetools inspect "$BACKEND_LATEST" --format '{{json .Manifest}}' | jq -er '.digest')"
+          test "$PROMOTED_BACKEND_DIGEST" = "$BACKEND_DIGEST"
+
+          docker buildx imagetools create --prefer-index=false --tag "$GEO_WORKER_LATEST" "$GEO_WORKER_IMAGE"
+          PROMOTED_GEO_WORKER_DIGEST="$(docker buildx imagetools inspect "$GEO_WORKER_LATEST" --format '{{json .Manifest}}' | jq -er '.digest')"
+          test "$PROMOTED_GEO_WORKER_DIGEST" = "$GEO_WORKER_DIGEST"
+
+          echo "backend_image=$BACKEND_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "geo_worker_image=$GEO_WORKER_IMAGE" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to server
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [build-backend, build-geo-worker]
+    needs: [promote-images]
     # Production rollout is opt-in even when a webhook URL exists.
     if: ${{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}
+    env:
+      BACKEND_IMAGE: ${{ needs.promote-images.outputs.backend_image }}
+      GEO_WORKER_IMAGE: ${{ needs.promote-images.outputs.geo_worker_image }}
     steps:
-      - name: Trigger redeploy via webhook
+      - name: Trigger digest-pinned redeploy via webhook
         run: |
+          PAYLOAD="$(jq -n \
+            --arg revision "$GITHUB_SHA" \
+            --arg backend_image "$BACKEND_IMAGE" \
+            --arg geo_worker_image "$GEO_WORKER_IMAGE" \
+            '{revision: $revision, backend_image: $backend_image, geo_worker_image: $geo_worker_image}')"
           curl -X POST "${{ vars.DEPLOY_WEBHOOK_URL }}" \
             -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD" \
             --fail --silent --show-error

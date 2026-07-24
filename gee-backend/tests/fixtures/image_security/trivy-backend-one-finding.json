@@ -1,0 +1,53 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-07-23T00:00:00Z",
+  "ArtifactName": "local/consorcio-backend:test",
+  "ArtifactType": "container_image",
+  "ArtifactID": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "ReportID": "11111111-1111-7111-8111-111111111111",
+  "Trivy": {
+    "Version": "0.70.0"
+  },
+  "Metadata": {
+    "ImageID": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "Reference": "local/consorcio-backend:test",
+    "RepoTags": [
+      "local/consorcio-backend:test"
+    ],
+    "RepoDigests": [],
+    "ImageConfig": {
+      "architecture": "amd64",
+      "os": "linux",
+      "config": {
+        "Labels": {
+          "org.opencontainers.image.source": "https://github.com/JNZader/consorcio-canalero",
+          "org.opencontainers.image.revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    }
+  },
+  "Results": [
+    {
+      "Target": "Debian GNU/Linux 13 (trixie)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2026-10001",
+          "PkgID": "libexample@1.0.0",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libexample@1.0.0?arch=amd64"
+          },
+          "InstalledVersion": "1.0.0",
+          "FixedVersion": "",
+          "Status": "affected",
+          "Severity": "HIGH",
+          "Layer": {
+            "Digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "DiffID": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          }
+        }
+      ]
+    }
+  ]
+}

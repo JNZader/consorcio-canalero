@@ -5,6 +5,8 @@
 # === CREDENCIALES (CRITICO - NUNCA SUBIR) ===
 credentials/
 *.json
+!security/frozen-image-debt.json
+!tests/fixtures/image_security/*.json
 !package.json
 !pyproject.json
 gee-service-account.json

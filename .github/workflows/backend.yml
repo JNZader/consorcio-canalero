@@ -115,6 +115,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: gee-backend
+          version: v0.70.0
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -123,3 +124,183 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+
+  image-backend:
+    name: Final Backend Image Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      CANDIDATE_IMAGE: "local/consorcio-backend:${{ github.sha }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend candidate image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}/gee-backend
+          file: ${{ github.workspace }}/gee-backend/Dockerfile
+          target: production
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=max,scope=backend-image
+      - name: Prepare backend evidence directory
+        working-directory: ${{ github.workspace }}
+        run: mkdir -p "${{ github.workspace }}/image-security"
+      - name: Generate raw unsuppressed backend vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: ${{ github.workspace }}/image-security/backend-trivy.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+      - name: Derive backend SARIF from the raw report
+        working-directory: ${{ github.workspace }}
+        run: trivy convert --format sarif --output "${{ github.workspace }}/image-security/backend-trivy.sarif" "${{ github.workspace }}/image-security/backend-trivy.json"
+      - name: Validate frozen backend image debt
+        working-directory: ${{ github.workspace }}
+        run: |
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 "${{ github.workspace }}/gee-backend/scripts/validate_image_security_policy.py" validate \
+            --policy "${{ github.workspace }}/gee-backend/security/frozen-image-debt.json" \
+            --report "${{ github.workspace }}/image-security/backend-trivy.json" \
+            --image-role backend \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root "${{ github.workspace }}"
+      - name: Upload backend image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-backend
+          path: |
+            ${{ github.workspace }}/image-security/backend-trivy.json
+            ${{ github.workspace }}/image-security/backend-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload backend image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ github.workspace }}/image-security/backend-trivy.sarif
+
+  image-geo-worker:
+    name: Final Geo Worker Image Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      CANDIDATE_IMAGE: "local/consorcio-geo-worker:${{ github.sha }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build geo-worker candidate image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}/gee-backend
+          file: ${{ github.workspace }}/gee-backend/Dockerfile.geo
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.CANDIDATE_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=geo-worker-image
+          cache-to: type=gha,mode=max,scope=geo-worker-image
+      - name: Prepare Geo evidence directory
+        working-directory: ${{ github.workspace }}
+        run: mkdir -p "${{ github.workspace }}/image-security"
+      - name: Generate raw unsuppressed Geo vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.CANDIDATE_IMAGE }}
+          version: v0.70.0
+          scanners: vuln
+          format: json
+          output: ${{ github.workspace }}/image-security/geo-worker-trivy.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+      - name: Derive Geo SARIF from the raw report
+        working-directory: ${{ github.workspace }}
+        run: trivy convert --format sarif --output "${{ github.workspace }}/image-security/geo-worker-trivy.sarif" "${{ github.workspace }}/image-security/geo-worker-trivy.json"
+      - name: Require an empty Geo finding set
+        working-directory: ${{ github.workspace }}
+        run: |
+          EXPECTED_DAEMON_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$CANDIDATE_IMAGE")"
+          python3 "${{ github.workspace }}/gee-backend/scripts/validate_image_security_policy.py" validate \
+            --policy "${{ github.workspace }}/gee-backend/security/frozen-image-debt.json" \
+            --report "${{ github.workspace }}/image-security/geo-worker-trivy.json" \
+            --image-role geo-worker \
+            --expected-image-ref "$CANDIDATE_IMAGE" \
+            --expected-image-id "$EXPECTED_DAEMON_IMAGE_ID" \
+            --expected-source-revision "$GITHUB_SHA" \
+            --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --repo-root "${{ github.workspace }}"
+      - name: Upload Geo image evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-security-geo-worker
+          path: |
+            ${{ github.workspace }}/image-security/geo-worker-trivy.json
+            ${{ github.workspace }}/image-security/geo-worker-trivy.sarif
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Geo image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ github.workspace }}/image-security/geo-worker-trivy.sarif
+
+  image-security-policy:
+    name: Image Security Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [image-backend, image-geo-worker]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    env:
+      IMAGE_BACKEND_RESULT: ${{ needs.image-backend.result }}
+      IMAGE_GEO_WORKER_RESULT: ${{ needs.image-geo-worker.result }}
+    steps:
+      - name: Require both image policy jobs
+        working-directory: ${{ github.workspace }}
+        run: |
+          test "$IMAGE_BACKEND_RESULT" = "success"
+          test "$IMAGE_GEO_WORKER_RESULT" = "success"
+      - name: Download image security evidence
+        uses: actions/download-artifact@v4
+        if: always()
+        with:
+          pattern: image-security-*
+          path: ${{ github.workspace }}/evidence
+          merge-multiple: true
+      - name: Require every raw and SARIF report
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: |
+          test -s "${{ github.workspace }}/evidence/backend-trivy.json"
+          test -s "${{ github.workspace }}/evidence/backend-trivy.sarif"
+          test -s "${{ github.workspace }}/evidence/geo-worker-trivy.json"
+          test -s "${{ github.workspace }}/evidence/geo-worker-trivy.sarif"

@@ -107,6 +107,9 @@ services:
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Trust only loopback and the exact Caddy peer resolved by app.server.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
     volumes:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro
@@ -118,18 +121,9 @@ services:
       - consorcio-internal
     healthcheck:
       # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
-      # outage downstream must NOT kill this container. Host header
-      # forged from API_BASE_URL because TrustedHostMiddleware doesn't
-      # accept localhost (see comment in docker-compose.prod.yml).
-      test:
-        - "CMD-SHELL"
-        - >-
-          if [ -z "$${HEALTHCHECK_HOST:-}$${API_BASE_URL:-}" ]; then
-            echo "healthcheck: neither HEALTHCHECK_HOST nor API_BASE_URL is set" >&2;
-            exit 1;
-          fi;
-          HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
-          curl -sf --resolve "$$HOST:8000:127.0.0.1" "http://$$HOST:8000/live" || exit 1
+      # outage downstream must NOT kill this container. The Python probe
+      # keeps transport on loopback and derives a TrustedHost-safe Host header.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -153,6 +147,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- One-shot Celery Beat schedule ownership repair ---
+  celery-beat-init:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-celery-beat-init
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /var/run/celery
+        chmod 0750 /var/run/celery
+    volumes:
+      - celery-beat-schedule:/var/run/celery
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. See docker-compose.prod.yml for the rationale.
   celery-beat:
@@ -171,6 +185,8 @@ services:
       - consorcio-internal
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      celery-beat-init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -244,7 +260,7 @@ services:
     networks:
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -313,6 +329,6 @@ volumes:
     name: consorcio-denuncia-uploads
   redis-data:
     name: consorcio-redis-data
-  # Phase 3 / F3-L: scratch dir for celery-beat schedule db.
+  # Durable singleton Celery Beat schedule state; never recreated by init.
   celery-beat-schedule:
     name: consorcio-celery-beat-schedule

@@ -3,16 +3,23 @@
 # terrain analysis (DEM pipeline) + tile service
 # ==============================================
 
-FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469
 
 WORKDIR /app
 
-# Install Python pip, build essentials, and supervisord
+# Install runtime tools, current Noble security updates for inherited
+# packages, and temporary Python headers needed while resolving geo wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    python3-dev \
-    supervisor \
+    adduser \
+    gcc \
+    gpgv \
     libgl1 \
+    libssl3t64 \
+    libtiff6 \
+    openssl \
+    python3-dev \
+    python3-pip \
+    supervisor \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,12 +30,20 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # The app code has deep import chains (tasks → auth → fastapi_users)
 # so the lean requirements-geo.txt approach causes missing module errors.
 COPY requirements.txt requirements-geo.txt ./
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+RUN pip install --no-cache-dir --break-system-packages \
     -r requirements.txt -r requirements-geo.txt \
-    "uvicorn[standard]>=0.30.0"
+    "setuptools==80.10.2" \
+    "uvicorn[standard]>=0.30.0" \
+    "wheel==0.46.3"
 
-# Pre-download WhiteboxTools binary (avoids timeout on first use)
-RUN python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())"
+
+# Pre-download WhiteboxTools while the temporary Python headers are available,
+# then remove the complete build-only dependency closure from the final image.
+RUN python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())" \
+    && apt-get purge -y --auto-remove gcc python3-dev \
+    && rm -f /usr/bin/pebble \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 # Copy application code
 COPY app/ ./app/
@@ -40,7 +55,10 @@ COPY supervisord-geo.conf /etc/supervisor/conf.d/geo.conf
 RUN mkdir -p /data/geo /var/log/supervisor
 
 # Create non-root user (mirrors gee-backend/Dockerfile production stage)
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN command -v addgroup >/dev/null \
+    && command -v adduser >/dev/null \
+    && addgroup --system app \
+    && adduser --system --ingroup app app
 
 # Writable paths for the app user:
 # - /app: workdir

@@ -4,8 +4,16 @@ import asyncio
 import socket
 from typing import Any
 
+import httpx
 import pytest
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from app.config import settings
+from app.core.middleware import DistributedRateLimitMiddleware
 
 from app.server import (
     ProxyTrustConfigurationError,
@@ -123,3 +131,66 @@ def test_main_does_not_start_uvicorn_when_resolution_fails(monkeypatch) -> None:
 
     assert exc_info.value.code == 78
     assert started is False
+
+
+class _RecordingLimiter:
+    max_requests = 10
+
+    def __init__(self) -> None:
+        self.keys: list[str] = []
+
+    async def check(self, key: str) -> tuple[bool, int, int]:
+        self.keys.append(key)
+        return True, 9, 60
+
+
+async def _run_forwarded_auth_request(
+    *,
+    peer: str,
+    trusted_hosts: list[str],
+) -> tuple[dict[str, str], list[str]]:
+    generic_limiter = _RecordingLimiter()
+    auth_limiter = _RecordingLimiter()
+
+    async def endpoint(request: Request) -> JSONResponse:
+        return JSONResponse(
+            {
+                "client": request.client.host if request.client else "unknown",
+                "scheme": request.url.scheme,
+            }
+        )
+
+    app = Starlette(routes=[Route("/api/v2/auth/jwt/login", endpoint, methods=["POST"])])
+    app.add_middleware(
+        DistributedRateLimitMiddleware,
+        rate_limiter=generic_limiter,
+        auth_rate_limiter=auth_limiter,
+    )
+    wrapped = ProxyHeadersMiddleware(app, trusted_hosts=trusted_hosts)
+    transport = httpx.ASGITransport(app=wrapped, client=(peer, 12345))
+    async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+        response = await client.post(
+            "/api/v2/auth/jwt/login",
+            headers={
+                "X-Forwarded-For": "203.0.113.9",
+                "X-Forwarded-Proto": "https",
+            },
+        )
+
+    assert response.status_code == 200
+    return response.json(), auth_limiter.keys
+
+
+def test_caddy_forwarded_identity_reaches_auth_rate_limiter(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    trusted = resolve_forwarded_allow_ips(
+        "127.0.0.1,caddy",
+        hostname_resolver=lambda hostname: ("172.22.0.7",),
+    )
+
+    response, keys = asyncio.run(
+        _run_forwarded_auth_request(peer="172.22.0.7", trusted_hosts=trusted)
+    )
+
+    assert response == {"client": "203.0.113.9", "scheme": "https"}
+    assert keys == ["ip:203.0.113.9"]

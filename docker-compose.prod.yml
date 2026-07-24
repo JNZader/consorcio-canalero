@@ -24,6 +24,10 @@
 #   cp .env.prod.example /home/javier/stacks/consorcio/.env  # editar con valores reales
 #   cp martin/config.prod.yaml /home/javier/stacks/consorcio/martin-config.yaml
 #   cd /home/javier/stacks/consorcio && docker compose up -d
+#
+# The deploy webhook receives revision, backend_image, and geo_worker_image.
+# Both image values are verified immutable ``repository@sha256:...`` references;
+# it must persist their digest components as BACKEND_DIGEST and GEO_WORKER_DIGEST.
 # ===========================================
 
 services:
@@ -98,7 +102,7 @@ services:
   # — alembic emits DDL with session-level state PgBouncer transaction
   # mode would discard between batches.
   migrate:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-migrate
     # NO ``profiles:`` here — backend / celery-worker / celery-beat
     # all declare ``depends_on: migrate: service_completed_successfully``
@@ -139,7 +143,7 @@ services:
   # when a volume is first created. Run as root on every deployment to repair
   # an existing volume, then require successful completion before backend starts.
   uploads-init:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-uploads-init
     user: "0:0"
     command:
@@ -156,7 +160,7 @@ services:
 
   # --- Backend FastAPI ---
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
@@ -180,22 +184,9 @@ services:
       # Liveness only. /live doesn't touch DB/Redis/GEE — a transient
       # outage downstream must NOT kill this container. /ready (with
       # real dep checks + 503) is for load balancers, not Docker.
-      #
-      # We forge the Host header to match ``API_BASE_URL`` because
-      # ``TrustedHostMiddleware`` no longer accepts ``localhost`` (any
-      # container on the same Docker network could have used it to
-      # impersonate the API). ``HEALTHCHECK_HOST`` falls back to the
-      # hostname stripped out of ``API_BASE_URL`` so a single env var
-      # drives both the public URL and the internal probe.
-      test:
-        - "CMD-SHELL"
-        - >-
-          if [ -z "$${HEALTHCHECK_HOST:-}$${API_BASE_URL:-}" ]; then
-            echo "healthcheck: neither HEALTHCHECK_HOST nor API_BASE_URL is set" >&2;
-            exit 1;
-          fi;
-          HOST="$${HEALTHCHECK_HOST:-$$(echo "$$API_BASE_URL" | sed -E 's|https?://([^/]+).*|\1|')}";
-          curl --fail --silent --show-error --header "Host: $$HOST" http://localhost:8000/live >/dev/null || exit 1
+      # The Python probe always connects to loopback, resolves the Host header
+      # from HEALTHCHECK_HOST or API_BASE_URL, and fails closed in production.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -224,7 +215,7 @@ services:
 
   # --- Celery Worker (solo queue celery, sin GDAL) ---
   celery-worker:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-worker
     restart: unless-stopped
     # ``--pool=prefork`` is REQUIRED — celery_app.purge_stale_refresh_tokens_task
@@ -258,6 +249,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- One-shot Celery Beat schedule ownership repair ---
+  # The named volume is durable across image rebuilds. Repair ownership
+  # idempotently before every Beat start so existing root-owned volumes do not
+  # prevent the non-root app user from opening the schedule database.
+  celery-beat-init:
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
+    container_name: consorcio-celery-beat-init
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /var/run/celery
+        chmod 0750 /var/run/celery
+    volumes:
+      - celery-beat-schedule:/var/run/celery
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. Without this service the beat_schedule entries in
   # app/core/celery_app.py never fire: alert evaluation, materialised-view
@@ -273,20 +284,22 @@ services:
   # ``celery-redbeat`` which uses Redis as the schedule store and
   # self-elects a leader.
   celery-beat:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-beat
     restart: unless-stopped
     command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
     env_file: .env
     volumes:
-      # Scratch dir for the celerybeat-schedule db (no need to persist
-      # across container rebuilds — beat re-reads schedule from code).
+      # Durable singleton schedule state. The bounded init service repairs
+      # ownership without deleting or recreating existing scheduler state.
       - celery-beat-schedule:/var/run/celery
     networks:
       - backend
       - consorcio-internal
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      celery-beat-init:
         condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
@@ -303,7 +316,7 @@ services:
 
   # --- Geo Worker (GDAL + WhiteboxTools, queue geo) ---
   geo-worker:
-    image: ${GEO_WORKER_IMAGE:-ghcr.io/jnzader/consorcio-canalero/geo-worker:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/geo-worker@${GEO_WORKER_DIGEST:?GEO_WORKER_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-geo-worker
     restart: unless-stopped
     ports:
@@ -315,7 +328,7 @@ services:
       - backend
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]
       interval: 30s
       timeout: 10s
       retries: 3
