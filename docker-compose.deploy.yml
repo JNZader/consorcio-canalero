@@ -260,7 +260,7 @@ services:
     networks:
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]
       interval: 30s
       timeout: 10s
       retries: 3

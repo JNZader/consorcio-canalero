@@ -24,6 +24,10 @@
 #   cp .env.prod.example /home/javier/stacks/consorcio/.env  # editar con valores reales
 #   cp martin/config.prod.yaml /home/javier/stacks/consorcio/martin-config.yaml
 #   cd /home/javier/stacks/consorcio && docker compose up -d
+#
+# The deploy webhook receives revision, backend_image, and geo_worker_image.
+# Both image values are verified immutable ``repository@sha256:...`` references;
+# it must persist their digest components as BACKEND_DIGEST and GEO_WORKER_DIGEST.
 # ===========================================
 
 services:
@@ -98,7 +102,7 @@ services:
   # — alembic emits DDL with session-level state PgBouncer transaction
   # mode would discard between batches.
   migrate:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-migrate
     # NO ``profiles:`` here — backend / celery-worker / celery-beat
     # all declare ``depends_on: migrate: service_completed_successfully``
@@ -139,7 +143,7 @@ services:
   # when a volume is first created. Run as root on every deployment to repair
   # an existing volume, then require successful completion before backend starts.
   uploads-init:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-uploads-init
     user: "0:0"
     command:
@@ -156,7 +160,7 @@ services:
 
   # --- Backend FastAPI ---
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
@@ -211,7 +215,7 @@ services:
 
   # --- Celery Worker (solo queue celery, sin GDAL) ---
   celery-worker:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-worker
     restart: unless-stopped
     # ``--pool=prefork`` is REQUIRED — celery_app.purge_stale_refresh_tokens_task
@@ -250,7 +254,7 @@ services:
   # idempotently before every Beat start so existing root-owned volumes do not
   # prevent the non-root app user from opening the schedule database.
   celery-beat-init:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-beat-init
     user: "0:0"
     command:
@@ -280,7 +284,7 @@ services:
   # ``celery-redbeat`` which uses Redis as the schedule store and
   # self-elects a leader.
   celery-beat:
-    image: ${BACKEND_IMAGE:-ghcr.io/jnzader/consorcio-canalero/backend:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-beat
     restart: unless-stopped
     command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
@@ -312,7 +316,7 @@ services:
 
   # --- Geo Worker (GDAL + WhiteboxTools, queue geo) ---
   geo-worker:
-    image: ${GEO_WORKER_IMAGE:-ghcr.io/jnzader/consorcio-canalero/geo-worker:latest}
+    image: ghcr.io/jnzader/consorcio-canalero/geo-worker@${GEO_WORKER_DIGEST:?GEO_WORKER_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-geo-worker
     restart: unless-stopped
     ports:
@@ -324,7 +328,7 @@ services:
       - backend
       - consorcio-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]
       interval: 30s
       timeout: 10s
       retries: 3

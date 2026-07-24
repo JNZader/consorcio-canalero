@@ -138,13 +138,17 @@ jobs:
       contents: read
       packages: write
       security-events: write
+    outputs:
+      verified_digest: ${{ steps.publish.outputs.verified_digest }}
+      immutable_ref: ${{ steps.publish.outputs.immutable_ref }}
     env:
+      IMAGE_REPOSITORY: "ghcr.io/jnzader/consorcio-canalero/backend"
       CANDIDATE_IMAGE: "ghcr.io/jnzader/consorcio-canalero/backend:${{ github.sha }}"
-      LATEST_IMAGE: "ghcr.io/jnzader/consorcio-canalero/backend:latest"
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Build backend candidate image once
+        id: build-image
         uses: docker/build-push-action@v5
         with:
           context: gee-backend
@@ -159,6 +163,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=backend-image
           cache-to: type=gha,mode=max,scope=backend-image
+      - name: Capture backend build manifest digest
+        id: capture-manifest
+        env:
+          BUILDX_METADATA: ${{ steps.build-image.outputs.metadata }}
+        run: |
+          BUILD_DIGEST="$(jq -er '.["containerimage.digest"] | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' <<< "$BUILDX_METADATA")"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
       - name: Prepare backend evidence directory
         run: mkdir -p image-security
       - name: Generate raw unsuppressed backend vulnerability report
@@ -207,20 +218,26 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish exact scanned backend image
+      - name: Publish and verify exact scanned backend image
+        id: publish
+        env:
+          BUILD_DIGEST: ${{ steps.capture-manifest.outputs.digest }}
         run: |
           docker push "$CANDIDATE_IMAGE"
-          docker tag "$CANDIDATE_IMAGE" "$LATEST_IMAGE"
-          docker push "$LATEST_IMAGE"
-      - name: Summary — image SHA + rollback hint
+          REMOTE_DIGEST="$(docker buildx imagetools inspect "$CANDIDATE_IMAGE" --format '{{json .Manifest}}' | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          test "$REMOTE_DIGEST" = "$BUILD_DIGEST"
+          echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Summary — verified backend manifest
+        env:
+          IMAGE: ${{ steps.publish.outputs.immutable_ref }}
         run: |
-          IMAGE="$CANDIDATE_IMAGE"
           {
             echo "### Backend image published"
             echo ""
             echo "$IMAGE"
             echo ""
-            echo "Set BACKEND_IMAGE=$IMAGE in the server environment to deploy this build."
+            echo "Deploy only this verified manifest reference."
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-geo-worker:
@@ -232,13 +249,17 @@ jobs:
       contents: read
       packages: write
       security-events: write
+    outputs:
+      verified_digest: ${{ steps.publish.outputs.verified_digest }}
+      immutable_ref: ${{ steps.publish.outputs.immutable_ref }}
     env:
+      IMAGE_REPOSITORY: "ghcr.io/jnzader/consorcio-canalero/geo-worker"
       CANDIDATE_IMAGE: "ghcr.io/jnzader/consorcio-canalero/geo-worker:${{ github.sha }}"
-      LATEST_IMAGE: "ghcr.io/jnzader/consorcio-canalero/geo-worker:latest"
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Build geo-worker candidate image once
+        id: build-image
         uses: docker/build-push-action@v5
         with:
           context: gee-backend
@@ -252,6 +273,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=geo-worker-image
           cache-to: type=gha,mode=max,scope=geo-worker-image
+      - name: Capture geo-worker build manifest digest
+        id: capture-manifest
+        env:
+          BUILDX_METADATA: ${{ steps.build-image.outputs.metadata }}
+        run: |
+          BUILD_DIGEST="$(jq -er '.["containerimage.digest"] | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))' <<< "$BUILDX_METADATA")"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
       - name: Prepare Geo evidence directory
         run: mkdir -p image-security
       - name: Generate raw unsuppressed Geo vulnerability report
@@ -300,20 +328,26 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish exact scanned geo-worker image
+      - name: Publish and verify exact scanned geo-worker image
+        id: publish
+        env:
+          BUILD_DIGEST: ${{ steps.capture-manifest.outputs.digest }}
         run: |
           docker push "$CANDIDATE_IMAGE"
-          docker tag "$CANDIDATE_IMAGE" "$LATEST_IMAGE"
-          docker push "$LATEST_IMAGE"
-      - name: Summary — geo-worker image SHA
+          REMOTE_DIGEST="$(docker buildx imagetools inspect "$CANDIDATE_IMAGE" --format '{{json .Manifest}}' | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          test "$REMOTE_DIGEST" = "$BUILD_DIGEST"
+          echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Summary — verified geo-worker manifest
+        env:
+          IMAGE: ${{ steps.publish.outputs.immutable_ref }}
         run: |
-          IMAGE="$CANDIDATE_IMAGE"
           {
             echo "### Geo-worker image published"
             echo ""
             echo "$IMAGE"
             echo ""
-            echo "Set GEO_WORKER_IMAGE=$IMAGE in the server environment to deploy this build."
+            echo "Deploy only this verified manifest reference."
           } >> "$GITHUB_STEP_SUMMARY"
 
   image-security-policy:
@@ -347,16 +381,66 @@ jobs:
           test -s evidence/geo-worker-trivy.json
           test -s evidence/geo-worker-trivy.sarif
 
+  promote-images:
+    name: Promote Verified Image Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-backend, build-geo-worker, image-security-policy]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_image: ${{ steps.promote.outputs.backend_image }}
+      geo_worker_image: ${{ steps.promote.outputs.geo_worker_image }}
+    env:
+      BACKEND_IMAGE: ${{ needs.build-backend.outputs.immutable_ref }}
+      BACKEND_DIGEST: ${{ needs.build-backend.outputs.verified_digest }}
+      GEO_WORKER_IMAGE: ${{ needs.build-geo-worker.outputs.immutable_ref }}
+      GEO_WORKER_DIGEST: ${{ needs.build-geo-worker.outputs.verified_digest }}
+      BACKEND_LATEST: "ghcr.io/jnzader/consorcio-canalero/backend:latest"
+      GEO_WORKER_LATEST: "ghcr.io/jnzader/consorcio-canalero/geo-worker:latest"
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - name: Authenticate to GHCR for promotion
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote and verify both latest aliases
+        id: promote
+        run: |
+          docker buildx imagetools create --prefer-index=false --tag "$BACKEND_LATEST" "$BACKEND_IMAGE"
+          PROMOTED_BACKEND_DIGEST="$(docker buildx imagetools inspect "$BACKEND_LATEST" --format '{{json .Manifest}}' | jq -er '.digest')"
+          test "$PROMOTED_BACKEND_DIGEST" = "$BACKEND_DIGEST"
+
+          docker buildx imagetools create --prefer-index=false --tag "$GEO_WORKER_LATEST" "$GEO_WORKER_IMAGE"
+          PROMOTED_GEO_WORKER_DIGEST="$(docker buildx imagetools inspect "$GEO_WORKER_LATEST" --format '{{json .Manifest}}' | jq -er '.digest')"
+          test "$PROMOTED_GEO_WORKER_DIGEST" = "$GEO_WORKER_DIGEST"
+
+          echo "backend_image=$BACKEND_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "geo_worker_image=$GEO_WORKER_IMAGE" >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy to server
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [image-security-policy]
+    needs: [promote-images]
     # Production rollout is opt-in even when a webhook URL exists.
     if: ${{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}
+    env:
+      BACKEND_IMAGE: ${{ needs.promote-images.outputs.backend_image }}
+      GEO_WORKER_IMAGE: ${{ needs.promote-images.outputs.geo_worker_image }}
     steps:
-      - name: Trigger redeploy via webhook
+      - name: Trigger digest-pinned redeploy via webhook
         run: |
+          PAYLOAD="$(jq -n \
+            --arg revision "$GITHUB_SHA" \
+            --arg backend_image "$BACKEND_IMAGE" \
+            --arg geo_worker_image "$GEO_WORKER_IMAGE" \
+            '{revision: $revision, backend_image: $backend_image, geo_worker_image: $geo_worker_image}')"
           curl -X POST "${{ vars.DEPLOY_WEBHOOK_URL }}" \
             -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD" \
             --fail --silent --show-error

@@ -218,32 +218,54 @@ def _assert_non_publishing_image_gate(
         )
 
 
-def _assert_scanned_artifact_is_published(job: str, candidate: str, latest: str) -> None:
+def _assert_scanned_manifest_is_published(
+    job: str, candidate: str, repository: str, role: str
+) -> None:
     build = "uses: docker/build-push-action@v5"
     scan = f"uses: {TRIVY_ACTION}"
     login = "uses: docker/login-action@v3"
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'
-    tag_latest = 'docker tag "$CANDIDATE_IMAGE" "$LATEST_IMAGE"'
-    push_latest = 'docker push "$LATEST_IMAGE"'
+    inspect_remote = (
+        "docker buildx imagetools inspect \"$CANDIDATE_IMAGE\" --format '{{json .Manifest}}'"
+    )
 
     assert f'CANDIDATE_IMAGE: "{candidate}"' in job
-    assert f'LATEST_IMAGE: "{latest}"' in job
+    assert f'IMAGE_REPOSITORY: "{repository}"' in job
+    assert ":latest" not in job
+    assert "LATEST_IMAGE" not in job
+    assert "outputs:" in job
+    assert "verified_digest: ${{ steps.publish.outputs.verified_digest }}" in job
+    assert "immutable_ref: ${{ steps.publish.outputs.immutable_ref }}" in job
     assert job.count(build) == 1
+    assert "id: build-image" in job
     assert "load: true" in job
     assert "tags: " + "$" + "{{ env.CANDIDATE_IMAGE }}" in job
     assert "push: true" not in job
+    assert "BUILDX_METADATA: ${{ steps.build-image.outputs.metadata }}" in job
+    assert '.["containerimage.digest"]' in job
+    assert "containerimage.config.digest" not in job
+    assert 'echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"' in job
+
     build_index = job.index(build)
+    capture_index = job.index("id: capture-manifest")
     scan_index = job.index(scan)
     login_index = job.index(login)
     push_index = job.index(push_candidate)
-    assert build_index < scan_index < login_index < push_index
+    inspect_index = job.index(inspect_remote)
+    compare_index = job.index('test "$REMOTE_DIGEST" = "$BUILD_DIGEST"')
+    assert build_index < capture_index < scan_index < login_index < push_index
+    assert push_index < inspect_index < compare_index
     assert "docker push" not in job[:scan_index]
     assert "docker login" not in job[:scan_index]
     assert build not in job[scan_index + len(scan) :]
-    assert "docker build" not in job[scan_index:]
+    assert not re.search(
+        r"(?m)^\s*docker(?:\s+build|\s+buildx\s+build)\b",
+        job[scan_index:],
+    )
     assert not re.search(r"(?m)^    if:", job)
-    assert push_index < job.index(tag_latest) < job.index(push_latest)
-    _assert_frozen_image_policy(job, "backend" if "/backend:" in candidate else "geo-worker")
+    assert 'echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
+    assert 'echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
+    _assert_frozen_image_policy(job, role)
 
 
 def test_frontend_docker_build_has_every_required_input_before_build() -> None:
@@ -540,23 +562,54 @@ def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
     geo_publish = _job_block(deploy, "build-geo-worker")
     assert _needs(deploy, "build-backend") == publish_gates
     assert _needs(deploy, "build-geo-worker") == publish_gates
-    _assert_scanned_artifact_is_published(
+    _assert_scanned_manifest_is_published(
         backend_publish,
         f"{GHCR_ROOT}/backend:${{{{ github.sha }}}}",
-        f"{GHCR_ROOT}/backend:latest",
+        f"{GHCR_ROOT}/backend",
+        "backend",
     )
-    _assert_scanned_artifact_is_published(
+    _assert_scanned_manifest_is_published(
         geo_publish,
         f"{GHCR_ROOT}/geo-worker:${{{{ github.sha }}}}",
-        f"{GHCR_ROOT}/geo-worker:latest",
+        f"{GHCR_ROOT}/geo-worker",
+        "geo-worker",
     )
     _assert_image_policy_aggregate(deploy, {"build-backend", "build-geo-worker"})
 
+    promotion = _job_block(deploy, "promote-images")
+    assert _needs(deploy, "promote-images") == {
+        "build-backend",
+        "build-geo-worker",
+        "image-security-policy",
+    }
+    assert "packages: write" in promotion
+    assert promotion.count("docker buildx imagetools create --prefer-index=false") == 2
+    assert promotion.count("--format '{{json .Manifest}}'") == 2
+    assert "needs.build-backend.outputs.immutable_ref" in promotion
+    assert "needs.build-geo-worker.outputs.immutable_ref" in promotion
+    assert "needs.build-backend.outputs.verified_digest" in promotion
+    assert "needs.build-geo-worker.outputs.verified_digest" in promotion
+    assert 'test "$PROMOTED_BACKEND_DIGEST" = "$BACKEND_DIGEST"' in promotion
+    assert 'test "$PROMOTED_GEO_WORKER_DIGEST" = "$GEO_WORKER_DIGEST"' in promotion
+    assert f'BACKEND_LATEST: "{GHCR_ROOT}/backend:latest"' in promotion
+    assert f'GEO_WORKER_LATEST: "{GHCR_ROOT}/geo-worker:latest"' in promotion
+
     rollout = _job_block(deploy, "deploy")
-    assert _needs(deploy, "deploy") == {"image-security-policy"}
+    assert _needs(deploy, "deploy") == {"promote-images"}
     assert "vars.ENABLE_PRODUCTION_DEPLOY == 'true'" in rollout
     assert "vars.DEPLOY_WEBHOOK_URL != ''" in rollout
     assert "secrets.DEPLOY_WEBHOOK_SECRET" in rollout
+    assert "needs.promote-images.outputs.backend_image" in rollout
+    assert "needs.promote-images.outputs.geo_worker_image" in rollout
+    assert '--arg revision "$GITHUB_SHA"' in rollout
+    assert '--arg backend_image "$BACKEND_IMAGE"' in rollout
+    assert '--arg geo_worker_image "$GEO_WORKER_IMAGE"' in rollout
+    assert (
+        "'{revision: $revision, backend_image: $backend_image, geo_worker_image: $geo_worker_image}'"
+        in rollout
+    )
+    assert '-H "Content-Type: application/json"' in rollout
+    assert '--data "$PAYLOAD"' in rollout
     assert deploy.count("scan-type: image") == 2
     assert deploy.count('docker push "$CANDIDATE_IMAGE"') == 2
     assert "push: true" not in deploy
@@ -566,8 +619,13 @@ def test_deploy_image_paths_use_canonical_lowercase_ghcr_root() -> None:
     deploy = _read(".github/workflows/deploy.yml")
 
     assert "ghcr.io/${{ github.repository }}" not in deploy
-    assert deploy.count(f"{GHCR_ROOT}/backend:") == 2
-    assert deploy.count(f"{GHCR_ROOT}/geo-worker:") == 2
+    assert f"{GHCR_ROOT}/backend:${{{{ github.sha }}}}" in deploy
+    assert f"{GHCR_ROOT}/geo-worker:${{{{ github.sha }}}}" in deploy
+    assert f"{GHCR_ROOT}/backend:latest" in _job_block(deploy, "promote-images")
+    assert f"{GHCR_ROOT}/geo-worker:latest" in _job_block(deploy, "promote-images")
+    image_paths = re.findall(r"ghcr\.io/[A-Za-z0-9_./-]+", deploy)
+    assert image_paths
+    assert all(path == path.lower() for path in image_paths)
 
 
 def test_deploy_quality_gate_only_references_current_contract_tests() -> None:
@@ -700,27 +758,58 @@ def test_backend_images_use_dependency_free_python_healthchecks_without_curl() -
     assert imported_roots <= {"__future__", "collections", "http", "os", "urllib"}
 
 
-def test_backend_compose_healthchecks_are_exec_form_and_geo_checks_are_unchanged() -> None:
+def test_backend_and_geo_compose_healthchecks_are_dependency_free_exec_form() -> None:
     compose_paths = (
         "docker-compose.yml",
         "docker-compose.prod.yml",
         "docker-compose.deploy.yml",
     )
+    geo_probe = """test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]"""
     for path in compose_paths:
         compose = _read(path)
         backend = _compose_service_block(compose, "backend")
+        geo = _compose_service_block(compose, "geo-worker")
 
         assert 'test: ["CMD", "python", "-m", "app.healthcheck"]' in backend
         assert "CMD-SHELL" not in backend
         assert "curl" not in backend.lower()
         assert "wget" not in backend.lower()
+        assert geo_probe in geo
+        assert "CMD-SHELL" not in geo
+        assert "curl" not in geo.lower()
+        assert "wget" not in geo.lower()
 
-    base_geo = _compose_service_block(_read("docker-compose.yml"), "geo-worker")
-    prod_geo = _compose_service_block(_read("docker-compose.prod.yml"), "geo-worker")
-    deploy_geo = _compose_service_block(_read("docker-compose.deploy.yml"), "geo-worker")
-    assert 'test: ["CMD", "curl", "-f", "http://localhost:8001/health"]' in base_geo
-    assert "wget --no-verbose --tries=1 --spider http://localhost:8001/health" in prod_geo
-    assert "curl -sf http://localhost:8001/health" in deploy_geo
+
+def test_production_compose_requires_verified_manifest_digests() -> None:
+    production = _read("docker-compose.prod.yml")
+    backend_image = (
+        "image: ghcr.io/jnzader/consorcio-canalero/backend@"
+        "${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}"
+    )
+    geo_image = (
+        "image: ghcr.io/jnzader/consorcio-canalero/geo-worker@"
+        "${GEO_WORKER_DIGEST:?GEO_WORKER_DIGEST is required from the deploy webhook payload}"
+    )
+
+    for service in (
+        "migrate",
+        "uploads-init",
+        "backend",
+        "celery-worker",
+        "celery-beat-init",
+        "celery-beat",
+    ):
+        block = _compose_service_block(production, service)
+        assert backend_image in block
+        assert "BACKEND_IMAGE" not in block
+        assert ":latest" not in block
+
+    geo = _compose_service_block(production, "geo-worker")
+    assert geo_image in geo
+    assert "GEO_WORKER_IMAGE" not in geo
+    assert ":latest" not in geo
+    assert "revision, backend_image, and geo_worker_image" in production
+    assert "BACKEND_DIGEST and GEO_WORKER_DIGEST" in production
 
 
 def test_compose_healthcheck_change_preserves_migration_celery_and_upload_invariants() -> None:
