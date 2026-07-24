@@ -45,6 +45,31 @@ def get_service() -> DenunciaService:
     return DenunciaService()
 
 
+def _scoped_photo_key(photo_url: str | None, denuncia_id: uuid.UUID) -> str | None:
+    """Return a deletion key only when the pointer belongs to this denuncia."""
+    if not photo_url:
+        return None
+
+    key = photo_key_from_url(photo_url)
+    if key is None:
+        return None
+
+    base = make_denuncia_photo_key(denuncia_id)
+    if key == base:
+        return key
+
+    prefix = f"{base}-"
+    if not key.startswith(prefix):
+        return None
+
+    version = key.removeprefix(prefix)
+    if len(version) != 32 or any(
+        character not in "0123456789abcdef" for character in version.lower()
+    ):
+        return None
+    return key
+
+
 # ──────────────────────────────────────────────
 # AUTH DEPENDENCIES
 # ──────────────────────────────────────────────
@@ -88,7 +113,7 @@ def create_denuncia(
     `user_id` y el `contacto_email` se autollenan desde el JWT del
     usuario logueado — el payload `DenunciaCreate` contiene SÓLO los
     campos que el ciudadano controla en el form (tipo, descripción,
-    coords, cuenca, foto_url opcional). Cualquier `contacto_*`
+    coords y cuenca). Cualquier `contacto_*`
     enviado por el cliente se ignora deliberadamente; el server confía
     en el token, no en el body.
     """
@@ -186,22 +211,21 @@ async def upload_denuncia_photo(
             status_code=503, detail="La foto fue guardada; reintente la consulta"
         ) from exc
 
-    if previous_photo_url:
-        previous_key = photo_key_from_url(previous_photo_url)
-        if previous_key:
-            try:
-                await storage.delete(previous_key)
-            except Exception as exc:
-                # The new pointer is already durable. Returning an error now
-                # would make a successful replacement look failed and invite a
-                # duplicate retry. Record the orphan for the scheduled
-                # reconciler instead; never revert the committed pointer.
-                logger.exception(
-                    "denuncia.previous_photo_cleanup_failed",
-                    denuncia_id=str(denuncia_id),
-                    previous_key=previous_key,
-                    error=str(exc),
-                )
+    previous_key = _scoped_photo_key(previous_photo_url, denuncia_id)
+    if previous_key:
+        try:
+            await storage.delete(previous_key)
+        except Exception as exc:
+            # The new pointer is already durable. Returning an error now
+            # would make a successful replacement look failed and invite a
+            # duplicate retry. Record the orphan for the scheduled
+            # reconciler instead; never revert the committed pointer.
+            logger.exception(
+                "denuncia.previous_photo_cleanup_failed",
+                denuncia_id=str(denuncia_id),
+                previous_key=previous_key,
+                error=str(exc),
+            )
 
     return DenunciaPhotoResponse(photo_url=photo_url)
 
@@ -238,24 +262,36 @@ async def delete_my_denuncia(
         # Same 404 vs 403 reasoning as the photo GET endpoint
         raise HTTPException(status_code=404, detail="Denuncia no encontrada")
 
-    # Hard delete the photo from disk first — if the user is asking
-    # for cancellation the photo is the most sensitive artefact (face,
-    # license plate, etc.). The DB row stays for audit but no bytes
-    # remain on disk.
-    if denuncia.foto_url:
-        photo_key = photo_key_from_url(denuncia.foto_url) or make_denuncia_photo_key(denuncia_id)
+    previous_photo_url = denuncia.foto_url
+    previous_deleted_at = denuncia.deleted_at
+    photo_key = _scoped_photo_key(previous_photo_url, denuncia_id)
+
+    # Make the tombstone and pointer removal durable before unlinking bytes.
+    # This guarantees a failed commit never leaves a live DB pointer to a
+    # missing photo. Cleanup failures are retried by the orphan reconciler.
+    denuncia.foto_url = None
+    denuncia.deleted_at = datetime.now(tz=timezone.utc)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        denuncia.foto_url = previous_photo_url
+        denuncia.deleted_at = previous_deleted_at
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo confirmar la cancelación; reintente más tarde",
+        ) from exc
+
+    if photo_key:
         try:
             await storage.delete(photo_key)
-        except OSError as exc:
-            db.rollback()
-            raise HTTPException(
-                status_code=503,
-                detail="No se pudo eliminar la foto; reintente más tarde",
-            ) from exc
-        denuncia.foto_url = None
-
-    denuncia.deleted_at = datetime.now(tz=timezone.utc)
-    db.commit()
+        except Exception as exc:
+            logger.exception(
+                "denuncia.cancelled_photo_cleanup_failed",
+                denuncia_id=str(denuncia_id),
+                photo_key=photo_key,
+                error=str(exc),
+            )
     return None
 
 

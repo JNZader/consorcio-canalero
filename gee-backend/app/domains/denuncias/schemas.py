@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DenunciaCreate(BaseModel):
-    """Public payload to create a denuncia (no auth required)."""
+    """Citizen-controlled payload to create an authenticated denuncia."""
 
     tipo: str = Field(
         ...,
@@ -25,7 +25,6 @@ class DenunciaCreate(BaseModel):
     cuenca: Optional[str] = None
     contacto_telefono: Optional[str] = Field(default=None, max_length=50)
     contacto_email: Optional[str] = Field(default=None, max_length=255)
-    foto_url: Optional[str] = None
 
 
 # ──────────────────────────────────────────────

@@ -313,34 +313,135 @@ async def test_post_commit_old_delete_failure_returns_committed_new_pointer(
     logger.exception.assert_called_once()
 
 
+def _delete_db(denuncia):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = denuncia
+    db = MagicMock()
+    db.execute.return_value = result
+    return db
+
+
 @pytest.mark.asyncio
-async def test_delete_failure_preserves_photo_pointer_and_soft_delete_state() -> None:
+async def test_replacement_never_deletes_a_cross_report_photo_pointer() -> None:
+    denuncia_id = uuid.uuid4()
+    other_denuncia_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    old_url = f"/uploads/denuncias/{other_denuncia_id}-{uuid.uuid4().hex}.png"
+    new_url = f"/uploads/denuncias/{denuncia_id}-{uuid.uuid4().hex}.png"
+    denuncia = SimpleNamespace(user_id=user_id, foto_url=old_url, deleted_at=None)
+    storage = SimpleNamespace(
+        save=AsyncMock(return_value=new_url),
+        delete=AsyncMock(),
+    )
+
+    response = await upload_denuncia_photo(
+        denuncia_id,
+        _upload(b"storage validates in production"),
+        _UploadDB(denuncia),
+        storage,
+        SimpleNamespace(id=user_id),
+    )
+
+    assert response.photo_url == new_url
+    storage.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_commits_before_deleting_its_scoped_photo() -> None:
+    denuncia_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    photo_key = f"denuncias/{denuncia_id}-{uuid.uuid4().hex}"
+    denuncia = SimpleNamespace(
+        id=denuncia_id,
+        user_id=user_id,
+        foto_url=f"/uploads/{photo_key}.png",
+        deleted_at=None,
+    )
+    events: list[str] = []
+    db = _delete_db(denuncia)
+    db.commit.side_effect = lambda: events.append("commit")
+    storage = SimpleNamespace(delete=AsyncMock(side_effect=lambda _key: events.append("delete")))
+
+    await delete_my_denuncia(denuncia_id, db, storage, SimpleNamespace(id=user_id))
+
+    assert events == ["commit", "delete"]
+    storage.delete.assert_awaited_once_with(photo_key)
+    assert denuncia.foto_url is None
+    assert denuncia.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_cancellation_commit_failure_preserves_pointer_and_bytes() -> None:
+    denuncia_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    old_url = f"/uploads/denuncias/{denuncia_id}-{uuid.uuid4().hex}.png"
+    denuncia = SimpleNamespace(
+        id=denuncia_id,
+        user_id=user_id,
+        foto_url=old_url,
+        deleted_at=None,
+    )
+    db = _delete_db(denuncia)
+    db.commit.side_effect = RuntimeError("database commit failed")
+    storage = SimpleNamespace(delete=AsyncMock())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await delete_my_denuncia(denuncia_id, db, storage, SimpleNamespace(id=user_id))
+
+    assert exc_info.value.status_code == 503
+    assert denuncia.foto_url == old_url
+    assert denuncia.deleted_at is None
+    db.rollback.assert_called_once()
+    storage.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_never_deletes_a_cross_report_photo_pointer() -> None:
+    denuncia_id = uuid.uuid4()
+    other_denuncia_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    denuncia = SimpleNamespace(
+        id=denuncia_id,
+        user_id=user_id,
+        foto_url=f"/uploads/denuncias/{other_denuncia_id}-{uuid.uuid4().hex}.png",
+        deleted_at=None,
+    )
+    db = _delete_db(denuncia)
+    storage = SimpleNamespace(delete=AsyncMock())
+
+    await delete_my_denuncia(denuncia_id, db, storage, SimpleNamespace(id=user_id))
+
+    db.commit.assert_called_once()
+    storage.delete.assert_not_awaited()
+    assert denuncia.foto_url is None
+    assert denuncia.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_post_commit_delete_failure_keeps_cancellation_and_logs(
+    monkeypatch,
+) -> None:
     denuncia_id = uuid.uuid4()
     user_id = uuid.uuid4()
     denuncia = SimpleNamespace(
         id=denuncia_id,
         user_id=user_id,
-        foto_url=f"/uploads/denuncias/{denuncia_id}.png",
+        foto_url=f"/uploads/denuncias/{denuncia_id}-{uuid.uuid4().hex}.png",
         deleted_at=None,
     )
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = denuncia
-    db = MagicMock()
-    db.execute.return_value = result
+    db = _delete_db(denuncia)
     storage = SimpleNamespace(delete=AsyncMock(side_effect=OSError("permission denied")))
+    logger = MagicMock()
+    router_module = importlib.import_module("app.domains.denuncias.router")
+    monkeypatch.setattr(router_module, "logger", logger)
 
-    with pytest.raises(HTTPException) as exc_info:
-        await delete_my_denuncia(
-            denuncia_id,
-            db,
-            storage,
-            SimpleNamespace(id=user_id),
-        )
+    await delete_my_denuncia(denuncia_id, db, storage, SimpleNamespace(id=user_id))
 
-    assert exc_info.value.status_code == 503
-    assert denuncia.foto_url is not None
-    assert denuncia.deleted_at is None
-    db.commit.assert_not_called()
+    assert denuncia.foto_url is None
+    assert denuncia.deleted_at is not None
+    db.commit.assert_called_once()
+    db.rollback.assert_not_called()
+    logger.exception.assert_called_once()
 
 
 @pytest.mark.asyncio
