@@ -4,9 +4,14 @@ import {
   AUTH_TOKEN_KEY,
   AUTH_USER_KEY,
   clearAuthStorage,
+  clearLocalLogoutTombstone,
+  consumeLocalLogoutWarning,
   getStoredAccessToken,
   getStoredAuthSession,
+  hasLocalLogoutTombstone,
+  markLocalLogout,
   persistAuthSession,
+  storeLocalLogoutWarning,
 } from '../../src/lib/auth/storage';
 import type { AuthSession } from '../../src/lib/auth/types';
 
@@ -30,6 +35,7 @@ describe('auth storage', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     localStore = {};
+    clearLocalLogoutTombstone();
     vi.mocked(window.localStorage.getItem).mockImplementation((key: string) => localStore[key] ?? null);
     vi.mocked(window.localStorage.setItem).mockImplementation((key: string, value: string) => {
       localStore[key] = value;
@@ -62,6 +68,31 @@ describe('auth storage', () => {
     expect(window.sessionStorage.getItem(AUTH_TOKEN_KEY)).toBe('legacy-token');
     expect(window.localStorage.getItem(AUTH_TOKEN_KEY) ?? null).toBeNull();
     expect(window.localStorage.getItem(AUTH_USER_KEY) ?? null).toBeNull();
+  });
+
+  it('keeps a durable logout tombstone until an explicit successful login clears it', () => {
+    markLocalLogout();
+
+    expect(hasLocalLogoutTombstone()).toBe(true);
+    persistAuthSession(session);
+    expect(getStoredAuthSession()).toBeNull();
+
+    clearLocalLogoutTombstone();
+    expect(hasLocalLogoutTombstone()).toBe(false);
+    persistAuthSession(session);
+    expect(getStoredAccessToken()).toBe('session-token');
+  });
+
+  it('persists the remote-revocation warning without secrets and consumes it once', () => {
+    storeLocalLogoutWarning();
+
+    const storedValues = Object.values(localStore);
+    expect(storedValues).toContain('remote-revocation-unconfirmed');
+    expect(storedValues.join(' ')).not.toContain('session-token');
+    expect(consumeLocalLogoutWarning()).toBe(
+      'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.'
+    );
+    expect(consumeLocalLogoutWarning()).toBeNull();
   });
 
   it('clears session and legacy auth storage', () => {

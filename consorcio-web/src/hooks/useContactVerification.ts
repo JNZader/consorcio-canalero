@@ -11,6 +11,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { signOut } from '../lib/auth';
 import { authAdapter } from '../lib/auth/index';
+import { consumeLocalLogoutWarning } from '../lib/auth/storage';
 import { logger } from '../lib/logger';
 import { isValidEmail } from '../lib/validators';
 import { useAuthStore } from '../stores/authStore';
@@ -123,12 +124,23 @@ export function useContactVerification(
   // Logout
   const logout = useCallback(async () => {
     try {
-      await signOut();
-      notifications.show({
-        title: 'Sesion cerrada',
-        message: 'Has cerrado sesion correctamente',
-        color: 'blue',
-      });
+      const result = await signOut();
+      const warning = result?.warning
+        ? (consumeLocalLogoutWarning() ?? result.warning)
+        : null;
+      notifications.show(
+        warning
+          ? {
+              title: 'Sesión cerrada localmente',
+              message: warning,
+              color: 'yellow',
+            }
+          : {
+              title: 'Sesion cerrada',
+              message: 'Has cerrado sesion correctamente',
+              color: 'blue',
+            }
+      );
     } catch (error) {
       logger.error('Error al cerrar sesion:', error);
     }

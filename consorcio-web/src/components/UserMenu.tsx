@@ -277,6 +277,8 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
       if (!result.success) {
         throw new Error(result.error || 'No se pudo cerrar la sesión.');
       }
+      // A remote-revocation warning is persisted by signOut and displayed
+      // by AppProvider after this hard navigation completes.
       globalThis.location.replace(withBasePath('/'));
     } catch (error) {
       notifications.show({

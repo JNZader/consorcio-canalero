@@ -24,7 +24,7 @@ import { RootLayout } from './components/RootLayout';
 import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
 import { authAdapter } from './lib/auth/index';
-import { persistAuthSession } from './lib/auth/storage';
+import { clearLocalLogoutTombstone, persistAuthSession } from './lib/auth/storage';
 import { logger } from './lib/logger';
 
 // Lazy load all page components for better performance
@@ -393,6 +393,8 @@ function AuthCallbackPage() {
               telefono: userData.telefono || '',
               role: userData.role || 'ciudadano',
             };
+            // Cookie exchange + profile success completes an explicit OAuth login.
+            clearLocalLogoutTombstone();
             persistAuthSession({ access_token: token, user });
             logger.debug('[AUTH CALLBACK] Profile saved:', { role: user.role });
 

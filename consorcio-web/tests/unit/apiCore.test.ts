@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetAccessToken = vi.fn();
 const mockReplaceAccessToken = vi.fn();
@@ -17,6 +17,11 @@ describe('api core', () => {
     vi.resetModules();
     vi.clearAllMocks();
     global.fetch = vi.fn();
+    window.localStorage.removeItem('consorcio_auth_logout_tombstone');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('caches auth token and sends Authorization header', async () => {
@@ -118,6 +123,78 @@ describe('api core', () => {
     expect(calls[2][1].headers.Authorization).toBe('Bearer fresh-token');
   });
 
+  it('does not silent-refresh a 401 after a durable local logout', async () => {
+    const durableStorage = new Map<string, string>();
+    vi.mocked(window.localStorage.getItem).mockImplementation(
+      (key: string) => durableStorage.get(key) ?? null
+    );
+    vi.mocked(window.localStorage.setItem).mockImplementation((key: string, value: string) => {
+      durableStorage.set(key, value);
+    });
+    vi.mocked(window.localStorage.removeItem).mockImplementation((key: string) => {
+      durableStorage.delete(key);
+    });
+    const { markLocalLogout } = await import('../../src/lib/auth/storage');
+    markLocalLogout();
+    vi.resetModules(); // Simulate a hard reload; only the durable localStorage marker remains.
+    mockGetAccessToken.mockResolvedValue(null);
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: new Headers(),
+      json: async () => ({ detail: 'No bearer after reload' }),
+    });
+
+    const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+
+    await expect(apiFetch('/reports')).rejects.toThrow(/sesion ha expirado/i);
+
+    expect(global.fetch).toHaveBeenCalledOnce();
+    expect(mockReplaceAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a refresh that started before the logout tombstone', async () => {
+    mockGetAccessToken.mockResolvedValue('expired-token');
+    let resolveRefresh: ((response: Response) => void) | undefined;
+    let markRefreshStarted: (() => void) | undefined;
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: async () => ({ detail: 'Expired' }),
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+            markRefreshStarted?.();
+          })
+      );
+
+    const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+    const request = apiFetch('/reports');
+    await refreshStarted;
+
+    const { markLocalLogout } = await import('../../src/lib/auth/storage');
+    markLocalLogout();
+    resolveRefresh?.(
+      new Response(JSON.stringify({ access_token: 'must-not-survive' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    await expect(request).rejects.toThrow(/sesion ha expirado/i);
+    expect(mockReplaceAccessToken).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('does not start a second refresh when the retried Admin GEE request is still 401', async () => {
     mockGetAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValue('fresh-token');
     (global.fetch as ReturnType<typeof vi.fn>)
@@ -181,6 +258,213 @@ describe('api core', () => {
     await expect(request).rejects.toMatchObject({ name: 'AbortError' });
     const forwardedSignal = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].signal;
     expect(forwardedSignal.aborted).toBe(true);
+  });
+
+  it('keeps the original timeout across 401 refresh and a stalled retried JSON body', async () => {
+    vi.useFakeTimers();
+    mockGetAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValue('fresh-token');
+    let markRetriedBodyStarted: (() => void) | undefined;
+    const retriedBodyStarted = new Promise<void>((resolve) => {
+      markRetriedBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve({ detail: 'Expired' }), 20);
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({ access_token: 'fresh-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: () => {
+          markRetriedBodyStarted?.();
+          return new Promise<never>(() => {});
+        },
+      });
+
+    const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+    const request = apiFetch('/retry-then-stall', { timeout: 25 });
+    const observedRejection = request.catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(20);
+    await retriedBodyStarted;
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[1][1].signal).toBe(calls[0][1].signal);
+    expect(calls[2][1].signal).toBe(calls[0][1].signal);
+    await vi.advanceTimersByTimeAsync(5);
+
+    await expect(observedRejection).resolves.toEqual(
+      new Error('La solicitud excedio el tiempo limite (0.025s)')
+    );
+  });
+
+  it('uses the caller abort scope across 401 refresh and a stalled retried blob body', async () => {
+    mockGetAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValue('fresh-token');
+    let markRetriedBodyStarted: (() => void) | undefined;
+    const retriedBodyStarted = new Promise<void>((resolve) => {
+      markRetriedBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        json: async () => ({ detail: 'Expired' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({ access_token: 'fresh-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: () => {
+          markRetriedBodyStarted?.();
+          return new Promise<never>(() => {});
+        },
+      });
+
+    const { fetchAuthenticatedBlob, clearAuthTokenCache } = await import('../../src/lib/api/core');
+    clearAuthTokenCache();
+    const controller = new AbortController();
+    const request = fetchAuthenticatedBlob('/uploads/denuncias/retry-stall.png', {
+      signal: controller.signal,
+    });
+
+    await retriedBodyStarted;
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[1][1].signal).toBe(calls[0][1].signal);
+    expect(calls[2][1].signal).toBe(calls[0][1].signal);
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('times out while a successful JSON response body is still pending', async () => {
+    vi.useFakeTimers();
+    mockGetAccessToken.mockResolvedValue(null);
+    let markBodyStarted: (() => void) | undefined;
+    const bodyStarted = new Promise<void>((resolve) => {
+      markBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => {
+        markBodyStarted?.();
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const { apiFetch } = await import('../../src/lib/api/core');
+    let rejection: unknown;
+    void apiFetch('/slow-json', { timeout: 25 }).catch((error: unknown) => {
+      rejection = error;
+    });
+    await bodyStarted;
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(rejection).toEqual(new Error('La solicitud excedio el tiempo limite (0.025s)'));
+    vi.useRealTimers();
+  });
+
+  it('propagates caller cancellation while a successful JSON body is pending', async () => {
+    mockGetAccessToken.mockResolvedValue(null);
+    let markBodyStarted: (() => void) | undefined;
+    const bodyStarted = new Promise<void>((resolve) => {
+      markBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => {
+        markBodyStarted?.();
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const { apiFetch } = await import('../../src/lib/api/core');
+    const controller = new AbortController();
+    const request = apiFetch('/slow-json', { signal: controller.signal });
+    await bodyStarted;
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('times out while a successful authenticated blob body is still pending', async () => {
+    vi.useFakeTimers();
+    mockGetAccessToken.mockResolvedValue('jwt-123');
+    let markBodyStarted: (() => void) | undefined;
+    const bodyStarted = new Promise<void>((resolve) => {
+      markBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: () => {
+        markBodyStarted?.();
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const { fetchAuthenticatedBlob } = await import('../../src/lib/api/core');
+    let rejection: unknown;
+    void fetchAuthenticatedBlob('/uploads/denuncias/slow.png', { timeout: 25 }).catch(
+      (error: unknown) => {
+        rejection = error;
+      }
+    );
+    await bodyStarted;
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(rejection).toEqual(new Error('La solicitud excedio el tiempo limite (0.025s)'));
+    vi.useRealTimers();
+  });
+
+  it('propagates unmount cancellation while an authenticated blob body is pending', async () => {
+    mockGetAccessToken.mockResolvedValue('jwt-123');
+    let markBodyStarted: (() => void) | undefined;
+    const bodyStarted = new Promise<void>((resolve) => {
+      markBodyStarted = resolve;
+    });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: () => {
+        markBodyStarted?.();
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const { fetchAuthenticatedBlob } = await import('../../src/lib/api/core');
+    const controller = new AbortController();
+    const request = fetchAuthenticatedBlob('/uploads/denuncias/slow.png', {
+      signal: controller.signal,
+    });
+    await bodyStarted;
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('supports FormData bodies without forcing JSON content-type', async () => {

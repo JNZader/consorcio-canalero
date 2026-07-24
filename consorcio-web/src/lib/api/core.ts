@@ -3,6 +3,7 @@
  */
 
 import { authAdapter } from '../auth/index';
+import { hasLocalLogoutTombstone } from '../auth/storage';
 import { logger } from '../logger';
 
 // Backend URL (configure in .env)
@@ -80,27 +81,32 @@ export interface ApiFetchOptions extends RequestInit {
  */
 let _refreshInFlight: Promise<boolean> | null = null;
 
-async function attemptTokenRefresh(): Promise<boolean> {
+async function attemptTokenRefresh(signal: AbortSignal): Promise<boolean> {
+  if (hasLocalLogoutTombstone()) return false;
+
   if (_refreshInFlight) {
-    return _refreshInFlight;
+    const refreshed = await _refreshInFlight;
+    return !hasLocalLogoutTombstone() && refreshed;
   }
   _refreshInFlight = (async () => {
     try {
       const response = await fetch(`${API_URL}${API_PREFIX}/auth/jwt/refresh`, {
         method: 'POST',
         credentials: 'include', // sends the HttpOnly refresh_token cookie
+        signal,
       });
       if (!response.ok) {
         return false;
       }
       const body = await response.json();
       const token = body?.access_token as string | undefined;
-      if (!token) {
+      if (!token || hasLocalLogoutTombstone()) {
         return false;
       }
       // Persist the new access token via the auth adapter so the next
       // ``getAuthToken()`` returns it.
       await authAdapter.replaceAccessToken(token);
+      if (hasLocalLogoutTombstone()) return false;
       clearAuthTokenCache();
       return true;
     } catch {
@@ -191,10 +197,12 @@ function getApiErrorMessage(error: unknown, status: number): string {
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
-async function authenticatedFetchResponse(
+async function authenticatedFetchResponse<T>(
   url: string,
-  options: ApiFetchOptions = {}
-): Promise<Response> {
+  options: ApiFetchOptions,
+  consumeResponse: (response: Response) => Promise<T>,
+  sharedAbortScope?: RequestAbortScope
+): Promise<T> {
   const {
     timeout = DEFAULT_TIMEOUT,
     skipAuth = false,
@@ -202,7 +210,8 @@ async function authenticatedFetchResponse(
     signal: callerSignal,
     ...fetchOptions
   } = options;
-  const abortScope = createRequestAbortScope(timeout, callerSignal);
+  const ownsAbortScope = sharedAbortScope === undefined;
+  const abortScope = sharedAbortScope ?? createRequestAbortScope(timeout, callerSignal);
 
   try {
     const authHeaders: Record<string, string> = {};
@@ -229,12 +238,23 @@ async function authenticatedFetchResponse(
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+      const error = await waitForWithSignal(
+        response.json().catch(() => ({})),
+        abortScope.signal
+      );
 
       if (response.status === 401 && !skipAuth && !__alreadyRetried) {
-        const refreshed = await waitForWithSignal(attemptTokenRefresh(), abortScope.signal);
+        const refreshed = await waitForWithSignal(
+          attemptTokenRefresh(abortScope.signal),
+          abortScope.signal
+        );
         if (refreshed) {
-          return authenticatedFetchResponse(url, { ...options, __alreadyRetried: true });
+          return await authenticatedFetchResponse(
+            url,
+            { ...options, __alreadyRetried: true },
+            consumeResponse,
+            abortScope
+          );
         }
 
         if (!_handlingAuthExpiry) {
@@ -253,7 +273,7 @@ async function authenticatedFetchResponse(
       throw new Error(getApiErrorMessage(error, response.status));
     }
 
-    return response;
+    return await waitForWithSignal(consumeResponse(response), abortScope.signal);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       if (callerSignal?.aborted) {
@@ -263,18 +283,23 @@ async function authenticatedFetchResponse(
     }
     throw error;
   } finally {
-    abortScope.cleanup();
+    if (ownsAbortScope) {
+      abortScope.cleanup();
+    }
   }
 }
 
 export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
-  const response = await authenticatedFetchResponse(`${API_URL}${API_PREFIX}${endpoint}`, options);
-
-  if (response.status === 204 || response.headers.get('content-length') === '0') {
-    return undefined as T;
-  }
-
-  return response.json();
+  return authenticatedFetchResponse(
+    `${API_URL}${API_PREFIX}${endpoint}`,
+    options,
+    async (response) => {
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+      }
+      return response.json() as Promise<T>;
+    }
+  );
 }
 
 function resolveProtectedPhotoUrl(resource: string): string {
@@ -302,8 +327,11 @@ export async function fetchAuthenticatedBlob(
   resource: string,
   options: ApiFetchOptions = {}
 ): Promise<Blob> {
-  const response = await authenticatedFetchResponse(resolveProtectedPhotoUrl(resource), options);
-  return response.blob();
+  return authenticatedFetchResponse(
+    resolveProtectedPhotoUrl(resource),
+    options,
+    (response) => response.blob()
+  );
 }
 
 /**

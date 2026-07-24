@@ -217,6 +217,24 @@ describe('useContactVerification', () => {
     );
   });
 
+  it('shows an accurate warning when only local signout is confirmed', async () => {
+    mockSignOut.mockResolvedValue({
+      success: true,
+      warning: 'remote revocation unconfirmed',
+    });
+    const { result } = renderHook(() => useContactVerification());
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(mockNotificationsShow).toHaveBeenCalledWith({
+      title: 'Sesión cerrada localmente',
+      message: 'remote revocation unconfirmed',
+      color: 'yellow',
+    });
+  });
+
   it('handles logout errors gracefully', async () => {
     mockSignOut.mockRejectedValue(new Error('Logout failed'));
     const { result } = renderHook(() => useContactVerification());

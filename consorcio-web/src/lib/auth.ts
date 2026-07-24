@@ -10,6 +10,10 @@ import {
   getOrCreateEmailCodeExchange,
 } from './auth/emailCodeExchangeStorage';
 import { authAdapter } from './auth/index';
+import {
+  markLocalLogout,
+  storeLocalLogoutWarning,
+} from './auth/storage';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
 
@@ -22,6 +26,7 @@ export type { UserRole };
 export interface AuthResult {
   success: boolean;
   error?: string;
+  warning?: string;
   user?: { id: string; email?: string };
   needsEmailConfirmation?: boolean;
 }
@@ -110,25 +115,33 @@ export async function signInWithGoogle(): Promise<AuthResult> {
  * Cerrar sesion
  */
 export async function signOut(): Promise<AuthResult> {
+  let remoteRevocationFailed = false;
+
   try {
     await authAdapter.logout();
-
-    // Limpiar estado del store y localStorage
+  } catch (err) {
+    remoteRevocationFailed = true;
+    storeLocalLogoutWarning();
+    logger.error('Error al revocar sesiones remotas durante el cierre local:', err);
+  } finally {
+    markLocalLogout();
+    // The adapter owns its storage, while the facade owns Zustand persistence.
+    // Clear both even when the server result is unavailable or ambiguous.
     useAuthStore.getState().reset();
-
-    // Limpiar localStorage de auth persistido
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cc-auth-storage');
     }
+  }
 
-    return { success: true };
-  } catch (err) {
-    logger.error('Error al cerrar sesion:', err);
+  if (remoteRevocationFailed) {
     return {
-      success: false,
-      error: 'No se pudo cerrar la sesión en el servidor. Intenta nuevamente.',
+      success: true,
+      warning:
+        'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.',
     };
   }
+
+  return { success: true };
 }
 
 /**

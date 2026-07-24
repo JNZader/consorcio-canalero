@@ -78,20 +78,23 @@ describe('AdminLayout account navigation', () => {
     );
   });
 
-  it('keeps the authenticated route and surfaces a failed server logout', async () => {
-    signOutMock.mockResolvedValueOnce({ success: false, error: 'logout failed' });
+  it('navigates after local signout and warns when remote revocation is unconfirmed', async () => {
+    signOutMock.mockResolvedValueOnce({
+      success: true,
+      warning: 'remote revocation unconfirmed',
+    });
 
     renderLayout();
     await clickLogout();
 
     await waitFor(() => {
       expect(notificationsShowMock).toHaveBeenCalledWith({
-        title: 'No se pudo cerrar la sesión',
-        message: 'logout failed',
-        color: 'red',
+        title: 'Sesión cerrada localmente',
+        message: 'remote revocation unconfirmed',
+        color: 'yellow',
       });
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
     });
-    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('also keeps the route when signOut rejects unexpectedly', async () => {

@@ -36,6 +36,7 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
+import { consumeLocalLogoutWarning, hasLocalLogoutTombstone } from '../../src/lib/auth/storage';
 import {
   getUserRole,
   hasRole,
@@ -93,16 +94,20 @@ describe('auth library', () => {
     expect(removeItemSpy).toHaveBeenCalledWith('cc-auth-storage');
   });
 
-  it('signOut retains every local auth layer when server revocation fails', async () => {
+  it('signOut clears every local auth layer and returns a remote revocation warning', async () => {
     mockAdapter.logout.mockRejectedValueOnce(new Error('server unavailable'));
 
     await expect(signOut()).resolves.toEqual({
-      success: false,
-      error: 'No se pudo cerrar la sesión en el servidor. Intenta nuevamente.',
+      success: true,
+      warning:
+        'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.',
     });
 
-    expect(resetStoreMock).not.toHaveBeenCalled();
-    expect(localStorage.removeItem).not.toHaveBeenCalledWith('cc-auth-storage');
+    expect(resetStoreMock).toHaveBeenCalledOnce();
+    expect(localStorage.removeItem).toHaveBeenCalledWith('cc-auth-storage');
+    expect(hasLocalLogoutTombstone()).toBe(true);
+    expect(consumeLocalLogoutWarning()).toContain('sesión local se cerró');
+    expect(consumeLocalLogoutWarning()).toBeNull();
   });
 
   it('role helpers evaluate admin permissions', async () => {

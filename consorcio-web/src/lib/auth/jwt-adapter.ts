@@ -9,8 +9,11 @@ const AUTH_BASE = `${API_URL}/api/v2`;
 import {
   clearApiServiceWorkerCaches,
   clearAuthStorage,
+  clearLocalLogoutTombstone,
   getStoredAccessToken,
   getStoredAuthSession,
+  hasLocalLogoutTombstone,
+  markLocalLogout,
   persistAuthSession,
 } from './storage';
 import type {
@@ -57,6 +60,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     const user = await this.fetchCurrentUser(token);
 
     const session: AuthSession = { access_token: token, user };
+    clearLocalLogoutTombstone();
     this.persistSession(session);
     this.notifyListeners('SIGNED_IN', session);
 
@@ -127,24 +131,29 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    let token = getStoredAccessToken();
+    try {
+      let token = getStoredAccessToken();
 
-    if (!token) {
-      token = await this.refreshAccessTokenForLogout();
+      if (!token) {
+        token = await this.refreshAccessTokenForLogout();
+      }
+
+      let response = await this.revokeRefreshSessions(token);
+      if (response.status === 401) {
+        token = await this.refreshAccessTokenForLogout();
+        response = await this.revokeRefreshSessions(token);
+      }
+
+      if (!response.ok) {
+        throw new Error('No se pudo cerrar la sesión en el servidor.');
+      }
+    } finally {
+      // Local sign-out is a shared-device security boundary. The durable
+      // tombstone also blocks a surviving HttpOnly refresh cookie after reload.
+      markLocalLogout();
+      this.clearStorage();
+      this.notifyListeners('SIGNED_OUT', null);
     }
-
-    let response = await this.revokeRefreshSessions(token);
-    if (response.status === 401) {
-      token = await this.refreshAccessTokenForLogout();
-      response = await this.revokeRefreshSessions(token);
-    }
-
-    if (!response.ok) {
-      throw new Error('No se pudo cerrar la sesión en el servidor.');
-    }
-
-    this.clearStorage();
-    this.notifyListeners('SIGNED_OUT', null);
   }
 
   clearTokens(): void {
@@ -153,6 +162,8 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async replaceAccessToken(token: string): Promise<void> {
+    if (hasLocalLogoutTombstone()) return;
+
     // Keep the previously cached user; only the access token rotates.
     const current = await this.getSession();
     if (current?.user) {
@@ -167,6 +178,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     // refresh-only response). Hydrate from /users/me with the fresh
     // token so the storage stays consistent.
     const user = await this.fetchCurrentUser(token);
+    if (hasLocalLogoutTombstone()) return;
     this.persistSession({ access_token: token, user });
     this.notifyListeners('TOKEN_REFRESHED', { access_token: token, user });
   }
