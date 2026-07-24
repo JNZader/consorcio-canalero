@@ -83,7 +83,7 @@ backend-install: ## Install backend Python dependencies
 
 frontend-install: ## Install frontend npm dependencies
 	@echo "$(BLUE)Installing frontend dependencies...$(NC)"
-	cd $(FRONTEND_DIR) && npm ci
+	cd $(FRONTEND_DIR) && npm ci --no-audit --no-fund --legacy-peer-deps
 	@echo "$(GREEN)Frontend dependencies installed!$(NC)"
 
 # ==============================================

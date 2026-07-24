@@ -13,8 +13,8 @@ import {
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
-import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import type { CanalToggleEntry } from '../shared/canalesGrouping';
 
 import { InfoPanel } from '../map2d/InfoPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
@@ -164,9 +164,7 @@ export function TerrainViewer3DChrome({
           <SegmentedControl
             size="xs"
             value={terrainSmoothingThreshold}
-            onChange={(value) =>
-              onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
-            }
+            onChange={(value) => onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')}
             disabled={!terrainSmoothingEnabled}
             data={[
               { value: 'low', label: 'Suave' },
@@ -209,37 +207,37 @@ export function TerrainViewer3DChrome({
       <MapWorkspace
         activeLayerCount={Object.values(vectorLayerVisibility).filter(Boolean).length}
         canvas={
-      <Paper
-        radius="md"
-        withBorder
-        style={{
-          height: typeof height === 'number' ? `${height}px` : height,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-
-        {!ready && (
-          <Box
+          <Paper
+            radius="md"
+            withBorder
             style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(0,0,0,0.5)',
-              zIndex: 20,
+              height: typeof height === 'number' ? `${height}px` : height,
+              position: 'relative',
+              overflow: 'hidden',
             }}
           >
-            <Stack align="center" gap="md">
-              <Loader size="lg" color="white" />
-              <Text c="white">Cargando terreno 3D...</Text>
-            </Stack>
-          </Box>
-        )}
+            <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-        {/*
+            {!ready && (
+              <Box
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.5)',
+                  zIndex: 20,
+                }}
+              >
+                <Stack align="center" gap="md">
+                  <Loader size="lg" color="white" />
+                  <Text c="white">Cargando terreno 3D...</Text>
+                </Stack>
+              </Box>
+            )}
+
+            {/*
           Phase 5 (Batch F) — click-driven InfoPanel overlay. Rendered INSIDE
           the relative Paper so the shared `.infoPanel` CSS module class
           (position: absolute, top: calc(spacing.md + 108px), right:
@@ -247,88 +245,92 @@ export function TerrainViewer3DChrome({
           1000` sits above the toggles button (`zIndex: 16`) and the chrome
           panels (`zIndex: 16`), so the panel always wins on overlap.
         */}
-        {selectedFeatures && selectedFeatures.length > 0 && onCloseInfoPanel && (
-          <InfoPanel
-            features={selectedFeatures}
-            onClose={onCloseInfoPanel}
-            bpaEnriched={bpaEnriched}
-            bpaHistory={bpaHistory}
-          />
-        )}
+            {selectedFeatures && selectedFeatures.length > 0 && onCloseInfoPanel && (
+              <InfoPanel
+                features={selectedFeatures}
+                onClose={onCloseInfoPanel}
+                bpaEnriched={bpaEnriched}
+                bpaHistory={bpaHistory}
+              />
+            )}
 
-        <Box
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            background: 'rgba(0,0,0,0.7)',
-            borderRadius: 8,
-            padding: '8px 12px',
-            zIndex: 10,
-          }}
-        >
-          <Text size="xs" c="white" fw={600} mb={4}>
-            Terreno 3D
-          </Text>
-          <Text size="xs" c="gray.4">
-            Exageracion: {exaggeration}x
-          </Text>
-          {terrainSmoothingEnabled && (
-            <Text size="xs" c="gray.4">
-              Terreno suavizado: reduce picos de arboles/construcciones
-            </Text>
-          )}
-          {selectedImage && (
-            <Text size="xs" c="gray.4">
-              Imagen seleccionada: {selectedImage.sensor} {selectedImage.target_date}
-            </Text>
-          )}
-          <Text size="xs" c="gray.4">
-            Ctrl+arrastre para rotar
-          </Text>
-        </Box>
-      </Paper>
+            <Box
+              style={{
+                position: 'absolute',
+                bottom: 12,
+                right: 12,
+                background: 'rgba(0,0,0,0.7)',
+                borderRadius: 8,
+                padding: '8px 12px',
+                zIndex: 10,
+              }}
+            >
+              <Text size="xs" c="white" fw={600} mb={4}>
+                Terreno 3D
+              </Text>
+              <Text size="xs" c="gray.4">
+                Exageracion: {exaggeration}x
+              </Text>
+              {terrainSmoothingEnabled && (
+                <Text size="xs" c="gray.4">
+                  Terreno suavizado: reduce picos de arboles/construcciones
+                </Text>
+              )}
+              {selectedImage && (
+                <Text size="xs" c="gray.4">
+                  Imagen seleccionada: {selectedImage.sensor} {selectedImage.target_date}
+                </Text>
+              )}
+              <Text size="xs" c="gray.4">
+                Ctrl+arrastre para rotar
+              </Text>
+            </Box>
+          </Paper>
         }
         controls={
-      <Stack gap="md" aria-label="Capas y leyenda del visor 3D" data-testid="terrain-3d-bottom-bar">
-        <Box data-testid="terrain-3d-bottom-bar-toggles">
-          <TerrainLayerTogglesPanel
-            rasterLayers={rasterLayers}
-            selectedImageOption={selectedImageOption}
-            activeRasterLayerId={activeRasterLayerId}
-            onActiveRasterLayerChange={onActiveRasterLayerChange}
-            overlayOpacity={overlayOpacity}
-            onOverlayOpacityChange={onOverlayOpacityChange}
-            vectorLayerVisibility={vectorLayerVisibility}
-            onVectorLayerToggle={onVectorLayerToggle}
-            hasApprovedZones={hasApprovedZones}
-            intersectionsLength={intersectionsLength}
-            canalesRelevadosItems={canalesRelevadosItems}
-            canalesPropuestosItems={canalesPropuestosItems}
-            embedded
-          />
-        </Box>
-        <Box data-testid="terrain-3d-bottom-bar-legends">
-          <TerrainLegendsPanel
-            activeRasterType={activeRasterType}
-            hiddenClasses={hiddenClasses}
-            onClassToggle={onClassToggle}
-            hiddenRanges={hiddenRanges}
-            onRangeToggle={onRangeToggle}
-            vectorLayerVisibility={vectorLayerVisibility}
-            bpaHistoricoVisible={bpaHistoricoVisible}
-            agroAceptadaVisible={agroAceptadaVisible}
-            agroPresentadaVisible={agroPresentadaVisible}
-            agroZonasVisible={agroZonasVisible}
-            porcentajeForestacionVisible={porcentajeForestacionVisible}
-            canalesRelevadosVisible={canalesRelevadosVisible}
-            canalesPropuestosVisible={canalesPropuestosVisible}
-            propuestasEtapasVisibility={etapasVisibility}
-            onSetEtapaVisible={onSetEtapaVisible}
-            embedded
-          />
-        </Box>
-      </Stack>
+          <Stack
+            gap="md"
+            aria-label="Capas y leyenda del visor 3D"
+            data-testid="terrain-3d-bottom-bar"
+          >
+            <Box data-testid="terrain-3d-bottom-bar-toggles">
+              <TerrainLayerTogglesPanel
+                rasterLayers={rasterLayers}
+                selectedImageOption={selectedImageOption}
+                activeRasterLayerId={activeRasterLayerId}
+                onActiveRasterLayerChange={onActiveRasterLayerChange}
+                overlayOpacity={overlayOpacity}
+                onOverlayOpacityChange={onOverlayOpacityChange}
+                vectorLayerVisibility={vectorLayerVisibility}
+                onVectorLayerToggle={onVectorLayerToggle}
+                hasApprovedZones={hasApprovedZones}
+                intersectionsLength={intersectionsLength}
+                canalesRelevadosItems={canalesRelevadosItems}
+                canalesPropuestosItems={canalesPropuestosItems}
+                embedded
+              />
+            </Box>
+            <Box data-testid="terrain-3d-bottom-bar-legends">
+              <TerrainLegendsPanel
+                activeRasterType={activeRasterType}
+                hiddenClasses={hiddenClasses}
+                onClassToggle={onClassToggle}
+                hiddenRanges={hiddenRanges}
+                onRangeToggle={onRangeToggle}
+                vectorLayerVisibility={vectorLayerVisibility}
+                bpaHistoricoVisible={bpaHistoricoVisible}
+                agroAceptadaVisible={agroAceptadaVisible}
+                agroPresentadaVisible={agroPresentadaVisible}
+                agroZonasVisible={agroZonasVisible}
+                porcentajeForestacionVisible={porcentajeForestacionVisible}
+                canalesRelevadosVisible={canalesRelevadosVisible}
+                canalesPropuestosVisible={canalesPropuestosVisible}
+                propuestasEtapasVisibility={etapasVisibility}
+                onSetEtapaVisible={onSetEtapaVisible}
+                embedded
+              />
+            </Box>
+          </Stack>
         }
       />
     </>

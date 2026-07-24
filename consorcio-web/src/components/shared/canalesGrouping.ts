@@ -56,10 +56,7 @@ export function groupCanalesByFolder(
       out.push({ kind: 'leaf', id: keyOf(tramos[0]!.id), label: tramos[0]!.nombre });
       continue;
     }
-    const baseLabel = tramos[0]!.nombre.replace(
-      /\s*\(tramo\s+\d+\s+de\s+\d+\)\s*$/i,
-      ''
-    );
+    const baseLabel = tramos[0]!.nombre.replace(/\s*\(tramo\s+\d+\s+de\s+\d+\)\s*$/i, '');
     out.push({
       kind: 'group',
       folder,

@@ -8,6 +8,7 @@ import type { CanalesData, Etapa } from '../../types/canales';
 import { ALL_ETAPAS } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
+import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import {
   shouldShowSuggestedZones,
   syncAgroAceptadaLayer,
@@ -28,7 +29,6 @@ import {
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
-import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,

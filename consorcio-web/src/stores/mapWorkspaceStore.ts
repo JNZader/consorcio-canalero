@@ -50,6 +50,6 @@ export const useMapWorkspaceStore = create<MapWorkspaceState>()(
       name: 'cc-map-workspace-ui',
       storage,
       version: 1,
-    },
-  ),
+    }
+  )
 );

@@ -179,10 +179,7 @@ function FeatureSection({
   const properties: Record<string, unknown> =
     (feature.properties as Record<string, unknown> | null) ?? {};
 
-  const detection = useMemo(
-    () => detectBpa(properties, bpaEnriched),
-    [properties, bpaEnriched]
-  );
+  const detection = useMemo(() => detectBpa(properties, bpaEnriched), [properties, bpaEnriched]);
 
   const displayable = useMemo(
     () => getDisplayableProperties(withLayer.layer?.id, properties),

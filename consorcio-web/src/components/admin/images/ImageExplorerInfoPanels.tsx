@@ -184,8 +184,8 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           {sensor === 'landsat7' && (
             <Text size="xs" c="orange.7" mt="sm">
               Landsat 7 desde 2003 trae franjas SLC-off. El compuesto puede ayudar en algunas
-              fechas, pero puede verse peor; para marzo 2015 conviene revisar Landsat 8 o
-              Sentinel-1 y usar L7 sólo como escena individual de referencia.
+              fechas, pero puede verse peor; para marzo 2015 conviene revisar Landsat 8 o Sentinel-1
+              y usar L7 sólo como escena individual de referencia.
             </Text>
           )}
         </Paper>

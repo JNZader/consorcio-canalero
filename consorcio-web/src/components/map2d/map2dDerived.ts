@@ -253,7 +253,12 @@ export function buildVectorLayerItems(params: {
     },
     // Labels match the 3D toggles panel so the user sees the same wording
     // across views (terrainLayerConfig.ts:35-42).
-    { id: 'soil', label: 'Suelos IDECOR 1:50.000', category: LAYER_CATEGORY.TERRITORIO, show: true },
+    {
+      id: 'soil',
+      label: 'Suelos IDECOR 1:50.000',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: true,
+    },
     {
       id: 'catastro',
       label: 'Catastro rural IDECOR',
@@ -313,7 +318,12 @@ export function buildVectorLayerItems(params: {
       show: showPilarAzul,
     },
     // ── Pilar Azul (Escuelas rurales) — single master toggle (design §7) ──
-    { id: 'escuelas', label: 'Escuelas rurales', category: LAYER_CATEGORY.TERRITORIO, show: showEscuelas },
+    {
+      id: 'escuelas',
+      label: 'Escuelas rurales',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: showEscuelas,
+    },
   ]
     .filter(({ show }) => show)
     .map(({ id, label, category }) => ({ id, label, category }));

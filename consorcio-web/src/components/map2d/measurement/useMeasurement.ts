@@ -42,9 +42,9 @@
  * here because the proposal calls it out explicitly.
  */
 
+import type MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type { Feature, LineString, Point, Polygon } from 'geojson';
 import type maplibregl from 'maplibre-gl';
-import type MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import area from '@turf/area';

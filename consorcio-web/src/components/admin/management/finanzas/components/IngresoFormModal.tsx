@@ -1,8 +1,8 @@
 import {
   Button,
   Modal,
-  NumberInput,
   NativeSelect,
+  NumberInput,
   SimpleGrid,
   Stack,
   TextInput,

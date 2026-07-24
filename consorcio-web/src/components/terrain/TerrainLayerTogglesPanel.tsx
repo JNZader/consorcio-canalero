@@ -289,9 +289,7 @@ export function TerrainLayerTogglesPanel({
                     size="xs"
                     checked={vectorLayerVisibility[layer.id] ?? false}
                     disabled={layer.status !== 'supported'}
-                    onChange={(event) =>
-                      onVectorLayerToggle(layer.id, event.currentTarget.checked)
-                    }
+                    onChange={(event) => onVectorLayerToggle(layer.id, event.currentTarget.checked)}
                     label={
                       layer.status === 'supported'
                         ? layer.label
