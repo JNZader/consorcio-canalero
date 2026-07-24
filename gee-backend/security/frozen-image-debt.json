@@ -1,16 +1,5 @@
 {
-  "schema_version": 1,
   "active": true,
-  "issue": "https://github.com/JNZader/consorcio-canalero/issues/9",
-  "owner": "JNZader",
-  "renewal_allowed": false,
-  "scanner": {
-    "name": "trivy",
-    "version": "0.70.0",
-    "report_schema_version": 2
-  },
-  "platform": "linux/amd64",
-  "source_repository": "https://github.com/JNZader/consorcio-canalero",
   "deadlines": {
     "CRITICAL": "2026-07-29T00:00:00Z",
     "HIGH": "2026-08-05T00:00:00Z",
@@ -18,12 +7,11 @@
   },
   "images": {
     "backend": {
-      "dockerfile": "gee-backend/Dockerfile",
-      "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
       "allowed_repositories": [
         "local/consorcio-backend",
         "ghcr.io/jnzader/consorcio-canalero/backend"
       ],
+      "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
       "baseline_generated_from": {
         "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
         "config_digest": "sha256:746fed18500c8bd1770dc7b6a55777d9c423cbd84b972df28567eaf94574efbc",
@@ -46,6 +34,7 @@
         },
         "source_revision": "96cf15d0f36577c2500d2708dc5c1b899035177f"
       },
+      "dockerfile": "gee-backend/Dockerfile",
       "findings": [
         {
           "class": "os-pkgs",
@@ -53,10 +42,6 @@
           "cve": "CVE-2025-59375",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -70,10 +55,6 @@
           "cve": "CVE-2025-69720",
           "fixed": "",
           "installed": "6.5+20250216-2",
-          "layer": {
-            "diff_id": "sha256:99ab40bce873c6bc2ef49d1441dcbd1752681c34a02f4655fb3f68f8f2b34523",
-            "digest": "sha256:6b265b8eae4a26a263eb55546aa430c1eef37032a7cd86393d98c6b779f28319"
-          },
           "pkg_id": "libncursesw6@6.5+20250216-2",
           "purl": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -87,10 +68,6 @@
           "cve": "CVE-2025-69720",
           "fixed": "",
           "installed": "6.5+20250216-2",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libtinfo6@6.5+20250216-2",
           "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -104,10 +81,6 @@
           "cve": "CVE-2025-69720",
           "fixed": "",
           "installed": "6.5+20250216-2",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "ncurses-base@6.5+20250216-2",
           "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.6",
           "severity": "HIGH",
@@ -121,10 +94,6 @@
           "cve": "CVE-2025-69720",
           "fixed": "",
           "installed": "6.5+20250216-2",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "ncurses-bin@6.5+20250216-2",
           "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -138,10 +107,6 @@
           "cve": "CVE-2026-13221",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "CRITICAL",
@@ -155,10 +120,6 @@
           "cve": "CVE-2026-25210",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -172,10 +133,6 @@
           "cve": "CVE-2026-41992",
           "fixed": "",
           "installed": "1.13-1",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "gzip@1.13-1",
           "purl": "pkg:deb/debian/gzip@1.13-1?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -189,10 +146,6 @@
           "cve": "CVE-2026-42496",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "CRITICAL",
@@ -206,10 +159,6 @@
           "cve": "CVE-2026-42497",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -223,10 +172,6 @@
           "cve": "CVE-2026-45186",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -240,10 +185,6 @@
           "cve": "CVE-2026-48962",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -257,10 +198,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "1:2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "bsdutils@1:2.41-5",
           "purl": "pkg:deb/debian/bsdutils@2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
           "severity": "HIGH",
@@ -274,10 +211,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libblkid1@2.41-5",
           "purl": "pkg:deb/debian/libblkid1@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -291,10 +224,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "liblastlog2-2@2.41-5",
           "purl": "pkg:deb/debian/liblastlog2-2@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -308,10 +237,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libmount1@2.41-5",
           "purl": "pkg:deb/debian/libmount1@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -325,10 +250,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libsmartcols1@2.41-5",
           "purl": "pkg:deb/debian/libsmartcols1@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -342,10 +263,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libuuid1@2.41-5",
           "purl": "pkg:deb/debian/libuuid1@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -359,10 +276,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "1:4.16.0-2+really2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "login@1:4.16.0-2+really2.41-5",
           "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
           "severity": "HIGH",
@@ -376,10 +289,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "mount@2.41-5",
           "purl": "pkg:deb/debian/mount@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -393,10 +302,6 @@
           "cve": "CVE-2026-53615",
           "fixed": "",
           "installed": "2.41-5",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "util-linux@2.41-5",
           "purl": "pkg:deb/debian/util-linux@2.41-5?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -410,10 +315,6 @@
           "cve": "CVE-2026-54369",
           "fixed": "",
           "installed": "2.3.2-2+b1",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "libacl1@2.3.2-2+b1",
           "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -427,10 +328,6 @@
           "cve": "CVE-2026-56131",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -444,10 +341,6 @@
           "cve": "CVE-2026-56407",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -461,10 +354,6 @@
           "cve": "CVE-2026-56408",
           "fixed": "",
           "installed": "2.7.1-2",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libexpat1@2.7.1-2",
           "purl": "pkg:deb/debian/libexpat1@2.7.1-2?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -478,10 +367,6 @@
           "cve": "CVE-2026-57432",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -495,10 +380,6 @@
           "cve": "CVE-2026-57433",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "CRITICAL",
@@ -512,10 +393,6 @@
           "cve": "CVE-2026-6653",
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "layer": {
-            "diff_id": "sha256:f46b3c19cc80bde584bb9ab6344bdb299c397c93bd07ee74cf723307ef909979",
-            "digest": "sha256:0fa8d231d7444583580b38b935bd6f1643af0f93b76d4f40fa97604ca4dde8cc"
-          },
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
           "severity": "CRITICAL",
@@ -529,10 +406,6 @@
           "cve": "CVE-2026-8376",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "CRITICAL",
@@ -546,10 +419,6 @@
           "cve": "CVE-2026-9538",
           "fixed": "",
           "installed": "5.40.1-6",
-          "layer": {
-            "diff_id": "sha256:f2ec4de84f559f5c7be4233b589cdbdbb5507807e05621b77320edd55a1f2a0f",
-            "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053"
-          },
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
           "severity": "HIGH",
@@ -560,12 +429,11 @@
       ]
     },
     "geo-worker": {
-      "dockerfile": "gee-backend/Dockerfile.geo",
-      "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",
       "allowed_repositories": [
         "local/consorcio-geo-worker",
         "ghcr.io/jnzader/consorcio-canalero/geo-worker"
       ],
+      "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",
       "baseline_generated_from": {
         "base_image": "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469",
         "config_digest": "sha256:9bb3e57fbb8e9bbcb03e6a253a899e36d8657b05143b9ca09f0187724cd48beb",
@@ -588,7 +456,19 @@
         },
         "source_revision": "96cf15d0f36577c2500d2708dc5c1b899035177f"
       },
+      "dockerfile": "gee-backend/Dockerfile.geo",
       "findings": []
     }
-  }
+  },
+  "issue": "https://github.com/JNZader/consorcio-canalero/issues/9",
+  "owner": "JNZader",
+  "platform": "linux/amd64",
+  "renewal_allowed": false,
+  "scanner": {
+    "name": "trivy",
+    "report_schema_version": 2,
+    "version": "0.70.0"
+  },
+  "schema_version": 1,
+  "source_repository": "https://github.com/JNZader/consorcio-canalero"
 }

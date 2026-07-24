@@ -39,6 +39,16 @@ authoritative registry or deployment source. When supplied, the report must cont
 `repository@sha256:...` entry; absence or mismatch rejects the report. The validator never infers a
 manifest or config digest from the daemon identity.
 
+## Stable vulnerability identity
+
+The frozen backend debt is an exact multiset keyed by target, class, type, CVE, package ID, PURL,
+installed version, severity, status, and fixed-version availability. Counts remain exact: adding,
+removing, or duplicating a finding rejects the scan. `Layer.Digest` and `Layer.DiffID` are explicitly
+excluded because they describe volatile build-layer output, not vulnerability identity; Trivy may
+omit them, and equivalent non-reproducible builds may change them without changing package debt.
+Layer metadata is ignored in reports and is not stored in policy snapshots. No vulnerability,
+package, fix, severity, status, provenance, or multiplicity check is relaxed.
+
 ## Stable finding targets
 
 Trivy prefixes an OS target with the ephemeral scanned image reference. The validator normalizes

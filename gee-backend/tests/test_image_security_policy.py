@@ -73,10 +73,6 @@ def _finding() -> dict[str, Any]:
         "severity": "HIGH",
         "status": "affected",
         "fixed": "",
-        "layer": {
-            "digest": "sha256:" + ("3" * 64),
-            "diff_id": "sha256:" + ("4" * 64),
-        },
         "count": 1,
     }
 
@@ -294,6 +290,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert sum(finding["status"] == "affected" for finding in backend["findings"]) == 27
     assert sum(finding["status"] == "fix_deferred" for finding in backend["findings"]) == 3
     assert all(finding["fixed"] == "" for finding in backend["findings"])
+    assert all("layer" not in finding for finding in backend["findings"])
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
         "sha256:eda0e61b19adcf2978774fbee2d9414f409ea10aa595c7fb0198d30f8716d4a8"
@@ -321,16 +318,40 @@ def test_valid_exact_backend_and_empty_geo_reports_pass(tmp_path: Path) -> None:
     assert geo.returncode == 0, geo.stderr
 
 
+@pytest.mark.parametrize("repo_digests", ["absent", None, []])
+@pytest.mark.parametrize(
+    ("role", "fixture"),
+    [
+        ("backend", "trivy-backend-one-finding.json"),
+        ("geo-worker", "trivy-geo-empty.json"),
+    ],
+)
 def test_loaded_local_reports_do_not_require_registry_repo_digests(
     tmp_path: Path,
+    role: str,
+    fixture: str,
+    repo_digests: str | list[Any] | None,
 ) -> None:
-    backend_report = _load_fixture("trivy-backend-one-finding.json")
-    geo_report = _load_fixture("trivy-geo-empty.json")
+    report = _load_fixture(fixture)
+    if repo_digests == "absent":
+        report["Metadata"].pop("RepoDigests")
+    else:
+        report["Metadata"]["RepoDigests"] = repo_digests
 
-    assert backend_report["Metadata"]["RepoDigests"] == []
-    assert geo_report["Metadata"]["RepoDigests"] == []
-    assert _run(tmp_path / "backend", report=backend_report).returncode == 0
-    assert _run(tmp_path / "geo", role="geo-worker", report=geo_report).returncode == 0
+    result = _run(tmp_path, role=role, report=report)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("repo_digests", [False, 0, "", {}])
+def test_non_null_non_list_repo_digests_are_rejected(
+    tmp_path: Path,
+    repo_digests: Any,
+) -> None:
+    report = _load_fixture("trivy-backend-one-finding.json")
+    report["Metadata"]["RepoDigests"] = repo_digests
+
+    _assert_rejected(_run(tmp_path, report=report), "RepoDigests must be a list")
 
 
 def test_runtime_daemon_image_identity_is_not_statically_bound_to_provenance(
@@ -408,6 +429,27 @@ def test_optional_manifest_digest_is_bound_separately_from_daemon_image_identity
     )
 
 
+@pytest.mark.parametrize("repo_digests", ["absent", None, []])
+def test_expected_manifest_digest_rejects_missing_local_repo_digest(
+    tmp_path: Path,
+    repo_digests: str | list[Any] | None,
+) -> None:
+    report = _load_fixture("trivy-backend-one-finding.json")
+    if repo_digests == "absent":
+        report["Metadata"].pop("RepoDigests")
+    else:
+        report["Metadata"]["RepoDigests"] = repo_digests
+
+    _assert_rejected(
+        _run(
+            tmp_path,
+            report=report,
+            expected_manifest_digest=BACKEND_REGISTRY_MANIFEST_DIGEST,
+        ),
+        "manifest digest binding mismatch",
+    )
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
@@ -418,20 +460,8 @@ def test_optional_manifest_digest_is_bound_separately_from_daemon_image_identity
             "purl",
         ),
         (
-            lambda report: report["Results"][0]["Vulnerabilities"][0].pop("Layer"),
-            "layer",
-        ),
-        (
             lambda report: report["Results"][0]["Vulnerabilities"][0].pop("Status"),
             "status",
-        ),
-        (
-            lambda report: report["Results"][0]["Vulnerabilities"][0]["Layer"].pop("Digest"),
-            "layer digest",
-        ),
-        (
-            lambda report: report["Results"][0]["Vulnerabilities"][0]["Layer"].pop("DiffID"),
-            "layer diff ID",
         ),
         (lambda report: report.pop("Metadata"), "metadata"),
     ],
@@ -445,6 +475,75 @@ def test_missing_required_report_metadata_fails(
     mutate(report)
 
     _assert_rejected(_run(tmp_path, report=report), message)
+
+
+@pytest.mark.parametrize(
+    "layer_value",
+    [
+        "absent",
+        None,
+        "not-an-object",
+        {},
+        {"Digest": 42, "DiffID": ["not-a-digest"]},
+        {
+            "Digest": "sha256:" + ("a" * 64),
+            "DiffID": "sha256:" + ("b" * 64),
+        },
+    ],
+)
+def test_layer_metadata_is_ignored_for_frozen_debt_identity(
+    tmp_path: Path,
+    layer_value: Any,
+) -> None:
+    report = _load_fixture("trivy-backend-one-finding.json")
+    vulnerability = report["Results"][0]["Vulnerabilities"][0]
+    if layer_value == "absent":
+        vulnerability.pop("Layer")
+    else:
+        vulnerability["Layer"] = layer_value
+
+    result = _run(tmp_path, report=report)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda finding: finding.__setitem__("VulnerabilityID", "CVE-2026-99999"),
+        lambda finding: finding.__setitem__("PkgID", "libother@1.0.0"),
+        lambda finding: finding["PkgIdentifier"].__setitem__(
+            "PURL", "pkg:deb/debian/libother@1.0.0?arch=amd64"
+        ),
+        lambda finding: finding.__setitem__("InstalledVersion", "9.9.9"),
+        lambda finding: finding.__setitem__("Severity", "CRITICAL"),
+        lambda finding: finding.__setitem__("Status", "fix_deferred"),
+        lambda finding: finding.__setitem__("FixedVersion", "1.0.1"),
+    ],
+)
+def test_security_identity_mutations_are_rejected(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, Any]], Any],
+) -> None:
+    report = _load_fixture("trivy-backend-one-finding.json")
+    mutate(report["Results"][0]["Vulnerabilities"][0])
+
+    assert _run(tmp_path, report=report).returncode == 1
+
+
+@pytest.mark.parametrize("mutation", ["remove", "duplicate"])
+def test_report_finding_multiplicity_mutations_are_rejected(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    report = _load_fixture("trivy-backend-one-finding.json")
+    vulnerabilities = report["Results"][0]["Vulnerabilities"]
+    if mutation == "remove":
+        vulnerabilities.clear()
+    else:
+        vulnerabilities.append(copy.deepcopy(vulnerabilities[0]))
+
+    _assert_rejected(_run(tmp_path, report=report), "multiset mismatch")
 
 
 @pytest.mark.parametrize(
@@ -505,6 +604,30 @@ def test_image_target_normalization_preserves_unrelated_targets(
     result = _run(tmp_path, policy=policy, report=report)
 
     assert result.returncode == 0, result.stderr
+
+
+def test_layer_metadata_does_not_change_canonical_snapshot(tmp_path: Path) -> None:
+    policy = _active_policy()
+    policy["active"] = False
+    policy["images"]["backend"]["findings"] = {"unactivated": True}
+    original = _load_fixture("trivy-backend-one-finding.json")
+    changed = copy.deepcopy(original)
+    changed["Results"][0]["Vulnerabilities"][0]["Layer"] = {
+        "Digest": "not-a-digest",
+        "DiffID": ["not-a-diff-id"],
+    }
+
+    without_layer = copy.deepcopy(original)
+    without_layer["Results"][0]["Vulnerabilities"][0].pop("Layer")
+    first = _run(tmp_path / "first", policy=policy, report=without_layer, command="snapshot")
+    second = _run(tmp_path / "second", policy=policy, report=changed, command="snapshot")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    first_snapshot = json.loads((tmp_path / "first/snapshot.json").read_text(encoding="utf-8"))
+    second_snapshot = json.loads((tmp_path / "second/snapshot.json").read_text(encoding="utf-8"))
+    assert first_snapshot["findings"] == second_snapshot["findings"]
+    assert "layer" not in first_snapshot["findings"][0]
 
 
 def test_different_image_tags_produce_the_same_canonical_snapshot(

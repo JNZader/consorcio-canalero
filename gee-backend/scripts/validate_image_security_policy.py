@@ -61,8 +61,6 @@ FINDING_FIELDS = (
     "severity",
     "status",
     "fixed",
-    "layer_digest",
-    "layer_diff_id",
 )
 POLICY_FINDING_FIELDS = {
     "target",
@@ -75,7 +73,6 @@ POLICY_FINDING_FIELDS = {
     "severity",
     "status",
     "fixed",
-    "layer",
     "count",
 }
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -434,9 +431,12 @@ def _report_counter(
     repo_tags = _list(metadata.get("RepoTags"), "report RepoTags")
     if expected_image_ref not in repo_tags:
         raise PolicyError("report image tag binding mismatch")
+    repo_digests_value = metadata.get("RepoDigests")
+    if repo_digests_value is None:
+        repo_digests_value = []
     repo_digests = [
         _repository_digest(value, f"report RepoDigests[{index}]")
-        for index, value in enumerate(_list(metadata.get("RepoDigests"), "report RepoDigests"))
+        for index, value in enumerate(_list(repo_digests_value, "report RepoDigests"))
     ]
     if expected_manifest_digest is not None:
         manifest_digest = _digest(
@@ -498,7 +498,6 @@ def _report_counter(
                 _object(vulnerability.get("PkgIdentifier"), f"{label} PkgIdentifier").get("PURL"),
                 f"{label} PURL",
             )
-            layer = _object(vulnerability.get("Layer"), f"{label} layer")
             if "FixedVersion" not in vulnerability:
                 fixed = ""
             else:
@@ -523,8 +522,6 @@ def _report_counter(
                 severity,
                 status,
                 fixed,
-                _digest(layer.get("Digest"), f"{label} layer digest"),
-                _digest(layer.get("DiffID"), f"{label} layer diff ID"),
             )
             findings[key] += 1
     return findings
@@ -535,9 +532,6 @@ def _entry_key(entry: dict[str, Any], label: str) -> FindingKey:
         missing = sorted(POLICY_FINDING_FIELDS - set(entry))
         extra = sorted(set(entry) - POLICY_FINDING_FIELDS)
         raise PolicyError(f"{label} fields mismatch; missing={missing}, extra={extra}")
-    layer = _object(entry.get("layer"), f"{label} layer")
-    if set(layer) != {"digest", "diff_id"}:
-        raise PolicyError(f"{label} layer fields mismatch")
     fixed = entry.get("fixed")
     if not isinstance(fixed, str):
         raise PolicyError(f"{label} fixed must be a string")
@@ -558,8 +552,6 @@ def _entry_key(entry: dict[str, Any], label: str) -> FindingKey:
         severity,
         status,
         fixed,
-        _digest(layer.get("digest"), f"{label} layer digest"),
-        _digest(layer.get("diff_id"), f"{label} layer diff ID"),
     )
 
 
@@ -605,10 +597,6 @@ def _counter_entries(counter: Counter[FindingKey]) -> list[dict[str, Any]]:
                 "severity": values["severity"],
                 "status": values["status"],
                 "fixed": values["fixed"],
-                "layer": {
-                    "digest": values["layer_digest"],
-                    "diff_id": values["layer_diff_id"],
-                },
                 "count": count,
             }
         )
