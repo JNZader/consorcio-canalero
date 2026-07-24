@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  mockAdapter,
-  resetStoreMock,
-  mockProfile,
-} = vi.hoisted(() => {
+const { mockAdapter, resetStoreMock, mockProfile } = vi.hoisted(() => {
   return {
     mockAdapter: {
       login: vi.fn(),
@@ -97,6 +93,18 @@ describe('auth library', () => {
     expect(removeItemSpy).toHaveBeenCalledWith('cc-auth-storage');
   });
 
+  it('signOut retains every local auth layer when server revocation fails', async () => {
+    mockAdapter.logout.mockRejectedValueOnce(new Error('server unavailable'));
+
+    await expect(signOut()).resolves.toEqual({
+      success: false,
+      error: 'No se pudo cerrar la sesión en el servidor. Intenta nuevamente.',
+    });
+
+    expect(resetStoreMock).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).not.toHaveBeenCalledWith('cc-auth-storage');
+  });
+
   it('role helpers evaluate admin permissions', async () => {
     mockProfile.rol = 'admin';
 
@@ -109,9 +117,7 @@ describe('auth library', () => {
   it('translates reset and update password errors', async () => {
     // resetPassword now calls fetch to /api/v2/auth/forgot-password
     // It always returns success (fastapi-users returns 202)
-    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new Error('Network error')
-    );
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
     await expect(resetPassword('mail@test.com')).resolves.toEqual({
       success: false,
       error: 'Error al enviar el email de recuperacion.',

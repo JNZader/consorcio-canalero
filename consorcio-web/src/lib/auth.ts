@@ -124,14 +124,10 @@ export async function signOut(): Promise<AuthResult> {
     return { success: true };
   } catch (err) {
     logger.error('Error al cerrar sesion:', err);
-
-    // Fallback defensivo: limpiar estado local aunque falle el backend
-    useAuthStore.getState().reset();
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('cc-auth-storage');
-    }
-
-    return { success: true };
+    return {
+      success: false,
+      error: 'No se pudo cerrar la sesión en el servidor. Intenta nuevamente.',
+    };
   }
 }
 
@@ -241,8 +237,10 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   }
 }
 
+export type EmailCodeExchangeHandle = Readonly<EmailCodeExchangeRecord>;
+
 export type EmailCodeExchangeResult =
-  | { status: 'success'; token: string }
+  | { status: 'success'; token: string; handle: EmailCodeExchangeHandle }
   | { status: 'terminal-error'; reason: 'invalid-or-expired' }
   | { status: 'retryable-error'; reason: 'network' | 'server' | 'malformed-response' };
 
@@ -270,7 +268,6 @@ async function performEmailCodeExchange(
   }
 
   if (response.status >= 400 && response.status < 500) {
-    clearEmailCodeExchange(exchange);
     return { status: 'terminal-error', reason: 'invalid-or-expired' };
   }
 
@@ -295,8 +292,11 @@ async function performEmailCodeExchange(
     return { status: 'retryable-error', reason: 'malformed-response' };
   }
 
-  clearEmailCodeExchange(exchange);
-  return { status: 'success', token: (data as { token: string }).token };
+  return {
+    status: 'success',
+    token: (data as { token: string }).token,
+    handle: exchange,
+  };
 }
 
 /**
@@ -322,6 +322,14 @@ export async function exchangeEmailCode(
       inFlightEmailCodeExchanges.delete(exchange.exchangeId);
     }
   }
+}
+
+/**
+ * Clear the purpose-scoped idempotency record only after the exchanged token
+ * has completed its downstream verify/reset operation.
+ */
+export function completeEmailCodeExchange(handle: EmailCodeExchangeHandle): void {
+  clearEmailCodeExchange(handle);
 }
 
 /** Verify an email with the token resolved from an email code. */

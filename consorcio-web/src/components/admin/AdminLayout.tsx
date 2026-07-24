@@ -11,6 +11,7 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { signOut } from '../../lib/auth';
@@ -75,9 +76,17 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
 
   const handleLogout = async (): Promise<void> => {
     try {
-      await signOut();
-    } finally {
+      const result = await signOut();
+      if (!result.success) {
+        throw new Error(result.error || 'No se pudo cerrar la sesión.');
+      }
       await navigate({ to: ADMIN_ACCOUNT_MENU_ITEMS.logout.to, replace: true });
+    } catch (error) {
+      notifications.show({
+        title: 'No se pudo cerrar la sesión',
+        message: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        color: 'red',
+      });
     }
   };
 
