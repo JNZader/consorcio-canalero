@@ -255,6 +255,12 @@ services:
     volumes:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro
+      # Zona outline for clipping visual raster tiles to the consorcio —
+      # parity with dev and prod composes. Missing file → docker creates a
+      # DIRECTORY and the clip silently degrades to unclipped overlays.
+      # After updating the geojson: `docker compose up -d --force-recreate
+      # geo-worker` (single-file bind = stale inode + process cache).
+      - ./consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson:/app/data/zona/zona_ampliada.geojson:ro
       - ./gee-backend/supervisord-geo.conf:/etc/supervisor/conf.d/geo.conf:ro
       - ./credentials:/app/credentials:ro
     networks:
