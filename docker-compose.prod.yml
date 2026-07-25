@@ -23,7 +23,16 @@
 #   cp docker-compose.prod.yml /home/javier/stacks/consorcio/docker-compose.yml
 #   cp .env.prod.example /home/javier/stacks/consorcio/.env  # editar con valores reales
 #   cp martin/config.prod.yaml /home/javier/stacks/consorcio/martin-config.yaml
+#   mkdir -p /home/javier/stacks/consorcio/consorcio-web/public/capas/pilar-verde
+#   cp consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson \
+#      /home/javier/stacks/consorcio/consorcio-web/public/capas/pilar-verde/
 #   cd /home/javier/stacks/consorcio && docker compose up -d
+#
+# OJO zona_ampliada.geojson: si el archivo NO existe en el host, docker crea
+# un DIRECTORIO en su lugar y el recorte de tiles degrada en silencio (solo
+# un warning en logs del geo-worker). Y si el geojson se ACTUALIZA, hace
+# falta `docker compose up -d --force-recreate geo-worker` (bind de archivo
+# = inode viejo + cache de proceso).
 #
 # The deploy webhook receives revision, backend_image, and geo_worker_image.
 # Both image values are verified immutable ``repository@sha256:...`` references;
@@ -324,6 +333,11 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      # Zona outline for clipping visual raster tiles to the consorcio —
+      # same mount dev uses (single source of truth: the geojson the
+      # frontend serves). Without it the tile service logs a warning and
+      # serves overlays UNCLIPPED (they bleed over the whole province).
+      - ./consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson:/app/data/zona/zona_ampliada.geojson:ro
     networks:
       - backend
       - consorcio-internal
@@ -360,7 +374,11 @@ services:
       - backend
       - proxy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      # 127.0.0.1, NOT localhost: inside the container localhost resolves to
+      # ::1 (IPv6) first and Martin binds IPv4 0.0.0.0 only, so wget got
+      # connection-refused and flagged a healthy Martin unhealthy (same bug
+      # already fixed in the dev and deploy composes on 2026-07-17).
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
