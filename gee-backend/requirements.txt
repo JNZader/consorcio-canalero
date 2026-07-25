@@ -1,3 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DIRECT dependencies with intent ranges. This file is the SOURCE, but builds
+# and CI install from the resolved lockfiles so every build is reproducible:
+#
+#   requirements.lock       runtime closure  (backend image, deploy)
+#   requirements-dev.lock   runtime + dev    (CI: lint/typecheck/test/mutation)
+#
+# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.11 = the
+# backend image's interpreter):
+#
+#   uv pip compile requirements.txt --python-version 3.11 --generate-hashes \
+#       --output-file requirements.lock
+#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.11 \
+#       --generate-hashes --output-file requirements-dev.lock
+#
+# requirements-geo.txt is NOT locked on purpose: the geo-worker image ships its
+# own GDAL/numpy from the OSGeo base and pinning them here fights the system
+# packages (see that file's own notes).
+# ─────────────────────────────────────────────────────────────────────────────
+
 # FastAPI
 fastapi>=0.115.0,!=0.137.0,!=0.137.1
 uvicorn[standard]>=0.34.0

@@ -64,8 +64,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       # The migration chain was NEVER exercised in CI (tests use
       # Base.metadata.create_all) — a broken ``upgrade head`` used to be
       # discovered by prod's migrate container, exactly where it blocks the
@@ -130,8 +130,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.30
 
   security-backend:
