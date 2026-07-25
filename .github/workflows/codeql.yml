@@ -1,11 +1,19 @@
 name: CodeQL
 
 on:
+  # main too, not just PRs: alerts are only auto-closed as ``fixed`` when a
+  # scan of the DEFAULT BRANCH stops reporting them. Without this, a finding
+  # remediated after its scan (alert #3, py/path-injection, fixed by
+  # PRs #25/#27/#28) stays "open" until the Monday cron, and the security tab
+  # keeps showing a vulnerability that no longer exists in the code.
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   schedule:
     # Every Monday at 09:00 ART (12:00 UTC)
     - cron: '0 12 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: codeql-${{ github.ref }}
