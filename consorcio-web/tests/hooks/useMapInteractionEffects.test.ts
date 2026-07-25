@@ -29,7 +29,6 @@ describe('useMapInteractionEffects', () => {
   it('registers click handler and selects a rendered feature', () => {
     const { map, handlers } = createMapMock();
     const setSelectedFeatures = vi.fn();
-    const setSelectedDraftBasinId = vi.fn();
     const selectedFeature: Feature = {
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [-62.68, -32.62] },
@@ -43,8 +42,6 @@ describe('useMapInteractionEffects', () => {
         mapReady: true,
         measurementMode: 'idle',
         setSelectedFeatures,
-        showSuggestedZonesPanel: false,
-        setSelectedDraftBasinId,
       }),
     );
 
@@ -61,38 +58,9 @@ describe('useMapInteractionEffects', () => {
     expect(setSelectedFeatures).toHaveBeenCalledWith([selectedFeature]);
   });
 
-  it('captures basin id in zoning mode', () => {
-    const { map, handlers } = createMapMock();
-    const setSelectedFeatures = vi.fn();
-    const setSelectedDraftBasinId = vi.fn();
-
-    map.queryRenderedFeatures.mockReturnValue([{ properties: { id: 'basin-1' } }]);
-
-    renderHook(() =>
-      useMapInteractionEffects({
-        mapRef: { current: map } as any,
-        mapReady: true,
-        measurementMode: 'idle',
-        setSelectedFeatures,
-        showSuggestedZonesPanel: true,
-        setSelectedDraftBasinId,
-      }),
-    );
-
-    const clickHandlers = handlers.get('click') ?? [];
-    const basinClickHandler = clickHandlers.at(-1);
-    basinClickHandler?.({
-      point: { x: 11, y: 11 },
-      lngLat: { lat: -32.62, lng: -62.62 },
-    });
-
-    expect(setSelectedDraftBasinId).toHaveBeenCalledWith('basin-1');
-  });
-
   it('does not query/select underlying features while measurement mode is active', () => {
     const { map, handlers } = createMapMock();
     const setSelectedFeatures = vi.fn();
-    const setSelectedDraftBasinId = vi.fn();
 
     renderHook(() =>
       useMapInteractionEffects({
@@ -100,8 +68,6 @@ describe('useMapInteractionEffects', () => {
         mapReady: true,
         measurementMode: 'measuring-distance',
         setSelectedFeatures,
-        showSuggestedZonesPanel: true,
-        setSelectedDraftBasinId,
       }),
     );
 
@@ -114,6 +80,5 @@ describe('useMapInteractionEffects', () => {
 
     expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
     expect(setSelectedFeatures).toHaveBeenCalledWith([]);
-    expect(setSelectedDraftBasinId).not.toHaveBeenCalled();
   });
 });

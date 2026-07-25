@@ -2,14 +2,6 @@ import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 
-/**
- * Identifier kept for backwards compatibility with the SuggestedZonesPanel
- * (`aria-controls` reference). The "Ver zonificación" button that used to
- * toggle this panel was retired on 2026-04-28 — the panel + workflow stay
- * intact so they can be reconnected by re-introducing the button.
- */
-export const SUGGESTED_ZONES_PANEL_ID = 'map-suggested-zones-panel';
-
 interface MapActionsPanelProps {
   /** Gates the "Exportar PDF" entry. PDF needs an approved zoning to render. */
   readonly hasApprovedZones: boolean;

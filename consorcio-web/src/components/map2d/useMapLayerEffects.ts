@@ -10,7 +10,6 @@ import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import {
-  shouldShowSuggestedZones,
   syncAgroAceptadaLayer,
   syncAgroPresentadaLayer,
   syncAgroZonasLayer,
@@ -23,7 +22,6 @@ import {
   syncPorcentajeForestacionLayer,
   syncRoadLayers,
   syncSoilLayers,
-  syncSuggestedZoneLayers,
   syncWaterwayLayers,
   syncYpfEstacionBombeoLayer,
   syncZonaLayer,
@@ -55,9 +53,6 @@ interface UseMapLayerEffectsParams {
   basins: FeatureCollection | null | undefined;
   zonaCollection: FeatureCollection | null;
   approvedZonesCollection: FeatureCollection | null | undefined;
-  suggestedZonesDisplay: FeatureCollection | null;
-  showSuggestedZonesPanel: boolean;
-  hasApprovedZones: boolean;
   activeDemLayerId: string | null;
   showDemOverlay: boolean;
   demTileUrl: string | null;
@@ -101,9 +96,6 @@ export function useMapLayerEffects({
   basins,
   zonaCollection,
   approvedZonesCollection,
-  suggestedZonesDisplay,
-  showSuggestedZonesPanel,
-  hasApprovedZones,
   activeDemLayerId,
   showDemOverlay,
   demTileUrl,
@@ -168,20 +160,6 @@ export function useMapLayerEffects({
     if (!map || !mapReady) return;
     syncApprovedZoneLayers(map, approvedZonesCollection, !!vectorVisibility.approved_zones);
   }, [approvedZonesCollection, mapReady, mapRef, vectorVisibility.approved_zones]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncSuggestedZoneLayers(
-      map,
-      suggestedZonesDisplay,
-      shouldShowSuggestedZones({
-        showSuggestedZonesPanel,
-        hasApprovedZones,
-        suggestedZonesDisplay,
-      })
-    );
-  }, [hasApprovedZones, mapReady, mapRef, showSuggestedZonesPanel, suggestedZonesDisplay]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -427,7 +405,6 @@ export function useMapLayerEffects({
     basins ? 1 : 0,
     zonaCollection ? 1 : 0,
     approvedZonesCollection ? 1 : 0,
-    suggestedZonesDisplay ? 1 : 0,
     canales?.index ? 1 : 0,
     canales?.relevados ? 1 : 0,
     canales?.propuestas ? 1 : 0,

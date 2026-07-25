@@ -13,7 +13,6 @@ import {
 } from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
-import { SuggestedZonesPanel } from './SuggestedZonesPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 import type { LayerCategory } from './map2dDerived';
 
@@ -32,23 +31,6 @@ interface LegendItem {
   color: string;
   label: string;
   type: string;
-}
-
-interface SuggestedZoneSummary {
-  id: string;
-  defaultName: string;
-  family?: string | null;
-  basinCount: number;
-  superficieHa: number;
-}
-
-interface ApprovedZoneHistoryItem {
-  id: string;
-  nombre: string;
-  version: number;
-  approvedAt: string;
-  notes?: string | null;
-  approvedByName?: string | null;
 }
 
 export interface MapUiPanelsProps {
@@ -75,12 +57,6 @@ export interface MapUiPanelsProps {
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
   /** Per-layer opacity + render-order controls (Fase 3 — Tanda B). */
   readonly layerFineControl?: LayerFineControl;
-  readonly canManageZoning: boolean;
-  readonly showSuggestedZonesPanel: boolean;
-  // ``onToggleSuggestedZonesPanel`` was on this prop API but the panel
-  // only ever opens via the close button (handled by
-  // ``onCloseSuggestedZonesPanel``); the toggle is owned by the
-  // MapaMapLibre header. Removed in the noUnusedParameters cleanup.
   readonly hasApprovedZones: boolean;
   readonly onOpenExportPng: () => void;
   readonly onExportApprovedZonesPdf: () => void;
@@ -99,26 +75,6 @@ export interface MapUiPanelsProps {
   readonly hiddenRanges: Record<string, number[]>;
   readonly onClassToggle: (layerType: string, classIndex: number, visible: boolean) => void;
   readonly onRangeToggle: (layerType: string, rangeIndex: number, visible: boolean) => void;
-  readonly suggestedZoneSummaries: SuggestedZoneSummary[];
-  readonly suggestedZoneNames: Record<string, string>;
-  readonly onZoneNameChange: (id: string, value: string) => void;
-  readonly selectedDraftBasinName: string | null;
-  readonly selectedDraftBasinZoneId: string | null;
-  readonly draftDestinationZoneId: string | null;
-  readonly onDestinationZoneChange: (value: string | null) => void;
-  readonly onApplyBasinMove: () => void;
-  readonly approvedAt: string | null;
-  readonly approvedVersion: number | null;
-  readonly approvedZonesHistory: ApprovedZoneHistoryItem[];
-  readonly approvalName: string;
-  readonly approvalNotes: string;
-  readonly onApprovalNameChange: (value: string) => void;
-  readonly onApprovalNotesChange: (value: string) => void;
-  readonly onCloseSuggestedZonesPanel: () => void;
-  readonly onApproveZones: () => void;
-  readonly onClearApprovedZones: () => void;
-  readonly onRestoreVersion: (id: string) => void;
-  readonly onExportApprovedZonesGeoJSON: () => void;
   /**
    * Phase 8 — array of all features returned by MapLibre at the click
    * point. InfoPanel renders one stacked section per feature in order
@@ -181,8 +137,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   canalesRelevadosItems,
   canalesPropuestosItems,
   layerFineControl,
-  canManageZoning,
-  showSuggestedZonesPanel,
   hasApprovedZones,
   onOpenExportPng,
   onExportApprovedZonesPdf,
@@ -195,26 +149,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   hiddenRanges,
   onClassToggle,
   onRangeToggle,
-  suggestedZoneSummaries,
-  suggestedZoneNames,
-  onZoneNameChange,
-  selectedDraftBasinName,
-  selectedDraftBasinZoneId,
-  draftDestinationZoneId,
-  onDestinationZoneChange,
-  onApplyBasinMove,
-  approvedAt,
-  approvedVersion,
-  approvedZonesHistory,
-  approvalName,
-  approvalNotes,
-  onApprovalNameChange,
-  onApprovalNotesChange,
-  onCloseSuggestedZonesPanel,
-  onApproveZones,
-  onClearApprovedZones,
-  onRestoreVersion,
-  onExportApprovedZonesGeoJSON,
   selectedFeatures,
   onCloseInfoPanel,
   bpaEnriched,
@@ -339,33 +273,6 @@ export const MapUiPanels = memo(function MapUiPanels({
           hiddenRanges={hiddenRanges}
           onClassToggle={onClassToggle}
           onRangeToggle={onRangeToggle}
-        />
-      )}
-
-      {showSuggestedZonesPanel && suggestedZoneSummaries.length > 0 && canManageZoning && (
-        <SuggestedZonesPanel
-          zones={suggestedZoneSummaries}
-          zoneNames={suggestedZoneNames}
-          onZoneNameChange={onZoneNameChange}
-          selectedBasinName={selectedDraftBasinName}
-          selectedBasinZoneId={selectedDraftBasinZoneId}
-          destinationZoneId={draftDestinationZoneId}
-          onDestinationZoneChange={onDestinationZoneChange}
-          onApplyBasinMove={onApplyBasinMove}
-          hasApprovedZones={hasApprovedZones}
-          approvedAt={approvedAt}
-          approvedVersion={approvedVersion}
-          approvedZonesHistory={approvedZonesHistory}
-          approvalName={approvalName}
-          approvalNotes={approvalNotes}
-          onApprovalNameChange={onApprovalNameChange}
-          onApprovalNotesChange={onApprovalNotesChange}
-          onClose={onCloseSuggestedZonesPanel}
-          onApproveZones={onApproveZones}
-          onClearApprovedZones={onClearApprovedZones}
-          onRestoreVersion={onRestoreVersion}
-          onExportApprovedZonesGeoJSON={onExportApprovedZonesGeoJSON}
-          onExportApprovedZonesPdf={onExportApprovedZonesPdf}
         />
       )}
 

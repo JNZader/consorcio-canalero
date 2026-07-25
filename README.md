@@ -404,7 +404,11 @@ Minimum frontend variables:
 
 ```env
 VITE_API_URL=http://localhost:8000
-VITE_MARTIN_URL=http://localhost:3001
+# Martin's default in code is :3000. NOTE: the dev compose does NOT publish a
+# host port for Martin (3000 is taken by other stacks on this box) — it is only
+# reachable inside the compose network. Publish it via an override if you need
+# vector tiles from a host-run frontend.
+VITE_MARTIN_URL=http://localhost:3000
 ```
 
 Production deployment also uses public URLs such as `MARTIN_PUBLIC_URL`, `FRONTEND_URL`, and `API_BASE_URL`. See `DEPLOY.md` and the `.env.*.example` files for the full server-side setup.

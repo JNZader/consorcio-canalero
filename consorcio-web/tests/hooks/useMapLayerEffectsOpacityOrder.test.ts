@@ -32,14 +32,12 @@ vi.mock('zustand/middleware', async () => {
 });
 
 vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
-  shouldShowSuggestedZones: vi.fn(() => false),
   syncApprovedZoneLayers: vi.fn(),
   syncBaseTileVisibility: vi.fn(),
   syncBasinLayers: vi.fn(),
   syncCatastroLayers: vi.fn(),
   syncRoadLayers: vi.fn(),
   syncSoilLayers: vi.fn(),
-  syncSuggestedZoneLayers: vi.fn(),
   syncWaterwayLayers: vi.fn(),
   syncZonaLayer: vi.fn(),
   syncBpaHistoricoLayer: vi.fn(),
@@ -95,8 +93,6 @@ function baseParams(
     basins: null,
     zonaCollection: null,
     approvedZonesCollection: null,
-    suggestedZonesDisplay: null,
-    showSuggestedZonesPanel: false,
     hasApprovedZones: false,
     activeDemLayerId: null,
     showDemOverlay: false,

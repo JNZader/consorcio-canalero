@@ -7,13 +7,8 @@ import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import {
   buildActiveLegendItems,
-  buildBasinFeatureById,
   buildDemLayerOptions,
-  buildInitialDraftAssignments,
-  buildSuggestedZoneSummaries,
-  buildSuggestedZonesDisplay,
   buildVectorLayerItems,
-  buildZoneDefinitionById,
 } from './map2dDerived';
 import { asFeatureCollection, decorateFeature } from './map2dUtils';
 
@@ -28,16 +23,12 @@ export function useMapDerivedState(params: {
   caminos: FeatureCollection | null | undefined;
   soilMap: FeatureCollection | null | undefined;
   basins: FeatureCollection | null | undefined;
-  suggestedZones: FeatureCollection | null | undefined;
   waterways: Array<{ nombre: string; style: { color?: string }; data: FeatureCollection }>;
   allGeoLayers: GeoLayer[];
   approvedZones: FeatureCollection | null | undefined;
-  draftBasinAssignments: Record<string, string>;
-  suggestedZoneNames: Record<string, string>;
   hiddenClasses: Record<string, number[]>;
   hiddenRanges: Record<string, number[]>;
   activeDemLayerId: string | null;
-  selectedDraftBasinId: string | null;
   selectedImage: { sensor: string; target_date: string } | null;
   comparison: {
     left?: { target_date: string } | null;
@@ -73,16 +64,12 @@ export function useMapDerivedState(params: {
     caminos,
     soilMap,
     basins,
-    suggestedZones,
     waterways,
     allGeoLayers,
     approvedZones,
-    draftBasinAssignments,
-    suggestedZoneNames,
     hiddenClasses,
     hiddenRanges,
     activeDemLayerId,
-    selectedDraftBasinId,
     selectedImage,
     comparison,
     vectorVisibility,
@@ -118,10 +105,6 @@ export function useMapDerivedState(params: {
   }, [soilMap]);
 
   const approvedZonesCollection = approvedZones;
-  const suggestedZonesDisplay = useMemo(
-    () => buildSuggestedZonesDisplay(basins, draftBasinAssignments, suggestedZoneNames),
-    [basins, draftBasinAssignments, suggestedZoneNames]
-  );
 
   const demTileUrl = useMemo(() => {
     if (!activeDemLayerId) return null;
@@ -139,38 +122,6 @@ export function useMapDerivedState(params: {
   const demLayers = useMemo(
     () => allGeoLayers.filter((layer) => !compositeTypes.has(layer.tipo)),
     [allGeoLayers, compositeTypes]
-  );
-
-  const initialDraftAssignments = useMemo(
-    () => buildInitialDraftAssignments(suggestedZones),
-    [suggestedZones]
-  );
-  const zoneDefinitionById = useMemo(
-    () => buildZoneDefinitionById(suggestedZones),
-    [suggestedZones]
-  );
-  const basinFeatureById = useMemo(() => buildBasinFeatureById(basins), [basins]);
-
-  const effectiveBasinAssignments = useMemo(
-    () => ({ ...initialDraftAssignments, ...draftBasinAssignments }),
-    [draftBasinAssignments, initialDraftAssignments]
-  );
-
-  const suggestedZoneSummaries = useMemo(
-    () =>
-      buildSuggestedZoneSummaries(zoneDefinitionById, effectiveBasinAssignments, basinFeatureById),
-    [basinFeatureById, effectiveBasinAssignments, zoneDefinitionById]
-  );
-
-  const selectedDraftBasinName = useMemo(() => {
-    if (!selectedDraftBasinId) return null;
-    const feature = basinFeatureById[selectedDraftBasinId];
-    return feature?.properties?.nombre ? String(feature.properties.nombre) : selectedDraftBasinId;
-  }, [basinFeatureById, selectedDraftBasinId]);
-
-  const selectedDraftBasinZoneId = useMemo(
-    () => (selectedDraftBasinId ? (effectiveBasinAssignments[selectedDraftBasinId] ?? null) : null),
-    [effectiveBasinAssignments, selectedDraftBasinId]
   );
 
   const activeLegendItems = useMemo(
@@ -246,13 +197,8 @@ export function useMapDerivedState(params: {
     waterwaysCollection,
     soilCollection,
     approvedZonesCollection,
-    suggestedZonesDisplay,
     demTileUrl,
     demLayers,
-    effectiveBasinAssignments,
-    suggestedZoneSummaries,
-    selectedDraftBasinName,
-    selectedDraftBasinZoneId,
     activeLegendItems,
     hasSingleImage,
     hasComparison,

@@ -20,7 +20,6 @@ export const SOURCE_IDS = {
   ROADS: 'map2d-roads',
   BASINS: 'map2d-basins',
   APPROVED_ZONES: 'map2d-approved-zones',
-  SUGGESTED_ZONES: 'map2d-suggested-zones',
   ZONA: 'map2d-zona',
   IGN: 'map2d-ign-overlay',
   SATELLITE_IMAGE: 'map2d-selected-image',

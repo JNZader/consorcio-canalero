@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import {
-  shouldShowSuggestedZones,
   syncBaseTileVisibility,
   syncCatastroLayers,
   syncSoilLayers,
@@ -54,24 +53,6 @@ function createMapMock(options?: {
 }
 
 describe('mapLayerEffectHelpers', () => {
-  it('computes when suggested zones should be visible', () => {
-    expect(
-      shouldShowSuggestedZones({
-        showSuggestedZonesPanel: true,
-        hasApprovedZones: false,
-        suggestedZonesDisplay: emptyCollection(),
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldShowSuggestedZones({
-        showSuggestedZonesPanel: true,
-        hasApprovedZones: true,
-        suggestedZonesDisplay: emptyCollection(),
-      }),
-    ).toBe(false);
-  });
-
   it('returns the visible DEM raster layer metadata only when overlay is active', () => {
     const layers = [
       { id: 'dem-1', tipo: 'slope', nombre: 'Pendiente' },

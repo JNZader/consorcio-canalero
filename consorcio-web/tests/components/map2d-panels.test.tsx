@@ -12,7 +12,6 @@ import { LeyendaPanel } from '../../src/components/map2d/LeyendaPanel';
 import { MapActionsPanel } from '../../src/components/map2d/MapActionsPanel';
 import { MapUiPanels } from '../../src/components/map2d/MapUiPanels';
 import { MapViewportOverlay } from '../../src/components/map2d/MapViewportOverlay';
-import { SuggestedZonesPanel } from '../../src/components/map2d/SuggestedZonesPanel';
 import { MAP_VIEW_MODE, ViewModePanel } from '../../src/components/map2d/ViewModePanel';
 
 function renderWithMantine(ui: ReactNode) {
@@ -72,10 +71,8 @@ describe('map2d extracted panels', () => {
     expect(onViewModeChange).toHaveBeenCalledWith(MAP_VIEW_MODE.COMPARISON);
   });
 
-  it('renders zoning, layer controls and action controls and forwards their callbacks', async () => {
+  it('renders layer controls and action controls and forwards their callbacks', async () => {
     const user = userEvent.setup();
-    const onApproveZones = vi.fn();
-    const onRestoreVersion = vi.fn();
     const onBaseLayerChange = vi.fn();
     const onLayerVisibilityChange = vi.fn();
     const onShowIGNOverlayChange = vi.fn();
@@ -84,33 +81,6 @@ describe('map2d extracted panels', () => {
 
     renderWithMantine(
       <>
-        <SuggestedZonesPanel
-          zones={[{ id: 'zona-1', defaultName: 'Zona Norte', family: 'A', basinCount: 3, superficieHa: 120.4 }]}
-          zoneNames={{ 'zona-1': 'Zona Operativa Norte' }}
-          onZoneNameChange={() => {}}
-          selectedBasinName="Subcuenca 7"
-          selectedBasinZoneId="zona-1"
-          destinationZoneId={null}
-          onDestinationZoneChange={() => {}}
-          onApplyBasinMove={() => {}}
-          hasApprovedZones
-          approvedAt="2026-04-09T14:00:00.000Z"
-          approvedVersion={3}
-          approvedZonesHistory={[
-            { id: 'v3', nombre: 'Actual', version: 3, approvedAt: '2026-04-09T14:00:00.000Z' },
-            { id: 'v2', nombre: 'Anterior', version: 2, approvedAt: '2026-04-01T14:00:00.000Z' },
-          ]}
-          approvalName="Actual"
-          approvalNotes=""
-          onApprovalNameChange={() => {}}
-          onApprovalNotesChange={() => {}}
-          onClose={() => {}}
-          onApproveZones={onApproveZones}
-          onClearApprovedZones={() => {}}
-          onRestoreVersion={onRestoreVersion}
-          onExportApprovedZonesGeoJSON={() => {}}
-          onExportApprovedZonesPdf={() => {}}
-        />
         <LayerControlsPanel
           baseLayer="osm"
           onBaseLayerChange={onBaseLayerChange}
@@ -135,18 +105,7 @@ describe('map2d extracted panels', () => {
       </>
     );
 
-    expect(screen.getByText(/zonificación aprobada/i)).toBeInTheDocument();
     expect(screen.getByText('view-mode-slot')).toBeInTheDocument();
-    expect(document.getElementById('map-suggested-zones-panel')).toHaveAttribute(
-      'aria-label',
-      'Panel de zonificación'
-    );
-
-    await user.click(screen.getByRole('button', { name: /aprobar esta zonificación/i }));
-    expect(onApproveZones).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: /restaurar/i }));
-    expect(onRestoreVersion).toHaveBeenCalledWith('v2');
 
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
@@ -217,7 +176,6 @@ describe('map2d extracted panels', () => {
   it('composes the extracted panels through MapUiPanels', async () => {
     const user = userEvent.setup();
     const onBaseLayerChange = vi.fn();
-    const onCloseSuggestedZonesPanel = vi.fn();
     const onCloseInfoPanel = vi.fn();
 
     const feature: Feature = {
@@ -247,10 +205,7 @@ describe('map2d extracted panels', () => {
         activeDemLayerId={null}
         onActiveDemLayerIdChange={() => {}}
         demOptions={[]}
-        canManageZoning
-        showSuggestedZonesPanel
         hasApprovedZones={false}
-        onToggleSuggestedZonesPanel={() => {}}
         onOpenExportPng={() => {}}
         onExportApprovedZonesPdf={() => {}}
         showLegend
@@ -261,26 +216,6 @@ describe('map2d extracted panels', () => {
         hiddenRanges={{}}
         onClassToggle={() => {}}
         onRangeToggle={() => {}}
-        suggestedZoneSummaries={[{ id: 'z1', defaultName: 'Zona 1', basinCount: 2, superficieHa: 80 }]}
-        suggestedZoneNames={{ z1: 'Zona Operativa 1' }}
-        onZoneNameChange={() => {}}
-        selectedDraftBasinName="Subcuenca A"
-        selectedDraftBasinZoneId="z1"
-        draftDestinationZoneId={null}
-        onDestinationZoneChange={() => {}}
-        onApplyBasinMove={() => {}}
-        approvedAt={null}
-        approvedVersion={null}
-        approvedZonesHistory={[]}
-        approvalName="Versión 1"
-        approvalNotes=""
-        onApprovalNameChange={() => {}}
-        onApprovalNotesChange={() => {}}
-        onCloseSuggestedZonesPanel={onCloseSuggestedZonesPanel}
-        onApproveZones={() => {}}
-        onClearApprovedZones={() => {}}
-        onRestoreVersion={() => {}}
-        onExportApprovedZonesGeoJSON={() => {}}
         selectedFeatures={[feature]}
         onCloseInfoPanel={onCloseInfoPanel}
         exportPngModalOpen={false}
@@ -297,14 +232,10 @@ describe('map2d extracted panels', () => {
 
     expect(screen.getByText(/capa base/i)).toBeInTheDocument();
     expect(screen.getByText('Leyenda')).toBeInTheDocument();
-    expect(screen.getByText(/zonas sugeridas/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
-
-    await user.click(screen.getByRole('button', { name: /cerrar panel de zonificación/i }));
-    expect(onCloseSuggestedZonesPanel).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('button', { name: /cerrar panel de informacion/i }));
     expect(onCloseInfoPanel).toHaveBeenCalledTimes(1);

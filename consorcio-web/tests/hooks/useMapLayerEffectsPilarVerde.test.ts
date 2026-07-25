@@ -21,14 +21,12 @@ import type { PilarVerdeData } from '../../src/types/pilarVerde';
 // the rest (waterways / soil / catastro / etc.) are stubbed to no-ops so we
 // don't touch their behavior.
 vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
-  shouldShowSuggestedZones: vi.fn(() => false),
   syncApprovedZoneLayers: vi.fn(),
   syncBaseTileVisibility: vi.fn(),
   syncBasinLayers: vi.fn(),
   syncCatastroLayers: vi.fn(),
   syncRoadLayers: vi.fn(),
   syncSoilLayers: vi.fn(),
-  syncSuggestedZoneLayers: vi.fn(),
   syncWaterwayLayers: vi.fn(),
   syncZonaLayer: vi.fn(),
   // ── Pilar Verde ──
@@ -89,8 +87,6 @@ function renderWithParams(overrides?: Partial<Parameters<typeof useMapLayerEffec
       basins: null,
       zonaCollection: null,
       approvedZonesCollection: null,
-      suggestedZonesDisplay: null,
-      showSuggestedZonesPanel: false,
       hasApprovedZones: false,
       activeDemLayerId: null,
       showDemOverlay: false,
