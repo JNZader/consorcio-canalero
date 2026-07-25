@@ -1,11 +1,11 @@
 name: Backend
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - 'gee-backend/**'
-      - '.github/workflows/backend.yml'
+  # Sin trigger de push: la rama ``develop`` no existe (era un trigger
+  # muerto) y agregar ``main`` duplicaría los builds pesados de imagen que
+  # deploy.yml ya hace en ese mismo evento (mismo scope de cache BuildKit,
+  # geo-worker con GDAL construido dos veces). El gate de main para backend
+  # es deploy.yml; este workflow cubre PRs y ejecución manual.
   pull_request:
     branches: [main]
     paths:

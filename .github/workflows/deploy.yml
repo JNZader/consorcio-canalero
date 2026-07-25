@@ -30,8 +30,11 @@ jobs:
       # runs in CI with the coverage gate. testcontainers can't spin
       # Docker-in-Docker on the default runner; using GH services
       # gets us the same image with zero local plumbing.
+      # pgrouting image (a postgis superset) so the alembic step below can
+      # apply the migration that does CREATE EXTENSION pgrouting — the same
+      # requirement prod's shared-postgres must satisfy.
       postgres:
-        image: postgis/postgis:16-3.4
+        image: pgrouting/pgrouting:16-3.4-3.6.1
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -63,6 +66,33 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
+      # The migration chain was NEVER exercised in CI (tests use
+      # Base.metadata.create_all) — a broken ``upgrade head`` used to be
+      # discovered by prod's migrate container, exactly where it blocks the
+      # whole stack. Runs against a dedicated database so it can't interfere
+      # with the test suite's schema.
+      #
+      # SCOPE: this replays all revisions on an EMPTY database. It catches
+      # broken DDL, bad revision links and missing extensions (hence the
+      # pgrouting image above). It does NOT catch data-dependent failures
+      # (SET NOT NULL over existing NULLs, UNIQUE over existing duplicates)
+      # — those still surface first in prod's migrate container.
+      - name: Alembic migration chain — real upgrade head
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/migrations_check
+        run: |
+          python3 -c "
+          import psycopg2
+          conn = psycopg2.connect('postgresql://test:test@localhost:5432/test_consorcio')
+          conn.autocommit = True
+          cur = conn.cursor()
+          # Idempotent: postgres has no CREATE DATABASE IF NOT EXISTS, and a
+          # persistent/self-hosted postgres service would abort the job on a
+          # re-run without this.
+          cur.execute('DROP DATABASE IF EXISTS migrations_check')
+          cur.execute('CREATE DATABASE migrations_check')
+          "
+          alembic upgrade head
       - run: ruff check .
       - run: mypy app/auth app/domains/padron app/domains/denuncias  # mypy.ini strict scope
       - name: Run release contract and security tests

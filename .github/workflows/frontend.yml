@@ -2,7 +2,13 @@ name: Frontend
 
 on:
   push:
-    branches: [develop]
+    # main, not develop: develop no existe (trigger muerto desde el flujo
+    # PR→main). Cloudflare Pages publica el frontend desde main en cada push,
+    # así que sin esto lo publicado no tenía NINGUNA señal de CI.
+    # OJO: en push corren lint + test + typecheck + image; mutation, a11y y
+    # build quedan gateados a pull_request/dispatch (ver los `if:` de esos
+    # jobs). La cobertura completa sigue siendo la del PR.
+    branches: [main]
     paths:
       - 'consorcio-web/**'
       - '.github/workflows/frontend.yml'
