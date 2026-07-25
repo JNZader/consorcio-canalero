@@ -32,10 +32,17 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       - run: ruff check .
       - run: ruff format --check .
+      # Trivy's filesystem scan does NOT parse .lock files, so pinning the
+      # closure would otherwise blind the manifest-level vulnerability gate.
+      # pip-audit reads the pins directly and fails closed.
+      - name: Audit pinned dependencies
+        run: |
+          pip-audit -r requirements.lock
+          pip-audit -r requirements-dev.lock
 
   typecheck:
     name: Type check (mypy)
@@ -47,8 +54,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       # mypy.ini runs strict (ignore_missing_imports=False) on the three
       # PII/auth-sensitive modules. Scope is intentional — typing the
       # entire app/ is roadmap F4, not Phase 1.
@@ -64,8 +71,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       # Unified coverage floor: 60 everywhere (backend.yml, deploy.yml,
       # package.json test:backend) — the real prod gate is deploy.yml's 60.
       - run: pytest tests/ -v --cov=app --cov-fail-under=60
@@ -82,8 +89,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: gee-backend/requirements.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+          cache-dependency-path: gee-backend/requirements-dev.lock
+      - run: pip install --require-hashes -r requirements-dev.lock
       # Phase 4 / F4-B: raised the floor from 0.12 → 0.30 after seeding
       # the two test files referenced by ``.cosmic-ray.toml`` (they did
       # NOT exist before this batch — the gate had been mis-configured

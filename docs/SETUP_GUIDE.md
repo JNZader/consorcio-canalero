@@ -36,7 +36,7 @@ Servicios principales:
 cd gee-backend
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock  # closure reproducible; ver header de requirements.txt
 cp .env.example .env
 # editar .env
 alembic upgrade head

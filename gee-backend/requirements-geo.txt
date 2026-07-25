@@ -1,5 +1,14 @@
 # Geo Worker dependencies — lean, no FastAPI stack
 # GDAL/OGR bindings come from the base image
+#
+# DELIBERATELY NOT LOCKED (unlike requirements.txt → requirements.lock).
+# The geo-worker image is built on ghcr.io/osgeo/gdal:ubuntu-small-3.13.1,
+# which ships its own system GDAL bindings and numpy compiled against them,
+# on a DIFFERENT interpreter than the backend image (py3.14 vs py3.11). A
+# hash-pinned closure resolved off-image would fight those system packages —
+# exactly the ABI class of breakage that forced the legacy numpy<2 pins that
+# the security arc removed. Reproducibility here comes from the digest-pinned
+# base image instead.
 
 # Raster analysis
 rasterio>=1.4.0

@@ -77,7 +77,7 @@ backend-install: ## Install backend Python dependencies
 	@echo "$(BLUE)Installing backend dependencies...$(NC)"
 	cd $(BACKEND_DIR) && \
 		python -m pip install --upgrade pip && \
-		pip install -r requirements.txt && \
+		pip install --require-hashes -r requirements-dev.lock && \
 		pip install ruff mypy pytest pytest-cov pytest-asyncio httpx bandit
 	@echo "$(GREEN)Backend dependencies installed!$(NC)"
 

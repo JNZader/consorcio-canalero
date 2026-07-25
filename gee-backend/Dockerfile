@@ -20,14 +20,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Copy requirements first for caching
-COPY requirements.txt .
+# Copy requirements first for caching. requirements.lock is the resolved,
+# hash-pinned closure of requirements.txt (see requirements.txt header for how
+# to regenerate); requirements.txt ships too so the image documents its intent.
+COPY requirements.txt requirements.lock ./
 
 # Install Python dependencies plus the last pkg_resources-compatible setuptools.
 # Whitebox imports pkg_resources; setuptools 80.10.2 also carries fixed vendored
 # jaraco.context and wheel metadata. Keep top-level wheel on the safe release too.
-RUN pip install --no-cache-dir \
-    -r requirements.txt \
+# --require-hashes makes the build fail closed if the lock is ever tampered
+# with; setuptools/wheel are installed separately because they are build-time
+# pins, not part of the application closure.
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock \
+    && pip install --no-cache-dir \
     "setuptools==80.10.2" \
     "wheel==0.46.3"
 

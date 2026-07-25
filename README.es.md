@@ -55,7 +55,7 @@ Arranque manual:
 # Backend
 cd gee-backend
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock  # closure reproducible; ver header de requirements.txt
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
@@ -427,7 +427,7 @@ cd consorcio-canalero
 # Backend
 cd gee-backend
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock  # closure reproducible; ver header de requirements.txt
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
