@@ -30,8 +30,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { sugerenciasApi } from '../../lib/api';
 import type { Sugerencia } from '../../lib/api';
-import { logger } from '../../lib/logger';
 import { formatDate } from '../../lib/formatters';
+import { logger } from '../../lib/logger';
 
 const PAGE_SIZE = 5;
 
@@ -110,8 +110,8 @@ export function MySuggestionsSection() {
 
         {!loading && !error && items.length === 0 && (
           <Text c="dimmed" size="sm">
-            Todavía no enviaste ninguna sugerencia. Podés proponer mejoras o ideas para la
-            comisión en{' '}
+            Todavía no enviaste ninguna sugerencia. Podés proponer mejoras o ideas para la comisión
+            en{' '}
             <Text component="a" href="/sugerencias" fw={600} c="institucional" inherit>
               /sugerencias
             </Text>

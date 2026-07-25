@@ -1,4 +1,4 @@
-import type { SelectedImage, SatelliteSensorLabel } from '../../../hooks/useSelectedImage';
+import type { SatelliteSensorLabel, SelectedImage } from '../../../hooks/useSelectedImage';
 
 export const MONTH_NAMES = [
   'Enero',

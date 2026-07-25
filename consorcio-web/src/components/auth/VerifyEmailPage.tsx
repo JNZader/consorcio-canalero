@@ -2,6 +2,7 @@ import { Alert, Button, Center, Loader, Paper, Stack, Text, Title } from '@manti
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type EmailCodeExchangeResult,
+  completeEmailCodeExchange,
   exchangeEmailCode,
   verifyEmailWithToken,
 } from '../../lib/auth';
@@ -17,13 +18,21 @@ interface VerifyEmailPageProps {
 
 type VerificationState = 'loading' | 'success' | 'terminal-error' | 'retryable-error';
 
+interface LegacyVerificationTokenResult {
+  status: 'success';
+  token: string;
+  handle: null;
+}
+
+type VerificationTokenResult = EmailCodeExchangeResult | LegacyVerificationTokenResult;
+
 const INVALID_LINK_MESSAGE = 'El enlace de verificación es inválido o expiró.';
 
 function resolveVerificationToken(
   token: string,
   code?: string
-): Promise<EmailCodeExchangeResult> | EmailCodeExchangeResult {
-  if (token) return { status: 'success', token };
+): Promise<VerificationTokenResult> | VerificationTokenResult {
+  if (token) return { status: 'success', token, handle: null };
   if (!code) return { status: 'terminal-error', reason: 'invalid-or-expired' };
   return exchangeEmailCode(code, 'verify');
 }
@@ -67,6 +76,9 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
       if (!mountedRef.current) return;
 
       if (result.success) {
+        if (exchange.handle) {
+          completeEmailCodeExchange(exchange.handle);
+        }
         setState('success');
       } else {
         setError(result.error || INVALID_LINK_MESSAGE);

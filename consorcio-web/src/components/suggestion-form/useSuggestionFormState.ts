@@ -2,10 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { sugerenciasApi } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
-import {
-  buildSugerenciaPayload,
-  showSuggestionNotification,
-} from './suggestionFormUtils';
+import { buildSugerenciaPayload, showSuggestionNotification } from './suggestionFormUtils';
 
 interface SuggestionValues {
   titulo: string;
@@ -96,9 +93,7 @@ export function useSuggestionFormState({
       setEnviando(true);
 
       try {
-        await sugerenciasApi.create(
-          buildSugerenciaPayload(values, userEmail, userName, geometry)
-        );
+        await sugerenciasApi.create(buildSugerenciaPayload(values, userEmail, userName, geometry));
         showSuggestionNotification(
           'Sugerencia enviada',
           'Tu propuesta fue recibida. La comisión la verá en su próxima reunión.',

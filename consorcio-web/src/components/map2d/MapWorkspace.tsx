@@ -131,9 +131,7 @@ export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspac
               onClick={drawer.open}
               className={styles.workspaceBurger}
               aria-label={
-                drawerOpened
-                  ? 'Cerrar panel de capas y leyenda'
-                  : 'Abrir panel de capas y leyenda'
+                drawerOpened ? 'Cerrar panel de capas y leyenda' : 'Abrir panel de capas y leyenda'
               }
               data-testid="map-workspace-burger"
               size="sm"

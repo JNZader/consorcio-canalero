@@ -10,6 +10,10 @@ import {
   getOrCreateEmailCodeExchange,
 } from './auth/emailCodeExchangeStorage';
 import { authAdapter } from './auth/index';
+import {
+  markLocalLogout,
+  storeLocalLogoutWarning,
+} from './auth/storage';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
 
@@ -22,6 +26,7 @@ export type { UserRole };
 export interface AuthResult {
   success: boolean;
   error?: string;
+  warning?: string;
   user?: { id: string; email?: string };
   needsEmailConfirmation?: boolean;
 }
@@ -110,29 +115,33 @@ export async function signInWithGoogle(): Promise<AuthResult> {
  * Cerrar sesion
  */
 export async function signOut(): Promise<AuthResult> {
+  let remoteRevocationFailed = false;
+
   try {
     await authAdapter.logout();
-
-    // Limpiar estado del store y localStorage
-    useAuthStore.getState().reset();
-
-    // Limpiar localStorage de auth persistido
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('cc-auth-storage');
-    }
-
-    return { success: true };
   } catch (err) {
-    logger.error('Error al cerrar sesion:', err);
-
-    // Fallback defensivo: limpiar estado local aunque falle el backend
+    remoteRevocationFailed = true;
+    storeLocalLogoutWarning();
+    logger.error('Error al revocar sesiones remotas durante el cierre local:', err);
+  } finally {
+    markLocalLogout();
+    // The adapter owns its storage, while the facade owns Zustand persistence.
+    // Clear both even when the server result is unavailable or ambiguous.
     useAuthStore.getState().reset();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cc-auth-storage');
     }
-
-    return { success: true };
   }
+
+  if (remoteRevocationFailed) {
+    return {
+      success: true,
+      warning:
+        'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.',
+    };
+  }
+
+  return { success: true };
 }
 
 /**
@@ -241,8 +250,10 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   }
 }
 
+export type EmailCodeExchangeHandle = Readonly<EmailCodeExchangeRecord>;
+
 export type EmailCodeExchangeResult =
-  | { status: 'success'; token: string }
+  | { status: 'success'; token: string; handle: EmailCodeExchangeHandle }
   | { status: 'terminal-error'; reason: 'invalid-or-expired' }
   | { status: 'retryable-error'; reason: 'network' | 'server' | 'malformed-response' };
 
@@ -270,7 +281,6 @@ async function performEmailCodeExchange(
   }
 
   if (response.status >= 400 && response.status < 500) {
-    clearEmailCodeExchange(exchange);
     return { status: 'terminal-error', reason: 'invalid-or-expired' };
   }
 
@@ -295,8 +305,11 @@ async function performEmailCodeExchange(
     return { status: 'retryable-error', reason: 'malformed-response' };
   }
 
-  clearEmailCodeExchange(exchange);
-  return { status: 'success', token: (data as { token: string }).token };
+  return {
+    status: 'success',
+    token: (data as { token: string }).token,
+    handle: exchange,
+  };
 }
 
 /**
@@ -322,6 +335,14 @@ export async function exchangeEmailCode(
       inFlightEmailCodeExchanges.delete(exchange.exchangeId);
     }
   }
+}
+
+/**
+ * Clear the purpose-scoped idempotency record only after the exchanged token
+ * has completed its downstream verify/reset operation.
+ */
+export function completeEmailCodeExchange(handle: EmailCodeExchangeHandle): void {
+  clearEmailCodeExchange(handle);
 }
 
 /** Verify an email with the token resolved from an email code. */

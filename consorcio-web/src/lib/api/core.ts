@@ -3,6 +3,7 @@
  */
 
 import { authAdapter } from '../auth/index';
+import { hasLocalLogoutTombstone } from '../auth/storage';
 import { logger } from '../logger';
 
 // Backend URL (configure in .env)
@@ -30,11 +31,21 @@ let _handlingAuthExpiry = false;
  */
 export async function getAuthToken(): Promise<string | null> {
   try {
+    if (hasLocalLogoutTombstone()) {
+      cachedToken = null;
+      return null;
+    }
+
     if (cachedToken && Date.now() < cachedToken.expiresAt) {
       return cachedToken.token;
     }
 
     const token = await authAdapter.getAccessToken();
+
+    if (hasLocalLogoutTombstone()) {
+      cachedToken = null;
+      return null;
+    }
 
     if (token) {
       cachedToken = { token, expiresAt: Date.now() + TOKEN_CACHE_TTL };
@@ -80,27 +91,32 @@ export interface ApiFetchOptions extends RequestInit {
  */
 let _refreshInFlight: Promise<boolean> | null = null;
 
-async function attemptTokenRefresh(): Promise<boolean> {
+async function attemptTokenRefresh(signal: AbortSignal): Promise<boolean> {
+  if (hasLocalLogoutTombstone()) return false;
+
   if (_refreshInFlight) {
-    return _refreshInFlight;
+    const refreshed = await _refreshInFlight;
+    return !hasLocalLogoutTombstone() && refreshed;
   }
   _refreshInFlight = (async () => {
     try {
       const response = await fetch(`${API_URL}${API_PREFIX}/auth/jwt/refresh`, {
         method: 'POST',
         credentials: 'include', // sends the HttpOnly refresh_token cookie
+        signal,
       });
       if (!response.ok) {
         return false;
       }
       const body = await response.json();
       const token = body?.access_token as string | undefined;
-      if (!token) {
+      if (!token || hasLocalLogoutTombstone()) {
         return false;
       }
       // Persist the new access token via the auth adapter so the next
       // ``getAuthToken()`` returns it.
       await authAdapter.replaceAccessToken(token);
+      if (hasLocalLogoutTombstone()) return false;
       clearAuthTokenCache();
       return true;
     } catch {
@@ -191,8 +207,12 @@ function getApiErrorMessage(error: unknown, status: number): string {
 /**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
-export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
-  const url = `${API_URL}${API_PREFIX}${endpoint}`;
+async function authenticatedFetchResponse<T>(
+  url: string,
+  options: ApiFetchOptions,
+  consumeResponse: (response: Response) => Promise<T>,
+  sharedAbortScope?: RequestAbortScope
+): Promise<T> {
   const {
     timeout = DEFAULT_TIMEOUT,
     skipAuth = false,
@@ -200,10 +220,10 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
     signal: callerSignal,
     ...fetchOptions
   } = options;
-  const abortScope = createRequestAbortScope(timeout, callerSignal);
+  const ownsAbortScope = sharedAbortScope === undefined;
+  const abortScope = sharedAbortScope ?? createRequestAbortScope(timeout, callerSignal);
 
   try {
-    // Get auth token if not skipped
     const authHeaders: Record<string, string> = {};
     if (!skipAuth) {
       const token = await getAuthToken();
@@ -217,35 +237,47 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       ? {}
       : { 'Content-Type': 'application/json' };
 
+    const requestHeaders = {
+      ...defaultHeaders,
+      ...authHeaders,
+      ...fetchOptions.headers,
+    } as Record<string, string>;
+
+    if (hasLocalLogoutTombstone()) {
+      clearAuthTokenCache();
+      for (const headerName of Object.keys(requestHeaders)) {
+        if (headerName.toLowerCase() === 'authorization') {
+          delete requestHeaders[headerName];
+        }
+      }
+    }
+
     const response = await fetch(url, {
       ...fetchOptions,
       signal: abortScope.signal,
-      headers: {
-        ...defaultHeaders,
-        ...authHeaders,
-        ...fetchOptions.headers,
-      },
+      headers: requestHeaders,
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+      const error = await waitForWithSignal(
+        response.json().catch(() => ({})),
+        abortScope.signal
+      );
 
-      // Handle expired/invalid access token — Phase 2 / F2-K. The
-      // access token now lives 15 min instead of 60 min, so we expect
-      // a lot more 401s during normal use. Try to silently refresh
-      // via the HttpOnly cookie before forcing the user back to login.
       if (response.status === 401 && !skipAuth && !__alreadyRetried) {
-        const refreshed = await waitForWithSignal(attemptTokenRefresh(), abortScope.signal);
+        const refreshed = await waitForWithSignal(
+          attemptTokenRefresh(abortScope.signal),
+          abortScope.signal
+        );
         if (refreshed) {
-          // Retry the original call exactly once with the new token.
-          // The ``__alreadyRetried`` flag stops a refresh loop if the
-          // new token also gets a 401 (e.g. role revoked on the
-          // backend).
-          return apiFetch<T>(endpoint, { ...options, __alreadyRetried: true });
+          return await authenticatedFetchResponse(
+            url,
+            { ...options, __alreadyRetried: true },
+            consumeResponse,
+            abortScope
+          );
         }
 
-        // Refresh failed (no cookie, expired, replayed). Fall through
-        // to the legacy logout flow.
         if (!_handlingAuthExpiry) {
           _handlingAuthExpiry = true;
           logger.warn('Sesion expirada — redirigiendo a login');
@@ -262,14 +294,7 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
       throw new Error(getApiErrorMessage(error, response.status));
     }
 
-    // 204 No Content / empty body: response.json() would throw a
-    // SyntaxError on an empty string. Callers of void-ish endpoints
-    // (DELETE, etc.) type these as ``apiFetch<void>`` / nullable T.
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-      return undefined as T;
-    }
-
-    return response.json();
+    return await waitForWithSignal(consumeResponse(response), abortScope.signal);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       if (callerSignal?.aborted) {
@@ -279,8 +304,53 @@ export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {
     }
     throw error;
   } finally {
-    abortScope.cleanup();
+    if (ownsAbortScope) {
+      abortScope.cleanup();
+    }
   }
+}
+
+export async function apiFetch<T>(endpoint: string, options: ApiFetchOptions = {}): Promise<T> {
+  return authenticatedFetchResponse(
+    `${API_URL}${API_PREFIX}${endpoint}`,
+    options,
+    async (response) => {
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+      }
+      return response.json() as Promise<T>;
+    }
+  );
+}
+
+function resolveProtectedPhotoUrl(resource: string): string {
+  const apiBase = new URL(API_URL);
+  const resolved = new URL(resource, `${apiBase.origin}/`);
+
+  if (
+    resolved.origin !== apiBase.origin ||
+    !resolved.pathname.startsWith('/uploads/denuncias/') ||
+    resolved.username ||
+    resolved.password ||
+    resolved.searchParams.has('access_token')
+  ) {
+    throw new Error('La URL de la imagen protegida no pertenece al servidor autorizado.');
+  }
+
+  return resolved.toString();
+}
+
+/**
+ * Load a protected denuncia photo without putting bearer credentials in its URL.
+ * Uses the same one-shot refresh/retry and auth-expiry behavior as apiFetch.
+ */
+export async function fetchAuthenticatedBlob(
+  resource: string,
+  options: ApiFetchOptions = {}
+): Promise<Blob> {
+  return authenticatedFetchResponse(resolveProtectedPhotoUrl(resource), options, (response) =>
+    response.blob()
+  );
 }
 
 /**

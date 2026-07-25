@@ -289,11 +289,7 @@ export function SuggestionDetailModal({
                 </Group>
                 <Group grow gap="xs">
                   {agendarFecha && (
-                    <Button
-                      variant="subtle"
-                      color="gray"
-                      onClick={() => setAgendarFecha(null)}
-                    >
+                    <Button variant="subtle" color="gray" onClick={() => setAgendarFecha(null)}>
                       Limpiar
                     </Button>
                   )}

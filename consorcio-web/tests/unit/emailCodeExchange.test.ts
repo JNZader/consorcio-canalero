@@ -29,7 +29,7 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-import { exchangeEmailCode } from '../../src/lib/auth';
+import { completeEmailCodeExchange, exchangeEmailCode } from '../../src/lib/auth';
 import { EMAIL_CODE_EXCHANGE_STORAGE_KEYS } from '../../src/lib/auth/emailCodeExchangeStorage';
 
 function exchangeBodies(fetchMock: ReturnType<typeof vi.fn>) {
@@ -58,26 +58,57 @@ describe('exchangeEmailCode', () => {
     global.fetch = vi.fn();
   });
 
-  it('sends exchange_id and clears storage after a successful exchange', async () => {
+  it('clears only the exact exchange after downstream success', async () => {
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(response(200, { token: 'resolved-token' }));
 
-    await expect(exchangeEmailCode('VERIFY42', 'verify')).resolves.toEqual({
-      status: 'success',
-      token: 'resolved-token',
-    });
+    const result = await exchangeEmailCode('VERIFY42', 'verify');
+    expect(result).toMatchObject({ status: 'success', token: 'resolved-token' });
+    if (result.status !== 'success') throw new Error('Expected a successful exchange');
 
-    expect(exchangeBodies(fetchMock)).toEqual([
-      {
-        code: 'VERIFY42',
-        purpose: 'verify',
-        exchange_id: expect.any(String),
-      },
-    ]);
+    const [request] = exchangeBodies(fetchMock);
+    expect(request).toEqual({
+      code: 'VERIFY42',
+      purpose: 'verify',
+      exchange_id: expect.any(String),
+    });
+    expect(result.handle).toEqual({
+      code: 'VERIFY42',
+      purpose: 'verify',
+      exchangeId: request.exchange_id,
+    });
+    expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.verify)).not.toBeNull();
+
+    completeEmailCodeExchange(result.handle);
     expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.verify)).toBeNull();
   });
 
-  it('clears storage after a terminal 4xx invalid or expired response', async () => {
+  it('does not clear a newer exchange when an older completion arrives late', async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(response(200, { token: 'token-a' }))
+      .mockResolvedValueOnce(response(200, { token: 'token-b' }));
+
+    const exchangeA = await exchangeEmailCode('VERIFY-A', 'verify');
+    const exchangeB = await exchangeEmailCode('VERIFY-B', 'verify');
+    if (exchangeA.status !== 'success' || exchangeB.status !== 'success') {
+      throw new Error('Expected successful exchanges');
+    }
+
+    const storedB = window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.verify);
+    expect(storedB).not.toBeNull();
+
+    completeEmailCodeExchange(exchangeA.handle);
+
+    expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.verify)).toBe(storedB);
+    expect(JSON.parse(String(storedB))).toEqual({
+      code: 'VERIFY-B',
+      purpose: 'verify',
+      exchangeId: exchangeB.handle.exchangeId,
+    });
+  });
+
+  it('retains storage after a terminal exchange response until a new code replaces it', async () => {
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(response(400, { detail: 'Código inválido o expirado.' }));
 
@@ -85,7 +116,7 @@ describe('exchangeEmailCode', () => {
       status: 'terminal-error',
       reason: 'invalid-or-expired',
     });
-    expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset)).toBeNull();
+    expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset)).not.toBeNull();
   });
 
   it('retains the same exchange ID across a network failure and retry', async () => {
@@ -100,14 +131,41 @@ describe('exchangeEmailCode', () => {
     });
     expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset)).not.toBeNull();
 
-    await expect(exchangeEmailCode('RESET001', 'reset')).resolves.toEqual({
+    const recovered = await exchangeEmailCode('RESET001', 'reset');
+    expect(recovered).toMatchObject({
       status: 'success',
       token: 'recovered-token',
     });
+    if (recovered.status !== 'success') throw new Error('Expected a successful retry');
 
     const [firstAttempt, retry] = exchangeBodies(fetchMock);
     expect(retry.exchange_id).toBe(firstAttempt.exchange_id);
+    expect(recovered.handle.exchangeId).toBe(firstAttempt.exchange_id);
+    expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset)).not.toBeNull();
+
+    completeEmailCodeExchange(recovered.handle);
     expect(window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset)).toBeNull();
+  });
+
+  it('reuses the original completion handle after downstream failure and reload', async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(response(200, { token: 'first-token' }))
+      .mockResolvedValueOnce(response(200, { token: 'replayed-token' }));
+
+    const beforeReload = await exchangeEmailCode('RESET001', 'reset');
+    if (beforeReload.status !== 'success') throw new Error('Expected a successful exchange');
+
+    const persisted = window.sessionStorage.getItem(EMAIL_CODE_EXCHANGE_STORAGE_KEYS.reset);
+    expect(persisted).not.toBeNull();
+
+    const afterReload = await exchangeEmailCode('RESET001', 'reset');
+    if (afterReload.status !== 'success') throw new Error('Expected a replayed exchange');
+
+    expect(afterReload.handle).toEqual(beforeReload.handle);
+    expect(afterReload.handle).toEqual(JSON.parse(String(persisted)));
+    const [firstAttempt, replayedAttempt] = exchangeBodies(fetchMock);
+    expect(replayedAttempt.exchange_id).toBe(firstAttempt.exchange_id);
   });
 
   it('retains storage for 5xx and malformed successful responses', async () => {
@@ -153,8 +211,16 @@ describe('exchangeEmailCode', () => {
     resolveResponse?.(response(200, { token: 'resolved-token' }));
 
     await expect(Promise.all([first, repeatedClick])).resolves.toEqual([
-      { status: 'success', token: 'resolved-token' },
-      { status: 'success', token: 'resolved-token' },
+      {
+        status: 'success',
+        token: 'resolved-token',
+        handle: expect.objectContaining({ code: 'VERIFY42', purpose: 'verify' }),
+      },
+      {
+        status: 'success',
+        token: 'resolved-token',
+        handle: expect.objectContaining({ code: 'VERIFY42', purpose: 'verify' }),
+      },
     ]);
   });
 });

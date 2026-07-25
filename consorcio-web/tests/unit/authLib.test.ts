@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  mockAdapter,
-  resetStoreMock,
-  mockProfile,
-} = vi.hoisted(() => {
+const { mockAdapter, resetStoreMock, mockProfile } = vi.hoisted(() => {
   return {
     mockAdapter: {
       login: vi.fn(),
@@ -40,6 +36,7 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
+import { consumeLocalLogoutWarning, hasLocalLogoutTombstone } from '../../src/lib/auth/storage';
 import {
   getUserRole,
   hasRole,
@@ -97,6 +94,22 @@ describe('auth library', () => {
     expect(removeItemSpy).toHaveBeenCalledWith('cc-auth-storage');
   });
 
+  it('signOut clears every local auth layer and returns a remote revocation warning', async () => {
+    mockAdapter.logout.mockRejectedValueOnce(new Error('server unavailable'));
+
+    await expect(signOut()).resolves.toEqual({
+      success: true,
+      warning:
+        'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.',
+    });
+
+    expect(resetStoreMock).toHaveBeenCalledOnce();
+    expect(localStorage.removeItem).toHaveBeenCalledWith('cc-auth-storage');
+    expect(hasLocalLogoutTombstone()).toBe(true);
+    expect(consumeLocalLogoutWarning()).toContain('sesión local se cerró');
+    expect(consumeLocalLogoutWarning()).toBeNull();
+  });
+
   it('role helpers evaluate admin permissions', async () => {
     mockProfile.rol = 'admin';
 
@@ -109,9 +122,7 @@ describe('auth library', () => {
   it('translates reset and update password errors', async () => {
     // resetPassword now calls fetch to /api/v2/auth/forgot-password
     // It always returns success (fastapi-users returns 202)
-    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new Error('Network error')
-    );
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
     await expect(resetPassword('mail@test.com')).resolves.toEqual({
       success: false,
       error: 'Error al enviar el email de recuperacion.',

@@ -8,8 +8,9 @@ import {
   AdminLayoutContent,
 } from '../../src/components/admin/AdminLayout';
 
-const { navigateMock, signOutMock } = vi.hoisted(() => ({
+const { navigateMock, notificationsShowMock, signOutMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
+  notificationsShowMock: vi.fn(),
   signOutMock: vi.fn(),
 }));
 
@@ -25,6 +26,10 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../../src/lib/auth', () => ({
   signOut: signOutMock,
+}));
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: notificationsShowMock },
 }));
 
 function renderLayout() {
@@ -73,14 +78,36 @@ describe('AdminLayout account navigation', () => {
     );
   });
 
-  it('still navigates when session cleanup rejects unexpectedly', async () => {
-    signOutMock.mockRejectedValueOnce(new Error('logout failed'));
+  it('navigates after local signout and warns when remote revocation is unconfirmed', async () => {
+    signOutMock.mockResolvedValueOnce({
+      success: true,
+      warning: 'remote revocation unconfirmed',
+    });
 
     renderLayout();
     await clickLogout();
 
     await waitFor(() => {
+      expect(notificationsShowMock).toHaveBeenCalledWith({
+        title: 'Sesión cerrada localmente',
+        message: 'remote revocation unconfirmed',
+        color: 'yellow',
+      });
       expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
     });
+  });
+
+  it('also keeps the route when signOut rejects unexpectedly', async () => {
+    signOutMock.mockRejectedValueOnce(new Error('unexpected logout failure'));
+
+    renderLayout();
+    await clickLogout();
+
+    await waitFor(() => {
+      expect(notificationsShowMock).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'unexpected logout failure', color: 'red' })
+      );
+    });
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { signOut } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import type { StoreUser } from '../stores/authStore';
@@ -271,8 +272,21 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
   const isStaff = profile?.rol === 'admin' || profile?.rol === 'operador';
 
   const handleLogout = async () => {
-    await signOut();
-    globalThis.location.replace(withBasePath('/'));
+    try {
+      const result = await signOut();
+      if (!result.success) {
+        throw new Error(result.error || 'No se pudo cerrar la sesión.');
+      }
+      // A remote-revocation warning is persisted by signOut and displayed
+      // by AppProvider after this hard navigation completes.
+      globalThis.location.replace(withBasePath('/'));
+    } catch (error) {
+      notifications.show({
+        title: 'No se pudo cerrar la sesión',
+        message: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        color: 'red',
+      });
+    }
   };
 
   const commonProps = { user, profile, loading, isStaff, handleLogout };

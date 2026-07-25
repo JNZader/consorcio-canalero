@@ -12,6 +12,7 @@ import { MantineProvider as Provider } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
+import { consumeLocalLogoutWarning } from '../lib/auth/storage';
 import { sharedColorSchemeManager } from '../lib/mantine';
 import { queryClient } from '../lib/query';
 import { mantineTheme } from '../lib/theme';
@@ -40,6 +41,21 @@ function ConfigInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
+
+  return <>{children}</>;
+}
+
+function LocalLogoutWarningHandler({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const warning = consumeLocalLogoutWarning();
+    if (warning) {
+      notifications.show({
+        title: 'Sesión cerrada localmente',
+        message: warning,
+        color: 'yellow',
+      });
+    }
+  }, []);
 
   return <>{children}</>;
 }
@@ -109,7 +125,9 @@ export default function AppProvider({ children, withQuery = true }: AppProviderP
       <Notifications position="top-right" zIndex={10002} />
       <ConfigInitializer>
         <AuthInitializer>
-          <AuthExpiredHandler>{children}</AuthExpiredHandler>
+          <AuthExpiredHandler>
+            <LocalLogoutWarningHandler>{children}</LocalLogoutWarningHandler>
+          </AuthExpiredHandler>
         </AuthInitializer>
       </ConfigInitializer>
     </Provider>

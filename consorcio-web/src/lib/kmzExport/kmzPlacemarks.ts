@@ -44,9 +44,9 @@ import type {
   Position,
 } from 'geojson';
 
+import simplify from '@turf/simplify';
 import type { KmzLayerEntry } from './kmzLayerRegistry';
 import { stripPii } from './kmzPiiStrip';
-import simplify from '@turf/simplify';
 
 // ---------------------------------------------------------------------------
 // XML escape — the 5 entity set.
@@ -225,7 +225,7 @@ function countVertices(geometry: Geometry): number {
     case 'MultiPolygon':
       return geometry.coordinates.reduce(
         (sum, polygon) => sum + polygon.reduce((s, ring) => s + ring.length, 0),
-        0,
+        0
       );
     default:
       return 0;

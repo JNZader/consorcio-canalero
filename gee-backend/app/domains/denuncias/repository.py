@@ -115,7 +115,6 @@ class DenunciaRepository:
             estado=EstadoDenuncia.PENDIENTE,
             contacto_telefono=data.contacto_telefono,
             contacto_email=data.contacto_email,
-            foto_url=data.foto_url,
             user_id=user_id,
         )
         db.add(denuncia)

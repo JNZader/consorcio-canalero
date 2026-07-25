@@ -4,13 +4,20 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ForgotPasswordForm from '../../src/components/auth/ForgotPasswordForm';
 import ResetPasswordForm from '../../src/components/auth/ResetPasswordForm';
-import { exchangeEmailCode, resetPassword, resetPasswordWithToken } from '../../src/lib/auth';
+import { completeEmailCodeExchange, exchangeEmailCode, resetPassword, resetPasswordWithToken } from '../../src/lib/auth';
 
 vi.mock('../../src/lib/auth', () => ({
+  completeEmailCodeExchange: vi.fn(),
   exchangeEmailCode: vi.fn(),
   resetPassword: vi.fn(),
   resetPasswordWithToken: vi.fn(),
 }));
+
+const RESET_EXCHANGE_HANDLE = {
+  code: 'RESET001',
+  purpose: 'reset' as const,
+  exchangeId: '00000000-0000-4000-8000-000000000001',
+};
 
 function renderWithProvider(element: React.ReactNode) {
   return render(<MantineProvider>{element}</MantineProvider>);
@@ -68,7 +75,11 @@ describe('Auth password forms', () => {
     const user = userEvent.setup();
     vi.mocked(exchangeEmailCode)
       .mockResolvedValueOnce({ status: 'retryable-error', reason: 'server' })
-      .mockResolvedValueOnce({ status: 'success', token: 'resolved-reset-token' });
+      .mockResolvedValueOnce({
+        status: 'success',
+        token: 'resolved-reset-token',
+        handle: RESET_EXCHANGE_HANDLE,
+      });
 
     renderWithProvider(<ResetPasswordForm token="" code="RESET001" />);
 
@@ -82,6 +93,47 @@ describe('Auth password forms', () => {
     expect(screen.getByPlaceholderText('Minimo 8 caracteres')).toBeInTheDocument();
     expect(exchangeEmailCode).toHaveBeenCalledTimes(2);
     expect(exchangeEmailCode).toHaveBeenNthCalledWith(2, 'RESET001', 'reset');
+  });
+
+  it('clears reset recovery metadata only after the new password succeeds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(exchangeEmailCode).mockResolvedValue({
+      status: 'success',
+      token: 'resolved-reset-token',
+      handle: RESET_EXCHANGE_HANDLE,
+    });
+    vi.mocked(resetPasswordWithToken).mockResolvedValue({ success: true });
+
+    renderWithProvider(<ResetPasswordForm token="" code="RESET001" />);
+
+    await user.type(await screen.findByPlaceholderText('Minimo 8 caracteres'), 'Canalero1!');
+    await user.type(screen.getByPlaceholderText('Repite la nueva contrasena'), 'Canalero1!');
+    await user.click(screen.getByRole('button', { name: /restablecer contrasena/i }));
+
+    expect(await screen.findByText(/contrasena actualizada/i)).toBeInTheDocument();
+    expect(completeEmailCodeExchange).toHaveBeenCalledWith(RESET_EXCHANGE_HANDLE);
+  });
+
+  it('retains reset recovery metadata when password reset fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(exchangeEmailCode).mockResolvedValue({
+      status: 'success',
+      token: 'resolved-reset-token',
+      handle: RESET_EXCHANGE_HANDLE,
+    });
+    vi.mocked(resetPasswordWithToken).mockResolvedValue({
+      success: false,
+      error: 'temporary reset failure',
+    });
+
+    renderWithProvider(<ResetPasswordForm token="" code="RESET001" />);
+
+    await user.type(await screen.findByPlaceholderText('Minimo 8 caracteres'), 'Canalero1!');
+    await user.type(screen.getByPlaceholderText('Repite la nueva contrasena'), 'Canalero1!');
+    await user.click(screen.getByRole('button', { name: /restablecer contrasena/i }));
+
+    expect(await screen.findByText('temporary reset failure')).toBeInTheDocument();
+    expect(completeEmailCodeExchange).not.toHaveBeenCalled();
   });
 
   it('shows the invalid-link state after a terminal reset-code response', async () => {

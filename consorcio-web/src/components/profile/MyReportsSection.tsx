@@ -19,7 +19,6 @@ import {
   Card,
   Center,
   Group,
-  Image,
   Loader,
   Modal,
   Pagination,
@@ -31,10 +30,11 @@ import {
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 
-import { API_URL, publicApi } from '../../lib/api';
-import { logger } from '../../lib/logger';
+import { publicApi } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
+import { logger } from '../../lib/logger';
 import type { Report, ReportHistory } from '../../types';
+import { AuthenticatedImage } from '../shared/AuthenticatedImage';
 
 const PAGE_SIZE = 5;
 
@@ -51,18 +51,6 @@ const TIPO_LABEL: Record<string, string> = {
   camino_danado: 'Camino dañado',
   otro: 'Otro',
 };
-
-/**
- * Resolve a server-relative photo URL into something the browser can
- * load. Backend persists `/uploads/...` so it doesn't tie itself to a
- * public host; the citizen's browser needs the API origin prepended.
- */
-function resolvePhotoUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  const base = API_URL.replace(/\/$/, '');
-  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
-}
 
 export function MyReportsSection() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -204,7 +192,6 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
   if (!report) {
     return <Modal opened={false} onClose={onClose} title="" />;
   }
-  const photoUrl = resolvePhotoUrl(report.foto_url);
   const historial: ReportHistory[] = report.historial ?? [];
   const status = STATUS_BADGE[report.estado];
 
@@ -261,12 +248,16 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
           </Box>
         )}
 
-        {photoUrl && (
+        {report.foto_url && (
           <Box>
             <Text size="sm" fw={500} mb={4}>
               Foto adjunta
             </Text>
-            <Image src={photoUrl} alt="Foto adjunta a la denuncia" radius="sm" />
+            <AuthenticatedImage
+              src={report.foto_url}
+              alt="Foto adjunta a la denuncia"
+              radius="sm"
+            />
           </Box>
         )}
 

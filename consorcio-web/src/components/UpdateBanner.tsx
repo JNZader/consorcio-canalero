@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/no-unresolved -- virtual module from vite-plugin-pwa
+import { useRegisterSW } from 'virtual:pwa-register/react';
 /**
  * UpdateBanner — bottom-center banner shown when a new deploy is detected.
  *
@@ -24,8 +26,6 @@
  */
 import { ActionIcon, Button, Group, Paper, Portal, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
-// eslint-disable-next-line import/no-unresolved -- virtual module from vite-plugin-pwa
-import { useRegisterSW } from 'virtual:pwa-register/react';
 
 import { useVersionCheck } from '../hooks/useVersionCheck';
 import { logger } from '../lib/logger';
@@ -53,9 +53,9 @@ export function UpdateBanner() {
       // which can be hours after a deploy.
       if (registration) {
         setInterval(() => {
-          registration.update().catch((err) =>
-            logger.debug('[update-banner] periodic SW update failed', err)
-          );
+          registration
+            .update()
+            .catch((err) => logger.debug('[update-banner] periodic SW update failed', err));
         }, SW_UPDATE_POLL_MS);
       }
     },

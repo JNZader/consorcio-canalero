@@ -4,8 +4,25 @@
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AppProvider from '../../src/components/AppProvider';
+
+const { consumeLogoutWarningMock, notificationsShowMock } = vi.hoisted(() => ({
+  consumeLogoutWarningMock: vi.fn(),
+  notificationsShowMock: vi.fn(),
+}));
+
+vi.mock('../../src/lib/auth/storage', () => ({
+  consumeLocalLogoutWarning: consumeLogoutWarningMock,
+}));
+
+vi.mock('@mantine/notifications', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mantine/notifications')>();
+  return {
+    ...actual,
+    notifications: { ...actual.notifications, show: notificationsShowMock },
+  };
+});
 
 // Mock Zustand stores
 vi.mock('../../src/stores/authStore', () => ({
@@ -30,6 +47,30 @@ const TestChild = ({ label = 'Test Child' }: { label?: string }) => <div>{label}
 describe('AppProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    consumeLogoutWarningMock.mockReturnValue(null);
+  });
+
+  it('shows a durable remote-revocation warning exactly once at the destination', async () => {
+    consumeLogoutWarningMock.mockReturnValueOnce(
+      'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.'
+    );
+
+    render(
+      <AppProvider>
+        <TestChild />
+      </AppProvider>
+    );
+
+    await waitFor(() => {
+      expect(notificationsShowMock).toHaveBeenCalledWith({
+        title: 'Sesión cerrada localmente',
+        message:
+          'La sesión local se cerró, pero no pudimos confirmar el cierre de todas las sesiones en el servidor.',
+        color: 'yellow',
+      });
+    });
+    expect(consumeLogoutWarningMock).toHaveBeenCalledOnce();
+    expect(notificationsShowMock).toHaveBeenCalledOnce();
   });
 
   describe('Basic rendering', () => {

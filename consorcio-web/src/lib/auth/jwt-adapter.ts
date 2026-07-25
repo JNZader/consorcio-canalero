@@ -9,8 +9,11 @@ const AUTH_BASE = `${API_URL}/api/v2`;
 import {
   clearApiServiceWorkerCaches,
   clearAuthStorage,
+  clearLocalLogoutTombstone,
   getStoredAccessToken,
   getStoredAuthSession,
+  hasLocalLogoutTombstone,
+  markLocalLogout,
   persistAuthSession,
 } from './storage';
 import type {
@@ -57,6 +60,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     const user = await this.fetchCurrentUser(token);
 
     const session: AuthSession = { access_token: token, user };
+    clearLocalLogoutTombstone();
     this.persistSession(session);
     this.notifyListeners('SIGNED_IN', session);
 
@@ -127,24 +131,29 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async logout(): Promise<void> {
-    const token = getStoredAccessToken();
+    try {
+      let token = getStoredAccessToken();
 
-    if (token) {
-      try {
-        await fetch(`${AUTH_BASE}/auth/jwt/logout-all`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      } catch {
-        // Logout even if backend call fails
+      if (!token) {
+        token = await this.refreshAccessTokenForLogout();
       }
-    }
 
-    this.clearStorage();
-    this.notifyListeners('SIGNED_OUT', null);
+      let response = await this.revokeRefreshSessions(token);
+      if (response.status === 401) {
+        token = await this.refreshAccessTokenForLogout();
+        response = await this.revokeRefreshSessions(token);
+      }
+
+      if (!response.ok) {
+        throw new Error('No se pudo cerrar la sesión en el servidor.');
+      }
+    } finally {
+      // Local sign-out is a shared-device security boundary. The durable
+      // tombstone also blocks a surviving HttpOnly refresh cookie after reload.
+      markLocalLogout();
+      this.clearStorage();
+      this.notifyListeners('SIGNED_OUT', null);
+    }
   }
 
   clearTokens(): void {
@@ -153,6 +162,8 @@ export class JWTAuthAdapter implements AuthAdapter {
   }
 
   async replaceAccessToken(token: string): Promise<void> {
+    if (hasLocalLogoutTombstone()) return;
+
     // Keep the previously cached user; only the access token rotates.
     const current = await this.getSession();
     if (current?.user) {
@@ -167,6 +178,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     // refresh-only response). Hydrate from /users/me with the fresh
     // token so the storage stays consistent.
     const user = await this.fetchCurrentUser(token);
+    if (hasLocalLogoutTombstone()) return;
     this.persistSession({ access_token: token, user });
     this.notifyListeners('TOKEN_REFRESHED', { access_token: token, user });
   }
@@ -176,6 +188,37 @@ export class JWTAuthAdapter implements AuthAdapter {
     return () => {
       this.listeners.delete(callback);
     };
+  }
+
+  private async refreshAccessTokenForLogout(): Promise<string> {
+    const response = await fetch(`${AUTH_BASE}/auth/jwt/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('No se pudo renovar la sesión para cerrarla.');
+    }
+
+    const payload: unknown = await response.json().catch(() => null);
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      typeof (payload as { access_token?: unknown }).access_token !== 'string' ||
+      !(payload as { access_token: string }).access_token
+    ) {
+      throw new Error('El servidor no devolvió una sesión válida para cerrarla.');
+    }
+    return (payload as { access_token: string }).access_token;
+  }
+
+  private revokeRefreshSessions(token: string): Promise<Response> {
+    return fetch(`${AUTH_BASE}/auth/jwt/logout-all`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
   }
 
   private async fetchCurrentUser(token: string): Promise<AuthUser> {

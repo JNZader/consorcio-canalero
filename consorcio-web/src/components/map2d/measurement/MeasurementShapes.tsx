@@ -19,8 +19,8 @@
  * sees the shape persist after the double-click that finishes drawing.
  */
 
-import type maplibregl from 'maplibre-gl';
 import type { Feature, FeatureCollection, LineString, Polygon } from 'geojson';
+import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 
 import type { MeasurementEntry } from './useMeasurement';

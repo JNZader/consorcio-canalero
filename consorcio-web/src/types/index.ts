@@ -135,7 +135,6 @@ export interface PublicReportCreate {
   latitud: number;
   longitud: number;
   cuenca?: string;
-  foto_url?: string;
   contacto_telefono?: string;
 }
 
