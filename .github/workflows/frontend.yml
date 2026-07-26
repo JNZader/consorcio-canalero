@@ -17,6 +17,10 @@ on:
     paths:
       - 'consorcio-web/**'
       - '.github/workflows/frontend.yml'
+  schedule:
+    # Lunes 06:00 ART (09:00 UTC) — refresca la baseline incremental de
+    # mutación que reusan los PRs. Solo dispara el job `mutation-full`.
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -30,6 +34,7 @@ defaults:
 jobs:
   lint:
     name: Lint
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,6 +49,7 @@ jobs:
 
   test:
     name: Test
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,6 +64,7 @@ jobs:
 
   typecheck:
     name: Typecheck
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint]
@@ -73,6 +80,7 @@ jobs:
 
   smoke:
     name: Smoke tests
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [test]
@@ -87,10 +95,21 @@ jobs:
       - run: npm run test:smoke
 
   mutation:
-    name: Mutation tests (stryker)
+    name: Mutation tests (stryker, incremental)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Incremental: only the mutants this PR's diff can affect — minutes once a
+    # baseline exists. The full scope is 1880 mutants ≈ 46 min on a runner
+    # (measured: 1840/1880 at the 45-minute mark), too much per PR for a repo
+    # that already had to disable a workflow over Actions quota.
+    #
+    # The 70 is a CEILING, not a cost: a cache hit finishes in minutes and
+    # bills minutes. It only matters on a COLD cache (no baseline yet, or the
+    # weekly entry evicted), where Stryker has to run everything — a 25-minute
+    # cap just killed that run mid-flight and failed the PR. Sized like
+    # `mutation-full` so the cold path can actually complete and store the
+    # baseline the next PRs reuse.
+    timeout-minutes: 70
     needs: [typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +119,43 @@ jobs:
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      # Restore the incremental baseline produced by the weekly full run.
+      # On a cache MISS Stryker runs the whole scope (~46 min) and stores a
+      # fresh baseline for the next PRs — hence this job's generous ceiling.
+      # `restore-keys` makes any previous baseline usable: Stryker re-tests
+      # what the diff touched and trusts the stored verdicts for the rest.
+      - name: Restore mutation baseline
+        uses: actions/cache@v4
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-
       - run: npm run mutation:run
+
+  mutation-full:
+    name: Mutation tests (stryker, full baseline)
+    # Weekly, not per PR: refreshes the incremental baseline the PR job reuses.
+    # ~46 min, so it must never sit on the PR critical path.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - name: Full mutation run (rebuilds the baseline)
+        run: npx stryker run --force
+      - name: Save mutation baseline
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
 
   accessibility:
     name: Accessibility matrix (Playwright)
@@ -149,6 +204,7 @@ jobs:
 
   image:
     name: Final Frontend Image Gate
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [lint, test, typecheck, smoke]
