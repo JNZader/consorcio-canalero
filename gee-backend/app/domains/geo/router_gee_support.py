@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from typing import Literal
 
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -349,7 +350,12 @@ async def get_satellite_image_impl(
     days_buffer: int,
     max_cloud: int = 80,
     visualization: str = "rgb",
-    mode: str = "scene",
+    # Literal, not str: `get_image` compares `mode == "composite"` exactly, so
+    # any other value (a typo, "Composite") degraded SILENTLY to a cloudy
+    # mosaic — the same class of regression that put clouds back on the
+    # historic floods. FastAPI now rejects it with 422, like the public map
+    # route already did (public_map.py:84).
+    mode: Literal["scene", "composite"] = "scene",
     ensure_gee=None,
 ):
     cache = get_cache()

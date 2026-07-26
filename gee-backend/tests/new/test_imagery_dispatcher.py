@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict
 
+
 import pytest
 
 from app.core.exceptions import AppException, NotFoundError
@@ -76,12 +77,37 @@ def test_sentinel2_scene_mode_requests_the_mosaic(explorer, monkeypatch) -> None
 
 
 def test_sentinel2_unknown_mode_is_not_treated_as_composite(explorer, monkeypatch) -> None:
+    """A non-canonical mode must NOT silently enable the median.
+
+    ``get_image`` compares ``mode == "composite"`` exactly, so anything else
+    falls back to the mosaic. That fallback is only safe because the HTTP layer
+    rejects unknown values up front (see the Literal on
+    ``get_satellite_image_impl``) — this test pins the service-level half of
+    that contract.
+    """
     spy = _Spy()
     monkeypatch.setattr("app.domains.geo.gee_service.build_sentinel2_payload", spy)
 
     explorer.get_image("sentinel2", TARGET, mode="COMPOSITE")
 
     assert spy.kwargs["use_median"] is False
+
+
+def test_satellite_image_endpoint_rejects_an_unknown_mode() -> None:
+    """The HTTP layer fails closed on a bad mode instead of degrading silently.
+
+    FastAPI derives request validation from this annotation, so pinning it here
+    is what stops a typo from reaching ``get_image`` and quietly falling back to
+    a cloudy mosaic. ``get_type_hints`` resolves the string annotations that
+    ``from __future__ import annotations`` leaves behind.
+    """
+    from typing import Literal, get_args, get_origin, get_type_hints
+
+    from app.domains.geo.router_gee_support import get_satellite_image_impl
+
+    annotation = get_type_hints(get_satellite_image_impl)["mode"]
+    assert get_origin(annotation) is Literal
+    assert set(get_args(annotation)) == {"scene", "composite"}
 
 
 def test_sentinel2_visualization_is_forwarded(explorer, monkeypatch) -> None:
