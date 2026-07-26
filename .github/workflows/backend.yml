@@ -10,7 +10,12 @@ on:
     branches: [main]
     paths:
       - 'gee-backend/**'
-      - '.github/workflows/backend.yml'
+      # Los contratos de CI ejecutables viven en gee-backend/tests pero
+      # custodian TODOS los workflows. Con el filtro apuntando solo a
+      # backend.yml, un PR que tocaba unicamente frontend.yml los dejaba sin
+      # correr: asi entro a main un `if:` que rompia uno de esos contratos
+      # (PR #35) sin ninguna senal. El glob cierra ese punto ciego.
+      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:

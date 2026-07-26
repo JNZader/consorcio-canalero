@@ -1,4 +1,24 @@
-name: Build and Publish Images
+name: Backend Gates and Image Publishing
+
+# DOS responsabilidades, separadas por EVENTO:
+#
+#   push a main  → SOLO los gates de calidad del backend: pytest con piso de
+#                  cobertura, la cadena alembic real contra pgrouting,
+#                  mutacion (cosmic-ray) y Trivy sobre el filesystem. Baratos.
+#                  Sin esto main se queda sin red: el workflow estuvo
+#                  deshabilitado a mano desde 2026-03 y un import roto llego a
+#                  main sin que nadie se enterara (scipy, 2026-07-26).
+#
+#   workflow_dispatch → ademas construye, escanea, publica a GHCR y promueve
+#                  los manifests con digest verificado. Es la parte cara (el
+#                  geo-worker trae GDAL): dos imagenes en cada push a main fue
+#                  lo que agoto la cuota de Actions. Se dispara a mano cuando
+#                  se va a desplegar, y SOLO desde main: el guard exige
+#                  tambien github.ref, porque el selector de rama de la UI
+#                  dejaba publicar a :latest y pegarle al webhook de prod
+#                  desde cualquier rama.
+#
+# Frontend: Cloudflare Pages buildea y deployea solo desde main.
 
 on:
   push:
@@ -6,15 +26,18 @@ on:
     paths:
       - 'gee-backend/**'
       - '.github/workflows/deploy.yml'
-
-# Frontend: Cloudflare Pages buildea y deployea automaticamente desde este repo.
-# Este workflow solo buildea y publica las imagenes Docker del backend y geo-worker.
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
 
 concurrency:
-  group: deploy-production
+  # Grupo POR EVENTO. `deploy-production` serializa publicaciones y no cancela
+  # en curso, pero desde que los gates corren en push a main una corrida de
+  # gates retenia ese grupo hasta ~1h: un deploy despachado en esa ventana
+  # quedaba pending, y GitHub CANCELA el job pendiente de un grupo cuando entra
+  # otro. O sea, el siguiente push a main mataba el deploy en espera.
+  group: ${{ github.event_name == 'workflow_dispatch' && 'deploy-production' || format('deploy-gates-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -164,6 +187,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [quality-backend, mutation-backend, security-backend]
+    # Solo a demanda: construir y publicar dos imagenes (el geo-worker
+    # trae GDAL) en cada push a main fue lo que agoto la cuota de Actions y
+    # dejo este workflow deshabilitado a mano desde 2026-03. Los gates de
+    # calidad de arriba SI corren en main; el build se dispara cuando vas a
+    # desplegar (workflow_dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
@@ -275,6 +304,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [quality-backend, mutation-backend, security-backend]
+    # Solo a demanda: construir y publicar dos imagenes (el geo-worker
+    # trae GDAL) en cada push a main fue lo que agoto la cuota de Actions y
+    # dejo este workflow deshabilitado a mano desde 2026-03. Los gates de
+    # calidad de arriba SI corren en main; el build se dispara cuando vas a
+    # desplegar (workflow_dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
@@ -385,7 +420,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-backend, build-geo-worker]
-    if: ${{ always() }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
     env:
@@ -416,6 +451,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-backend, build-geo-worker, image-security-policy]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
