@@ -13,7 +13,8 @@ Quick reference for the Consorcio Canalero platform rewrite.
 - **Database**: PostgreSQL + PostGIS
 - **Auth**: JWT (fastapi-users) + optional Google OAuth
 - **Geo**: Google Earth Engine integration, GDAL-based geo worker
-- **Testing**: Pytest (backend), Vitest (frontend)
+- **Testing**: Pytest (backend), Vitest (frontend), Playwright (e2e + a11y),
+  mutation testing (cosmic-ray backend, Stryker frontend) — todos con gate en CI
 - **CI/CD**: GitHub Actions, Docker Compose
 
 ### Directory Structure
@@ -31,10 +32,10 @@ consorcio-canalero/
 │   │   │   ├── capas/          # Map layers management
 │   │   │   ├── denuncias/      # Citizen reports
 │   │   │   ├── finanzas/       # Finance (ingresos, gastos, presupuestos)
-│   │   │   ├── geo/            # Geo processing + GEE + intelligence
-│   │   │   │   └── hydrology/  # Flood flow estimation (Kirpich + Método Racional)
+│   │   │   ├── geo/            # Geo processing + GEE + tiles + intelligence
 │   │   │   ├── monitoring/     # Sugerencias + GEE analysis tracking
 │   │   │   ├── padron/         # Consorcista registry
+│   │   │   ├── reuniones/      # Meeting minutes + agenda
 │   │   │   ├── settings/       # System settings (per-deployment config)
 │   │   │   └── tramites/       # Procedures + tracking
 │   │   ├── core/               # Logging, exceptions, rate limiting
@@ -62,11 +63,10 @@ domain/
 
 Base classes: `UUIDMixin`, `TimestampMixin`, `Base` from `app.db.base`.
 
-**Geo subdomain — hydrology/**
-Nested under `geo/`, the `hydrology/` subdomain handles quantitative peak flow
-estimation (Kirpich + Método Racional) for storm event dates. Distinct from:
-- `geo/hydrology.py` (TWI — static terrain property, no storm modelling)
-- `ml/flood_prediction.py` (U-Net pixel-level flood detection post-event)
+**Geo domain**
+`geo/` concentra el procesamiento geoespacial: pipeline DEM, integración con
+Google Earth Engine (`gee_service*`, imagery), servicio de tiles raster
+(`tile_service*`, servido por el geo-worker) e inteligencia territorial.
 
 ---
 
@@ -134,12 +134,15 @@ All new endpoints are under `/api/v2`. Key route groups:
 | `/api/v2/denuncias/*` | Citizen reports | Operator+ |
 | `/api/v2/finanzas/*` | Finance management | Operator+ |
 | `/api/v2/tramites/*` | Procedures | Operator+ |
+| `/api/v2/reuniones/*` | Meeting minutes + agenda | Operator+ |
 | `/api/v2/capas/*` | Map layers | Operator+ |
-| `/api/v2/geo/*` | Geo processing + GEE | Operator+ |
+| `/api/v2/geo/*` | Geo processing + GEE + tiles | Operator+ |
 | `/api/v2/monitoring/*` | Sugerencias + analysis | Varies |
 | `/api/v2/settings/*` | System settings | Operator+ (read), Admin (write) |
 | `/api/v2/public/*` | Public viewer, branding | No auth |
 | `/api/v2/admin/publish/*` | Layer publication | Admin |
+| `/api/v2/admin/users/*` | User administration | Admin |
+| `/api/v2/admin/invitations/*` | Invitations | Admin |
 
 ### System Settings
 
@@ -202,5 +205,5 @@ Pattern: real database, transaction-per-test, no mocking for data access.
 
 ---
 
-Last updated: 2026-04-05
+Last updated: 2026-07-25
 Maintained by: @javier

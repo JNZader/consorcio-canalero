@@ -15,8 +15,6 @@ interface UseMapInteractionEffectsParams {
    * them so InfoPanel can render one section per layer.
    */
   setSelectedFeatures: (value: Feature[]) => void;
-  showSuggestedZonesPanel: boolean;
-  setSelectedDraftBasinId: (value: string | null) => void;
 }
 
 /**
@@ -65,7 +63,6 @@ export function buildClickableLayers(): string[] {
     `${SOURCE_IDS.ROADS}-line`,
     `${SOURCE_IDS.BASINS}-fill`,
     `${SOURCE_IDS.APPROVED_ZONES}-fill`,
-    `${SOURCE_IDS.SUGGESTED_ZONES}-fill`,
     `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
   ];
 }
@@ -75,8 +72,6 @@ export function useMapInteractionEffects({
   mapReady,
   measurementMode,
   setSelectedFeatures,
-  showSuggestedZonesPanel,
-  setSelectedDraftBasinId,
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -105,30 +100,4 @@ export function useMapInteractionEffects({
       map.off('click', handleClick);
     };
   }, [mapReady, mapRef, measurementMode, setSelectedFeatures]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !showSuggestedZonesPanel) return;
-
-    const handleBasinClick = (event: maplibregl.MapMouseEvent) => {
-      if (measurementMode !== 'idle') return;
-
-      const features = map.queryRenderedFeatures(event.point, {
-        layers: [`${SOURCE_IDS.BASINS}-fill`, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`].filter((id) =>
-          map.getLayer(id)
-        ),
-      });
-      if (features.length > 0 && features[0]) {
-        const basinId = features[0].properties?.id;
-        if (typeof basinId === 'string') {
-          setSelectedDraftBasinId(basinId);
-        }
-      }
-    };
-
-    map.on('click', handleBasinClick);
-    return () => {
-      map.off('click', handleBasinClick);
-    };
-  }, [mapReady, mapRef, measurementMode, setSelectedDraftBasinId, showSuggestedZonesPanel]);
 }

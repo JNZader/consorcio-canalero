@@ -2,10 +2,7 @@ import type { FeatureCollection } from 'geojson';
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  useMapExportHandlers,
-  useZoningHandlers,
-} from '../../src/components/map2d/useMapActionHandlers';
+import { useMapExportHandlers } from '../../src/components/map2d/useMapActionHandlers';
 import { MAP_FALLBACK_BOUNDS } from '../../src/components/map2d/map2dUtils';
 
 const notificationsShow = vi.fn();
@@ -711,56 +708,6 @@ describe('useMapActionHandlers', () => {
       );
       expect(greenCalls.length).toBeGreaterThanOrEqual(1);
     });
-  });
-
-  it('approves, clears and reapplies zoning assignments', async () => {
-    const saveApprovedZones = vi.fn().mockResolvedValue({});
-    const clearApprovedZones = vi.fn().mockResolvedValue({});
-    const setDraftBasinAssignments = vi.fn();
-    const setSelectedDraftBasinId = vi.fn();
-    const setDraftDestinationZoneId = vi.fn();
-
-    const suggestedZonesDisplay: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: [],
-    };
-
-    const { result } = renderHook(() =>
-      useZoningHandlers({
-        suggestedZonesDisplay,
-        effectiveBasinAssignments: { b1: 'z1' },
-        suggestedZoneNames: { z1: 'Zona 1' },
-        approvalName: 'Versión A',
-        approvalNotes: 'Notas',
-        saveApprovedZones,
-        clearApprovedZones,
-        selectedDraftBasinId: 'b1',
-        draftDestinationZoneId: 'z2',
-        setDraftBasinAssignments,
-        setSelectedDraftBasinId,
-        setDraftDestinationZoneId,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleApproveZones();
-    });
-    expect(saveApprovedZones).toHaveBeenCalledWith(
-      suggestedZonesDisplay,
-      expect.objectContaining({ nombre: 'Versión A', notes: 'Notas' }),
-    );
-
-    await act(async () => {
-      await result.current.handleClearApprovedZones();
-    });
-    expect(clearApprovedZones).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      result.current.handleApplyBasinMove();
-    });
-    expect(setDraftBasinAssignments).toHaveBeenCalled();
-    expect(setSelectedDraftBasinId).toHaveBeenCalledWith(null);
-    expect(setDraftDestinationZoneId).toHaveBeenCalledWith(null);
   });
 
   // ─────────────────────────────────────────────────────────────────────────

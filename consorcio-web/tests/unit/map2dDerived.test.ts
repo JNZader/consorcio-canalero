@@ -4,13 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   LAYER_CATEGORY,
   buildActiveLegendItems,
-  buildBasinFeatureById,
   buildDemLayerOptions,
-  buildInitialDraftAssignments,
-  buildSuggestedZoneSummaries,
-  buildSuggestedZonesDisplay,
   buildVectorLayerItems,
-  buildZoneDefinitionById,
 } from '../../src/components/map2d/map2dDerived';
 
 function pointFeature(id: string, properties: Record<string, unknown> = {}): Feature {
@@ -26,51 +21,6 @@ function polygonCollection(features: Feature[]): FeatureCollection {
 }
 
 describe('map2dDerived', () => {
-  it('builds suggested zone display using reassigned basin names/colors', () => {
-    const basins = polygonCollection([
-      pointFeature('b1', { draft_zone_id: 'z1', nombre: 'Cuenca Norte' }),
-    ]);
-
-    const result = buildSuggestedZonesDisplay(basins, { b1: 'z2' }, { z2: 'Candil' });
-    expect(result?.features[0]?.properties?.__zone_id).toBe('z2');
-    expect(result?.features[0]?.properties?.__color).toBe('#2196F3');
-  });
-
-  it('builds initial draft assignments and zone definitions from suggested zones', () => {
-    const suggestedZones = polygonCollection([
-      pointFeature('feature-1', {
-        draft_zone_id: 'z1',
-        nombre: 'Zona Norte',
-        family: 'A',
-        __color: '#123456',
-        member_basin_ids: ['b1', 'b2'],
-      }),
-    ]);
-
-    expect(buildInitialDraftAssignments(suggestedZones)).toEqual({ b1: 'z1', b2: 'z1' });
-    expect(buildZoneDefinitionById(suggestedZones)).toEqual({
-      z1: { defaultName: 'Zona Norte', family: 'A', color: '#123456' },
-    });
-  });
-
-  it('indexes basin features and computes suggested zone summaries', () => {
-    const basins = polygonCollection([
-      pointFeature('b1', { superficie_ha: 10 }),
-      pointFeature('b2', { superficie_ha: 20 }),
-    ]);
-
-    const basinFeatureById = buildBasinFeatureById(basins);
-    expect(Object.keys(basinFeatureById)).toEqual(['b1', 'b2']);
-
-    expect(
-      buildSuggestedZoneSummaries(
-        { z1: { defaultName: 'Zona 1', family: null, color: '#111111' } },
-        { b1: 'z1', b2: 'z1' },
-        basinFeatureById,
-      ),
-    ).toEqual([{ id: 'z1', defaultName: 'Zona 1', family: null, basinCount: 2, superficieHa: 30 }]);
-  });
-
   it('builds legend items based on visible data layers', () => {
     const items = buildActiveLegendItems({
       zonaCollection: polygonCollection([pointFeature('z')]),

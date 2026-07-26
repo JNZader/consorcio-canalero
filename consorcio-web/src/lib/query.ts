@@ -54,7 +54,6 @@ export const queryKeys = {
     cuenca?: string | null;
     bbox?: string | null;
   }) => ['basins', opts] as const,
-  suggestedZones: (opts: { cuenca?: string | null }) => ['suggested-zones', opts] as const,
   approvedZones: () => ['approved-zones'] as const,
   approvedZonesHistory: () => ['approved-zones-history'] as const,
   compositeStats: (areaId: string, tipo: 'flood_risk' | 'drainage_need') =>

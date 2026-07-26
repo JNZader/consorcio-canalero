@@ -270,57 +270,6 @@ export function syncApprovedZoneLayers(
   );
 }
 
-export function shouldShowSuggestedZones(params: {
-  showSuggestedZonesPanel: boolean;
-  hasApprovedZones: boolean;
-  suggestedZonesDisplay: FeatureCollection | null;
-}) {
-  return (
-    params.showSuggestedZonesPanel && !params.hasApprovedZones && !!params.suggestedZonesDisplay
-  );
-}
-
-export function syncSuggestedZoneLayers(
-  map: maplibregl.Map,
-  suggestedZonesDisplay: FeatureCollection | null,
-  isVisible: boolean
-) {
-  ensureGeoJsonSource(
-    map,
-    SOURCE_IDS.SUGGESTED_ZONES,
-    suggestedZonesDisplay ?? asFeatureCollection([])
-  );
-
-  if (!map.getLayer(`${SOURCE_IDS.SUGGESTED_ZONES}-fill`)) {
-    map.addLayer({
-      id: `${SOURCE_IDS.SUGGESTED_ZONES}-fill`,
-      type: 'fill',
-      source: SOURCE_IDS.SUGGESTED_ZONES,
-      paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#1971c2'],
-        'fill-opacity': 0.15,
-      },
-    });
-  }
-
-  if (!map.getLayer(`${SOURCE_IDS.SUGGESTED_ZONES}-line`)) {
-    map.addLayer({
-      id: `${SOURCE_IDS.SUGGESTED_ZONES}-line`,
-      type: 'line',
-      source: SOURCE_IDS.SUGGESTED_ZONES,
-      paint: {
-        'line-color': ['coalesce', ['get', '__color'], '#1971c2'],
-        'line-width': 2,
-        'line-opacity': 0.9,
-        'line-dasharray': [4, 4],
-      },
-    });
-  }
-
-  setLayerVisibility(map, `${SOURCE_IDS.SUGGESTED_ZONES}-fill`, isVisible);
-  setLayerVisibility(map, `${SOURCE_IDS.SUGGESTED_ZONES}-line`, isVisible);
-}
-
 /* -------------------------------------------------------------------------- */
 /*  Pilar Verde sync helpers (Phase 2)                                         */
 /*  Each helper is idempotent: addSource/addLayer are guarded by getSource/    */

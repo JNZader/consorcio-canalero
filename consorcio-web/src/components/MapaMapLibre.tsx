@@ -10,7 +10,6 @@
  */
 
 import { Box, Stack } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import type { Feature } from 'geojson';
 
 import maplibregl from 'maplibre-gl';
@@ -37,7 +36,6 @@ import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
-import { useSuggestedZones } from '../hooks/useSuggestedZones';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { useCanAccess } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
@@ -62,7 +60,7 @@ import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
 import { useComparisonSlider } from './map2d/useComparisonSlider';
-import { useMapExportHandlers, useZoningHandlers } from './map2d/useMapActionHandlers';
+import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
@@ -83,7 +81,6 @@ const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
 export default function MapaMapLibre() {
   // ── Config & auth ─────────────────────────────────────────────────────────
   const config = useConfigStore((state) => state.config);
-  const canManageZoning = useCanAccess(['admin', 'operador']);
   const isAdmin = useCanAccess(['admin']);
 
   const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
@@ -112,7 +109,6 @@ export default function MapaMapLibre() {
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>(DEFAULT_BASE_LAYER);
   const [viewMode, setViewMode] = useState<ViewMode>('base');
   const showLegend = true;
-  const [showSuggestedZonesPanel, setShowSuggestedZonesPanel] = useState(false);
   const [showIGNOverlay, setShowIGNOverlay] = useState(false);
   const [showDemOverlay, setShowDemOverlay] = useState(false);
   const [activeDemLayerId, setActiveDemLayerId] = useState<string | null>(null);
@@ -120,12 +116,6 @@ export default function MapaMapLibre() {
   const [exportIncludeLegend, setExportIncludeLegend] = useState(true);
   const [exportIncludeMetadata, setExportIncludeMetadata] = useState(true);
   const [exportTitle, setExportTitle] = useState('Mapa del Consorcio');
-  const [approvalName, setApprovalName] = useState('Zonificación Consorcio aprobada');
-  const [approvalNotes, setApprovalNotes] = useState('');
-  const [suggestedZoneNames, setSuggestedZoneNames] = useState<Record<string, string>>({});
-  const [draftBasinAssignments, setDraftBasinAssignments] = useState<Record<string, string>>({});
-  const [selectedDraftBasinId, setSelectedDraftBasinId] = useState<string | null>(null);
-  const [draftDestinationZoneId, setDraftDestinationZoneId] = useState<string | null>(null);
   const [hiddenClasses, setHiddenClasses] = useState<Record<string, number[]>>({});
   const [hiddenRanges, setHiddenRanges] = useState<Record<string, number[]>>({});
   const [visibleRasterLayers, setVisibleRasterLayers] = useState<Array<{ tipo: string }>>([]);
@@ -183,19 +173,9 @@ export default function MapaMapLibre() {
   // visibleLayers.soil === true (kmzBuilder.ts::shouldIncludeLayer).
   const { soilMap } = useSoilMap({ enabled: !!vectorVisibility.soil });
   const { basins } = useBasins();
-  const { suggestedZones } = useSuggestedZones();
   const { waterways } = useWaterways();
   const { layers: allGeoLayers } = useGeoLayers();
-  const {
-    approvedZones,
-    approvedAt,
-    approvedVersion,
-    hasApprovedZones,
-    approvedZonesHistory,
-    saveApprovedZones,
-    clearApprovedZones,
-    restoreApprovedZonesVersion,
-  } = useApprovedZones();
+  const { approvedZones, hasApprovedZones } = useApprovedZones();
 
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
@@ -237,13 +217,8 @@ export default function MapaMapLibre() {
     soilCollection,
     waterwaysCollection,
     approvedZonesCollection,
-    suggestedZonesDisplay,
     demTileUrl,
     demLayers,
-    effectiveBasinAssignments,
-    suggestedZoneSummaries,
-    selectedDraftBasinName,
-    selectedDraftBasinZoneId,
     activeLegendItems,
     hasSingleImage,
     hasComparison,
@@ -256,16 +231,12 @@ export default function MapaMapLibre() {
     caminos,
     soilMap,
     basins,
-    suggestedZones,
     waterways,
     allGeoLayers,
     approvedZones,
-    draftBasinAssignments,
-    suggestedZoneNames,
     hiddenClasses,
     hiddenRanges,
     activeDemLayerId,
-    selectedDraftBasinId,
     selectedImage,
     comparison,
     vectorVisibility,
@@ -322,9 +293,6 @@ export default function MapaMapLibre() {
     basins,
     zonaCollection,
     approvedZonesCollection,
-    suggestedZonesDisplay,
-    showSuggestedZonesPanel,
-    hasApprovedZones,
     activeDemLayerId,
     showDemOverlay,
     demTileUrl,
@@ -370,8 +338,6 @@ export default function MapaMapLibre() {
     mapReady,
     measurementMode: measurementState.mode,
     setSelectedFeatures,
-    showSuggestedZonesPanel,
-    setSelectedDraftBasinId,
   });
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
@@ -514,12 +480,7 @@ export default function MapaMapLibre() {
     ]
   );
 
-  const {
-    handleExportPng,
-    handleExportApprovedZonesPdf,
-    handleExportApprovedZonesGeoJSON,
-    handleExportKmz,
-  } = useMapExportHandlers({
+  const { handleExportPng, handleExportApprovedZonesPdf, handleExportKmz } = useMapExportHandlers({
     mapRef,
     exportTitle,
     setExportPngModalOpen,
@@ -529,26 +490,10 @@ export default function MapaMapLibre() {
     visibleRasterLayers,
     hiddenClasses,
     hiddenRanges,
-    approvalName,
     exportSources,
     zonaCollection,
     canalesRelevados:
       vectorVisibility.canales_relevados && !!canalesRelevados ? canalesRelevados : null,
-  });
-
-  const { handleApproveZones, handleClearApprovedZones, handleApplyBasinMove } = useZoningHandlers({
-    suggestedZonesDisplay,
-    effectiveBasinAssignments,
-    suggestedZoneNames,
-    approvalName,
-    approvalNotes,
-    saveApprovedZones,
-    clearApprovedZones,
-    selectedDraftBasinId,
-    draftDestinationZoneId,
-    setDraftBasinAssignments,
-    setSelectedDraftBasinId,
-    setDraftDestinationZoneId,
   });
 
   /* ---------------------------------------------------------------------- */
@@ -652,8 +597,6 @@ export default function MapaMapLibre() {
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
               layerFineControl={layerFineControl}
-              canManageZoning={canManageZoning}
-              showSuggestedZonesPanel={showSuggestedZonesPanel}
               hasApprovedZones={hasApprovedZones}
               onOpenExportPng={() => setExportPngModalOpen(true)}
               onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
@@ -682,43 +625,6 @@ export default function MapaMapLibre() {
                   return { ...prev, [layerType]: next };
                 })
               }
-              suggestedZoneSummaries={suggestedZoneSummaries}
-              suggestedZoneNames={suggestedZoneNames}
-              onZoneNameChange={(id, value) =>
-                setSuggestedZoneNames((prev) => ({ ...prev, [id]: value }))
-              }
-              selectedDraftBasinName={selectedDraftBasinName}
-              selectedDraftBasinZoneId={selectedDraftBasinZoneId}
-              draftDestinationZoneId={draftDestinationZoneId}
-              onDestinationZoneChange={setDraftDestinationZoneId}
-              onApplyBasinMove={handleApplyBasinMove}
-              approvedAt={approvedAt}
-              approvedVersion={approvedVersion}
-              approvedZonesHistory={approvedZonesHistory}
-              approvalName={approvalName}
-              approvalNotes={approvalNotes}
-              onApprovalNameChange={setApprovalName}
-              onApprovalNotesChange={setApprovalNotes}
-              onCloseSuggestedZonesPanel={() => setShowSuggestedZonesPanel(false)}
-              onApproveZones={handleApproveZones}
-              onClearApprovedZones={handleClearApprovedZones}
-              onRestoreVersion={async (id) => {
-                try {
-                  await restoreApprovedZonesVersion(id);
-                  notifications.show({
-                    title: 'Versión restaurada',
-                    message: 'Zonificación restaurada',
-                    color: 'green',
-                  });
-                } catch (_err) {
-                  notifications.show({
-                    title: 'Error',
-                    message: 'No se pudo restaurar',
-                    color: 'red',
-                  });
-                }
-              }}
-              onExportApprovedZonesGeoJSON={handleExportApprovedZonesGeoJSON}
               selectedFeatures={selectedFeatures}
               onCloseInfoPanel={() => setSelectedFeatures([])}
               bpaEnriched={pilarVerde?.bpaEnriched}
