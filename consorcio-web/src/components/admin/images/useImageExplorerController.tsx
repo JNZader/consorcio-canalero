@@ -119,7 +119,11 @@ export function useImageExplorerController() {
 
   const availableDatesSet = useMemo(() => new Set(availableDates), [availableDates]);
   const visOptions = buildVisualizationOptions(sensor, visualizations);
-  const isCurrentImageSelected = selectedImage?.tile_url === result?.tile_url;
+  // `!!result` primero: sin resultado ambos lados son `undefined` y la
+  // comparación daba `true` ("ya seleccionada") con el explorador vacío.
+  // Hoy no se nota porque el consumidor lo renderiza bajo `{result && …}`,
+  // pero deja una trampa para el próximo que lo use fuera de ese guard.
+  const isCurrentImageSelected = !!result && selectedImage?.tile_url === result.tile_url;
 
   const fetchImageForDate = useCallback(
     async (dateStr: string) => {
