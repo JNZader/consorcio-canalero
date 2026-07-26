@@ -152,11 +152,19 @@ def _assert_image_policy_aggregate(
     producers: set[str],
     *,
     workspace_rooted: bool = False,
+    guard_needs: frozenset[str] = frozenset(),
 ) -> None:
+    """`producers` son los jobs cuyo resultado el agregador VALIDA.
+
+    `guard_needs` son dependencias que estan en `needs` solo para poder leer
+    sus outputs en el `if:` (hoy: `changes`). Van separadas a proposito: si se
+    mezclaran con `producers`, el test exigiria un `<JOB>_RESULT` para ellas y
+    la asercion de que cada productor se valida contra `success` se aflojaria.
+    """
     aggregate = _job_block(workflow, "image-security-policy")
 
     assert "name: Image Security Policy" in aggregate
-    assert _needs(workflow, "image-security-policy") == producers
+    assert _needs(workflow, "image-security-policy") == producers | guard_needs
     # Tiene que arrancar con always(): si no, un producer fallido saltea el job
     # agregador y la corrida queda verde sin haber exigido la evidencia. El
     # unico conjunto admitido es el guard de workflow_dispatch de deploy.yml,
@@ -170,6 +178,10 @@ def _assert_image_policy_aggregate(
             "$" + "{{ always() }}",
             "$" + "{{ always() && github.event_name == 'workflow_dispatch' "
             "&& github.ref == 'refs/heads/main' }}",
+            # backend.yml: `always()` para que un image gate FALLIDO no saltee
+            # la politica y de verde falso, y el guard de area porque el paso
+            # exige `success` y un job SALTEADO no lo es.
+            "$" + "{{ always() && needs.changes.outputs.backend == 'true' }}",
         )
     ], guards
     assert len(guards) == 1, guards
@@ -226,7 +238,14 @@ def _assert_non_publishing_image_gate(
     # refrescar la baseline de mutacion y no construye imagenes): cualquier
     # otro `if:` haria que un push o un PR pudieran pasar sin escanear.
     for guard in re.findall(r"(?m)^    if: (.+)$", job):
-        assert guard == "$" + "{{ github.event_name != 'schedule' }}", guard
+        assert guard in (
+            # frontend: excluye el cron semanal Y se saltea si el PR no toca
+            # el frontend. Nada mas puede saltear un gate de escaneo.
+            "$" + "{{ github.event_name != 'schedule' "
+            "&& needs.changes.outputs.frontend == 'true' }}",
+            # backend: solo el guard de area.
+            "$" + "{{ needs.changes.outputs.backend == 'true' }}",
+        ), guard
     if policy_role is None:
         _assert_strict_image_trivy(job)
     else:
@@ -470,7 +489,15 @@ def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
         assert event_gate in _job_block(frontend, job)
 
     build = _job_block(frontend, "build")
-    assert "needs: [lint, test, typecheck, smoke, mutation, accessibility]" in build
+    assert _needs(frontend, "build") == {
+        "changes",
+        "lint",
+        "test",
+        "typecheck",
+        "smoke",
+        "mutation",
+        "accessibility",
+    }
 
     for script in (
         "npm run lint",
@@ -489,13 +516,17 @@ def test_branch_and_pr_workflows_scan_every_final_image_without_publishing() -> 
 
     assert "push:" in frontend
     assert "pull_request:" in frontend
-    assert "      - 'consorcio-web/**'" in frontend
-    assert "push:" in backend
     assert "pull_request:" in backend
-    assert "      - 'gee-backend/**'" in backend
-    assert _needs(frontend, "image") == {"lint", "test", "typecheck", "smoke"}
-    assert _needs(backend, "image-backend") == {"lint", "typecheck", "test"}
-    assert _needs(backend, "image-geo-worker") == {"lint", "typecheck", "test"}
+    # NINGUN filtro `paths:` en los triggers. Un workflow filtrado por paths no
+    # corre cuando el PR no lo toca, y un check requerido que nunca corre deja
+    # el PR colgado en "Expected — waiting for status". El filtrado vive dentro,
+    # en el job `changes`; esta asercion existe para que no vuelva al trigger.
+    for workflow in (frontend, backend):
+        header = workflow.split("\njobs:", 1)[0]
+        assert not re.search(r"(?m)^    paths:$", header), header
+    assert _needs(frontend, "image") == {"changes", "lint", "test", "typecheck", "smoke"}
+    assert _needs(backend, "image-backend") == {"changes", "lint", "typecheck", "test"}
+    assert _needs(backend, "image-geo-worker") == {"changes", "lint", "typecheck", "test"}
 
     _assert_non_publishing_image_gate(
         _job_block(frontend, "image"),
@@ -520,6 +551,7 @@ def test_branch_and_pr_workflows_scan_every_final_image_without_publishing() -> 
         backend,
         {"image-backend", "image-geo-worker"},
         workspace_rooted=True,
+        guard_needs=frozenset({"changes"}),
     )
 
 
@@ -561,7 +593,7 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     assert "python3 scripts/cosmic_gate.py --min-kill-rate 0.30" in backend
 
     security = _job_block(backend, "security")
-    assert _needs(backend, "security") == {"lint", "typecheck", "test", "mutation"}
+    assert _needs(backend, "security") == {"changes", "lint", "typecheck", "test", "mutation"}
     assert "contents: read" in security
     _assert_fail_closed_trivy(security)
 
@@ -951,3 +983,119 @@ def test_image_policy_uses_no_trivy_ignore_file() -> None:
     backend_ignore = _read("gee-backend/.gitignore")
     assert "!security/frozen-image-debt.json" in backend_ignore
     assert "!tests/fixtures/image_security/*.json" in backend_ignore
+
+
+def _assert_ci_gate(workflow: str, display_name: str, expected_needs: set[str]) -> None:
+    gate = _job_block(workflow, "ci-gate")
+
+    assert f"name: {display_name}" in gate
+    # Corre SIEMPRE. Sin esto, una dependencia fallida saltea el gate y el
+    # check requerido nunca reporta rojo: el PR quedaria mergeable.
+    assert re.search(r"(?m)^    if: " + re.escape("$" + "{{ always() }}") + r"$", gate)
+    assert "contents: read" in gate
+    assert _needs(workflow, "ci-gate") == expected_needs
+
+    # `changes` se exige en success, no en success|skipped: es la fuente de
+    # verdad del resto, y si se cae los demas se saltean y el gate no puede
+    # darse por satisfecho.
+    assert 'test "$CHANGES_RESULT" = "success"' in gate
+    # Cada dependencia validada pasa por env en MAYUSCULAS y se acepta
+    # unicamente success o skipped: cualquier otro resultado (failure,
+    # cancelled) tiene que hundir el gate.
+    assert "success|skipped" in gate
+    for job in expected_needs - {"changes"}:
+        env_name = job.upper().replace("-", "_")
+        assert f"{env_name}_RESULT: " + "$" + "{{ needs." + job + ".result }}" in gate
+        assert f'require {job} "${env_name}_RESULT"' in gate
+
+
+def test_ci_gate_is_the_single_required_check_of_each_branch_workflow() -> None:
+    """El check requerido de branch protection es UN job agregador por workflow.
+
+    Los checks individuales no sirven como requeridos: se saltean cuando el PR
+    no toca esa area, y apoyarse en como GitHub interpreta un job salteado es
+    fragil. El agregador corre siempre y reporta conclusion propia. Registrar
+    en la proteccion de rama el `name` ("Backend CI" / "Frontend CI"), no el id
+    del job.
+    """
+    _assert_ci_gate(
+        _read(".github/workflows/backend.yml"),
+        "Backend CI",
+        {
+            "changes",
+            "lint",
+            "typecheck",
+            "test",
+            "mutation",
+            "security",
+            "image-backend",
+            "image-geo-worker",
+            "image-security-policy",
+        },
+    )
+    # `mutation-full` queda afuera a proposito: es del cron semanal, no del PR.
+    _assert_ci_gate(
+        _read(".github/workflows/frontend.yml"),
+        "Frontend CI",
+        {
+            "changes",
+            "lint",
+            "test",
+            "typecheck",
+            "smoke",
+            "mutation",
+            "accessibility",
+            "build",
+            "image",
+        },
+    )
+
+
+def test_changes_job_detects_areas_without_third_party_actions() -> None:
+    """El filtrado por area se hace con git pelado, no con acciones de terceros.
+
+    Este repo pinnea acciones por SHA y endurecio su cadena de suministro;
+    `tj-actions/changed-files` fue justamente el epicentro de un compromiso de
+    supply-chain. Calcular un diff no justifica una dependencia de terceros en
+    el camino critico del CI.
+    """
+    for path, area in (
+        (".github/workflows/backend.yml", "backend"),
+        (".github/workflows/frontend.yml", "frontend"),
+    ):
+        workflow = _read(path)
+        changes = _job_block(workflow, "changes")
+
+        assert f"{area}: " + "$" + "{{ steps.detect.outputs." + area + " }}" in changes
+        for forbidden in ("dorny/paths-filter", "tj-actions/changed-files"):
+            assert forbidden not in workflow, path
+        # Historia completa: sin esto el merge-base no existe en el clon y el
+        # diff contra la rama base miente o falla.
+        assert "fetch-depth: 0" in changes
+        # Tres puntos = merge-base. Con dos, un avance de la rama base
+        # posterior a la apertura del PR contaria como cambio del PR.
+        assert 'git diff --name-only "$BASE_SHA...HEAD"' in changes
+        # Fuera de un pull_request se declara todo cambiado: correr de mas es
+        # preferible a saltear en silencio.
+        assert '[ "$GITHUB_EVENT_NAME" != "pull_request" ]' in changes
+        assert f"{area}=true" in changes
+        assert f"{area}=false" in changes
+
+
+def test_pull_requests_to_develop_reach_ci() -> None:
+    """El flujo es feature -> develop -> main, asi que develop necesita CI.
+
+    Una rama de integracion sin checks es peor que no tenerla: da sensacion de
+    red sin red. deploy.yml queda afuera a proposito: sus gates son de push a
+    main post-merge.
+    """
+    for path in (
+        ".github/workflows/backend.yml",
+        ".github/workflows/frontend.yml",
+        ".github/workflows/codeql.yml",
+    ):
+        header = _read(path).split("\njobs:", 1)[0]
+        assert re.search(r"(?m)^    branches: \[main, develop\]$", header), path
+
+    deploy = _read(".github/workflows/deploy.yml").split("\njobs:", 1)[0]
+    assert "develop" not in deploy

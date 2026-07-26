@@ -9,14 +9,12 @@ on:
     # build quedan gateados a pull_request/dispatch (ver los `if:` de esos
     # jobs). La cobertura completa sigue siendo la del PR.
     branches: [main]
-    paths:
-      - 'consorcio-web/**'
-      - '.github/workflows/frontend.yml'
+  # SIN filtro `paths:` a proposito: un filtro de paths hace que el workflow
+  # entero NO CORRA, y un check requerido que nunca corre deja el PR colgado
+  # para siempre en "Expected — waiting for status". El filtrado se mudo
+  # adentro, al job `changes`.
   pull_request:
-    branches: [main]
-    paths:
-      - 'consorcio-web/**'
-      - '.github/workflows/frontend.yml'
+    branches: [main, develop]
   schedule:
     # Lunes 06:00 ART (09:00 UTC) — refresca la baseline incremental de
     # mutación que reusan los PRs. Solo dispara el job `mutation-full`.
@@ -32,9 +30,43 @@ defaults:
     working-directory: consorcio-web
 
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historia completa: sin esto el merge-base contra la rama base no
+          # existe en el clon y el diff de abajo falla o miente.
+          fetch-depth: 0
+      - id: detect
+        working-directory: ${{ github.workspace }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Fuera de un pull_request no hay contra que diffear (en el primer
+          # push de una rama `before` es todo ceros), asi que se declara todo
+          # cambiado: preferimos correr de mas antes que saltear en silencio.
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Tres puntos = merge-base. Con dos puntos, un avance de la rama base
+          # posterior a la apertura del PR aparecerria como cambio del PR.
+          CHANGED="$(git diff --name-only "$BASE_SHA...HEAD")"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(consorcio-web/|\.github/workflows/)'; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint
-    if: ${{ github.event_name != 'schedule' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -49,7 +81,8 @@ jobs:
 
   test:
     name: Test
-    if: ${{ github.event_name != 'schedule' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,10 +97,10 @@ jobs:
 
   typecheck:
     name: Typecheck
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint]
+    needs: [changes, lint]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -80,10 +113,10 @@ jobs:
 
   smoke:
     name: Smoke tests
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test]
+    needs: [changes, test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -96,7 +129,7 @@ jobs:
 
   mutation:
     name: Mutation tests (stryker, incremental)
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     # Incremental: only the mutants this PR's diff can affect — minutes once a
     # baseline exists. The full scope is 1880 mutants ≈ 46 min on a runner
@@ -110,7 +143,7 @@ jobs:
     # `mutation-full` so the cold path can actually complete and store the
     # baseline the next PRs reuse.
     timeout-minutes: 70
-    needs: [typecheck, smoke]
+    needs: [changes, typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -159,10 +192,10 @@ jobs:
 
   accessibility:
     name: Accessibility matrix (Playwright)
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [typecheck, smoke]
+    needs: [changes, typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -188,9 +221,9 @@ jobs:
 
   build:
     name: Build
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    needs: [lint, test, typecheck, smoke, mutation, accessibility]
+    needs: [changes, lint, test, typecheck, smoke, mutation, accessibility]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -204,10 +237,10 @@ jobs:
 
   image:
     name: Final Frontend Image Gate
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [lint, test, typecheck, smoke]
+    needs: [changes, lint, test, typecheck, smoke]
     permissions:
       contents: read
     env:
@@ -235,3 +268,55 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           exit-code: '1'
+
+  ci-gate:
+    # EL check requerido de branch protection para este workflow. Registrar en
+    # la proteccion de rama el `name` ("Frontend CI"), no el id del job.
+    #
+    # Existe porque los checks individuales no sirven como requeridos: se
+    # saltean cuando el PR no toca el frontend, y depender de como GitHub
+    # interpreta un job salteado es fragil. Este job corre SIEMPRE y reporta
+    # una conclusion propia: verde si cada dependencia paso o se salteo,
+    # rojo si alguna fallo o fue cancelada.
+    #
+    # `mutation-full` queda AFUERA a proposito: es del cron semanal y no del
+    # PR. Contrapartida asumida: si esa corrida se rompe, ningun check
+    # requerido lo refleja — hay que mirar la pestana de Actions.
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [changes, lint, test, typecheck, smoke, mutation, accessibility, build, image]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      LINT_RESULT: ${{ needs.lint.result }}
+      TEST_RESULT: ${{ needs.test.result }}
+      TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+      SMOKE_RESULT: ${{ needs.smoke.result }}
+      MUTATION_RESULT: ${{ needs.mutation.result }}
+      ACCESSIBILITY_RESULT: ${{ needs.accessibility.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      IMAGE_RESULT: ${{ needs.image.result }}
+    steps:
+      - name: Require every frontend job to pass or be skipped
+        working-directory: ${{ github.workspace }}
+        run: |
+          # `changes` es la fuente de verdad de todo el resto: si el se cae,
+          # los demas se saltean y el gate no puede darse por satisfecho.
+          test "$CHANGES_RESULT" = "success"
+          require() {
+            case "$2" in
+              success|skipped) ;;
+              *) echo "::error::$1 termino en '$2'"; exit 1 ;;
+            esac
+          }
+          require lint "$LINT_RESULT"
+          require test "$TEST_RESULT"
+          require typecheck "$TYPECHECK_RESULT"
+          require smoke "$SMOKE_RESULT"
+          require mutation "$MUTATION_RESULT"
+          require accessibility "$ACCESSIBILITY_RESULT"
+          require build "$BUILD_RESULT"
+          require image "$IMAGE_RESULT"
