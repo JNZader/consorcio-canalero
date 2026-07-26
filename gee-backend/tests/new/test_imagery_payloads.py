@@ -21,6 +21,10 @@ from app.domains.geo.gee_service_imagery_support import (
     build_sentinel2_collection,
     build_sentinel2_payload,
     build_sentinel2_tiles_payload,
+    build_dem_download_payload,
+    build_flood_comparison_payload,
+    build_sar_time_series_payload,
+    available_visualizations_payload,
     collection_dates,
 )
 
@@ -605,3 +609,362 @@ def test_collection_dates_sorts_and_tolerates_empty() -> None:
     ]
     assert collection_dates("col", lambda _c: []) == []
     assert collection_dates("col", lambda _c: None) == []
+
+
+# ── build_landsat_scenes_payload: per-scene cards ──────────────────────────
+
+
+def _scene_item(index: str, path: int, row: int, cloud: float, ts: int) -> dict:
+    return {
+        "id": f"LANDSAT/LC08/C02/T1_TOA/{index}",
+        "properties": {
+            "system:index": index,
+            "system:time_start": ts,
+            "CLOUD_COVER": cloud,
+            "WRS_PATH": path,
+            "WRS_ROW": row,
+        },
+    }
+
+
+def _scenes_fake(items: list, stats: dict | None = None) -> FakeEE:
+    overrides: dict = {
+        "size.getInfo": len(items),
+        "toList.getInfo": items,
+        "getMapId": map_id(),
+    }
+    if stats is not None:
+        overrides["reduceRegion.getInfo"] = stats
+    return FakeEE(overrides)
+
+
+def test_scenes_payload_builds_one_card_per_scene() -> None:
+    items = [
+        _scene_item("LC08_228083_20150315", 228, 83, 12.5, 1426377600000),
+        _scene_item("LC08_229083_20150318", 229, 83, 40.0, 1426636800000),
+    ]
+    fake = _scenes_fake(items, percentile_stats(LANDSAT_SENSORS["landsat8"]["rgb"], 0.05, 0.3))
+    explorer = FakeExplorer(fake)
+
+    payload = build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="rgb",
+    )
+
+    assert payload["total"] == 2
+    assert payload["returned"] == 2
+    first = payload["scenes"][0]
+    assert first["id"] == "LC08_228083_20150315"
+    assert first["target_date"] == "2015-03-15"
+    assert first["cloud_cover"] == 12.5
+    assert first["composition_mode"] == "scene"
+    assert "P228/R83" in first["label"]
+    assert first["tile_url"].startswith("https://earthengine.example/")
+
+
+def test_scenes_payload_computes_one_shared_stretch() -> None:
+    """One reduceRegion for the whole window, not one per scene card."""
+    items = [
+        _scene_item("a", 228, 83, 5.0, 1426377600000),
+        _scene_item("b", 228, 83, 6.0, 1426636800000),
+        _scene_item("c", 228, 83, 7.0, 1426723200000),
+    ]
+    fake = _scenes_fake(items, percentile_stats(LANDSAT_SENSORS["landsat8"]["rgb"], 0.05, 0.3))
+    explorer = FakeExplorer(fake)
+
+    build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="rgb",
+    )
+
+    assert len(fake.calls_to("reduceRegion")) == 1
+    assert len(fake.calls_to("getMapId")) == 3
+
+
+def test_scenes_payload_skips_the_stretch_for_index_visualizations() -> None:
+    fake = _scenes_fake([_scene_item("a", 228, 83, 5.0, 1426377600000)])
+    explorer = FakeExplorer(fake)
+
+    payload = build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="ndwi",
+    )
+
+    assert not fake.called("reduceRegion")
+    assert payload["scenes"][0]["visualization"] == "ndwi"
+
+
+def test_scenes_payload_clamps_the_limit() -> None:
+    items = [_scene_item(f"s{i}", 228, 83, 5.0, 1426377600000) for i in range(30)]
+    fake = _scenes_fake(items)
+    explorer = FakeExplorer(fake)
+
+    build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="ndwi",
+        limit=99,
+    )
+
+    assert fake.one_call_to("toList").args == (24,)
+
+
+def test_scenes_payload_limit_never_drops_below_one() -> None:
+    fake = _scenes_fake([_scene_item("a", 228, 83, 5.0, 1426377600000)])
+    explorer = FakeExplorer(fake)
+
+    build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="ndwi",
+        limit=0,
+    )
+
+    assert fake.one_call_to("toList").args == (1,)
+
+
+def test_scenes_payload_tolerates_scenes_without_metadata() -> None:
+    fake = _scenes_fake([{"id": "sin-props"}])
+    explorer = FakeExplorer(fake)
+
+    payload = build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat7",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="ndwi",
+    )
+
+    scene = payload["scenes"][0]
+    assert scene["id"] == "sin-props"
+    assert scene["target_date"] == TARGET.isoformat()
+    assert scene["path"] is None
+    assert "SLC-off" in payload["notes"]
+
+
+def test_scenes_payload_empty_window_returns_no_scenes() -> None:
+    fake = FakeEE({"size.getInfo": 0})
+    explorer = FakeExplorer(fake)
+
+    payload = build_landsat_scenes_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=3,
+        max_cloud=80,
+        visualization="rgb",
+    )
+
+    assert payload["scenes"] == []
+    assert payload["total"] == 0
+    assert not fake.called("getMapId")
+
+
+# ── render branches: one per index visualization ──────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("visualization", "expected_palette"),
+    [
+        ("ndwi", ["brown", "white", "blue"]),
+        ("mndwi", ["brown", "white", "cyan"]),
+        ("ndvi", ["red", "yellow", "green", "darkgreen"]),
+        ("inundacion", ["0000FF"]),
+    ],
+)
+def test_landsat_index_render_palettes(visualization: str, expected_palette: list) -> None:
+    fake = _landsat_fake()
+    explorer = FakeExplorer(fake, dates=["2015-03-14"])
+
+    payload = build_landsat_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=10,
+        max_cloud=80,
+        visualization=visualization,
+        use_median=False,
+    )
+
+    assert fake.one_call_to("getMapId").args[0]["palette"] == expected_palette
+    assert payload["visualization"] == visualization
+
+
+def test_inundacion_thresholds_ndwi_above_zero() -> None:
+    fake = _landsat_fake()
+    explorer = FakeExplorer(fake, dates=["2015-03-14"])
+
+    build_landsat_payload(
+        explorer,
+        fake,
+        sensor="landsat8",
+        target_date=TARGET,
+        days_buffer=10,
+        max_cloud=80,
+        visualization="inundacion",
+        use_median=False,
+    )
+
+    assert fake.one_call_to("gt").args == (0,)
+    assert fake.called("selfMask")
+
+
+def test_landsat_ndvi_uses_nir_and_red() -> None:
+    fake = _landsat_fake()
+    explorer = FakeExplorer(fake, dates=["2015-03-14"])
+
+    build_landsat_payload(
+        explorer,
+        fake,
+        sensor="landsat5",
+        target_date=TARGET,
+        days_buffer=10,
+        max_cloud=80,
+        visualization="ndvi",
+        use_median=False,
+    )
+
+    cfg = LANDSAT_SENSORS["landsat5"]
+    assert fake.one_call_to("normalizedDifference").args == (
+        [cfg["false_color"][0], cfg["rgb"][0]],
+    )
+
+
+# ── DEM download, visualizations list, flood comparison, SAR series ───────
+
+
+def test_dem_download_payload_requests_a_geotiff_over_the_zona() -> None:
+    fake = FakeEE({"getDownloadURL": "https://earthengine.example/dem.tif"})
+    zona = fake.FeatureCollection("zona")
+
+    payload = build_dem_download_payload(fake, zona, scale=30)
+
+    assert payload["download_url"] == "https://earthengine.example/dem.tif"
+    assert payload["image"] == "COPERNICUS/DEM/GLO30"
+    assert payload["crs"] == "EPSG:4326"
+    options = fake.one_call_to("getDownloadURL").args[0]
+    assert options["format"] == "GEO_TIFF"
+    assert options["scale"] == 30
+
+
+def test_dem_download_payload_accepts_an_explicit_geometry() -> None:
+    fake = FakeEE({"getDownloadURL": "https://earthengine.example/dem.tif"})
+    geometry = fake.Geometry("polygon")
+
+    build_dem_download_payload(fake, fake.FeatureCollection("zona"), geometry=geometry, scale=90)
+
+    assert fake.one_call_to("getDownloadURL").args[0]["region"] is geometry
+    assert fake.one_call_to("clip").args == (geometry,)
+
+
+def test_available_visualizations_payload_lists_every_preset() -> None:
+    from app.domains.geo.gee_service_imagery_support import VIS_PRESETS
+
+    payload = available_visualizations_payload(VIS_PRESETS)
+
+    assert {item["id"] for item in payload} == set(VIS_PRESETS)
+    assert all(item["description"] for item in payload)
+
+
+def test_flood_comparison_payload_asks_for_three_renders() -> None:
+    class _Explorer:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def get_sentinel2_image(self, target_date, days_buffer, max_cloud, visualization):
+            self.calls.append((target_date, visualization))
+            return {"visualization": visualization, "target_date": target_date.isoformat()}
+
+    explorer = _Explorer()
+
+    payload = build_flood_comparison_payload(
+        explorer,
+        flood_date=date(2017, 2, 20),
+        normal_date=date(2017, 8, 20),
+        days_buffer=10,
+        max_cloud=40,
+    )
+
+    assert payload["flood_detection"]["visualization"] == "inundacion"
+    assert payload["flood_rgb"]["visualization"] == "rgb"
+    assert payload["normal_rgb"]["target_date"] == "2017-08-20"
+    assert len(explorer.calls) == 3
+
+
+def test_sar_time_series_payload_extracts_the_vv_mean_per_date() -> None:
+    features = {
+        "features": [
+            {"properties": {"date": "2024-02-03", "vv_mean": -12.34567}},
+            {"properties": {"date": "2024-02-15", "vv_mean": -9.1}},
+        ]
+    }
+    fake = FakeEE({"size.getInfo": 2, "Feature.getInfo": features})
+    explorer = FakeExplorer(fake)
+
+    payload = build_sar_time_series_payload(
+        explorer, fake, start_date=date(2024, 2, 1), end_date=date(2024, 3, 1), scale=100
+    )
+
+    assert payload["dates"] == ["2024-02-03", "2024-02-15"]
+    assert payload["vv_mean"] == [-12.3457, -9.1]
+    assert payload["image_count"] == 2
+    assert payload["scale_m"] == 100
+
+
+def test_sar_time_series_payload_drops_dates_without_a_measurement() -> None:
+    features = {
+        "features": [
+            {"properties": {"date": "2024-02-03", "vv_mean": None}},
+            {"properties": {"date": "2024-02-15", "vv_mean": -9.1}},
+        ]
+    }
+    fake = FakeEE({"size.getInfo": 2, "Feature.getInfo": features})
+    explorer = FakeExplorer(fake)
+
+    payload = build_sar_time_series_payload(
+        explorer, fake, start_date=date(2024, 2, 1), end_date=date(2024, 3, 1), scale=100
+    )
+
+    assert payload["dates"] == ["2024-02-15"]
+    assert payload["image_count"] == 1
+
+
+def test_sar_time_series_payload_warns_on_an_empty_window() -> None:
+    fake = FakeEE({"size.getInfo": 0})
+    explorer = FakeExplorer(fake)
+
+    payload = build_sar_time_series_payload(
+        explorer, fake, start_date=date(2024, 2, 1), end_date=date(2024, 3, 1), scale=50
+    )
+
+    assert payload["warning"] == "No Sentinel-1 images found in date range"
+    assert payload["dates"] == []
+    assert payload["image_count"] == 0
+    assert payload["scale_m"] == 50

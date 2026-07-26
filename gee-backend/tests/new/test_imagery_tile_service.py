@@ -456,3 +456,32 @@ def test_cache_key_separates_different_render_parameters(
     client.get(_url(LAYER_ID, x, y, colormap="viridis"))
 
     assert len(cache.store) == 2
+
+
+def test_invalid_hide_ranges_does_not_break_the_tile(client, cache, monkeypatch, tmp_path) -> None:
+    path = _write_raster(tmp_path / "classes.tif", np.full((32, 32), 1), "uint8", nodata=255)
+    _serve(monkeypatch, _layer(path, tipo="terrain_class"))
+    x, y = _covering_tile()
+
+    response = client.get(_url(LAYER_ID, x, y, hide_ranges="a,b"))
+
+    assert response.status_code == 200
+
+
+def test_terrain_rgb_falls_back_to_a_flat_tile_when_every_pixel_is_nodata(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    """``render_terrain_rgb_png`` raises on an all-invalid tile; the handler
+    must answer with the flat tile instead of a 500."""
+    path = _write_raster(
+        tmp_path / "dem.tif", np.full((64, 64), -9999.0), "float32", nodata=-9999.0
+    )
+    _serve(monkeypatch, _layer(path))
+    x, y = _covering_tile()
+
+    response = client.get(_url(LAYER_ID, x, y, encoding="terrain-rgb"))
+
+    assert response.status_code == 200
+    pixels = np.asarray(PILImage.open(io.BytesIO(response.content)).convert("RGB"))
+    r, g, b = (int(v) for v in pixels[0, 0])
+    assert -10000 + (r * 65536 + g * 256 + b) * 0.1 == pytest.approx(0.0, abs=0.05)
