@@ -90,7 +90,13 @@ jobs:
     name: Mutation tests (stryker)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 45, not 20: the 20 was sized for a config that only mutated ONE file
+    # (stryker.config.json shadowed the curated stryker.config.mjs, so the
+    # 12-path scope had never actually run). Measured locally on the real
+    # scope: 1880 mutants, 25m20s, score 63.09%. The runner is slower than
+    # this dev box, hence the margin. If it ever gets tight, split the scope
+    # into two parallel jobs rather than trimming coverage.
+    timeout-minutes: 45
     needs: [typecheck, smoke]
     steps:
       - uses: actions/checkout@v4

@@ -97,6 +97,11 @@ a11y-report/
 test-results/
 *.lcov
 .stryker-tmp/
+# Scratch mutation configs: one-off scoped runs (stryker-<algo>.config.*).
+# 26 quedaron commiteados por descuido; el config real es
+# consorcio-web/stryker.config.mjs (SIN guion, este patron no lo matchea).
+stryker-*.config.*
+reports/mutation/
 
 # ===========================================
 # LOGS

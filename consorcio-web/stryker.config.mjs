@@ -1,4 +1,17 @@
-/** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
+/**
+ * Stryker config — THE one. A `stryker.config.json` used to sit next to this
+ * file and win (StrykerJS resolves .json first), so CI mutated a single file
+ * (`src/hooks/useAuth.ts`) and this curated scope had never run. That .json is
+ * gone; keep it that way — do not re-add a .json/.js config beside this one.
+ *
+ * Measured on the full scope (2026-07-26): 1880 mutants, 25m20s, score 63.09%.
+ * Weak spots worth attention (mutants that survive = untested behaviour):
+ * stores/authStore.ts 26.8%, lib/auth.ts 40.9%, lib/api/core.ts 53.2% and
+ * lib/typeGuards.ts 65.3% — the last one guards tile_url against a host
+ * allowlist, so its survivors are security-relevant.
+ *
+ * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
+ */
 export default {
   packageManager: 'npm',
   testRunner: 'vitest',
