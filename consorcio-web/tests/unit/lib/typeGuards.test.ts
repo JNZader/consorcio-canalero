@@ -158,6 +158,17 @@ describe('typeGuards', () => {
       ).toBe(true);
       expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'http://example.com/{z}/{x}/{y}' })).toBe(false);
       expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'https://foo.googleapis.com/{z}/{x}/{y}' })).toBe(false);
+      // Isolates the https check: correct host, insecure scheme. Every other
+      // negative case above fails the hostname test too, so deleting
+      // `parsed.protocol !== 'https:'` used to leave the suite green while the
+      // guard started accepting cleartext tile URLs — and tile_url comes from
+      // attacker-writable localStorage. Surfaced by a surviving Stryker mutant.
+      expect(
+        isValidSelectedImage({
+          ...validSelectedImage,
+          tile_url: 'http://earthengine.googleapis.com/v1/projects/test/maps/abc/tiles/{z}/{x}/{y}',
+        })
+      ).toBe(false);
       // Any non-Earth-Engine https origin must be rejected (auditoría 2026-07-09 #3)
       expect(isValidSelectedImage({ ...validSelectedImage, tile_url: 'https://example.com/tiles/{z}/{x}/{y}' })).toBe(false);
       // Optional persisted search params are validated when present

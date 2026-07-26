@@ -43,14 +43,21 @@ def _try_testcontainers() -> tuple[str | None, object | None]:
 
 
 def _resolve_database_url() -> tuple[str, object | None]:
-    """Pick the best available database URL or abort."""
-    url, container = _try_testcontainers()
-    if url:
-        return url, container
+    """Pick the best available database URL or abort.
 
+    TEST_DATABASE_URL wins over testcontainers: spinning a container when the
+    developer (or CI) already pointed us at a database wastes ~5s per pytest
+    invocation and, before the atexit hook below, leaked one container per run.
+    Under mutation testing — which re-invokes pytest once per mutant — that was
+    a container bomb.
+    """
     fallback = os.environ.get("TEST_DATABASE_URL")
     if fallback:
         return fallback, None
+
+    url, container = _try_testcontainers()
+    if url:
+        return url, container
 
     pytest.exit(
         "\n\nNo database available for tests.\n"
@@ -65,6 +72,23 @@ def _resolve_database_url() -> tuple[str, object | None]:
 # Resolve DB URL and set env vars BEFORE importing app modules
 # ---------------------------------------------------------------------------
 _db_url, _container = _resolve_database_url()
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 — pytest hook signature
+    """Stop the testcontainer even when no test requested ``test_engine``.
+
+    The fixture's teardown only runs if something used it, so a DB-free run
+    (the imagery tests need no database at all) used to leave one orphan
+    container per pytest invocation. Under mutation testing, which re-invokes
+    pytest once per mutant, that is a container bomb. Idempotent: stopping an
+    already-stopped container is a no-op.
+    """
+    if _container is not None:
+        try:
+            _container.stop()
+        except Exception:  # pragma: no cover — teardown must never fail a run
+            pass
+
 
 os.environ.update(
     {
