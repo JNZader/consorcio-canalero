@@ -157,8 +157,21 @@ def _assert_image_policy_aggregate(
 
     assert "name: Image Security Policy" in aggregate
     assert _needs(workflow, "image-security-policy") == producers
-    always_expression = re.escape("$" + "{{ always() }}")
-    assert re.search(rf"(?m)^    if: {always_expression}$", aggregate)
+    # Tiene que arrancar con always(): si no, un producer fallido saltea el job
+    # agregador y la corrida queda verde sin haber exigido la evidencia. El
+    # unico conjunto admitido es el guard de workflow_dispatch de deploy.yml,
+    # donde la publicacion entera es a demanda.
+    guards = re.findall(r"(?m)^    if: (.+)$", aggregate)
+    assert guards == [
+        g
+        for g in guards
+        if g
+        in (
+            "$" + "{{ always() }}",
+            "$" + "{{ always() && github.event_name == 'workflow_dispatch' }}",
+        )
+    ], guards
+    assert len(guards) == 1, guards
     for producer in producers:
         env_name = producer.upper().replace("-", "_")
         needs_expression = "$" + "{{ needs." + producer + ".result }}"
@@ -207,7 +220,12 @@ def _assert_non_publishing_image_gate(
     assert "docker/login-action" not in job
     assert "contents: read" in job
     assert "packages: write" not in job
-    assert not re.search(r"(?m)^    if:", job)
+    # El gate no puede saltearse en los eventos que lo justifican. La UNICA
+    # condicion admitida es excluir el cron semanal (que solo existe para
+    # refrescar la baseline de mutacion y no construye imagenes): cualquier
+    # otro `if:` haria que un push o un PR pudieran pasar sin escanear.
+    for guard in re.findall(r"(?m)^    if: (.+)$", job):
+        assert guard == "$" + "{{ github.event_name != 'schedule' }}", guard
     if policy_role is None:
         _assert_strict_image_trivy(job)
     else:
@@ -262,7 +280,11 @@ def _assert_scanned_manifest_is_published(
         r"(?m)^\s*docker(?:\s+build|\s+buildx\s+build)\b",
         job[scan_index:],
     )
-    assert not re.search(r"(?m)^    if:", job)
+    # La publicacion es a demanda (workflow_dispatch): esa es la UNICA
+    # condicion admitida. Con cualquier otro `if:` el job podria saltearse en
+    # una corrida que igual promueve manifests, y se publicaria sin escanear.
+    for guard in re.findall(r"(?m)^    if: (.+)$", job):
+        assert guard == "$" + "{{ github.event_name == 'workflow_dispatch' }}", guard
     assert 'echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
     assert 'echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
     _assert_frozen_image_policy(job, role)
@@ -540,13 +562,30 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     _assert_fail_closed_trivy(security)
 
 
-def test_deploy_publish_is_push_only_and_rollout_is_explicitly_opt_in() -> None:
+def test_deploy_runs_gates_on_main_and_publishes_only_on_demand() -> None:
+    """deploy.yml tiene DOS responsabilidades separadas por evento.
+
+    En push a main corren solo los gates de calidad del backend (baratos). La
+    construccion y publicacion de imagenes -la parte cara: el geo-worker trae
+    GDAL- queda detras de workflow_dispatch, porque hacerla en cada push a main
+    agoto la cuota de Actions y dejo el workflow deshabilitado a mano desde
+    2026-03. Un `pull_request` NUNCA debe poder disparar publicacion: el
+    trigger no existe, asi que codigo no revisado no llega a GHCR.
+    """
     deploy = _read(".github/workflows/deploy.yml")
-    trigger = deploy.split("\n# Frontend:", 1)[0]
+    trigger = deploy.split("\njobs:", 1)[0]
 
     assert re.search(r"(?m)^  push:\n    branches: \[main\]$", trigger)
     assert "pull_request:" not in trigger
-    assert "workflow_dispatch:" not in trigger
+    assert re.search(r"(?m)^  workflow_dispatch:$", trigger)
+
+    dispatch_only = "$" + "{{ github.event_name == 'workflow_dispatch' }}"
+    for gate in ("quality-backend", "mutation-backend", "security-backend"):
+        assert not re.search(r"(?m)^    if:", _job_block(deploy, gate)), gate
+    for publisher in ("build-backend", "build-geo-worker", "promote-images"):
+        assert f"if: {dispatch_only}" in _job_block(deploy, publisher), publisher
+    policy = _job_block(deploy, "image-security-policy")
+    assert "if: " + "$" + "{{ always() && github.event_name == 'workflow_dispatch' }}" in policy
 
     mutation = _job_block(deploy, "mutation-backend")
     assert _needs(deploy, "mutation-backend") == {"quality-backend"}
