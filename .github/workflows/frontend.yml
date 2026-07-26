@@ -17,6 +17,10 @@ on:
     paths:
       - 'consorcio-web/**'
       - '.github/workflows/frontend.yml'
+  schedule:
+    # Lunes 06:00 ART (09:00 UTC) — refresca la baseline incremental de
+    # mutación que reusan los PRs. Solo dispara el job `mutation-full`.
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -30,6 +34,7 @@ defaults:
 jobs:
   lint:
     name: Lint
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,6 +49,7 @@ jobs:
 
   test:
     name: Test
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,6 +64,7 @@ jobs:
 
   typecheck:
     name: Typecheck
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint]
@@ -73,6 +80,7 @@ jobs:
 
   smoke:
     name: Smoke tests
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [test]
@@ -87,16 +95,15 @@ jobs:
       - run: npm run test:smoke
 
   mutation:
-    name: Mutation tests (stryker)
+    name: Mutation tests (stryker, incremental)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    # 45, not 20: the 20 was sized for a config that only mutated ONE file
-    # (stryker.config.json shadowed the curated stryker.config.mjs, so the
-    # 12-path scope had never actually run). Measured locally on the real
-    # scope: 1880 mutants, 25m20s, score 63.09%. The runner is slower than
-    # this dev box, hence the margin. If it ever gets tight, split the scope
-    # into two parallel jobs rather than trimming coverage.
-    timeout-minutes: 45
+    # Incremental: only the mutants this PR's diff can affect. The full scope
+    # is 1880 mutants ≈ 46 min on a runner (measured: it hit 1840/1880 at the
+    # 45-minute mark), which is too much per PR for a repo that already had to
+    # disable a workflow over Actions quota. The weekly `mutation-full` job
+    # keeps the baseline fresh; this one stays minutes long.
+    timeout-minutes: 25
     needs: [typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
@@ -106,7 +113,41 @@ jobs:
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      # Restore the incremental baseline produced by the weekly full run. On a
+      # cache miss Stryker just runs everything it can inside the timeout and
+      # writes a fresh baseline — degraded, never wrong.
+      - name: Restore mutation baseline
+        uses: actions/cache@v4
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-
       - run: npm run mutation:run
+
+  mutation-full:
+    name: Mutation tests (stryker, full baseline)
+    # Weekly, not per PR: refreshes the incremental baseline the PR job reuses.
+    # ~46 min, so it must never sit on the PR critical path.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - name: Full mutation run (rebuilds the baseline)
+        run: npx stryker run --force
+      - name: Save mutation baseline
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental.json
+          key: stryker-incremental-${{ github.sha }}
 
   accessibility:
     name: Accessibility matrix (Playwright)
@@ -155,6 +196,7 @@ jobs:
 
   image:
     name: Final Frontend Image Gate
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [lint, test, typecheck, smoke]

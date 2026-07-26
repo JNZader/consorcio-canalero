@@ -49,4 +49,12 @@ export default {
   },
   timeoutMS: 30000,
   concurrency: 4,
+  // Incremental mode: on a PR, Stryker re-tests only the mutants the diff can
+  // affect and reuses the stored verdicts for the rest. The full scope takes
+  // ~46 min on a GH runner (measured: 1840/1880 in 45 min) — too expensive per
+  // PR for a project that already had to disable a workflow over Actions quota.
+  // The weekly `mutation-full` job refreshes this file with a complete run;
+  // `--force` rebuilds it from scratch.
+  incremental: true,
+  incrementalFile: 'reports/mutation/stryker-incremental.json',
 };
