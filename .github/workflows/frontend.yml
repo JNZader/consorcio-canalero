@@ -98,12 +98,18 @@ jobs:
     name: Mutation tests (stryker, incremental)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    # Incremental: only the mutants this PR's diff can affect. The full scope
-    # is 1880 mutants ≈ 46 min on a runner (measured: it hit 1840/1880 at the
-    # 45-minute mark), which is too much per PR for a repo that already had to
-    # disable a workflow over Actions quota. The weekly `mutation-full` job
-    # keeps the baseline fresh; this one stays minutes long.
-    timeout-minutes: 25
+    # Incremental: only the mutants this PR's diff can affect — minutes once a
+    # baseline exists. The full scope is 1880 mutants ≈ 46 min on a runner
+    # (measured: 1840/1880 at the 45-minute mark), too much per PR for a repo
+    # that already had to disable a workflow over Actions quota.
+    #
+    # The 70 is a CEILING, not a cost: a cache hit finishes in minutes and
+    # bills minutes. It only matters on a COLD cache (no baseline yet, or the
+    # weekly entry evicted), where Stryker has to run everything — a 25-minute
+    # cap just killed that run mid-flight and failed the PR. Sized like
+    # `mutation-full` so the cold path can actually complete and store the
+    # baseline the next PRs reuse.
+    timeout-minutes: 70
     needs: [typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
@@ -113,9 +119,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
-      # Restore the incremental baseline produced by the weekly full run. On a
-      # cache miss Stryker just runs everything it can inside the timeout and
-      # writes a fresh baseline — degraded, never wrong.
+      # Restore the incremental baseline produced by the weekly full run.
+      # On a cache MISS Stryker runs the whole scope (~46 min) and stores a
+      # fresh baseline for the next PRs — hence this job's generous ceiling.
+      # `restore-keys` makes any previous baseline usable: Stryker re-tests
+      # what the diff touched and trusts the stored verdicts for the rest.
       - name: Restore mutation baseline
         uses: actions/cache@v4
         with:
