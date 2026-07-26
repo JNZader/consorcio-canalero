@@ -65,3 +65,16 @@ mkdocstrings[python]>=0.24.0
 # PRE-COMMIT HOOKS
 # ===========================================
 pre-commit>=3.6.0
+
+# ===========================================
+# GEO-WORKER RUNTIME DEPS NEEDED BY TESTS
+# ===========================================
+# The imagery/tile tests import app.domains.geo.tile_service* directly, and
+# those modules pull scipy (median filter) and rio-tiler (Reader/ImageData).
+# Both live in requirements-geo.txt because PRODUCTION only needs them inside
+# the geo-worker image — but CI installs requirements-dev.lock only, so
+# without these the tests either fail to import (scipy: 3 collection errors,
+# real CI failure on 2026-07-26) or skip forever (rio-tiler: 6 phantom tests).
+# GDAL bindings are NOT needed: rio-tiler ships its own rasterio wheel.
+scipy>=1.11.0
+rio-tiler>=7.0.0
