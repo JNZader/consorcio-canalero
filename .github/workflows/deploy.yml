@@ -13,7 +13,10 @@ name: Backend Gates and Image Publishing
 #                  los manifests con digest verificado. Es la parte cara (el
 #                  geo-worker trae GDAL): dos imagenes en cada push a main fue
 #                  lo que agoto la cuota de Actions. Se dispara a mano cuando
-#                  se va a desplegar.
+#                  se va a desplegar, y SOLO desde main: el guard exige
+#                  tambien github.ref, porque el selector de rama de la UI
+#                  dejaba publicar a :latest y pegarle al webhook de prod
+#                  desde cualquier rama.
 #
 # Frontend: Cloudflare Pages buildea y deployea solo desde main.
 
@@ -29,7 +32,12 @@ env:
   REGISTRY: ghcr.io
 
 concurrency:
-  group: deploy-production
+  # Grupo POR EVENTO. `deploy-production` serializa publicaciones y no cancela
+  # en curso, pero desde que los gates corren en push a main una corrida de
+  # gates retenia ese grupo hasta ~1h: un deploy despachado en esa ventana
+  # quedaba pending, y GitHub CANCELA el job pendiente de un grupo cuando entra
+  # otro. O sea, el siguiente push a main mataba el deploy en espera.
+  group: ${{ github.event_name == 'workflow_dispatch' && 'deploy-production' || format('deploy-gates-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -184,7 +192,7 @@ jobs:
     # dejo este workflow deshabilitado a mano desde 2026-03. Los gates de
     # calidad de arriba SI corren en main; el build se dispara cuando vas a
     # desplegar (workflow_dispatch).
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
@@ -301,7 +309,7 @@ jobs:
     # dejo este workflow deshabilitado a mano desde 2026-03. Los gates de
     # calidad de arriba SI corren en main; el build se dispara cuando vas a
     # desplegar (workflow_dispatch).
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
@@ -412,7 +420,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-backend, build-geo-worker]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
     env:
@@ -443,7 +451,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-backend, build-geo-worker, image-security-policy]
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write

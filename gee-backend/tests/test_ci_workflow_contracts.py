@@ -168,7 +168,8 @@ def _assert_image_policy_aggregate(
         if g
         in (
             "$" + "{{ always() }}",
-            "$" + "{{ always() && github.event_name == 'workflow_dispatch' }}",
+            "$" + "{{ always() && github.event_name == 'workflow_dispatch' "
+            "&& github.ref == 'refs/heads/main' }}",
         )
     ], guards
     assert len(guards) == 1, guards
@@ -284,7 +285,10 @@ def _assert_scanned_manifest_is_published(
     # condicion admitida. Con cualquier otro `if:` el job podria saltearse en
     # una corrida que igual promueve manifests, y se publicaria sin escanear.
     for guard in re.findall(r"(?m)^    if: (.+)$", job):
-        assert guard == "$" + "{{ github.event_name == 'workflow_dispatch' }}", guard
+        assert guard == (
+            "$" + "{{ github.event_name == 'workflow_dispatch' "
+            "&& github.ref == 'refs/heads/main' }}"
+        ), guard
     assert 'echo "verified_digest=$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
     assert 'echo "immutable_ref=$IMAGE_REPOSITORY@$REMOTE_DIGEST" >> "$GITHUB_OUTPUT"' in job
     _assert_frozen_image_policy(job, role)
@@ -579,13 +583,29 @@ def test_deploy_runs_gates_on_main_and_publishes_only_on_demand() -> None:
     assert "pull_request:" not in trigger
     assert re.search(r"(?m)^  workflow_dispatch:$", trigger)
 
-    dispatch_only = "$" + "{{ github.event_name == 'workflow_dispatch' }}"
+    # El guard exige el EVENTO y el REF. Sin `github.ref`, cualquiera con
+    # permiso de escritura podia despachar desde una rama arbitraria y esa
+    # build se publicaba a :latest y le pegaba al webhook de produccion.
+    dispatch_only = (
+        "$" + "{{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"
+    )
     for gate in ("quality-backend", "mutation-backend", "security-backend"):
         assert not re.search(r"(?m)^    if:", _job_block(deploy, gate)), gate
     for publisher in ("build-backend", "build-geo-worker", "promote-images"):
         assert f"if: {dispatch_only}" in _job_block(deploy, publisher), publisher
+    # El grupo de concurrencia se separa por evento: los gates en push no
+    # pueden retener el grupo de despliegue (ver comentario en deploy.yml).
+    assert "group: " + "$" + "{{ github.event_name == 'workflow_dispatch'" in deploy
+    assert "'deploy-production'" in deploy
+    assert "cancel-in-progress: false" in deploy
+
     policy = _job_block(deploy, "image-security-policy")
-    assert "if: " + "$" + "{{ always() && github.event_name == 'workflow_dispatch' }}" in policy
+    assert (
+        "if: "
+        + "$"
+        + "{{ always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"
+        in policy
+    )
 
     mutation = _job_block(deploy, "mutation-backend")
     assert _needs(deploy, "mutation-backend") == {"quality-backend"}
@@ -634,6 +654,13 @@ def test_deploy_runs_gates_on_main_and_publishes_only_on_demand() -> None:
     assert f'GEO_WORKER_LATEST: "{GHCR_ROOT}/geo-worker:latest"' in promotion
 
     rollout = _job_block(deploy, "deploy")
+    # Match EXACTO, igual que los otros cuatro jobs: con un `in` suelto se
+    # podia colar un `always()` delante y, ahora que promote-images se saltea
+    # en push, eso disparaba el webhook de produccion en cada push a main con
+    # las imagenes vacias.
+    assert re.findall(r"(?m)^    if: (.+)$", rollout) == [
+        "$" + "{{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}"
+    ], rollout
     assert _needs(deploy, "deploy") == {"promote-images"}
     assert "vars.ENABLE_PRODUCTION_DEPLOY == 'true'" in rollout
     assert "vars.DEPLOY_WEBHOOK_URL != ''" in rollout
