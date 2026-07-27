@@ -106,7 +106,10 @@ export function TerrainLayerTogglesPanel({
 }: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
-    label: GEO_LAYER_LABELS[layer.tipo] || layer.nombre,
+    // `layer.label` ya trae el sufijo "(escenario)" cuando corresponde. Usar
+    // GEO_LAYER_LABELS[tipo] mostraria "Acumulacion de Flujo" tanto para la
+    // capa operativa como para la de escenario — indistinguibles.
+    label: layer.label ?? GEO_LAYER_LABELS[layer.tipo] ?? layer.nombre,
   }));
   const allRasterOptions = selectedImageOption
     ? [selectedImageOption, ...rasterOptions]
