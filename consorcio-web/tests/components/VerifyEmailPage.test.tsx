@@ -19,7 +19,7 @@ const VERIFY_EXCHANGE_HANDLE = {
 
 function renderPage({ code = '', token = '' }: { code?: string; token?: string }) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <VerifyEmailPage code={code} token={token} />
     </MantineProvider>
   );

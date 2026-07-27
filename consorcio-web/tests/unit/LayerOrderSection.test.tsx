@@ -26,7 +26,7 @@ import {
 } from '../../src/components/map2d/layerRenderRegistry';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('reorderLayerIds (pure)', () => {

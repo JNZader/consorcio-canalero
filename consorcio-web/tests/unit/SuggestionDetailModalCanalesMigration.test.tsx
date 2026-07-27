@@ -109,7 +109,7 @@ function renderModal(overrides: Partial<Parameters<typeof SuggestionDetailModal>
     ...overrides,
   };
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <SuggestionDetailModal {...baseProps} />
     </MantineProvider>,
   );

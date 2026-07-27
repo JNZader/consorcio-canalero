@@ -28,7 +28,7 @@ import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPane
 import type { CanalToggleEntry } from '../../src/components/shared/canalesGrouping';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

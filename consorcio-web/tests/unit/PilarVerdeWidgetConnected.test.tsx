@@ -28,7 +28,7 @@ function renderConnected(children: ReactNode) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MantineProvider>{children}</MantineProvider>
+      <MantineProvider env="test">{children}</MantineProvider>
     </QueryClientProvider>,
   );
 }

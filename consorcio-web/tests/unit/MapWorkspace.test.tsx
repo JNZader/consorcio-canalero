@@ -77,7 +77,7 @@ function installControllableViewport(initialDesktop: boolean) {
 }
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const canvas = <div data-testid="canvas-marker">CANVAS</div>;

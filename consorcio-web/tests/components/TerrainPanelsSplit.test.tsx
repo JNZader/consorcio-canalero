@@ -28,7 +28,7 @@ import { TerrainLayerTogglesPanel } from '../../src/components/terrain/TerrainLa
 import { TerrainLegendsPanel } from '../../src/components/terrain/TerrainLegendsPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------

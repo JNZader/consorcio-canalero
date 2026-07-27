@@ -50,7 +50,7 @@ const ingreso = {
 
 const renderPanel = () =>
   render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <FinanzasPanel />
     </MantineProvider>
   );

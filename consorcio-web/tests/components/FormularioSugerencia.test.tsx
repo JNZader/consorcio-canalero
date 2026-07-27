@@ -59,7 +59,7 @@ const renderForm = () => {
   const queryClient = createTestQueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>
+      <MantineProvider env="test">
         <FormularioSugerenciaContent />
       </MantineProvider>
     </QueryClientProvider>

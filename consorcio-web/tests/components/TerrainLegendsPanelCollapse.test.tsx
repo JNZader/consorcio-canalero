@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TerrainLegendsPanel } from '../../src/components/terrain/TerrainLegendsPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

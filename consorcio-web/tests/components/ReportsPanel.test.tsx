@@ -52,7 +52,7 @@ const baseReport = {
 
 function renderPanel() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <ReportsPanel />
     </MantineProvider>
   );

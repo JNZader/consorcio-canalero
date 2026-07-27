@@ -20,7 +20,7 @@ const RESET_EXCHANGE_HANDLE = {
 };
 
 function renderWithProvider(element: React.ReactNode) {
-  return render(<MantineProvider>{element}</MantineProvider>);
+  return render(<MantineProvider env="test">{element}</MantineProvider>);
 }
 
 describe('Auth password forms', () => {

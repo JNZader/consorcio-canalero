@@ -24,7 +24,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CollapsibleSection } from '../../src/components/ui/CollapsibleSection';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<CollapsibleSection />', () => {

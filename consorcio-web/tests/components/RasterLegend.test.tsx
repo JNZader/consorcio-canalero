@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RasterLegend } from '../../src/components/RasterLegend';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<RasterLegend />', () => {

@@ -24,7 +24,7 @@ import { PILAR_VERDE_LAYER_IDS } from '../../src/stores/mapLayerSyncStore';
 const IDECOR_TEXT = 'Datos: IDECor — Gobierno de Córdoba';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

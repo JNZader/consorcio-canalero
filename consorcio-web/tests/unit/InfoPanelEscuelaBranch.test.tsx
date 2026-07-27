@@ -37,7 +37,7 @@ import type { CanalFeatureProperties } from '../../src/types/canales';
 import type { EscuelaFeatureProperties } from '../../src/types/escuelas';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------

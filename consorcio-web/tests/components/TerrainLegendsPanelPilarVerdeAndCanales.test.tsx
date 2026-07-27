@@ -31,7 +31,7 @@ import { PILAR_VERDE_COLORS } from '../../src/components/map2d/pilarVerdeLayers'
 import { ALL_ETAPAS } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

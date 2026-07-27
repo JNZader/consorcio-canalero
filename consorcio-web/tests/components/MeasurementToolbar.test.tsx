@@ -32,7 +32,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MeasurementToolbar } from '@/components/map2d/measurement/MeasurementToolbar';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<MeasurementToolbar />', () => {

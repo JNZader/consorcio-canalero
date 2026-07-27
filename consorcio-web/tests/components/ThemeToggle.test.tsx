@@ -24,7 +24,7 @@ vi.mock('../../src/components/ui/icons', () => ({
 
 function renderToggle() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <ThemeToggle />
     </MantineProvider>
   );

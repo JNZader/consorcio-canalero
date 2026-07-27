@@ -190,7 +190,7 @@ function renderViewer(ui: ReactNode) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MantineProvider>{ui}</MantineProvider>
+      <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
 }

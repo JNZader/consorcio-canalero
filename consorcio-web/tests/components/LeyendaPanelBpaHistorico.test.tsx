@@ -24,7 +24,7 @@ import { LeyendaPanel } from '../../src/components/map2d/LeyendaPanel';
 import { PILAR_VERDE_COLORS } from '../../src/components/map2d/pilarVerdeLayers';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<LeyendaPanel /> — Años en BPA color scale', () => {

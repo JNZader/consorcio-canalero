@@ -15,7 +15,7 @@ import { MapViewportOverlay } from '../../src/components/map2d/MapViewportOverla
 import { MAP_VIEW_MODE, ViewModePanel } from '../../src/components/map2d/ViewModePanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('map2d extracted panels', () => {

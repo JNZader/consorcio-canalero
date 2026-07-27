@@ -34,7 +34,7 @@ describe('Header', () => {
 
   it('should render header element', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -45,7 +45,7 @@ describe('Header', () => {
 
   it('should render logo with company name', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -55,7 +55,7 @@ describe('Header', () => {
 
   it('should render logo link to home', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -68,7 +68,7 @@ describe('Header', () => {
 
   it('should render navigation link for Inicio', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -79,7 +79,7 @@ describe('Header', () => {
 
   it('should render navigation link for Mapa', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -90,7 +90,7 @@ describe('Header', () => {
 
   it('should render navigation link for Reportes', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -101,7 +101,7 @@ describe('Header', () => {
 
   it('should render navigation link for Sugerencias', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -112,7 +112,7 @@ describe('Header', () => {
 
   it('should have correct href for Mapa link', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -123,7 +123,7 @@ describe('Header', () => {
 
   it('should have correct href for Reportes link', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -134,7 +134,7 @@ describe('Header', () => {
 
   it('should have correct href for Sugerencias link', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -145,7 +145,7 @@ describe('Header', () => {
 
   it('should render theme toggle component', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -157,7 +157,7 @@ describe('Header', () => {
 
   it('should render user menu component desktop variant', async () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -169,7 +169,7 @@ describe('Header', () => {
 
   it('should have primary nav element', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -180,7 +180,7 @@ describe('Header', () => {
 
   it('should render company tagline', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -190,7 +190,7 @@ describe('Header', () => {
 
   it('should have all public links available', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -202,7 +202,7 @@ describe('Header', () => {
 
   it('should render primary navigation with buttons', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -214,7 +214,7 @@ describe('Header', () => {
 
   it('should render mobile burger button', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -225,7 +225,7 @@ describe('Header', () => {
 
   it('should have mobile drawer in document', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -240,7 +240,7 @@ describe('Header', () => {
 
   it('should have theme toggles for both desktop and mobile', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -252,7 +252,7 @@ describe('Header', () => {
 
   it('should have proper header structure with container', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
@@ -264,7 +264,7 @@ describe('Header', () => {
 
   it('should have group layout in header', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );

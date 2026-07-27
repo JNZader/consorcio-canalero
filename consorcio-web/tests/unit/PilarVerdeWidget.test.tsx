@@ -27,7 +27,7 @@ import { PilarVerdeWidget } from '../../src/components/admin/pilarVerdeWidget/Pi
 import pilarVerdeAggregatesFixture from '../fixtures/pilarVerdeAggregates';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const AGG = pilarVerdeAggregatesFixture;

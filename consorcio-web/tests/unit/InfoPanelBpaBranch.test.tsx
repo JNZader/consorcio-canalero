@@ -26,7 +26,7 @@ import type {
 } from '../../src/types/pilarVerde';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------

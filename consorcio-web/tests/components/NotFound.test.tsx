@@ -19,7 +19,7 @@ describe('NotFound', () => {
 
   it('should render 404 title', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -29,7 +29,7 @@ describe('NotFound', () => {
 
   it('should render not found message', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -39,7 +39,7 @@ describe('NotFound', () => {
 
   it('should render helpful description', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -53,7 +53,7 @@ describe('NotFound', () => {
 
   it('should render home button', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -65,7 +65,7 @@ describe('NotFound', () => {
 
   it('should render with proper semantic structure', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -77,7 +77,7 @@ describe('NotFound', () => {
 
   it('should have centered layout', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -88,7 +88,7 @@ describe('NotFound', () => {
 
   it('should display icon for visual context', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -100,7 +100,7 @@ describe('NotFound', () => {
 
   it('should be accessible with proper ARIA labels', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );
@@ -112,7 +112,7 @@ describe('NotFound', () => {
 
   it('should render button with left icon section', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <NotFound />
       </MantineProvider>
     );

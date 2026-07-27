@@ -124,7 +124,7 @@ function renderViewer(ui: ReactNode) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MantineProvider>{ui}</MantineProvider>
+      <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
 }
@@ -261,7 +261,7 @@ describe('TerrainViewer3D — registerPilarAzul wiring (Phase 0)', () => {
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <MantineProvider>
+        <MantineProvider env="test">
           <TerrainViewer3D demLayerId="dem-uuid" />
         </MantineProvider>
       </QueryClientProvider>,
