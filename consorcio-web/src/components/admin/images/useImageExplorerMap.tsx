@@ -31,6 +31,10 @@ export function useImageExplorerMap() {
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const tileLayerIdRef = useRef<string | null>(null);
   const zonaLayerIdRef = useRef<string | null>(null);
+  /** Última URL pedida; la aplica quien llegue a correr, sea ahora o en `idle`. */
+  const pendingTileUrlRef = useRef<string | null>(null);
+  /** Evita apilar listeners de `idle` cuando llegan varias URLs seguidas. */
+  const idleWaitRef = useRef(false);
   const centerLat = config?.map.center?.lat ?? MAP_CENTER[0];
   const centerLng = config?.map.center?.lng ?? MAP_CENTER[1];
   const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
@@ -131,12 +135,19 @@ export function useImageExplorerMap() {
   const updateTileLayer = useCallback((tileUrl: string) => {
     const map = mapInstanceRef.current;
     if (!map) return;
+
+    // La URL más reciente gana: si llega una segunda mientras la primera
+    // espera, no tiene sentido aplicar la vieja y después la nueva.
+    pendingTileUrlRef.current = tileUrl;
+
     const apply = () => {
+      const url = pendingTileUrlRef.current;
+      if (!url) return;
       if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
       if (map.getSource('gee-image')) map.removeSource('gee-image');
       map.addSource('gee-image', {
         type: 'raster',
-        tiles: [tileUrl],
+        tiles: [url],
         tileSize: 256,
         attribution: 'Imagery &copy; Google Earth Engine',
       });
@@ -151,8 +162,30 @@ export function useImageExplorerMap() {
       );
       tileLayerIdRef.current = 'gee-image-layer';
     };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
+
+    if (map.isStyleLoaded()) {
+      apply();
+      return;
+    }
+
+    // `idle` y NO `load`. El evento `load` de MapLibre dispara UNA sola vez en
+    // toda la vida del mapa —lo guarda un flag `_loaded` en el propio Map— asi
+    // que para el segundo cambio de imagen ya disparo y el callback no corre
+    // nunca: la actualizacion se perdia EN SILENCIO.
+    //
+    // Y se caia en esta rama seguido, porque `isStyleLoaded()` no mira solo el
+    // estilo: agrega el estado de los tiles. Con tiles de Earth Engine que
+    // tardan 20-35 segundos (medido en produccion), cualquier cambio de
+    // visualizacion durante esa ventana se descartaba. Sintoma: "cambio la
+    // visualizacion y no hace nada".
+    //
+    // `idle` vuelve a dispararse cada vez que el mapa termina de acomodarse.
+    if (idleWaitRef.current) return; // ya hay uno en cola; usara la URL nueva
+    idleWaitRef.current = true;
+    map.once('idle', () => {
+      idleWaitRef.current = false;
+      apply();
+    });
   }, []);
 
   return { mapRef, updateTileLayer, fitZona };

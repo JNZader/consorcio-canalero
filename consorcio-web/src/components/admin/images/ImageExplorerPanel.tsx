@@ -50,9 +50,13 @@ export default function ImageExplorerPanel() {
                 value={controller.compositionMode}
                 onChange={(v) => {
                   if (v === 'scene' || v === 'composite') {
+                    // Solo el modo. NO se limpia el día ni el resultado: el
+                    // controlador ya vuelve a pedir la imagen al cambiar
+                    // `compositionMode` (está en las dependencias de
+                    // `fetchImageForDate`), así que limpiar obligaba a volver
+                    // al calendario y elegir de nuevo la MISMA fecha para ver
+                    // el otro modo.
                     controller.setCompositionMode(v);
-                    controller.setSelectedDay(null);
-                    controller.setResult(null);
                   }
                 }}
                 data={[
