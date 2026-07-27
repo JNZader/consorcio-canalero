@@ -4,11 +4,16 @@
  * (`src/hooks/useAuth.ts`) and this curated scope had never run. That .json is
  * gone; keep it that way — do not re-add a .json/.js config beside this one.
  *
- * Measured on the full scope (2026-07-26): 1880 mutants, 25m20s, score 63.09%.
- * Weak spots worth attention (mutants that survive = untested behaviour):
- * stores/authStore.ts 26.8%, lib/auth.ts 40.9%, lib/api/core.ts 53.2% and
- * lib/typeGuards.ts 65.3% — the last one guards tile_url against a host
- * allowlist, so its survivors are security-relevant.
+ * Measured on the full scope (2026-07-27): 22m20s, score 70.69% — up from
+ * 63.09% after covering `authStore.initialize()` and the email recovery flows
+ * of `lib/auth` (26.8% -> 66.12% and 40.9% -> 66.91%).
+ *
+ * Weak spots that remain (mutants that survive = untested behaviour):
+ *   stores/configStore.ts  42.31%  (26 survived — now the worst of the scope)
+ *   lib/api/core.ts        53.60%  (74 survived, 55 with no coverage at all)
+ *   lib/typeGuards.ts      65.27%  (120 survived; it guards tile_url against a
+ *                                   host allowlist, so its survivors are
+ *                                   security-relevant)
  *
  * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
  */
@@ -45,7 +50,12 @@ export default {
   thresholds: {
     high: 85,
     low: 60,
-    break: 50,
+    // 65 y no 50: con el score en 70.69% un piso de 50 dejaba que la calidad
+    // se cayera VEINTE puntos sin que nada se pusiera rojo, que es un gate
+    // decorativo. 65 conserva ~5 puntos de holgura para el ruido normal de la
+    // mutacion incremental y aun asi muerde si alguien suma codigo sin tests.
+    // Subirlo es la unica forma de que la mejora no se erosione sola.
+    break: 65,
   },
   timeoutMS: 30000,
   concurrency: 4,
