@@ -24,7 +24,7 @@ vi.mock('../../src/lib/logger', () => ({
 
 function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <MantineProvider>
+    <MantineProvider env="test">
       <LiveRegionProvider>{children}</LiveRegionProvider>
     </MantineProvider>
   );
@@ -59,14 +59,14 @@ describe('accessibility helpers', () => {
 
   it('renders and hides accessible error block correctly', () => {
     const { rerender } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AccessibleError id="field-error" error={null} />
       </MantineProvider>
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     rerender(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AccessibleError id="field-error" error="Campo obligatorio" />
       </MantineProvider>
     );
@@ -156,7 +156,7 @@ describe('accessibility helpers', () => {
   it('supports keyboard navigation in radio group', async () => {
     const onChange = vi.fn();
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AccessibleRadioGroup
           name="tipo"
           label="Tipo"
@@ -180,7 +180,7 @@ describe('accessibility helpers', () => {
 
   it('renders skip links and toggles position on focus', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <SkipLinks links={[{ href: '#main', label: 'Ir a main' }]} />
       </MantineProvider>
     );
@@ -209,7 +209,7 @@ describe('accessibility helpers', () => {
     }
 
     const { unmount } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FocusTrapFixture />
       </MantineProvider>
     );
@@ -241,7 +241,7 @@ describe('accessibility helpers', () => {
     }
 
     const view = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <ReducedMotionProbe />
       </MantineProvider>
     );

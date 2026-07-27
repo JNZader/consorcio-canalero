@@ -12,7 +12,7 @@ import {
 import { FormFieldWithSkeleton } from '../../src/components/suggestion-form/suggestionFormUtils';
 
 function renderWithMantine(ui: React.ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const reportFieldProps = {

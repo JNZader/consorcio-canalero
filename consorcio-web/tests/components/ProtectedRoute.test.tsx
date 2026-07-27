@@ -16,7 +16,7 @@ vi.mock('../../src/hooks/useAuth', () => ({
 
 describe('ProtectedRouteContent', () => {
   const renderWithProvider = (ui: React.ReactNode) =>
-    render(<MantineProvider>{ui}</MantineProvider>);
+    render(<MantineProvider env="test">{ui}</MantineProvider>);
 
   beforeEach(() => {
     navigateMock.mockReset();
@@ -232,7 +232,7 @@ describe('ProtectedRouteContent', () => {
     expect(screen.getByText('Sin permiso')).toBeInTheDocument();
 
     rerender(
-      <MantineProvider>
+      <MantineProvider env="test">
         <ProtectedRouteContent allowedRoles={['admin']} unauthorizedUrl="/">
           <div>Hidden</div>
         </ProtectedRouteContent>

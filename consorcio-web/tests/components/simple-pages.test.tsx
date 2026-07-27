@@ -26,7 +26,7 @@ vi.mock('../../src/components/ui/icons', () => ({
 }));
 
 const Wrapper = ({ children }: { children: React.ReactNode }) => (
-  <MantineProvider>{children}</MantineProvider>
+  <MantineProvider env="test">{children}</MantineProvider>
 );
 
 describe('ReportesPage', () => {

@@ -27,7 +27,7 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-const renderPanel = () => render(<MantineProvider><ReunionesPanel /></MantineProvider>);
+const renderPanel = () => render(<MantineProvider env="test"><ReunionesPanel /></MantineProvider>);
 
 describe('ReunionesPanel', () => {
   beforeEach(() => {

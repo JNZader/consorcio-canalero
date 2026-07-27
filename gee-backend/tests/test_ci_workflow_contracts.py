@@ -181,7 +181,9 @@ def _assert_image_policy_aggregate(
             # backend.yml: `always()` para que un image gate FALLIDO no saltee
             # la politica y de verde falso, y el guard de area porque el paso
             # exige `success` y un job SALTEADO no lo es.
-            "$" + "{{ always() && needs.changes.outputs.backend == 'true' }}",
+            "$"
+            + "{{ always() && (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') "
+            "&& needs.changes.outputs.backend == 'true' }}",
         )
     ], guards
     assert len(guards) == 1, guards
@@ -244,7 +246,9 @@ def _assert_non_publishing_image_gate(
             "$" + "{{ github.event_name != 'schedule' "
             "&& needs.changes.outputs.frontend == 'true' }}",
             # backend: solo el guard de area.
-            "$" + "{{ needs.changes.outputs.backend == 'true' }}",
+            # backend: los image gates son ~17 min (GDAL), solo en el release.
+            "$" + "{{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') "
+            "&& needs.changes.outputs.backend == 'true' }}",
         ), guard
     if policy_role is None:
         _assert_strict_image_trivy(job)
@@ -482,22 +486,22 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
 def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
     frontend = _read(".github/workflows/frontend.yml")
     event_gate = "github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'"
+    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
 
     assert "pull_request:" in frontend
     assert "workflow_dispatch:" in frontend
-    for job in ("mutation", "accessibility", "build"):
-        assert event_gate in _job_block(frontend, job)
+    # `build` corre en TODO PR: es barato y su señal es inmediata.
+    assert event_gate in _job_block(frontend, "build")
+    # La mutacion y la matriz de accesibilidad corren solo en el PR de release
+    # (develop -> main). Medido: Stryker son 62 min y la matriz 4; pagarlos en
+    # cada PR a develop fue parte de lo que hizo que bloquearan la cuenta.
+    for job in ("mutation", "accessibility"):
+        assert release_gate in _job_block(frontend, job), job
 
     build = _job_block(frontend, "build")
-    assert _needs(frontend, "build") == {
-        "changes",
-        "lint",
-        "test",
-        "typecheck",
-        "smoke",
-        "mutation",
-        "accessibility",
-    }
+    # Sin `mutation` ni `accessibility`: se saltean en los PRs a develop y
+    # arrastrarian al build al salteo.
+    assert _needs(frontend, "build") == {"changes", "lint", "test", "typecheck", "smoke"}
 
     for script in (
         "npm run lint",
@@ -586,14 +590,18 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
 
 def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     backend = _read(".github/workflows/backend.yml")
-    event_gate = "github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'"
+    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
 
-    assert event_gate in _job_block(backend, "mutation")
+    assert release_gate in _job_block(backend, "mutation")
     assert "pytest tests/ -v --cov=app --cov-fail-under=60" in backend
     assert "python3 scripts/cosmic_gate.py --min-kill-rate 0.30" in backend
 
     security = _job_block(backend, "security")
-    assert _needs(backend, "security") == {"changes", "lint", "typecheck", "test", "mutation"}
+    # Trivy NO puede depender de `mutation`: un job salteado arrastra al salteo
+    # a todo el que lo tenga en `needs`, y la mutacion ahora se saltea en los
+    # PRs a develop. Con la dependencia puesta, el escaneo se apagaria ahi.
+    assert _needs(backend, "security") == {"changes", "lint", "typecheck", "test"}
+    assert "mutation" not in _needs(backend, "security")
     assert "contents: read" in security
     _assert_fail_closed_trivy(security)
 
@@ -621,8 +629,16 @@ def test_deploy_runs_gates_on_main_and_publishes_only_on_demand() -> None:
     dispatch_only = (
         "$" + "{{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"
     )
-    for gate in ("quality-backend", "mutation-backend", "security-backend"):
+    # En push a main corren pytest (con la cadena alembic real) y Trivy: la
+    # señal barata que main necesita para no quedarse a ciegas.
+    for gate in ("quality-backend", "security-backend"):
         assert not re.search(r"(?m)^    if:", _job_block(deploy, gate)), gate
+    # La mutacion NO: son ~14 min repitiendo lo que el PR de release acaba de
+    # correr sobre el mismo contenido, ahora que main esta protegida con
+    # `strict` y nada entra sin pasar por ahi. Queda para el despliegue a mano.
+    assert re.findall(r"(?m)^    if: (.+)$", _job_block(deploy, "mutation-backend")) == [
+        "$" + "{{ github.event_name == 'workflow_dispatch' }}"
+    ]
     for publisher in ("build-backend", "build-geo-worker", "promote-images"):
         assert f"if: {dispatch_only}" in _job_block(deploy, publisher), publisher
     # El grupo de concurrencia se separa por evento: los gates en push no
@@ -1099,3 +1115,57 @@ def test_pull_requests_to_develop_reach_ci() -> None:
 
     deploy = _read(".github/workflows/deploy.yml").split("\njobs:", 1)[0]
     assert "develop" not in deploy
+
+
+def test_light_jobs_never_depend_on_release_only_jobs() -> None:
+    """Un job SALTEADO arrastra al salteo a todo el que lo tenga en `needs`.
+
+    Desde que la mutacion, los image gates y la matriz de accesibilidad corren
+    solo en el PR de release, cualquier job barato que los tenga en `needs` se
+    apagaria en los PRs a develop — silenciosamente, sin romper nada y sin que
+    ningun check se ponga rojo. Este contrato existe para que esa dependencia
+    no se cuele de nuevo.
+    """
+    backend = _read(".github/workflows/backend.yml")
+    frontend = _read(".github/workflows/frontend.yml")
+
+    solo_release = {
+        "mutation",
+        "image-backend",
+        "image-geo-worker",
+        "image-security-policy",
+        "accessibility",
+    }
+    # `ci-gate` es la excepcion legitima: corre con `always()`, asi que un
+    # `needs` salteado no lo apaga, y justamente necesita verlos a todos.
+    for workflow, livianos in (
+        (backend, ("lint", "typecheck", "test", "security")),
+        (frontend, ("lint", "test", "typecheck", "smoke", "build", "image")),
+    ):
+        for job in livianos:
+            assert not (_needs(workflow, job) & solo_release), job
+
+
+def test_image_scans_set_an_explicit_trivy_timeout() -> None:
+    """El default de Trivy son 5m0s y el geo-worker no entra ahi.
+
+    La imagen trae GDAL mas todo el arbol de dependencias de Python: el
+    analisis reventaba con "context deadline exceeded" a los 5 minutos justos.
+    Eso NO es un hallazgo de seguridad, es el reloj interno del escaner — pero
+    el gate lo reportaba como fallo (bien, es fail-closed) con el motivo real
+    enterrado tres pasos mas arriba, en un job de 20 minutos.
+
+    Sin un `timeout` explicito el gate depende de que la imagen no crezca, que
+    es exactamente el tipo de supuesto que se rompe solo.
+    """
+    for path in (".github/workflows/backend.yml", ".github/workflows/deploy.yml"):
+        workflow = _read(path)
+        escaneos = workflow.count("scan-type: image")
+        assert escaneos, path
+        # Un `timeout` por cada escaneo de imagen.
+        assert workflow.count("timeout: '20m'") == escaneos, path
+
+    # El techo del job tiene que cubrir el escaneo MAS la construccion de la
+    # imagen; si no, se cambia un fallo por reloj por otro fallo por reloj.
+    geo = _job_block(_read(".github/workflows/backend.yml"), "image-geo-worker")
+    assert "timeout-minutes: 45" in geo

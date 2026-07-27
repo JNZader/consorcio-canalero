@@ -29,7 +29,7 @@ import { TerrainLayerTogglesPanel } from '../../src/components/terrain/TerrainLa
 import type { Etapa } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const defaultEtapasVisibility: Record<Etapa, boolean> = {

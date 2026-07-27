@@ -16,7 +16,7 @@ vi.mock('../../src/lib/logger', () => ({
 }));
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function WorkingComponent() {

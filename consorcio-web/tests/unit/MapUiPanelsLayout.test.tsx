@@ -22,7 +22,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MapUiPanels, type MapUiPanelsProps } from '../../src/components/map2d/MapUiPanels';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps {

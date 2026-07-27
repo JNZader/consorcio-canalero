@@ -35,7 +35,7 @@ const renderWithMantine = (component: React.ReactNode) => {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>{component}</MantineProvider>
+      <MantineProvider env="test">{component}</MantineProvider>
     </QueryClientProvider>
   );
 };

@@ -6,7 +6,7 @@ import { StepHeader } from '../../src/components/report-form/StepHeader';
 import { SuggestionStepIndicator } from '../../src/components/suggestion-form/SuggestionStepIndicator';
 
 function renderWithMantine(ui: React.ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('form step indicators', () => {

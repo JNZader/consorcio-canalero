@@ -27,7 +27,7 @@ import { useDashboardStats, useMonitoringDashboard } from '../../src/lib/query';
 
 const renderPanel = () =>
   render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <DashboardEstadisticas />
     </MantineProvider>
   );

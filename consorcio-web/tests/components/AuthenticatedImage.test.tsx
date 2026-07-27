@@ -12,7 +12,7 @@ import { AuthenticatedImage } from '../../src/components/shared/AuthenticatedIma
 
 function renderImage(src: string) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <AuthenticatedImage src={src} alt="Foto protegida" />
     </MantineProvider>
   );
@@ -48,7 +48,7 @@ describe('AuthenticatedImage', () => {
     );
 
     view.rerender(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AuthenticatedImage src="/uploads/denuncias/second.png" alt="Foto protegida" />
       </MantineProvider>
     );

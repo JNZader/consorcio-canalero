@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ContactVerificationSection } from '../../src/components/verification/ContactVerificationSection';
 
 const Wrapper = ({ children }: { children: React.ReactNode }) => (
-  <MantineProvider>{children}</MantineProvider>
+  <MantineProvider env="test">{children}</MantineProvider>
 );
 
 const defaultProps = {

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DescripcionField } from '../../src/components/report-form/ReportFormFields';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('report field errors', () => {

@@ -144,6 +144,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: [quality-backend]
+    # NO en push a main: son ~14 minutos repitiendo lo que el PR de release
+    # (develop -> main) acaba de correr sobre el mismo contenido, ahora que la
+    # rama esta protegida con `strict` y no entra nada sin pasar por ahi.
+    # Queda para el despliegue a mano, antes de publicar imagenes.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     defaults:
       run:
         working-directory: gee-backend
@@ -236,6 +241,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
+          # Ver backend.yml: el default de 5m0s no alcanza para el geo-worker.
+          timeout: '20m'
           version: v0.70.0
           scanners: vuln
           format: json
@@ -352,6 +359,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
+          # Ver backend.yml: el default de 5m0s no alcanza para el geo-worker.
+          timeout: '20m'
           version: v0.70.0
           scanners: vuln
           format: json

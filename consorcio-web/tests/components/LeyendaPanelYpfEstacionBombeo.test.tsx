@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { LeyendaPanel } from '../../src/components/map2d/LeyendaPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<LeyendaPanel /> — YPF estación de bombeo block', () => {

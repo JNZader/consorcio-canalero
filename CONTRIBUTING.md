@@ -115,6 +115,46 @@ cp .env.example .env  # Editar con valores reales
 Cuando lo acumulado en `develop` está listo para publicar, se abre un PR
 `develop` → `main`.
 
+### Con qué método mergear cada cosa
+
+| PR | método | por qué |
+|---|---|---|
+| `feature/*` → `develop` | **squash** | un commit limpio por funcionalidad |
+| `develop` → `main` | **merge commit** | mantiene las dos ramas sincronizadas |
+
+Esto no es preferencia estética. El squash crea un commit **nuevo**, así que
+un `develop` → `main` con squash deja en `main` un commit que no existe en
+`develop`: las ramas se separan un poco en cada ciclo, y no se arregla después
+con un force-push porque la protección lo bloquea. Con merge commit, `main`
+queda siempre como ancestro de `develop` y no hay nada que resincronizar.
+
+Por esa razón `main` **no** exige historia lineal: la exigencia prohibiría
+justamente el merge commit que mantiene el flujo sano.
+
+### Qué corre en cada tramo
+
+El CI está escalonado a propósito: lo barato corre siempre, lo caro corre una
+vez por release. Medido sobre corridas reales, un PR full-stack consumía **109
+minutos** de runner (Stryker 62, cosmic-ray 12, imágenes de backend 17), y eso
+derivó en un bloqueo de la cuenta por consumo.
+
+| | `feature/*` → `develop` | `develop` → `main` |
+|---|---|---|
+| lint, typecheck, tests, smoke, build | ✅ | ✅ |
+| Trivy (filesystem) | ✅ | ✅ |
+| mutación (Stryker + cosmic-ray) | — | ✅ |
+| image gates (backend + geo-worker) | — | ✅ |
+| matriz de accesibilidad (Playwright) | — | ✅ |
+
+El interruptor es `github.base_ref == 'main'`, o sea: el PR de release. Todo lo
+pesado se puede forzar a mano con `workflow_dispatch`.
+
+**Cuidado al tocar los `needs`.** Un job salteado arrastra al salteo a todo el
+que lo tenga en `needs`. Si un job barato depende de uno de los caros, se apaga
+en los PRs a `develop` sin romper nada y sin que ningún check se ponga rojo.
+Por eso `security` no depende de `mutation` y `build` no depende de `mutation`
+ni de `accessibility` — y hay un contrato de CI que lo verifica.
+
 ### Checks requeridos
 
 `main` exige estos checks en verde para poder mergear:

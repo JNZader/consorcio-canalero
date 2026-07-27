@@ -80,7 +80,7 @@ const renderPanel = () => {
   const queryClient = createTestQueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>
+      <MantineProvider env="test">
         <SugerenciasPanel />
       </MantineProvider>
     </QueryClientProvider>

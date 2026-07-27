@@ -34,7 +34,7 @@ vi.mock('@mantine/notifications', () => ({
 
 function renderLayout() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <AdminLayoutContent>
         <div>Contenido</div>
       </AdminLayoutContent>

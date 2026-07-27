@@ -14,7 +14,7 @@ import { SectionHeader } from '../../src/components/ui/SectionHeader';
 import { IconHome } from '@tabler/icons-react';
 
 function renderWithMantine(component: React.ReactNode) {
-  return render(<MantineProvider>{component}</MantineProvider>);
+  return render(<MantineProvider env="test">{component}</MantineProvider>);
 }
 
 describe('UI Components', () => {
