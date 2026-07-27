@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     # Every Monday at 09:00 ART (12:00 UTC)
     - cron: '0 12 * * 1'

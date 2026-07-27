@@ -6,16 +6,13 @@ on:
   # deploy.yml ya hace en ese mismo evento (mismo scope de cache BuildKit,
   # geo-worker con GDAL construido dos veces). El gate de main para backend
   # es deploy.yml; este workflow cubre PRs y ejecución manual.
+  # SIN filtro `paths:` a proposito. Un filtro de paths hace que el workflow
+  # entero NO CORRA cuando el PR no toca esos archivos, y un check requerido
+  # que nunca corre deja el PR colgado para siempre en "Expected — waiting for
+  # status". El filtrado se mudo adentro, al job `changes`: el workflow arranca
+  # SIEMPRE y los jobs caros se saltean solos cuando no hay nada que revisar.
   pull_request:
-    branches: [main]
-    paths:
-      - 'gee-backend/**'
-      # Los contratos de CI ejecutables viven en gee-backend/tests pero
-      # custodian TODOS los workflows. Con el filtro apuntando solo a
-      # backend.yml, un PR que tocaba unicamente frontend.yml los dejaba sin
-      # correr: asi entro a main un `if:` que rompia uno de esos contratos
-      # (PR #35) sin ninguna senal. El glob cierra ese punto ciego.
-      - '.github/workflows/**'
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
@@ -27,9 +24,44 @@ defaults:
     working-directory: gee-backend
 
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historia completa: sin esto el merge-base contra la rama base no
+          # existe en el clon y el diff de abajo falla o miente.
+          fetch-depth: 0
+      - id: detect
+        working-directory: ${{ github.workspace }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Fuera de un pull_request no hay contra que diffear (en el primer
+          # push de una rama `before` es todo ceros), asi que se declara todo
+          # cambiado: preferimos correr de mas antes que saltear en silencio.
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Tres puntos = merge-base. Con dos puntos, un avance de la rama base
+          # posterior a la apertura del PR aparecerria como cambio del PR.
+          CHANGED="$(git diff --name-only "$BASE_SHA...HEAD")"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/|\.github/workflows/)'; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +84,8 @@ jobs:
   typecheck:
     name: Type check (mypy)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +103,8 @@ jobs:
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -84,10 +120,10 @@ jobs:
 
   mutation:
     name: Mutation tests (cosmic-ray)
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    needs: [test]
+    needs: [changes, test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,8 +151,9 @@ jobs:
   security:
     name: Security scan (Trivy)
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, mutation]
+    needs: [changes, lint, typecheck, test, mutation]
     timeout-minutes: 5
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -141,7 +178,8 @@ jobs:
     name: Final Backend Image Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [lint, typecheck, test]
+    needs: [changes, lint, typecheck, test]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -215,7 +253,8 @@ jobs:
     name: Final Geo Worker Image Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [lint, typecheck, test]
+    needs: [changes, lint, typecheck, test]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -288,8 +327,11 @@ jobs:
     name: Image Security Policy
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [image-backend, image-geo-worker]
-    if: ${{ always() }}
+    needs: [changes, image-backend, image-geo-worker]
+    # `always()` para que un image gate FALLIDO no saltee la politica y de
+    # verde falso; pero exige tambien que haya habido cambios de backend,
+    # porque el paso de abajo pide `success` y un job SALTEADO no lo es.
+    if: ${{ always() && needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
     env:
@@ -316,3 +358,51 @@ jobs:
           test -s "${{ github.workspace }}/evidence/backend-trivy.sarif"
           test -s "${{ github.workspace }}/evidence/geo-worker-trivy.json"
           test -s "${{ github.workspace }}/evidence/geo-worker-trivy.sarif"
+
+  ci-gate:
+    # EL check requerido de branch protection para este workflow. Registrar en
+    # la proteccion de rama el `name` ("Backend CI"), no el id del job.
+    #
+    # Existe porque los checks individuales no sirven como requeridos: se
+    # saltean cuando el PR no toca el backend, y depender de como GitHub
+    # interpreta un job salteado es fragil. Este job corre SIEMPRE y reporta
+    # una conclusion propia: verde si cada dependencia paso o se salteo,
+    # rojo si alguna fallo o fue cancelada.
+    name: Backend CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [changes, lint, typecheck, test, mutation, security, image-backend, image-geo-worker, image-security-policy]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      LINT_RESULT: ${{ needs.lint.result }}
+      TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+      TEST_RESULT: ${{ needs.test.result }}
+      MUTATION_RESULT: ${{ needs.mutation.result }}
+      SECURITY_RESULT: ${{ needs.security.result }}
+      IMAGE_BACKEND_RESULT: ${{ needs.image-backend.result }}
+      IMAGE_GEO_WORKER_RESULT: ${{ needs.image-geo-worker.result }}
+      IMAGE_SECURITY_POLICY_RESULT: ${{ needs.image-security-policy.result }}
+    steps:
+      - name: Require every backend job to pass or be skipped
+        working-directory: ${{ github.workspace }}
+        run: |
+          # `changes` es la fuente de verdad de todo el resto: si el se cae,
+          # los demas se saltean y el gate no puede darse por satisfecho.
+          test "$CHANGES_RESULT" = "success"
+          require() {
+            case "$2" in
+              success|skipped) ;;
+              *) echo "::error::$1 termino en '$2'"; exit 1 ;;
+            esac
+          }
+          require lint "$LINT_RESULT"
+          require typecheck "$TYPECHECK_RESULT"
+          require test "$TEST_RESULT"
+          require mutation "$MUTATION_RESULT"
+          require security "$SECURITY_RESULT"
+          require image-backend "$IMAGE_BACKEND_RESULT"
+          require image-geo-worker "$IMAGE_GEO_WORKER_RESULT"
+          require image-security-policy "$IMAGE_SECURITY_POLICY_RESULT"
