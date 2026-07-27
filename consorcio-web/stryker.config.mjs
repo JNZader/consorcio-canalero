@@ -4,14 +4,19 @@
  * (`src/hooks/useAuth.ts`) and this curated scope had never run. That .json is
  * gone; keep it that way — do not re-add a .json/.js config beside this one.
  *
- * Measured on the full scope (2026-07-27): score 76.91%, up from 63.09% over
- * three passes — `authStore.initialize()` (26.8% -> 66.12%), the email
- * recovery flows of `lib/auth` (40.9% -> 66.91%) and the boundary cases of
- * `lib/typeGuards` (65.27% -> 89.75%).
+ * Measured on the full scope (2026-07-27): score 80.96%, up from 63.09% over
+ * four passes — `authStore.initialize()` (26.8% -> 66.12%), the email recovery
+ * flows of `lib/auth` (40.9% -> 66.91%), the boundary cases of `lib/typeGuards`
+ * (65.27% -> 89.75%), the protected-photo URL guard and helpers of
+ * `lib/api/core` (53.60% -> 74.82%) and the config merge of
+ * `stores/configStore` (42.31% -> 75.00%).
  *
- * Weak spots that remain (mutants that survive = untested behaviour):
- *   stores/configStore.ts  42.31%  (26 survived — the worst of the scope)
- *   lib/api/core.ts        53.60%  (74 survived, 55 with no coverage at all)
+ * No file sits under 70 any more. What remains is a long tail, and the shape
+ * of the survivors changed: they are no longer whole untested functions but
+ * individual conditions inside covered code. Worth a pass when it gets in the
+ * way, not before:
+ *   lib/api/core.ts        74.82%  (50 survived — the largest remaining pool)
+ *   stores/configStore.ts  75.00%  (9 survived)
  *   lib/formatters.ts      82.63%  (22 survived)
  *
  * On the `break` threshold: raise it when the gap to the measured score grows
@@ -54,11 +59,15 @@ export default {
   thresholds: {
     high: 85,
     low: 60,
-    // Sube con el score medido: 50 -> 65 -> 70. Con el global en 76.91% un
-    // piso de 65 volvia a dejar 12 puntos de caida libre. 70 conserva ~7
-    // puntos de holgura para el ruido de la corrida incremental y aun asi
-    // muerde si entra codigo sin tests.
-    break: 70,
+    // Sube con el score medido: 50 -> 65 -> 70 -> 75. Con el global en 80.96%
+    // la brecha contra 70 paso los 10 puntos que fija el criterio de arriba,
+    // asi que corresponde. 75 conserva ~6 de holgura.
+    //
+    // Se dejo pasar A PROPOSITO la oportunidad anterior (PR #48, brecha de 10
+    // justos): el criterio dice "no en cada PR", y una regla que uno no
+    // respeta a la primera oportunidad no es una regla. Subirlo una vez por
+    // tanda, no una vez por commit.
+    break: 75,
   },
   timeoutMS: 30000,
   concurrency: 4,
