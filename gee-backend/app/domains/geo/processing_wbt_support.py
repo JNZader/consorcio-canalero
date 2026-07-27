@@ -10,8 +10,30 @@ from shapely.geometry import mapping, shape
 
 
 def run_wbt_tool_impl(*, output_path: str, ensure_parent_dir, get_wbt, runner) -> str:
+    """Corre una herramienta de WhiteboxTools y EXIGE que haya producido salida.
+
+    El contrato anterior devolvia ``output_path`` incondicionalmente, ignorando
+    el codigo de retorno de WBT y sin mirar el disco. Consecuencia real
+    (pipeline ca06b4fd, 2026-07-27): un fill_depressions fallo de forma
+    transitoria en 202 ms sin escribir nada, el paso se reporto como "done", y
+    los DOS pasos siguientes tambien "terminaron" en milisegundos sobre un
+    input inexistente. El pipeline recien exploto tres pasos despues, en TWI,
+    con un error que no apuntaba a la causa. Un fallo silencioso que corrompe
+    la cadena es mucho peor que un fallo ruidoso en el paso correcto.
+    """
+    import os
+
     ensure_parent_dir(output_path)
-    runner(get_wbt(), output_path)
+    codigo = runner(get_wbt(), output_path)
+    # whitebox devuelve el exit code del binario (0 = exito). None se tolera
+    # porque algunas versiones no lo propagan; ahi decide el chequeo de disco.
+    if codigo not in (0, None):
+        raise RuntimeError(f"WhiteboxTools fallo con exit code {codigo} sin producir {output_path}")
+    if not os.path.exists(output_path):
+        raise RuntimeError(
+            f"WhiteboxTools reporto exito pero NO escribio {output_path} — "
+            "fallo silencioso (¿memoria insuficiente al lanzar el binario?)"
+        )
     return output_path
 
 
