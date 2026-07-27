@@ -18,7 +18,6 @@ Create Date: 2026-07-27
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "zz_capas_publicacion_fecha"
 down_revision = "zz_remove_public_denuncia_tiles"
