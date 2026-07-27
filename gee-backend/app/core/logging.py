@@ -84,8 +84,17 @@ def sanitize_sensitive_data(
     elif isinstance(data, list):
         return [sanitize_sensitive_data(item, fields, max_depth - 1) for item in data]
     elif isinstance(data, str):
-        # Check if string looks like a JWT or API key
-        if len(data) > 50 and ("." in data or data.startswith("ey")):
+        # Heuristica de JWT/API key. El chequeo anterior ("largo y con punto")
+        # redactaba CUALQUIER ruta de mas de 50 caracteres — p. ej.
+        # /data/geo/zona_principal/output/dem_filled_hydro.tif aparecia como
+        # [REDACTED] en los logs del pipeline, ocultando justo el dato que un
+        # diagnostico necesita. Un JWT no contiene barras ni espacios; una
+        # ruta si.
+        if (
+            len(data) > 50
+            and ("/" not in data and " " not in data)
+            and ("." in data or data.startswith("ey"))
+        ):
             return SANITIZED_VALUE
         return data
     else:
