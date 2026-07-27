@@ -11,6 +11,13 @@
 # base image instead.
 
 # Raster analysis
+# ML de entrenamiento (torch, segmentation-models-pytorch): NO va aca.
+# Vive en requirements-ml.txt y se instala SOLO en la maquina que entrena.
+# torch arrastraba el stack CUDA completo (nccl, cusparse, nvshmem...) a un
+# servidor SIN GPU: la imagen del geo-worker pesaba 8.2 GB para un modelo que
+# ningun codigo de runtime importa (verificado: el unico consumidor es
+# scripts/train_water_unet.py). opencv SI se queda: tile_service_support usa
+# cv2.medianBlur en runtime.
 rasterio>=1.4.0
 # richdem removed — incompatible with Python 3.12 (pybind11 too old)
 
@@ -25,8 +32,6 @@ whitebox>=2.3.0
 rasterstats>=0.20.0
 
 # ML water segmentation (CPU inference)
-torch>=2.0.0
-segmentation-models-pytorch>=0.3.0
 scipy>=1.11.0
 # OpenCV — 5-10× faster than scipy for small-kernel median filters used in
 # `tile_service_support.smooth_elevation_tile`. Optional: the module falls
