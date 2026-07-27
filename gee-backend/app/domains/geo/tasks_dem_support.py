@@ -17,6 +17,8 @@ def process_dem_pipeline_impl(
     bbox: list[float] | None,
     job_id: str | None,
     fetch_canal_geojsons,
+    fetch_propuesta_geojsons,
+    escenario_propuestas: list[str] | None,
     burn_canals,
     burn_depth_m: float,
     create_geo_job,
@@ -38,6 +40,7 @@ def process_dem_pipeline_impl(
                 "dem_path": dem_path,
                 "bbox": bbox,
                 "burn_depth_m": burn_depth_m,
+                "escenario_propuestas": escenario_propuestas,
             },
         )
 
@@ -56,7 +59,7 @@ def process_dem_pipeline_impl(
 
     outputs: dict[str, str] = {}
     step = 0
-    total_steps = 14
+    total_steps = 14 + (4 if escenario_propuestas else 0)
     processing = get_processing()
 
     def _progress():
@@ -182,6 +185,73 @@ def process_dem_pipeline_impl(
             area_id=area_id,
         )
         _progress()
+
+        # ---- ESCENARIO: relevados + propuestas seleccionadas ----
+        # SIMULACION, no realidad: quema tambien obras que NO EXISTEN, para
+        # responder "como drenaria la zona SI se construyen". La resta entre
+        # el flow_acc del escenario y el operativo muestra que hectareas
+        # desagota la obra propuesta. Las capas van SIEMPRE con el prefijo
+        # `escenario_`: registrarlas con los nombres operativos pondria en el
+        # mapa drenaje de canales que nadie construyo.
+        if escenario_propuestas:
+            propuesta_geojsons = fetch_propuesta_geojsons(escenario_propuestas)
+            burned_esc = str(output_dir / "dem_burned_escenario.tif")
+            run_step(
+                job_id,
+                "burn_canals_escenario",
+                burn_canals,
+                (),
+                {
+                    "dem_path": working_dem,
+                    "canal_geojsons": canal_geojsons + propuesta_geojsons,
+                    "output_path": burned_esc,
+                    "burn_depth_m": burn_depth_m,
+                },
+            )
+            outputs["burned_dem_escenario"] = burned_esc
+            _progress()
+
+            filled_esc = str(output_dir / "dem_filled_escenario.tif")
+            run_step(
+                job_id,
+                "fill_sinks_escenario",
+                processing.fill_sinks,
+                (burned_esc, filled_esc),
+            )
+            outputs["filled_dem_escenario"] = filled_esc
+            _progress()
+
+            flow_dir_esc = str(output_dir / "flow_dir_escenario.tif")
+            run_step(
+                job_id,
+                "compute_flow_direction_escenario",
+                processing.compute_flow_direction,
+                (filled_esc, flow_dir_esc),
+            )
+            outputs["flow_dir_escenario"] = flow_dir_esc
+            register_raster_layer(
+                nombre=f"escenario_flow_dir_{area_id}",
+                tipo=tipo_geo_layer.FLOW_DIR,
+                archivo_path=flow_dir_esc,
+                area_id=area_id,
+            )
+            _progress()
+
+            flow_acc_esc = str(output_dir / "flow_acc_escenario.tif")
+            run_step(
+                job_id,
+                "compute_flow_accumulation_escenario",
+                processing.compute_flow_accumulation,
+                (filled_esc, flow_acc_esc),
+            )
+            outputs["flow_acc_escenario"] = flow_acc_esc
+            register_raster_layer(
+                nombre=f"escenario_flow_acc_{area_id}",
+                tipo=tipo_geo_layer.FLOW_ACC,
+                archivo_path=flow_acc_esc,
+                area_id=area_id,
+            )
+            _progress()
 
         twi = str(output_dir / "twi.tif")
         run_step(job_id, "compute_twi", processing.compute_twi, (slope, flow_acc, twi))

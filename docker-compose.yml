@@ -271,6 +271,11 @@ services:
       # Zona outline for clipping visual raster tiles to the consorcio —
       # single source of truth: the same geojson the frontend serves.
       - ./consorcio-web/public/capas/pilar-verde/zona_ampliada.geojson:/app/data/zona/zona_ampliada.geojson:ro
+      # Trazas de canales del MAPA (spec canales-relevados-y-propuestas). Las
+      # propuestas que se queman en los escenarios son EXACTAMENTE las que el
+      # usuario ve dibujadas — misma fuente, sin copia intermedia en la base
+      # que pueda divergir.
+      - ./consorcio-web/public/capas/canales:/app/data/canales:ro
       - ./gee-backend/supervisord-geo.conf:/etc/supervisor/conf.d/geo.conf:ro
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
