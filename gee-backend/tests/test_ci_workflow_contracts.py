@@ -1233,3 +1233,36 @@ def test_geo_worker_mounts_the_map_canal_files() -> None:
     geo_worker = _job_block(compose, "geo-worker")
 
     assert "./consorcio-web/public/capas/canales:/app/data/canales:ro" in geo_worker
+
+
+def test_training_ml_deps_never_reach_the_server_image() -> None:
+    """torch y sus amigos NO viajan al geo-worker.
+
+    torch arrastra el stack CUDA completo a un servidor SIN GPU: la imagen
+    del geo-worker llego a pesar 8.2 GB para un modelo que ningun codigo de
+    runtime importa — el unico consumidor es scripts/train_water_unet.py, que
+    se corre en local. Ese peso no es cosmetico: es memoria y disco en un box
+    compartido con otra produccion, y ya hubo un fallo transitorio de spawn
+    de WhiteboxTools compatible con presion de memoria.
+
+    Guard en las dos direcciones: si las deps vuelven a requirements-geo, o
+    si alguien importa torch en app/ (lo que exigiria repensar el split),
+    esto se pone rojo.
+    """
+    geo = _read("gee-backend/requirements-geo.txt")
+    for linea in geo.splitlines():
+        paquete = linea.split(">=")[0].split("==")[0].strip()
+        assert paquete not in {"torch", "segmentation-models-pytorch"}, linea
+
+    ml = _read("gee-backend/requirements-ml.txt")
+    assert "torch" in ml and "segmentation-models-pytorch" in ml
+
+    # Ningun import de torch en el codigo de la aplicacion.
+    app_dir = REPO_ROOT / "gee-backend" / "app"
+    con_torch = [
+        str(archivo.relative_to(REPO_ROOT))
+        for archivo in app_dir.rglob("*.py")
+        if "import torch" in archivo.read_text(encoding="utf-8")
+        or "segmentation_models" in archivo.read_text(encoding="utf-8")
+    ]
+    assert con_torch == [], con_torch

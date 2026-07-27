@@ -1,0 +1,13 @@
+# Dependencias de ENTRENAMIENTO — solo para la maquina que entrena, jamas
+# para la imagen del servidor.
+#
+# El consumidor es scripts/train_water_unet.py (U-Net de segmentacion de
+# agua). El modelo entrenado no se sirve en runtime, asi que el servidor no
+# necesita nada de esto: torch trae el stack CUDA completo (~6 GB) y el box
+# de produccion ni siquiera tiene GPU.
+#
+# Uso local:
+#   pip install -r requirements-geo.txt -r requirements-ml.txt
+#   python scripts/train_water_unet.py --epochs 50
+torch>=2.0.0
+segmentation-models-pytorch>=0.3.0
