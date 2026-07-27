@@ -24,6 +24,59 @@ services:
       start_period: 10s
 
   # ============================================
+  # PGBOUNCER - pooler de conexiones (perfil `pooler`)
+  # ============================================
+  # Produccion habla con la base A TRAVES de este pooler
+  # (USE_PGBOUNCER=true y DATABASE_URL apuntando aca). Estuvo meses
+  # corriendo en el servidor SIN estar en ningun compose: se habia creado
+  # a mano. Eso lo volvia irrecreable — al rotar la clave de Postgres hubo
+  # que reconstruirlo con `docker run` y se perdio un detalle que Compose
+  # pone solo: el ALIAS DE RED.
+  #
+  # Compose registra cada servicio en la red con su nombre de servicio como
+  # alias, y la DATABASE_URL apunta a `pgbouncer`, no al nombre del
+  # contenedor. Sin ese alias el DNS interno no resuelve y el backend se
+  # queda sin base, con los contenedores igual reportando "healthy" —
+  # porque su healthcheck solo mira que el proceso responda. Por eso el
+  # servicio se llama `pgbouncer` y no otra cosa.
+  #
+  # Detras de un perfil porque en desarrollo el backend va directo a
+  # postgres (USE_PGBOUNCER=false) y levantarlo seria una pieza de mas.
+  # En el servidor se activa con COMPOSE_PROFILES=pooler en el .env.
+  pgbouncer:
+    profiles: ["pooler"]
+    image: edoburu/pgbouncer:v1.23.1-p3
+    container_name: consorcio-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${POSTGRES_HOST:-postgres}
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-consorcio}
+      DB_USER: ${POSTGRES_USER:-consorcio}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-consorcio_dev}
+      AUTH_TYPE: scram-sha-256
+      # Transaction pooling: cada transaccion toma una conexion del pool y
+      # la devuelve al terminar. Es lo que permite servir muchos clientes
+      # con pocas conexiones reales, y tambien la razon por la que alembic
+      # NUNCA debe pasar por aca (ver el servicio `migrate`).
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "25"
+      MAX_CLIENT_CONN: "200"
+      LISTEN_PORT: "5432"
+      SERVER_RESET_QUERY: DISCARD ALL
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - consorcio-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ============================================
   # BACKEND - FastAPI with GEE
   # ============================================
   backend:
