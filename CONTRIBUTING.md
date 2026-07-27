@@ -2,11 +2,16 @@
 
 ## Branch Strategy
 
-- `main` — producción estable
+- `main` — producción estable. Protegida: no se le pushea directo.
+- `develop` — rama de integración; se acumula acá antes de publicar
 - `feature/*` — nuevas funcionalidades
 - `fix/*` — corrección de bugs
 
-PRs van directo a `main`. No hay branch `develop`.
+El flujo es `feature/*` → `develop` → `main`.
+
+`develop` existe por una razón concreta de este proyecto: Cloudflare Pages
+publica el frontend en **cada push a `main`**. Sin rama de integración, cada
+merge publica. Con ella, se acumula trabajo y se publica cuando uno decide.
 
 ## Commits
 
@@ -101,11 +106,35 @@ cp .env.example .env  # Editar con valores reales
 
 ## Pull Requests
 
-1. Crear branch desde `main`: `git checkout -b feature/mi-funcionalidad`
+1. Crear branch desde `develop`: `git checkout -b feature/mi-funcionalidad develop`
 2. Hacer cambios siguiendo la arquitectura de dominios
 3. Correr tests y lint localmente
-4. Push y abrir PR contra `main`
+4. Push y abrir PR **contra `develop`**
 5. Describir qué cambia y por qué en el PR
+
+Cuando lo acumulado en `develop` está listo para publicar, se abre un PR
+`develop` → `main`.
+
+### Checks requeridos
+
+`main` exige estos checks en verde para poder mergear:
+
+| check | qué cubre |
+|---|---|
+| `Backend CI` | agregador de todo el workflow de backend |
+| `Frontend CI` | agregador de todo el workflow de frontend |
+| `Analyze (python)` | CodeQL |
+| `Analyze (javascript-typescript)` | CodeQL |
+
+`Backend CI` y `Frontend CI` son jobs agregadores: corren siempre y cierran en
+verde solo si cada job del workflow terminó en `success` o `skipped`. Se
+saltean solos los jobs de un área que el PR no tocó, así que un PR de
+documentación los pasa en segundos sin ejecutar nada pesado.
+
+Los checks individuales (`Test (pytest)`, `Lint`, etc.) **no** se marcan como
+requeridos a propósito: se saltean según el área tocada, y un check requerido
+que no corre deja el PR colgado para siempre en *"Expected — waiting for
+status"*.
 
 ## Preguntas
 
