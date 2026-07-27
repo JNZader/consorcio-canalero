@@ -5,7 +5,8 @@ Downloads Sentinel-2 patches from Google Earth Engine, generates
 pseudo-labels via NDWI thresholding, and trains a U-Net model
 with ResNet34 encoder for binary water segmentation.
 
-Usage:
+Usage (SOLO en local — torch no viaja al servidor, ver requirements-ml.txt):
+    pip install -r requirements-geo.txt -r requirements-ml.txt
     python scripts/train_water_unet.py --epochs 50 --batch-size 8
     python scripts/train_water_unet.py --patches 100 --lr 0.0001
 """
