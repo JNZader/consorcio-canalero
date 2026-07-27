@@ -35,7 +35,15 @@ export interface MartinSource {
 
 export const MARTIN_SOURCES: Record<string, MartinSource> = {
   puntos_conflicto: {
-    table: 'puntos_conflicto',
+    // La VISTA saneada, no la tabla cruda. Martin corre con
+    // `auto_publish: false` y una lista explicita de proyecciones
+    // (`martin/config.yaml`): su hostname es publico y cada columna de la
+    // tabla se convierte en propiedad del vector tile, asi que solo se
+    // publican vistas que ya filtraron lo que no debe salir.
+    //
+    // Apuntar a `puntos_conflicto` daba 404 en produccion: la tabla no esta
+    // publicada. Verificado en vivo 2026-07-27.
+    table: 'vt_puntos_conflicto',
     label: 'Puntos de Conflicto',
     defaultVisible: false,
     style: {
