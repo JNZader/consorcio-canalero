@@ -131,6 +131,30 @@ queda siempre como ancestro de `develop` y no hay nada que resincronizar.
 Por esa razón `main` **no** exige historia lineal: la exigencia prohibiría
 justamente el merge commit que mantiene el flujo sano.
 
+### Después de cada release: back-merge
+
+Al mergear `develop` → `main` con merge commit, `main` queda con **un commit
+que `develop` no tiene**: el merge commit mismo. Como la protección de `main`
+exige ramas actualizadas, el PR de release siguiente aparece como `BEHIND` y no
+se puede mergear hasta resolverlo.
+
+Se arregla trayendo `main` de vuelta a `develop`:
+
+```bash
+git checkout develop && git pull
+git merge origin/main --no-edit
+git push origin develop
+```
+
+Es el back-merge clásico del flujo con `develop`. Conviene hacerlo **apenas se
+mergea el release**, no cuando el próximo ya está abierto: si se hace después,
+`develop` avanza y el PR de release vuelve a disparar todos los gates pesados
+(mutación, image gates, accesibilidad), que son ~40 minutos de runner.
+
+El back-merge además mantiene a `develop` al día con cualquier hotfix que haya
+entrado directo a `main`, que es lo único que la exigencia de ramas
+actualizadas realmente protege.
+
 ### Qué corre en cada tramo
 
 El CI está escalonado a propósito: lo barato corre siempre, lo caro corre una

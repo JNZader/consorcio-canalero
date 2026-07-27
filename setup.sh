@@ -51,20 +51,23 @@ db.close()
 print('Settings seeded successfully')
 "
 
-# 6. Sync territorial geodata (suelos, canales, caminos from existing GeoJSON files)
-echo "Syncing territorial geodata..."
-docker compose run --rm backend python -c "
-from app.db.session import SessionLocal
-from app.domains.territorial.repository import TerritorialRepository
-from app.domains.territorial.service import TerritorialService
-db = SessionLocal()
-svc = TerritorialService(TerritorialRepository())
-result = svc.sync_geodata(db)
-db.close()
-print(result.message)
-for k, v in result.details.items():
-    print(f'  {k}: {v}')
-"
+# 6. Note about map layers
+#
+# Aca habia un paso que importaba ``app.domains.territorial``, un dominio que
+# dejo de existir en la reorganizacion a Screaming Architecture. Con
+# ``set -euo pipefail`` ese ImportError ABORTABA el script entero, asi que los
+# pasos siguientes -incluido el que levanta todos los servicios- no llegaban a
+# correr nunca. El README ofrece este script como la forma de desplegar, o sea
+# que clonar y desplegar estaba roto.
+#
+# La carga de geodata ya no es un paso de arranque: las capas (suelos, canales,
+# caminos) se crean por la API de capas, que guarda el GeoJSON en la columna
+# ``geojson_data``.
+echo ""
+echo "--- Map Layers ---"
+echo "Layers (suelos, canales, caminos) are created through the capas API:"
+echo "  POST /api/v2/capas   { \"nombre\": \"...\", \"geojson_data\": { ... } }"
+echo "or from the admin UI once the frontend is up."
 
 # 7. Note about terrain data (DEM pipeline)
 echo ""
