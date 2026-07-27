@@ -237,3 +237,61 @@ def test_los_ids_del_escenario_quedan_en_el_job(tmp_path) -> None:
 
     parametros = create_geo_job.call_args.kwargs["parametros"]
     assert parametros["escenario_propuestas"] == ["n3-tramo", "n5-otro"]
+
+
+def test_el_pipeline_completo_propaga_el_escenario(tmp_path) -> None:
+    """El full pipeline (el que dispara el boton) tiene que pasarle el
+    escenario al process_dem_pipeline interno.
+
+    Era un hueco real: el escenario funcionaba por el pipeline corto pero el
+    full lo ignoraba, asi que el boton nunca generaba las capas de escenario.
+    """
+    from app.domains.geo.tasks_dem_support import run_full_dem_pipeline_impl
+
+    proceso = MagicMock(return_value={"outputs": {}})
+
+    run_full_dem_pipeline_impl(
+        area_id="zona_principal",
+        min_basin_area_ha=50.0,
+        escenario_propuestas=["s3-colector-p8", "s3-colector-p9"],
+        job_id=str(uuid.uuid4()),
+        create_geo_job=MagicMock(),
+        update_job=MagicMock(return_value=True),
+        cleanup_full_dem_state=MagicMock(),
+        prepare_full_pipeline_dem=MagicMock(return_value=("/d/dem.tif", "/d/prep.tif")),
+        process_dem_pipeline=proceso,
+        generate_auto_basins=MagicMock(return_value=(0, None, None)),
+        tipo_geo_job=TipoGeoJob,
+        estado_geo_job=EstadoGeoJob,
+    )
+
+    # El escenario tiene que haber llegado tal cual al pipeline interno.
+    assert proceso.call_args.kwargs["escenario_propuestas"] == [
+        "s3-colector-p8",
+        "s3-colector-p9",
+    ]
+
+
+def test_el_pipeline_completo_registra_el_escenario_en_el_job(tmp_path) -> None:
+    from app.domains.geo.tasks_dem_support import run_full_dem_pipeline_impl
+
+    create_geo_job = MagicMock(return_value=str(uuid.uuid4()))
+
+    run_full_dem_pipeline_impl(
+        area_id="zona_principal",
+        min_basin_area_ha=50.0,
+        escenario_propuestas=["s3-colector-p8"],
+        job_id=None,  # fuerza la creacion
+        create_geo_job=create_geo_job,
+        update_job=MagicMock(return_value=True),
+        cleanup_full_dem_state=MagicMock(),
+        prepare_full_pipeline_dem=MagicMock(return_value=("/d/dem.tif", "/d/prep.tif")),
+        process_dem_pipeline=MagicMock(return_value={"outputs": {}}),
+        generate_auto_basins=MagicMock(return_value=(0, None, None)),
+        tipo_geo_job=TipoGeoJob,
+        estado_geo_job=EstadoGeoJob,
+    )
+
+    assert create_geo_job.call_args.kwargs["parametros"]["escenario_propuestas"] == [
+        "s3-colector-p8"
+    ]

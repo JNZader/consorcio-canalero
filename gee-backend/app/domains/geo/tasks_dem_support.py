@@ -372,6 +372,7 @@ def run_full_dem_pipeline_impl(
     *,
     area_id: str,
     min_basin_area_ha: float,
+    escenario_propuestas: list[str] | None,
     job_id: str | None,
     create_geo_job,
     update_job,
@@ -385,7 +386,11 @@ def run_full_dem_pipeline_impl(
     if job_id is None:
         job_id = create_geo_job(
             tipo=tipo_geo_job.DEM_FULL_PIPELINE,
-            parametros={"area_id": area_id, "min_basin_area_ha": min_basin_area_ha},
+            parametros={
+                "area_id": area_id,
+                "min_basin_area_ha": min_basin_area_ha,
+                "escenario_propuestas": escenario_propuestas,
+            },
         )
 
     claimed = update_job(
@@ -420,7 +425,11 @@ def run_full_dem_pipeline_impl(
 
         logger.info("full_dem_pipeline.stage2_terrain", area_id=area_id)
         pipeline_result = process_dem_pipeline(
-            area_id=area_id, dem_path=prepared_dem_path, bbox=None, job_id=None
+            area_id=area_id,
+            dem_path=prepared_dem_path,
+            bbox=None,
+            job_id=None,
+            escenario_propuestas=escenario_propuestas,
         )
         _update_running(progreso=85)
 
