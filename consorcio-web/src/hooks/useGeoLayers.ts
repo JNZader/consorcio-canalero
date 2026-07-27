@@ -17,6 +17,38 @@ export interface GeoLayerInfo {
   formato: string;
   area_id: string | null;
   created_at: string;
+  /**
+   * true cuando la capa es de un ESCENARIO (relevados + propuestas quemadas),
+   * no del drenaje operativo. Derivado del prefijo del nombre en el backend
+   * (`escenario_flow_acc_*`): la capa comparte `tipo` con la operativa
+   * (ambas FLOW_ACC), asi que el tipo NO alcanza para distinguirlas.
+   */
+  esEscenario: boolean;
+  /** Etiqueta lista para el selector, ya con el sufijo de escenario si aplica. */
+  label: string;
+}
+
+/** El backend nombra las capas de escenario con este prefijo. */
+const ESCENARIO_PREFIX = 'escenario_';
+
+/**
+ * Deriva `esEscenario` y `label` de una capa cruda del backend.
+ *
+ * El backend distingue el escenario por el PREFIJO del nombre
+ * (`escenario_flow_acc_zona_principal`), no por el tipo — la capa de escenario
+ * comparte tipo con la operativa. Toda la logica de "esto es simulacion" cuelga
+ * de ese prefijo, en un solo lugar.
+ */
+export function enrichLayer(layer: GeoLayerInfo): GeoLayerInfo {
+  const esEscenario = layer.nombre.startsWith(ESCENARIO_PREFIX);
+  const base = GEO_LAYER_LABELS[layer.tipo] ?? layer.tipo;
+  return {
+    ...layer,
+    esEscenario,
+    // El sufijo hace inconfundible que es una simulacion, para que nadie tome
+    // el drenaje propuesto por el existente.
+    label: esEscenario ? `${base} (escenario)` : base,
+  };
 }
 
 /** Human-readable labels for layer types */
@@ -79,13 +111,17 @@ export function useGeoLayers() {
       }
 
       const data = await response.json();
-      const items: GeoLayerInfo[] = (data.items || []).filter((l: GeoLayerInfo) =>
-        TILE_CAPABLE_TYPES.has(l.tipo)
-      );
+      const items: GeoLayerInfo[] = (data.items ?? [])
+        .filter((l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo))
+        .map((l: GeoLayerInfo) => enrichLayer(l));
 
+      // Dedup por (esEscenario, tipo, area): sin el flag de escenario, una
+      // capa `escenario_flow_acc` (tipo FLOW_ACC) pisaria a la operativa del
+      // mismo tipo y area, y solo quedaria una en el selector. Con el flag,
+      // conviven la operativa y la de escenario.
       const seen = new Map<string, GeoLayerInfo>();
       for (const layer of items) {
-        const key = `${layer.tipo}::${layer.area_id ?? ''}`;
+        const key = `${layer.esEscenario ? 'esc' : 'op'}::${layer.tipo}::${layer.area_id ?? ''}`;
         const existing = seen.get(key);
         if (!existing || layer.created_at > existing.created_at) {
           seen.set(key, layer);
