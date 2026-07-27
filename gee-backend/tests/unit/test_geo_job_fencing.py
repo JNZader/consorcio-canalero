@@ -94,6 +94,7 @@ def test_late_full_dem_task_exits_before_destructive_cleanup() -> None:
     result = run_full_dem_pipeline_impl(
         area_id="area-1",
         min_basin_area_ha=10.0,
+        escenario_propuestas=None,
         job_id=str(uuid.uuid4()),
         create_geo_job=MagicMock(),
         update_job=update_job,

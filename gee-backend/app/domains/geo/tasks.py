@@ -517,6 +517,7 @@ def run_full_dem_pipeline(
     area_id: str,
     min_basin_area_ha: float = 5000.0,
     job_id: str | None = None,
+    escenario_propuestas: list[str] | None = None,
 ) -> dict:
     with _area_execution_lock(area_id) as acquired:
         if not acquired:
@@ -532,6 +533,7 @@ def run_full_dem_pipeline(
         return run_full_dem_pipeline_impl(
             area_id=area_id,
             min_basin_area_ha=min_basin_area_ha,
+            escenario_propuestas=escenario_propuestas,
             job_id=job_id,
             create_geo_job=_create_geo_job,
             update_job=_update_job,
