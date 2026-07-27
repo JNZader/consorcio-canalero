@@ -159,3 +159,81 @@ def test_reproyecta_cuando_el_dem_no_esta_en_4326(tmp_path: Path) -> None:
     )
 
     assert np.min(_leer(salida)) == pytest.approx(90.0)
+
+
+# ---------------------------------------------------------------------------
+# load_propuesta_geojsons: la seleccion de propuestas para escenarios
+# ---------------------------------------------------------------------------
+
+
+def _archivo_propuestas(tmp_path: Path) -> Path:
+    ruta = tmp_path / "propuestas.geojson"
+    ruta.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"id": "n3-tramo", "nombre": "Tramo N3"},
+                        "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+                    },
+                    {
+                        "type": "Feature",
+                        "properties": {"id": "n5-otro"},
+                        "geometry": {"type": "LineString", "coordinates": [[2, 2], [3, 3]]},
+                    },
+                    {
+                        "type": "Feature",
+                        "properties": {"id": "punto-no-quemable"},
+                        "geometry": {"type": "Point", "coordinates": [5, 5]},
+                    },
+                    {
+                        "type": "Feature",
+                        "properties": {},  # sin id: no seleccionable
+                        "geometry": {"type": "LineString", "coordinates": [[6, 6], [7, 7]]},
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return ruta
+
+
+def test_carga_las_propuestas_pedidas_en_orden(tmp_path: Path) -> None:
+    from app.domains.geo.burn_support import load_propuesta_geojsons
+
+    resultado = load_propuesta_geojsons(
+        propuestas_path=str(_archivo_propuestas(tmp_path)),
+        propuesta_ids=["n5-otro", "n3-tramo"],
+    )
+
+    assert len(resultado) == 2
+    assert json.loads(resultado[0])["coordinates"] == [[2, 2], [3, 3]]
+    assert json.loads(resultado[1])["coordinates"] == [[0, 0], [1, 1]]
+
+
+def test_id_inexistente_es_error_ruidoso_no_skip(tmp_path: Path) -> None:
+    """Quemar un escenario con menos obras de las pedidas produce una
+    comparacion silenciosamente equivocada — sobre la que se justifica (o no)
+    una obra. Mejor reventar con la lista de lo disponible."""
+    from app.domains.geo.burn_support import load_propuesta_geojsons
+
+    with pytest.raises(ValueError, match="no-existe"):
+        load_propuesta_geojsons(
+            propuestas_path=str(_archivo_propuestas(tmp_path)),
+            propuesta_ids=["n3-tramo", "no-existe"],
+        )
+
+
+def test_una_propuesta_puntual_no_es_seleccionable(tmp_path: Path) -> None:
+    """Un punto no es una traza quemable: pedirlo tiene que fallar como
+    inexistente, no colarse degradando el escenario."""
+    from app.domains.geo.burn_support import load_propuesta_geojsons
+
+    with pytest.raises(ValueError, match="punto-no-quemable"):
+        load_propuesta_geojsons(
+            propuestas_path=str(_archivo_propuestas(tmp_path)),
+            propuesta_ids=["punto-no-quemable"],
+        )

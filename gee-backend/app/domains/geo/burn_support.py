@@ -98,3 +98,37 @@ def burn_canals_impl(
         dst.write(quemado.filled(perfil.get("nodata") or -9999.0), 1)
 
     return output_path
+
+
+def load_propuesta_geojsons(*, propuestas_path: str, propuesta_ids: list[str]) -> list[str]:
+    """Geometrias de las propuestas seleccionadas, desde propuestas.geojson.
+
+    El archivo es el MISMO que dibuja el mapa (spec canales-relevados-y-
+    propuestas, montado RO desde consorcio-web): los escenarios queman
+    exactamente lo que el usuario ve, sin copia intermedia que diverja.
+
+    La seleccion es EXPLICITA y un id inexistente es un error ruidoso, no un
+    skip: quemar un escenario con menos obras de las pedidas produce una
+    comparacion silenciosamente equivocada — y sobre esa comparacion se
+    justifica (o no) una obra.
+    """
+    import json
+    from pathlib import Path
+
+    coleccion = json.loads(Path(propuestas_path).read_text(encoding="utf-8"))
+    por_id: dict[str, dict] = {}
+    for feature in coleccion.get("features", []):
+        fid = (feature.get("properties") or {}).get("id")
+        geometria = feature.get("geometry") or {}
+        # Solo lineas: una propuesta puntual o poligonal no es una traza
+        # quemable y aceptarla en silencio degradaria el escenario.
+        if fid and geometria.get("type") == "LineString":
+            por_id[fid] = geometria
+
+    faltantes = [pid for pid in propuesta_ids if pid not in por_id]
+    if faltantes:
+        raise ValueError(
+            f"propuestas inexistentes o sin traza LineString: {faltantes}. "
+            f"Disponibles: {sorted(por_id)}"
+        )
+    return [json.dumps(por_id[pid]) for pid in propuesta_ids]
