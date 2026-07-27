@@ -1218,3 +1218,18 @@ def _needs_compose(compose: str, service: str) -> set[str]:
         elif linea.strip() and not linea.startswith(" " * 6):
             break
     return encontrados
+
+
+def test_geo_worker_mounts_the_map_canal_files() -> None:
+    """Los escenarios queman las propuestas QUE EL MAPA MUESTRA.
+
+    La fuente es el archivo del frontend (spec canales-relevados-y-propuestas),
+    montado RO en el geo-worker. Sin este mount, el pipeline de escenarios
+    falla al leer /app/data/canales/propuestas.geojson — y con una copia en la
+    base en vez del mount, lo quemado podria divergir de lo dibujado, que es
+    exactamente lo que el diseño quiso evitar.
+    """
+    compose = _read("docker-compose.yml")
+    geo_worker = _job_block(compose, "geo-worker")
+
+    assert "./consorcio-web/public/capas/canales:/app/data/canales:ro" in geo_worker

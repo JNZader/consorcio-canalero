@@ -20,10 +20,19 @@ from app.domains.geo.models import EstadoGeoJob, TipoGeoJob
 from app.domains.geo.tasks_dem_support import process_dem_pipeline_impl
 
 
-def _correr_pipeline(tmp_path, *, canal_geojsons: list[str], burn_canals=None):
+def _correr_pipeline(
+    tmp_path,
+    *,
+    canal_geojsons: list[str],
+    burn_canals=None,
+    escenario_propuestas=None,
+    propuesta_geojsons=None,
+    register_raster_layer=None,
+):
     """Corre el impl con fakes; run_step ejecuta de verdad la funcion."""
     processing = MagicMock()
     burn = burn_canals or MagicMock(return_value=str(tmp_path / "output" / "dem_burned.tif"))
+    registrar = register_raster_layer if register_raster_layer is not None else MagicMock()
 
     resultado = process_dem_pipeline_impl(
         area_id="area-1",
@@ -31,13 +40,15 @@ def _correr_pipeline(tmp_path, *, canal_geojsons: list[str], burn_canals=None):
         bbox=None,
         job_id=str(uuid.uuid4()),
         fetch_canal_geojsons=MagicMock(return_value=canal_geojsons),
+        fetch_propuesta_geojsons=MagicMock(return_value=propuesta_geojsons or []),
+        escenario_propuestas=escenario_propuestas,
         burn_canals=burn,
         burn_depth_m=10.0,
         create_geo_job=MagicMock(),
         update_job=MagicMock(return_value=True),
         run_step=lambda job_id, name, fn, args, kwargs=None: fn(*args, **(kwargs or {})),
         get_processing=MagicMock(return_value=processing),
-        register_raster_layer=MagicMock(),
+        register_raster_layer=registrar,
         register_layer=MagicMock(),
         tipo_geo_job=TipoGeoJob,
         tipo_geo_layer=MagicMock(),
@@ -112,6 +123,8 @@ def test_la_profundidad_queda_registrada_en_el_job(tmp_path) -> None:
         bbox=None,
         job_id=None,  # fuerza la creacion del job
         fetch_canal_geojsons=MagicMock(return_value=[]),
+        fetch_propuesta_geojsons=MagicMock(return_value=[]),
+        escenario_propuestas=None,
         burn_canals=MagicMock(),
         burn_depth_m=7.5,
         create_geo_job=create_geo_job,
@@ -127,3 +140,100 @@ def test_la_profundidad_queda_registrada_en_el_job(tmp_path) -> None:
     )
 
     assert create_geo_job.call_args.kwargs["parametros"]["burn_depth_m"] == 7.5
+
+
+def test_escenario_quema_relevados_MAS_propuestas(tmp_path) -> None:
+    """El escenario simula 'como drenaria SI se construyen las obras': quema
+    la red real completa Y las propuestas seleccionadas, no solo estas."""
+    canal = '{"type":"LineString","coordinates":[[0,0],[1,1]]}'
+    propuesta = '{"type":"LineString","coordinates":[[2,2],[3,3]]}'
+    resultado, processing, burn = _correr_pipeline(
+        tmp_path,
+        canal_geojsons=[canal],
+        escenario_propuestas=["n3-tramo"],
+        propuesta_geojsons=[propuesta],
+    )
+
+    # Dos quemados: el operativo (solo red real) y el del escenario (ambas).
+    assert burn.call_count == 2
+    kwargs_escenario = burn.call_args_list[1].kwargs
+    assert kwargs_escenario["canal_geojsons"] == [canal, propuesta]
+    assert "escenario" in kwargs_escenario["output_path"]
+
+    # La cadena del escenario existe completa en los outputs.
+    for clave in (
+        "burned_dem_escenario",
+        "filled_dem_escenario",
+        "flow_dir_escenario",
+        "flow_acc_escenario",
+    ):
+        assert clave in resultado["outputs"], clave
+
+
+def test_escenario_jamas_pisa_las_capas_operativas(tmp_path) -> None:
+    """LA regla de segregacion. Si una capa de escenario se registrara con un
+    nombre operativo, el mapa mostraria drenaje de canales que nadie
+    construyo y un operador tomaria decisiones sobre obras inexistentes."""
+    registros = MagicMock()
+    _correr_pipeline(
+        tmp_path,
+        canal_geojsons=['{"type":"LineString","coordinates":[[0,0],[1,1]]}'],
+        escenario_propuestas=["n3-tramo"],
+        propuesta_geojsons=['{"type":"LineString","coordinates":[[2,2],[3,3]]}'],
+        register_raster_layer=registros,
+    )
+
+    nombres = [c.kwargs["nombre"] for c in registros.call_args_list]
+    de_escenario = [n for n in nombres if "escenario" in n]
+    operativas = [n for n in nombres if "escenario" not in n]
+
+    # Las capas del escenario llevan SIEMPRE el prefijo, nunca un nombre pelado.
+    assert de_escenario == ["escenario_flow_dir_area-1", "escenario_flow_acc_area-1"]
+    # Y las operativas quedan exactamente como sin escenario: mismas capas.
+    assert "flow_dir_area-1" in operativas
+    assert "flow_acc_area-1" in operativas
+
+
+def test_sin_escenario_no_hay_rastro_de_simulacion(tmp_path) -> None:
+    registros = MagicMock()
+    resultado, _, burn = _correr_pipeline(
+        tmp_path,
+        canal_geojsons=['{"type":"LineString","coordinates":[[0,0],[1,1]]}'],
+        register_raster_layer=registros,
+    )
+
+    assert burn.call_count == 1  # solo el quemado operativo
+    assert not [k for k in resultado["outputs"] if "escenario" in k]
+    assert not [c for c in registros.call_args_list if "escenario" in c.kwargs["nombre"]]
+
+
+def test_los_ids_del_escenario_quedan_en_el_job(tmp_path) -> None:
+    """Sin los ids en los parametros, dos escenarios distintos serian
+    indistinguibles a posteriori — y una comparacion sin trazabilidad no
+    sirve como argumento tecnico para justificar una obra."""
+    create_geo_job = MagicMock(return_value=str(uuid.uuid4()))
+
+    process_dem_pipeline_impl(
+        area_id="area-1",
+        dem_path=str(tmp_path / "dem.tif"),
+        bbox=None,
+        job_id=None,
+        fetch_canal_geojsons=MagicMock(return_value=[]),
+        fetch_propuesta_geojsons=MagicMock(return_value=[]),
+        escenario_propuestas=["n3-tramo", "n5-otro"],
+        burn_canals=MagicMock(),
+        burn_depth_m=10.0,
+        create_geo_job=create_geo_job,
+        update_job=MagicMock(return_value=True),
+        run_step=lambda job_id, name, fn, args, kwargs=None: fn(*args, **(kwargs or {})),
+        get_processing=MagicMock(),
+        register_raster_layer=MagicMock(),
+        register_layer=MagicMock(),
+        tipo_geo_job=TipoGeoJob,
+        tipo_geo_layer=MagicMock(),
+        estado_geo_job=EstadoGeoJob,
+        formato_geo_layer=MagicMock(),
+    )
+
+    parametros = create_geo_job.call_args.kwargs["parametros"]
+    assert parametros["escenario_propuestas"] == ["n3-tramo", "n5-otro"]

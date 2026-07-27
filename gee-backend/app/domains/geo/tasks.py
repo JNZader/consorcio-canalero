@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import traceback
 import uuid
 from collections.abc import Iterator
@@ -20,7 +21,11 @@ from app.domains.geo.models import (
     TipoGeoJob,
     TipoGeoLayer,
 )
-from app.domains.geo.burn_support import DEFAULT_BURN_DEPTH_M, burn_canals_impl
+from app.domains.geo.burn_support import (
+    DEFAULT_BURN_DEPTH_M,
+    burn_canals_impl,
+    load_propuesta_geojsons,
+)
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.tasks_io_support import (
     delineate_basins_task_impl,
@@ -183,6 +188,21 @@ def _create_geo_job(*, tipo: str, parametros: dict) -> str:
         db.close()
 
 
+CANALES_CAPAS_DIR = os.environ.get("CANALES_CAPAS_DIR", "/app/data/canales")
+"""Directorio con los GeoJSON del mapa (montado RO desde consorcio-web).
+
+Fuente unica: los escenarios queman EXACTAMENTE las propuestas que el usuario
+ve dibujadas en el mapa, no una copia en la base que pueda divergir.
+"""
+
+
+def _fetch_propuesta_geojsons(propuesta_ids: list[str]) -> list[str]:
+    return load_propuesta_geojsons(
+        propuestas_path=str(Path(CANALES_CAPAS_DIR) / "propuestas.geojson"),
+        propuesta_ids=propuesta_ids,
+    )
+
+
 def _fetch_canal_geojsons() -> list[str]:
     """Trazas de canal_network como GeoJSON (EPSG:4326), para el quemado.
 
@@ -206,6 +226,7 @@ def process_dem_pipeline(
     bbox: list[float] | None = None,
     job_id: str | None = None,
     burn_depth_m: float = DEFAULT_BURN_DEPTH_M,
+    escenario_propuestas: list[str] | None = None,
 ) -> dict:
     return process_dem_pipeline_impl(
         area_id=area_id,
@@ -213,6 +234,8 @@ def process_dem_pipeline(
         bbox=bbox,
         job_id=job_id,
         fetch_canal_geojsons=_fetch_canal_geojsons,
+        fetch_propuesta_geojsons=_fetch_propuesta_geojsons,
+        escenario_propuestas=escenario_propuestas,
         burn_canals=burn_canals_impl,
         burn_depth_m=burn_depth_m,
         create_geo_job=_create_geo_job,
