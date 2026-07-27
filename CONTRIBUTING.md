@@ -115,6 +115,22 @@ cp .env.example .env  # Editar con valores reales
 Cuando lo acumulado en `develop` está listo para publicar, se abre un PR
 `develop` → `main`.
 
+### Con qué método mergear cada cosa
+
+| PR | método | por qué |
+|---|---|---|
+| `feature/*` → `develop` | **squash** | un commit limpio por funcionalidad |
+| `develop` → `main` | **merge commit** | mantiene las dos ramas sincronizadas |
+
+Esto no es preferencia estética. El squash crea un commit **nuevo**, así que
+un `develop` → `main` con squash deja en `main` un commit que no existe en
+`develop`: las ramas se separan un poco en cada ciclo, y no se arregla después
+con un force-push porque la protección lo bloquea. Con merge commit, `main`
+queda siempre como ancestro de `develop` y no hay nada que resincronizar.
+
+Por esa razón `main` **no** exige historia lineal: la exigencia prohibiría
+justamente el merge commit que mantiene el flujo sano.
+
 ### Checks requeridos
 
 `main` exige estos checks en verde para poder mergear:
