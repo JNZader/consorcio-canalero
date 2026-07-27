@@ -16,9 +16,14 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    # Lunes 06:00 ART (09:00 UTC) — refresca la baseline incremental de
-    # mutación que reusan los PRs. Solo dispara el job `mutation-full`.
-    - cron: '0 9 * * 1'
+    # Lunes y jueves 06:00 ART (09:00 UTC) — refresca la baseline incremental
+    # de mutación que reusan los PRs. Solo dispara el job `mutation-full`.
+    #
+    # DOS veces por semana y no una: GitHub desaloja las cachés que no se usan
+    # en 7 días, justo el período de un cron semanal. Con una sola corrida, una
+    # semana sin PRs de frontend dejaba caducar la baseline y el PR siguiente
+    # pagaba la corrida en frío — que ya midió 62m53s contra un techo de 70.
+    - cron: '0 9 * * 1,4'
   workflow_dispatch:
 
 concurrency:
