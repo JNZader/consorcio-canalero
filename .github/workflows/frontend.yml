@@ -129,7 +129,7 @@ jobs:
 
   mutation:
     name: Mutation tests (stryker, incremental)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     # Incremental: only the mutants this PR's diff can affect — minutes once a
     # baseline exists. The full scope is 1880 mutants ≈ 46 min on a runner
@@ -192,7 +192,7 @@ jobs:
 
   accessibility:
     name: Accessibility matrix (Playwright)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, typecheck, smoke]
@@ -223,7 +223,10 @@ jobs:
     name: Build
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    needs: [changes, lint, test, typecheck, smoke, mutation, accessibility]
+    # NO depende de `mutation` ni de `accessibility`: un job salteado arrastra
+    # al salteo a todo el que lo tenga en `needs`, y desde que esos dos corren
+    # solo en el PR de release eso habria apagado el build en cada PR.
+    needs: [changes, lint, test, typecheck, smoke]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
