@@ -35,7 +35,7 @@ const consorcista = {
 
 const renderPanel = () =>
   render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <PadronPanel />
     </MantineProvider>
   );

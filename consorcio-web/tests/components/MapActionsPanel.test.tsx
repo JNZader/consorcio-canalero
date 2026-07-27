@@ -34,7 +34,7 @@ import { MapActionsPanel } from '../../src/components/map2d/MapActionsPanel';
 import { MapUiPanels, type MapUiPanelsProps } from '../../src/components/map2d/MapUiPanels';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps {

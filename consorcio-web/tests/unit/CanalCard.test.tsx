@@ -31,7 +31,7 @@ import { formatLongitud } from '../../src/components/map2d/canalesFormat';
 import type { CanalFeatureProperties } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------

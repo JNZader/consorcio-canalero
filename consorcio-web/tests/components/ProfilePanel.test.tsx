@@ -65,7 +65,7 @@ vi.mock('../../src/lib/formatters', () => ({
 
 // Wrapper con MantineProvider
 const renderWithMantine = (component: React.ReactNode) => {
-  return render(<MantineProvider>{component}</MantineProvider>);
+  return render(<MantineProvider env="test">{component}</MantineProvider>);
 };
 
 describe('ProfilePanel', () => {

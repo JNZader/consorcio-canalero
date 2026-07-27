@@ -37,7 +37,7 @@ const tramite = contracts.tramites.detail;
 
 function renderPanel() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <TramitesPanel />
     </MantineProvider>
   );

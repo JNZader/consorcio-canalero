@@ -29,7 +29,7 @@ import {
 } from '../../src/hooks/useSoilMap';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const SOIL_LEGEND_TESTID = 'terrain-3d-soil-legend';

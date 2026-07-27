@@ -20,7 +20,7 @@ describe('Footer', () => {
 
   it('should render footer with company title', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -30,7 +30,7 @@ describe('Footer', () => {
 
   it('should render footer description', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -42,7 +42,7 @@ describe('Footer', () => {
 
   it('should render navigation links', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -55,7 +55,7 @@ describe('Footer', () => {
 
   it('should render contact information', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -66,7 +66,7 @@ describe('Footer', () => {
 
   it('should have proper navigation nav element', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -77,7 +77,7 @@ describe('Footer', () => {
 
   it('should render copyright year dynamically', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -88,7 +88,7 @@ describe('Footer', () => {
 
   it('should render technology credit', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -100,7 +100,7 @@ describe('Footer', () => {
 
   it('should have footer as main footer element', () => {
     const { container } = render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -111,7 +111,7 @@ describe('Footer', () => {
 
   it('should render with correct heading hierarchy', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -125,7 +125,7 @@ describe('Footer', () => {
 
   it('should have correct navigation link hrefs', () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <FooterContent />
       </MantineProvider>
     );
@@ -142,7 +142,7 @@ describe('Footer', () => {
   describe('footer styling and layout', () => {
     it('should render footer with correct background style', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -157,7 +157,7 @@ describe('Footer', () => {
 
     it('should have footer with border top styling', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -173,7 +173,7 @@ describe('Footer', () => {
 
     it('should render Container with xl size', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -185,7 +185,7 @@ describe('Footer', () => {
 
     it('should render with proper padding (py="xl")', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -199,7 +199,7 @@ describe('Footer', () => {
   describe('footer sections and content organization', () => {
     it('should have main Group with space-between layout', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -212,7 +212,7 @@ describe('Footer', () => {
 
     it('should render divider between content and copyright', () => {
       const { container } = render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -223,7 +223,7 @@ describe('Footer', () => {
 
     it('should render copyright and technology credit in footer bottom', () => {
       render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -240,7 +240,7 @@ describe('Footer', () => {
   describe('footer colors and typography', () => {
     it('should display company name with correct styling', () => {
       render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -253,7 +253,7 @@ describe('Footer', () => {
 
     it('should display description with correct text', () => {
       render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );
@@ -265,7 +265,7 @@ describe('Footer', () => {
 
     it('should display section headers with correct text and styling', () => {
       render(
-        <MantineProvider>
+        <MantineProvider env="test">
           <FooterContent />
         </MantineProvider>
       );

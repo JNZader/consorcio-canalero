@@ -25,7 +25,7 @@ import { CANALES_COLORS } from '../../src/components/map2d/canalesLayers';
 import { LeyendaPanel } from '../../src/components/map2d/LeyendaPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------

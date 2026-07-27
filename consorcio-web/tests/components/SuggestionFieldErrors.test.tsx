@@ -46,7 +46,7 @@ vi.mock('../../src/components/suggestion-form/SuggestionGeometrySection', () => 
 }));
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function expectFieldDescribedByError(field: HTMLElement, errorId: string) {

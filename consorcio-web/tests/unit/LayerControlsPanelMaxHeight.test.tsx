@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

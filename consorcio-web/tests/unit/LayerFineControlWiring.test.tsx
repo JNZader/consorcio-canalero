@@ -22,7 +22,7 @@ import { MapUiPanels, type MapUiPanelsProps } from '../../src/components/map2d/M
 import { DEFAULT_LAYER_ORDER } from '../../src/components/map2d/layerRenderRegistry';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function makeFineControl(overrides?: Partial<LayerFineControl>): LayerFineControl {

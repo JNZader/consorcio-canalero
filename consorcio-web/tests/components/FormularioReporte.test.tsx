@@ -114,7 +114,7 @@ vi.mock('../../src/lib/logger', () => ({
 
 const renderForm = () =>
   render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <FormularioContenido />
     </MantineProvider>
   );

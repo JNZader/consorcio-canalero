@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 import { LeyendaPanel } from '../../src/components/map2d/LeyendaPanel';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ describe('<LeyendaPanel /> — Escuelas rurales block', () => {
     expect(screen.getByTestId('escuelas-legend')).toBeInTheDocument();
 
     rerender(
-      <MantineProvider>
+      <MantineProvider env="test">
         <LeyendaPanel pilarAzulEscuelasVisible={false} />
       </MantineProvider>,
     );

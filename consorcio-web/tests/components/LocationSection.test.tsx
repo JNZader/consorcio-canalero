@@ -81,7 +81,7 @@ vi.mock('../../src/components/ui/accessibility', () => ({
 }));
 
 function renderWithMantine(ui: React.ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 const baseProps = {

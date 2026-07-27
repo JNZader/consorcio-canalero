@@ -23,7 +23,7 @@ vi.mock('../../src/components/MapaMapLibre', () => ({
 import { MapaContenido } from '../../src/components/MapaInteractivo';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<MapaContenido /> error fallback', () => {

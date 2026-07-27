@@ -22,7 +22,7 @@ import { InfoPanel } from '../../src/components/map2d/InfoPanel';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 
 function renderWithMantine(ui: ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 // Helper to attach a layer id so the whitelist logic (Fix 2) kicks in where

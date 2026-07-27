@@ -30,7 +30,7 @@ vi.mock('@mantine/dropzone', () => ({
 }));
 
 function renderWithMantine(ui: React.ReactNode) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('<PhotoSection />', () => {

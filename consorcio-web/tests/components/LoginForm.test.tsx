@@ -37,7 +37,7 @@ Object.defineProperty(window, 'location', {
 
 function renderForm() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <LoginFormContent />
     </MantineProvider>
   );
