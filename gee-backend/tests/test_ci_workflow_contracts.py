@@ -1169,3 +1169,52 @@ def test_image_scans_set_an_explicit_trivy_timeout() -> None:
     # imagen; si no, se cambia un fallo por reloj por otro fallo por reloj.
     geo = _job_block(_read(".github/workflows/backend.yml"), "image-geo-worker")
     assert "timeout-minutes: 45" in geo
+
+
+def test_pgbouncer_is_declared_in_compose_not_hand_created() -> None:
+    """El pooler tiene que vivir en el compose, no en la memoria de alguien.
+
+    Estuvo meses corriendo en el servidor sin estar en ningun compose: se
+    habia creado a mano. Al rotar la clave de Postgres hubo que reconstruirlo
+    con `docker run` y se perdio un detalle que Compose pone solo: el ALIAS DE
+    RED. Compose registra cada servicio con su NOMBRE DE SERVICIO como alias,
+    y la DATABASE_URL de produccion apunta a `pgbouncer` — no al nombre del
+    contenedor. Sin ese alias el DNS interno no resuelve, el backend se queda
+    sin base, y los contenedores siguen reportando "healthy" porque su
+    healthcheck solo mira que el proceso responda.
+
+    De ahi que el nombre del servicio sea parte del contrato: renombrarlo
+    rompe la resolucion en produccion.
+    """
+    compose = _read("docker-compose.yml")
+    bloque = _job_block(compose, "pgbouncer")
+
+    assert "image: edoburu/pgbouncer:" in bloque, "la imagen tiene que estar pinneada"
+    assert "container_name: consorcio-pgbouncer" in bloque
+    # Perfil: en desarrollo el backend va directo a postgres y levantar el
+    # pooler seria una pieza de mas.
+    assert 'profiles: ["pooler"]' in bloque
+    # Transaction pooling es lo que hace que alembic NO pueda pasar por aca.
+    assert "POOL_MODE: transaction" in bloque
+    assert "AUTH_TYPE: scram-sha-256" in bloque
+    # Sin healthcheck, `depends_on: service_healthy` de otros servicios no
+    # tendria nada que esperar.
+    assert "pg_isready" in bloque
+    # La clave sale del entorno, nunca escrita en el archivo.
+    assert "DB_PASSWORD: " + "$" + "{POSTGRES_PASSWORD" in bloque
+    assert "postgres" in _needs_compose(compose, "pgbouncer")
+
+
+def _needs_compose(compose: str, service: str) -> set[str]:
+    """Servicios listados bajo `depends_on:` de un servicio del compose."""
+    bloque = _job_block(compose, service)
+    depende = bloque.split("depends_on:", 1)
+    if len(depende) == 1:
+        return set()
+    encontrados = set()
+    for linea in depende[1].splitlines():
+        if re.match(r"^\s{6}[a-z-]+:\s*$", linea):
+            encontrados.add(linea.strip().rstrip(":"))
+        elif linea.strip() and not linea.startswith(" " * 6):
+            break
+    return encontrados
