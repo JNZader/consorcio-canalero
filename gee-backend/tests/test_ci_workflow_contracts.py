@@ -1144,3 +1144,28 @@ def test_light_jobs_never_depend_on_release_only_jobs() -> None:
     ):
         for job in livianos:
             assert not (_needs(workflow, job) & solo_release), job
+
+
+def test_image_scans_set_an_explicit_trivy_timeout() -> None:
+    """El default de Trivy son 5m0s y el geo-worker no entra ahi.
+
+    La imagen trae GDAL mas todo el arbol de dependencias de Python: el
+    analisis reventaba con "context deadline exceeded" a los 5 minutos justos.
+    Eso NO es un hallazgo de seguridad, es el reloj interno del escaner — pero
+    el gate lo reportaba como fallo (bien, es fail-closed) con el motivo real
+    enterrado tres pasos mas arriba, en un job de 20 minutos.
+
+    Sin un `timeout` explicito el gate depende de que la imagen no crezca, que
+    es exactamente el tipo de supuesto que se rompe solo.
+    """
+    for path in (".github/workflows/backend.yml", ".github/workflows/deploy.yml"):
+        workflow = _read(path)
+        escaneos = workflow.count("scan-type: image")
+        assert escaneos, path
+        # Un `timeout` por cada escaneo de imagen.
+        assert workflow.count("timeout: '20m'") == escaneos, path
+
+    # El techo del job tiene que cubrir el escaneo MAS la construccion de la
+    # imagen; si no, se cambia un fallo por reloj por otro fallo por reloj.
+    geo = _job_block(_read(".github/workflows/backend.yml"), "image-geo-worker")
+    assert "timeout-minutes: 45" in geo

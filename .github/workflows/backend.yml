@@ -224,6 +224,14 @@ jobs:
           image-ref: ${{ env.CANDIDATE_IMAGE }}
           version: v0.70.0
           scanners: vuln
+          # El default de Trivy son 5m0s y el analisis del geo-worker no entra:
+          # la imagen trae GDAL mas todo el arbol de dependencias de Python.
+          # Reventaba con "context deadline exceeded" a los 5 minutos justos,
+          # que no es un hallazgo de seguridad sino el reloj interno del
+          # escaner. Sin evidencia generada, la politica de imagenes lo
+          # reportaba como fallo -correctamente, porque fail-closed- pero el
+          # motivo real quedaba enterrado tres pasos mas arriba.
+          timeout: '20m'
           format: json
           output: ${{ github.workspace }}/image-security/backend-trivy.json
           severity: CRITICAL,HIGH
@@ -263,7 +271,11 @@ jobs:
   image-geo-worker:
     name: Final Geo Worker Image Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45 y no 30: el escaneo solo puede tomarse hasta 20m (ver el `timeout` de
+    # Trivy mas abajo) y encima esta la construccion de la imagen con GDAL. Con
+    # el techo en 30 el job podia morir por reloj del runner justo despues de
+    # haberle dado mas margen al escaner, cambiando un fallo confuso por otro.
+    timeout-minutes: 45
     needs: [changes, lint, typecheck, test]
     # Solo en el PR de release: construir y escanear estas dos imagenes son
     # ~17 minutos (el geo-worker trae GDAL). Lo que el escaneo busca son
@@ -302,6 +314,14 @@ jobs:
           image-ref: ${{ env.CANDIDATE_IMAGE }}
           version: v0.70.0
           scanners: vuln
+          # El default de Trivy son 5m0s y el analisis del geo-worker no entra:
+          # la imagen trae GDAL mas todo el arbol de dependencias de Python.
+          # Reventaba con "context deadline exceeded" a los 5 minutos justos,
+          # que no es un hallazgo de seguridad sino el reloj interno del
+          # escaner. Sin evidencia generada, la politica de imagenes lo
+          # reportaba como fallo -correctamente, porque fail-closed- pero el
+          # motivo real quedaba enterrado tres pasos mas arriba.
+          timeout: '20m'
           format: json
           output: ${{ github.workspace }}/image-security/geo-worker-trivy.json
           severity: CRITICAL,HIGH

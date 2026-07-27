@@ -241,6 +241,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
+          # Ver backend.yml: el default de 5m0s no alcanza para el geo-worker.
+          timeout: '20m'
           version: v0.70.0
           scanners: vuln
           format: json
@@ -357,6 +359,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.CANDIDATE_IMAGE }}
+          # Ver backend.yml: el default de 5m0s no alcanza para el geo-worker.
+          timeout: '20m'
           version: v0.70.0
           scanners: vuln
           format: json
