@@ -19,6 +19,8 @@ def process_dem_pipeline_impl(
     fetch_canal_geojsons,
     fetch_propuesta_geojsons,
     escenario_propuestas: list[str] | None,
+    archive_previous_output,
+    run_timestamp: str,
     burn_canals,
     burn_depth_m: float,
     create_geo_job,
@@ -54,7 +56,13 @@ def process_dem_pipeline_impl(
         logger.info("dem_pipeline.not_claimed", area_id=area_id, job_id=job_id)
         return {"job_id": job_id, "status": "skipped", "outputs": {}}
 
+    # Archiva la corrida anterior a output_<timestamp>/ antes de empezar: sin
+    # esto cada corrida pisa la previa y se pierde la comparacion (paso en la
+    # corrida del quemado, que sobreescribio el flow_acc de abril).
     output_dir = Path(dem_path).parent / "output"
+    archivado = archive_previous_output(output_dir=str(output_dir), timestamp=run_timestamp)
+    if archivado:
+        logger.info("dem_pipeline.output_archived", area_id=area_id, archive=archivado)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     outputs: dict[str, str] = {}
