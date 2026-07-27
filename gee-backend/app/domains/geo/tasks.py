@@ -20,6 +20,7 @@ from app.domains.geo.models import (
     TipoGeoJob,
     TipoGeoLayer,
 )
+from app.domains.geo.burn_support import DEFAULT_BURN_DEPTH_M, burn_canals_impl
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.tasks_io_support import (
     delineate_basins_task_impl,
@@ -182,18 +183,38 @@ def _create_geo_job(*, tipo: str, parametros: dict) -> str:
         db.close()
 
 
+def _fetch_canal_geojsons() -> list[str]:
+    """Trazas de canal_network como GeoJSON (EPSG:4326), para el quemado.
+
+    Lista vacia cuando no hay red digitalizada: el pipeline sigue con el DEM
+    original, no falla.
+    """
+    db = _get_db()
+    try:
+        filas = db.execute(
+            text("SELECT ST_AsGeoJSON(geom) FROM canal_network WHERE geom IS NOT NULL")
+        ).scalars()
+        return [fila for fila in filas if fila]
+    finally:
+        db.close()
+
+
 @celery_app.task(queue="geo", name="geo.process_dem_pipeline")
 def process_dem_pipeline(
     area_id: str,
     dem_path: str,
     bbox: list[float] | None = None,
     job_id: str | None = None,
+    burn_depth_m: float = DEFAULT_BURN_DEPTH_M,
 ) -> dict:
     return process_dem_pipeline_impl(
         area_id=area_id,
         dem_path=dem_path,
         bbox=bbox,
         job_id=job_id,
+        fetch_canal_geojsons=_fetch_canal_geojsons,
+        burn_canals=burn_canals_impl,
+        burn_depth_m=burn_depth_m,
         create_geo_job=_create_geo_job,
         update_job=_update_job,
         run_step=_run_step,

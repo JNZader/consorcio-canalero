@@ -16,6 +16,9 @@ def process_dem_pipeline_impl(
     dem_path: str,
     bbox: list[float] | None,
     job_id: str | None,
+    fetch_canal_geojsons,
+    burn_canals,
+    burn_depth_m: float,
     create_geo_job,
     update_job,
     run_step,
@@ -30,7 +33,12 @@ def process_dem_pipeline_impl(
     if job_id is None:
         job_id = create_geo_job(
             tipo=tipo_geo_job.DEM_PIPELINE,
-            parametros={"area_id": area_id, "dem_path": dem_path, "bbox": bbox},
+            parametros={
+                "area_id": area_id,
+                "dem_path": dem_path,
+                "bbox": bbox,
+                "burn_depth_m": burn_depth_m,
+            },
         )
 
     claimed = update_job(
@@ -48,7 +56,7 @@ def process_dem_pipeline_impl(
 
     outputs: dict[str, str] = {}
     step = 0
-    total_steps = 12
+    total_steps = 14
     processing = get_processing()
 
     def _progress():
@@ -76,9 +84,49 @@ def process_dem_pipeline_impl(
             working_dem = dem_path
         _progress()
 
+        # Stream burning: grabar la red de canales antes del analisis
+        # hidrologico. El DEM de 30 m no ve canales de metros de ancho; sin
+        # esto, flow_acc muestra por donde iria el agua SIN el sistema de
+        # canales. Un area sin red digitalizada es un caso normal: se sigue
+        # con el DEM original.
+        canal_geojsons = fetch_canal_geojsons()
+        hydro_dem = working_dem
+        if canal_geojsons:
+            burned = str(output_dir / "dem_burned.tif")
+            run_step(
+                job_id,
+                "burn_canals",
+                burn_canals,
+                (),
+                {
+                    "dem_path": working_dem,
+                    "canal_geojsons": canal_geojsons,
+                    "output_path": burned,
+                    "burn_depth_m": burn_depth_m,
+                },
+            )
+            outputs["burned_dem"] = burned
+            hydro_dem = burned
+        else:
+            logger.info("dem_pipeline.burn_skipped_no_canals", area_id=area_id)
+        _progress()
+
         filled = str(output_dir / "dem_filled.tif")
         run_step(job_id, "fill_sinks", processing.fill_sinks, (working_dem, filled))
         outputs["filled_dem"] = filled
+        _progress()
+
+        if hydro_dem is working_dem:
+            filled_hydro = filled
+        else:
+            filled_hydro = str(output_dir / "dem_filled_hydro.tif")
+            run_step(
+                job_id,
+                "fill_sinks_hydro",
+                processing.fill_sinks,
+                (hydro_dem, filled_hydro),
+            )
+            outputs["filled_hydro_dem"] = filled_hydro
         _progress()
 
         slope = str(output_dir / "slope.tif")
@@ -108,7 +156,7 @@ def process_dem_pipeline_impl(
             job_id,
             "compute_flow_direction",
             processing.compute_flow_direction,
-            (filled, flow_dir),
+            (filled_hydro, flow_dir),
         )
         outputs["flow_dir"] = flow_dir
         register_raster_layer(
@@ -124,7 +172,7 @@ def process_dem_pipeline_impl(
             job_id,
             "compute_flow_accumulation",
             processing.compute_flow_accumulation,
-            (filled, flow_acc),
+            (filled_hydro, flow_acc),
         )
         outputs["flow_acc"] = flow_acc
         register_raster_layer(
