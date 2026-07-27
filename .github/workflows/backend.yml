@@ -120,7 +120,11 @@ jobs:
 
   mutation:
     name: Mutation tests (cosmic-ray)
-    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    # Solo en el PR de release (develop -> main) o a mano. Son 12 minutos de
+    # runner por PR: correrlo en cada PR a develop fue parte de lo que hizo que
+    # bloquearan la cuenta por consumo. La calidad de los tests no se degrada
+    # de un PR al siguiente al punto de justificar ese peaje diario.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     needs: [changes, test]
@@ -151,7 +155,10 @@ jobs:
   security:
     name: Security scan (Trivy)
     runs-on: ubuntu-latest
-    needs: [changes, lint, typecheck, test, mutation]
+    # NO depende de `mutation`: un job que se saltea arrastra al salteo a todo
+    # el que lo tenga en `needs`, y desde que la mutacion corre solo en el PR
+    # de release eso habria apagado Trivy en cada PR a develop.
+    needs: [changes, lint, typecheck, test]
     timeout-minutes: 5
     if: ${{ needs.changes.outputs.backend == 'true' }}
     permissions:
@@ -179,7 +186,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, lint, typecheck, test]
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    # Solo en el PR de release: construir y escanear estas dos imagenes son
+    # ~17 minutos (el geo-worker trae GDAL). Lo que el escaneo busca son
+    # vulnerabilidades de SO y dependencias, que no cambian con cada commit de
+    # codigo de aplicacion.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -254,7 +265,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, lint, typecheck, test]
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    # Solo en el PR de release: construir y escanear estas dos imagenes son
+    # ~17 minutos (el geo-worker trae GDAL). Lo que el escaneo busca son
+    # vulnerabilidades de SO y dependencias, que no cambian con cada commit de
+    # codigo de aplicacion.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -331,7 +346,7 @@ jobs:
     # `always()` para que un image gate FALLIDO no saltee la politica y de
     # verde falso; pero exige tambien que haya habido cambios de backend,
     # porque el paso de abajo pide `success` y un job SALTEADO no lo es.
-    if: ${{ always() && needs.changes.outputs.backend == 'true' }}
+    if: ${{ always() && (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
     permissions:
       contents: read
     env:
