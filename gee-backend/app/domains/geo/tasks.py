@@ -21,6 +21,7 @@ from app.domains.geo.models import (
     TipoGeoJob,
     TipoGeoLayer,
 )
+from app.domains.geo.output_archive_support import archive_previous_output
 from app.domains.geo.burn_support import (
     DEFAULT_BURN_DEPTH_M,
     burn_canals_impl,
@@ -228,6 +229,8 @@ def process_dem_pipeline(
     burn_depth_m: float = DEFAULT_BURN_DEPTH_M,
     escenario_propuestas: list[str] | None = None,
 ) -> dict:
+    from datetime import datetime, timezone
+
     return process_dem_pipeline_impl(
         area_id=area_id,
         dem_path=dem_path,
@@ -236,6 +239,8 @@ def process_dem_pipeline(
         fetch_canal_geojsons=_fetch_canal_geojsons,
         fetch_propuesta_geojsons=_fetch_propuesta_geojsons,
         escenario_propuestas=escenario_propuestas,
+        archive_previous_output=archive_previous_output,
+        run_timestamp=datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
         burn_canals=burn_canals_impl,
         burn_depth_m=burn_depth_m,
         create_geo_job=_create_geo_job,

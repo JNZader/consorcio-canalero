@@ -59,6 +59,8 @@ def test_late_normal_dem_task_exits_before_creating_outputs(tmp_path) -> None:
         fetch_canal_geojsons=MagicMock(return_value=[]),
         fetch_propuesta_geojsons=MagicMock(return_value=[]),
         escenario_propuestas=None,
+        archive_previous_output=MagicMock(return_value=None),
+        run_timestamp="20260727_000000",
         burn_canals=MagicMock(),
         burn_depth_m=10.0,
         create_geo_job=MagicMock(),
