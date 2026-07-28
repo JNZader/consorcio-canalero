@@ -1,4 +1,4 @@
-import { Button, Container, Group, Paper, SimpleGrid, Text, Title } from '@mantine/core';
+import { Button, Container, Group, Paper, SimpleGrid } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -373,11 +373,9 @@ export default function SugerenciasPanel() {
   return (
     <LiveRegionProvider>
       <Container size="xl" py="md">
-        <Group justify="space-between" mb="xl">
-          <div>
-            <Title order={2}>Gestion de Sugerencias</Title>
-            <Text c="gray.6">Administra las sugerencias ciudadanas y de la comision</Text>
-          </div>
+        {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
+            queda la accion propia de la bandeja de sugerencias. */}
+        <Group justify="flex-end" mb="md">
           <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
             Nuevo Tema Interno
           </Button>

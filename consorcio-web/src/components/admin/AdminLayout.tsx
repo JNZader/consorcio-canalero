@@ -21,16 +21,15 @@ import {
   IconArrowLeft,
   IconCalendar,
   IconChartBar,
-  IconClipboardList,
   IconCoin,
   IconHome,
-  IconLightbulb,
   IconLogout,
   IconMap,
   IconMountain,
   IconPhoto,
   IconSettings,
   IconUser,
+  IconUsers,
 } from '../ui/icons';
 
 // Navigation sections
@@ -46,8 +45,7 @@ const NAV_SECTIONS = [
   {
     label: 'Gestion',
     items: [
-      { label: 'Reportes', to: '/admin/reports', icon: IconClipboardList },
-      { label: 'Sugerencias', to: '/admin/sugerencias', icon: IconLightbulb },
+      { label: 'Participacion', to: '/admin/participacion', icon: IconUsers },
       { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
       { label: 'Padron', to: '/admin/padron', icon: IconUser },

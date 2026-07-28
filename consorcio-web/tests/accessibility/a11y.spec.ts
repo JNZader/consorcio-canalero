@@ -336,7 +336,7 @@ test.describe('Mapa, modo oscuro, movimiento y filtros', () => {
       expect(Number.parseFloat(animationDuration)).toBeLessThanOrEqual(0.01);
     }
 
-    await gotoAndWait(page, '/admin/reports');
+    await gotoAndWait(page, '/admin/participacion');
     await expectLabelsForInputs(page, 'input[type="text"], select');
     expect(await page.locator('[aria-live="polite"]').count()).toBeGreaterThan(0);
 

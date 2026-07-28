@@ -43,8 +43,9 @@ const NotFound = lazy(() => import('./components/NotFound'));
 // Admin components - lazy load only the content, not the layout
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
 const ImageExplorerPanel = lazy(() => import('./components/admin/images/ImageExplorerPanel'));
-const ReportsPanel = lazy(() => import('./components/admin/reports/ReportsPanel'));
-const SugerenciasPanel = lazy(() => import('./components/admin/sugerencias/SugerenciasPanel'));
+const ParticipacionPanel = lazy(
+  () => import('./components/admin/participacion/ParticipacionPanel')
+);
 const TramitesPanel = lazy(() => import('./components/admin/management/TramitesPanel'));
 const ReunionesPanel = lazy(() => import('./components/admin/management/ReunionesPanel'));
 const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel'));
@@ -568,16 +569,39 @@ const adminImagesRoute = createRoute({
   component: () => <ImageExplorerPanel />,
 });
 
+// Vista unificada: denuncias y sugerencias conviven en tabs bajo un solo
+// header (`ParticipacionPanel`).
+const adminParticipacionRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/participacion',
+  // `?tab=` permite deep-linkear una pestana concreta; lo usa el redirect
+  // de `/admin/sugerencias` para que el marcador viejo aterrice en SU tab.
+  validateSearch: (search: Record<string, unknown>): { tab?: 'sugerencias' } =>
+    search.tab === 'sugerencias' ? { tab: 'sugerencias' } : {},
+  component: () => <ParticipacionPanel />,
+});
+
+// `/admin/reports` y `/admin/sugerencias` sobreviven como redirects: son
+// URLs que los operadores tienen guardadas en marcadores y circulando en
+// mails internos. Se resuelven antes de montar nada, sin flash de UI.
 const adminReportsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/reports',
-  component: () => <ReportsPanel />,
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/participacion' });
+  },
+  component: () => null,
 });
 
 const adminSugerenciasRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/sugerencias',
-  component: () => <SugerenciasPanel />,
+  beforeLoad: () => {
+    // Con `tab=sugerencias`: preservar la URL sin preservar el DESTINO
+    // dejaria al operador en la pestana Reportes que no pidio.
+    throw redirect({ to: '/admin/participacion', search: { tab: 'sugerencias' } });
+  },
+  component: () => null,
 });
 
 const adminTramitesRoute = createRoute({
@@ -619,6 +643,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminIndexRoute,
   adminImagesRoute,
   adminDemPipelineRoute,
+  adminParticipacionRoute,
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,
