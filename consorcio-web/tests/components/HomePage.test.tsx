@@ -71,7 +71,7 @@ describe('HomePage', () => {
       it('should render Reportar Problema button with correct href', () => {
         renderWithMantine(<HomeContent />);
         const reportarBtn = screen.getByRole('link', { name: /Reportar Problema/i });
-        expect(reportarBtn).toHaveAttribute('href', '/reportes');
+        expect(reportarBtn).toHaveAttribute('href', '/participacion');
       });
     });
 
@@ -214,10 +214,10 @@ describe('HomePage', () => {
         expect(mapaLink).toHaveAttribute('href', '/mapa');
 
         const reportarLink = screen.getByRole('link', { name: /Reportá problemas desde el campo/i });
-        expect(reportarLink).toHaveAttribute('href', '/reportes');
+        expect(reportarLink).toHaveAttribute('href', '/participacion');
 
         const sugerenciasLink = screen.getByRole('link', { name: /Sugerí mejoras para tu zona/i });
-        expect(sugerenciasLink).toHaveAttribute('href', '/sugerencias');
+        expect(sugerenciasLink).toHaveAttribute('href', '/participacion?tab=sugerencias');
 
         const adminLink = screen.getByRole('link', { name: /Gestión interna del consorcio/i });
         expect(adminLink).toHaveAttribute('href', '/admin');
@@ -238,7 +238,7 @@ describe('HomePage', () => {
       it('should render CTA button', () => {
         renderWithMantine(<HomeContent />);
         const ctaBtn = screen.getByRole('link', { name: /Realizar un Reporte/i });
-        expect(ctaBtn).toHaveAttribute('href', '/reportes');
+        expect(ctaBtn).toHaveAttribute('href', '/participacion');
       });
     });
 

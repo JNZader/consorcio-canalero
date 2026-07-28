@@ -102,10 +102,10 @@ export default defineConfig({
             name: 'Reportar Incidente',
             short_name: 'Reportar',
             description: 'Reportar un incidente en los canales',
-            // ``/reportes`` is the actual route name in routeTree.gen.tsx;
-            // ``/denuncias`` was the legacy URL that never existed in
-            // the router and made the shortcut 404 on every install.
-            url: '/reportes',
+            // ``/participacion`` es la ruta canonica (tab Reportar por
+            // defecto); ``/reportes`` quedo como redirect de compatibilidad
+            // — apuntar el shortcut directo evita pagar ese salto extra.
+            url: '/participacion',
           },
         ],
       },

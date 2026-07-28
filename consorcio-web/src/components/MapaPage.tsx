@@ -170,7 +170,7 @@ export function MapaContent() {
 
               <Button
                 component="a"
-                href={withBasePath('/reportes')}
+                href={withBasePath('/participacion')}
                 color="orange"
                 leftSection={<IconAlertTriangle size={18} />}
               >

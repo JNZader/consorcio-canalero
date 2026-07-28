@@ -4,7 +4,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 const ROUTES = [
   { path: '/', name: 'Homepage' },
   { path: '/mapa', name: 'Mapa Interactivo' },
-  { path: '/reportes', name: 'Formulario de Reportes' },
+  { path: '/participacion', name: 'Participacion' },
   { path: '/dashboard', name: 'Dashboard' },
   { path: '/login', name: 'Login' },
 ] as const;
@@ -108,7 +108,7 @@ test.describe('Navegacion por teclado', () => {
     await page.keyboard.press('Escape');
     await expect(drawer).not.toBeVisible();
 
-    await gotoAndWait(page, '/reportes');
+    await gotoAndWait(page, '/participacion');
     const radios = page.locator('[role="radio"]');
     if ((await radios.count()) >= 2) {
       const firstRadio = radios.first();
@@ -132,7 +132,7 @@ test.describe('Formularios', () => {
   test('inputs, errores, campos requeridos, descripciones y grupos cumplen accesibilidad', async ({
     page,
   }) => {
-    await gotoAndWait(page, '/reportes');
+    await gotoAndWait(page, '/participacion');
     await expectLabelsForInputs(page, 'input, textarea, select');
 
     const submit = page.locator('button[type="submit"]').first();
@@ -312,7 +312,7 @@ test.describe('Mapa, modo oscuro, movimiento y filtros', () => {
       await expect(textAlternative).toBeVisible();
     }
 
-    await gotoAndWait(page, '/reportes');
+    await gotoAndWait(page, '/participacion');
     const manualCoordinates = page.getByRole('button', { name: /coordenadas manualmente/i });
     if ((await manualCoordinates.count()) > 0) {
       await expect(manualCoordinates).toBeVisible();

@@ -31,9 +31,8 @@ import { logger } from './lib/logger';
 const HomePage = lazy(() => import('./components/HomePage'));
 const LoginForm = lazy(() => import('./components/LoginForm'));
 const MapaPage = lazy(() => import('./components/MapaPage'));
-const ReportesPage = lazy(() => import('./components/ReportesPage'));
+const ParticipacionPage = lazy(() => import('./components/ParticipacionPage'));
 const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
-const SugerenciasPage = lazy(() => import('./components/SugerenciasPage'));
 const ForgotPasswordForm = lazy(() => import('./components/auth/ForgotPasswordForm'));
 const ResetPasswordForm = lazy(() => import('./components/auth/ResetPasswordForm'));
 const VerifyEmailPage = lazy(() => import('./components/auth/VerifyEmailPage'));
@@ -246,37 +245,49 @@ const mapaRoute = createRoute({
   ),
 });
 
-const reportesRoute = createRoute({
+// Vista publica unificada: reportar un problema y proponer una mejora
+// conviven en tabs bajo un solo header (`ParticipacionPage`), en vez de dos
+// paginas con dos entradas en el navbar.
+const participacionRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
-  path: '/reportes',
-  validateSearch: (search: Record<string, unknown>) => ({
-    auth: (search.auth as string) || undefined,
-  }),
+  path: '/participacion',
+  // `?tab=` permite deep-linkear una pestana concreta; lo usa el redirect
+  // de `/sugerencias` para que el marcador viejo aterrice en SU tab.
+  validateSearch: (search: Record<string, unknown>): { tab?: 'sugerencias' } =>
+    search.tab === 'sugerencias' ? { tab: 'sugerencias' } : {},
   component: () => (
     <RootLayout
-      title="Reportar Incidente"
-      description="Reporta incidentes en los canales del Consorcio Canalero 10 de Mayo."
+      title="Participacion"
+      description="Reporta incidentes en los canales o propone mejoras al Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
-        <ReportesPage />
+        <ParticipacionPage />
       </Suspense>
     </RootLayout>
   ),
 });
 
+// `/reportes` y `/sugerencias` sobreviven como redirects: son URLs que los
+// vecinos tienen en marcadores, en carteleria y circulando por WhatsApp. Se
+// resuelven antes de montar nada, sin flash de UI.
+const reportesRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/reportes',
+  beforeLoad: () => {
+    throw redirect({ to: '/participacion' });
+  },
+  component: () => null,
+});
+
 const sugerenciasRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/sugerencias',
-  component: () => (
-    <RootLayout
-      title="Buzon de Sugerencias"
-      description="Envia sugerencias y propuestas al Consorcio Canalero 10 de Mayo."
-    >
-      <Suspense fallback={<PageLoader />}>
-        <SugerenciasPage />
-      </Suspense>
-    </RootLayout>
-  ),
+  beforeLoad: () => {
+    // Con `tab=sugerencias`: preservar la URL sin preservar el DESTINO
+    // dejaria al vecino en la pestana de reportes que no pidio.
+    throw redirect({ to: '/participacion', search: { tab: 'sugerencias' } });
+  },
+  component: () => null,
 });
 
 // ============================================
@@ -661,6 +672,7 @@ export const routeTree = rootRouteWithComponent.addChildren([
   resetPasswordRoute,
   verifyEmailRoute,
   mapaRoute,
+  participacionRoute,
   reportesRoute,
   sugerenciasRoute,
   // Auth

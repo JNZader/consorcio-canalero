@@ -119,7 +119,7 @@ describe('MapaPage', () => {
       it('should render Reportar Incidente button', () => {
         renderWithMantine(<MapaContent />);
         const reportarBtn = screen.getByRole('link', { name: /Reportar Incidente/i });
-        expect(reportarBtn).toHaveAttribute('href', '/reportes');
+        expect(reportarBtn).toHaveAttribute('href', '/participacion');
         expect(reportarBtn).toHaveClass('mantine-Button-root');
       });
     });
@@ -254,7 +254,7 @@ describe('MapaPage', () => {
       it('should render Report button as link with href', () => {
         renderWithMantine(<MapaContent />);
         const reportBtn = screen.getByRole('link', { name: /Reportar Incidente/i });
-        expect(reportBtn).toHaveAttribute('href', '/reportes');
+        expect(reportBtn).toHaveAttribute('href', '/participacion');
       });
 
       it('should render Image explorer button as link', () => {
