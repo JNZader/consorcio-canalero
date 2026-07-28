@@ -191,11 +191,23 @@ def test_escenario_jamas_pisa_las_capas_operativas(tmp_path) -> None:
     de_escenario = [n for n in nombres if "escenario" in n]
     operativas = [n for n in nombres if "escenario" not in n]
 
-    # Las capas del escenario llevan SIEMPRE el prefijo, nunca un nombre pelado.
-    assert de_escenario == ["escenario_flow_dir_area-1", "escenario_flow_acc_area-1"]
-    # Y las operativas quedan exactamente como sin escenario: mismas capas.
+    # Las capas del escenario llevan SIEMPRE el prefijo `escenario_`. Se listan
+    # todas: si el pipeline agrega una variante de escenario nueva, tiene que
+    # aparecer aca CON prefijo, nunca con nombre operativo.
+    assert set(de_escenario) == {
+        "escenario_flow_dir_area-1",
+        "escenario_flow_acc_area-1",
+        "escenario_hand_area-1",
+        "escenario_twi_area-1",
+    }
+    # Y las operativas (relevado) conviven: mismas capas de siempre.
     assert "flow_dir_area-1" in operativas
     assert "flow_acc_area-1" in operativas
+    assert "hand_area-1" in operativas
+    assert "twi_area-1" in operativas
+    # La variante NATURAL tambien esta, con su prefijo propio.
+    assert "natural_flow_acc_area-1" in operativas  # "escenario" not in name
+    assert "natural_hand_area-1" in operativas
 
 
 def test_sin_escenario_no_hay_rastro_de_simulacion(tmp_path) -> None:
@@ -301,3 +313,41 @@ def test_el_pipeline_completo_registra_el_escenario_en_el_job(tmp_path) -> None:
     assert create_geo_job.call_args.kwargs["parametros"]["escenario_propuestas"] == [
         "s3-colector-p8"
     ]
+
+
+def test_hand_twi_flow_acc_tienen_TRES_variantes(tmp_path) -> None:
+    """El pedido del usuario: natural / relevado / escenario, conviviendo.
+
+    Para HAND, TWI y flow_acc tienen que registrarse las tres capas con nombres
+    distintos (prefijo natural_ / sin prefijo / escenario_). El upsert por
+    nombre (otro fix) es lo que permite que no se pisen; aca se verifica que el
+    pipeline las EMITE.
+    """
+    registros = MagicMock()
+    _correr_pipeline(
+        tmp_path,
+        canal_geojsons=['{"type":"LineString","coordinates":[[0,0],[1,1]]}'],
+        escenario_propuestas=["s3"],
+        propuesta_geojsons=['{"type":"LineString","coordinates":[[2,2],[3,3]]}'],
+        register_raster_layer=registros,
+    )
+    nombres = {c.kwargs["nombre"] for c in registros.call_args_list}
+
+    for base in ("hand", "twi", "flow_acc"):
+        assert f"natural_{base}_area-1" in nombres, f"falta natural de {base}"
+        assert f"{base}_area-1" in nombres, f"falta relevado de {base}"
+        assert f"escenario_{base}_area-1" in nombres, f"falta escenario de {base}"
+
+
+def test_sin_canales_no_hay_variante_natural(tmp_path) -> None:
+    """Area sin red: `filled` y `filled_hydro` son el mismo DEM, asi que el
+    flujo natural coincide con el relevado. No se registran capas natural_
+    duplicadas."""
+    registros = MagicMock()
+    _correr_pipeline(tmp_path, canal_geojsons=[], register_raster_layer=registros)
+    nombres = {c.kwargs["nombre"] for c in registros.call_args_list}
+
+    assert not any(n.startswith("natural_") for n in nombres)
+    # pero las capas operativas siguen (un solo drenaje, sin quemado)
+    assert "hand_area-1" in nombres
+    assert "flow_acc_area-1" in nombres

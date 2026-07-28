@@ -67,7 +67,10 @@ def process_dem_pipeline_impl(
 
     outputs: dict[str, str] = {}
     step = 0
-    total_steps = 14 + (4 if escenario_propuestas else 0)
+    # Cota superior de pasos, solo para el % de progreso (aproximado): base +
+    # variante natural (4, cuando hay quemado) + variante escenario (6). No
+    # depende de canal_geojsons, que se resuelve mas abajo.
+    total_steps = 20 + (6 if escenario_propuestas else 0)
     processing = get_processing()
 
     def _progress():
@@ -162,6 +165,71 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
+        # ================= FAMILIA HIDROLOGICA =================
+        # El agua rutea distinto segun QUE red de canales exista. Se calcula el
+        # flujo para tres variantes de drenaje; HAND y TWI se derivan de cada
+        # una. La ELEVACION de referencia es SIEMPRE la real (`filled`): HAND
+        # mide altura sobre el drenaje, y la zanja quemada de -10 m no es una
+        # altura fisica. Lo unico que cambia entre variantes es POR DONDE va el
+        # agua, no cuanto mide el terreno.
+
+        def _computar_flujo(nombre_paso, dem_filled, sufijo_archivo):
+            fd = str(output_dir / f"flow_dir{sufijo_archivo}.tif")
+            run_step(
+                job_id,
+                f"compute_flow_direction{nombre_paso}",
+                processing.compute_flow_direction,
+                (dem_filled, fd),
+            )
+            _progress()
+            fa = str(output_dir / f"flow_acc{sufijo_archivo}.tif")
+            run_step(
+                job_id,
+                f"compute_flow_accumulation{nombre_paso}",
+                processing.compute_flow_accumulation,
+                (dem_filled, fa),
+            )
+            _progress()
+            return fd, fa
+
+        def _hand_twi(prefijo_nombre, sufijo_archivo, flow_dir_v, flow_acc_v):
+            """HAND y TWI de una variante de drenaje. `prefijo_nombre` decide el
+            nombre de capa (y con el, la etiqueta del visor): '' relevado,
+            'natural_' sin canales, 'escenario_' relevados + propuestas."""
+            hand_v = str(output_dir / f"hand{sufijo_archivo}.tif")
+            run_step(
+                job_id,
+                f"compute_hand{sufijo_archivo or '_relevado'}",
+                processing.compute_hand,
+                (filled, flow_dir_v, flow_acc_v, hand_v),
+            )
+            outputs[f"hand{sufijo_archivo}"] = hand_v
+            register_raster_layer(
+                nombre=f"{prefijo_nombre}hand_{area_id}",
+                tipo=tipo_geo_layer.HAND,
+                archivo_path=hand_v,
+                area_id=area_id,
+            )
+            _progress()
+
+            twi_v = str(output_dir / f"twi{sufijo_archivo}.tif")
+            run_step(
+                job_id,
+                f"compute_twi{sufijo_archivo or '_relevado'}",
+                processing.compute_twi,
+                (slope, flow_acc_v, twi_v),
+            )
+            outputs[f"twi{sufijo_archivo}"] = twi_v
+            register_raster_layer(
+                nombre=f"{prefijo_nombre}twi_{area_id}",
+                tipo=tipo_geo_layer.TWI,
+                archivo_path=twi_v,
+                area_id=area_id,
+            )
+            _progress()
+            return hand_v, twi_v
+
+        # --- RELEVADO (operativo): drenaje con la red de canales actual ---
         flow_dir = str(output_dir / "flow_dir.tif")
         run_step(
             job_id,
@@ -194,13 +262,32 @@ def process_dem_pipeline_impl(
         )
         _progress()
 
-        # ---- ESCENARIO: relevados + propuestas seleccionadas ----
-        # SIMULACION, no realidad: quema tambien obras que NO EXISTEN, para
-        # responder "como drenaria la zona SI se construyen". La resta entre
-        # el flow_acc del escenario y el operativo muestra que hectareas
-        # desagota la obra propuesta. Las capas van SIEMPRE con el prefijo
-        # `escenario_`: registrarlas con los nombres operativos pondria en el
-        # mapa drenaje de canales que nadie construyo.
+        # --- NATURAL: drenaje SIN canales, referencia. filled = DEM real. ---
+        # Si no hubo quemado (area sin red), `filled` y `filled_hydro` son el
+        # mismo archivo: el flujo natural coincide con el relevado y no aporta
+        # una variante nueva, asi que se omite.
+        hay_variante_natural = filled_hydro != filled
+        if hay_variante_natural:
+            flow_dir_nat, flow_acc_nat = _computar_flujo("_natural", filled, "_natural")
+            register_raster_layer(
+                nombre=f"natural_flow_dir_{area_id}",
+                tipo=tipo_geo_layer.FLOW_DIR,
+                archivo_path=flow_dir_nat,
+                area_id=area_id,
+            )
+            register_raster_layer(
+                nombre=f"natural_flow_acc_{area_id}",
+                tipo=tipo_geo_layer.FLOW_ACC,
+                archivo_path=flow_acc_nat,
+                area_id=area_id,
+            )
+            _hand_twi("natural_", "_natural", flow_dir_nat, flow_acc_nat)
+
+        # --- ESCENARIO: relevados + propuestas seleccionadas (SIMULACION) ---
+        # Quema tambien obras que NO EXISTEN, para responder "como drenaria si
+        # se construyen". Capas SIEMPRE con prefijo `escenario_`: registrarlas
+        # con nombre operativo pondria en el mapa drenaje de canales que nadie
+        # construyo.
         if escenario_propuestas:
             propuesta_geojsons = fetch_propuesta_geojsons(escenario_propuestas)
             burned_esc = str(output_dir / "dem_burned_escenario.tif")
@@ -261,32 +348,11 @@ def process_dem_pipeline_impl(
             )
             _progress()
 
-        twi = str(output_dir / "twi.tif")
-        run_step(job_id, "compute_twi", processing.compute_twi, (slope, flow_acc, twi))
-        outputs["twi"] = twi
-        register_raster_layer(
-            nombre=f"twi_{area_id}",
-            tipo=tipo_geo_layer.TWI,
-            archivo_path=twi,
-            area_id=area_id,
-        )
-        _progress()
+            _hand_twi("escenario_", "_escenario", flow_dir_esc, flow_acc_esc)
 
-        hand = str(output_dir / "hand.tif")
-        run_step(
-            job_id,
-            "compute_hand",
-            processing.compute_hand,
-            (filled, flow_dir, flow_acc, hand),
-        )
-        outputs["hand"] = hand
-        register_raster_layer(
-            nombre=f"hand_{area_id}",
-            tipo=tipo_geo_layer.HAND,
-            archivo_path=hand,
-            area_id=area_id,
-        )
-        _progress()
+        # --- RELEVADO: HAND + TWI operativos (nombre por defecto) ---
+        # classify_terrain usa la variante RELEVADA (la realidad actual).
+        hand, twi = _hand_twi("", "", flow_dir, flow_acc)
 
         drainage = str(output_dir / "drainage.geojson")
         run_step(
