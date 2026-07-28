@@ -240,11 +240,15 @@ export function buildVectorLayerItems(params: {
 }
 
 export function buildDemLayerOptions(
-  demLayers: Array<{ id: string; tipo: string; nombre: string }>,
+  demLayers: Array<{ id: string; tipo: string; nombre: string; label?: string }>,
   geoLayerLabels: Record<string, string>
 ) {
   return demLayers.map((layer) => ({
     value: layer.id,
-    label: geoLayerLabels[layer.tipo] ?? layer.nombre,
+    // `layer.label` ya trae el sufijo de variante ("(natural)", "(escenario)")
+    // que puso enrichLayer. Armar la etiqueta desde el tipo mostraba las tres
+    // variantes IGUAL —tres "Acumulacion de Flujo" indistinguibles—, porque el
+    // tipo es el mismo para las tres; lo unico que las separa es el nombre/label.
+    label: layer.label ?? geoLayerLabels[layer.tipo] ?? layer.nombre,
   }));
 }
