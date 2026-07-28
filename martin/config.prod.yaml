@@ -29,6 +29,19 @@ postgres:
   auto_publish: false
   functions: {}
   tables:
+    # Catastro rural (IDECOR): el mapa publico SOLO dibuja los poligonos
+    # (fill+line); ninguna propiedad del tile se lee en el cliente. La vista
+    # vt_parcelas_catastro proyecta unicamente la geometria — nro_cuenta y el
+    # resto de las columnas de la tabla base quedan afuera del tile. El nombre
+    # de fuente es parcelas_catastro porque es el source-layer que el frontend
+    # pide (mapLayerEffectHelpers.ts). Sin id_column: el id de la tabla es
+    # UUID y Martin exige entero (mvt_agg_transfn fallaba con 500).
+    parcelas_catastro:
+      schema: public
+      table: vt_parcelas_catastro
+      srid: 4326
+      geometry_column: geometria
+      properties: {}
     vt_zonas_operativas:
       schema: public
       table: vt_zonas_operativas
