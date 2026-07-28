@@ -31,7 +31,9 @@ describe('map2dDerived', () => {
         waterways: true,
       },
       hasApprovedZones: true,
-      approvedZones: polygonCollection([pointFeature('a1', { nombre: 'Cuenca A', __color: '#abcdef' })]),
+      approvedZones: polygonCollection([
+        pointFeature('a1', { nombre: 'Cuenca A', __color: '#abcdef' }),
+      ]),
       basins: polygonCollection([pointFeature('b1')]),
       soilMap: polygonCollection([pointFeature('s1', { cap: 'III' })]),
     });
@@ -50,7 +52,7 @@ describe('map2dDerived', () => {
         roadsCollection: polygonCollection([pointFeature('r1')]),
         intersectionsLength: 1,
         isAdmin: true,
-      }),
+      })
       // Labels are normalised with the 3D viewer (Red Vial / Suelos IDECOR
       // 1:50.000 / Catastro rural IDECOR) — the source is the naming source of
       // truth. Each item now also carries a `category` (change rediseno-ux-mapa).
@@ -64,11 +66,47 @@ describe('map2dDerived', () => {
     ]);
 
     expect(
-      buildDemLayerOptions(
-        [{ id: 'dem-1', tipo: 'slope', nombre: 'Pendiente cruda' }],
-        { slope: 'Pendiente' },
-      ),
+      buildDemLayerOptions([{ id: 'dem-1', tipo: 'slope', nombre: 'Pendiente cruda' }], {
+        slope: 'Pendiente',
+      })
     ).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
+  });
+
+  it('usa el label de la capa (con sufijo de variante), no el tipo', () => {
+    // Las tres variantes de una capa comparten tipo pero traen label distinto.
+    // Armar la etiqueta desde el tipo las mostraba IGUAL en el selector.
+    const opciones = buildDemLayerOptions(
+      [
+        {
+          id: 'nat',
+          tipo: 'flow_acc',
+          nombre: 'natural_flow_acc_z',
+          label: 'Acumulacion de Flujo (natural)',
+        },
+        { id: 'rel', tipo: 'flow_acc', nombre: 'flow_acc_z', label: 'Acumulacion de Flujo' },
+        {
+          id: 'esc',
+          tipo: 'flow_acc',
+          nombre: 'escenario_flow_acc_z',
+          label: 'Acumulacion de Flujo (escenario)',
+        },
+      ],
+      { flow_acc: 'Acumulacion de Flujo' }
+    );
+    const labels = opciones.map((o) => o.label);
+    // Las tres etiquetas tienen que ser distintas: es lo que hace elegible cada variante.
+    expect(new Set(labels).size).toBe(3);
+    expect(labels).toEqual([
+      'Acumulacion de Flujo (natural)',
+      'Acumulacion de Flujo',
+      'Acumulacion de Flujo (escenario)',
+    ]);
+  });
+
+  it('cae al label por tipo cuando la capa no trae label propio', () => {
+    expect(
+      buildDemLayerOptions([{ id: 'x', tipo: 'twi', nombre: 'twi_z' }], { twi: 'TWI' })
+    ).toEqual([{ value: 'x', label: 'TWI' }]);
   });
 
   it('assigns every layer item a valid family category', () => {
