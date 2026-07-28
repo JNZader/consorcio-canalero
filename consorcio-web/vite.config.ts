@@ -3,7 +3,29 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 
+// Proxy de dev OPCIONAL (demo local contra un API remoto sin pelearse con
+// CORS): con `DEV_PROXY_TARGET=https://api.ejemplo.com npm run dev` el dev
+// server reenvia /api y /uploads a ese destino (server-a-server, el browser
+// ve todo same-origin). Requiere VITE_API_URL=http://localhost:5173 para que
+// el front genere URLs same-origin. Sin la variable, no cambia NADA.
+// DEV_PROXY_HOST (opcional) fuerza el header Host saliente: necesario si el
+// destino valida Host (TrustedHostMiddleware) y se llega por tunel/IP.
+const devProxyTarget = process.env.DEV_PROXY_TARGET;
+const devProxyHost = process.env.DEV_PROXY_HOST;
+// OJO: changeOrigin pisa headers.host (setea Host = host del target DESPUES
+// de mergear headers). Con DEV_PROXY_HOST explicito, va sin changeOrigin.
+const devProxyOpts = devProxyHost
+  ? { target: devProxyTarget, headers: { host: devProxyHost } }
+  : { target: devProxyTarget, changeOrigin: true };
+const devProxy = devProxyTarget
+  ? {
+      '/api': devProxyOpts,
+      '/uploads': devProxyOpts,
+    }
+  : undefined;
+
 export default defineConfig({
+  server: { proxy: devProxy },
   plugins: [
     // Phase 3 / F3-E: React Compiler — auto-memoises components and
     // hooks the way ``useMemo`` + ``useCallback`` would, except the
