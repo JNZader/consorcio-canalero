@@ -27,7 +27,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: frontend-${{ github.ref }}
+  # Grupo SEPARADO por tipo de disparo. La baseline de mutacion corre por
+  # schedule/dispatch en main; los push/PR corren la bateria de CI. Si
+  # comparten grupo (con cancel-in-progress), un push a main CANCELA la corrida
+  # de baseline en vuelo — que fue exactamente lo que impidio sembrar la
+  # baseline en `main` y dejo a cada release pagando el scope completo de
+  # Stryker (~40 min). Con grupos distintos, la baseline completa tranquila.
+  group: >-
+    frontend-${{ github.ref }}-${{
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && 'baseline' || 'ci' }}
   cancel-in-progress: true
 
 defaults:
