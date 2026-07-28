@@ -86,7 +86,12 @@ export function ContactVerificationSection({
   onLoginWithGoogle,
   onSendMagicLink,
   onLogout,
-  verificationExplanation = 'Para enviar tu reporte, necesitamos verificar tu identidad.',
+  // Mismo copy que el lado sugerencias (que lo overridea solo para cambiar
+  // el sustantivo): el mecanismo es identico en ambos flujos — auth + cupo
+  // de 5 envios cada 24hs via app.shared.submission_limit — y con las dos
+  // pestanas conviviendo en /participacion, cualquier divergencia de texto
+  // se lee como si fueran reglas distintas.
+  verificationExplanation = 'Para evitar spam, necesitamos verificar tu identidad. Limite: 5 reportes cada 24 horas.',
 }: ContactVerificationSectionProps) {
   const _form = useForm({
     initialValues: {

@@ -30,7 +30,7 @@ describe('ContactVerificationSection', () => {
   describe('Default state (unverified)', () => {
     it('should render verification methods section', () => {
       render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
-      expect(screen.getByText(/Para enviar tu reporte/i)).toBeInTheDocument();
+      expect(screen.getByText(/Para evitar spam/i)).toBeInTheDocument();
     });
 
     it('should render Google button', () => {
@@ -272,7 +272,7 @@ describe('ContactVerificationSection', () => {
 
     it('should use default explanation when not provided', () => {
       render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
-      expect(screen.getByText(/Para enviar tu reporte/i)).toBeInTheDocument();
+      expect(screen.getByText(/Para evitar spam/i)).toBeInTheDocument();
     });
   });
 
