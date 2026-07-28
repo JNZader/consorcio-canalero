@@ -133,6 +133,10 @@ class GeoRepositoryJobsLayersMixin:
             db, base, page=page, limit=limit, order_by=GeoLayer.created_at.desc()
         )
 
+    def get_layer_by_nombre(self, db: Session, nombre: str) -> Optional[GeoLayer]:
+        stmt = select(GeoLayer).where(GeoLayer.nombre == nombre)
+        return db.execute(stmt).scalar_one_or_none()
+
     def get_layer_by_tipo_and_area(
         self, db: Session, tipo: str, area_id: str
     ) -> Optional[GeoLayer]:
@@ -182,7 +186,7 @@ class GeoRepositoryJobsLayersMixin:
         metadata_extra: Optional[dict] = None,
         area_id: Optional[str] = None,
     ) -> GeoLayer:
-        existing = self.get_layer_by_tipo_and_area(db, tipo, area_id) if area_id else None
+        existing = self.get_layer_by_nombre(db, nombre)
         if existing:
             existing.nombre = nombre
             existing.fuente = fuente

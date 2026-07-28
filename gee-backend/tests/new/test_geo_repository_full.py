@@ -197,10 +197,11 @@ class TestLayerCrud:
         )
         assert layer.id is not None
 
-    def test_upsert_layer_updates_existing(self, db: Session, repo: GeoRepository):
+    def test_upsert_layer_updates_por_mismo_nombre(self, db: Session, repo: GeoRepository):
+        # Mismo NOMBRE -> actualiza la fila existente (regenerar una capa).
         first = repo.create_layer(
             db,
-            nombre="Old",
+            nombre="hand_area_y",
             tipo="hand",
             fuente="gee",
             archivo_path="/old",
@@ -208,15 +209,50 @@ class TestLayerCrud:
         )
         updated = repo.upsert_layer(
             db,
-            nombre="Updated",
+            nombre="hand_area_y",
             tipo="hand",
             fuente="dem_pipeline",
             archivo_path="/updated",
             area_id="area_y",
         )
         assert updated.id == first.id
-        assert updated.nombre == "Updated"
         assert updated.archivo_path == "/updated"
+
+    def test_upsert_operativo_y_escenario_coexisten(self, db: Session, repo: GeoRepository):
+        # EL BUG: operativo y escenario comparten tipo (flow_acc) y area, pero
+        # tienen NOMBRE distinto. El upsert por (tipo, area) hacia que el
+        # escenario sobreescribiera al operativo -> en el visor aparecia una
+        # sola capa flow_acc. Con match por nombre, las dos conviven.
+        operativa = repo.upsert_layer(
+            db,
+            nombre="flow_acc_zona_principal",
+            tipo="flow_acc",
+            fuente="dem_pipeline",
+            archivo_path="/op.tif",
+            area_id="zona_principal",
+        )
+        escenario = repo.upsert_layer(
+            db,
+            nombre="escenario_flow_acc_zona_principal",
+            tipo="flow_acc",
+            fuente="dem_pipeline",
+            archivo_path="/esc.tif",
+            area_id="zona_principal",
+        )
+        assert operativa.id != escenario.id
+
+        from app.domains.geo.models import GeoLayer
+
+        filas = (
+            db.query(GeoLayer)
+            .filter(GeoLayer.tipo == "flow_acc", GeoLayer.area_id == "zona_principal")
+            .all()
+        )
+        nombres = {f.nombre for f in filas}
+        assert nombres == {
+            "flow_acc_zona_principal",
+            "escenario_flow_acc_zona_principal",
+        }
 
     def test_upsert_layer_no_area_id_creates_new(self, db: Session, repo: GeoRepository):
         layer = repo.upsert_layer(
