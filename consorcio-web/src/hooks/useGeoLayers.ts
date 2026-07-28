@@ -9,6 +9,17 @@ import { API_URL, getAuthToken } from '../lib/api';
 import { queryKeys } from '../lib/query';
 import { useAuthStore } from '../stores/authStore';
 
+/**
+ * Variante de drenaje de una capa hidrologica:
+ *   - `natural`   : sin canales (referencia)
+ *   - `relevado`  : con la red de canales actual (operativo, el default)
+ *   - `escenario` : relevados + propuestas quemadas (simulacion)
+ *
+ * HAND, TWI, flow_acc y flow_dir se generan en las tres variantes, que
+ * comparten `tipo` y area — se distinguen SOLO por el prefijo del nombre.
+ */
+export type VarianteCapa = 'natural' | 'relevado' | 'escenario';
+
 export interface GeoLayerInfo {
   id: string;
   nombre: string;
@@ -17,37 +28,41 @@ export interface GeoLayerInfo {
   formato: string;
   area_id: string | null;
   created_at: string;
-  /**
-   * true cuando la capa es de un ESCENARIO (relevados + propuestas quemadas),
-   * no del drenaje operativo. Derivado del prefijo del nombre en el backend
-   * (`escenario_flow_acc_*`): la capa comparte `tipo` con la operativa
-   * (ambas FLOW_ACC), asi que el tipo NO alcanza para distinguirlas.
-   */
-  esEscenario: boolean;
-  /** Etiqueta lista para el selector, ya con el sufijo de escenario si aplica. */
+  /** Variante derivada del prefijo del nombre. `relevado` es el default. */
+  variante: VarianteCapa;
+  /** Etiqueta lista para el selector, ya con el sufijo de variante si aplica. */
   label: string;
 }
 
-/** El backend nombra las capas de escenario con este prefijo. */
-const ESCENARIO_PREFIX = 'escenario_';
+/** Prefijos de nombre con que el backend marca cada variante NO-operativa. */
+const PREFIJO_VARIANTE: ReadonlyArray<readonly [string, VarianteCapa]> = [
+  ['natural_', 'natural'],
+  ['escenario_', 'escenario'],
+];
+
+/** Sufijo de etiqueta por variante. `relevado` no lleva sufijo: es la realidad actual. */
+const SUFIJO_VARIANTE: Record<VarianteCapa, string> = {
+  natural: ' (natural)',
+  relevado: '',
+  escenario: ' (escenario)',
+};
 
 /**
- * Deriva `esEscenario` y `label` de una capa cruda del backend.
+ * Deriva `variante` y `label` de una capa cruda del backend.
  *
- * El backend distingue el escenario por el PREFIJO del nombre
- * (`escenario_flow_acc_zona_principal`), no por el tipo — la capa de escenario
- * comparte tipo con la operativa. Toda la logica de "esto es simulacion" cuelga
- * de ese prefijo, en un solo lugar.
+ * La distincion cuelga del PREFIJO del nombre, no del tipo: las tres variantes
+ * comparten tipo (p. ej. FLOW_ACC). Toda la logica vive aca, en un solo lugar.
  */
 export function enrichLayer(layer: GeoLayerInfo): GeoLayerInfo {
-  const esEscenario = layer.nombre.startsWith(ESCENARIO_PREFIX);
+  const encontrado = PREFIJO_VARIANTE.find(([prefijo]) => layer.nombre.startsWith(prefijo));
+  const variante: VarianteCapa = encontrado ? encontrado[1] : 'relevado';
   const base = GEO_LAYER_LABELS[layer.tipo] ?? layer.tipo;
   return {
     ...layer,
-    esEscenario,
-    // El sufijo hace inconfundible que es una simulacion, para que nadie tome
-    // el drenaje propuesto por el existente.
-    label: esEscenario ? `${base} (escenario)` : base,
+    variante,
+    // El sufijo hace inconfundible que la capa es natural o simulacion, para
+    // que nadie tome el drenaje propuesto (o el sin-canales) por el existente.
+    label: `${base}${SUFIJO_VARIANTE[variante]}`,
   };
 }
 
@@ -115,13 +130,12 @@ export function useGeoLayers() {
         .filter((l: GeoLayerInfo) => TILE_CAPABLE_TYPES.has(l.tipo))
         .map((l: GeoLayerInfo) => enrichLayer(l));
 
-      // Dedup por (esEscenario, tipo, area): sin el flag de escenario, una
-      // capa `escenario_flow_acc` (tipo FLOW_ACC) pisaria a la operativa del
-      // mismo tipo y area, y solo quedaria una en el selector. Con el flag,
-      // conviven la operativa y la de escenario.
       const seen = new Map<string, GeoLayerInfo>();
       for (const layer of items) {
-        const key = `${layer.esEscenario ? 'esc' : 'op'}::${layer.tipo}::${layer.area_id ?? ''}`;
+        // Dedup por (variante, tipo, area): las tres variantes comparten tipo
+        // y area, asi que sin la variante en la clave se pisarian entre si y
+        // solo sobreviviria una en el selector.
+        const key = `${layer.variante}::${layer.tipo}::${layer.area_id ?? ''}`;
         const existing = seen.get(key);
         if (!existing || layer.created_at > existing.created_at) {
           seen.set(key, layer);
