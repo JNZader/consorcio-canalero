@@ -1266,3 +1266,28 @@ def test_training_ml_deps_never_reach_the_server_image() -> None:
         or "segmentation_models" in archivo.read_text(encoding="utf-8")
     ]
     assert con_torch == [], con_torch
+
+
+def test_baseline_de_mutacion_no_comparte_grupo_de_concurrencia_con_ci() -> None:
+    """La baseline de mutacion (schedule/dispatch) NO puede compartir grupo de
+    concurrencia con los push/PR de CI.
+
+    Con cancel-in-progress, si comparten grupo un push a main CANCELA la corrida
+    de baseline en vuelo — que fue lo que impidio sembrar la baseline en `main`
+    y dejo a cada release pagando el scope completo de Stryker (~40 min) en vez
+    del incremental (diff + blast radius, minutos). El grupo tiene que
+    diferenciar el evento de baseline del de CI.
+    """
+    import yaml
+
+    frontend = yaml.safe_load(_read(".github/workflows/frontend.yml"))
+    concurrency = frontend.get("concurrency", {})
+    texto_grupo = str(concurrency.get("group", ""))
+    assert texto_grupo, "no se encontro el group de concurrency del frontend"
+
+    # El grupo tiene que ramificar por evento: schedule/dispatch -> un grupo,
+    # el resto -> otro. Asi un push a main no cancela la baseline en vuelo.
+    assert "schedule" in texto_grupo and "workflow_dispatch" in texto_grupo, (
+        "el grupo de concurrencia no distingue el evento de baseline; un push "
+        "a main volveria a cancelar mutation-full"
+    )
