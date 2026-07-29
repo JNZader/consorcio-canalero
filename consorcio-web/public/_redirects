@@ -1,2 +1,10 @@
+# Redirects 301 en el edge para las URLs publicas retiradas: los crawlers
+# sin JS (previews de WhatsApp/Facebook, buscadores) nunca ejecutan el
+# redirect cliente de beforeLoad, asi que sin esto verian el index.html
+# generico en vez del destino real. El orden importa: reglas especificas
+# ANTES del fallback SPA.
+/reportes /participacion 301
+/sugerencias /participacion?tab=sugerencias 301
+
 # Cloudflare Pages SPA fallback. Static assets are served before this rule.
 /* /index.html 200

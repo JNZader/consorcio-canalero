@@ -88,26 +88,28 @@ describe('Header', () => {
     expect(links.length).toBeGreaterThan(0);
   });
 
-  it('should render navigation link for Reportes', () => {
+  // Reportes y Sugerencias se fusionaron en una sola entrada del navbar:
+  // ambas acciones viven en tabs bajo `/participacion`.
+  it('should render navigation link for Participacion', () => {
     render(
       <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
 
-    const links = screen.getAllByRole('link', { name: 'Reportes' });
+    const links = screen.getAllByRole('link', { name: 'Participacion' });
     expect(links.length).toBeGreaterThan(0);
   });
 
-  it('should render navigation link for Sugerencias', () => {
+  it('should not render separate Reportes/Sugerencias nav links', () => {
     render(
       <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
 
-    const links = screen.getAllByRole('link', { name: 'Sugerencias' });
-    expect(links.length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: 'Reportes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sugerencias' })).not.toBeInTheDocument();
   });
 
   it('should have correct href for Mapa link', () => {
@@ -121,26 +123,15 @@ describe('Header', () => {
     expect(mapaLinks[0]).toHaveAttribute('href', '/mapa');
   });
 
-  it('should have correct href for Reportes link', () => {
+  it('should have correct href for Participacion link', () => {
     render(
       <MantineProvider env="test">
         <HeaderContent />
       </MantineProvider>
     );
 
-    const reportesLinks = screen.getAllByRole('link', { name: 'Reportes' });
-    expect(reportesLinks[0]).toHaveAttribute('href', '/reportes');
-  });
-
-  it('should have correct href for Sugerencias link', () => {
-    render(
-      <MantineProvider env="test">
-        <HeaderContent />
-      </MantineProvider>
-    );
-
-    const sugerenciasLinks = screen.getAllByRole('link', { name: 'Sugerencias' });
-    expect(sugerenciasLinks[0]).toHaveAttribute('href', '/sugerencias');
+    const participacionLinks = screen.getAllByRole('link', { name: 'Participacion' });
+    expect(participacionLinks[0]).toHaveAttribute('href', '/participacion');
   });
 
   it('should render theme toggle component', () => {
@@ -196,8 +187,8 @@ describe('Header', () => {
     );
 
     const allLinks = screen.getAllByRole('link');
-    // Should have: logo link (/) + Inicio + Mapa + Reportes + Sugerencias + mobile versions
-    expect(allLinks.length).toBeGreaterThanOrEqual(5);
+    // Should have: logo link (/) + Inicio + Mapa + Participacion + mobile versions
+    expect(allLinks.length).toBeGreaterThanOrEqual(4);
   });
 
   it('should render primary navigation with buttons', () => {

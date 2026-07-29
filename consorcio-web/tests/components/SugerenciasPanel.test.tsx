@@ -140,7 +140,7 @@ describe('SugerenciasPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    expect(await screen.findByText('Gestion de Sugerencias')).toBeInTheDocument();
+    expect(await screen.findByText('Pendientes')).toBeInTheDocument();
     expect(screen.getByText('Limpiar desagues secundarios')).toBeInTheDocument();
     expect(screen.getByText('Pendientes')).toBeInTheDocument();
 
@@ -167,7 +167,7 @@ describe('SugerenciasPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await screen.findByText('Gestion de Sugerencias');
+    await screen.findByText('Pendientes');
     await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
     const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
 
@@ -214,7 +214,7 @@ describe('SugerenciasPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await screen.findByText('Gestion de Sugerencias');
+    await screen.findByText('Pendientes');
     await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
     const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
 
@@ -262,7 +262,7 @@ describe('SugerenciasPanel', () => {
     vi.mocked(sugerenciasApi.getAll).mockRejectedValueOnce(new Error('network'));
 
     renderPanel();
-    await screen.findByText('Gestion de Sugerencias');
+    await screen.findByText('Pendientes');
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(

@@ -1,327 +1,210 @@
 /**
  * admin-pages.test.tsx
- * Unit: Admin page wrapper components (AdminDashboardPage, AdminReportsPage, AdminSugerenciasPage)
- * Coverage Target: 100% for all three page wrappers
+ * Unit: contenedor unificado de Participacion Ciudadana (ParticipacionPanel).
+ *
+ * Los wrappers `Admin*Page` (Reports/Sugerencias/Dashboard) se borraron al
+ * unificar: eran codigo muerto — `routeTree.gen.tsx` monta los paneles
+ * directamente dentro de `AdminLayoutContent`, nunca paso por ellos.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import AdminDashboardPage from '../../src/components/admin/AdminDashboardPage';
-import AdminReportsPage from '../../src/components/admin/AdminReportsPage';
-import AdminSugerenciasPage from '../../src/components/admin/AdminSugerenciasPage';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock the child components
-vi.mock('../../src/components/admin/AdminDashboard', () => ({
-  default: () => <div data-testid="admin-dashboard">Admin Dashboard</div>,
+import ParticipacionPanel from '../../src/components/admin/participacion/ParticipacionPanel';
+import { useCanales } from '../../src/hooks/useCanales';
+import { reportsApi, sugerenciasApi } from '../../src/lib/api';
+
+vi.mock('../../src/lib/api', () => ({
+  reportsApi: {
+    getAll: vi.fn(),
+  },
+  sugerenciasApi: {
+    getAll: vi.fn(),
+    get: vi.fn(),
+    getStats: vi.fn(),
+    getProximaReunion: vi.fn(),
+    createInternal: vi.fn(),
+    agendar: vi.fn(),
+    delete: vi.fn(),
+  },
+  apiFetch: vi.fn(async () => []),
+  API_URL: 'http://localhost:8000',
 }));
 
-vi.mock('../../src/components/admin/AdminLayout', () => ({
-  default: ({ children, currentPath }: any) => (
-    <div data-testid="admin-layout" data-path={currentPath}>
-      {children}
-    </div>
-  ),
+// `useCanales` es el costo que justifica el montaje perezoso: dispara el
+// fetch del GeoJSON de relevados apenas monta `SugerenciasPanel`. Lo
+// espiamos para probar que NO se paga mientras se mira Reportes.
+vi.mock('../../src/hooks/useCanales', () => ({
+  useCanales: vi.fn(() => ({
+    relevados: null,
+    propuestas: null,
+    index: null,
+    isLoading: false,
+    isError: false,
+  })),
 }));
 
-vi.mock('../../src/components/admin/ProtectedRoute', () => ({
-  default: ({ children, allowedRoles }: any) => (
-    <div data-testid="protected-route" data-roles={JSON.stringify(allowedRoles)}>
-      {children}
-    </div>
-  ),
+vi.mock('../../src/components/ui/accessibility', () => ({
+  LiveRegionProvider: ({ children }: { children: React.ReactNode }) => children,
+  useLiveRegion: () => ({ announce: vi.fn() }),
 }));
 
-vi.mock('../../src/components/admin/reports/ReportsPanel', () => ({
-  default: () => <div data-testid="reports-panel">Reports Panel</div>,
+vi.mock('@mantine/notifications', () => ({
+  notifications: {
+    show: vi.fn(),
+  },
 }));
 
-vi.mock('../../src/components/admin/sugerencias/SugerenciasPanel', () => ({
-  default: () => <div data-testid="sugerencias-panel">Sugerencias Panel</div>,
+vi.mock('../../src/lib/logger', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
-const Wrapper = ({ children }: { children: React.ReactNode }) => (
-  <div>{children}</div>
-);
+const report = {
+  id: 'rep-1',
+  created_at: '2026-03-01T10:00:00Z',
+  categoria: 'inundacion',
+  descripcion: 'Canal desbordado en zona norte',
+  ubicacion_texto: 'Ruta 9 km 500',
+  estado: 'pendiente',
+  latitud: -32.62,
+  longitud: -62.7,
+  imagenes: [],
+};
 
-describe('Admin Page Wrappers', () => {
-  describe('AdminDashboardPage', () => {
-    it('should render without crashing', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('protected-route')).toBeInTheDocument();
-    });
+const suggestion = {
+  id: 'sug-1',
+  tipo: 'ciudadana' as const,
+  titulo: 'Limpiar desagues secundarios',
+  descripcion: 'Solicitamos limpieza por acumulacion de barro',
+  categoria: 'infraestructura',
+  estado: 'pendiente' as const,
+  prioridad: 'alta' as const,
+  created_at: '2026-03-01T09:00:00Z',
+  updated_at: '2026-03-01T09:00:00Z',
+};
 
-    it('should wrap content in ProtectedRoute', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      expect(protectedRoute).toBeInTheDocument();
-    });
-
-    it('should allow admin and operador roles', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toContain('admin');
-      expect(roles).toContain('operador');
-    });
-
-    it('should have exactly 2 allowed roles', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toHaveLength(2);
-    });
-
-    it('should wrap layout in AdminLayout', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('admin-layout')).toBeInTheDocument();
-    });
-
-    it('should set correct currentPath for AdminLayout', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      expect(layout.getAttribute('data-path')).toBe('/admin');
-    });
-
-    it('should render AdminDashboard inside layout', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('admin-dashboard')).toBeInTheDocument();
-    });
-
-    it('should have AdminDashboard as a child of AdminLayout', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      const dashboard = screen.getByTestId('admin-dashboard');
-      expect(layout).toContainElement(dashboard);
-    });
-
-    it('should maintain proper component hierarchy', () => {
-      render(<AdminDashboardPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const layout = screen.getByTestId('admin-layout');
-      const dashboard = screen.getByTestId('admin-dashboard');
-
-      expect(protectedRoute).toContainElement(layout);
-      expect(layout).toContainElement(dashboard);
-    });
+const renderPanel = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
   });
 
-  describe('AdminReportsPage', () => {
-    it('should render without crashing', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('protected-route')).toBeInTheDocument();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider env="test">
+        <ParticipacionPanel />
+      </MantineProvider>
+    </QueryClientProvider>
+  );
+};
+
+describe('ParticipacionPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(reportsApi.getAll).mockResolvedValue({
+      items: [report],
+      total: 1,
+      page: 1,
     });
-
-    it('should wrap content in ProtectedRoute', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      expect(protectedRoute).toBeInTheDocument();
+    vi.mocked(sugerenciasApi.getAll).mockResolvedValue({
+      items: [suggestion],
+      total: 1,
+      page: 1,
+      limit: 10,
     });
-
-    it('should allow admin and operador roles', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toContain('admin');
-      expect(roles).toContain('operador');
+    vi.mocked(sugerenciasApi.getStats).mockResolvedValue({
+      pendiente: 1,
+      en_agenda: 0,
+      tratado: 0,
+      descartado: 0,
+      total: 1,
+      ciudadanas: 1,
+      internas: 0,
     });
-
-    it('should have exactly 2 allowed roles', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toHaveLength(2);
-    });
-
-    it('should wrap layout in AdminLayout', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('admin-layout')).toBeInTheDocument();
-    });
-
-    it('should set correct currentPath for AdminLayout', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      expect(layout.getAttribute('data-path')).toBe('/admin/reports');
-    });
-
-    it('should render ReportsPanel inside layout', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('reports-panel')).toBeInTheDocument();
-    });
-
-    it('should have ReportsPanel as a child of AdminLayout', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      const panel = screen.getByTestId('reports-panel');
-      expect(layout).toContainElement(panel);
-    });
-
-    it('should maintain proper component hierarchy', () => {
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const layout = screen.getByTestId('admin-layout');
-      const panel = screen.getByTestId('reports-panel');
-
-      expect(protectedRoute).toContainElement(layout);
-      expect(layout).toContainElement(panel);
-    });
-
-    it('should have different path than AdminDashboardPage', () => {
-      const { unmount: unmount1 } = render(<AdminDashboardPage />, {
-        wrapper: Wrapper,
-      });
-      const dashboardLayout = screen.getByTestId('admin-layout');
-      const dashboardPath = dashboardLayout.getAttribute('data-path');
-
-      unmount1();
-
-      render(<AdminReportsPage />, { wrapper: Wrapper });
-      const reportsLayout = screen.getByTestId('admin-layout');
-      const reportsPath = reportsLayout.getAttribute('data-path');
-
-      expect(dashboardPath).not.toBe(reportsPath);
-    });
+    vi.mocked(sugerenciasApi.getProximaReunion).mockResolvedValue([]);
   });
 
-  describe('AdminSugerenciasPage', () => {
-    it('should render without crashing', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('protected-route')).toBeInTheDocument();
-    });
+  it('renders the unified header and both tabs', async () => {
+    renderPanel();
 
-    it('should wrap content in ProtectedRoute', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      expect(protectedRoute).toBeInTheDocument();
-    });
-
-    it('should allow admin and operador roles', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toContain('admin');
-      expect(roles).toContain('operador');
-    });
-
-    it('should have exactly 2 allowed roles', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const roles = JSON.parse(protectedRoute.getAttribute('data-roles') || '[]');
-      expect(roles).toHaveLength(2);
-    });
-
-    it('should wrap layout in AdminLayout', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('admin-layout')).toBeInTheDocument();
-    });
-
-    it('should set correct currentPath for AdminLayout', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      expect(layout.getAttribute('data-path')).toBe('/admin/sugerencias');
-    });
-
-    it('should render SugerenciasPanel inside layout', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      expect(screen.getByTestId('sugerencias-panel')).toBeInTheDocument();
-    });
-
-    it('should have SugerenciasPanel as a child of AdminLayout', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const layout = screen.getByTestId('admin-layout');
-      const panel = screen.getByTestId('sugerencias-panel');
-      expect(layout).toContainElement(panel);
-    });
-
-    it('should maintain proper component hierarchy', () => {
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const protectedRoute = screen.getByTestId('protected-route');
-      const layout = screen.getByTestId('admin-layout');
-      const panel = screen.getByTestId('sugerencias-panel');
-
-      expect(protectedRoute).toContainElement(layout);
-      expect(layout).toContainElement(panel);
-    });
-
-    it('should have different path than other admin pages', () => {
-      const { unmount: unmount1 } = render(<AdminReportsPage />, {
-        wrapper: Wrapper,
-      });
-      const reportsLayout = screen.getByTestId('admin-layout');
-      const reportsPath = reportsLayout.getAttribute('data-path');
-
-      unmount1();
-
-      render(<AdminSugerenciasPage />, { wrapper: Wrapper });
-      const sugerenciasLayout = screen.getByTestId('admin-layout');
-      const sugerenciasPath = sugerenciasLayout.getAttribute('data-path');
-
-      expect(reportsPath).not.toBe(sugerenciasPath);
-    });
+    expect(screen.getByText('Participacion Ciudadana')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /reportes/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /sugerencias/i })).toBeInTheDocument();
+    expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
   });
 
-  describe('Shared patterns across admin pages', () => {
-    it('all admin pages should require admin or operador role', () => {
-      const pages = [
-        <AdminDashboardPage />,
-        <AdminReportsPage />,
-        <AdminSugerenciasPage />,
-      ];
+  it('opens on the Reportes tab', async () => {
+    renderPanel();
 
-      pages.forEach((page) => {
-        const { unmount } = render(page, { wrapper: Wrapper });
-        const protectedRoute = screen.getByTestId('protected-route');
-        const roles = JSON.parse(
-          protectedRoute.getAttribute('data-roles') || '[]'
-        );
+    expect(screen.getByRole('tab', { name: /reportes/i })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(screen.getByRole('tab', { name: /sugerencias/i })).toHaveAttribute(
+      'aria-selected',
+      'false'
+    );
+    await screen.findByText('Canal desbordado en zona norte');
+  });
 
-        expect(roles).toContain('admin');
-        expect(roles).toContain('operador');
-        expect(roles).toHaveLength(2);
+  it('opens on the Sugerencias tab when the URL carries ?tab=sugerencias', async () => {
+    // El redirect de la ruta vieja `/admin/sugerencias` llega con este search
+    // param; sin honrarlo, el marcador viejo aterrizaria en Reportes.
+    window.history.replaceState({}, '', '/admin/participacion?tab=sugerencias');
+    try {
+      renderPanel();
 
-        unmount();
-      });
-    });
+      expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
+      // Y Reportes NO se monto: su fetch nunca corrio (lazy-mount al reves).
+      expect(vi.mocked(reportsApi.getAll).mock.calls).toHaveLength(0);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
 
-    it('all admin pages should render inside AdminLayout', () => {
-      const pages = [
-        <AdminDashboardPage />,
-        <AdminReportsPage />,
-        <AdminSugerenciasPage />,
-      ];
+  it('does not mount SugerenciasPanel until its tab is activated', async () => {
+    const user = userEvent.setup();
+    renderPanel();
 
-      pages.forEach((page) => {
-        const { unmount } = render(page, { wrapper: Wrapper });
-        expect(screen.getByTestId('admin-layout')).toBeInTheDocument();
-        unmount();
-      });
-    });
+    await screen.findByText('Canal desbordado en zona norte');
+    // Nada de sugerencias en vuelo mientras se mira Reportes.
+    expect(sugerenciasApi.getAll).not.toHaveBeenCalled();
+    expect(useCanales).not.toHaveBeenCalled();
+    expect(screen.queryByText('Limpiar desagues secundarios')).not.toBeInTheDocument();
 
-    it('each admin page should have unique currentPath', () => {
-      const paths: string[] = [];
+    await user.click(screen.getByRole('tab', { name: /sugerencias/i }));
 
-      const pages = [
-        { page: <AdminDashboardPage />, expectedPath: '/admin' },
-        { page: <AdminReportsPage />, expectedPath: '/admin/reports' },
-        {
-          page: <AdminSugerenciasPage />,
-          expectedPath: '/admin/sugerencias',
-        },
-      ];
+    expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
+    expect(sugerenciasApi.getAll).toHaveBeenCalled();
+    expect(useCanales).toHaveBeenCalled();
+  });
 
-      pages.forEach(({ page, expectedPath }) => {
-        const { unmount } = render(page, { wrapper: Wrapper });
-        const layout = screen.getByTestId('admin-layout');
-        const path = layout.getAttribute('data-path');
+  it('keeps SugerenciasPanel mounted after switching back to Reportes', async () => {
+    const user = userEvent.setup();
+    renderPanel();
 
-        expect(path).toBe(expectedPath);
-        paths.push(path!);
+    await screen.findByText('Canal desbordado en zona norte');
+    await user.click(screen.getByRole('tab', { name: /sugerencias/i }));
+    await screen.findByText('Limpiar desagues secundarios');
 
-        unmount();
-      });
+    const sugerenciasLoads = vi.mocked(sugerenciasApi.getAll).mock.calls.length;
 
-      // Verify all paths are unique
-      const uniquePaths = new Set(paths);
-      expect(uniquePaths.size).toBe(paths.length);
-    });
+    await user.click(screen.getByRole('tab', { name: /reportes/i }));
+
+    // Sigue en el DOM (oculto) y no se remonta: no hay refetch ni se
+    // pierden filtros/pagina al volver.
+    expect(screen.getByText('Limpiar desagues secundarios')).toBeInTheDocument();
+    expect(vi.mocked(sugerenciasApi.getAll).mock.calls).toHaveLength(sugerenciasLoads);
   });
 });

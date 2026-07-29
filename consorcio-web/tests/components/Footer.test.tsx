@@ -49,7 +49,7 @@ describe('Footer', () => {
 
     expect(screen.getByText('Inicio')).toBeInTheDocument();
     expect(screen.getByText('Mapa')).toBeInTheDocument();
-    expect(screen.getByText('Reportes')).toBeInTheDocument();
+    expect(screen.getByText('Participacion')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe('Footer', () => {
 
     expect(linkHrefs).toContain('/');
     expect(linkHrefs).toContain('/mapa');
-    expect(linkHrefs).toContain('/reportes');
+    expect(linkHrefs).toContain('/participacion');
     expect(linkHrefs).toContain('/admin');
   });
 
