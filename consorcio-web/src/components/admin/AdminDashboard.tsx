@@ -463,7 +463,12 @@ export default function AdminDashboard() {
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Group justify="space-between" mb="md">
             <Title order={4}>Ultimos Reportes Vecinales</Title>
-            <Button component="a" href={withBasePath('/admin/reports')} variant="subtle" size="xs">
+            <Button
+              component="a"
+              href={withBasePath('/admin/participacion')}
+              variant="subtle"
+              size="xs"
+            >
               Ver todos
             </Button>
           </Group>

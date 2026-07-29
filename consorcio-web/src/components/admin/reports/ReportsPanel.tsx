@@ -1,4 +1,4 @@
-import { Badge, Container, Group, Paper, Text, Title } from '@mantine/core';
+import { Badge, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -161,19 +161,15 @@ export default function ReportsPanel() {
   return (
     <LiveRegionProvider>
       <Container size="xl" py="md">
-        <Group justify="space-between" mb="xl">
-          <div>
-            <Title order={2}>Gestion de Denuncias</Title>
-            <Text c="gray.6">Administra las denuncias ciudadanas</Text>
-          </div>
-          <Group>
-            <Badge size="lg" color="yellow" variant="light">
-              {pendingCount} pendientes
-            </Badge>
-            <Badge size="lg" color="blue" variant="light">
-              {inReviewCount} en revision
-            </Badge>
-          </Group>
+        {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
+            quedan los contadores propios de la bandeja de denuncias. */}
+        <Group justify="flex-end" mb="md">
+          <Badge size="lg" color="yellow" variant="light">
+            {pendingCount} pendientes
+          </Badge>
+          <Badge size="lg" color="blue" variant="light">
+            {inReviewCount} en revision
+          </Badge>
         </Group>
 
         <ReportsFilters

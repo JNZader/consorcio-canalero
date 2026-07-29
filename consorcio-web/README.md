@@ -104,8 +104,7 @@ Dashboard unificado con KPIs cruzados de denuncias, trámites y finanzas. Subpá
 | `/sugerencias` | SugerenciasPage | Público | Formulario de sugerencia |
 | `/admin` | AdminDashboard | Operador+ | KPIs y accesos rápidos |
 | `/admin/images` | ImageExplorerPanel | Operador+ | Selector de imagen satelital |
-| `/admin/reports` | ReportsPanel | Operador+ | Gestión de denuncias |
-| `/admin/sugerencias` | SugerenciasPanel | Operador+ | Gestión de sugerencias |
+| `/admin/participacion` | ParticipacionPanel | Operador+ | Denuncias y sugerencias (tabs; las rutas viejas `/admin/reports` y `/admin/sugerencias` redirigen acá) |
 | `/admin/tramites` | TramitesPanel | Operador+ | Gestión de trámites |
 | `/admin/reuniones` | ReunionesPanel | Operador+ | Gestión de reuniones |
 | `/admin/padron` | PadronPanel | Operador+ | Gestión de consorcistas |

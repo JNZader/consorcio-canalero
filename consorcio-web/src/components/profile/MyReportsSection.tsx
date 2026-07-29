@@ -113,8 +113,8 @@ export function MyReportsSection() {
         {!loading && !error && reports.length === 0 && (
           <Text c="dimmed" size="sm">
             Todavía no enviaste ningún reporte. Cuando reportes un problema en{' '}
-            <Text component="a" href="/reportes" fw={600} c="institucional" inherit>
-              /reportes
+            <Text component="a" href="/participacion" fw={600} c="institucional" inherit>
+              /participacion
             </Text>
             , vas a poder ver el seguimiento acá.
           </Text>

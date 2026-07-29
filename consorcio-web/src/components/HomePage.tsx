@@ -96,14 +96,14 @@ const FEATURES: Array<{ icon: ReactNode; title: string; description: string; hre
     title: 'Reportá problemas desde el campo',
     description:
       'Alcantarillas tapadas, caminos rotos o canales sin mantenimiento — desde tu celular con GPS y foto.',
-    href: '/reportes',
+    href: '/participacion',
   },
   {
     icon: <IconLightbulb size={28} />,
     title: 'Sugerí mejoras para tu zona',
     description:
       'Marcá la ubicación exacta y proponé mejoras. El consorcio agenda las sugerencias para revisión.',
-    href: '/sugerencias',
+    href: '/participacion?tab=sugerencias',
   },
   {
     icon: <IconChartBar size={28} />,
@@ -218,7 +218,7 @@ export function HomeContent() {
               <Button
                 size="lg"
                 component="a"
-                href={withBasePath('/reportes')}
+                href={withBasePath('/participacion')}
                 variant="outline"
                 color="white"
               >
@@ -460,7 +460,7 @@ export function HomeContent() {
             <Button
               size="lg"
               component="a"
-              href={withBasePath('/reportes')}
+              href={withBasePath('/participacion')}
               variant="filled"
               color="acento"
               c="dark.9"

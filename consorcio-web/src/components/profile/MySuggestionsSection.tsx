@@ -112,8 +112,14 @@ export function MySuggestionsSection() {
           <Text c="dimmed" size="sm">
             Todavía no enviaste ninguna sugerencia. Podés proponer mejoras o ideas para la comisión
             en{' '}
-            <Text component="a" href="/sugerencias" fw={600} c="institucional" inherit>
-              /sugerencias
+            <Text
+              component="a"
+              href="/participacion?tab=sugerencias"
+              fw={600}
+              c="institucional"
+              inherit
+            >
+              /participacion
             </Text>
             ; cuando estés logueada/o, vas a poder seguir tu sugerencia desde acá.
           </Text>

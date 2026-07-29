@@ -99,7 +99,7 @@ describe('ReportsPanel', () => {
   it('loads reports, announces the result and shows the main list state', async () => {
     renderPanel();
 
-    expect(await screen.findByText('Gestion de Denuncias')).toBeInTheDocument();
+    expect(await screen.findByText(/pendientes$/)).toBeInTheDocument();
     expect(screen.getByText('Canal desbordado en zona norte')).toBeInTheDocument();
     expect(screen.getByText('Ruta 9 km 500')).toBeInTheDocument();
     expect(screen.getByLabelText(/ver ubicacion de denuncia en el mapa/i)).toHaveAttribute(
@@ -189,7 +189,7 @@ describe('ReportsPanel', () => {
     vi.mocked(reportsApi.getAll).mockRejectedValueOnce(new Error('network'));
 
     renderPanel();
-    await screen.findByText('Gestion de Denuncias');
+    await screen.findByText(/pendientes$/);
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(

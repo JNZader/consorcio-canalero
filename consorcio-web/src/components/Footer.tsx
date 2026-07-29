@@ -42,8 +42,8 @@ export const FooterContent = memo(function FooterContent() {
                   <Text component={Link} to="/mapa" c="gray.3" size="sm">
                     Mapa
                   </Text>
-                  <Text component={Link} to="/reportes" c="gray.3" size="sm">
-                    Reportes
+                  <Text component={Link} to="/participacion" c="gray.3" size="sm">
+                    Participacion
                   </Text>
                   <Text component={Link} to="/admin" c="gray.3" size="sm">
                     Admin

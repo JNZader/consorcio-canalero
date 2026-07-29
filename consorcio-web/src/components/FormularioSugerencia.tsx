@@ -127,7 +127,7 @@ function FormularioContenido() {
         <SuggestionStepIndicator
           step="1"
           isComplete={contactoVerificado}
-          label="Verificar contacto"
+          label="Verificar identidad"
           badge={
             contactoVerificado ? (
               <Badge color="green" size="sm" variant="light">
