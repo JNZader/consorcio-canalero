@@ -40,7 +40,13 @@ import app.domains.reuniones.models  # noqa: F401, E402
 import app.domains.settings.models  # noqa: F401, E402
 import app.domains.tramites.models  # noqa: F401, E402
 import app.shared.celery_outbox  # noqa: F401, E402
-from app.domains.geo.router import router as geo_router  # noqa: E402
+
+# SOLO router_core — NO el aggregate ``app.domains.geo.router``: el agregado
+# arrastra shapely (libgeos, nativa) en tiempo de coleccion de pytest, y esa
+# carga temprana desestabilizaba los tests del renderer VTK offscreen mas
+# adelante en la suite (segfault intermitente SOLO en CI). Verificado:
+# importar router_core no carga ninguna libreria nativa pesada.
+from app.domains.geo.router_core import router as core_router  # noqa: E402
 
 ENDPOINT = "/api/v2/geo/layers/public"
 
@@ -52,7 +58,7 @@ def _build_minimal_app() -> FastAPI:
     endpoint bajo test no depende de nada de eso.
     """
     minimal = FastAPI()
-    minimal.include_router(geo_router, prefix="/api/v2/geo")
+    minimal.include_router(core_router, prefix="/api/v2/geo")
     return minimal
 
 

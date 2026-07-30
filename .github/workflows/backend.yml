@@ -116,7 +116,18 @@ jobs:
       - run: pip install --require-hashes -r requirements-dev.lock
       # Unified coverage floor: 60 everywhere (backend.yml, deploy.yml,
       # package.json test:backend) — the real prod gate is deploy.yml's 60.
-      - run: pytest tests/ -v --cov=app --cov-fail-under=60
+      #
+      # Los tests del renderer VTK offscreen corren en un PROCESO pytest
+      # separado: compartir proceso con el resto de la suite producia
+      # segfaults intermitentes en el runner headless (2026-07-30, 4/4 en un
+      # PR) — el estado nativo que otros tests cargan en coleccion (GEOS,
+      # rasterio, etc.) desestabiliza el contexto GL de VTK. Aislarlo mata la
+      # clase entera de problema, sin depender de que import hace quien.
+      # El coverage se combina con --cov-append; el umbral se evalua al final.
+      - run: pytest tests/new/test_geo_visualization_renderer.py -v --cov=app
+      - run: >
+          pytest tests/ -v --ignore=tests/new/test_geo_visualization_renderer.py
+          --cov=app --cov-append --cov-fail-under=60
 
   mutation:
     name: Mutation tests (cosmic-ray)
