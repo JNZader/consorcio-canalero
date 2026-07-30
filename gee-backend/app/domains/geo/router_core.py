@@ -47,6 +47,13 @@ PUBLIC_TILE_CAPABLE_TYPES = {
 }
 
 
+# Layer types published to anonymous visitors in production.
+# `terrain_class` (clasificación del terreno) se publica a pedido del consorcio
+# (2026-07-30); el resto de los tipos del pipeline DEM sigue detrás de login.
+# Las subcuencas son otro endpoint (`/geo/basins`), ya público.
+PUBLIC_PRODUCTION_LAYER_TYPES = {"dem_raw", "terrain_class"}
+
+
 def _truthy_env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -55,7 +62,11 @@ def _public_map_layer_eval_enabled() -> bool:
     from app.config import _is_production_env, settings
 
     # Review/evaluation flag only; it is not a production publication policy.
-    # Requires frontend VITE_PUBLIC_MAP_LAYER_EVAL=true so anonymous map UI requests it.
+    # OJO: no hay opt-in del frontend (el flag VITE_PUBLIC_MAP_LAYER_EVAL se
+    # elimino cuando el backend paso a ser la unica autoridad de publicacion):
+    # con este flag prendido en un entorno no-productivo, el mapa ANONIMO
+    # muestra directamente los 10 tipos tile-capable. Prod/staging quedan
+    # bloqueados server-side por _is_production_env.
     return _truthy_env_flag("PUBLIC_MAP_LAYER_EVAL") and not _is_production_env(
         settings.environment
     )
@@ -165,44 +176,39 @@ def list_public_geo_layers(
     fuente: Optional[str] = None,
     area_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
 ) -> PaginatedResponse[GeoLayerListResponse]:
     """List a safe public subset of geo layers.
 
-    Currently intended for non-authenticated base visualization only.
+    Non-authenticated base visualization only. Always scoped to DEM-pipeline
+    layers, so this endpoint never becomes a general public metadata catalog
+    for every GeoLayer source.
+
+    In production only `PUBLIC_PRODUCTION_LAYER_TYPES` is exposed; the local
+    review flag widens the set to every tile-capable type.
     """
     eval_enabled = _public_map_layer_eval_enabled()
-    allowed_types = PUBLIC_TILE_CAPABLE_TYPES if eval_enabled else {"dem_raw"}
+    allowed_types = PUBLIC_TILE_CAPABLE_TYPES if eval_enabled else PUBLIC_PRODUCTION_LAYER_TYPES
     if tipo and tipo not in allowed_types:
         return PaginatedResponse[GeoLayerListResponse].create(
             items=[], total=0, page=page, limit=limit
         )
+    # `fuente` is accepted for client symmetry with /layers, but the only
+    # publishable source is the DEM pipeline: anything else is an empty page.
+    if fuente and fuente != "dem_pipeline":
+        return PaginatedResponse[GeoLayerListResponse].create(
+            items=[], total=0, page=page, limit=limit
+        )
 
-    if eval_enabled:
-        # Local review mode only: expose the same DEM-pipeline raster overlays
-        # that authenticated users can toggle, without turning this endpoint into
-        # a general public metadata catalog for every GeoLayer source.
-        query = db.query(GeoLayer).filter(
-            GeoLayer.fuente == "dem_pipeline",
-            GeoLayer.tipo.in_(allowed_types),
-        )
-        if tipo:
-            query = query.filter(GeoLayer.tipo == tipo)
-        if area_id:
-            query = query.filter(GeoLayer.area_id == area_id)
-        total = query.count()
-        items = (
-            query.order_by(GeoLayer.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
-        )
-    else:
-        items, total = repo.get_layers(
-            db,
-            page=page,
-            limit=limit,
-            tipo_filter="dem_raw",
-            fuente_filter=fuente,
-            area_id_filter=area_id,
-        )
+    query = db.query(GeoLayer).filter(
+        GeoLayer.fuente == "dem_pipeline",
+        GeoLayer.tipo.in_(allowed_types),
+    )
+    if tipo:
+        query = query.filter(GeoLayer.tipo == tipo)
+    if area_id:
+        query = query.filter(GeoLayer.area_id == area_id)
+    total = query.count()
+    items = query.order_by(GeoLayer.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
     return PaginatedResponse[GeoLayerListResponse].create(
         items=[GeoLayerListResponse.model_validate(layer) for layer in items],

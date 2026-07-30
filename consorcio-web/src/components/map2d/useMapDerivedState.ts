@@ -37,7 +37,6 @@ export function useMapDerivedState(params: {
   vectorVisibility: Record<string, boolean>;
   hasApprovedZones: boolean;
   intersectionsLength: number;
-  isAdmin: boolean;
   /**
    * Pilar Verde static data, loaded upstream by `usePilarVerde()`. Pass-through:
    * this hook does not decorate the features (the paint factories in
@@ -75,7 +74,6 @@ export function useMapDerivedState(params: {
     vectorVisibility,
     hasApprovedZones,
     intersectionsLength,
-    isAdmin,
     pilarVerde = null,
     canales = null,
     escuelas = null,
@@ -169,7 +167,6 @@ export function useMapDerivedState(params: {
         approvedZonesCollection,
         roadsCollection,
         intersectionsLength,
-        isAdmin,
         showPilarVerde,
         showPilarAzul,
         showEscuelas,
@@ -178,7 +175,6 @@ export function useMapDerivedState(params: {
       approvedZonesCollection,
       basins,
       intersectionsLength,
-      isAdmin,
       roadsCollection,
       showPilarVerde,
       showPilarAzul,

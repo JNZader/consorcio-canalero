@@ -57,7 +57,6 @@ describe('useMapDerivedState', () => {
         },
         hasApprovedZones: false,
         intersectionsLength: 1,
-        isAdmin: true,
       }),
     );
 

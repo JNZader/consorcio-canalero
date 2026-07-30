@@ -104,7 +104,6 @@ export function buildVectorLayerItems(params: {
   approvedZonesCollection: FeatureCollection | null | undefined;
   roadsCollection: FeatureCollection | null | undefined;
   intersectionsLength: number;
-  isAdmin: boolean;
   /**
    * Whether the Pilar Verde static data has loaded (at least one slot non-null).
    * Callers can simply pass `!!pilarVerde?.aggregates` or similar — the flag
@@ -134,7 +133,6 @@ export function buildVectorLayerItems(params: {
     approvedZonesCollection,
     roadsCollection,
     intersectionsLength,
-    isAdmin,
     showPilarVerde = false,
     showPilarAzul = false,
     showEscuelas = false,
@@ -145,7 +143,9 @@ export function buildVectorLayerItems(params: {
       id: 'basins',
       label: 'Subcuencas',
       category: LAYER_CATEGORY.HIDROGRAFIA,
-      show: isAdmin && !!basins && basins.features.length > 0,
+      // Subcuencas públicas a pedido del consorcio (2026-07-30): el endpoint
+      // backend (`/geo/basins`) siempre fue público, solo faltaba mostrarlas.
+      show: !!basins && basins.features.length > 0,
     },
     {
       id: 'approved_zones',

@@ -80,7 +80,6 @@ function renderWithParams(overrides?: Partial<Parameters<typeof useMapLayerEffec
       mapRef,
       mapReady: true,
       baseLayer: 'osm',
-      isAdmin: false,
       vectorVisibility: {},
       soilCollection: null,
       roadsCollection: null,
