@@ -1,7 +1,7 @@
 {
   "active": true,
   "deadlines": {
-    "CRITICAL": "2026-07-29T00:00:00Z",
+    "CRITICAL": "2026-08-21T00:00:00Z",
     "HIGH": "2026-08-05T00:00:00Z",
     "absolute_sunset": "2026-08-21T00:00:00Z"
   },
