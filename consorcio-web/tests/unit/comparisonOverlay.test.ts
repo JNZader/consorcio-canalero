@@ -96,7 +96,6 @@ function createInputs(
 
   return {
     leftTileUrl: 'https://tiles.test/left/{z}/{x}/{y}.png',
-    isAdmin: true,
     vectorVisibility: {
       ...visible,
       waterways_rio_tercero: true,

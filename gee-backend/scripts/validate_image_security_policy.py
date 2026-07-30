@@ -21,8 +21,15 @@ SOURCE_REPOSITORY = "https://github.com/JNZader/consorcio-canalero"
 TRIVY_VERSION = "0.70.0"
 TRIVY_REPORT_SCHEMA = 2
 PLATFORM = "linux/amd64"
+# Prorroga CRITICAL 2026-07-30: los 2 CRITICAL congelados son CVE-2026-13221 y
+# CVE-2026-42496 (perl-base de la imagen base Debian trixie). El tracker de
+# seguridad de Debian confirma que NO existe version arreglada en trixie y el
+# propio security team postergo el segundo ("minor issue; wait for regressions
+# upstream"). Sin accion posible de nuestro lado (la app no usa perl; perl-base
+# es dependencia esencial de dpkg), el techo CRITICAL se corre al sunset
+# absoluto YA existente — ese dia la politica fuerza revisar de nuevo.
 DEADLINE_CEILINGS = {
-    "CRITICAL": "2026-07-29T00:00:00Z",
+    "CRITICAL": "2026-08-21T00:00:00Z",
     "HIGH": "2026-08-05T00:00:00Z",
     "absolute_sunset": "2026-08-21T00:00:00Z",
 }

@@ -51,7 +51,6 @@ describe('map2dDerived', () => {
         approvedZonesCollection: null,
         roadsCollection: polygonCollection([pointFeature('r1')]),
         intersectionsLength: 1,
-        isAdmin: true,
       })
       // Labels are normalised with the 3D viewer (Red Vial / Suelos IDECOR
       // 1:50.000 / Catastro rural IDECOR) — the source is the naming source of
@@ -116,7 +115,6 @@ describe('map2dDerived', () => {
       approvedZonesCollection: polygonCollection([pointFeature('z1')]),
       roadsCollection: polygonCollection([pointFeature('r1')]),
       intersectionsLength: 1,
-      isAdmin: true,
       showPilarVerde: true,
       showPilarAzul: true,
       showEscuelas: true,
@@ -126,5 +124,35 @@ describe('map2dDerived', () => {
     for (const item of items) {
       expect(validCategories.has(item.category)).toBe(true);
     }
+  });
+
+  // Subcuencas públicas a pedido del consorcio (2026-07-30). Antes el toggle
+  // estaba gateado por `isAdmin`; ahora la única condición es tener datos.
+  it('muestra subcuencas sin isAdmin, siempre que haya features', () => {
+    const items = buildVectorLayerItems({
+      basins: polygonCollection([pointFeature('b1')]),
+      approvedZonesCollection: null,
+      roadsCollection: null,
+      intersectionsLength: 0,
+    });
+
+    expect(items.some((item) => item.id === 'basins')).toBe(true);
+  });
+
+  it('oculta subcuencas cuando la colección viene vacía o nula', () => {
+    const base = {
+      approvedZonesCollection: null,
+      roadsCollection: null,
+      intersectionsLength: 0,
+    };
+
+    expect(
+      buildVectorLayerItems({ ...base, basins: polygonCollection([]) }).some(
+        (item) => item.id === 'basins'
+      )
+    ).toBe(false);
+    expect(
+      buildVectorLayerItems({ ...base, basins: null }).some((item) => item.id === 'basins')
+    ).toBe(false);
   });
 });

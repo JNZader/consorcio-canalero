@@ -86,7 +86,6 @@ function baseParams(
     mapRef,
     mapReady: true,
     baseLayer: 'osm',
-    isAdmin: false,
     vectorVisibility: {},
     soilCollection: null as FeatureCollection | null,
     roadsCollection: null,

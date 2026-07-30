@@ -62,7 +62,6 @@ export interface ComparisonCanalesSyncInputs {
 
 export interface ComparisonOverlaySyncInputs {
   leftTileUrl: string;
-  isAdmin: boolean;
   vectorVisibility: Readonly<Record<string, boolean>>;
   waterwaysDefs: readonly (typeof WATERWAY_DEFS)[number][];
   soilCollection: FeatureCollection | null;
@@ -127,7 +126,7 @@ export function syncComparisonVectorLayers(
   syncRoadLayers(map, inputs.roadsCollection, !!visible.roads);
   syncSoilLayers(map, inputs.soilCollection, !!visible.soil);
   syncCatastroLayers(map, !!visible.catastro);
-  syncBasinLayers(map, inputs.basins, inputs.isAdmin && !!visible.basins);
+  syncBasinLayers(map, inputs.basins, !!visible.basins);
   syncApprovedZoneLayers(map, inputs.approvedZonesCollection, !!visible.approved_zones);
   syncMartinSuggestionLayers(map, {
     showConflictPoints: !!visible.puntos_conflicto,
