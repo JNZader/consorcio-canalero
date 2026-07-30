@@ -16,16 +16,44 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from fastapi import FastAPI
+
 from app.db.session import get_db
 from app.domains.geo.models import FormatoGeoLayer, FuenteGeoLayer, GeoLayer
 
-# Importing the app at module scope registers EVERY model module in
-# ``Base.metadata`` before the session-scoped ``create_all`` runs. Without it,
-# running this file on its own leaves cross-domain foreign keys dangling
-# (e.g. ``flood_labels.zona_id`` -> ``zonas_operativas``).
-from app.main import app  # noqa: E402  (import order is load-bearing)
+# Register every model module in ``Base.metadata`` WITHOUT importing
+# ``app.main``. pytest imports test modules at COLLECTION time, and pulling
+# the full app graph there (sentry / GEE / matplotlib side effects) poisoned
+# the VTK offscreen renderer further down the run: segfault 3/3 en CI
+# (2026-07-30), mientras develop —donde nadie importa app.main en
+# coleccion— pasaba. Espejo del bloque de registro de
+# ``app/db/migrations/env.py``; sin el, correr este archivo SOLO deja FKs
+# colgando (p. ej. ``flood_labels.zona_id`` -> ``zonas_operativas``).
+import app.auth.models  # noqa: F401, E402
+import app.domains.capas.models  # noqa: F401, E402
+import app.domains.denuncias.models  # noqa: F401, E402
+import app.domains.finanzas.models  # noqa: F401, E402
+import app.domains.geo.intelligence.models  # noqa: F401, E402
+import app.domains.monitoring.models  # noqa: F401, E402
+import app.domains.padron.models  # noqa: F401, E402
+import app.domains.reuniones.models  # noqa: F401, E402
+import app.domains.settings.models  # noqa: F401, E402
+import app.domains.tramites.models  # noqa: F401, E402
+import app.shared.celery_outbox  # noqa: F401, E402
+from app.domains.geo.router import router as geo_router  # noqa: E402
 
 ENDPOINT = "/api/v2/geo/layers/public"
+
+
+def _build_minimal_app() -> FastAPI:
+    """FastAPI minima con SOLO el router geo montado en su prefijo real.
+
+    Evita ``app.main`` (middleware TrustedHost, sentry, lifespan) — el
+    endpoint bajo test no depende de nada de eso.
+    """
+    minimal = FastAPI()
+    minimal.include_router(geo_router, prefix="/api/v2/geo")
+    return minimal
 
 
 @pytest.fixture
@@ -33,13 +61,9 @@ def client(db: Session, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """TestClient wired to the rolled-back test session, eval flag OFF."""
     monkeypatch.delenv("PUBLIC_MAP_LAYER_EVAL", raising=False)
 
-    app.dependency_overrides[get_db] = lambda: db
-    tc = TestClient(app)
-    # ``localhost`` is a trusted host in dev (derived from CORS_ORIGINS);
-    # the default ``testserver`` would be rejected before routing.
-    tc.headers.update({"Host": "localhost"})
-    yield tc
-    app.dependency_overrides.pop(get_db, None)
+    minimal = _build_minimal_app()
+    minimal.dependency_overrides[get_db] = lambda: db
+    yield TestClient(minimal)
 
 
 @pytest.fixture
