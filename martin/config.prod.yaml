@@ -41,7 +41,19 @@ postgres:
       table: vt_parcelas_catastro
       srid: 4326
       geometry_column: geometria
-      properties: {}
+      # Los 7 campos del whitelist del frontend (layerPropertyWhitelists.ts
+      # 'catastro'): el popup del mapa lee las propiedades DEL TILE via
+      # queryRenderedFeatures — solo-geometria rompia el click en parcela.
+      # Todos ya son publicos via el asset estatico catastro_rural_cu.geojson;
+      # quedan afuera id/par_idparcela/created_at (plomeria interna).
+      properties:
+        nro_cuenta: Cuenta catastral
+        desig_oficial: Designacion oficial
+        superficie_ha: Superficie (ha)
+        departamento: Departamento
+        pedania: Pedania
+        nomenclatura: Nomenclatura
+        tipo_parcela: Tipo de parcela
     vt_zonas_operativas:
       schema: public
       table: vt_zonas_operativas
