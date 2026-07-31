@@ -287,10 +287,19 @@ class TestCheckPrereqs:
         )
         assert run_check_prereqs(db) == EXIT_OK
 
-    def test_non_prereq_mode_is_rejected(self):
-        from app.domains.geo.etl.load_suelos_catastro import EXIT_USAGE, main
+    def test_check_prereqs_is_a_read_only_mode(self):
+        """Since A1b the default mode is the load, so the two must not mix.
 
-        assert main([]) == EXIT_USAGE
+        ``--check-prereqs`` never writes; combining it with a load flag can only
+        mean the operator expected a load that would silently not happen.
+        """
+        from app.domains.geo.etl.load_suelos_catastro import EXIT_USAGE, build_parser, main
+
+        defaults = build_parser().parse_args([])
+        assert defaults.check_prereqs is False, "el modo por defecto es la carga"
+        assert defaults.dry_run is False
+
+        assert main(["--check-prereqs", "--dry-run"]) == EXIT_USAGE
 
 
 class TestNonEmptyGuard:

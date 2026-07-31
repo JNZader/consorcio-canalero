@@ -69,15 +69,21 @@ their immediate parent PR branch.
 
 ## PR A1b — Phase 0: soils ETL (base: A1a)
 
-- [ ] A1b.1 Implement `gee-backend/app/domains/geo/etl/load_suelos_catastro.py`: full-refresh in one tx (`DELETE` → bulk insert → assertions → COMMIT), `--source`, `--dry-run`. AC: `soils-etl` › "First run populates the table" + "Re-run is idempotent". (~150)
-- [ ] A1b.2 Implement the 6 load-time assertions inside the tx: row count == source features (45), `ST_IsValid` per row (source repaired with `ST_MakeValid`, unrepairable → abort naming `gid`), SRID 4326, Σ ha in 32720 within 1 % of source, `ip` int→str coercion, NULL `cap` tolerated. AC: `soils-etl` › "Invalid source geometry aborts the load" + "Row-count mismatch aborts the load" (JDB-015). (~60)
-- [ ] A1b.3 Post-commit `REFRESH MATERIALIZED VIEW CONCURRENTLY` in autocommit (outside the load tx) + module docstring stating the stale-view consequence. AC: `soils-etl` › "ETL refreshes the view". (~30)
-- [ ] A1b.4 Add package data `gee-backend/app/domains/geo/etl/data/suelos_cu.geojson` (2.2 MB copy). Binary-ish artifact — exclude from the review line count, note it in the PR body. (~0 reviewed)
-- [ ] A1b.5 Create `gee-backend/app/domains/geo/router_admin_suelos.py` — `POST /api/v2/admin/geo/suelos/refresh-mv`, admin-only — and mount it. AC: `soils-etl` › "Stale view is recoverable" (JD-A-004/JDB-016). (~55)
-- [ ] A1b.6 **Ledger regression test** (JDB-002): `tests/new/test_suelos_etl_packaging.py` — the loader resolves its packaged geojson via `importlib.resources` with no repo-root path, and the module is importable as `python -m …`. AC: `soils-etl` › "Loader runs inside the deployed container". (~35)
-- [ ] A1b.7 Drift test: packaged `suelos_cu.geojson` is byte-identical to `consorcio-web/public/data/suelos_cu.geojson` (JD-A-011). (~20)
-- [ ] A1b.8 Real-PG ETL tests: first run, idempotent re-run, invalid-geometry rollback, row-count-mismatch rollback, NULL `cap` preserved, `ip` stored as str, ha within 1 %, MV non-zero after refresh, admin refresh endpoint requires admin. (~120)
+- [x] A1b.1 Implement `gee-backend/app/domains/geo/etl/load_suelos_catastro.py`: full-refresh in one tx (`DELETE` → bulk insert → assertions → COMMIT), `--source`, `--dry-run`. AC: `soils-etl` › "First run populates the table" + "Re-run is idempotent". (~150)
+- [x] A1b.2 Implement the 6 load-time assertions inside the tx: row count == source features (45), `ST_IsValid` per row (source repaired with `ST_MakeValid`, unrepairable → abort naming `gid`), SRID 4326, Σ ha in 32720 within 1 % of source, `ip` int→str coercion, NULL `cap` tolerated. AC: `soils-etl` › "Invalid source geometry aborts the load" + "Row-count mismatch aborts the load" (JDB-015). (~60)
+- [x] A1b.3 Post-commit `REFRESH MATERIALIZED VIEW CONCURRENTLY` in autocommit (outside the load tx) + module docstring stating the stale-view consequence. AC: `soils-etl` › "ETL refreshes the view". (~30)
+- [x] A1b.4 Add package data `gee-backend/app/domains/geo/etl/data/suelos_cu.geojson` (2.2 MB copy). Binary-ish artifact — exclude from the review line count, note it in the PR body. (~0 reviewed)
+- [x] A1b.5 Create `gee-backend/app/domains/geo/router_admin_suelos.py` — `POST /api/v2/admin/geo/suelos/refresh-mv`, admin-only — and mount it. AC: `soils-etl` › "Stale view is recoverable" (JD-A-004/JDB-016). (~55)
+- [x] A1b.6 **Ledger regression test** (JDB-002): `tests/new/test_suelos_etl_packaging.py` — the loader resolves its packaged geojson via `importlib.resources` with no repo-root path, and the module is importable as `python -m …`. AC: `soils-etl` › "Loader runs inside the deployed container". (~35)
+- [x] A1b.7 Drift test: packaged `suelos_cu.geojson` is byte-identical to `consorcio-web/public/data/suelos_cu.geojson` (JD-A-011). (~20)
+- [x] A1b.8 Real-PG ETL tests: first run, idempotent re-run, invalid-geometry rollback, row-count-mismatch rollback, NULL `cap` preserved, `ip` stored as str, ha within 1 %, MV non-zero after refresh, admin refresh endpoint requires admin. (~120)
 - [ ] A1b.9 **OPS**: document the invocation `docker compose exec backend python -m app.domains.geo.etl.load_suelos_catastro` in the module docstring and the PR body; run it against staging/target and record the resulting row count + ha total. (~0)
+      Documentación **HECHA** (docstring del módulo, con los tres modos y los
+      códigos de salida; test `test_docstring_documents_the_container_invocation`
+      lo fija). **PENDIENTE** la corrida contra el entorno objetivo: mismo
+      bloqueo que A1a.6 — el `app/` del contenedor está montado read-only, así
+      que el módulo nuevo sólo corre en Hetzner después de desplegar la rama.
+      Es gate de merge, no tarea de código.
 
 ## PR A2 — Phase 1a: zonal primitive (base: A1b)
 
@@ -189,5 +195,9 @@ their immediate parent PR branch.
 
 - **A3a (~500), A4 (~550), A7 (~440), B1 (~440) exceed the 400-line review budget.** Delivery strategy is `ask-on-risk` → the orchestrator must consult the user on the sub-splits proposed above before apply.
 - **A1b sits at ~400** — the admin refresh endpoint (A1b.5) is the natural carve-out if it tips over.
+  **Measured after apply: ~931 reviewed lines** (419 diff on tracked files + 512 in three new
+  Python files; the 2.2 MB geojson excluded). ~450 of those are tests. Carving A1b.5 into A1c
+  removes only ~85 lines, so the split does not bring A1b under budget — decide the review tier
+  on the measured number, not on the forecast.
 - **Chain A depth (9 PRs)** is a rebase-cost bottleneck: any fix in A2 or A3a rebases everything downstream.
 - **Two ops answers still open** (design "Open Questions"): `vt_canal_network` population blocks A6; `parcelas_catastro` population blocks the value of A3b/A4 even though the code ships.
