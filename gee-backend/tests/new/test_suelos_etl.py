@@ -481,7 +481,14 @@ class TestAdminRefreshEndpoint:
         )
 
     def test_route_is_mounted_with_the_documented_path(self):
-        from app.main import app
+        # Asserted against the v2 aggregator (what THIS slice owns), not
+        # app.main: importing the full app inside a shared pytest process is
+        # exactly the global-state fragility that bit CI here — the same
+        # import in the CI environment yielded an app with only root routes
+        # (cause CI-environment-specific; the /api/v2 prefix is app-level
+        # config owned and covered elsewhere). The v2-relative path is the
+        # contract this PR introduces.
+        from app.api.v2.router import api_router
 
-        paths = {route.path for route in app.routes if hasattr(route, "path")}
-        assert "/api/v2/admin/geo/suelos/refresh-mv" in paths
+        paths = {route.path for route in api_router.routes if hasattr(route, "path")}
+        assert "/admin/geo/suelos/refresh-mv" in paths
