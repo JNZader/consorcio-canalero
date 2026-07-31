@@ -281,13 +281,15 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "local/consorcio-geo-worker",
         "ghcr.io/jnzader/consorcio-canalero/geo-worker",
     ]
-    assert len(backend["findings"]) == 30
-    assert sum(finding["count"] for finding in backend["findings"]) == 30
+    # 30 -> 24 el 2026-07-30: Debian arreglo libexpat1 y el ratchet exigio
+    # sacar esos 6 CVEs del baseline (ver frozen-image-debt.json).
+    assert len(backend["findings"]) == 24
+    assert sum(finding["count"] for finding in backend["findings"]) == 24
     assert {finding["count"] for finding in backend["findings"]} == {1}
     assert {finding["target"] for finding in backend["findings"]} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend["findings"]) == 25
+    assert sum(finding["severity"] == "HIGH" for finding in backend["findings"]) == 19
     assert sum(finding["severity"] == "CRITICAL" for finding in backend["findings"]) == 5
-    assert sum(finding["status"] == "affected" for finding in backend["findings"]) == 27
+    assert sum(finding["status"] == "affected" for finding in backend["findings"]) == 21
     assert sum(finding["status"] == "fix_deferred" for finding in backend["findings"]) == 3
     assert all(finding["fixed"] == "" for finding in backend["findings"])
     assert all("layer" not in finding for finding in backend["findings"])
