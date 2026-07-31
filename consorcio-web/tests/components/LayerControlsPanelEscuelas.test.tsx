@@ -134,7 +134,6 @@ describe('buildVectorLayerItems — escuelas entry', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
       showPilarVerde: false,
       showPilarAzul: false,
       showEscuelas: true,
@@ -154,7 +153,6 @@ describe('buildVectorLayerItems — escuelas entry', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
       showPilarVerde: false,
       showPilarAzul: false,
       showEscuelas: false,
@@ -173,7 +171,6 @@ describe('buildVectorLayerItems — escuelas entry', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
     });
 
     expect(items.find((item) => item.id === 'escuelas')).toBeUndefined();

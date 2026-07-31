@@ -96,13 +96,6 @@ const TILE_CAPABLE_TYPES = new Set([
   'drainage_need',
 ]);
 
-const isTruthyFlag = (value: string | undefined): boolean =>
-  ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
-
-// Review/evaluation flag only; it is not a production publication policy.
-// Requires backend PUBLIC_MAP_LAYER_EVAL=true to return more than dem_raw.
-const PUBLIC_MAP_LAYER_EVAL = isTruthyFlag(import.meta.env.VITE_PUBLIC_MAP_LAYER_EVAL);
-
 export function useGeoLayers() {
   const { loading: authLoading, initialized } = useAuthStore();
 
@@ -110,12 +103,12 @@ export function useGeoLayers() {
     queryKey: queryKeys.geoLayers(),
     queryFn: async () => {
       const token = await getAuthToken();
-      const publicEndpoint = PUBLIC_MAP_LAYER_EVAL
-        ? `${API_URL}/api/v2/geo/layers/public?limit=100&fuente=dem_pipeline`
-        : `${API_URL}/api/v2/geo/layers/public?limit=100&fuente=dem_pipeline&tipo=dem_raw`;
+      // Anonymous visitors hit the public catalog WITHOUT a `tipo` filter:
+      // the backend is the single authority over which layer types are
+      // published (see PUBLIC_PRODUCTION_LAYER_TYPES in router_core.py).
       const endpoint = token
         ? `${API_URL}/api/v2/geo/layers?limit=100&fuente=dem_pipeline`
-        : publicEndpoint;
+        : `${API_URL}/api/v2/geo/layers/public?limit=100&fuente=dem_pipeline`;
 
       const response = await fetch(endpoint, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

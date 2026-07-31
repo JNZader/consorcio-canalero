@@ -32,7 +32,6 @@ describe('2D / 3D layer label parity', () => {
       approvedZonesCollection: nonEmpty(),
       roadsCollection: nonEmpty(),
       intersectionsLength: 1,
-      isAdmin: true,
     });
     const labelById = new Map(items2d.map((item) => [item.id, item.label]));
 
@@ -51,7 +50,6 @@ describe('2D / 3D layer label parity', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
       showPilarVerde: true,
     });
     const labelById = new Map(items2d.map((item) => [item.id, item.label]));

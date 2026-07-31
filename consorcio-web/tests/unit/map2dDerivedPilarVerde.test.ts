@@ -17,7 +17,6 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
       showPilarVerde: true,
     });
 
@@ -42,7 +41,6 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
       showPilarVerde: false,
     });
 
@@ -60,7 +58,6 @@ describe('buildVectorLayerItems · Pilar Verde', () => {
       approvedZonesCollection: null,
       roadsCollection: null,
       intersectionsLength: 0,
-      isAdmin: false,
     });
     const ids = items.map((item) => item.id);
     expect(ids).not.toContain('pilar_verde_bpa_historico');

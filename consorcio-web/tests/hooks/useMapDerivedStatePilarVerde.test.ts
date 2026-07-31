@@ -35,7 +35,6 @@ function baseParams(overrides?: Partial<Parameters<typeof useMapDerivedState>[0]
     vectorVisibility: {},
     hasApprovedZones: false,
     intersectionsLength: 0,
-    isAdmin: false,
     ...overrides,
   } satisfies Parameters<typeof useMapDerivedState>[0];
 }

@@ -37,7 +37,6 @@ import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
-import { useCanAccess } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
@@ -81,7 +80,6 @@ const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
 export default function MapaMapLibre() {
   // ── Config & auth ─────────────────────────────────────────────────────────
   const config = useConfigStore((state) => state.config);
-  const isAdmin = useCanAccess(['admin']);
 
   const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
   const centerLat = mapCenter.lat;
@@ -242,7 +240,6 @@ export default function MapaMapLibre() {
     vectorVisibility,
     hasApprovedZones,
     intersectionsLength: conflictos?.features?.length ?? 0,
-    isAdmin,
     pilarVerde,
     canales: canalesData,
     escuelas: escuelasData,
@@ -286,7 +283,6 @@ export default function MapaMapLibre() {
     mapRef,
     mapReady,
     baseLayer,
-    isAdmin,
     vectorVisibility,
     soilCollection,
     roadsCollection,
@@ -360,7 +356,6 @@ export default function MapaMapLibre() {
 
   const comparisonSyncInputs: ComparisonOverlaySyncInputs = {
     leftTileUrl: comparison?.left?.tile_url ?? '',
-    isAdmin,
     vectorVisibility,
     waterwaysDefs: WATERWAY_DEFS,
     soilCollection,

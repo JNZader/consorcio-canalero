@@ -593,7 +593,12 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
 
     assert release_gate in _job_block(backend, "mutation")
-    assert "pytest tests/ -v --cov=app --cov-fail-under=60" in backend
+    # VTK offscreen corre en proceso pytest SEPARADO (segfaults compartiendo
+    # proceso con la suite, 2026-07-30); el umbral de coverage vive en la
+    # corrida final, que combina con --cov-append.
+    assert "pytest tests/new/test_geo_visualization_renderer.py -v --cov=app" in backend
+    assert "--ignore=tests/new/test_geo_visualization_renderer.py" in backend
+    assert "--cov-append --cov-fail-under=60" in backend
     assert "python3 scripts/cosmic_gate.py --min-kill-rate 0.30" in backend
 
     security = _job_block(backend, "security")
