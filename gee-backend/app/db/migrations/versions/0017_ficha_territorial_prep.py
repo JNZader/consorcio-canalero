@@ -22,10 +22,9 @@ Phase 0 of the ficha territorial change. Two independent pieces of schema work:
    (``python -m app.domains.geo.etl.load_suelos_catastro``) refreshes the view as
    its final step, in autocommit and OUTSIDE the load transaction, because
    PostgreSQL forbids ``REFRESH ... CONCURRENTLY`` inside a transaction block.
-   There is no scheduled refresh: soils are static reference data. Manual
-   recovery for a stale view is re-running that same ETL command (an admin
-   refresh endpoint is planned in a later slice of this change; it does NOT
-   exist yet — do not point operators at it).
+   There is no scheduled refresh: soils are static reference data. Recovery for
+   a stale view is either re-running that ETL command or the operator action
+   ``POST /api/v2/admin/geo/suelos/refresh-mv`` (admin-only).
 
 The recreate deliberately does NOT guard ``suelos_catastro`` with ``IF EXISTS``:
 if the table is missing the database never ran 0015 and silently skipping would
