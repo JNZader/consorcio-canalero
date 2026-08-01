@@ -36,6 +36,7 @@ from app.domains.geo.router_common import (
 from app.domains.geo.router_core import (
     router as core_router,
 )
+from app.domains.geo.router_ficha import router as ficha_router
 from app.domains.geo.router_gee_support import (
     compare_flood_dates_impl,
     export_qgis_project_impl,
@@ -85,6 +86,9 @@ for subrouter in (
     basins_bundle_router,
     bundle_io_router,
     analysis_router,
+    # Public + rate limited, and a router of its own so neither property leaks
+    # onto the operator routes above (design §2, JDB-003).
+    ficha_router,
 ):
     router.include_router(subrouter)
 

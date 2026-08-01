@@ -18,6 +18,7 @@ from app.domains.reuniones.router import router as reuniones_router
 from app.domains.tramites.router import router as tramites_router
 from app.domains.capas.router import router as capas_router
 from app.domains.geo.router import router as geo_router
+from app.domains.geo.router_admin_suelos import router as admin_suelos_router
 from app.domains.monitoring.router import router as monitoring_router
 from app.domains.settings.router import router as settings_router
 from app.domains.settings.router import public_settings_router
@@ -54,3 +55,6 @@ api_router.include_router(admin_users_router)
 
 # Admin invitation management (invite, list, revoke)
 api_router.include_router(admin_invitations_router)
+
+# Admin soils maintenance (concurrent refresh of mv_suelos_por_zona)
+api_router.include_router(admin_suelos_router)

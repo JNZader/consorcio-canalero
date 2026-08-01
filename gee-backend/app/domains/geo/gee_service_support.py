@@ -1,10 +1,13 @@
 """Compatibility barrel for GEE service support helpers."""
 
 from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_NORMAL_PERIOD,
+    CHIRPS_NATIVE_SCALE_M,
     build_colored_roads,
     build_consorcio_stats,
     build_consorcios_camineros,
     compute_ndwi_baselines_payload,
+    export_chirps_monthly_normals_payload,
     get_landcover_c_payload,
 )
 from app.domains.geo.gee_service_imagery_support import (
@@ -28,6 +31,8 @@ from app.domains.geo.gee_service_imagery_support import (
 )
 
 __all__ = [
+    "CHIRPS_NORMAL_PERIOD",
+    "CHIRPS_NATIVE_SCALE_M",
     "VIS_PRESETS",
     "available_visualizations_payload",
     "build_available_dates_payload",
@@ -47,6 +52,7 @@ __all__ = [
     "build_sentinel2_tiles_payload",
     "collection_dates",
     "compute_ndwi_baselines_payload",
+    "export_chirps_monthly_normals_payload",
     "get_landcover_c_payload",
     "mask_clouds_s2",
     "mask_s2_cloudscore",

@@ -12,8 +12,11 @@ from typing import Any
 
 import numpy as np
 import rasterio
+from affine import Affine
 from pyproj import CRS, Transformer
+from rasterio.features import rasterize as rasterize_geometry
 from rasterio.mask import mask as rasterio_mask
+import shapely
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
 from app.domains.geo.composites_support import (
@@ -255,6 +258,33 @@ def compute_drainage_need(
 _HIGH_RISK_THRESHOLD = 70.0
 
 
+def _as_shapely(geom: Any):
+    """Coerce a GeoJSON mapping or shapely geometry into a shapely geometry."""
+    if hasattr(geom, "__geo_interface__"):
+        return geom
+    if isinstance(geom, dict):
+        return shape(geom)
+    raise TypeError(f"unsupported geometry type: {type(geom)!r}")
+
+
+def _pixel_area(src) -> tuple[float, float]:
+    """Return ``(pixel_area_m2, pixel_area_ha)`` for an open raster.
+
+    Projected rasters use the transform directly; geographic rasters are
+    approximated at the raster's center latitude.
+    """
+    raster_crs = src.crs
+    if raster_crs and raster_crs.is_projected:
+        pixel_area_m2 = abs(src.transform.a * src.transform.e)
+    else:
+        bounds = src.bounds
+        center_lat = (bounds.top + bounds.bottom) / 2
+        m_per_deg_lat = 111_320.0
+        m_per_deg_lon = 111_320.0 * float(np.cos(np.radians(center_lat)))
+        pixel_area_m2 = abs(src.transform.a) * m_per_deg_lon * abs(src.transform.e) * m_per_deg_lat
+    return pixel_area_m2, pixel_area_m2 / 10_000.0
+
+
 def extract_composite_zonal_stats(
     composite_path: str,
     zonas: list[dict[str, Any]],
@@ -286,7 +316,7 @@ def extract_composite_zonal_stats(
     with rasterio.open(composite_path) as src:
         raster_crs = src.crs
         nodata = src.nodata
-        pixel_area_m2 = abs(src.transform.a * src.transform.e)
+        _, pixel_area_ha = _pixel_area(src)
 
         # Build a reprojection function if zone CRS differs from raster CRS
         _reproject_geom = None
@@ -303,30 +333,14 @@ def extract_composite_zonal_stats(
                 dst_crs,
             )
 
-        # Convert pixel area to hectares
-        if raster_crs and raster_crs.is_projected:
-            pixel_area_ha = pixel_area_m2 / 10_000.0
-        else:
-            # Geographic CRS: approximate using center latitude
-            bounds = src.bounds
-            center_lat = (bounds.top + bounds.bottom) / 2
-            lat_rad = np.radians(center_lat)
-            m_per_deg_lat = 111_320.0
-            m_per_deg_lon = 111_320.0 * np.cos(lat_rad)
-            pixel_area_ha = (
-                abs(src.transform.a) * m_per_deg_lon * abs(src.transform.e) * m_per_deg_lat
-            ) / 10_000.0
-
         for zona in zonas:
             zona_id = zona["id"]
             geom = zona["geometry"]
 
             # Accept both shapely and GeoJSON geometry → shapely object
-            if hasattr(geom, "__geo_interface__"):
-                geom_shapely = geom
-            elif isinstance(geom, dict):
-                geom_shapely = shape(geom)
-            else:
+            try:
+                geom_shapely = _as_shapely(geom)
+            except TypeError:
                 logger.warning(
                     "extract_composite_zonal_stats: skipping zona %s — unsupported geometry type",
                     zona_id,
@@ -390,3 +404,382 @@ def extract_composite_zonal_stats(
         tipo,
     )
     return results
+
+
+# ---------------------------------------------------------------------------
+# e) Zonal profile — class-binned stats for ONE geometry (ficha territorial)
+# ---------------------------------------------------------------------------
+# Default K for the relative low-confidence rule. Overridable per call; the
+# API layer passes ``settings.ficha_low_confidence_pixel_ratio`` and datasets
+# whose pixels are far coarser than a parcel (``precip_normal``) pass K = 0.
+DEFAULT_LOW_CONFIDENCE_PIXEL_RATIO = 10.0
+
+# Coverage ratio at or above which a geometry counts as fully covered. Pure
+# tolerance: coverage is self-normalizing (valid weight over geometry weight,
+# both read off the SAME fractional rasterization), so the 1 % slack only
+# absorbs float noise — it hides neither edge inflation nor missing data.
+_FULL_COVERAGE_RATIO = 0.99
+
+# Edge pixels intersected against the geometry per vectorized chunk. Only pixels
+# the geometry's BOUNDARY crosses need an exact intersection; their count grows
+# with the perimeter, not the area (~3 300 pixels for the 60 000 ha envelope cap
+# at 30 m), so one chunk normally covers a whole request.
+_EDGE_CHUNK = 100_000
+
+# Substrings identifying the rasterio "geometry does not intersect the raster"
+# ValueError. Any OTHER ValueError (invalid geometry, driver failure) is a real
+# error and must propagate instead of being reported as "no coverage".
+_NO_OVERLAP_TOKENS = ("do not overlap", "outside bounds")
+
+
+def _coverage_fractions(
+    geom_shapely,
+    transform: Affine,
+    shape_hw: tuple[int, int],
+) -> np.ndarray:
+    """Fraction of each pixel of a window that the geometry covers, in ``[0, 1]``.
+
+    Whole-pixel counting under ``all_touched=True`` overstates the covered area
+    by 4 % (25 ha parcel) to 44 % (2.25 ha parcel) — the edge ring is counted at
+    full pixel area. The weights here are EXACT areal fractions instead:
+
+    * pixels the geometry's boundary does not cross are wholly in or wholly out,
+      so one ``all_touched=False`` rasterization (center-in-polygon) settles them
+      at 1.0 or 0.0 with no error at all;
+    * pixels the boundary DOES cross get ``geometry ∩ pixel / pixel_area`` from a
+      vectorized shapely intersection, in chunks of ``_EDGE_CHUNK``.
+
+    Cost therefore scales with the geometry's perimeter, not its area. The
+    earlier supersampled estimate (8x8 subcells per pixel) was dropped because it
+    is quantized by construction and cannot meet the spec's 1 % area tolerance on
+    small parcels: measured over the sides x offsets sweep in
+    ``test_extract_zonal_profile``, its worst case is 10.2 % at 8 subcells and
+    still 1.2 % at 64 subcells (4 096 subcells/pixel), where exact intersection
+    is both cheaper and correct to float precision.
+
+    An invalid geometry (self-intersection, bowtie) is repaired with
+    ``buffer(0)`` first: shapely intersection is undefined on it, and rasterizing
+    it while skipping its edge pixels would silently mix two accountings.
+    """
+    height, width = shape_hw
+    fractions = np.zeros((height, width), dtype=np.float64)
+    if height == 0 or width == 0:
+        return fractions
+
+    geom = geom_shapely if geom_shapely.is_valid else geom_shapely.buffer(0)
+    if geom.is_empty:
+        return fractions
+
+    pixel_area = abs(transform.a * transform.e - transform.b * transform.d)
+    if pixel_area <= 0:
+        return fractions
+
+    interior = rasterize_geometry(
+        [(mapping(geom), 1)],
+        out_shape=(height, width),
+        transform=transform,
+        all_touched=False,
+        fill=0,
+        dtype="uint8",
+    )
+    fractions[interior.astype(bool)] = 1.0
+
+    boundary = geom.boundary
+    if boundary.is_empty:
+        return fractions
+
+    edge = rasterize_geometry(
+        [(mapping(boundary), 1)],
+        out_shape=(height, width),
+        transform=transform,
+        all_touched=True,
+        fill=0,
+        dtype="uint8",
+    )
+    rows, cols = np.nonzero(edge)
+    for start in range(0, rows.size, _EDGE_CHUNK):
+        chunk_rows = rows[start : start + _EDGE_CHUNK]
+        chunk_cols = cols[start : start + _EDGE_CHUNK]
+        x0, y0 = transform * (chunk_cols.astype(np.float64), chunk_rows.astype(np.float64))
+        x1, y1 = transform * (chunk_cols + 1.0, chunk_rows + 1.0)
+        cells = shapely.box(
+            np.minimum(x0, x1), np.minimum(y0, y1), np.maximum(x0, x1), np.maximum(y0, y1)
+        )
+        overlap = shapely.area(shapely.intersection(geom, cells))
+        fractions[chunk_rows, chunk_cols] = np.clip(overlap / pixel_area, 0.0, 1.0)
+    return fractions
+
+
+def _aligned_window(
+    transform: Affine,
+    bounds: tuple[float, float, float, float],
+) -> tuple[int, int, int, int]:
+    """Whole-pixel window of ``transform``'s grid that contains ``bounds``.
+
+    Returned as ``(row_off, col_off, height, width)``. Offsets may be NEGATIVE
+    and the window may run past the raster: it describes the grid, not the
+    raster's extent, which is exactly what the geometry-side accounting needs.
+    """
+    minx, miny, maxx, maxy = bounds
+    inverse = ~transform
+    xs = np.array([minx, minx, maxx, maxx], dtype=np.float64)
+    ys = np.array([miny, maxy, miny, maxy], dtype=np.float64)
+    cols, rows = inverse * (xs, ys)
+    col_off = int(np.floor(cols.min()))
+    row_off = int(np.floor(rows.min()))
+    width = max(1, int(np.ceil(cols.max())) - col_off)
+    height = max(1, int(np.ceil(rows.max())) - row_off)
+    return row_off, col_off, height, width
+
+
+def _bin_pixels(
+    valid: np.ndarray,
+    weights: np.ndarray,
+    breaks: list[dict],
+    pixel_area_ha: float,
+) -> list[dict[str, Any]]:
+    """Bin valid pixel values into the given class breaks.
+
+    Bins are half-open ``[min, max)``; the LAST bin is closed ``[min, max]`` so
+    the raster maximum is never dropped. Values outside every break are counted
+    in ``valid_pixels`` (and in mean/max/p90) but belong to no bin, so bin
+    percentages can sum to less than 100 for a raster that exceeds its legend.
+
+    ``ha`` and ``pct`` are FRACTIONAL-WEIGHT quantities: a pixel the geometry
+    only half covers contributes 0.5 pixel of area. ``pixels`` stays a raw
+    integer diagnostic (how many pixels were sampled), so ``pixels`` and ``ha``
+    are deliberately not proportional at the geometry edge.
+    """
+    total_weight = float(np.sum(weights)) if weights.size else 0.0
+    result: list[dict[str, Any]] = []
+    last_index = len(breaks) - 1
+    for index, cfg in enumerate(breaks):
+        bin_min = float(cfg["min"])
+        bin_max = float(cfg["max"])
+        if index == last_index:
+            member = (valid >= bin_min) & (valid <= bin_max)
+        else:
+            member = (valid >= bin_min) & (valid < bin_max)
+        pixels = int(np.count_nonzero(member))
+        weight = float(np.sum(weights[member])) if pixels else 0.0
+        result.append(
+            {
+                "label": cfg.get("label"),
+                "min": bin_min,
+                "max": bin_max,
+                "color": cfg.get("color"),
+                "pixels": pixels,
+                "pct": round(weight / total_weight * 100.0, 2) if total_weight > 0 else 0.0,
+                "ha": round(weight * pixel_area_ha, 4),
+            }
+        )
+    return result
+
+
+def extract_zonal_profile(
+    raster_path: str,
+    geom: Any,
+    geom_crs: str | CRS = "EPSG:4326",
+    breaks: list[dict] | None = None,
+    geom_area_m2: float | None = None,
+    low_confidence_pixel_ratio: float = DEFAULT_LOW_CONFIDENCE_PIXEL_RATIO,
+) -> dict[str, Any]:
+    """Class-binned zonal statistics for ONE geometry over ONE raster.
+
+    Unlike :func:`extract_composite_zonal_stats` — which is the DEM pipeline's
+    batch helper and SKIPS zones it cannot resolve — this primitive ALWAYS
+    returns a dict, so the caller can report "no coverage" instead of silently
+    dropping a dataset from the response.
+
+    Areas are FRACTIONAL, not whole-pixel. The geometry is rasterized ONCE into
+    per-pixel coverage weights in ``[0, 1]`` (see :func:`_coverage_fractions`)
+    over a window aligned to the raster's grid but covering the whole geometry —
+    including any part that hangs off the raster — and area is weight x pixel
+    area::
+
+        total_weight    = sum of ALL weights (the whole geometry)
+        valid_weight    = sum of weights over pixels that are inside the raster
+                          AND not nodata/NaN
+        covered_area_ha = valid_weight * pixel_area_ha
+        coverage_ratio  = min(1.0, valid_weight / total_weight)
+        coverage        = "none"    if valid_pixels == 0
+                          "full"    if coverage_ratio >= 0.99
+                          "partial" otherwise
+
+    Both sides of the ratio are read off the SAME rasterization, so a geometry
+    that is fully inside the raster with no nodata yields ``1.0`` by
+    construction, while the weights of pixels beyond the raster's extent inflate
+    only the denominator and surface as ``partial``. Coverage therefore needs no
+    caller-supplied area and cannot be faked by ``rasterio_mask(crop=True)``
+    clipping the window to the raster extent; ``geom_area_m2`` is still accepted
+    but only feeds ``low_confidence``.
+
+    ``valid_pixels`` and ``bins[].pixels`` remain RAW pixel counts (sampling
+    diagnostics); ``covered_area_ha``, ``bins[].ha`` and ``bins[].pct`` are
+    weighted. ``mean``/``max``/``p90`` are computed over valid pixel VALUES
+    unweighted: they are distribution summaries of what was sampled, and the
+    edge pixels a weighting would down-rank are exactly the ones whose value is
+    still the best estimate available for the sliver of parcel inside them.
+
+    Confidence is relative and per raster: ``low_confidence`` is
+    ``(geom_area_m2 / pixel_area_m2) < K``. A global "fewer than N pixels" rule
+    would flag every parcel against a ~5 km CHIRPS pixel, where a normals mean
+    over one pixel is a legitimate value. ``K = 0`` never flags.
+
+    Bin-edge convention: half-open ``[min, max)`` for every bin except the last,
+    which is closed ``[min, max]`` so the raster maximum is never dropped.
+
+    Args:
+        raster_path: Path to the raster to sample.
+        geom: GeoJSON mapping or shapely geometry of the zone.
+        geom_crs: CRS of ``geom`` (default EPSG:4326). Reprojected to the
+            raster CRS when they differ.
+        breaks: Class breaks (``label``/``min``/``max``/``color``), typically
+            ``class_breaks.RANGE_CONFIGS[tipo]``. ``None`` yields empty bins.
+        geom_area_m2: Geometry area in a projected CRS (the caller already has
+            it from ``ST_Area`` in EPSG:32720). Only used for
+            ``low_confidence``; when omitted it is derived from the reprojected
+            geometry if the raster CRS is projected, else confidence is not
+            flagged. Coverage never depends on it.
+        low_confidence_pixel_ratio: ``K`` for the relative confidence rule.
+
+    Returns:
+        ``{mean, max, p90, valid_pixels, pixel_area_ha, covered_area_ha,
+        coverage_ratio, coverage, low_confidence, bins}``. ``mean``/``max``/
+        ``p90`` are ``None`` when there is no valid pixel.
+
+    Raises:
+        ValueError: If the raster declares no CRS — the geometry cannot be
+            placed on the grid, and reporting that as "no coverage" would be a
+            silent wrong answer.
+        Any exception other than the non-overlap ``ValueError`` from
+        ``rasterio.mask`` propagates — an unreadable raster is a failure, not a
+        zone without coverage.
+    """
+    break_list = breaks or []
+    geom_shapely = _as_shapely(geom)
+
+    with rasterio.open(raster_path) as src:
+        if not src.crs:
+            raise ValueError(
+                f"raster has no CRS, cannot place the geometry on its grid: {raster_path}"
+            )
+
+        nodata = src.nodata
+        pixel_area_m2, pixel_area_ha = _pixel_area(src)
+
+        src_crs = CRS.from_user_input(geom_crs)
+        dst_crs = CRS.from_user_input(src.crs)
+        if src_crs != dst_crs:
+            transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+            geom_shapely = shapely_transform(transformer.transform, geom_shapely)
+
+        area_m2 = geom_area_m2
+        if area_m2 is None and dst_crs.is_projected:
+            area_m2 = float(geom_shapely.area)
+
+        if area_m2 is not None and area_m2 > 0 and pixel_area_m2 > 0:
+            low_confidence = (area_m2 / pixel_area_m2) < low_confidence_pixel_ratio
+        else:
+            low_confidence = False
+
+        def _profile(valid: np.ndarray, weights: np.ndarray, total_weight: float) -> dict[str, Any]:
+            valid_pixels = int(valid.size)
+            valid_weight = float(np.sum(weights)) if valid_pixels else 0.0
+            covered_area_ha = valid_weight * pixel_area_ha
+            if valid_pixels == 0:
+                coverage_ratio = 0.0
+                coverage = "none"
+            elif total_weight > 0:
+                coverage_ratio = min(1.0, valid_weight / total_weight)
+                coverage = "full" if coverage_ratio >= _FULL_COVERAGE_RATIO else "partial"
+            else:
+                # R3-009: the geometry itself carries no area (empty, degenerate
+                # or a bowtie that repairs to nothing). There is no denominator,
+                # so there is nothing to report as covered — and "full" with zero
+                # hectares would be a confident wrong answer.
+                logger.warning(
+                    "extract_zonal_profile: geometry has zero rasterized area on %s "
+                    "(degenerate or sub-precision) — reporting no coverage",
+                    raster_path,
+                )
+                coverage_ratio = 0.0
+                coverage = "none"
+                covered_area_ha = 0.0
+            return {
+                "mean": round(float(np.mean(valid)), 2) if valid_pixels else None,
+                "max": round(float(np.max(valid)), 2) if valid_pixels else None,
+                "p90": round(float(np.percentile(valid, 90)), 2) if valid_pixels else None,
+                "valid_pixels": valid_pixels,
+                "pixel_area_ha": pixel_area_ha,
+                "covered_area_ha": round(covered_area_ha, 4),
+                "coverage_ratio": round(coverage_ratio, 4),
+                "coverage": coverage,
+                "low_confidence": low_confidence,
+                "bins": (
+                    _bin_pixels(valid, weights, break_list, pixel_area_ha) if valid_pixels else []
+                ),
+            }
+
+        empty = np.empty(0, dtype=np.float64)
+        try:
+            # filled=False keeps the ORIGINAL pixel values and returns the
+            # geometry mask separately: with filled=True a raster without a
+            # nodata tag has its outside-geometry pixels stuffed with 0, which
+            # then reads as a legitimate value and poisons mean and bins.
+            out_image, out_transform = rasterio_mask(
+                src,
+                [mapping(geom_shapely)],
+                crop=True,
+                all_touched=True,
+                filled=False,
+            )
+        except ValueError as exc:
+            message = str(exc).lower()
+            if not any(token in message for token in _NO_OVERLAP_TOKENS):
+                raise
+            logger.info(
+                "extract_zonal_profile: geometry does not overlap %s — no coverage",
+                raster_path,
+            )
+            return _profile(empty, empty, 0.0)
+
+        band = out_image[0]
+        data = np.asarray(np.ma.getdata(band), dtype=np.float64)
+        outside_geometry = np.ma.getmaskarray(band)
+
+        valid_mask = ~outside_geometry & ~np.isnan(data)
+        if nodata is not None:
+            valid_mask &= data != nodata
+
+        # ONE rasterization for both sides of the coverage ratio. The window is
+        # the raster's own grid extended to whole pixels around the geometry, so
+        # it may reach past the raster; the crop window rasterio returned is a
+        # sub-rectangle of it (both are derived from the geometry's bounds, and
+        # `all_touched=True` never reaches beyond them).
+        ext_row_off, ext_col_off, ext_height, ext_width = _aligned_window(
+            src.transform, geom_shapely.bounds
+        )
+        ext_transform = src.transform * Affine.translation(ext_col_off, ext_row_off)
+        ext_fractions = _coverage_fractions(geom_shapely, ext_transform, (ext_height, ext_width))
+        total_weight = float(ext_fractions.sum())
+
+        # Weights of the crop window, sliced out of the extended grid so the two
+        # accountings cannot drift. Pixels of the crop window that fall outside
+        # the extended window (they should not, but float offsets are float
+        # offsets) keep weight 0 rather than an invented one.
+        crop_col, crop_row = ~src.transform * (out_transform.c, out_transform.f)
+        row_delta = int(round(crop_row)) - ext_row_off
+        col_delta = int(round(crop_col)) - ext_col_off
+        fractions = np.zeros(data.shape, dtype=np.float64)
+        row_start = max(0, row_delta)
+        row_stop = min(ext_height, row_delta + data.shape[0])
+        col_start = max(0, col_delta)
+        col_stop = min(ext_width, col_delta + data.shape[1])
+        if row_stop > row_start and col_stop > col_start:
+            fractions[
+                row_start - row_delta : row_stop - row_delta,
+                col_start - col_delta : col_stop - col_delta,
+            ] = ext_fractions[row_start:row_stop, col_start:col_stop]
+
+        return _profile(data[valid_mask], fractions[valid_mask], total_weight)

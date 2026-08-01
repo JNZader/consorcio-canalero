@@ -56,6 +56,7 @@ export { default as IconPlus } from '@tabler/icons-react/dist/esm/icons/IconPlus
 export { default as IconPoint } from '@tabler/icons-react/dist/esm/icons/IconPoint.mjs';
 export { default as IconPolygon } from '@tabler/icons-react/dist/esm/icons/IconPolygon.mjs';
 export { default as IconQrcode } from '@tabler/icons-react/dist/esm/icons/IconQrcode.mjs';
+export { default as IconVectorTriangle } from '@tabler/icons-react/dist/esm/icons/IconVectorTriangle.mjs';
 export { default as IconReceipt } from '@tabler/icons-react/dist/esm/icons/IconReceipt.mjs';
 export { default as IconRefresh } from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 export { default as IconSend } from '@tabler/icons-react/dist/esm/icons/IconSend.mjs';

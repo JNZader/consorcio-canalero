@@ -59,7 +59,32 @@ import { createMeasurementDraw } from './measurementDrawModes';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-export type MeasurementMode = 'idle' | 'measuring-distance' | 'measuring-area';
+/**
+ * The single interaction-mode machine for the map (design §6.1, JDB-012).
+ *
+ * There is exactly ONE mode value at a time, so measuring a distance/area and
+ * drawing a ficha polygon are structurally mutually exclusive — a union cannot
+ * hold two values. The measurement hook only ever transitions between the three
+ * measurement states; the two `ficha-*` values are owned by the container's
+ * ficha-interaction coordinator (`useFichaInteraction`), which derives the
+ * combined mode and enforces that entering one cancels the other.
+ *
+ * A5 widens the union with `ficha-dibujo` (free-draw polygon). `ficha-canal`
+ * (canal buffer) lands in A6.
+ */
+export type MapInteractionMode =
+  | 'idle'
+  | 'measuring-distance'
+  | 'measuring-area'
+  | 'ficha-dibujo'
+  | 'ficha-canal';
+
+/**
+ * Back-compat alias kept for one release so existing imports
+ * (`MeasurementToolbar`, `useMapInteractionEffects`) keep compiling. New code
+ * should import `MapInteractionMode`.
+ */
+export type MeasurementMode = MapInteractionMode;
 
 export interface MeasurementEntry {
   /** Stable id — taken straight from the MapboxDraw feature id. */

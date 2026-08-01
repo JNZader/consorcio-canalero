@@ -187,12 +187,33 @@ class DistributedRateLimiter:
                 remaining = max(0, self.max_requests - current_count)
                 return False, remaining, max(1, reset_time)
 
-            # Add new entry(ies)
-            for i in range(cost):
-                await redis_client.zadd(key, {f"{now}:{i}": now})
-
-            # Set expiry on the key
-            await redis_client.expire(key, self.window_seconds + 1)
+            # Add all `cost` units in a SINGLE zadd mapping, pipelined with the
+            # expiry, instead of `cost` awaited round-trips (JDB-020). The members
+            # share the same score `now` but carry distinct lexical suffixes
+            # (`{now}:{i}`) so ZCARD keeps counting each unit of cost; the mapping
+            # is applied atomically server-side and the whole write is one
+            # round-trip.
+            #
+            # Residual non-atomicity, deliberately not closed here (JDB-020): the
+            # count read above (zremrangebyscore + zcard) and this write are still
+            # two separate steps, so two concurrent requests for the same key can
+            # both observe an under-limit count and both write, briefly overshooting
+            # `max_requests` by up to `workers * cost`. Accepted because the ficha
+            # limiter is the THIRD line of defense behind the area/vertex caps and
+            # the in-flight semaphore, which are what actually bound cost; a
+            # Lua/WATCH transaction to make check-then-act atomic is not worth the
+            # added latency. A Redis error degrades to the per-process in-memory
+            # window (below) — it never fails open.
+            # Guard cost<=0: un mapping vacio hace que redis-py levante DataError
+            # AL BUFFEAR (antes de execute), que caeria en el except de abajo y
+            # marcaria el Redis COMPARTIDO como caido (afecta auth+middleware, no
+            # solo la ficha). Ningun caller pasa 0 hoy, pero la primitiva es
+            # compartida; mantener paridad con _check_memory, que tolera cost<=0.
+            if cost > 0:
+                write = redis_client.pipeline()
+                write.zadd(key, {f"{now}:{i}": now for i in range(cost)})
+                write.expire(key, self.window_seconds + 1)
+                await write.execute()
 
             remaining = self.max_requests - current_count - cost
             return True, max(0, remaining), self.window_seconds

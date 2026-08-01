@@ -109,6 +109,73 @@ class Settings(BaseSettings):
     auth_rate_limit_requests: int = 10
     auth_rate_limit_window: int = 60
 
+    # ── Ficha territorial (POST /api/v2/geo/analisis-zona) ────────────────
+    # Public, unauthenticated, raster-backed endpoint. Every knob below is a
+    # cost bound; the justifications are design §2.1-2.4 of the
+    # ``ficha-territorial`` change and MUST stay with the value.
+    #
+    # OFF by default, and it must stay off until A3b lands the real compute.
+    # The route is mounted (so the wire contract and its tests exist) but
+    # answers 503 ``funcionalidad_no_disponible``, because today
+    # ``ficha_service.analizar_zona`` returns a PLACEHOLDER: area_ha=0.0 and
+    # every dataset ``sin_cobertura``. Nothing else gates it — the endpoint is
+    # public and ``/openapi.json`` advertises it — so flipping this on early
+    # would publish "0 ha, sin cobertura" to the UI as if it were a measurement.
+    ficha_enabled: bool = False
+    # 30 req/min per IP, PER WORKER PROCESS when Redis is down. The limiter
+    # degrades to a per-process in-memory window (it does not fail open), and
+    # ``app/server.py`` runs uvicorn with workers=2 → the real degraded ceiling
+    # is 2 x 30 = 60 req/min per IP. With Redis up the window is shared and 30
+    # is exact. The limiter lives on its own key namespace ("ratelimit:ficha:")
+    # and on its own router, so it can never throttle the operator geo routes
+    # (JDB-003).
+    ficha_rate_limit_requests: int = 30
+    ficha_rate_limit_window: int = 60
+    # 20 000 ha ≈ 23 % of the ~88 000 ha consorcio — a legitimate sub-basin and
+    # ~100x the median parcel; at 30 m that is ~222 k px/raster (< 2 MB float64).
+    ficha_max_area_ha: float = 20_000.0
+    # Envelope cap: blocks a thin diagonal sliver whose bbox window would blow
+    # up ``rasterio_mask(crop=True)`` even though its own area is small.
+    ficha_max_envelope_ha: float = 60_000.0
+    # Hand-drawn DrawControl polygons are < 100 vertices; 1 000 admits a pasted
+    # parcel outline while bounding the ``ST_Intersection`` cost.
+    ficha_max_vertices: int = 1_000
+    # 2 km each side of a canal is already a generous influence zone. Without
+    # this cap ``buffer_m`` is an unbounded amplification knob (JDB-006); the
+    # area cap remains the backstop.
+    ficha_max_buffer_m: float = 2_000.0
+    # 1 MiB: a legitimate drawn-polygon body is a few KB. Enforced on
+    # Content-Length BEFORE parsing, because the vertex cap only fires after
+    # the whole body is deserialized (JDB-007).
+    ficha_max_body_bytes: int = 1024 * 1024
+    # Hard bound on simultaneous raster memory: the handler is sync and runs on
+    # Starlette's threadpool, and rasterio holds real memory per call. This is
+    # independent of Redis availability.
+    # PER WORKER PROCESS: the semaphore is a module-level object, so it bounds
+    # one interpreter. ``app/server.py`` runs uvicorn with workers=2 → the real
+    # ceiling on the box is 2 x 4 = 8 concurrent raster analyses. Size the value
+    # against (RAM budget / workers), not against the RAM budget.
+    ficha_max_concurrency: int = 4
+    # ``low_confidence`` is relative and per raster: (geom_area / pixel_area) < K.
+    # K = 10 for 30 m products; precipitation normals override K = 0 (a smooth
+    # interpolated field sampled sub-pixel is exact, not approximate).
+    ficha_low_confidence_pixel_ratio: float = 10.0
+    # F1 (R1-002 + R4-002) — transaction-local statement_timeout for the compute
+    # path. ``_resolver_parcela`` (ST_Transform/ST_Area) and ``_suelos_dataset``
+    # (ST_Intersection over suelos_catastro) run on the sync request session,
+    # which has no timeout of its own; the area cap is a loose 20 000 ha, so ONE
+    # legitimate giant catastro parcel could otherwise pin a DB connection + a
+    # threadpool thread unbounded. 5 s is deliberately generous over the 1.5 s
+    # p95 gate — it only ever trips a pathological query, never a normal ficha.
+    ficha_statement_timeout_ms: int = 5000
+    # Area id the ficha resolves precipitation normals for. The CHIRPS pipeline
+    # (``etl/generate_chirps_normals.py``) registers its 13 rasters under an
+    # ``area_id`` (default ``"consorcio"``); the ficha's month-scoped lookup
+    # (``get_latest_precip_normals_by_month``) needs the SAME id, so it is a knob
+    # instead of a literal buried in the service. One consorcio per deployment →
+    # one value.
+    ficha_precip_area_id: str = "consorcio"
+
     # Error tracking (Sentry) — wired in app/main.py only when sentry_dsn
     # is non-empty. Leaving it empty silently disables the integration
     # (zero overhead, no network), which is the right default for dev

@@ -207,4 +207,112 @@ expect(medirBtn.getAttribute('style') ?? '').toContain('#fb923c');
     const medirBtn = screen.getByRole('button', { name: /medir/i });
     expect(medirBtn).not.toHaveAttribute('data-variant', 'filled');
   });
+
+  // ── A5.3 — ficha free-draw toggle beside the measurement buttons ──────────
+
+  it('does NOT render the draw button when onToggleFichaDraw is omitted (3D viewer)', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /dibujar polígono/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the draw toggle and calls onToggleFichaDraw on click', async () => {
+    const user = userEvent.setup();
+    const onToggleFichaDraw = vi.fn();
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        onToggleFichaDraw={onToggleFichaDraw}
+      />,
+    );
+    const drawBtn = screen.getByRole('button', { name: /dibujar polígono/i });
+    expect(drawBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(drawBtn);
+    expect(onToggleFichaDraw).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the draw toggle pressed + orange when fichaDrawActive (mode ficha-dibujo)', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="ficha-dibujo"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        fichaDrawActive
+        onToggleFichaDraw={() => {}}
+      />,
+    );
+    const drawBtn = screen.getByRole('button', { name: /dibujar polígono/i });
+    expect(drawBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(drawBtn.getAttribute('style') ?? '').toContain('#fb923c');
+    // The "Medir" cue must NOT light while drawing (single machine, distinct cues).
+    const medirBtn = screen.getByRole('button', { name: /^medir$/i });
+    expect(medirBtn.getAttribute('style') ?? '').not.toContain('#fb923c');
+  });
+
+  // ── A6 — ficha canal-select toggle beside the draw button ────────────────
+
+  it('does NOT render the canal button when onToggleFichaCanal is omitted', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /seleccionar canal/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the canal toggle and calls onToggleFichaCanal on click', async () => {
+    const user = userEvent.setup();
+    const onToggleFichaCanal = vi.fn();
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        onToggleFichaCanal={onToggleFichaCanal}
+      />,
+    );
+    const canalBtn = screen.getByRole('button', { name: /seleccionar canal/i });
+    expect(canalBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(canalBtn);
+    expect(onToggleFichaCanal).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the canal toggle pressed + cyan when fichaCanalActive (mode ficha-canal)', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="ficha-canal"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        fichaCanalActive
+        onToggleFichaCanal={() => {}}
+      />,
+    );
+    const canalBtn = screen.getByRole('button', { name: /seleccionar canal/i });
+    expect(canalBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(canalBtn.getAttribute('style') ?? '').toContain('#06b6d4');
+    // The "Medir" cue must NOT light while selecting a canal.
+    const medirBtn = screen.getByRole('button', { name: /^medir$/i });
+    expect(medirBtn.getAttribute('style') ?? '').not.toContain('#fb923c');
+  });
 });

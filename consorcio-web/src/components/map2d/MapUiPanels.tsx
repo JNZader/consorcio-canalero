@@ -3,8 +3,11 @@ import type { Feature } from 'geojson';
 import { memo } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
+import type { FichaApiError } from '../../lib/api/ficha';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
+import { FichaTerritorialPanel } from './FichaTerritorialPanel';
 import { InfoPanel } from './InfoPanel';
 import {
   type CanalToggleEntry,
@@ -83,6 +86,18 @@ export interface MapUiPanelsProps {
   readonly selectedFeatures: readonly Feature[];
   readonly onCloseInfoPanel: () => void;
   /**
+   * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
+   * and threads its state down here; `InfoPanel` stays pure. When
+   * `fichaActive` is false the sibling panel renders nothing.
+   */
+  readonly fichaActive: boolean;
+  readonly fichaTipo: FichaTipo;
+  readonly fichaNroCuenta: string | null;
+  readonly fichaLoading: boolean;
+  readonly fichaError: FichaApiError | Error | null;
+  readonly fichaData: FichaResponse | undefined;
+  readonly onCloseFicha: () => void;
+  /**
    * Optional Pilar Verde enriched catastro data — when present, InfoPanel
    * will render `<BpaCard>` for any feature whose `nro_cuenta` matches a
    * parcel with a non-null `bpa_2025` record.
@@ -151,6 +166,13 @@ export const MapUiPanels = memo(function MapUiPanels({
   onRangeToggle,
   selectedFeatures,
   onCloseInfoPanel,
+  fichaActive,
+  fichaTipo,
+  fichaNroCuenta,
+  fichaLoading,
+  fichaError,
+  fichaData,
+  onCloseFicha,
   bpaEnriched,
   bpaHistory,
   exportPngModalOpen,
@@ -284,6 +306,18 @@ export const MapUiPanels = memo(function MapUiPanels({
           bpaHistory={bpaHistory}
         />
       )}
+
+      <FichaTerritorialPanel
+        active={fichaActive}
+        tipo={fichaTipo}
+        nroCuenta={fichaNroCuenta}
+        bpaEnriched={bpaEnriched}
+        isLoading={fichaLoading}
+        isError={fichaError !== null}
+        error={fichaError}
+        data={fichaData}
+        onClose={onCloseFicha}
+      />
 
       <ExportPngModal
         opened={exportPngModalOpen}
