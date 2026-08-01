@@ -203,6 +203,19 @@
   backdrop-filter: blur(6px);
 }
 
+.fichaPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  right: var(--mantine-spacing-md);
+  z-index: 1000;
+  width: min(380px, calc(100% - 32px));
+  max-width: 380px;
+  max-height: calc(100% - 124px);
+  overflow-y: auto;
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+}
+
 .legendItemBorder {
   width: 16px;
   height: 16px;

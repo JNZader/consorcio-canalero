@@ -30,6 +30,7 @@ import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
+import { useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -62,7 +63,7 @@ import { useComparisonSlider } from './map2d/useComparisonSlider';
 import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
-import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
+import { type ParcelaResuelta, useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
@@ -102,6 +103,9 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
+  // Ficha territorial (A4) — the catastro parcel resolved by the last click, or
+  // null. Drives `useFichaTerritorial` and the sibling `<FichaTerritorialPanel>`.
+  const [fichaParcela, setFichaParcela] = useState<ParcelaResuelta | null>(null);
   // Startup default: 'satellite' so the first-load map shows Satélite + Imagen
   // (single view when an image is selected) plus Hidrografía + Red Vial.
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>(DEFAULT_BASE_LAYER);
@@ -334,7 +338,14 @@ export default function MapaMapLibre() {
     mapReady,
     measurementMode: measurementState.mode,
     setSelectedFeatures,
+    onParcelaResolved: setFichaParcela,
   });
+
+  // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
+  // props so `InfoPanel` never fetches (design §6). Idle when no parcel selected.
+  const ficha = useFichaTerritorial(
+    fichaParcela ? { tipo: 'parcela', nomenclatura: fichaParcela.nomenclatura } : null
+  );
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
@@ -622,6 +633,13 @@ export default function MapaMapLibre() {
               }
               selectedFeatures={selectedFeatures}
               onCloseInfoPanel={() => setSelectedFeatures([])}
+              fichaActive={fichaParcela !== null}
+              fichaTipo="parcela"
+              fichaNroCuenta={fichaParcela?.nroCuenta ?? null}
+              fichaLoading={ficha.isLoading}
+              fichaError={ficha.error}
+              fichaData={ficha.data}
+              onCloseFicha={() => setFichaParcela(null)}
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}

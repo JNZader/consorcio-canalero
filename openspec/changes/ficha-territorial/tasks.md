@@ -175,16 +175,58 @@ their immediate parent PR branch.
 ## PR A4 — Phase 1c: ficha card + wiring (base: A3b)
 
 > Forecast ~550 lines. Sub-split recommended: **A4a** = A4.1-A4.4, **A4b** = A4.5-A4.9.
+>
+> **A4 applied** (branch `feat/ficha-a4-card`, whole A4 in one pass). Measured: **746 new source
+> lines** (`ficha.ts` API client 165, `useFichaTerritorial` 71, `FichaTerritorialPanel` 138,
+> `SuelosBreakdown` 94, `RiesgoBins` 97, `PilarVerdeBadges` 75, `fichaShared` 59, `FichaResumen` 47)
+> + **449 test lines** + **123 lines on 4 tracked files** (`MapaMapLibre` +20, `MapUiPanels` +34,
+> `useMapInteractionEffects` +58, `map.module.css` +13). Comment-dense by design. Verified green:
+> `tsc --noEmit` clean, `vitest run` 2958/2958, `biome lint` clean on all A4 files (3 pre-existing
+> warnings live in untouched files).
+>
+> **Deviations from the forecast (all justified):**
+> * The wire error path needed a dedicated `lib/api/ficha.ts` the forecast folded into the hook:
+>   `apiFetch` collapses every non-2xx into a bare `Error` with no status, but the card branches on
+>   404/422/429/503 and the `retry` predicate needs `e.status`. `FichaApiError` preserves
+>   `status` + `codigo` + `detail`.
+> * `PrecipChart` / precipitation block is **NOT** rendered in A4 — it is B2.2 (`precipitacion_mensual`
+>   is only assembled server-side in B2.1). A4 renders the three raster/soil datasets. The
+>   `ficha-frontend` "Full ficha rendered" scenario's 12-bar chart clause is therefore satisfied
+>   only after B2, per the chain design.
+> * The mode-union widening (`MapInteractionMode`) is **A5.2**, not A4 — A4 only needs the default
+>   `'idle'` parcel click, which touches no mode machine. `useMeasurement.ts` is untouched here.
 
-- [ ] A4.1 Create `consorcio-web/src/hooks/useFichaTerritorial.ts`: key `['ficha-territorial', tipo, refKey]`, `staleTime` 5 min, `gcTime` 30 min, `retry: (n,e) => n < 1 && ![413,422,429].includes(e.status)`, **no** `placeholderData: keepPreviousData`. AC: `ficha-frontend` › "Switching modes discards previous result". (~70)
-- [ ] A4.2 Create `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx` + `FichaResumen.tsx` (area_ha, per-dataset cobertura, low-confidence badges). AC: `ficha-frontend` › "Small parcel badge" + "No badge on large areas". (~90)
-- [ ] A4.3 Create `SuelosBreakdown.tsx`: **table** clase/ha/% incl. `sin dato` and `sin clasificar`, subclass tooltip, stacked bar as complement only (colors from `useSoilMap.ts:11-47`). AC: `ficha-frontend` › "Full ficha rendered" (JD-A-012). (~90)
-- [ ] A4.4 Create `RiesgoBins.tsx` (×2 datasets): **table** clase/ha/% per bin + colored bar complement; percentages rendered from the server, never recomputed from hectares. (~70)
-- [ ] A4.5 Create `PilarVerdeBadges.tsx`: client-side join of `usePilarVerde()` (`consorcio-web/src/hooks/usePilarVerde.ts:46`) against the clicked feature's `nro_cuenta` tile property; "sin vinculación" when absent; section omitted entirely for `poligono`/`canal_*`. AC: `ficha-frontend` › "Parcel with null nro_cuenta" ([R1]). (~60)
-- [ ] A4.6 Wire `MapWorkspace.tsx` (fetch owner) → `MapUiPanels.tsx` (props) → sibling `<FichaTerritorialPanel>`. `InfoPanel.tsx` stays pure — no hook, no fetch. AC: `ficha-frontend` › "Parcel click routes through the container". (~60)
-- [ ] A4.7 Parcel click is the default: in `'idle'`, `useMapInteractionEffects.ts` click routing and Pilar Verde precedence are UNCHANGED; a resolved `parcelas_catastro` feature additionally fires `tipo:'parcela'`. No gate, no new entry point. AC: `ficha-frontend` › "Three interaction modes" delta (JD-A-013/JDB-014). (~30)
-- [ ] A4.8 Vitest: `InfoPanel` renders with no data provider and issues no request; `sin_cobertura` renders text and no `0 %` row; error states 404/422/429/503 surface the server message. AC: `ficha-frontend` › "InfoPanel purity is enforced", "No coverage is not zero", "Rate limited", "Soils dataset not loaded", "Loading state". (~120)
-- [ ] A4.9 Playwright spec `consorcio-web/tests/e2e/ficha-territorial.spec.ts`: click parcel → ficha renders; skips gracefully when `parcelas_catastro` is empty (precedent `afectados.spec.ts:166`). (~60)
+- [x] A4.1 Create `consorcio-web/src/hooks/useFichaTerritorial.ts`: key `['ficha-territorial', tipo, refKey]`, `staleTime` 5 min, `gcTime` 30 min, `retry: (n,e) => n < 1 && ![413,422,429].includes(e.status)`, **no** `placeholderData: keepPreviousData`. AC: `ficha-frontend` › "Switching modes discards previous result". (~70)
+      Error typing lives in `consorcio-web/src/lib/api/ficha.ts` (`fetchAnalisisZona` + `FichaApiError`,
+      the "nueva función en lib/api/"). `refKeyFor` is `tipo`-aware so A5/A6/A7 keys drop in.
+- [x] A4.2 Create `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx` + `FichaResumen.tsx` (area_ha, per-dataset cobertura, low-confidence badges). AC: `ficha-frontend` › "Small parcel badge" + "No badge on large areas". (~90)
+      Panel is pure/props-only (states loading/error/result); low-confidence badge shared via
+      `fichaShared.tsx` (`LowConfidenceBadge`) and rendered in both the resumen and the dataset header.
+- [x] A4.3 Create `SuelosBreakdown.tsx`: **table** clase/ha/% incl. `sin dato` and `sin clasificar`, subclass tooltip, stacked bar as complement only (colors from `useSoilMap.ts:11-47`). AC: `ficha-frontend` › "Full ficha rendered" (JD-A-012). (~90)
+      `sin dato` / `sin clasificar` rows come straight from the server (A3b.2/A3b.3); the component
+      renders whatever rows arrive, tooltip on `detalle`. Colors via `getSoilColor` (roman-prefix aware).
+- [x] A4.4 Create `RiesgoBins.tsx` (×2 datasets): **table** clase/ha/% per bin + colored bar complement; percentages rendered from the server, never recomputed from hectares. (~70)
+      Bar color is a deterministic green→red severity ramp indexed by bin order (decoration for the
+      table, not a data source — the real `class_breaks` colors are server-side).
+- [x] A4.5 Create `PilarVerdeBadges.tsx`: client-side join of `usePilarVerde()` (`consorcio-web/src/hooks/usePilarVerde.ts:46`) against the clicked feature's `nro_cuenta` tile property; "sin vinculación" when absent; section omitted entirely for `poligono`/`canal_*`. AC: `ficha-frontend` › "Parcel with null nro_cuenta" ([R1]). (~60)
+      `nro_cuenta` is threaded from the click through the container (not fetched); aggregate status
+      only (años de BPA + Activa 2025), no names. Returns `null` for non-parcela tipos.
+- [x] A4.6 Wire `MapWorkspace.tsx` (fetch owner) → `MapUiPanels.tsx` (props) → sibling `<FichaTerritorialPanel>`. `InfoPanel.tsx` stays pure — no hook, no fetch. AC: `ficha-frontend` › "Parcel click routes through the container". (~60)
+      Correction: the real stateful container is **`MapaMapLibre.tsx`** (`MapWorkspace.tsx` is only the
+      responsive layout shell). `useFichaTerritorial` is called there; state threads through
+      `MapUiPanels` props to the sibling panel. `InfoPanel` untouched.
+- [x] A4.7 Parcel click is the default: in `'idle'`, `useMapInteractionEffects.ts` click routing and Pilar Verde precedence are UNCHANGED; a resolved `parcelas_catastro` feature additionally fires `tipo:'parcela'`. No gate, no new entry point. AC: `ficha-frontend` › "Three interaction modes" delta (JD-A-013/JDB-014). (~30)
+      Added optional `onParcelaResolved` callback: idle click still `setSelectedFeatures(all)` (InfoPanel
+      path unchanged), then reports the catastro feature (found by layer id, any z-order) or `null`.
+- [x] A4.8 Vitest: `InfoPanel` renders with no data provider and issues no request; `sin_cobertura` renders text and no `0 %` row; error states 404/422/429/503 surface the server message. AC: `ficha-frontend` › "InfoPanel purity is enforced", "No coverage is not zero", "Rate limited", "Soils dataset not loaded", "Loading state". (~120)
+      `FichaTerritorialPanel.test.tsx` (states + 404/422/429/503 + sin_cobertura no-0% + low-confidence
+      + tables), `useFichaTerritorial.test.tsx` (container fetch mocked, status/codigo preserved, idle),
+      `InfoPanelPurity.test.tsx`, `useMapInteractionEffectsFicha.test.ts` (parcel resolution).
+- [x] A4.9 Playwright spec `consorcio-web/tests/e2e/ficha-territorial.spec.ts`: click parcel → ficha renders; skips gracefully when `parcelas_catastro` is empty (precedent `afectados.spec.ts:166`). (~60)
+      Probes the endpoint first: 503 `funcionalidad_no_disponible` (flag off) / `dataset_no_cargado`
+      (empty catastro) → `test.skip`; otherwise clicks a catastro parcel and asserts the panel reaches
+      a terminal state. **Until `ficha_enabled` is turned on in the deploy the front receives 503 and
+      shows the server's "funcionalidad no disponible" message with grace** (handled by the error state).
 
 ## PR A5 — Phase 2: free polygon (base: A4)
 

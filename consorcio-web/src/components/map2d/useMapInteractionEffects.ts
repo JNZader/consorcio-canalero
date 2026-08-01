@@ -4,6 +4,12 @@ import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
 import type { MeasurementMode } from './measurement/useMeasurement';
 
+/** A catastro parcel resolved from a click, for the ficha territorial request. */
+export interface ParcelaResuelta {
+  nomenclatura: string;
+  nroCuenta: string | null;
+}
+
 interface UseMapInteractionEffectsParams {
   mapRef: React.RefObject<maplibregl.Map | null>;
   mapReady: boolean;
@@ -15,6 +21,49 @@ interface UseMapInteractionEffectsParams {
    * them so InfoPanel can render one section per layer.
    */
   setSelectedFeatures: (value: Feature[]) => void;
+  /**
+   * Ficha territorial (A4). In the default `'idle'` mode a click that resolves
+   * a `parcelas_catastro` feature ADDITIONALLY reports the parcel here so the
+   * container can fetch its ficha. This is NOT a mode and does NOT change the
+   * existing click routing / Pilar Verde precedence (design §6.2, JD-A-013):
+   * the ficha fires alongside the InfoPanel, for whichever catastro feature the
+   * click hit, regardless of z-order. `null` clears the current ficha (click on
+   * empty space, or a non-idle interaction mode). Optional — callers that do
+   * not want the ficha (3D viewer) simply omit it.
+   */
+  onParcelaResolved?: (parcela: ParcelaResuelta | null) => void;
+}
+
+type FeatureWithLayer = Feature & { readonly layer?: { readonly id?: string } };
+
+/** Tolerant read of a property across the casings the catastro sources use. */
+function readProp(props: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = props[key];
+    if (value !== null && value !== undefined) {
+      const asStr = String(value).trim();
+      if (asStr.length > 0) return asStr;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the clicked `parcelas_catastro` parcel among the overlapping features,
+ * regardless of z-order, and pull its nomenclatura (+ nro_cuenta for the BPA
+ * join). Returns `null` when the click did not hit a catastro parcel.
+ */
+function resolveParcela(features: FeatureWithLayer[]): ParcelaResuelta | null {
+  const catastroLayerId = `${SOURCE_IDS.CATASTRO}-fill`;
+  const feature = features.find((f) => f.layer?.id === catastroLayerId);
+  if (!feature) return null;
+  const props = (feature.properties as Record<string, unknown> | null) ?? {};
+  const nomenclatura = readProp(props, 'nomenclatura', 'Nomenclatura');
+  if (!nomenclatura) return null;
+  return {
+    nomenclatura,
+    nroCuenta: readProp(props, 'nro_cuenta', 'Nro_Cuenta'),
+  };
 }
 
 /**
@@ -72,6 +121,7 @@ export function useMapInteractionEffects({
   mapReady,
   measurementMode,
   setSelectedFeatures,
+  onParcelaResolved,
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -82,6 +132,7 @@ export function useMapInteractionEffects({
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       if (measurementMode !== 'idle') {
         setSelectedFeatures([]);
+        onParcelaResolved?.(null);
         return;
       }
 
@@ -93,11 +144,16 @@ export function useMapInteractionEffects({
       // on-screen z-order (top-most first) which matches the user-intuitive
       // "most specific first" ordering we want in the panel.
       setSelectedFeatures(features as unknown as Feature[]);
+
+      // A4 — a catastro click ADDITIONALLY fires the ficha (design §6.2). A
+      // click that hit no parcel clears the current ficha so it does not linger
+      // over an unrelated area.
+      onParcelaResolved?.(resolveParcela(features as unknown as FeatureWithLayer[]));
     };
 
     map.on('click', handleClick);
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapReady, mapRef, measurementMode, setSelectedFeatures]);
+  }, [mapReady, mapRef, measurementMode, setSelectedFeatures, onParcelaResolved]);
 }
