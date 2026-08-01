@@ -10,11 +10,12 @@ offscreen renderer later in the run — segfault 3/3 in CI (see
 ``test_geo_public_layers`` and ``test_suelos_etl``). Both structural attempts
 documented in ``test_suelos_etl.TestAdminRefreshEndpoint`` (``app.main.routes``
 AND ``api_router.routes``) also hit a module-identity quirk that emptied the
-aggregator on the CI interpreter only. This module therefore mounts the geo
-router — the exact object ``app.api.v2.router`` mounts — into a fresh
-``FastAPI`` INSIDE each test body, and asserts the route set is non-empty first,
-so an empty table fails as "no pude construir la tabla" instead of passing
-vacuously.
+aggregator on the CI interpreter only. This module therefore builds the route
+table in a fresh SUBPROCESS (``_SCRIPT_TABLA_DE_RUTAS``) — a clean interpreter
+has none of the shared-process global-state contamination — and asserts the
+route set is non-empty first, so an empty table fails as "no pude construir la
+tabla" instead of passing vacuously. (The behavioural tests below still mount a
+local app in-process; only the structural route walk needs the subprocess.)
 
 **Reality check recorded here (deviation from the spec wording).** The spec says
 ``analisis-zona`` will be "the ONLY ``/api/v2/geo`` route without an operator
@@ -119,7 +120,10 @@ tabla = [
     if isinstance(ruta, APIRoute)
     for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
 ]
-print(json.dumps(tabla))
+# Marcador: importar la app emite logs/warnings a stdout (p.ej.
+# MARTIN_PUBLIC_URL), asi que el padre no puede json.loads del stdout
+# entero — extrae SOLO la linea marcada.
+print("__RUTAS_JSON__" + json.dumps(tabla))
 """
 
 
@@ -139,7 +143,9 @@ def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
         cwd=str(Path(__file__).resolve().parents[2]),
     )
     assert salida.returncode == 0, f"el subproceso de la tabla de rutas fallo:\n{salida.stderr}"
-    tabla = [(m, p, set(deps)) for m, p, deps in json.loads(salida.stdout)]
+    lineas = [ln for ln in salida.stdout.splitlines() if ln.startswith("__RUTAS_JSON__")]
+    assert lineas, f"el subproceso no emitio la linea marcada. stdout:\n{salida.stdout}"
+    tabla = [(m, p, set(deps)) for m, p, deps in json.loads(lineas[-1][len("__RUTAS_JSON__") :])]
     assert len(tabla) > 20, (
         "la tabla de rutas geo salio vacia o mutilada — el test no puede probar nada"
     )
