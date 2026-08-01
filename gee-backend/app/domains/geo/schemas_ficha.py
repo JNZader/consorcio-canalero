@@ -197,3 +197,37 @@ class FichaResponse(BaseModel):
     # one dataset and would have made "we have no precipitation product" look
     # identical to "the server forgot to include it".
     precipitacion_mensual: PrecipitacionFicha = Field(default_factory=PrecipitacionFicha)
+
+
+# ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
+# The opt-in ``/analisis-zona/overlay`` endpoint returns the analysis geometry
+# CLIPPED to the analyzed zone as GeoJSON so the map can paint it. Slice 1 is
+# soils only — the cheap, exact PostGIS vector path; flood_risk/drainage raster
+# vectorization is slice 2. ``dataset`` is validated to ``"suelos"`` for now.
+DatasetOverlay = Literal["suelos"]
+
+
+class FichaOverlayFeature(BaseModel):
+    """One GeoJSON Feature of the clipped overlay.
+
+    ``properties.clase`` is the SAME normalized capability label the ficha soils
+    panel groups by (``IVws`` → ``IV``), so the frontend colors each feature with
+    the panel palette. The feature carries NO color — the client maps class →
+    color — and NO area: the ha/pct breakdown is the ficha panel's job.
+    """
+
+    type: Literal["Feature"] = "Feature"
+    properties: dict[str, Any]
+    geometry: dict[str, Any]
+
+
+class FichaOverlayResponse(BaseModel):
+    """A GeoJSON FeatureCollection of the analysis clipped to the zone.
+
+    Zero coverage (no soil polygons intersect the geometry) is an EMPTY
+    ``features`` list with a 200 — never an error and never fabricated geometry.
+    """
+
+    dataset: DatasetOverlay
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[FichaOverlayFeature] = Field(default_factory=list)

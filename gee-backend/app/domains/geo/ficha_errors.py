@@ -165,6 +165,23 @@ def cap_excedido(cap: str, limite: float, valor: float) -> FichaError:
     )
 
 
+def dataset_no_soportado(recibido: Any, soportados: tuple[str, ...]) -> FichaError:
+    """422 when the overlay ``dataset`` is not one this slice serves.
+
+    Slice 1 of the on-map overlay serves ``suelos`` only (the exact PostGIS
+    vector path). ``flood_risk`` / ``drainage_need`` require raster vectorization
+    and arrive in slice 2, so any other ``dataset`` is rejected up front with a
+    stable ``codigo`` the UI can switch on — never a silent empty result.
+    """
+    return FichaError(
+        status_code=422,
+        codigo="dataset_no_soportado",
+        detail=f"El dataset de overlay {recibido!r} no esta disponible todavia",
+        dataset=recibido,
+        datasets_soportados=list(soportados),
+    )
+
+
 def limite_de_tasa(retry_after: int) -> FichaError:
     return FichaError(
         status_code=429,

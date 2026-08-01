@@ -174,3 +174,58 @@ export async function fetchAnalisisZona(
 
   return (await response.json()) as FichaResponse;
 }
+
+// ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
+
+/**
+ * Overlay datasets the opt-in `/analisis-zona/overlay` endpoint serves. Slice 1
+ * is `suelos` only (the exact PostGIS vector path); `flood_risk` / `drainage_need`
+ * raster vectorization is slice 2.
+ */
+export type FichaOverlayDataset = 'suelos';
+
+/** One GeoJSON Feature of the clipped overlay. `properties.clase` is the SAME
+ * normalized soil-capability label the panel groups by; the client maps it to a
+ * color (the wire carries no color). */
+export interface FichaOverlayFeature {
+  type: 'Feature';
+  properties: { clase: string; [key: string]: unknown };
+  geometry: Record<string, unknown>;
+}
+
+/** A GeoJSON FeatureCollection of the analysis clipped to the analyzed zone. An
+ * empty `features` list is a valid 200 (no soils intersect), never an error. */
+export interface FichaOverlayResponse {
+  dataset: FichaOverlayDataset;
+  type: 'FeatureCollection';
+  features: FichaOverlayFeature[];
+}
+
+/**
+ * Request the analysis CLIPPED to the analyzed zone, for painting on the map.
+ *
+ * Same wire contract + error handling as {@link fetchAnalisisZona}: the body is
+ * the ficha discriminated union plus a `dataset` selector.
+ *
+ * @throws {FichaApiError} for any non-2xx response (status + codigo preserved).
+ * @throws {Error} for a network/parse failure with no HTTP response.
+ */
+export async function fetchFichaOverlay(
+  request: FichaRequest,
+  dataset: FichaOverlayDataset,
+  signal?: AbortSignal
+): Promise<FichaOverlayResponse> {
+  const response = await fetch(`${API_URL}${API_PREFIX}/geo/analisis-zona/overlay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...request, dataset }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as FichaErrorBody | null;
+    throw toFichaApiError(response.status, body);
+  }
+
+  return (await response.json()) as FichaOverlayResponse;
+}

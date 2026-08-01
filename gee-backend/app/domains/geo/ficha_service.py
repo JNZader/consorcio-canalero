@@ -58,6 +58,8 @@ from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas_ficha import (
     ClaseFicha,
     DatasetFicha,
+    FichaOverlayFeature,
+    FichaOverlayResponse,
     FichaRequest,
     FichaResponse,
     PrecipitacionFicha,
@@ -415,6 +417,40 @@ _SUELOS_SQL = text(
            ST_Area(ST_Transform(
                ST_CollectionExtract(ST_Intersection(s.geometria, g.geom), 3), 32720
            )) / 10000.0 AS ha
+    FROM suelos_catastro s, g
+    WHERE ST_Intersects(s.geometria, g.geom)
+      AND NOT ST_IsEmpty(ST_CollectionExtract(ST_Intersection(s.geometria, g.geom), 3))
+    """
+)
+
+
+# Same intersection as ``_SUELOS_SQL`` but EMITS the clipped geometry (not its
+# area) as GeoJSON for the on-map overlay (A(b) slice 1). The clip is capped with a
+# topology-preserving simplify so a max-area zone crossing many detailed INTA soil
+# polygons cannot ship a multi-MB payload on this public endpoint. The tolerance is
+# applied in METERS (EPSG:32720) — the geometry is projected, simplified at 8 m
+# (well below the ~1:50000 INTA layer's visible detail, so class boundaries stay
+# accurate while the vertex count drops), then transformed back to 4326.
+# ``ST_CollectionExtract(...,3)`` keeps only the polygonal part; ``ST_MakeValid``
+# guards the stair-step self-intersections a clip or a simplify can produce, run
+# LAST so the 4326 output is always a valid Polygon/MultiPolygon. Empty clips are
+# filtered in the WHERE so no null/empty feature ships.
+_SUELOS_OVERLAY_SQL = text(
+    """
+    WITH g AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326) AS geom)
+    SELECT s.cap AS cap,
+           ST_AsGeoJSON(
+               ST_MakeValid(ST_Transform(
+                   ST_SimplifyPreserveTopology(
+                       ST_Transform(
+                           ST_CollectionExtract(ST_Intersection(s.geometria, g.geom), 3),
+                           32720
+                       ),
+                       8.0
+                   ),
+                   4326
+               ))
+           ) AS geojson
     FROM suelos_catastro s, g
     WHERE ST_Intersects(s.geometria, g.geom)
       AND NOT ST_IsEmpty(ST_CollectionExtract(ST_Intersection(s.geometria, g.geom), 3))
@@ -870,3 +906,95 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
             drainage_need=_dataset_vacio(),
             precipitacion_mensual=PrecipitacionFicha(cobertura="sin_cobertura"),
         )
+
+
+# ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
+
+
+def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str, str] | None:
+    """Resolve the analysis geometry the same way the ficha does, for the overlay.
+
+    Returns ``(geojson_4326, geojson_32720)`` — the 4326 shape feeds the soils
+    clip, the 32720 shape feeds ``assert_within_caps``. ``None`` for the
+    ``canal_cuenca`` stub, which still resolves a geometry the caller never sent
+    (a precomputed catchment, A7) and therefore has nothing to clip yet.
+    """
+    tipo = payload.tipo
+    if tipo == "parcela":
+        geojson_4326, geojson_32720, _area_m2 = _resolver_parcela(db, payload.nomenclatura)
+        return geojson_4326, geojson_32720
+    if tipo == "poligono":
+        geojson_4326, geojson_32720, _area_m2 = _resolver_poligono(db, payload.geometry)
+        return geojson_4326, geojson_32720
+    if tipo == "canal_buffer":
+        geojson_4326, geojson_32720, _area_m2 = _resolver_canal_buffer(
+            db, payload.canal_id, payload.buffer_m
+        )
+        return geojson_4326, geojson_32720
+    return None
+
+
+def _clip_suelos(db: Session, geojson_4326: str) -> list[FichaOverlayFeature]:
+    """Clip ``suelos_catastro`` to the geometry, one Feature per intersecting soil.
+
+    ``clase`` reuses ``_normalizar_cap`` so the wire label matches the ficha soils
+    panel exactly (``IVws`` → ``IV``; unclassified → ``"sin clasificar"``). Grouping
+    is applied to the LABEL only: several soil polygons may share a ``clase``, which
+    the frontend colors identically — the geometry is not re-unioned, so the
+    already-valid PostGIS clip ships untouched. No intersecting rows → empty list.
+    """
+    with _traducir_fallas_db():
+        filas = db.execute(_SUELOS_OVERLAY_SQL, {"geojson": geojson_4326}).all()
+
+    features: list[FichaOverlayFeature] = []
+    for cap, geojson in filas:
+        if not geojson:  # defensive: WHERE already excludes empty clips
+            continue
+        prefijo = _normalizar_cap(cap)
+        clase = prefijo if prefijo else _SIN_CLASIFICAR
+        features.append(
+            FichaOverlayFeature(properties={"clase": clase}, geometry=json.loads(geojson))
+        )
+    return features
+
+
+def _overlay_suelos(
+    db: Session, payload: FichaRequest, *, client_ip: str | None
+) -> FichaOverlayResponse:
+    """Soils overlay for a resolved geometry — SAME guard chain as the ficha.
+
+    resolve geometry (404 if absent) → ``assert_within_caps`` (422, outside the
+    semaphore) → audit COMMITTED (survives a later failure) → semaphore (503) →
+    soils clip. Mirrors ``_ficha_de_geometria``: the LOCAL statement_timeout set
+    before the audit commit is gone after it, so it is re-applied inside the
+    semaphore before the clip (F1). The ``canal_cuenca`` stub has no geometry yet,
+    so it keeps the audit + semaphore path and returns an EMPTY FeatureCollection.
+    """
+    _aplicar_statement_timeout(db)  # bounds the resolver query
+    resuelto = _resolver_geometria_overlay(db, payload)
+    if resuelto is None:
+        escribir_auditoria(db, payload, client_ip=client_ip)
+        with slot_de_computo():
+            return FichaOverlayResponse(dataset="suelos", features=[])
+
+    geojson_4326, geojson_32720 = resuelto
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo=payload.tipo, buffer_m=getattr(payload, "buffer_m", None))
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    with slot_de_computo():
+        _aplicar_statement_timeout(db)  # re-apply: the audit COMMIT ended the prior LOCAL
+        return FichaOverlayResponse(dataset="suelos", features=_clip_suelos(db, geojson_4326))
+
+
+def overlay_zona(
+    db: Session, payload: FichaRequest, *, dataset: str, client_ip: str | None
+) -> FichaOverlayResponse:
+    """Opt-in on-map overlay of the analysis clipped to the zone (A(b) slice 1).
+
+    Reuses the ficha's geometry resolvers, caps, audit and semaphore/timeout
+    chain. ``dataset`` is validated to ``"suelos"`` in the router (422 otherwise),
+    so this only ever runs the soils clip here; ``flood_risk`` / ``drainage_need``
+    raster vectorization is slice 2.
+    """
+    return _overlay_suelos(db, payload, client_ip=client_ip)

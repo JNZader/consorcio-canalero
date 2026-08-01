@@ -36,7 +36,7 @@ from app.core.logging import get_logger
 from app.core.rate_limit import DistributedRateLimiter
 from app.db.session import get_db
 from app.domains.geo import ficha_errors, ficha_service
-from app.domains.geo.schemas_ficha import FichaRequest, FichaResponse
+from app.domains.geo.schemas_ficha import FichaOverlayResponse, FichaRequest, FichaResponse
 
 logger = get_logger(__name__)
 
@@ -232,6 +232,80 @@ async def parse_ficha_body(request: Request) -> Any:
         primero = exc.errors()[0]
         campo = ".".join(str(parte) for parte in primero.get("loc", ()) if parte != tipo)
         raise ficha_errors.geometria_invalida(f"{campo or 'cuerpo'}: {primero.get('msg', '')}")
+
+
+# Overlay datasets this slice serves. Slice 1 = soils only (exact PostGIS vector);
+# flood_risk / drainage_need raster vectorization is slice 2.
+_OVERLAY_DATASETS: tuple[str, ...] = ("suelos",)
+
+
+async def parse_overlay_body(request: Request) -> tuple[Any, str]:
+    """Validate the overlay body: the SAME ficha discriminated union + ``dataset``.
+
+    Mirrors ``parse_ficha_body`` so the §2.6 codes survive (``tipo_desconocido`` /
+    ``geometria_invalida``), and adds the ``dataset`` selector: only ``"suelos"``
+    is served in this slice, any other value is a clean 422 ``dataset_no_soportado``.
+    ``dataset`` is popped before the ficha adapter runs because the request models
+    are ``extra="forbid"`` and would otherwise reject the extra key.
+    """
+    crudo = await _cuerpo_crudo(request)
+    if not isinstance(crudo, dict):
+        raise ficha_errors.geometria_invalida("el cuerpo debe ser un objeto JSON")
+    dataset = crudo.get("dataset")
+    if dataset not in _OVERLAY_DATASETS:
+        raise ficha_errors.dataset_no_soportado(dataset, _OVERLAY_DATASETS)
+    cuerpo_ficha = {clave: valor for clave, valor in crudo.items() if clave != "dataset"}
+    tipo = cuerpo_ficha.get("tipo")
+    if tipo not in ficha_errors.TIPOS_VALIDOS:
+        raise ficha_errors.tipo_desconocido(tipo)
+    try:
+        payload = _ficha_adapter.validate_python(cuerpo_ficha)
+    except ValidationError as exc:
+        primero = exc.errors()[0]
+        campo = ".".join(str(parte) for parte in primero.get("loc", ()) if parte != tipo)
+        raise ficha_errors.geometria_invalida(f"{campo or 'cuerpo'}: {primero.get('msg', '')}")
+    return payload, dataset
+
+
+@router.post(
+    "/analisis-zona/overlay",
+    response_model=FichaOverlayResponse,
+    summary="Analisis clipado a la zona para pintar en el mapa (publico)",
+    dependencies=[
+        Depends(enforce_ficha_enabled),
+        Depends(enforce_body_limit),
+        Depends(enforce_ficha_rate_limit),
+    ],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "description": (
+                            "El mismo cuerpo que /analisis-zona mas un selector "
+                            "`dataset` (por ahora solo `suelos`)."
+                        ),
+                        "required": ["dataset"],
+                        "properties": {
+                            "dataset": {"type": "string", "enum": list(_OVERLAY_DATASETS)}
+                        },
+                        "allOf": [_ficha_json_schema],
+                    }
+                }
+            },
+        }
+    },
+)
+def overlay_zona(
+    request: Request,
+    parsed: tuple[Any, str] = Depends(parse_overlay_body),
+    db: Session = Depends(get_db),
+) -> FichaOverlayResponse:
+    """Public, opt-in. Reuses the ficha dependency chain and geometry resolvers."""
+    payload, dataset = parsed
+    return ficha_service.overlay_zona(db, payload, dataset=dataset, client_ip=_client_ip(request))
 
 
 @router.post(

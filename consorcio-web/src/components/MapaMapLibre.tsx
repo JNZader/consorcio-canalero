@@ -10,7 +10,7 @@
  */
 
 import { Box, Stack } from '@mantine/core';
-import type { Feature } from 'geojson';
+import type { Feature, FeatureCollection } from 'geojson';
 
 import maplibregl from 'maplibre-gl';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
@@ -31,7 +31,9 @@ import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useFichaTerritorial } from '../hooks/useFichaTerritorial';
+import { useFichaOverlay } from '../hooks/useFichaOverlay';
 import { FICHA_MAX_BUFFER_M } from '../lib/api/ficha';
+import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -87,7 +89,10 @@ export default function MapaMapLibre() {
   // ── Config & auth ─────────────────────────────────────────────────────────
   const config = useConfigStore((state) => state.config);
 
-  const mapCenter = config?.map.center ?? { lat: MAP_CENTER[0], lng: MAP_CENTER[1] };
+  const mapCenter = config?.map.center ?? {
+    lat: MAP_CENTER[0],
+    lng: MAP_CENTER[1],
+  };
   const centerLat = mapCenter.lat;
   const centerLng = mapCenter.lng;
   const zoom = config?.map.zoom ?? DEFAULT_ZOOM;
@@ -217,7 +222,9 @@ export default function MapaMapLibre() {
   // Known race (documented trade-off): toggling catastro ON and exporting
   // KMZ before the fetch resolves silently omits the layer — same graceful
   // degradation buildKmz already applies to any missing slot.
-  const { catastroMap } = useCatastroMap({ enabled: !!vectorVisibility.catastro });
+  const { catastroMap } = useCatastroMap({
+    enabled: !!vectorVisibility.catastro,
+  });
 
   const {
     zonaCollection,
@@ -366,6 +373,33 @@ export default function MapaMapLibre() {
   // props so `InfoPanel` never fetches (design §6). Idle when nothing selected.
   // A `tipo=parcela` (click) or `tipo=poligono` (free draw) request, or null.
   const ficha = useFichaTerritorial(fichaInteraction.request);
+
+  // On-map overlay (A(b) slice 1, soils): opt-in "ver recortado en el mapa"
+  // toggle. The overlay query is ENABLED only while the toggle is on AND a zone
+  // is selected, so it never fetches unless the user opts in. The geometry lives
+  // in the ficha state, so a null request (clearFicha / every mode switch resets
+  // the coordinator to IDLE) drops the fetch and the paint effect below removes
+  // any lingering layer.
+  const [showFichaOverlay, setShowFichaOverlay] = useState(false);
+  const fichaOverlayEnabled = showFichaOverlay && fichaInteraction.request !== null;
+  const fichaOverlay = useFichaOverlay(fichaInteraction.request, 'suelos', fichaOverlayEnabled);
+  const handleToggleFichaOverlay = useCallback((visible: boolean) => {
+    setShowFichaOverlay(visible);
+  }, []);
+
+  // Paint / clear the clipped overlay. `visible` is false whenever the toggle is
+  // off, no zone is selected, or the fetch has no data yet — so a stale overlay
+  // never lingers over a new selection (the query key changes with the selection,
+  // dropping the previous data, and this effect then removes the layer).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncFichaOverlayLayers(map, {
+      featureCollection: (fichaOverlay.data as unknown as FeatureCollection | undefined) ?? null,
+      dataset: 'suelos',
+      visible: fichaOverlayEnabled && !!fichaOverlay.data,
+    });
+  }, [mapReady, fichaOverlayEnabled, fichaOverlay.data]);
 
   // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
   // own mount effect (which populates its imperative handle) is a CHILD passive
@@ -729,6 +763,8 @@ export default function MapaMapLibre() {
               fichaError={ficha.error}
               fichaData={ficha.data}
               onCloseFicha={fichaInteraction.clearFicha}
+              fichaOverlayVisible={showFichaOverlay}
+              onToggleFichaOverlay={handleToggleFichaOverlay}
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}
