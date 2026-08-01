@@ -35,7 +35,7 @@ import type { DrawnPolygon } from '../map/DrawControl';
 import type { FichaRequest, FichaTipo } from '../../lib/api/ficha';
 import { FICHA_DEFAULT_BUFFER_M } from '../../lib/api/ficha';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
-import type { ParcelaResuelta } from './useMapInteractionEffects';
+import type { ParcelaDisplayProps, ParcelaResuelta } from './useMapInteractionEffects';
 
 /** The canal + buffer the user has selected for a `tipo=canal_buffer` request. */
 export interface CanalSeleccionado {
@@ -66,6 +66,8 @@ export interface UseFichaInteractionResult {
   readonly tipo: FichaTipo;
   /** Account of the clicked parcel, for the client-side BPA join (null otherwise). */
   readonly nroCuenta: string | null;
+  /** Display-only identity props of the clicked parcel, for the ficha header. */
+  readonly parcelaProps: ParcelaDisplayProps | null;
   /** Enter free-draw mode; discards the previous ficha and cancels measurement. */
   readonly startDraw: () => void;
   /** Leave free-draw mode and clear the drawn ficha. */
@@ -153,9 +155,7 @@ export function useFichaInteraction(
     // While drawing OR in canal mode, another control owns clicks — ignore parcel
     // resolution so a stray click cannot wipe the active selection. Otherwise a
     // fresh parcel click supersedes any drawn/canal ficha.
-    setState((prev) =>
-      prev.drawing || prev.canalMode ? prev : { ...IDLE, parcela }
-    );
+    setState((prev) => (prev.drawing || prev.canalMode ? prev : { ...IDLE, parcela }));
   }, []);
 
   const interactionMode: MapInteractionMode = state.drawing
@@ -174,11 +174,7 @@ export function useFichaInteraction(
         ? { tipo: 'parcela', nomenclatura: state.parcela.nomenclatura }
         : null;
 
-  const tipo: FichaTipo = state.poligono
-    ? 'poligono'
-    : state.canal
-      ? 'canal_buffer'
-      : 'parcela';
+  const tipo: FichaTipo = state.poligono ? 'poligono' : state.canal ? 'canal_buffer' : 'parcela';
 
   return {
     state,
@@ -186,6 +182,7 @@ export function useFichaInteraction(
     request,
     tipo,
     nroCuenta: state.parcela?.nroCuenta ?? null,
+    parcelaProps: state.parcela?.props ?? null,
     startDraw,
     stopDraw,
     completePolygon,

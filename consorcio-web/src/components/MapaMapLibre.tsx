@@ -289,31 +289,6 @@ export default function MapaMapLibre() {
     return () => resizeObserver.disconnect();
   }, [mapReady]);
 
-  useMapLayerEffects({
-    mapRef,
-    mapReady,
-    baseLayer,
-    vectorVisibility,
-    soilCollection,
-    roadsCollection,
-    basins,
-    zonaCollection,
-    approvedZonesCollection,
-    activeDemLayerId,
-    showDemOverlay,
-    demTileUrl,
-    allGeoLayers,
-    setVisibleRasterLayers,
-    showIGNOverlay,
-    viewMode,
-    selectedImage,
-    comparison,
-    waterwaysDefs: WATERWAY_DEFS,
-    pilarVerde,
-    canales: canalesData,
-    escuelas: escuelasData,
-  });
-
   useMapInitialization({
     maplibre: maplibregl,
     containerRef,
@@ -345,6 +320,39 @@ export default function MapaMapLibre() {
   // `clearMeasurements` so only one MapboxDraw instance ever mounts.
   const fichaInteraction = useFichaInteraction(measurementState.mode, clearMeasurements);
 
+  // Canal-selection mode gate (A6). Declared here so it can feed BOTH the
+  // vt_canal_network cyan-line effect below AND `useMapLayerEffects`, which is
+  // the SINGLE owner of the static `canales_relevados-line` visibility: passing
+  // `isFichaCanal` lets it suppress the redundant relevados twin race-free (no
+  // second effect fighting over the same layer).
+  const isFichaCanal = fichaInteraction.interactionMode === 'ficha-canal';
+
+  useMapLayerEffects({
+    mapRef,
+    mapReady,
+    baseLayer,
+    vectorVisibility,
+    soilCollection,
+    roadsCollection,
+    basins,
+    zonaCollection,
+    approvedZonesCollection,
+    activeDemLayerId,
+    showDemOverlay,
+    demTileUrl,
+    allGeoLayers,
+    setVisibleRasterLayers,
+    showIGNOverlay,
+    viewMode,
+    selectedImage,
+    comparison,
+    waterwaysDefs: WATERWAY_DEFS,
+    pilarVerde,
+    canales: canalesData,
+    escuelas: escuelasData,
+    isFichaCanal,
+  });
+
   useMapInteractionEffects({
     mapRef,
     mapReady,
@@ -370,7 +378,9 @@ export default function MapaMapLibre() {
   // Canal mode (A6): mount + show `vt_canal_network` (the id-bearing Martin
   // layer) ONLY while selecting a canal, so it never competes for clicks with
   // the parcel/BPA stack in idle. Hidden again on exit (design §6.3, JDB-013).
-  const isFichaCanal = fichaInteraction.interactionMode === 'ficha-canal';
+  // The redundant static `canales_relevados` twin is NOT touched here — its
+  // suppression is owned by `useMapLayerEffects` via `isFichaCanal` so there is
+  // exactly one source of truth for that layer's visibility (no flicker race).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -714,6 +724,7 @@ export default function MapaMapLibre() {
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}
+              fichaParcelaProps={fichaInteraction.parcelaProps}
               fichaLoading={ficha.isLoading}
               fichaError={ficha.error}
               fichaData={ficha.data}

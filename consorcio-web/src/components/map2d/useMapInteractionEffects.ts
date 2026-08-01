@@ -4,10 +4,28 @@ import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 
+/**
+ * Whitelisted PUBLIC identity fields of a clicked catastro parcel, surfaced as a
+ * header in the ficha panel (display-only — the ficha REQUEST still uses only
+ * `nomenclatura`). These are the same fields the old InfoPanel catastro card
+ * dumped; they are already public in the catastro tile whitelist (PR #83).
+ */
+export interface ParcelaDisplayProps {
+  readonly nomenclatura: string | null;
+  readonly nroCuenta: string | null;
+  readonly desigOficial: string | null;
+  readonly superficieHa: string | null;
+  readonly departamento: string | null;
+  readonly pedania: string | null;
+  readonly tipoParcela: string | null;
+}
+
 /** A catastro parcel resolved from a click, for the ficha territorial request. */
 export interface ParcelaResuelta {
   nomenclatura: string;
   nroCuenta: string | null;
+  /** Display-only identity props, rendered as the ficha header (see bug-3 fix). */
+  readonly props: ParcelaDisplayProps;
 }
 
 interface UseMapInteractionEffectsParams {
@@ -45,6 +63,9 @@ interface UseMapInteractionEffectsParams {
 
 type FeatureWithLayer = Feature & { readonly layer?: { readonly id?: string } };
 
+/** The clickable catastro fill layer id — the only source a parcel resolves from. */
+const CATASTRO_LAYER_ID = `${SOURCE_IDS.CATASTRO}-fill`;
+
 /** Tolerant read of a property across the casings the catastro sources use. */
 function readProp(props: Record<string, unknown>, ...keys: string[]): string | null {
   for (const key of keys) {
@@ -63,15 +84,26 @@ function readProp(props: Record<string, unknown>, ...keys: string[]): string | n
  * join). Returns `null` when the click did not hit a catastro parcel.
  */
 function resolveParcela(features: FeatureWithLayer[]): ParcelaResuelta | null {
-  const catastroLayerId = `${SOURCE_IDS.CATASTRO}-fill`;
-  const feature = features.find((f) => f.layer?.id === catastroLayerId);
+  const feature = features.find((f) => f.layer?.id === CATASTRO_LAYER_ID);
   if (!feature) return null;
   const props = (feature.properties as Record<string, unknown> | null) ?? {};
   const nomenclatura = readProp(props, 'nomenclatura', 'Nomenclatura');
   if (!nomenclatura) return null;
+  const nroCuenta = readProp(props, 'nro_cuenta', 'Nro_Cuenta');
   return {
     nomenclatura,
-    nroCuenta: readProp(props, 'nro_cuenta', 'Nro_Cuenta'),
+    nroCuenta,
+    // Display-only identity header (bug-3 combine). All fields are public in the
+    // catastro tile whitelist; missing ones stay null and are hidden by the panel.
+    props: {
+      nomenclatura,
+      nroCuenta,
+      desigOficial: readProp(props, 'desig_oficial', 'Desig_Oficial'),
+      superficieHa: readProp(props, 'superficie_ha', 'Superficie_Ha'),
+      departamento: readProp(props, 'departamento', 'Departamento'),
+      pedania: readProp(props, 'pedania', 'Pedania'),
+      tipoParcela: readProp(props, 'tipo_parcela', 'Tipo_Parcela'),
+    },
   };
 }
 
@@ -88,8 +120,7 @@ export function resolveCanalId(features: FeatureWithLayer[]): number | null {
   const feature = features.find((f) => f.layer?.id === canalLayerId) ?? features[0];
   if (!feature) return null;
   const raw =
-    (feature as { id?: unknown }).id ??
-    (feature.properties as Record<string, unknown> | null)?.id;
+    (feature as { id?: unknown }).id ?? (feature.properties as Record<string, unknown> | null)?.id;
   const asNumber = typeof raw === 'string' ? Number(raw) : raw;
   if (typeof asNumber !== 'number' || !Number.isFinite(asNumber) || asNumber < 1) return null;
   return Math.trunc(asNumber);
@@ -198,15 +229,28 @@ export function useMapInteractionEffects({
         layers: clickableLayers.filter((id) => map.getLayer(id)),
       });
 
+      const featuresWithLayer = features as unknown as FeatureWithLayer[];
+      const parcela = resolveParcela(featuresWithLayer);
+
+      // Bug-3 (combine): when a catastro parcel resolves, its identity + analysis
+      // live in the SINGLE ficha panel, so the redundant generic InfoPanel
+      // catastro card must NOT also open. Suppress the catastro feature(s) from
+      // the InfoPanel while keeping every NON-catastro feature (BPA, canales,
+      // escuelas, soil, …) so those layers keep working. When no parcel
+      // resolved, the full feature list flows through unchanged.
+      const featuresForInfoPanel = parcela
+        ? featuresWithLayer.filter((f) => f.layer?.id !== CATASTRO_LAYER_ID)
+        : featuresWithLayer;
+
       // Phase 8 — surface ALL overlapping features. MapLibre preserves the
       // on-screen z-order (top-most first) which matches the user-intuitive
       // "most specific first" ordering we want in the panel.
-      setSelectedFeatures(features as unknown as Feature[]);
+      setSelectedFeatures(featuresForInfoPanel as unknown as Feature[]);
 
       // A4 — a catastro click ADDITIONALLY fires the ficha (design §6.2). A
       // click that hit no parcel clears the current ficha so it does not linger
       // over an unrelated area.
-      onParcelaResolved?.(resolveParcela(features as unknown as FeatureWithLayer[]));
+      onParcelaResolved?.(parcela);
     };
 
     map.on('click', handleClick);

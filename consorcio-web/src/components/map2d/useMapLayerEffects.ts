@@ -82,6 +82,14 @@ interface UseMapLayerEffectsParams {
    * fetch failed and the layer mounts an empty source.
    */
   escuelas?: Partial<EscuelasData> | null;
+  /**
+   * True while the map is in ficha canal-selection mode. This hook is the SINGLE
+   * owner of `canales_relevados-line` visibility, so canal mode's suppression of
+   * the redundant static relevados twin (the geometric duplicate of the cyan
+   * `vt_canal_network` line) is computed HERE, alongside its normal toggle
+   * visibility — never in a competing effect. Defaults to `false`.
+   */
+  isFichaCanal?: boolean;
 }
 
 export function useMapLayerEffects({
@@ -107,6 +115,7 @@ export function useMapLayerEffects({
   pilarVerde,
   canales,
   escuelas,
+  isFichaCanal = false,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -291,7 +300,14 @@ export function useMapLayerEffects({
     .map(([key, value]) => `${key}:${value ? 1 : 0}`)
     .sort()
     .join('|');
-  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados;
+  // Single source of truth for `canales_relevados-line` visibility: its master
+  // toggle AND canal mode. While selecting a canal the cyan `vt_canal_network`
+  // line renders the SAME geometry, so the static relevados twin is hidden here
+  // to avoid a double trace. Folding `isFichaCanal` into this boolean (a dep of
+  // the canales sync effect) makes the suppression race-free — toggling any
+  // unrelated layer while in canal mode re-runs the effect with the twin still
+  // hidden, and leaving canal mode restores it to the live toggle state.
+  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados && !isFichaCanal;
   const canalesPropuestosVisible = !!vectorVisibility.canales_propuestos;
 
   useEffect(() => {
