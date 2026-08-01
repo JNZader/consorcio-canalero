@@ -11,13 +11,14 @@ offscreen renderer later in the run — segfault 3/3 in CI (see
 documented in ``test_suelos_etl.TestAdminRefreshEndpoint`` (``app.main.routes``
 AND ``api_router.routes``) also hit a module-identity quirk that emptied the
 aggregator on the CI interpreter only. The route table is therefore built
-in-process with ``_app_de_ficha()`` from inside a FUNCTION-scoped fixture: a
-MODULE-scoped fixture runs during early setup, when ``geo_router`` has no routes
-yet on the CI interpreter (the table came back empty). The behavioural tests in
-this file mount ``_app_de_ficha()`` inside the test body and pass in CI; the
-structural walk now uses that same moment. It asserts the route set is non-empty
-first, so an empty table fails as "no pude construir la tabla" instead of
-passing vacuously.
+in-process with ``_app_de_ficha()`` INSIDE each test body — never in a
+module-scoped fixture, which runs during early setup when ``geo_router`` still
+has no routes on the CI interpreter (the table came back empty three times).
+The behavioural tests here mount ``_app_de_ficha()`` in the body and pass in CI,
+proving the in-body app has its routes; the structural walks now use that same
+moment, and ``test_la_ficha_esta_montada_y_es_publica`` is a pure TestClient
+behavioural check that does not depend on the route table at all. Each walk
+asserts the route set is non-empty first, failing loudly instead of vacuously.
 
 **Reality check recorded here (deviation from the spec wording).** The spec says
 ``analisis-zona`` will be "the ONLY ``/api/v2/geo`` route without an operator
@@ -117,30 +118,40 @@ def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
     return tabla
 
 
-@pytest.fixture
-def tabla() -> list[tuple[str, str, set[str]]]:
-    return _tabla_de_rutas()
+def test_la_ficha_esta_montada_y_es_publica():
+    """spec › "Discriminated-union request body" — la ruta existe, es POST, sin auth.
 
+    Behavioral: `_app_de_ficha()` se construye en el CUERPO (no en fixture) — es
+    el momento en que los demas tests behavioral de este archivo reciben 200/503
+    en CI, lo que prueba que la app in-body SI tiene las rutas. Un TestClient
+    confirma montada (no 404), POST-only (GET -> 405) y publica (POST sin auth
+    NO da 401/403; la ficha apagada por defecto da 503).
+    """
+    from fastapi.testclient import TestClient
 
-def test_la_ficha_esta_montada_y_es_publica(tabla):
-    """spec › "Discriminated-union request body" — the route exists, POST, no auth."""
-    fichas = [fila for fila in tabla if fila[1] == FICHA_PATH]
-    assert fichas, f"{FICHA_PATH} no esta montada en el router geo"
-    assert len(fichas) == 1, "la ficha quedo montada mas de una vez"
+    with TestClient(_app_de_ficha()) as cliente:
+        assert cliente.get(FICHA_PATH).status_code == 405, "la ficha deberia ser POST-only"
+        resp = cliente.post(FICHA_PATH, json={"tipo": "parcela", "nomenclatura": "X"})
+    assert resp.status_code != 404, f"{FICHA_PATH} no esta montada"
+    assert resp.status_code not in (401, 403), "la ficha es publica; apareció un guard de auth"
+    assert resp.status_code == 503, "apagada por defecto deberia dar 503 sin tocar auth"
 
-    metodo, _, dependencias = fichas[0]
-    assert metodo == "POST"
-    assert not (dependencias & MARCADORES_AUTH), (
-        "la ficha es publica por diseño; apareció una dependencia de auth: "
-        f"{sorted(dependencias & MARCADORES_AUTH)}"
+    # Complemento estructural sobre la MISMA app in-body (no fixture): las
+    # guardias obligatorias estan presentes y ninguna dependencia de auth.
+    _, _, deps = next(fila for fila in _tabla_de_rutas() if fila[1] == FICHA_PATH)
+    assert not (deps & MARCADORES_AUTH), (
+        f"guard de auth inesperado: {sorted(deps & MARCADORES_AUTH)}"
     )
-    assert GUARDIAS_FICHA <= dependencias, (
-        f"faltan guardias obligatorias en la ficha: {sorted(GUARDIAS_FICHA - dependencias)}"
-    )
+    assert GUARDIAS_FICHA <= deps, f"faltan guardias: {sorted(GUARDIAS_FICHA - deps)}"
 
 
-def test_ninguna_ruta_geo_nueva_quedo_sin_auth(tabla):
-    """spec › "No auth regression on sibling routes" (JD-A-010)."""
+def test_ninguna_ruta_geo_nueva_quedo_sin_auth():
+    """spec › "No auth regression on sibling routes" (JD-A-010).
+
+    Route walk sobre la app in-body (construida aca, no en fixture module-scope
+    — ese fue el bug de CI: el geo_router aparecia vacio en el setup temprano).
+    """
+    tabla = _tabla_de_rutas()
     abiertas = {(metodo, path) for metodo, path, deps in tabla if not (deps & MARCADORES_AUTH)}
     esperadas = RUTAS_PUBLICAS_PREEXISTENTES | {("POST", FICHA_PATH)}
 
@@ -153,16 +164,15 @@ def test_ninguna_ruta_geo_nueva_quedo_sin_auth(tabla):
     )
 
 
-def test_el_limitador_de_la_ficha_no_toca_ninguna_otra_ruta(tabla):
+def test_el_limitador_de_la_ficha_no_toca_ninguna_otra_ruta():
     """spec › "Existing geo endpoints unaffected" (JDB-003).
 
-    The structural half of the guard: the limiter and the body guard exist on
-    exactly one route. Behavioural exhaustion of the limiter against
-    ``/zonal-stats`` is A3a-ii.
+    Las guardias de la ficha existen en exactamente una ruta. App in-body.
+    La saturacion behavioral del limiter contra ``/zonal-stats`` es A3a-ii.
     """
     contaminadas = {
         (metodo, path)
-        for metodo, path, deps in tabla
+        for metodo, path, deps in _tabla_de_rutas()
         if (deps & GUARDIAS_FICHA) and path != FICHA_PATH
     }
     assert not contaminadas, (
