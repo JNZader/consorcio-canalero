@@ -122,10 +122,31 @@ their immediate parent PR branch.
 - [x] A3a.3 Create `gee-backend/app/domains/geo/router_ficha.py` — dedicated public `APIRouter`, `POST /analisis-zona`, sync `def` handler, async limiter dependency (30/min per IP, `key_prefix="ratelimit:ficha:"`, cost=5 for `poligono`/`canal_buffer`/`canal_cuenca`); include it from `router.py`. MUST NOT touch `router_analysis.py`. AC: `geo-analysis-endpoint` › "Existing geo endpoints unaffected" (JDB-003). (~85)
 - [x] A3a.4 Body-size guard on the ficha router: reject `Content-Length > ficha_max_body_bytes` with 413 `cuerpo_excedido` before parsing; chunked bodies read through a counting guard. AC: "Oversized body rejected before parsing" (JDB-007). (~50)
 - [x] A3a.5 `gee-backend/app/config.py`: add `ficha_rate_limit_*`, `ficha_max_area_ha` (20 000), `ficha_max_envelope_ha` (60 000), `ficha_max_vertices` (1 000), `ficha_max_buffer_m` (2 000), `ficha_max_body_bytes` (1 MiB), `ficha_max_concurrency` (4), `ficha_low_confidence_pixel_ratio` (10). (~25)
-- [ ] A3a.6 `gee-backend/app/core/rate_limit.py`: replace the `cost` loop of awaited `zadd` calls with a single pipelined `zadd` mapping; document the residual non-atomicity and the Redis-down (in-memory degrade, not fail-open) policy. (JDB-020) (~25)
+- [x] A3a.6 `gee-backend/app/core/rate_limit.py`: replace the `cost` loop of awaited `zadd` calls with a single pipelined `zadd` mapping; document the residual non-atomicity and the Redis-down (in-memory degrade, not fail-open) policy. (JDB-020) (~25)
+      **A3a-ii**: `_check_redis` now builds one `{f"{now}:{i}": now for i in range(cost)}` mapping
+      and pipelines the `zadd` with the `expire` (one round-trip instead of `cost` awaited zadds).
+      The check-then-act residual non-atomicity + the in-memory-degrade (never fail-open) policy are
+      documented inline. `test_rate_limit_recovery` still green (it only exercises `_get_redis`).
 - [~] A3a.7 (PARCIAL en A3a-i: `assert_within_caps` + audit `zona.analisis` commiteada + `BoundedSemaphore` 2 s → 503 `sobrecarga` + placeholder ya estan; falta la resolucion de geometria por `tipo`) Create `gee-backend/app/domains/geo/ficha_service.py` **stub**: geometry resolution per `tipo` (parcela + poligono only in this PR), `assert_within_caps(geom, *, tipo)` after **every** resolution and before any I/O, `audit_log` row committed before compute (action `zona.analisis`, `user_id` NULL, `client_ip` set), module-level `threading.BoundedSemaphore` with 2 s timeout → 503 `sobrecarga`. Compute returns a fixed placeholder. AC: `geo-analysis-endpoint` › "Caps are enforced on server-derived geometries" + "One audit row per accepted request" (JD-A-002/JDB-006/JDB-022). (~120)
-- [ ] A3a.8 **Ledger-mandated error-contract tests** — `tests/new/test_ficha_error_contract.py`, one test per §2.6 row (JD-A-006): 404 `parcela_no_encontrada`, 404 `canal_no_encontrado`, 409 `variante_no_disponible`, 413 `cuerpo_excedido`, 422 `tipo_desconocido`, 422 `geometria_invalida`, 422 `cap_excedido` ×3 (area / buffer / oversized catchment), 429 `limite_de_tasa`, 503 `dataset_no_cargado`, 503 `raster_ilegible`, 503 `sobrecarga`. Rows whose `tipo` ships later assert the union/cap path only and are completed in A5/A6/A7. (~150)
-- [ ] A3a.9 **Ledger-mandated limiter-isolation test** (JDB-003): exhaust the ficha limiter, then assert `/api/v2/geo/zonal-stats` is not throttled. (~30)
+- [~] A3a.8 **Ledger-mandated error-contract tests** — `tests/new/test_ficha_error_contract.py`, one test per §2.6 row (JD-A-006): 404 `parcela_no_encontrada`, 404 `canal_no_encontrado`, 409 `variante_no_disponible`, 413 `cuerpo_excedido`, 422 `tipo_desconocido`, 422 `geometria_invalida`, 422 `cap_excedido` ×3 (area / buffer / oversized catchment), 429 `limite_de_tasa`, 503 `dataset_no_cargado`, 503 `raster_ilegible`, 503 `sobrecarga`. Rows whose `tipo` ships later assert the union/cap path only and are completed in A5/A6/A7. (~150)
+      **A3a-ii (partial by design — the rest are gated on later slices):** created
+      `tests/new/test_ficha_error_contract.py`, all behavioral (TestClient), feature-flag ON via
+      monkeypatch. DONE now: 413 `cuerpo_excedido`, 429 `limite_de_tasa` (+ `Retry-After`), 422
+      `tipo_desconocido` (through the wire → `parse_ficha_body`), 422 `geometria_invalida`
+      (malformed-polygon class the schema owns; true bow-tie self-intersection is A5/PostGIS), 422
+      `cap_excedido` for `vertices` + `buffer_m` on the wire and for `area_ha` as a unit assertion on
+      `assert_within_caps` (area is server-derived → wire path lands in A3b/A5), 503 `sobrecarga`
+      (semaphore drained). DEFERRED (need geometry resolution / a raster loop, not in this slice):
+      404 `parcela_no_encontrada` (A3b), 404 `canal_no_encontrado` (A6), 409 `variante_no_disponible`
+      (A7), 503 `dataset_no_cargado` (A3b), 503 `raster_ilegible` (A3b). Their `FichaError`
+      constructors are already shape-covered in `ficha_errors`.
+- [x] A3a.9 **Ledger-mandated limiter-isolation test** (JDB-003): exhaust the ficha limiter, then assert `/api/v2/geo/zonal-stats` is not throttled. (~30)
+      **A3a-ii**: `test_el_limitador_de_ficha_no_estrangula_a_las_hermanas` — behavioral: exhausts the
+      ficha limiter with real ficha POSTs, then asserts a public sibling (`/api/v2/geo/layers/public`)
+      is not 429'd. A public sibling avoids a 401 masking the check; `zonal-stats` is operator-only
+      (401 without a token), so the isolation property is proven on a route whose response is not
+      gated by auth. Plus the ordering test `test_429_precede_a_422` proves the limiter fires before
+      the parser.
 - [x] A3a.10 **Ledger-mandated route-table guard test** (JD-A-010, judge-forced): `tests/new/test_ficha_router_contract.py` walks the geo router mounted in a locally built app (NUNCA `app.main` ni el agregador — regla de identidad de modulos en CI) y congela el conjunto de rutas `/api/v2/geo` sin auth. **Correccion factual**: `analisis-zona` NO es la unica ruta sin dependencia de operador — ya habia 7 publicas en `develop` (catalogo publico de capas, proxy de tiles, lecturas + PDF de approved-zones); el test congela esa lista y falla si aparece una nueva. AC: `geo-analysis-endpoint` › "No auth regression on sibling routes". (~30)
 
 ## PR A3b — Phase 1b: real compute (base: A3a)
