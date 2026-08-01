@@ -309,6 +309,11 @@ def test_503_sobrecarga_semaforo_saturado(db, monkeypatch):
     so the request's ``slot_de_computo`` times out and raises ``sobrecarga``. The
     audit row is written first by design (before the semaphore), which is fine —
     this asserts only the 503 code and its ``retry_after``.
+
+    A3b boundary: ``tipo=parcela`` now resolves the catastro geometry BEFORE the
+    semaphore (§2.5 order), so an unseeded parcela would 404 first. ``poligono``
+    keeps the placeholder path (audit → semaphore → placeholder) and reaches the
+    slot with no DB lookup, so it isolates the semaphore exactly as before.
     """
     from fastapi.testclient import TestClient
 
@@ -324,9 +329,7 @@ def test_503_sobrecarga_semaforo_saturado(db, monkeypatch):
     assert slots.acquire(blocking=False), "no se pudo drenar el unico slot"
     try:
         with TestClient(_app_de_ficha(db)) as cliente:
-            respuesta = cliente.post(
-                FICHA_PATH, json={"tipo": "parcela", "nomenclatura": "19-04-12-3456-7"}
-            )
+            respuesta = cliente.post(FICHA_PATH, json=POLIGONO_OK)
     finally:
         slots.release()
         ficha_service.reset_ficha_slots()
