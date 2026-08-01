@@ -151,13 +151,26 @@ their immediate parent PR branch.
 
 ## PR A3b — Phase 1b: real compute (base: A3a)
 
-- [ ] A3b.1 Soils in `ficha_service.py`: run the `0015:94-113` SQL parameterized by the request geometry (`ST_Intersection` in 32720), never reading `mv_suelos_por_zona`. AC: `geo-analysis-endpoint` › "Per-class breakdown returned". (~80)
-- [ ] A3b.2 Residual row: `sin_dato_ha = max(0, area_ha - Σ clase.ha)` emitted as `clase: "sin dato"` when > 0.5 % of `area_ha`. AC: `geo-analysis-endpoint` "suelos residual" delta (JDB-009/JD-A-014). (~30)
-- [ ] A3b.3 Class grouping by normalized roman prefix (`IVws → IV`) with the full subclass in `detalle`; NULL `cap` → `"sin clasificar"`, never dropped, never merged into `sin dato` (JDB-010). (~35)
-- [ ] A3b.4 Raster loop over `flood_risk` + `drainage_need` via `extract_zonal_profile`, mapping primitive → wire vocabulary (`full/partial/none` → `total/parcial/sin_cobertura`). Empty `suelos_catastro` → 503 `dataset_no_cargado`. AC: "Empty suelos table" + "Nodata pixels are excluded from percentages". (~90)
-- [ ] A3b.5 Integration tests (real PG, 3-polygon fixture geojson): per-class breakdown sums within 1 %, residual present, NULL cap row, `sin_cobertura` with empty breakdown and `pixel_count` 0, `parcial` on a straddling polygon, 404 unknown nomenclatura, parcel with NULL `nro_cuenta` returns 200 with no BPA field. (~150)
-- [ ] A3b.6 **Ledger-mandated audit-durability test**: force a compute failure and assert the `audit_log` row still exists (committed before compute). AC: "One audit row per accepted request" second clause. (~30)
-- [ ] A3b.7 Perf gate (JD-A-009): 20 sequential requests on the fixture parcel, assert p95 ≤ 1.5 s, record the measured number in the PR body. No "300-600 ms" claim anywhere. (~40)
+- [x] A3b.1 Soils in `ficha_service.py`: run the `0015:94-113` SQL parameterized by the request geometry (`ST_Intersection` in 32720), never reading `mv_suelos_por_zona`. AC: `geo-analysis-endpoint` › "Per-class breakdown returned". (~80)
+      `_SUELOS_SQL` re-parameterizes the MV SHAPE by `ST_SetSRID(ST_GeomFromGeoJSON(:geojson),4326)`;
+      `_suelos_dataset` groups + takes pct against the whole parcel area.
+- [x] A3b.2 Residual row: `sin_dato_ha = max(0, area_ha - Σ clase.ha)` emitted as `clase: "sin dato"` when > 0.5 % of `area_ha`. AC: `geo-analysis-endpoint` "suelos residual" delta (JDB-009/JD-A-014). (~30)
+- [x] A3b.3 Class grouping by normalized roman prefix (`IVws → IV`) with the full subclass in `detalle`; NULL `cap` → `"sin clasificar"`, never dropped, never merged into `sin dato` (JDB-010). (~35)
+      `_normalizar_cap` strips the subclass suffix server-side; NULL/blank → `"sin clasificar"`.
+- [x] A3b.4 Raster loop over `flood_risk` + `drainage_need` via `extract_zonal_profile`, mapping primitive → wire vocabulary (`full/partial/none` → `total/parcial/sin_cobertura`). Empty `suelos_catastro` → 503 `dataset_no_cargado`. AC: "Empty suelos table" + "Nodata pixels are excluded from percentages". (~90)
+      Decision: empty `suelos_catastro` is the 503 hard dependency; a missing/unregistered
+      SECONDARY raster (flood/drainage) is `sin_cobertura` per schema R3-007 (never a dropped key,
+      never a 503); an unreadable raster is 503 `raster_ilegible`.
+- [x] A3b.5 Integration tests (real PG, 3-polygon fixture geojson): per-class breakdown sums within 1 %, residual present, NULL cap row, `sin_cobertura` with empty breakdown and `pixel_count` 0, `parcial` on a straddling polygon, 404 unknown nomenclatura, parcel with NULL `nro_cuenta` returns 200 with no BPA field. (~150)
+      `tests/new/test_ficha_compute.py` — 10 behavioral TestClient tests, real PG, savepoint-isolated
+      fixture (endpoint commits audit mid-request). BPA absence asserted (`nro_cuenta`/`pilar_verde`
+      not in body — client-side join [R1]).
+- [x] A3b.6 **Ledger-mandated audit-durability test**: force a compute failure and assert the `audit_log` row still exists (committed before compute). AC: "One audit row per accepted request" second clause. (~30)
+      `test_auditoria_persiste_tras_falla_de_compute`: corrupt raster → 503 `raster_ilegible`, audit
+      row still present.
+- [x] A3b.7 Perf gate (JD-A-009): 20 sequential requests on the fixture parcel, assert p95 ≤ 1.5 s, record the measured number in the PR body. No "300-600 ms" claim anywhere. (~40)
+      `test_perf_gate_p95`: **measured p95 ≈ 15–19 ms** over 20 sequential requests (synthetic
+      rasters); asserts ≤ 1.5 s. Number to be re-recorded against real rasters in the PR body.
 
 ## PR A4 — Phase 1c: ficha card + wiring (base: A3b)
 
