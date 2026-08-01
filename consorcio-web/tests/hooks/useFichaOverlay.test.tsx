@@ -129,4 +129,28 @@ describe("useFichaOverlay", () => {
 		// No additional fetch is issued once the toggle is off.
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
+
+	it("re-fetches with the new dataset when the overlay dataset switches", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(200, OVERLAY_FC));
+
+		const { rerender } = renderHook(
+			({ dataset }: { dataset: "suelos" | "flood_risk" | "drainage_need" }) =>
+				useFichaOverlay(PARCELA, dataset, true),
+			{ wrapper: wrapper(), initialProps: { dataset: "suelos" as const } },
+		);
+
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).dataset).toBe(
+			"suelos",
+		);
+
+		// Switching the dataset changes the query key → a new fetch with the new
+		// dataset in the body (the previous overlay is not reused).
+		rerender({ dataset: "flood_risk" as const });
+
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).dataset).toBe(
+			"flood_risk",
+		);
+	});
 });

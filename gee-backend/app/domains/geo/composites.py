@@ -15,10 +15,12 @@ import rasterio
 from affine import Affine
 from pyproj import CRS, Transformer
 from rasterio.features import rasterize as rasterize_geometry
+from rasterio.features import shapes as raster_shapes
 from rasterio.mask import mask as rasterio_mask
 import shapely
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
 from app.domains.geo.composites_support import (
     # Re-exported so ``composites.DEFAULT_*_WEIGHTS`` resolves for
     # tasks_composite_support (redundant alias = explicit re-export, ruff-clean).
@@ -787,3 +789,143 @@ def extract_zonal_profile(
             ] = ext_fractions[row_start:row_stop, col_start:col_stop]
 
         return _profile(data[valid_mask], fractions[valid_mask], total_weight)
+
+
+# EPSG:32720 (UTM 20S) is the metric working CRS the whole ficha measures in.
+# Simplify tolerances are METERS, so the class polygons are moved into this CRS
+# before ``.simplify`` regardless of the raster's own CRS (the production
+# flood/drainage COGs are already 32720, so that hop is a no-op there).
+_WORK_CRS = CRS.from_epsg(32720)
+_WGS84_CRS = CRS.from_epsg(4326)
+
+
+def vectorize_zonal_classes(
+    raster_path: str,
+    geom: Any,
+    breaks: list[dict],
+    geom_crs: str | CRS = "EPSG:4326",
+    simplify_tolerance_m: float = 8.0,
+) -> list[dict[str, Any]]:
+    """Vectorize ONE raster into per-class DISSOLVED GeoJSON polygons over ONE geometry.
+
+    The on-map overlay counterpart of :func:`extract_zonal_profile`: instead of
+    binning pixel VALUES into ``{clase, ha, pct}`` rows, it turns the same
+    classified pixels into polygons the map can paint, clipped to ``geom``.
+
+    Pipeline (the order matters — see the module notes on stair-step artefacts):
+
+    1. mask the raster to ``geom`` (``crop=True, all_touched=True, filled=False``),
+       exactly like ``extract_zonal_profile`` — same nodata / NaN / outside-geometry
+       handling, so the class polygons cover precisely the pixels the panel counts;
+    2. CLASSIFY the 2D array into class indices using the SAME half-open ``[min, max)``
+       bins as ``_bin_pixels`` (closed on the last), so an overlay class is byte-for-byte
+       the panel's ``RiesgoBins`` class;
+    3. ``rasterio.features.shapes`` emits one geometry per connected same-class run in
+       the RASTER CRS — NOT one per pixel;
+    4. DISSOLVE per class (``unary_union``) so adjacent same-class pixels merge into a
+       few polygons (the payload-bounding step);
+    5. SIMPLIFY at ``simplify_tolerance_m`` metres in EPSG:32720 (topology preserving),
+       BEFORE reprojecting, then ``buffer(0)`` to heal the self-intersections a
+       raster stair-step + simplify can produce;
+    6. reproject 32720 → 4326 through a reused ``Transformer`` and ``buffer(0)`` again,
+       so only valid Polygon/MultiPolygon geometries in EPSG:4326 reach the client.
+
+    Returns a list of ``{"clase": <label>, "geometry": <GeoJSON mapping, EPSG:4326>}``,
+    one entry per class present in the zone. An empty list means the geometry does not
+    overlap the raster, or every covered pixel is nodata, or nothing falls in a bin —
+    never a fabricated feature.
+
+    Raises:
+        ValueError: if the raster declares no CRS (same contract as
+            ``extract_zonal_profile`` — the caller maps read failures to
+            ``raster_ilegible``). The non-overlap ``ValueError`` from
+            ``rasterio.mask`` is caught here and reported as an empty list.
+    """
+    if not breaks:
+        return []
+    geom_shapely = _as_shapely(geom)
+
+    with rasterio.open(raster_path) as src:
+        if not src.crs:
+            raise ValueError(
+                f"raster has no CRS, cannot place the geometry on its grid: {raster_path}"
+            )
+
+        nodata = src.nodata
+        src_crs = CRS.from_user_input(src.crs)
+        geom_crs_resolved = CRS.from_user_input(geom_crs)
+        if geom_crs_resolved != src_crs:
+            to_raster = Transformer.from_crs(geom_crs_resolved, src_crs, always_xy=True)
+            geom_shapely = shapely_transform(to_raster.transform, geom_shapely)
+
+        try:
+            out_image, out_transform = rasterio_mask(
+                src,
+                [mapping(geom_shapely)],
+                crop=True,
+                all_touched=True,
+                filled=False,
+            )
+        except ValueError as exc:
+            message = str(exc).lower()
+            if not any(token in message for token in _NO_OVERLAP_TOKENS):
+                raise
+            logger.info(
+                "vectorize_zonal_classes: geometry does not overlap %s — no features",
+                raster_path,
+            )
+            return []
+
+        band = out_image[0]
+        data = np.asarray(np.ma.getdata(band), dtype=np.float64)
+        outside_geometry = np.ma.getmaskarray(band)
+
+        valid_mask = ~outside_geometry & ~np.isnan(data)
+        if nodata is not None:
+            valid_mask &= data != nodata
+
+        # Same binning as ``_bin_pixels``: half-open ``[min, max)`` for every bin
+        # except the last, which is closed. ``-1`` marks "valid pixel, no bin".
+        classified = np.full(data.shape, -1, dtype=np.int32)
+        last_index = len(breaks) - 1
+        for index, cfg in enumerate(breaks):
+            bin_min = float(cfg["min"])
+            bin_max = float(cfg["max"])
+            if index == last_index:
+                member = (data >= bin_min) & (data <= bin_max)
+            else:
+                member = (data >= bin_min) & (data < bin_max)
+            classified[member & valid_mask] = index
+
+        shape_mask = valid_mask & (classified >= 0)
+        if not shape_mask.any():
+            return []
+
+        # Reuse ONE transformer per call (composites.py:678 pattern). When the
+        # raster is already 32720 (production), ``to_work`` is an identity hop.
+        to_work = (
+            None
+            if src_crs == _WORK_CRS
+            else Transformer.from_crs(src_crs, _WORK_CRS, always_xy=True).transform
+        )
+        work_to_wgs = Transformer.from_crs(_WORK_CRS, _WGS84_CRS, always_xy=True).transform
+
+        grupos: dict[int, list[Any]] = {}
+        for geom_dict, value in raster_shapes(classified, mask=shape_mask, transform=out_transform):
+            grupos.setdefault(int(value), []).append(shape(geom_dict))
+
+        features: list[dict[str, Any]] = []
+        for clase_idx in sorted(grupos):
+            fusionado = unary_union(grupos[clase_idx])  # dissolve same-class pixels
+            if to_work is not None:
+                fusionado = shapely_transform(to_work, fusionado)
+            fusionado = fusionado.simplify(simplify_tolerance_m, preserve_topology=True)
+            fusionado = fusionado.buffer(0)  # heal stair-step self-intersections
+            fusionado = shapely_transform(work_to_wgs, fusionado)
+            fusionado = fusionado.buffer(0)  # heal again after reproject
+            if fusionado.is_empty:
+                continue
+            features.append(
+                {"clase": breaks[clase_idx].get("label"), "geometry": mapping(fusionado)}
+            )
+        return features

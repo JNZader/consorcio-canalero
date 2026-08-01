@@ -17,10 +17,13 @@ import {
   FICHA_OVERLAY_FILL_LAYER,
   FICHA_OVERLAY_LINE_LAYER,
   FICHA_OVERLAY_SOURCE,
+  RIESGO_OVERLAY_FALLBACK_COLOR,
   SOIL_OVERLAY_FALLBACK_COLOR,
+  buildRiesgoOverlayColorExpression,
   buildSoilOverlayColorExpression,
   syncFichaOverlayLayers,
 } from '../../src/components/map2d/fichaOverlayLayers';
+import { LAYER_LEGEND_CONFIG } from '../../src/config/rasterLegend';
 import { SOIL_CAPABILITY_COLORS } from '../../src/hooks/useSoilMap';
 
 interface FakeLayer {
@@ -70,6 +73,10 @@ function createFakeMap(): FakeMap {
     },
     removeLayer: (id: string) => {
       layers.delete(id);
+    },
+    setPaintProperty: (id: string, prop: string, value: unknown) => {
+      const layer = layers.get(id);
+      if (layer) layer.paint = { ...(layer.paint ?? {}), [prop]: value };
     },
   } as unknown as maplibregl.Map;
 
@@ -225,5 +232,60 @@ describe('buildSoilOverlayColorExpression', () => {
       expect(idx).toBeGreaterThan(0);
       expect(expr[idx + 1]).toBe(color);
     }
+  });
+});
+
+describe('buildRiesgoOverlayColorExpression', () => {
+  it.each(['flood_risk', 'drainage_need'] as const)(
+    'resolves each %s class to the SAME color the panel legend uses (no new palette)',
+    (dataset) => {
+      const expr = buildRiesgoOverlayColorExpression(dataset) as unknown as unknown[];
+      const ranges = LAYER_LEGEND_CONFIG[dataset]?.ranges ?? [];
+      expect(ranges.length).toBeGreaterThan(0);
+      for (const range of ranges) {
+        const idx = expr.indexOf(range.label);
+        expect(idx).toBeGreaterThan(0);
+        // The color comes straight from LAYER_LEGEND_CONFIG, not a second palette.
+        expect(expr[idx + 1]).toBe(range.color);
+      }
+      // Falls back to the shared neutral grey for an unknown clase.
+      expect(expr[expr.length - 1]).toBe(RIESGO_OVERLAY_FALLBACK_COLOR);
+    }
+  );
+
+  it("colors flood 'Medio' with the exact rasterLegend color", () => {
+    const expr = buildRiesgoOverlayColorExpression('flood_risk') as unknown as unknown[];
+    const medio = LAYER_LEGEND_CONFIG.flood_risk?.ranges?.find((r) => r.label === 'Medio');
+    const idx = expr.indexOf('Medio');
+    expect(idx).toBeGreaterThan(0);
+    expect(expr[idx + 1]).toBe(medio?.color);
+  });
+});
+
+describe('syncFichaOverlayLayers · dataset switch repaints', () => {
+  it("repaints the fill with the new dataset's palette when the dataset changes", () => {
+    const { map, layers } = createFakeMap();
+
+    // First paint soils.
+    syncFichaOverlayLayers(map, {
+      featureCollection: FC,
+      dataset: 'suelos',
+      visible: true,
+    });
+    const soilColor = layers.get(FICHA_OVERLAY_FILL_LAYER)?.paint?.['fill-color'] as unknown[];
+    expect(soilColor).toContain(SOIL_CAPABILITY_COLORS.IV);
+
+    // Now switch to flood_risk over the same (still-mounted) layers.
+    syncFichaOverlayLayers(map, {
+      featureCollection: FC,
+      dataset: 'flood_risk',
+      visible: true,
+    });
+    const floodColor = layers.get(FICHA_OVERLAY_FILL_LAYER)?.paint?.['fill-color'] as unknown[];
+    const medio = LAYER_LEGEND_CONFIG.flood_risk?.ranges?.find((r) => r.label === 'Medio');
+    expect(floodColor).toContain('Medio');
+    expect(floodColor).toContain(medio?.color);
+    // The soils palette is gone — no stale soil color lingers on the flood overlay.
+    expect(floodColor).not.toContain(SOIL_CAPABILITY_COLORS.IV);
   });
 });

@@ -3,7 +3,7 @@ import type { Feature } from 'geojson';
 import { memo } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
-import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
+import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import type { FichaApiError } from '../../lib/api/ficha';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
@@ -105,6 +105,9 @@ export interface MapUiPanelsProps {
    */
   readonly fichaOverlayVisible?: boolean;
   readonly onToggleFichaOverlay?: (visible: boolean) => void;
+  /** Which dataset the on-map overlay paints (soils / flood_risk / drainage_need). */
+  readonly fichaOverlayDataset?: FichaOverlayDataset;
+  readonly onChangeFichaOverlayDataset?: (dataset: FichaOverlayDataset) => void;
   /**
    * Optional Pilar Verde enriched catastro data — when present, InfoPanel
    * will render `<BpaCard>` for any feature whose `nro_cuenta` matches a
@@ -184,6 +187,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   onCloseFicha,
   fichaOverlayVisible,
   onToggleFichaOverlay,
+  fichaOverlayDataset,
+  onChangeFichaOverlayDataset,
   bpaEnriched,
   bpaHistory,
   exportPngModalOpen,
@@ -331,6 +336,8 @@ export const MapUiPanels = memo(function MapUiPanels({
         onClose={onCloseFicha}
         overlayVisible={fichaOverlayVisible}
         onToggleOverlay={onToggleFichaOverlay}
+        overlayDataset={fichaOverlayDataset}
+        onChangeOverlayDataset={onChangeFichaOverlayDataset}
       />
 
       <ExportPngModal
