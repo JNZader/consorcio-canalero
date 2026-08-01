@@ -386,9 +386,41 @@ their immediate parent PR branch.
 
 ## PR B2 — Phase 4b: precipitation in the ficha (base: A3b **and** B1)
 
-- [ ] B2.1 `ficha_service.py`: assemble `precipitacion_mensual` with its typed shape `{cobertura, low_confidence, pixel_count, unidad:"mm", serie:[{mes, mm}], anual_mm}` in calendar order, via `extract_zonal_profile` with `K = 0`. Zero months registered → 503 `dataset_no_cargado`; some months missing → `cobertura: "sin_cobertura"` for the dataset. AC: `precip-normals-pipeline` › "Monthly series for a zone" + "Zone outside precipitation coverage". (~70)
-- [ ] B2.2 Create `consorcio-web/src/components/map2d/PrecipChart.tsx`: 12-bar recharts chart in calendar order **plus** a mes/mm table and `anual_mm`. AC: `ficha-frontend` › "Full ficha rendered" (JD-A-012). (~90)
-- [ ] B2.3 Tests: `serie` always 12 entries in calendar order when covered; no fabricated zeros outside coverage; `low_confidence` false for a sub-pixel parcel (K=0 override — the JDB-017 regression); vitest renders both chart and table. (~80)
+- [x] B2.1 `ficha_service.py`: assemble `precipitacion_mensual` with its typed shape `{cobertura, low_confidence, pixel_count, unidad:"mm", serie:[{mes, mm}], anual_mm}` in calendar order, via `extract_zonal_profile` with `K = 0`. Zero months registered → 503 `dataset_no_cargado`; some months missing → `cobertura: "sin_cobertura"` for the dataset. AC: `precip-normals-pipeline` › "Monthly series for a zone" + "Zone outside precipitation coverage". (~70)
+      Assembled inside the shared tail `_ficha_de_geometria` (replacing the A3b
+      placeholder), so parcela/poligono/canal_buffer all emit real precip; the
+      `canal_cuenca` placeholder path keeps `sin_cobertura`. New helpers
+      `_precipitacion_dataset` / `_perfil_precip` / `_anual_mm` / `_precip_raster_path`
+      read the B1b lookup `get_latest_precip_normals_by_month` (via a module-level
+      `GeoRepository`) keyed on `settings.ficha_precip_area_id` (new config, default
+      `"consorcio"`). `K=0` via module constant `_PRECIP_K`. `serie` from each
+      month's raster `mean`, `anual_mm` from the annual raster. Distinctions:
+      **zero months registered → 503 `dataset_no_cargado("precipitacion")`**
+      (pipeline not run); **incomplete registration (1..11 months) OR zone outside
+      extent (every month `coverage="none"`) → `sin_cobertura` with empty `serie`,
+      no fabricated `mm:0`**. DB reads wrapped in `_traducir_fallas_db`; unreadable
+      raster → 503 `raster_ilegible`. **Integration note:** precip is now a HARD
+      dependency, so pre-B2 A3b/A5/A6 happy-path tests (which never seeded precip)
+      gained an autouse fixture registering a wide 0.05° normals set — error-path
+      tests short-circuit before precip assembly and were untouched.
+- [x] B2.2 Create `consorcio-web/src/components/map2d/PrecipChart.tsx`: 12-bar recharts chart in calendar order **plus** a mes/mm table and `anual_mm`. AC: `ficha-frontend` › "Full ficha rendered" (JD-A-012). (~90)
+      recharts `^3.7.0` already a dependency (verified — no new dep added). Chart in
+      a fixed-height `Box[data-testid=precip-chart]` (ResponsiveContainer), table
+      `[data-testid=precip-table]` with 12 mes/mm rows + `Tfoot` annual total
+      `[data-testid=precip-anual]`. `cobertura==='sin_cobertura'` → explicit "Sin
+      datos de precipitación para esta zona." (no chart, no `0 mm` rows). Rendered in
+      `FichaTerritorialPanel` next to the other dataset blocks; low-confidence badge
+      reused from `fichaShared`.
+- [x] B2.3 Tests: `serie` always 12 entries in calendar order when covered; no fabricated zeros outside coverage; `low_confidence` false for a sub-pixel parcel (K=0 override — the JDB-017 regression); vitest renders both chart and table. (~80)
+      Backend `tests/new/test_ficha_precip.py` (6, real-PG savepoint, rasters mocked):
+      12-in-calendar-order + anual; disjoint rasters → sin_cobertura/no zeros;
+      **K=0 sub-pixel parcel → `low_confidence` False** (the load-bearing JDB-017
+      assertion, contrasted with flood_risk's K=10 `low_confidence: true` on the
+      IDENTICAL coarse raster in `test_ficha_compute`); zero months → 503; some
+      months missing → sin_cobertura; area_id isolation. Frontend
+      `tests/unit/PrecipChart.test.tsx` (3): chart + 12-row table in calendar order +
+      annual; sin_cobertura state renders without crashing and with no chart/0 mm;
+      low-confidence badge gated on the flag.
 
 ---
 

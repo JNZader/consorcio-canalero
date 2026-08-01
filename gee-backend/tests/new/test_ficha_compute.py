@@ -100,6 +100,50 @@ def ficha_db(test_engine) -> Session:
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _precip_normals_para_ficha(ficha_db, tmp_path):
+    """Register a full set of CHIRPS monthly normals covering the fixture region.
+
+    B2 made monthly precipitation a HARD dependency: with ZERO precip normals
+    registered the ficha now answers 503 ``dataset_no_cargado`` (spec
+    ``precip-normals-pipeline`` › "Monthly series for a zone"). These A3b tests
+    predate B2 and assert the soils / flood / drainage datasets, so a 200 now
+    requires the precip product to exist. A single wide 0.05° raster (≈ CHIRPS
+    native) registered under mes 1..12 + ``anual`` covers the ~105 ha fixture
+    parcel with room to spare. Error-path tests (404 / cap / suelos-empty 503 /
+    raster_ilegible) short-circuit BEFORE precip assembly, so these extra rows
+    are harmless to them.
+    """
+    ruta = str(tmp_path / "precip_region.tif")
+    with rasterio.open(
+        ruta,
+        "w",
+        driver="GTiff",
+        height=40,
+        width=40,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(-63.0, -31.0, 0.05, 0.05),
+        nodata=NODATA,
+    ) as dst:
+        dst.write(np.full((40, 40), 100.0, dtype="float32"), 1)
+    for mes in [*range(1, 13), "anual"]:
+        ficha_db.add(
+            GeoLayer(
+                nombre=f"precip_normal_{mes}",
+                tipo=TipoGeoLayer.PRECIP_NORMAL,
+                fuente=FuenteGeoLayer.MANUAL,
+                archivo_path=ruta,
+                formato=FormatoGeoLayer.GEOTIFF,
+                srid=4326,
+                metadata_extra={"mes": mes, "version": "2026-01-01T00:00:00+00:00"},
+                area_id="consorcio",
+            )
+        )
+    ficha_db.flush()
+
+
 def _app(db: Session) -> Any:
     """Fresh app with ONLY the geo router mounted — never ``app.main``."""
     from fastapi import FastAPI
