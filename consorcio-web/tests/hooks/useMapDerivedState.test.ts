@@ -2,6 +2,7 @@ import type { FeatureCollection } from 'geojson';
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { LAYER_LEGEND_CONFIG } from '../../src/config/rasterLegend';
 import { useMapDerivedState } from '../../src/components/map2d/useMapDerivedState';
 
 function featureCollection(features: any[]): FeatureCollection {
@@ -64,5 +65,42 @@ describe('useMapDerivedState', () => {
     expect(result.current.hasSingleImage).toBe(true);
     expect(result.current.hasComparison).toBe(true);
     expect(result.current.demLayerOptions).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
+  });
+
+  it('exposes flood_risk/drainage_need composites as raster dropdown options with a resolvable legend', () => {
+    const { result } = renderHook(() =>
+      useMapDerivedState({
+        capas: {},
+        caminos: null,
+        soilMap: null,
+        basins: null,
+        waterways: [],
+        allGeoLayers: [
+          { id: 'dem-1', tipo: 'dem_raw', nombre: 'Elevacion (DEM)' },
+          { id: 'flood-1', tipo: 'flood_risk', nombre: 'flood_risk_area' },
+          { id: 'drain-1', tipo: 'drainage_need', nombre: 'drainage_need_area' },
+        ],
+        approvedZones: null,
+        hiddenClasses: {},
+        hiddenRanges: {},
+        activeDemLayerId: null,
+        selectedImage: null,
+        comparison: null,
+        vectorVisibility: {},
+        hasApprovedZones: false,
+        intersectionsLength: 0,
+      })
+    );
+
+    const options = result.current.demLayerOptions;
+    // Composites are no longer excluded — they surface as selectable options.
+    expect(options).toEqual([
+      { value: 'dem-1', label: 'Elevacion (DEM)' },
+      { value: 'flood-1', label: 'Riesgo de Inundacion' },
+      { value: 'drain-1', label: 'Necesidad de Drenaje' },
+    ]);
+    // Their legend config resolves so RasterLegend renders once selected.
+    expect(LAYER_LEGEND_CONFIG.flood_risk).toBeDefined();
+    expect(LAYER_LEGEND_CONFIG.drainage_need).toBeDefined();
   });
 });

@@ -49,9 +49,16 @@ PUBLIC_TILE_CAPABLE_TYPES = {
 
 # Layer types published to anonymous visitors in production.
 # `terrain_class` (clasificación del terreno) se publica a pedido del consorcio
-# (2026-07-30); el resto de los tipos del pipeline DEM sigue detrás de login.
+# (2026-07-30); `flood_risk` y `drainage_need` (composites de riesgo/drenaje) se
+# publican como overlays raster del mapa de la ficha (2026-08-01). El resto de
+# los tipos del pipeline DEM sigue detrás de login.
 # Las subcuencas son otro endpoint (`/geo/basins`), ya público.
-PUBLIC_PRODUCTION_LAYER_TYPES = {"dem_raw", "terrain_class"}
+PUBLIC_PRODUCTION_LAYER_TYPES = {
+    "dem_raw",
+    "terrain_class",
+    "flood_risk",
+    "drainage_need",
+}
 
 
 def _truthy_env_flag(name: str) -> bool:
