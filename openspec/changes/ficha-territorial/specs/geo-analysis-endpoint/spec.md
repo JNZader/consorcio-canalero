@@ -100,9 +100,58 @@ Datasets: `suelos` (vector), `flood_risk`, `drainage_need`, `precipitacion_mensu
 >
 > **Delta (post-JD) — `cobertura` is measured against the request geometry.** `rasterio_mask(crop=True)`
 > returns a window already clipped to the raster extent, so a valid/total pixel ratio can never
-> detect partial coverage. `cobertura` is derived from `valid_pixels * pixel_area_ha` versus the
-> geometry area in EPSG:32720 (`sin_cobertura` at 0, `total` at ≥ 0.99, `parcial` otherwise).
-> Rationale: design §1.2 (JDB-004, JDB-005, JD-A-005).
+> detect partial coverage. `cobertura` is measured against the geometry itself
+> (`sin_cobertura` at 0, `total` at ≥ 0.99, `parcial` otherwise). Rationale: design §1.2
+> (JDB-004, JDB-005, JD-A-005).
+>
+> **Delta (post-4R A2) — raster areas and `cobertura` are FRACTIONAL-WEIGHT, not whole-pixel.**
+> The post-JD formula counted whole pixels (`valid_pixels * pixel_area_ha`) over a mask taken with
+> `all_touched=True`, and divided by the EPSG:32720 geometry area. Measured, that inflated reported
+> hectares by **+4 % to +44 %** depending on parcel size and grid alignment (a 25.00 ha box read
+> 29.16 ha; a 2.25 ha box read 3.24 ha) — and `ha` reaches the UI verbatim beside the true
+> `area_ha`. Worse, the inflation was spent by the `min(1.0, ratio)` clamp: up to ~15 % (500 m
+> parcel) / ~31 % (150 m parcel) of INTERIOR nodata was absorbed and still reported `total`.
+>
+> Every raster pixel therefore carries a coverage weight in `[0, 1]`: 1 or 0 for pixels the
+> geometry's boundary does not cross (one `all_touched=False` center-in-polygon rasterization
+> settles those exactly), and the EXACT areal fraction `geometry ∩ pixel / pixel_area` for the
+> pixels it does cross. Cost scales with the geometry's perimeter, not its area.
+>
+> ```
+> total_weight    = Σ ALL weights of the geometry
+> valid_weight    = Σ weights over pixels INSIDE the raster that are not nodata/NaN
+> covered_area_ha = valid_weight * pixel_area_ha
+> ha   (per class) = Σ weights of that class's valid pixels * pixel_area_ha
+> pct  (per class) = class weight / valid_weight * 100
+> cobertura_ratio  = valid_weight / total_weight
+> cobertura        = sin_cobertura if no valid pixel, or if the geometry has no rasterized
+>                                     area at all (degenerate / self-intersecting collapse):
+>                                     "total" over 0.0 ha would be a confident wrong answer
+>                    total         if cobertura_ratio ≥ 0.99
+>                    parcial       otherwise
+> ```
+>
+> **Delta (post-4R round 3) — both sides of the ratio come from ONE rasterization.** The first
+> implementation of this rule mixed accountings: `valid_weight` was rasterized, but `total_weight`
+> was the analytic `geometry_area / pixel_area`. Any error in the rasterized numerator therefore
+> showed up as fake missing data — measured, a 200 m box read `parcial` at 0.9875 and a 10 m x
+> 3 000 m canal strip read 0.75 with hectares 25 % low, on complete data. The geometry is now
+> rasterized ONCE, over a window aligned to the raster's grid but extended to cover the whole
+> geometry (it may run past the raster's extent), and BOTH weights are read off that one array:
+> the denominator is its full sum, the numerator its sum over pixels that are inside the raster and
+> valid. A parcel fully inside the raster with no nodata therefore scores exactly 1.0 by
+> construction, while the weights of the part hanging off the raster inflate only the denominator
+> and still surface as `parcial`.
+>
+> The ratio is thus self-normalizing: it needs no caller-supplied projected area (a geographic
+> raster with no `geom_area_m2` detects partial coverage instead of defaulting to `total`), and it
+> cannot exceed 1 by construction. **`0.99` is a pure float-noise tolerance** — it absorbs neither
+> `all_touched` edge inflation nor rasterization error, because there is neither. The EPSG:32720
+> geometry area is still accepted, but only feeds `low_confidence`.
+>
+> `pixel_count` stays a RAW integer diagnostic (how many pixels were sampled, edge pixels
+> included); `ha` and `pct` are weighted. The two are deliberately not proportional at the
+> geometry edge. Rationale: 4R findings R3-001 / R3-002 (both 3/3 refuters, measured).
 >
 > **Delta (post-JD) — wire vocabulary.** The internal primitive returns English primitives; the
 > wire contract is the Spanish vocabulary in this spec. Mapping:
@@ -134,6 +183,34 @@ Datasets: `suelos` (vector), `flood_risk`, `drainage_need`, `precipitacion_mensu
 - WHEN the ficha is requested
 - THEN `suelos` contains one entry per class with `clase`, `ha` and `pct`
 - AND the sum of `ha` equals `area_ha` within 1%
+
+#### Scenario: Raster hectares do not inflate on an off-grid parcel
+
+- GIVEN a parcel whose edges do not align with the 30 m raster grid
+- WHEN the ficha is requested
+- THEN the sum of `ha` across a raster dataset's classes equals that dataset's covered area
+  within 1%, and never exceeds `area_ha`
+- AND for a fully covered parcel that sum equals `area_ha` within 1%, not the whole-pixel
+  count times the pixel area
+- AND this holds for ANY parcel size and grid alignment — from a 50 m parcel (under two
+  pixels wide) to a 500 m one, at every offset within the pixel — and for a 20 m x 3 000 m
+  canal strip, which is narrower than one pixel and therefore all edge
+
+#### Scenario: Complete data is never reported as parcial
+
+- GIVEN a parcel entirely inside the raster extent with no nodata pixel under it
+- WHEN the ficha is requested
+- THEN `cobertura` is `total` and `cobertura_ratio` is exactly 1.0, for any parcel size and
+  grid alignment
+- AND it is NOT `parcial` — numerator and denominator are read off the same rasterization,
+  so rasterization error cancels instead of masquerading as missing data
+
+#### Scenario: Interior missing data is reported as parcial
+
+- GIVEN a parcel fully inside the raster extent with an interior nodata hole over ~11% of it
+- WHEN the ficha is requested
+- THEN `cobertura` is `parcial` and `cobertura_ratio` is ≈ 0.89
+- AND it is NOT reported as `total` — the edge inflation that used to pay for the hole is gone
 
 #### Scenario: Low-confidence flag on sub-pixel parcel
 
