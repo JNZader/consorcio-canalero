@@ -37,6 +37,8 @@ from app.core.middleware import (
 )
 from app.core.rate_limit import get_auth_rate_limiter, get_rate_limiter
 from app.core.health import run_health_checks
+from app.domains.geo.ficha_errors import install_ficha_error_handler
+from app.domains.geo.router_ficha import install_ficha_openapi_schemas
 
 APP_VERSION = "2.0.0"
 
@@ -118,6 +120,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Error closing auth rate limiter", error=str(e))
     try:
+        # The ficha limiter owns its own Redis client (own key namespace, own
+        # limits), so it needs its own close — the two above do not reach it
+        # and it would leak the connection on shutdown (R4-007).
+        from app.domains.geo.router_ficha import get_ficha_rate_limiter
+
+        await get_ficha_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing ficha rate limiter", error=str(e))
+    try:
         from app.core.cache import get_cache
 
         await get_cache().close()
@@ -154,6 +165,19 @@ async def app_exception_handler(request: Request, exc: AppException):
     if isinstance(exc, RateLimitExceededError):
         response.headers["Retry-After"] = str(exc.retry_after)
     return response
+
+
+# Flat ``{detail, codigo, …}`` contract of the ficha territorial (design §2.6).
+# Registered here (not in the router) because only an app owns handlers; test
+# apps call the same installer.
+install_ficha_error_handler(app)
+
+# The ficha request body is described by hand via ``openapi_extra`` (the §2.6
+# error codes require validating it inside a dependency, not through a declared
+# parameter), so FastAPI never registers its models. This hoists them into
+# ``components.schemas`` — without it every $ref in that requestBody, including
+# the discriminator mapping, dangles (F3).
+install_ficha_openapi_schemas(app)
 
 
 @app.exception_handler(Exception)
