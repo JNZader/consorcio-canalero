@@ -20,6 +20,10 @@ import shapely
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
 from app.domains.geo.composites_support import (
+    # Re-exported so ``composites.DEFAULT_*_WEIGHTS`` resolves for
+    # tasks_composite_support (redundant alias = explicit re-export, ruff-clean).
+    DEFAULT_DRAINAGE_WEIGHTS as DEFAULT_DRAINAGE_WEIGHTS,
+    DEFAULT_FLOOD_WEIGHTS as DEFAULT_FLOOD_WEIGHTS,
     DEFAULT_WATERWAYS_DIR as _DEFAULT_WATERWAYS_DIR,
     compute_drainage_need_impl,
     compute_flood_risk_impl,

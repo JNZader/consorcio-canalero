@@ -190,3 +190,37 @@ class TestComputeHandTaskSignature:
             "/tmp/hand.tif",
         )
         assert result == {"output_path": "/tmp/hand.tif"}
+
+
+# ---------------------------------------------------------------------------
+# Composite default weights are re-exported through the composites facade
+# ---------------------------------------------------------------------------
+
+
+class TestCompositeDefaultWeightsReexport:
+    """``tasks_composite_support`` reads ``composites.DEFAULT_*_WEIGHTS`` when a
+    composite job is enqueued without explicit weights. Those constants live in
+    ``composites_support`` and MUST be re-exported by the ``composites`` facade,
+    or the composite_analysis task raises ``AttributeError`` after computing
+    flood_risk but before registering the layer (a real prod failure)."""
+
+    def test_default_flood_weights_accessible_via_facade(self):
+        from app.domains.geo import composites
+
+        assert isinstance(composites.DEFAULT_FLOOD_WEIGHTS, dict)
+        assert composites.DEFAULT_FLOOD_WEIGHTS
+
+    def test_default_drainage_weights_accessible_via_facade(self):
+        from app.domains.geo import composites
+
+        assert isinstance(composites.DEFAULT_DRAINAGE_WEIGHTS, dict)
+        assert composites.DEFAULT_DRAINAGE_WEIGHTS
+
+    def test_the_exact_attribute_access_that_crashed_resolves(self):
+        """Mirrors tasks_composite_support.py:79,110 with weights=None."""
+        from app.domains.geo import composites
+
+        weights_flood = None
+        weights_drainage = None
+        assert weights_flood or composites.DEFAULT_FLOOD_WEIGHTS
+        assert weights_drainage or composites.DEFAULT_DRAINAGE_WEIGHTS
