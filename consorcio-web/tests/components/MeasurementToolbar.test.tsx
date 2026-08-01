@@ -207,4 +207,58 @@ expect(medirBtn.getAttribute('style') ?? '').toContain('#fb923c');
     const medirBtn = screen.getByRole('button', { name: /medir/i });
     expect(medirBtn).not.toHaveAttribute('data-variant', 'filled');
   });
+
+  // ── A5.3 — ficha free-draw toggle beside the measurement buttons ──────────
+
+  it('does NOT render the draw button when onToggleFichaDraw is omitted (3D viewer)', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /dibujar polígono/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the draw toggle and calls onToggleFichaDraw on click', async () => {
+    const user = userEvent.setup();
+    const onToggleFichaDraw = vi.fn();
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="idle"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        onToggleFichaDraw={onToggleFichaDraw}
+      />,
+    );
+    const drawBtn = screen.getByRole('button', { name: /dibujar polígono/i });
+    expect(drawBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(drawBtn);
+    expect(onToggleFichaDraw).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the draw toggle pressed + orange when fichaDrawActive (mode ficha-dibujo)', () => {
+    renderWithMantine(
+      <MeasurementToolbar
+        mode="ficha-dibujo"
+        hasMeasurements={false}
+        onStartDistance={() => {}}
+        onStartArea={() => {}}
+        onClear={() => {}}
+        fichaDrawActive
+        onToggleFichaDraw={() => {}}
+      />,
+    );
+    const drawBtn = screen.getByRole('button', { name: /dibujar polígono/i });
+    expect(drawBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(drawBtn.getAttribute('style') ?? '').toContain('#fb923c');
+    // The "Medir" cue must NOT light while drawing (single machine, distinct cues).
+    const medirBtn = screen.getByRole('button', { name: /^medir$/i });
+    expect(medirBtn.getAttribute('style') ?? '').not.toContain('#fb923c');
+  });
 });

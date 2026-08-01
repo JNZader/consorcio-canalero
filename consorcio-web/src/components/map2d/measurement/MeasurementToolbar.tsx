@@ -44,7 +44,7 @@
 import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 
-import { IconPolygon, IconRuler, IconTrash } from '../../ui/icons';
+import { IconPolygon, IconRuler, IconTrash, IconVectorTriangle } from '../../ui/icons';
 import type { MeasurementMode } from './useMeasurement';
 
 export interface MeasurementToolbarProps {
@@ -53,6 +53,14 @@ export interface MeasurementToolbarProps {
   readonly onStartDistance: () => void;
   readonly onStartArea: () => void;
   readonly onClear: () => void;
+  /**
+   * Ficha territorial free-draw (A5). When `onToggleFichaDraw` is provided, a
+   * "Dibujar polígono" toggle renders BESIDE the measurement buttons (design
+   * §6.2 — same floating toolbar). `fichaDrawActive` drives its active cue. The
+   * 3D viewer omits both and gets no draw button.
+   */
+  readonly fichaDrawActive?: boolean;
+  readonly onToggleFichaDraw?: () => void;
 }
 
 export const MeasurementToolbar = memo(function MeasurementToolbar({
@@ -61,8 +69,12 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onStartDistance,
   onStartArea,
   onClear,
+  fichaDrawActive = false,
+  onToggleFichaDraw,
 }: MeasurementToolbarProps) {
-  const isMeasuring = mode !== 'idle';
+  // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
+  // while drawing, but the "Medir" cue must only light for measurement modes.
+  const isMeasuring = mode === 'measuring-distance' || mode === 'measuring-area';
 
   return (
     <Box
@@ -106,6 +118,29 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
+
+        {onToggleFichaDraw && (
+          <Tooltip label="Dibujar polígono (ficha territorial)" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Dibujar polígono"
+              aria-pressed={fichaDrawActive}
+              onClick={onToggleFichaDraw}
+              style={{
+                width: 29,
+                height: 29,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                background: fichaDrawActive ? '#fb923c' : 'transparent',
+                color: fichaDrawActive ? '#fff' : '#333',
+              }}
+            >
+              <IconVectorTriangle size={16} />
+            </UnstyledButton>
+          </Tooltip>
+        )}
 
         {hasMeasurements && (
           <Tooltip label="Limpiar mediciones" position="left" withArrow>

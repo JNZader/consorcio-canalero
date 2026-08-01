@@ -41,6 +41,7 @@ import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { useConfigStore } from '../stores/configStore';
 import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
+import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
@@ -63,7 +64,8 @@ import { useComparisonSlider } from './map2d/useComparisonSlider';
 import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
-import { type ParcelaResuelta, useMapInteractionEffects } from './map2d/useMapInteractionEffects';
+import { useFichaInteraction } from './map2d/useFichaInteraction';
+import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
@@ -103,9 +105,10 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
-  // Ficha territorial (A4) — the catastro parcel resolved by the last click, or
-  // null. Drives `useFichaTerritorial` and the sibling `<FichaTerritorialPanel>`.
-  const [fichaParcela, setFichaParcela] = useState<ParcelaResuelta | null>(null);
+  // Ficha territorial free-draw handle (A5). `useFichaInteraction` (below) owns
+  // all ficha interaction state; this ref lets the container kick off polygon
+  // drawing imperatively once `DrawControl` mounts.
+  const drawControlRef = useRef<DrawControlHandle>(null);
   // Startup default: 'satellite' so the first-load map shows Satélite + Imagen
   // (single view when an image is selected) plus Hidrografía + Red Vial.
   const [baseLayer, setBaseLayer] = useState<'osm' | 'satellite'>(DEFAULT_BASE_LAYER);
@@ -333,19 +336,48 @@ export default function MapaMapLibre() {
     clear: clearMeasurements,
   } = useMeasurement(measurementMap);
 
+  // The ONE interaction-mode coordinator (design §6.1, JDB-012): it derives the
+  // single mode from measurement + ficha-draw, enforces their mutual exclusion,
+  // and owns parcel/polygon selection. Entering draw mode cancels measurement via
+  // `clearMeasurements` so only one MapboxDraw instance ever mounts.
+  const fichaInteraction = useFichaInteraction(measurementState.mode, clearMeasurements);
+
   useMapInteractionEffects({
     mapRef,
     mapReady,
-    measurementMode: measurementState.mode,
+    measurementMode: fichaInteraction.interactionMode,
     setSelectedFeatures,
-    onParcelaResolved: setFichaParcela,
+    onParcelaResolved: fichaInteraction.resolveParcela,
   });
 
   // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
-  // props so `InfoPanel` never fetches (design §6). Idle when no parcel selected.
-  const ficha = useFichaTerritorial(
-    fichaParcela ? { tipo: 'parcela', nomenclatura: fichaParcela.nomenclatura } : null
-  );
+  // props so `InfoPanel` never fetches (design §6). Idle when nothing selected.
+  // A `tipo=parcela` (click) or `tipo=poligono` (free draw) request, or null.
+  const ficha = useFichaTerritorial(fichaInteraction.request);
+
+  // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
+  // own mount effect (which populates its imperative handle) is a CHILD passive
+  // effect and runs before this parent effect, so the ref is ready here.
+  const isFichaDrawing = fichaInteraction.interactionMode === 'ficha-dibujo';
+  useEffect(() => {
+    if (isFichaDrawing) drawControlRef.current?.startDrawing();
+  }, [isFichaDrawing]);
+
+  // Measurement and ficha-draw are mutually exclusive: starting a measurement
+  // ends drawing first (the reverse — draw cancelling measurement — is handled by
+  // `useFichaInteraction.startDraw` → `clearMeasurements`).
+  const handleStartMeasureDistance = useCallback(() => {
+    fichaInteraction.stopDraw();
+    startMeasureDistance();
+  }, [fichaInteraction, startMeasureDistance]);
+  const handleStartMeasureArea = useCallback(() => {
+    fichaInteraction.stopDraw();
+    startMeasureArea();
+  }, [fichaInteraction, startMeasureArea]);
+  const handleToggleFichaDraw = useCallback(() => {
+    if (fichaInteraction.state.drawing) fichaInteraction.stopDraw();
+    else fichaInteraction.startDraw();
+  }, [fichaInteraction]);
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
@@ -569,16 +601,30 @@ export default function MapaMapLibre() {
               />
             </div>
 
-            {/* Measurement tools: floating toolbar + HTML label overlay. */}
+            {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
             <MeasurementToolbar
-              mode={measurementState.mode}
+              mode={fichaInteraction.interactionMode}
               hasMeasurements={measurementState.measurements.length > 0}
-              onStartDistance={startMeasureDistance}
-              onStartArea={startMeasureArea}
+              onStartDistance={handleStartMeasureDistance}
+              onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
+              fichaDrawActive={isFichaDrawing}
+              onToggleFichaDraw={handleToggleFichaDraw}
             />
             <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
+
+            {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
+                never coexists with the measurement MapboxDraw (shared-slot bug). A
+                completed polygon fires a `tipo=poligono` ficha via the container. */}
+            {measurementMap && isFichaDrawing && (
+              <DrawControl
+                ref={drawControlRef}
+                map={measurementMap}
+                onPolygonCreated={fichaInteraction.completePolygon}
+                onPolygonDeleted={fichaInteraction.deletePolygon}
+              />
+            )}
 
             <MapUiPanels
               baseLayer={baseLayer}
@@ -633,13 +679,13 @@ export default function MapaMapLibre() {
               }
               selectedFeatures={selectedFeatures}
               onCloseInfoPanel={() => setSelectedFeatures([])}
-              fichaActive={fichaParcela !== null}
-              fichaTipo="parcela"
-              fichaNroCuenta={fichaParcela?.nroCuenta ?? null}
+              fichaActive={fichaInteraction.request !== null}
+              fichaTipo={fichaInteraction.tipo}
+              fichaNroCuenta={fichaInteraction.nroCuenta}
               fichaLoading={ficha.isLoading}
               fichaError={ficha.error}
               fichaData={ficha.data}
-              onCloseFicha={() => setFichaParcela(null)}
+              onCloseFicha={fichaInteraction.clearFicha}
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}

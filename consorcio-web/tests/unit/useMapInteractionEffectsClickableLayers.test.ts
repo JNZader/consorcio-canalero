@@ -49,6 +49,24 @@ describe('buildClickableLayers · z-order click precedence', () => {
   });
 });
 
+describe('buildClickableLayers · mode gate (A5.3, ficha free-draw)', () => {
+  it('returns an EMPTY whitelist in ficha-dibujo — DrawControl owns clicks', () => {
+    expect(buildClickableLayers('ficha-dibujo')).toEqual([]);
+  });
+
+  it('returns the full ordered list in idle (default, unchanged)', () => {
+    const idle = buildClickableLayers('idle');
+    const noArg = buildClickableLayers();
+    expect(idle).toEqual(noArg);
+    expect(idle).toContain(`${SOURCE_IDS.CATASTRO}-fill`);
+    expect(idle.length).toBeGreaterThan(0);
+  });
+
+  it('does not empty the whitelist for a measurement mode', () => {
+    expect(buildClickableLayers('measuring-area').length).toBeGreaterThan(0);
+  });
+});
+
 describe('buildClickableLayers · Pilar Azul (Canales) inclusion', () => {
   it('includes both Canales line layer ids in the whitelist', () => {
     const layers = buildClickableLayers();

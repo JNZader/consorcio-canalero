@@ -230,10 +230,31 @@ their immediate parent PR branch.
 
 ## PR A5 — Phase 2: free polygon (base: A4)
 
-- [ ] A5.1 `ficha_service.py`: `tipo=poligono` normalization `ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON(:g)), 3)`; empty or zero-area → 422 `geometria_invalida`. AC: `geo-analysis-endpoint` › "Self-intersecting drawn polygon" (JDB-008). (~60)
-- [ ] A5.2 `consorcio-web/src/components/map2d/measurement/useMeasurement.ts:62`: widen the union to `MapInteractionMode = 'idle'|'measuring-distance'|'measuring-area'|'ficha-dibujo'|'ficha-canal'` + `MeasurementMode` back-compat alias. NO second zustand slice. AC: `ficha-frontend` › "one interaction-mode machine" delta (JDB-012). (~50)
-- [ ] A5.3 `useMapInteractionEffects.ts`: `'ficha-dibujo'` → `buildClickableLayers()` returns `[]`, `DrawControl` owns clicks; toolbar button beside the measurement buttons. (~60)
-- [ ] A5.4 Tests: integration bow-tie polygon → 422 `geometria_invalida` with no raster opened; 30 000 ha polygon → 422 `cap_excedido` naming `area_ha`; vitest — starting a drawing clears the previous parcel ficha. AC: `ficha-frontend` › "Free polygon drawn" + "Switching modes discards previous result". (~100)
+- [x] A5.1 `ficha_service.py`: `tipo=poligono` normalization `ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON(:g)), 3)`; empty or zero-area → 422 `geometria_invalida`. AC: `geo-analysis-endpoint` › "Self-intersecting drawn polygon" (JDB-008). (~60)
+      `_resolver_poligono` + `_POLIGONO_SQL` repair the REQUEST geometry (one round-trip returning
+      `vacio`/g4326/g32720/area_m2); the shared compute tail `_ficha_de_geometria` is factored out so
+      parcela and poligono are byte-identical downstream. `assert_within_caps` runs AFTER resolution
+      and BEFORE audit/semaphore/raster (the caps are now LIVE for a caller-supplied shape). No 404.
+- [x] A5.2 `consorcio-web/src/components/map2d/measurement/useMeasurement.ts:62`: widen the union to `MapInteractionMode = 'idle'|'measuring-distance'|'measuring-area'|'ficha-dibujo'|'ficha-canal'` + `MeasurementMode` back-compat alias. NO second zustand slice. AC: `ficha-frontend` › "one interaction-mode machine" delta (JDB-012). (~50)
+      Widened + alias. The single machine is DERIVED in the new `useFichaInteraction` hook
+      (`interactionMode = drawing ? 'ficha-dibujo' : measurementMode`); measurement/ficha-draw are
+      mutually exclusive (startDraw → `clearMeasurements`; startMeasure → `stopDraw`), so only one
+      MapboxDraw ever mounts. No zustand slice added.
+- [x] A5.3 `useMapInteractionEffects.ts`: `'ficha-dibujo'` → `buildClickableLayers()` returns `[]`, `DrawControl` owns clicks; toolbar button beside the measurement buttons. (~60)
+      `buildClickableLayers(mode)` returns `[]` for `ficha-dibujo` (the idle default is byte-identical
+      to before, so the pinned z-order tests still hold). `DrawControl` is mounted ONLY while drawing
+      (never coexists with the measurement draw). Toggle button (`IconVectorTriangle`) added to
+      `MeasurementToolbar` beside "Medir". `ficha-canal` clickable filtering deferred to A6.
+- [x] A5.4 Tests: integration bow-tie polygon → 422 `geometria_invalida` with no raster opened; 30 000 ha polygon → 422 `cap_excedido` naming `area_ha`; vitest — starting a drawing clears the previous parcel ficha. AC: `ficha-frontend` › "Free polygon drawn" + "Switching modes discards previous result". (~100)
+      Backend `tests/new/test_ficha_poligono.py` (5, real-PG savepoint): happy path == parcela
+      breakdown; figure-8 bow-tie REPAIRED → 200 (positive JDB-008); collinear ring → 422
+      `geometria_invalida` with `extract_zonal_profile` spied to prove no raster opened + no audit row;
+      large 0.3° box → 422 `cap_excedido` naming `area_ha`. Frontend `useFichaInteraction.test.tsx` (9)
+      pins "starting a drawing discards the previous parcel ficha" + mutual exclusion + completePolygon
+      → poligono request; `MeasurementToolbar` (+3) draw-toggle; `buildClickableLayers` mode-gate (+3).
+      Note (deviation): the two A3a-ii limiter tests that POSTed `poligono` (now real compute) were
+      decoupled from compute (`raise_server_exceptions=False`, assert only the 429), and the F4
+      placeholder test switched to `canal_buffer` (still a placeholder until A6).
 
 ## PR A6 — Phase 3: canal buffer (base: A5)
 

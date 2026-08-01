@@ -147,8 +147,15 @@ def test_429_limite_de_tasa_con_retry_after(db, monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_disabled", False, raising=False)
     _limitador_en_memoria(monkeypatch)
 
+    # ``raise_server_exceptions=False``: since A5 ``poligono`` is REAL compute, and
+    # this test's ``db`` has no ``suelos_catastro`` seeded, the first six accepted
+    # requests may answer 5xx from compute. That is irrelevant here — the limiter
+    # increments in a router DEPENDENCY that runs BEFORE the handler, so the window
+    # still fills and the 7th request is 429 regardless of compute outcome. Keeping
+    # the assertion on the 429 (not on the earlier statuses) decouples this limiter
+    # test from compute and from which tipos are placeholders in later slices.
     limitada = None
-    with TestClient(_app_de_ficha(db)) as cliente:
+    with TestClient(_app_de_ficha(db), raise_server_exceptions=False) as cliente:
         for _ in range(8):  # cost 5 × 6 = 30 allowed; the 7th is over the window
             respuesta = cliente.post(FICHA_PATH, json=POLIGONO_OK)
             if respuesta.status_code == 429:
@@ -394,9 +401,14 @@ def test_429_precede_a_422(db, monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_disabled", False, raising=False)
     _limitador_en_memoria(monkeypatch)
 
-    with TestClient(_app_de_ficha(db)) as cliente:
+    # Same decoupling as ``test_429_limite_de_tasa_con_retry_after``: since A5 made
+    # ``poligono`` real compute, the six accepted requests only need to be NOT
+    # rate-limited (whatever compute answers on an unseeded DB is beside the point);
+    # the claim under test is that the SEVENTH — an unknown tipo — is 429 (limiter,
+    # a dependency) rather than 422 (parser, a handler param).
+    with TestClient(_app_de_ficha(db), raise_server_exceptions=False) as cliente:
         for _ in range(6):  # cost 5 × 6 = 30 → fills the window exactly
-            assert cliente.post(FICHA_PATH, json=POLIGONO_OK).status_code == 200
+            assert cliente.post(FICHA_PATH, json=POLIGONO_OK).status_code != 429
         # An unknown tipo would be 422 at the parser — but the limiter (now full)
         # runs first and answers 429 before the parser is ever reached.
         respuesta = cliente.post(FICHA_PATH, json={"tipo": "provincia", "nomenclatura": "X"})
