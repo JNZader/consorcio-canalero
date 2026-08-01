@@ -642,8 +642,17 @@ def _precipitacion_dataset(
     # checked before any-None (incomplete product → sin_cobertura). Reversing them
     # would silently downgrade the "not installed" 503 into sin_cobertura.
     if all(layer is None for layer in meses):
-        # Zero monthly normals registered → the pipeline never ran here.
-        raise ficha_errors.dataset_no_cargado("precipitacion")
+        # Zero monthly normals registered → the CHIRPS ETL has not run for this
+        # deployment. SOFT degradation (unlike suelos_catastro): precipitation is
+        # an informational dataset, so it reports sin_cobertura and the rest of the
+        # ficha (suelos/flood/drainage) keeps serving instead of a whole-request
+        # 503. Logged at warning so ops can tell "ETL never ran" apart from a zone
+        # genuinely outside the normals extent.
+        logger.warning(
+            "Normales de precipitacion no cargados (ETL CHIRPS no corrio)",
+            area_id=settings.ficha_precip_area_id,
+        )
+        return PrecipitacionFicha(cobertura="sin_cobertura")
     if any(layer is None for layer in meses):
         # Incomplete product: some months missing. Do NOT fabricate zeros, do NOT
         # publish a partial series as if it were the full year. A half-registered
