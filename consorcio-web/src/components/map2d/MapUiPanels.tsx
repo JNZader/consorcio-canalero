@@ -18,6 +18,7 @@ import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 import type { LayerCategory } from './map2dDerived';
+import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 
 interface LayerItem {
   id: string;
@@ -93,6 +94,7 @@ export interface MapUiPanelsProps {
   readonly fichaActive: boolean;
   readonly fichaTipo: FichaTipo;
   readonly fichaNroCuenta: string | null;
+  readonly fichaParcelaProps?: ParcelaDisplayProps | null;
   readonly fichaLoading: boolean;
   readonly fichaError: FichaApiError | Error | null;
   readonly fichaData: FichaResponse | undefined;
@@ -169,6 +171,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
+  fichaParcelaProps,
   fichaLoading,
   fichaError,
   fichaData,
@@ -311,6 +314,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         active={fichaActive}
         tipo={fichaTipo}
         nroCuenta={fichaNroCuenta}
+        parcelaProps={fichaParcelaProps}
         bpaEnriched={bpaEnriched}
         isLoading={fichaLoading}
         isError={fichaError !== null}

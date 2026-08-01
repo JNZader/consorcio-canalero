@@ -15,7 +15,18 @@
  *     dataset components.
  */
 
-import { Alert, CloseButton, Divider, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  CloseButton,
+  Divider,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { memo } from 'react';
 
 import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
@@ -23,6 +34,7 @@ import { FichaApiError } from '../../lib/api/ficha';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
 import { FichaResumen } from './FichaResumen';
+import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
 import { PrecipChart } from './PrecipChart';
 import { RiesgoBins } from './RiesgoBins';
@@ -34,6 +46,12 @@ export interface FichaTerritorialPanelProps {
   readonly tipo: FichaTipo;
   /** Clicked parcel account, for the client-side BPA join. `null` for other tipos. */
   readonly nroCuenta: string | null;
+  /**
+   * Display-only identity props of the clicked parcel (nro_cuenta, designación,
+   * superficie, …). Rendered as a compact header above the analysis when the
+   * ficha is `tipo=parcela`. `null` for non-parcel tipos or when unavailable.
+   */
+  readonly parcelaProps?: ParcelaDisplayProps | null;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
   readonly isLoading: boolean;
   readonly isError: boolean;
@@ -50,6 +68,39 @@ function errorMessage(error: FichaApiError | Error | null): string {
   return 'No se pudo completar el análisis. Reintentá en unos instantes.';
 }
 
+/** Field order + labels for the parcel identity header (matches the fields the
+ * old InfoPanel catastro card showed, now combined into this single panel). */
+const IDENTITY_FIELDS: ReadonlyArray<{ key: keyof ParcelaDisplayProps; label: string }> = [
+  { key: 'nroCuenta', label: 'Nro. cuenta' },
+  { key: 'desigOficial', label: 'Designación' },
+  { key: 'nomenclatura', label: 'Nomenclatura' },
+  { key: 'superficieHa', label: 'Superficie (ha)' },
+  { key: 'departamento', label: 'Departamento' },
+  { key: 'pedania', label: 'Pedanía' },
+  { key: 'tipoParcela', label: 'Tipo' },
+];
+
+/** Compact identity header for a clicked parcel — one badge+value row per
+ * present field. Renders nothing when no whitelisted field has a value. */
+function ParcelaIdentityHeader({ props }: { readonly props: ParcelaDisplayProps }) {
+  const rows = IDENTITY_FIELDS.filter(({ key }) => props[key]);
+  if (rows.length === 0) return null;
+  return (
+    <Stack gap={2} mb="xs" data-testid="ficha-parcela-header">
+      {rows.map(({ key, label }) => (
+        <Group key={key} gap="xs" wrap="nowrap">
+          <Badge size="xs" variant="light" color="gray">
+            {label}
+          </Badge>
+          <Text size="xs" truncate>
+            {props[key]}
+          </Text>
+        </Group>
+      ))}
+    </Stack>
+  );
+}
+
 function PanelBody({
   tipo,
   nroCuenta,
@@ -58,7 +109,7 @@ function PanelBody({
   isError,
   error,
   data,
-}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose'>) {
+}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose' | 'parcelaProps'>) {
   if (isLoading) {
     return (
       <Group gap="xs" data-testid="ficha-loading">
@@ -84,7 +135,11 @@ function PanelBody({
       <Divider />
       <SuelosBreakdown dataset={data.suelos} />
       <Divider />
-      <RiesgoBins label="Riesgo de inundación" dataset={data.flood_risk} testId="ficha-flood-risk" />
+      <RiesgoBins
+        label="Riesgo de inundación"
+        dataset={data.flood_risk}
+        testId="ficha-flood-risk"
+      />
       <Divider />
       <RiesgoBins
         label="Necesidad de drenaje"
@@ -103,6 +158,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   active,
   tipo,
   nroCuenta,
+  parcelaProps,
   bpaEnriched,
   isLoading,
   isError,
@@ -111,6 +167,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   onClose,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
+
+  // Identity header (bug-3 combine): a clicked parcel's account/identity fields
+  // sit at the top of this single panel, replacing the old InfoPanel catastro
+  // card. Only for `tipo=parcela`; other tipos (poligono/canal) have no parcel.
+  const showParcelaHeader = tipo === 'parcela' && !!parcelaProps;
 
   return (
     <Paper
@@ -125,6 +186,12 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         <CloseButton onClick={onClose} size="sm" aria-label="Cerrar ficha territorial" />
       </Group>
       <Divider mb="xs" />
+      {showParcelaHeader && parcelaProps && (
+        <>
+          <ParcelaIdentityHeader props={parcelaProps} />
+          <Divider mb="xs" />
+        </>
+      )}
       <PanelBody
         tipo={tipo}
         nroCuenta={nroCuenta}

@@ -33,13 +33,18 @@ function createMapMock(features: unknown[]) {
   };
 }
 
-function renderEffect(map: unknown, mode: 'idle' | 'measuring-distance', onParcelaResolved: any) {
+function renderEffect(
+  map: unknown,
+  mode: 'idle' | 'measuring-distance',
+  onParcelaResolved: any,
+  setSelectedFeatures: any = vi.fn()
+) {
   renderHook(() =>
     useMapInteractionEffects({
       mapRef: { current: map } as any,
       mapReady: true,
       measurementMode: mode,
-      setSelectedFeatures: vi.fn(),
+      setSelectedFeatures,
       onParcelaResolved,
     })
   );
@@ -48,11 +53,19 @@ function renderEffect(map: unknown, mode: 'idle' | 'measuring-distance', onParce
 const clickEvent = { point: { x: 10, y: 10 }, lngLat: { lat: -32.6, lng: -62.6 } };
 
 describe('useMapInteractionEffects — ficha parcel resolution', () => {
-  it('reports a catastro parcel (nomenclatura + nro_cuenta) on an idle click', () => {
+  it('reports a catastro parcel (nomenclatura + nro_cuenta + display props) on an idle click', () => {
     const parcela = {
       type: 'Feature',
       layer: { id: CATASTRO_LAYER },
-      properties: { nomenclatura: '13-06-01-0203', nro_cuenta: '110123' },
+      properties: {
+        nomenclatura: '13-06-01-0203',
+        nro_cuenta: '110123',
+        desig_oficial: 'Lote 4',
+        superficie_ha: '25.4',
+        departamento: 'General San Martín',
+        pedania: 'Arroyo Algodón',
+        tipo_parcela: 'rural',
+      },
       geometry: { type: 'Polygon', coordinates: [] },
     };
     const { map, handlers } = createMapMock([parcela]);
@@ -64,7 +77,60 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     expect(onParcelaResolved).toHaveBeenCalledWith({
       nomenclatura: '13-06-01-0203',
       nroCuenta: '110123',
+      props: {
+        nomenclatura: '13-06-01-0203',
+        nroCuenta: '110123',
+        desigOficial: 'Lote 4',
+        superficieHa: '25.4',
+        departamento: 'General San Martín',
+        pedania: 'Arroyo Algodón',
+        tipoParcela: 'rural',
+      },
     });
+  });
+
+  it('SUPPRESSES the catastro feature from InfoPanel but keeps non-catastro features', () => {
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203', nro_cuenta: '110123' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const canal = {
+      type: 'Feature',
+      layer: { id: 'canales_relevados-line' },
+      properties: { estado: 'relevado' },
+      geometry: { type: 'LineString', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela, canal]);
+    const onParcelaResolved = vi.fn();
+    const setSelectedFeatures = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved, setSelectedFeatures);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    // The ficha still fires for the parcel…
+    expect(onParcelaResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+    );
+    // …but the InfoPanel only receives the NON-catastro feature (no double panel).
+    expect(setSelectedFeatures).toHaveBeenCalledWith([canal]);
+  });
+
+  it('passes ALL features to InfoPanel when no catastro parcel resolved', () => {
+    const canal = {
+      type: 'Feature',
+      layer: { id: 'canales_relevados-line' },
+      properties: { estado: 'relevado' },
+      geometry: { type: 'LineString', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([canal]);
+    const setSelectedFeatures = vi.fn();
+    renderEffect(map, 'idle', vi.fn(), setSelectedFeatures);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(setSelectedFeatures).toHaveBeenCalledWith([canal]);
   });
 
   it('clears the ficha when the click hits no catastro parcel', () => {

@@ -98,12 +98,23 @@ const baseProps = {
   active: true,
   tipo: 'parcela' as const,
   nroCuenta: null,
+  parcelaProps: null,
   bpaEnriched: null,
   isLoading: false,
   isError: false,
   error: null,
   data: undefined,
   onClose: () => {},
+};
+
+const PARCELA_PROPS = {
+  nomenclatura: '13-06-01-0203',
+  nroCuenta: '110123',
+  desigOficial: 'Lote 4',
+  superficieHa: '25.4',
+  departamento: 'General San Martín',
+  pedania: 'Arroyo Algodón',
+  tipoParcela: 'rural',
 };
 
 describe('FichaTerritorialPanel', () => {
@@ -145,6 +156,37 @@ describe('FichaTerritorialPanel', () => {
     expect(screen.getByTestId('ficha-suelos')).toBeInTheDocument();
     expect(screen.getByTestId('ficha-flood-risk')).toBeInTheDocument();
     expect(screen.getByTestId('ficha-drainage-need')).toBeInTheDocument();
+  });
+
+  it('renders the parcel identity header above the analysis for a tipo=parcela ficha', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel {...baseProps} data={ficha()} parcelaProps={PARCELA_PROPS} />
+    );
+    const header = screen.getByTestId('ficha-parcela-header');
+    expect(header).toBeInTheDocument();
+    expect(header).toHaveTextContent('110123');
+    expect(header).toHaveTextContent('Lote 4');
+    expect(header).toHaveTextContent('13-06-01-0203');
+    expect(header).toHaveTextContent('General San Martín');
+    // The analysis result still renders below the header.
+    expect(screen.getByTestId('ficha-result')).toBeInTheDocument();
+  });
+
+  it('omits the identity header when no parcelaProps are provided', () => {
+    renderWithMantine(<FichaTerritorialPanel {...baseProps} data={ficha()} />);
+    expect(screen.queryByTestId('ficha-parcela-header')).toBeNull();
+  });
+
+  it('omits the identity header for non-parcela tipos even if props leak through', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        tipo="canal_buffer"
+        data={ficha({ tipo: 'canal_buffer' })}
+        parcelaProps={PARCELA_PROPS}
+      />
+    );
+    expect(screen.queryByTestId('ficha-parcela-header')).toBeNull();
   });
 
   it('renders "sin cobertura" text and no 0% row for an uncovered dataset', () => {
