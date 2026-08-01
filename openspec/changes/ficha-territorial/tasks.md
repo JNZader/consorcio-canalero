@@ -87,13 +87,23 @@ their immediate parent PR branch.
 
 ## PR A2 — Phase 1a: zonal primitive (base: A1b)
 
-- [ ] A2.1 Create `gee-backend/app/domains/geo/class_breaks.py` with `RANGE_CONFIGS` moved out of `tile_service_support.py:113-125`; re-export from `tile_service_support` for back-compat. Leaf module — MUST NOT import the tile service. (~60)
-- [ ] A2.2 Add `extract_zonal_profile(raster_path, geom, geom_crs, breaks, geom_area_m2)` to `gee-backend/app/domains/geo/composites.py`, returning the full dict always. Leave `extract_composite_zonal_stats` untouched; `compute_zonal_stats` stays banned. AC: `geo-analysis-endpoint` › "Composite nodata honored". (~90)
-- [ ] A2.3 Handle **both** silent-skip branches: catch `ValueError` only (non-overlap) → `coverage="none"`, empty bins; any other exception propagates. No bare `except`. AC: `geo-analysis-endpoint` › "Zone fully outside raster extent" (JDB-004). (~25)
-- [ ] A2.4 Geometry-relative coverage: `covered_area_ha = valid_pixels * pixel_area_ha`, `coverage_ratio = min(1.0, covered/geom_area_ha)`, thresholds none/0.99/partial. AC: `geo-analysis-endpoint` › "Partial coverage flagged" (JDB-005/JD-A-005). (~30)
-- [ ] A2.5 Relative per-raster `low_confidence = (geom_area_m2 / pixel_area_m2) < K`, `K` from `ficha_low_confidence_pixel_ratio`, per-dataset override (`precip_normal` → 0). AC: `geo-analysis-endpoint` › "Low-confidence flag on sub-pixel parcel" (JDB-017). (~25)
-- [ ] A2.6 Bin-edge convention half-open `[min,max)` with the last bin closed, stated in the docstring. (JDB-026) (~10)
-- [ ] A2.7 **Ledger regression tests** — `tests/new/test_extract_zonal_profile.py`, synthetic 10×10 float32 GeoTIFFs in `tmp_path`, no DB: (a) full coverage exact pct; (b) **partial coverage where the crop window is entirely valid** — the JDB-005 regression; (c) disjoint geometry → `ValueError` → `coverage="none"`; (d) all-nodata → `coverage="none"`; (e) non-`ValueError` failure propagates — the JDB-004 regression; (f) value exactly on a bin edge — JDB-026; (g) `low_confidence` true/false either side of `K`, and `K=0` never flags. (~150)
+- [x] A2.1 Create `gee-backend/app/domains/geo/class_breaks.py` with `RANGE_CONFIGS` moved out of `tile_service_support.py:113-125`; re-export from `tile_service_support` for back-compat. Leaf module — MUST NOT import the tile service. (~60)
+      Nota: el bloque real era `tile_service_support.py:113-209` (7 tipos, no 2). Movido íntegro;
+      `tile_service_support` lo importa y lo sigue usando en su línea 483, así que
+      `tile_service.py` (único importador externo) queda sin tocar.
+- [x] A2.2 Add `extract_zonal_profile(raster_path, geom, geom_crs, breaks, geom_area_m2)` to `gee-backend/app/domains/geo/composites.py`, returning the full dict always. Leave `extract_composite_zonal_stats` untouched; `compute_zonal_stats` stays banned. AC: `geo-analysis-endpoint` › "Composite nodata honored". (~90)
+- [x] A2.3 Handle **both** silent-skip branches: catch `ValueError` only (non-overlap) → `coverage="none"`, empty bins; any other exception propagates. No bare `except`. AC: `geo-analysis-endpoint` › "Zone fully outside raster extent" (JDB-004). (~25)
+- [x] A2.4 Geometry-relative coverage: `covered_area_ha = valid_pixels * pixel_area_ha`, `coverage_ratio = min(1.0, covered/geom_area_ha)`, thresholds none/0.99/partial. AC: `geo-analysis-endpoint` › "Partial coverage flagged" (JDB-005/JD-A-005). (~30)
+- [x] A2.5 Relative per-raster `low_confidence = (geom_area_m2 / pixel_area_m2) < K`, `K` from `ficha_low_confidence_pixel_ratio`, per-dataset override (`precip_normal` → 0). AC: `geo-analysis-endpoint` › "Low-confidence flag on sub-pixel parcel" (JDB-017). (~25)
+      `K` entra como parámetro `low_confidence_pixel_ratio` (default 10.0 en
+      `DEFAULT_LOW_CONFIDENCE_PIXEL_RATIO`). El setting `ficha_low_confidence_pixel_ratio` lo agrega
+      **A3a.5**; el servicio lo pasa ahí y `precip_normal` pasa `K=0` en B2.1. `composites.py` no
+      importa `app.config` a propósito: es código de pipeline/geo-worker, no de la capa API.
+- [x] A2.6 Bin-edge convention half-open `[min,max)` with the last bin closed, stated in the docstring. (JDB-026) (~10)
+- [x] A2.7 **Ledger regression tests** — `tests/new/test_extract_zonal_profile.py`, synthetic 10×10 float32 GeoTIFFs in `tmp_path`, no DB: (a) full coverage exact pct; (b) **partial coverage where the crop window is entirely valid** — the JDB-005 regression; (c) disjoint geometry → `ValueError` → `coverage="none"`; (d) all-nodata → `coverage="none"`; (e) non-`ValueError` failure propagates — the JDB-004 regression; (f) value exactly on a bin edge — JDB-026; (g) `low_confidence` true/false either side of `K`, and `K=0` never flags. (~150)
+      12 tests, todos verdes sin DB. Extra sobre el pedido: última bandeja cerrada `[min,max]` con
+      valor 100.0, y dos guardas del A2.1 (identidad del re-export y `class_breaks` sin imports
+      fuera de `__future__`).
 
 ## PR A3a — Phase 1b: contract + guards vs stub compute (base: A2)
 
@@ -199,5 +209,9 @@ their immediate parent PR branch.
   Python files; the 2.2 MB geojson excluded). ~450 of those are tests. Carving A1b.5 into A1c
   removes only ~85 lines, so the split does not bring A1b under budget — decide the review tier
   on the measured number, not on the forecast.
+- **A2 measured after apply: ~548 reviewed lines** (202 nuevas en `composites.py` + ~16 de cabecera
+  en `class_breaks.py` + 330 de test; los ~97 de `RANGE_CONFIGS` son un movimiento 1:1 entre
+  `tile_service_support.py` y `class_breaks.py` y no cuentan como revisión nueva). 330 de esas
+  líneas son tests. Forecast era ~340 — decidir el tier de review sobre el número medido.
 - **Chain A depth (9 PRs)** is a rebase-cost bottleneck: any fix in A2 or A3a rebases everything downstream.
 - **Two ops answers still open** (design "Open Questions"): `vt_canal_network` population blocks A6; `parcelas_catastro` population blocks the value of A3b/A4 even though the code ships.
