@@ -42,6 +42,7 @@ from app.domains.geo.gee_service_support import (
     build_sentinel2_tiles_payload,
     collection_dates,
     compute_ndwi_baselines_payload,
+    export_chirps_monthly_normals_payload,
     get_landcover_c_payload,
     mask_clouds_s2,
     mask_s2_cloudscore,
@@ -552,6 +553,30 @@ def compute_ndwi_baselines_gee(
         zones=zones,
         dry_season_months=dry_season_months,
         years_back=years_back,
+    )
+
+
+def export_chirps_monthly_normals(
+    region: dict,
+    *,
+    start_year: int = 1991,
+    end_year: int = 2020,
+) -> list[dict]:
+    """Resolve GEE download URLs for the CHIRPS monthly precipitation normals.
+
+    Twelve monthly normals + one annual total for ``region``, computed from
+    ``UCSB-CHG/CHIRPS/DAILY`` as mean accumulated millimetres over the
+    ``start_year``-``end_year`` normals period. This is the GEE-side export
+    step only; the ETL runner downloads, warps to EPSG:32720 and registers the
+    rasters as ``geo_layers`` rows.
+    """
+    _ensure_initialized()
+    return export_chirps_monthly_normals_payload(
+        ee,
+        _baseline_logger,
+        region=region,
+        start_year=start_year,
+        end_year=end_year,
     )
 
 

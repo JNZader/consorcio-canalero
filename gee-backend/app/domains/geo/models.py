@@ -45,6 +45,7 @@ class TipoGeoLayer(str, enum.Enum):
     TPI = "tpi"
     FLOOD_RISK = "flood_risk"
     DRAINAGE_NEED = "drainage_need"
+    PRECIP_NORMAL = "precip_normal"
 
 
 class FuenteGeoLayer(str, enum.Enum):

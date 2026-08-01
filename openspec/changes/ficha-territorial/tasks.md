@@ -313,8 +313,27 @@ their immediate parent PR branch.
 
 ## PR B1 — Phase 4a: CHIRPS normals (parallel root, base: integration root)
 
-- [ ] B1.1 `gee-backend/app/domains/geo/models.py`: add `TipoGeoLayer.PRECIP_NORMAL = "precip_normal"` + migration `ALTER TYPE tipo_geo_layer ADD VALUE 'precip_normal'`; the new value MUST NOT be used in the transaction that adds it. (~50)
-- [ ] B1.2 `gee_service.py` (+ `_support`): `export_chirps_monthly_normals()` delegating to a `*_payload` helper, mirroring `compute_ndwi_baselines_gee` (`gee_service.py:540-555`); source `UCSB-CHG/CHIRPS/DAILY`, monthly sums averaged 1991-2020, fetched with `getDownloadURL`. AC: `precip-normals-pipeline` › "Full set generated". (~120)
+- [x] B1.1 `gee-backend/app/domains/geo/models.py`: add `TipoGeoLayer.PRECIP_NORMAL = "precip_normal"` + migration `ALTER TYPE tipo_geo_layer ADD VALUE 'precip_normal'`; the new value MUST NOT be used in the transaction that adds it. (~50)
+      **B1a**: enum value added; migration `0018_add_precip_normal_geo_layer`
+      (down_revision `0017_ficha_territorial_prep`, the verified head). Follows the repo's
+      established enum-value pattern (`r2m9n8o9p038`): plain
+      `op.execute("ALTER TYPE tipo_geo_layer ADD VALUE IF NOT EXISTS 'precip_normal'")`.
+      Safe inside Alembic's transaction on PG 12+ because the migration only ADDS the value
+      and nothing here USES it. Proven end-to-end: `alembic upgrade head` ran the full chain
+      cleanly on a fresh PostGIS DB and `enum_range(NULL::tipo_geo_layer)` includes
+      `precip_normal`.
+- [x] B1.2 `gee_service.py` (+ `_support`): `export_chirps_monthly_normals()` delegating to a `*_payload` helper, mirroring `compute_ndwi_baselines_gee` (`gee_service.py:540-555`); source `UCSB-CHG/CHIRPS/DAILY`, monthly sums averaged 1991-2020, fetched with `getDownloadURL`. AC: `precip-normals-pipeline` › "Full set generated". (~120)
+      **B1a**: `export_chirps_monthly_normals(region, *, start_year, end_year)` in
+      `gee_service.py` calls `_ensure_initialized()` then delegates to
+      `export_chirps_monthly_normals_payload` in `gee_service_analytics_support.py`
+      (re-exported through the `gee_service_support` barrel), exactly like the ndwi baseline
+      pair. The payload builds 12 monthly normals (per-year daily sums averaged over the
+      period) + 1 annual total, clips to the region, and resolves a `getDownloadURL` per
+      output → 13 descriptors `{"mes": 1..12|"anual", "download_url"}`. GEE-side only: the
+      byte download, the EPSG:32720/5000 m warp and the `geo_layers` registration stay in
+      B1b (`etl/generate_chirps_normals.py`). Tests: `tests/new/test_chirps_normals_export.py`
+      (6, GEE mocked via `FakeEE`) — 13 outputs, CHIRPS/DAILY source, 1991-2020 window,
+      360 year+month sums, GEO_TIFF download params.
 - [ ] B1.3 Create `gee-backend/app/domains/geo/etl/generate_chirps_normals.py` (`python -m` entry point): 13 outputs (`precip_normal_{MM}.tif` ×12 + `precip_normal_anual.tif`) to `/data/geo/{area_id}/output/`, warped to EPSG:32720 at **5 000 m** with `Resampling.nearest`, nodata `-9999.0`; register each as a `geo_layers` row with `metadata_extra = {mes, normal_period, fuente, version (UTC ISO8601), resolucion_m}`. AC: "Registration as geo_layers" + "Regeneration versions the metadata" (JDB-011/JDB-018). (~120)
 - [ ] B1.4 Month-scoped lookup helper: select `tipo=PRECIP_NORMAL AND area_id=:area`, group by `metadata_extra->>'mes'`, take the newest `version` per month. The "most recent layer of tipo X" idiom MUST NOT be used. AC: "Layers discoverable by the ficha" (JD-A-008). (~40)
 - [ ] B1.5 Missing/invalid GEE credentials fail loudly with no partial layer registered. AC: "Missing credentials fail loudly". (~25)
