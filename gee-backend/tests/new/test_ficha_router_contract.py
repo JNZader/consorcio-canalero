@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pathlib import Path
 import pytest
 
 FICHA_PATH = "/api/v2/geo/analisis-zona"
@@ -89,22 +90,56 @@ def _nombres_de_dependencias(dependant: Any, acumulado: set[str]) -> set[str]:
     return acumulado
 
 
+# El armado de la tabla corre en un SUBPROCESO limpio a proposito. Importar
+# el router geo dentro del proceso pytest compartido devuelve, SOLO en el
+# interprete de CI, una tabla vacia (0 rutas) — la misma rareza de identidad
+# de modulos que ya mordio en test_suelos_etl (montar via app.main y via el
+# agregador v2 fallaba identico). Un interprete fresco no tiene ese estado
+# global contaminado, asi que el contrato de rutas se prueba de forma
+# reproducible en CI y local por igual.
+_SCRIPT_TABLA_DE_RUTAS = """
+import json
+from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from app.domains.geo.router import router as geo_router
+
+
+def nombres(dependant, acc):
+    for sub in dependant.dependencies:
+        acc.add(getattr(sub.call, "__name__", type(sub.call).__name__))
+        nombres(sub, acc)
+    return acc
+
+
+app = FastAPI()
+app.include_router(geo_router, prefix="/api/v2/geo")
+tabla = [
+    [metodo, ruta.path, sorted(nombres(ruta.dependant, set()))]
+    for ruta in app.routes
+    if isinstance(ruta, APIRoute)
+    for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
+]
+print(json.dumps(tabla))
+"""
+
+
 def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
-    """(metodo, path, nombres de dependencias) para cada ruta bajo /api/v2/geo."""
-    from fastapi import FastAPI
-    from fastapi.routing import APIRoute
+    """(metodo, path, nombres de dependencias) para cada ruta bajo /api/v2/geo.
 
-    from app.domains.geo.router import router as geo_router
+    Corre en subproceso (ver comentario en `_SCRIPT_TABLA_DE_RUTAS`).
+    """
+    import json
+    import subprocess
+    import sys
 
-    app = FastAPI()
-    app.include_router(geo_router, prefix="/api/v2/geo")
-
-    tabla = [
-        (metodo, ruta.path, _nombres_de_dependencias(ruta.dependant, set()))
-        for ruta in app.routes
-        if isinstance(ruta, APIRoute)
-        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
-    ]
+    salida = subprocess.run(
+        [sys.executable, "-c", _SCRIPT_TABLA_DE_RUTAS],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).resolve().parents[2]),
+    )
+    assert salida.returncode == 0, f"el subproceso de la tabla de rutas fallo:\n{salida.stderr}"
+    tabla = [(m, p, set(deps)) for m, p, deps in json.loads(salida.stdout)]
     assert len(tabla) > 20, (
         "la tabla de rutas geo salio vacia o mutilada — el test no puede probar nada"
     )
