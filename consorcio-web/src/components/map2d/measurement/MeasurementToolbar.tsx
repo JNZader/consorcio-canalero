@@ -44,7 +44,7 @@
 import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 
-import { IconPolygon, IconRuler, IconTrash, IconVectorTriangle } from '../../ui/icons';
+import { IconPolygon, IconRoute, IconRuler, IconTrash, IconVectorTriangle } from '../../ui/icons';
 import type { MeasurementMode } from './useMeasurement';
 
 export interface MeasurementToolbarProps {
@@ -61,6 +61,14 @@ export interface MeasurementToolbarProps {
    */
   readonly fichaDrawActive?: boolean;
   readonly onToggleFichaDraw?: () => void;
+  /**
+   * Ficha territorial canal buffer (A6). When `onToggleFichaCanal` is provided, a
+   * "Seleccionar canal" toggle renders beside the draw button (design §6.3 — same
+   * floating toolbar). `fichaCanalActive` drives its active cue. The 3D viewer
+   * omits it.
+   */
+  readonly fichaCanalActive?: boolean;
+  readonly onToggleFichaCanal?: () => void;
 }
 
 export const MeasurementToolbar = memo(function MeasurementToolbar({
@@ -71,6 +79,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onClear,
   fichaDrawActive = false,
   onToggleFichaDraw,
+  fichaCanalActive = false,
+  onToggleFichaCanal,
 }: MeasurementToolbarProps) {
   // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
   // while drawing, but the "Medir" cue must only light for measurement modes.
@@ -138,6 +148,29 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               }}
             >
               <IconVectorTriangle size={16} />
+            </UnstyledButton>
+          </Tooltip>
+        )}
+
+        {onToggleFichaCanal && (
+          <Tooltip label="Seleccionar canal (ficha territorial)" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Seleccionar canal"
+              aria-pressed={fichaCanalActive}
+              onClick={onToggleFichaCanal}
+              style={{
+                width: 29,
+                height: 29,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                background: fichaCanalActive ? '#06b6d4' : 'transparent',
+                color: fichaCanalActive ? '#fff' : '#333',
+              }}
+            >
+              <IconRoute size={16} />
             </UnstyledButton>
           </Tooltip>
         )}

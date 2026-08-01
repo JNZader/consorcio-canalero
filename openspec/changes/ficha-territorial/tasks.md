@@ -258,11 +258,44 @@ their immediate parent PR branch.
 
 ## PR A6 — Phase 3: canal buffer (base: A5)
 
-- [ ] A6.1 `ficha_service.py`: `tipo=canal_buffer` → `canal_network` lookup + `ST_Buffer` in EPSG:32720, `buffer_m` capped by `ficha_max_buffer_m`, then `assert_within_caps`. AC: `geo-analysis-endpoint` › "Buffer distance cap" (JDB-006). (~70)
-- [ ] A6.2 `consorcio-web/src/components/map2d/mapLayerEffectHelpers.ts`: render `vt_canal_network` as a line layer, clickable only in `'ficha-canal'`; use the feature's `id` property as `canal_id`. AC: `ficha-frontend` › "Canal selection" (JDB-013). (~80)
-- [ ] A6.3 Toolbar entry for `'ficha-canal'` + buffer-distance input; clickable set filtered to canal layers only. (~50)
-- [ ] A6.4 Tests: `buffer_m` over cap → 422 naming `buffer_m`; unknown `canal_id` → 404 `canal_no_encontrado`; limiter cost=5 applied to `canal_buffer`; vitest — canal mode clickable set excludes parcels. (~90)
+- [x] A6.1 `ficha_service.py`: `tipo=canal_buffer` → `canal_network` lookup + `ST_Buffer` in EPSG:32720, `buffer_m` capped by `ficha_max_buffer_m`, then `assert_within_caps`. AC: `geo-analysis-endpoint` › "Buffer distance cap" (JDB-006). (~70)
+      `_resolver_canal_buffer` (`_CANAL_BUFFER_SQL`: ST_Transform→ST_Buffer in 32720→
+      back to 4326 + ST_Area, `geom IS NOT NULL`, `.one_or_none()` → 404
+      `canal_no_encontrado`) + `_analizar_canal_buffer` (resolve → `assert_within_caps`
+      over the BUFFERED 32720 shape passing `buffer_m` → audit → shared
+      `_ficha_de_geometria` tail). Dispatch wired in `analizar_zona`; the placeholder
+      now only covers `canal_cuenca`. The schema cap (`ficha_max_buffer_m`, 2000),
+      the `assert_within_caps` `buffer_m` branch, `referencia_auditable`, and
+      `canal_no_encontrado` already existed from A3a.
+- [x] A6.2 `consorcio-web/src/components/map2d/mapLayerEffectHelpers.ts`: render `vt_canal_network` as a line layer, clickable only in `'ficha-canal'`; use the feature's `id` property as `canal_id`. AC: `ficha-frontend` › "Canal selection" (JDB-013). (~80)
+      `syncCanalNetworkLayer` mounts the Martin MVT source `vt_canal_network`
+      (source-layer `vt_canal_network`) as a cyan line, shown only in canal mode
+      (a dedicated effect in `MapaMapLibre` toggles visibility on
+      `interactionMode === 'ficha-canal'`). `buildClickableLayers('ficha-canal')`
+      returns ONLY that layer; `resolveCanalId` reads `feature.id` (Martin `id_column`)
+      or `properties.id`. The idle whitelist is byte-identical (pinned indices intact).
+- [x] A6.3 Toolbar entry for `'ficha-canal'` + buffer-distance input; clickable set filtered to canal layers only. (~50)
+      `MeasurementToolbar` gains a "Seleccionar canal" toggle (`IconRoute`, cyan cue)
+      beside the draw button. `CanalBufferControl.tsx` (new) is a floating NumberInput
+      (max = `FICHA_MAX_BUFFER_M`, `clampBehavior="strict"`) shown once a canal is
+      clicked; each change re-fires the request via `useFichaInteraction.setBuffer`.
+      `useFichaInteraction` extended with canal state (`startCanal`/`stopCanal`/
+      `resolveCanal`/`setBuffer`), mutually exclusive with draw/measurement.
+- [x] A6.4 Tests: `buffer_m` over cap → 422 naming `buffer_m`; unknown `canal_id` → 404 `canal_no_encontrado`; limiter cost=5 applied to `canal_buffer`; vitest — canal mode clickable set excludes parcels. (~90)
+      Backend `tests/new/test_ficha_canal_buffer.py` (7, real-PG savepoint): happy path
+      (buffered strip → shared soils/raster tail), audit row references canal+buffer,
+      404 unknown canal (no raster, no audit), 422 `buffer_m` over cap (schema), 422
+      `area_ha` for a ~94 km canal buffered 2000 m (the JDB-006 point: cap on the
+      BUFFERED geometry), and `COSTO_POR_TIPO["canal_buffer"] == 5`. Frontend: canal
+      clickable-set tests (only `vt_canal_network`, excludes parcels/soil/BPA; idle
+      unchanged), 10 `useFichaInteraction` canal-flow tests, 3 toolbar canal-toggle
+      tests, 4 `CanalBufferControl` tests.
 - [ ] A6.5 **OPS** (judge-forced, JDB-013): verify `vt_canal_network` is populated in the target environment before merge; an empty view is a deployment blocker for both canal modes. Record the row count in the PR body. (~0)
+      **PENDIENTE** — merge gate, not a code task. Run against the Hetzner deployment
+      before merge (`SELECT count(*) FROM canal_network;` / `FROM vt_canal_network;`)
+      and paste the row count in the PR body. Earlier context recorded ~13 173 rows in
+      `canal_network`, so it is very likely populated, but the gate requires the
+      environment check on the target DB.
 
 ## PR A7 — Phase 5: catchment (base: A6) — **BLOCKED**
 
