@@ -316,14 +316,15 @@ def test_precip_parcela_subpixel_no_es_low_confidence(ficha_db, monkeypatch, tmp
     assert precip["low_confidence"] is False
 
 
-# ── B2.1 — zero months registered → 503 dataset_no_cargado ───────────────────
+# ── B2.1 — zero months registered → SOFT degrade to sin_cobertura ────────────
 
 
-def test_precip_cero_meses_registrados_es_503_dataset_no_cargado(ficha_db, monkeypatch, tmp_path):
-    """No precip normals at all → 503 ``dataset_no_cargado`` naming ``precipitacion``.
+def test_precip_cero_meses_registrados_es_sin_cobertura(ficha_db, monkeypatch, tmp_path):
+    """No precip normals at all → 200 with precip ``sin_cobertura``, ficha still served.
 
-    Distinct from ``sin_cobertura``: the pipeline never ran for this deployment.
-    suelos IS loaded so the 503 is about precipitation, not soils.
+    SOFT degradation: precipitation is informational, so a missing CHIRPS product
+    must NOT 503 the whole ficha (unlike suelos, which is structural). suelos IS
+    loaded, so the ficha resolves and only the precip block reports no coverage.
     """
     _enable(monkeypatch)
     _crear_tabla_suelos(ficha_db)
@@ -333,10 +334,10 @@ def test_precip_cero_meses_registrados_es_503_dataset_no_cargado(ficha_db, monke
 
     rs = _post(ficha_db)
 
-    assert rs.status_code == 503, rs.text
-    body = rs.json()
-    assert body["codigo"] == "dataset_no_cargado"
-    assert body["dataset"] == "precipitacion"
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["cobertura"] == "sin_cobertura"
+    assert precip["serie"] == []
 
 
 # ── B2.1 — an INCOMPLETE product (some months missing) → sin_cobertura ────────
@@ -371,10 +372,12 @@ def test_precip_meses_faltantes_es_sin_cobertura(ficha_db, monkeypatch, tmp_path
 
 
 def test_precip_solo_lee_su_area_id(ficha_db, monkeypatch, tmp_path):
-    """Normals registered under a DIFFERENT area_id are invisible → 503, not a read.
+    """Normals registered under a DIFFERENT area_id are invisible → sin_cobertura.
 
     The month-scoped lookup filters ``area_id = settings.ficha_precip_area_id``;
-    a foreign deployment's rasters must never leak into this consorcio's ficha.
+    a foreign deployment's rasters must never leak into this consorcio's ficha. With
+    soft degradation the isolation shows up as this consorcio seeing zero months
+    (200 sin_cobertura), never as reading another area's rasters.
     """
     _enable(monkeypatch)
     _crear_tabla_suelos(ficha_db)
@@ -390,6 +393,7 @@ def test_precip_solo_lee_su_area_id(ficha_db, monkeypatch, tmp_path):
 
     rs = _post(ficha_db)
 
-    assert rs.status_code == 503, rs.text
-    assert rs.json()["codigo"] == "dataset_no_cargado"
-    assert rs.json()["dataset"] == "precipitacion"
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["cobertura"] == "sin_cobertura"
+    assert precip["serie"] == []
