@@ -143,9 +143,7 @@ class GeoRepositoryJobsLayersMixin:
         stmt = select(GeoLayer).where(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id)
         return db.execute(stmt).scalar_one_or_none()
 
-    def get_latest_precip_normals_by_month(
-        self, db: Session, area_id: str
-    ) -> dict[str, GeoLayer]:
+    def get_latest_precip_normals_by_month(self, db: Session, area_id: str) -> dict[str, GeoLayer]:
         """Newest ``precip_normal`` layer per month for ``area_id`` (JD-A-008).
 
         The 13 CHIRPS rasters all share ``tipo = precip_normal``, so the usual

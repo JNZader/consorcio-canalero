@@ -65,7 +65,10 @@ def chirps_db(test_engine) -> Session:
 
 # ── Injected fakes ───────────────────────────────────────────────────────────
 
-REGION = {"type": "Polygon", "coordinates": [[[-59, -35], [-58, -35], [-58, -34], [-59, -34], [-59, -35]]]}
+REGION = {
+    "type": "Polygon",
+    "coordinates": [[[-59, -35], [-58, -35], [-58, -34], [-59, -34], [-59, -35]]],
+}
 
 _RESAMPLING_NEAREST = object()  # sentinel: the runner must forward THIS, unchanged
 

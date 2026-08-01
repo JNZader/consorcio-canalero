@@ -724,9 +724,7 @@ def _perfil_precip(ruta: str, geom4326: dict[str, Any], area_m2: float) -> dict[
         raise ficha_errors.raster_ilegible("precipitacion") from exc
 
 
-def _anual_mm(
-    layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float
-) -> float | None:
+def _anual_mm(layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float) -> float | None:
     """Annual-total mean mm for the zone, or ``None`` when unavailable.
 
     The annual raster is a convenience total registered alongside the 12 monthly

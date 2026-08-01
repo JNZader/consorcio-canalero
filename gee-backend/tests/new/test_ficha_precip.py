@@ -271,8 +271,15 @@ def test_precip_zona_fuera_de_cobertura_sin_cobertura_sin_ceros(ficha_db, monkey
         _registrar_precip(
             ficha_db,
             mes,
-            _raster(tmp_path, f"precip_{mes:02d}.tif", float(mes * 10), west=-50.0, north=-20.0,
-                    pixel=0.001, npix=8),
+            _raster(
+                tmp_path,
+                f"precip_{mes:02d}.tif",
+                float(mes * 10),
+                west=-50.0,
+                north=-20.0,
+                pixel=0.001,
+                npix=8,
+            ),
         )
 
     rs = _post(ficha_db)

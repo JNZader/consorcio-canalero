@@ -234,9 +234,7 @@ def export_chirps_monthly_normals_payload(
     calendar order (the annual total last).
     """
     if start_year > end_year:
-        raise ValueError(
-            f"start_year ({start_year}) must be <= end_year ({end_year})"
-        )
+        raise ValueError(f"start_year ({start_year}) must be <= end_year ({end_year})")
     geometry = ee_module.Geometry(region)
     collection = ee_module.ImageCollection(CHIRPS_COLLECTION_ID).filterDate(
         f"{start_year}-01-01", f"{end_year + 1}-01-01"

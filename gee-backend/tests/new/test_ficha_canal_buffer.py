@@ -386,9 +386,7 @@ def test_canal_con_geom_nula_es_404_sin_raster(ficha_db, monkeypatch):
     _enable(monkeypatch)
     _crear_tabla_canal(ficha_db)
     canal_id = ficha_db.execute(
-        text(
-            "INSERT INTO canal_network (nombre, geom) VALUES (:n, NULL) RETURNING id"
-        ),
+        text("INSERT INTO canal_network (nombre, geom) VALUES (:n, NULL) RETURNING id"),
         {"n": "Canal sin traza"},
     ).scalar_one()
 

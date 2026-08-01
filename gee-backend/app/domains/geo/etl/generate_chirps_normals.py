@@ -221,9 +221,13 @@ def _resolve_raster_io(
         )
 
         rasterio_module = rasterio_module or _rasterio
-        calculate_default_transform_fn = calculate_default_transform_fn or calculate_default_transform
+        calculate_default_transform_fn = (
+            calculate_default_transform_fn or calculate_default_transform
+        )
         reproject_fn = reproject_fn or reproject
-        resampling_nearest = resampling_nearest if resampling_nearest is not None else Resampling.nearest
+        resampling_nearest = (
+            resampling_nearest if resampling_nearest is not None else Resampling.nearest
+        )
     return (
         requests_module,
         rasterio_module,
