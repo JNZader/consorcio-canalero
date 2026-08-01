@@ -1,9 +1,11 @@
 """Publication policy of ``GET /api/v2/geo/layers/public`` (no auth).
 
 The endpoint is the ONLY gate deciding which DEM-pipeline layers an
-anonymous visitor can discover. Production publishes ``dem_raw`` plus
+anonymous visitor can discover. Production publishes ``dem_raw``,
 ``terrain_class`` (clasificación del terreno, pedido del consorcio
-2026-07-30); every other terrain product stays behind login.
+2026-07-30) and the ``flood_risk`` / ``drainage_need`` composites
+(overlays de riesgo/drenaje del mapa de la ficha, 2026-08-01); every
+other terrain product stays behind login.
 
 These tests pin that policy with the review flag explicitly OFF, so a
 developer with ``PUBLIC_MAP_LAYER_EVAL`` exported in their shell still
@@ -100,21 +102,24 @@ def _tipos(response) -> set[str]:
     return {item["tipo"] for item in response.json()["items"]}
 
 
-def test_public_layers_expose_dem_raw_and_terrain_class(
+def test_public_layers_expose_published_production_set(
     client: TestClient, seeded_layers: None
 ) -> None:
     resp = client.get(ENDPOINT, params={"limit": 100})
     assert resp.status_code == 200, resp.text
-    # Igualdad EXACTA: si manana alguien amplia PUBLIC_PRODUCTION_LAYER_TYPES
-    # (p. ej. mete flood_risk), este assert falla y obliga a decidirlo a
-    # conciencia en el test, no de rebote.
-    assert _tipos(resp) == {"dem_raw", "terrain_class"}
+    # Igualdad EXACTA: si manana alguien amplia PUBLIC_PRODUCTION_LAYER_TYPES,
+    # este assert falla y obliga a decidirlo a conciencia en el test, no de
+    # rebote. flood_risk/drainage_need se sumaron al set publico (overlays de
+    # riesgo/drenaje de la ficha, 2026-08-01).
+    assert _tipos(resp) == {"dem_raw", "terrain_class", "flood_risk", "drainage_need"}
 
 
 def test_public_layers_hide_non_published_types(client: TestClient, seeded_layers: None) -> None:
     resp = client.get(ENDPOINT, params={"limit": 100})
     assert resp.status_code == 200, resp.text
     tipos = _tipos(resp)
+    # flood_risk/drainage_need YA NO son privados (publicados 2026-08-01); el
+    # resto de los productos intermedios del pipeline sigue detras de login.
     privados = {
         "hand",
         "twi",
@@ -122,8 +127,6 @@ def test_public_layers_hide_non_published_types(client: TestClient, seeded_layer
         "flow_dir",
         "slope",
         "aspect",
-        "flood_risk",
-        "drainage_need",
     }
     assert not (tipos & privados), f"tipos privados expuestos: {tipos & privados}"
 
@@ -143,6 +146,15 @@ def test_public_layers_tipo_filter_narrows_to_terrain_class(
     resp = client.get(ENDPOINT, params={"tipo": "terrain_class"})
     assert resp.status_code == 200, resp.text
     assert _tipos(resp) == {"terrain_class"}
+
+
+@pytest.mark.parametrize("tipo", ["flood_risk", "drainage_need"])
+def test_public_layers_tipo_filter_narrows_to_composite(
+    tipo: str, client: TestClient, seeded_layers: None
+) -> None:
+    resp = client.get(ENDPOINT, params={"tipo": tipo})
+    assert resp.status_code == 200, resp.text
+    assert _tipos(resp) == {tipo}
 
 
 def test_public_layers_foreign_fuente_returns_empty_page(
