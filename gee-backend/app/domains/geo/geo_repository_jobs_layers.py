@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.domains.geo.geo_repository_support import paginated_results
-from app.domains.geo.models import EstadoGeoJob, GeoJob, GeoLayer
+from app.domains.geo.models import EstadoGeoJob, GeoJob, GeoLayer, TipoGeoLayer
 
 
 class GeoRepositoryJobsLayersMixin:
@@ -142,6 +142,40 @@ class GeoRepositoryJobsLayersMixin:
     ) -> Optional[GeoLayer]:
         stmt = select(GeoLayer).where(GeoLayer.tipo == tipo, GeoLayer.area_id == area_id)
         return db.execute(stmt).scalar_one_or_none()
+
+    def get_latest_precip_normals_by_month(
+        self, db: Session, area_id: str
+    ) -> dict[str, GeoLayer]:
+        """Newest ``precip_normal`` layer per month for ``area_id`` (JD-A-008).
+
+        The 13 CHIRPS rasters all share ``tipo = precip_normal``, so the usual
+        "most recent layer of tipo X for this area" idiom
+        (:meth:`get_layer_by_tipo_and_area`, which returns ONE row) would hand the
+        same raster back for every month. This helper instead groups by
+        ``metadata_extra->>'mes'`` and takes the newest ``version`` WITHIN each
+        month, so a regeneration (a fresh batch carrying a newer ``version``)
+        supersedes the previous run per month without any row being deleted.
+
+        Returns a dict keyed by the month tag as stored text — ``"1"``..``"12"``
+        plus ``"anual"`` — each mapping to its latest ``GeoLayer``. An empty dict
+        means no normals are registered for the area (the ficha maps that to 503
+        ``dataset_no_cargado``).
+        """
+        mes_key = GeoLayer.metadata_extra["mes"].astext
+        version_key = GeoLayer.metadata_extra["version"].astext
+        # DISTINCT ON (mes) + ORDER BY mes, version DESC keeps the newest row per
+        # month. Postgres requires the DISTINCT ON expression to lead ORDER BY.
+        stmt = (
+            select(GeoLayer)
+            .where(
+                GeoLayer.tipo == TipoGeoLayer.PRECIP_NORMAL.value,
+                GeoLayer.area_id == area_id,
+            )
+            .order_by(mes_key, version_key.desc())
+            .distinct(mes_key)
+        )
+        layers = db.execute(stmt).scalars().all()
+        return {str(layer.metadata_extra["mes"]): layer for layer in layers}
 
     def create_layer(
         self,

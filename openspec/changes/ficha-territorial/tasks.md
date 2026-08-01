@@ -334,12 +334,55 @@ their immediate parent PR branch.
       B1b (`etl/generate_chirps_normals.py`). Tests: `tests/new/test_chirps_normals_export.py`
       (6, GEE mocked via `FakeEE`) — 13 outputs, CHIRPS/DAILY source, 1991-2020 window,
       360 year+month sums, GEO_TIFF download params.
-- [ ] B1.3 Create `gee-backend/app/domains/geo/etl/generate_chirps_normals.py` (`python -m` entry point): 13 outputs (`precip_normal_{MM}.tif` ×12 + `precip_normal_anual.tif`) to `/data/geo/{area_id}/output/`, warped to EPSG:32720 at **5 000 m** with `Resampling.nearest`, nodata `-9999.0`; register each as a `geo_layers` row with `metadata_extra = {mes, normal_period, fuente, version (UTC ISO8601), resolucion_m}`. AC: "Registration as geo_layers" + "Regeneration versions the metadata" (JDB-011/JDB-018). (~120)
-- [ ] B1.4 Month-scoped lookup helper: select `tipo=PRECIP_NORMAL AND area_id=:area`, group by `metadata_extra->>'mes'`, take the newest `version` per month. The "most recent layer of tipo X" idiom MUST NOT be used. AC: "Layers discoverable by the ficha" (JD-A-008). (~40)
-- [ ] B1.5 Missing/invalid GEE credentials fail loudly with no partial layer registered. AC: "Missing credentials fail loudly". (~25)
-- [ ] B1.6 Module docstring: static cadence, regenerate only on a period or extent change, exact manual command + expected outputs. AC: "On-demand regeneration documented". (~15)
-- [ ] B1.7 Tests: 13 rasters produced, credentials failure registers nothing, `version` changes on regeneration, the lookup helper returns 12 distinct rasters (the regression against the single-row idiom). (~110)
+- [x] B1.3 Create `gee-backend/app/domains/geo/etl/generate_chirps_normals.py` (`python -m` entry point): 13 outputs (`precip_normal_{MM}.tif` ×12 + `precip_normal_anual.tif`) to `/data/geo/{area_id}/output/`, warped to EPSG:32720 at **5 000 m** with `Resampling.nearest`, nodata `-9999.0`; register each as a `geo_layers` row with `metadata_extra = {mes, normal_period, fuente, version (UTC ISO8601), resolucion_m}`. AC: "Registration as geo_layers" + "Regeneration versions the metadata" (JDB-011/JDB-018). (~120)
+      **B1b**: `generate_normals(db, region, area_id, ...)` resolves the 13 GEE
+      download URLs FIRST (via `export_chirps_monthly_normals`), then downloads →
+      `_warp_to_target` (EPSG:32720 @ 5 000 m, `Resampling.nearest`, nodata
+      `-9999.0`, mirrors `reproject_to_utm_impl`) → registers each via
+      `GeoRepository.create_layer` (INSERT, never upsert). **Regeneration =
+      new rows, not overwrite**: all 13 share one run `version` (UTC ISO8601);
+      a re-run appends a fresh set with a newer `version` and leaves the prior
+      rows in place — the month-scoped lookup (B1.4) picks the newest `version`
+      per month. This matches the AC wording "Regeneration versions the metadata"
+      + the JD-A-008 lookup rationale (multiple rows per month must coexist).
+      Registration loop is all-or-nothing (`db.commit()` once; rollback on any
+      error). Raster download/warp I/O and `export_fn` are injected for testing.
+- [x] B1.4 Month-scoped lookup helper: select `tipo=PRECIP_NORMAL AND area_id=:area`, group by `metadata_extra->>'mes'`, take the newest `version` per month. The "most recent layer of tipo X" idiom MUST NOT be used. AC: "Layers discoverable by the ficha" (JD-A-008). (~40)
+      **B1b**: `GeoRepository.get_latest_precip_normals_by_month(db, area_id)` in
+      `geo_repository_jobs_layers.py`, placed next to the single-row
+      `get_layer_by_tipo_and_area` it must NOT reuse. Postgres `DISTINCT ON
+      (metadata_extra->>'mes') ... ORDER BY mes, version DESC` → newest row per
+      month. Returns `dict[str, GeoLayer]` keyed by the month tag (`"1"`..`"12"`
+      + `"anual"`). The consumer (B2) is not wired here.
+- [x] B1.5 Missing/invalid GEE credentials fail loudly with no partial layer registered. AC: "Missing credentials fail loudly". (~25)
+      **B1b**: two-layer guard. In `main()`, `get_gee_service()` +
+      `zona.geometry().getInfo()` resolves the extent — a bad key raises here and
+      exits `EXIT_GEE_FAILED` (1) before any DB session opens. In
+      `generate_normals`, `export_fn` (which calls
+      `gee_service._ensure_initialized`, `RuntimeError` on absent creds) runs
+      BEFORE the download/register loop, so a credentials failure registers
+      nothing. Test `test_missing_credentials_fail_loudly_and_register_nothing`
+      asserts zero `precip_normal` rows after a raising `export_fn`.
+- [x] B1.6 Module docstring: static cadence, regenerate only on a period or extent change, exact manual command + expected outputs. AC: "On-demand regeneration documented". (~15)
+      **B1b**: module docstring documents the exact `docker compose exec backend
+      python -m app.domains.geo.etl.generate_chirps_normals` command, the 13
+      expected output paths, the static cadence (regenerate only on a period or
+      extent change; no scheduled job), and the exit codes.
+- [x] B1.7 Tests: 13 rasters produced, credentials failure registers nothing, `version` changes on regeneration, the lookup helper returns 12 distinct rasters (the regression against the single-row idiom). (~110)
+      **B1b**: `tests/new/test_generate_chirps_normals.py` — 8 tests, real-PG
+      (savepoint-scoped session; the runner commits) with GEE + raster I/O
+      injected fakes. Covers: 13 rows with exact `metadata_extra`; zero-padded
+      filenames; warp target 32720 @ 5 000 m / nearest / nodata -9999 asserted on
+      the recorded `calculate_default_transform` + `reproject` call args (not real
+      GDAL); regeneration appends a new `version` without overwriting (26 rows,
+      two versions); credentials failure registers nothing; lookup returns 12
+      distinct monthly rasters + newest version after regeneration.
 - [ ] B1.8 **OPS** (judge-forced): container-invocation scenario — run `docker compose exec backend python -m app.domains.geo.etl.generate_chirps_normals` and confirm the outputs land on the `geo-data` volume the geo-worker reads. (~10)
+      **PENDIENTE** — merge gate, not a code task. Needs real GEE credentials and
+      the deployed backend container (mounts `geo-data:/data/geo`,
+      `docker-compose.yml:99`); same blocker as A1a.6/A1b.9 — the container `app/`
+      is read-only, so the runner only executes on the target after deploying the
+      branch. Record the 13 output paths + row count in the PR body.
 
 ## PR B2 — Phase 4b: precipitation in the ficha (base: A3b **and** B1)
 
