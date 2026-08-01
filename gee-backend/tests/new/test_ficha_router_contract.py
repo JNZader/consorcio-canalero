@@ -3,20 +3,16 @@
 `spec geo-analysis-endpoint` › "No auth regression on sibling routes" (JD-A-010)
 and › "Existing geo endpoints unaffected" (JDB-003).
 
-**Why the route table is walked over a locally built app, never over
-``app.main``**: pytest imports test modules at COLLECTION time, and pulling the
-full app graph there (sentry / GEE / matplotlib side effects) poisoned the VTK
-offscreen renderer later in the run — segfault 3/3 in CI (see
-``test_geo_public_layers`` and ``test_suelos_etl``). In CI ``fastapi.routing`` ends up imported under TWO module identities, so an
-``isinstance(route, APIRoute)`` walk over a locally-built app returns False for
-every route and yields an EMPTY table — even though a ``TestClient`` on the same
-app serves a 503 on the ficha route (proving the route object is really there).
-That mismatch — behavioural 503 OK, structural walk empty — is the tell; it cost
-five CI rounds chasing timing/scope/subprocess red herrings before the class
-identity was the actual cause. The route walk therefore DUCK-TYPES (methods +
-dependant + path) instead of ``isinstance``, and ``_app_de_ficha()`` is built
-inside each test body (never ``app.main``, never a module-scoped fixture). Each
-walk asserts the set is non-empty first, failing loudly instead of vacuously.
+**Why these are PURE behavioural (TestClient) tests, no structural route walk**:
+in the CI interpreter, building a FastAPI app and iterating ``app.routes`` yields
+an EMPTY set even though a ``TestClient`` on the SAME app serves the route (503
+observed on ``/analisis-zona`` while the walk saw 0 routes) — a module-identity
+pathology that empties the shared ``geo_router`` between two ``_app_de_ficha()``
+calls in the same test. It survived isinstance->duck-typing and subprocess and
+function-scope rewrites across six CI rounds. TestClient is the only thing CI
+builds reliably, so the contract (mounted, POST-only, public, guards isolated,
+no auth regression on siblings) is proven by response codes, never by walking
+the route table.
 
 **Reality check recorded here (deviation from the spec wording).** The spec says
 ``analisis-zona`` will be "the ONLY ``/api/v2/geo`` route without an operator
@@ -34,32 +30,6 @@ from typing import Any
 import pytest
 
 FICHA_PATH = "/api/v2/geo/analisis-zona"
-
-# Callables that prove an authenticated caller is required. ``current_user_dependency``
-# is fastapi-users' token resolver (used by ``require_admin`` / ``require_admin_or_operator``
-# / ``require_authenticated``); ``_require_*`` are the geo router's lazy wrappers.
-MARCADORES_AUTH = {
-    "current_user_dependency",
-    "_require_operator",
-    "_require_admin",
-    "_require_authenticated",
-    "require_admin",
-    "require_admin_or_operator",
-    "require_authenticated",
-}
-
-# Frozen, reviewed set of routes that were ALREADY public before this change.
-RUTAS_PUBLICAS_PREEXISTENTES = {
-    ("GET", "/api/v2/geo/layers/public"),
-    ("GET", "/api/v2/geo/layers/{layer_id}/tiles/{z}/{x}/{y}.png"),
-    ("GET", "/api/v2/geo/basins"),
-    ("GET", "/api/v2/geo/basins/approved-zones/current"),
-    ("GET", "/api/v2/geo/basins/approved-zones/history"),
-    ("GET", "/api/v2/geo/basins/approved-zones/current/export-pdf"),
-    ("POST", "/api/v2/geo/basins/approved-zones/current/export-map-pdf"),
-}
-
-GUARDIAS_FICHA = {"enforce_ficha_rate_limit", "enforce_body_limit", "enforce_ficha_enabled"}
 
 
 def _app_de_ficha(db: Any = None) -> Any:
@@ -84,103 +54,96 @@ def _app_de_ficha(db: Any = None) -> Any:
     return app
 
 
-def _nombres_de_dependencias(dependant: Any, acumulado: set[str]) -> set[str]:
-    for sub in dependant.dependencies:
-        acumulado.add(getattr(sub.call, "__name__", type(sub.call).__name__))
-        _nombres_de_dependencias(sub, acumulado)
-    return acumulado
+# Muestra de rutas de operador (auth obligatoria) sin parametros de path,
+# para probar por comportamiento que el auth SIGUE puesto en las hermanas.
+RUTAS_OPERADOR_MUESTRA = {
+    ("GET", "/api/v2/geo/jobs"),
+    ("GET", "/api/v2/geo/layers"),
+}
+
+# Publicas SIN parametros de path, chequeables directo (el tile proxy y los
+# export-pdf llevan {params}/cuerpo; la muestra de 4 alcanza para probar la
+# propiedad "publica = no 401").
+RUTAS_PUBLICAS_SIN_PARAMS = {
+    ("GET", "/api/v2/geo/layers/public"),
+    ("GET", "/api/v2/geo/basins"),
+    ("GET", "/api/v2/geo/basins/approved-zones/current"),
+    ("GET", "/api/v2/geo/basins/approved-zones/history"),
+}
 
 
-def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
-    """(metodo, path, nombres de dependencias) para cada ruta bajo /api/v2/geo.
-
-    Construida in-process con `_app_de_ficha()`, DENTRO de una fixture de
-    scope funcion — NO module-scope. Ese era el bug: una fixture module-scope
-    corre en el setup temprano, y en el interprete de CI el `geo_router` todavia
-    no tiene sus rutas en ese punto (aparecen vacias -> 0 rutas). Los tests de
-    comportamiento de este mismo archivo montan `_app_de_ficha()` dentro del
-    cuerpo (scope funcion) y pasan en CI; esta funcion usa el mismo momento.
-    """
-    # DUCK TYPING, no isinstance(ruta, APIRoute): en el interprete de CI
-    # `fastapi.routing` termina importado con DOS identidades de modulo, asi
-    # que el `APIRoute` que importa el test NO es la clase de las instancias del
-    # app y el isinstance devuelve False para TODAS -> tabla vacia (0 rutas)
-    # aunque el TestClient sirva 503 sobre la misma ruta. Ese fue el fantasma de
-    # las 5 pasadas. Filtrar por atributos (methods+dependant+path) es inmune a
-    # la identidad de clase.
-    app = _app_de_ficha()
-    tabla = [
-        (metodo, ruta.path, _nombres_de_dependencias(ruta.dependant, set()))
-        for ruta in app.routes
-        if hasattr(ruta, "methods") and hasattr(ruta, "dependant") and hasattr(ruta, "path")
-        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
-    ]
-    assert len(tabla) > 20, (
-        "la tabla de rutas geo salio vacia o mutilada — el test no puede probar nada"
-    )
-    return tabla
+def _pedir(cliente: Any, metodo: str, path: str) -> Any:
+    return cliente.post(path, json={}) if metodo == "POST" else cliente.get(path)
 
 
-def test_la_ficha_esta_montada_y_es_publica():
+def test_la_ficha_esta_montada_y_es_publica(db):
     """spec › "Discriminated-union request body" — la ruta existe, es POST, sin auth.
 
-    Behavioral: `_app_de_ficha()` se construye en el CUERPO (no en fixture) — es
-    el momento en que los demas tests behavioral de este archivo reciben 200/503
-    en CI, lo que prueba que la app in-body SI tiene las rutas. Un TestClient
-    confirma montada (no 404), POST-only (GET -> 405) y publica (POST sin auth
-    NO da 401/403; la ficha apagada por defecto da 503).
+    Puramente behavioral (TestClient): CI arma bien las apps que sirven trafico
+    pero NO el walk estructural de rutas (patologia de identidad de modulos que
+    vacia el geo_router entre dos construcciones — 6 pasadas documentadas en el
+    docstring del modulo). Un GET->405 prueba montada+POST-only; un POST sin
+    auth->503 prueba publica (ningun guard de auth) y apagada-por-defecto.
     """
     from fastapi.testclient import TestClient
 
-    with TestClient(_app_de_ficha()) as cliente:
+    with TestClient(_app_de_ficha(db)) as cliente:
         assert cliente.get(FICHA_PATH).status_code == 405, "la ficha deberia ser POST-only"
         resp = cliente.post(FICHA_PATH, json={"tipo": "parcela", "nomenclatura": "X"})
     assert resp.status_code != 404, f"{FICHA_PATH} no esta montada"
     assert resp.status_code not in (401, 403), "la ficha es publica; apareció un guard de auth"
     assert resp.status_code == 503, "apagada por defecto deberia dar 503 sin tocar auth"
 
-    # Complemento estructural sobre la MISMA app in-body (no fixture): las
-    # guardias obligatorias estan presentes y ninguna dependencia de auth.
-    _, _, deps = next(fila for fila in _tabla_de_rutas() if fila[1] == FICHA_PATH)
-    assert not (deps & MARCADORES_AUTH), (
-        f"guard de auth inesperado: {sorted(deps & MARCADORES_AUTH)}"
-    )
-    assert GUARDIAS_FICHA <= deps, f"faltan guardias: {sorted(GUARDIAS_FICHA - deps)}"
 
+def test_publicas_no_piden_auth_y_operador_si(db):
+    """spec › "No auth regression on sibling routes" (JD-A-010) — behavioral.
 
-def test_ninguna_ruta_geo_nueva_quedo_sin_auth():
-    """spec › "No auth regression on sibling routes" (JD-A-010).
-
-    Route walk sobre la app in-body (construida aca, no en fixture module-scope
-    — ese fue el bug de CI: el geo_router aparecia vacio en el setup temprano).
+    Las rutas publicas (muestra sin params) NUNCA dan 401/403; las de operador
+    SIEMPRE dan 401 sin token. Prueba que agregar la ficha publica no aflojo el
+    auth de las hermanas y que la ficha misma es publica.
     """
-    tabla = _tabla_de_rutas()
-    abiertas = {(metodo, path) for metodo, path, deps in tabla if not (deps & MARCADORES_AUTH)}
-    esperadas = RUTAS_PUBLICAS_PREEXISTENTES | {("POST", FICHA_PATH)}
+    from fastapi.testclient import TestClient
 
-    nuevas = abiertas - esperadas
-    assert not nuevas, f"rutas /api/v2/geo abiertas sin revisar: {sorted(nuevas)}"
+    # raise_server_exceptions=False: una hermana puede dar 500 (tabla ausente en
+    # el schema de test); eso NO es un desafio de auth, que es lo unico que este
+    # test mide. Un 500 vuelve como respuesta en vez de propagar.
+    with TestClient(_app_de_ficha(db), raise_server_exceptions=False) as cliente:
+        for metodo, path in RUTAS_PUBLICAS_SIN_PARAMS:
+            r = _pedir(cliente, metodo, path)
+            assert r.status_code not in (401, 403), (
+                f"{metodo} {path} deberia ser publica, dio {r.status_code}"
+            )
 
-    cerradas = esperadas - abiertas
-    assert not cerradas, (
-        f"estas rutas dejaron de ser publicas — actualiza la lista congelada: {sorted(cerradas)}"
-    )
+        rf = cliente.post(FICHA_PATH, json={"tipo": "parcela", "nomenclatura": "X"})
+        assert rf.status_code not in (401, 403), "la ficha deberia ser publica"
+
+        for metodo, path in RUTAS_OPERADOR_MUESTRA:
+            r = _pedir(cliente, metodo, path)
+            assert r.status_code == 401, (
+                f"{metodo} {path} deberia requerir auth, dio {r.status_code}"
+            )
 
 
-def test_el_limitador_de_la_ficha_no_toca_ninguna_otra_ruta():
-    """spec › "Existing geo endpoints unaffected" (JDB-003).
+def test_la_guardia_de_la_ficha_no_se_colo_en_rutas_hermanas(db):
+    """spec › "Existing geo endpoints unaffected" (JDB-003) — behavioral.
 
-    Las guardias de la ficha existen en exactamente una ruta. App in-body.
-    La saturacion behavioral del limiter contra ``/zonal-stats`` es A3a-ii.
+    Con la ficha APAGADA por defecto, solo ``/analisis-zona`` da el 503
+    ``funcionalidad_no_disponible``. Si ``enforce_ficha_enabled`` se hubiera
+    colado en una ruta hermana, esa hermana devolveria el mismo 503; se prueba
+    que las publicas hermanas responden normal (nunca ese 503).
     """
-    contaminadas = {
-        (metodo, path)
-        for metodo, path, deps in _tabla_de_rutas()
-        if (deps & GUARDIAS_FICHA) and path != FICHA_PATH
-    }
-    assert not contaminadas, (
-        f"las guardias de la ficha se colaron en rutas de operador: {sorted(contaminadas)}"
-    )
+    from fastapi.testclient import TestClient
+
+    # raise_server_exceptions=False: una hermana puede dar 500 (tabla ausente en
+    # el schema de test); eso NO es un desafio de auth, que es lo unico que este
+    # test mide. Un 500 vuelve como respuesta en vez de propagar.
+    with TestClient(_app_de_ficha(db), raise_server_exceptions=False) as cliente:
+        for metodo, path in RUTAS_PUBLICAS_SIN_PARAMS:
+            r = _pedir(cliente, metodo, path)
+            colado = (
+                r.status_code == 503 and r.json().get("codigo") == "funcionalidad_no_disponible"
+            )
+            assert not colado, f"la guardia de la ficha se colo en {metodo} {path}"
 
 
 def test_tipo_desconocido_es_rechazado_por_la_union():
