@@ -178,11 +178,12 @@ export async function fetchAnalisisZona(
 // ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
 
 /**
- * Overlay datasets the opt-in `/analisis-zona/overlay` endpoint serves. Slice 1
- * is `suelos` only (the exact PostGIS vector path); `flood_risk` / `drainage_need`
- * raster vectorization is slice 2.
+ * Overlay datasets the opt-in `/analisis-zona/overlay` endpoint serves: `suelos`
+ * (the exact PostGIS vector path) plus the two raster datasets `flood_risk` /
+ * `drainage_need`, vectorized per class server-side. One dataset per request — the
+ * map paints a single overlay at a time.
  */
-export type FichaOverlayDataset = 'suelos';
+export type FichaOverlayDataset = 'suelos' | 'flood_risk' | 'drainage_need';
 
 /** One GeoJSON Feature of the clipped overlay. `properties.clase` is the SAME
  * normalized soil-capability label the panel groups by; the client maps it to a

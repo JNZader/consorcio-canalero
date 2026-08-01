@@ -16,6 +16,7 @@
 import type maplibregl from 'maplibre-gl';
 import type { FeatureCollection } from 'geojson';
 
+import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
 import type { FichaOverlayDataset } from '../../lib/api/ficha';
 
@@ -26,6 +27,9 @@ export const FICHA_OVERLAY_LINE_LAYER = `${FICHA_OVERLAY_SOURCE}-line`;
 
 /** Fallback for an unclassified / unknown clase — matches `getSoilColor`'s default. */
 export const SOIL_OVERLAY_FALLBACK_COLOR = '#8d6e63';
+
+/** Fallback for a flood/drainage clase not found in the legend ranges (neutral grey). */
+export const RIESGO_OVERLAY_FALLBACK_COLOR = '#9e9e9e';
 
 /**
  * MapLibre `match` expression coloring a feature by `properties.clase`, reusing
@@ -44,6 +48,38 @@ export function buildSoilOverlayColorExpression(): maplibregl.ExpressionSpecific
     ...cases,
     SOIL_OVERLAY_FALLBACK_COLOR,
   ] as unknown as maplibregl.ExpressionSpecification;
+}
+
+/**
+ * MapLibre `match` expression coloring a flood_risk / drainage_need feature by
+ * `properties.clase` (Bajo / Medio / Alto / Crítico) using the SAME per-class
+ * colors the panel's legend reads from `LAYER_LEGEND_CONFIG[dataset].ranges`. No
+ * second palette — the backend emits the class LABEL and this maps label → color
+ * from the shared legend config, so the overlay and the `RiesgoBins` legend agree.
+ */
+export function buildRiesgoOverlayColorExpression(
+  dataset: 'flood_risk' | 'drainage_need'
+): maplibregl.ExpressionSpecification {
+  const ranges = LAYER_LEGEND_CONFIG[dataset]?.ranges ?? [];
+  const cases: (string | string[])[] = [];
+  for (const range of ranges) {
+    cases.push(range.label, range.color);
+  }
+  return [
+    'match',
+    ['get', 'clase'],
+    ...cases,
+    RIESGO_OVERLAY_FALLBACK_COLOR,
+  ] as unknown as maplibregl.ExpressionSpecification;
+}
+
+/** Dataset-aware color expression: soils palette for `suelos`, legend ranges for rasters. */
+export function buildOverlayColorExpression(
+  dataset: FichaOverlayDataset
+): maplibregl.ExpressionSpecification {
+  return dataset === 'suelos'
+    ? buildSoilOverlayColorExpression()
+    : buildRiesgoOverlayColorExpression(dataset);
 }
 
 function removeFichaOverlay(map: maplibregl.Map) {
@@ -77,12 +113,14 @@ export function syncFichaOverlayLayers(
     visible: boolean;
   }
 ) {
-  const { featureCollection, visible } = params;
+  const { featureCollection, dataset, visible } = params;
 
   if (!visible || !featureCollection) {
     removeFichaOverlay(map);
     return;
   }
+
+  const colorExpression = buildOverlayColorExpression(dataset);
 
   const existing = map.getSource(FICHA_OVERLAY_SOURCE) as maplibregl.GeoJSONSource | undefined;
   if (existing) {
@@ -94,25 +132,31 @@ export function syncFichaOverlayLayers(
     });
   }
 
-  if (!map.getLayer(FICHA_OVERLAY_FILL_LAYER)) {
+  if (map.getLayer(FICHA_OVERLAY_FILL_LAYER)) {
+    // Layer already mounted (e.g. dataset switched) → repaint with the current
+    // dataset's palette so a soils overlay never keeps painting flood classes.
+    map.setPaintProperty?.(FICHA_OVERLAY_FILL_LAYER, 'fill-color', colorExpression);
+  } else {
     map.addLayer({
       id: FICHA_OVERLAY_FILL_LAYER,
       type: 'fill',
       source: FICHA_OVERLAY_SOURCE,
       paint: {
-        'fill-color': buildSoilOverlayColorExpression(),
+        'fill-color': colorExpression,
         'fill-opacity': 0.55,
       },
     });
   }
 
-  if (!map.getLayer(FICHA_OVERLAY_LINE_LAYER)) {
+  if (map.getLayer(FICHA_OVERLAY_LINE_LAYER)) {
+    map.setPaintProperty?.(FICHA_OVERLAY_LINE_LAYER, 'line-color', colorExpression);
+  } else {
     map.addLayer({
       id: FICHA_OVERLAY_LINE_LAYER,
       type: 'line',
       source: FICHA_OVERLAY_SOURCE,
       paint: {
-        'line-color': buildSoilOverlayColorExpression(),
+        'line-color': colorExpression,
         'line-width': 0.6,
       },
     });
