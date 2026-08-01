@@ -54,16 +54,29 @@ from app.domains.geo import ficha_errors
 from app.domains.geo.class_breaks import RANGE_CONFIGS
 from app.domains.geo.composites import extract_zonal_profile
 from app.domains.geo.models import GeoLayer
+from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas_ficha import (
     ClaseFicha,
     DatasetFicha,
     FichaRequest,
     FichaResponse,
     PrecipitacionFicha,
+    PrecipMes,
 )
 from app.shared.audit_log import write_audit_entry_sync
 
 logger = get_logger(__name__)
+
+# Stateless data-access layer, instantiated once like ``service.py`` does. The
+# ficha only needs the month-scoped precip lookup from it (B1b); soils and the
+# flood/drainage rasters keep their inline SQL / ``GeoLayer`` queries.
+_repo = GeoRepository()
+
+# CHIRPS normals are warped to ~5 km pixels, so a parcel is ALWAYS sub-pixel
+# against them; flagging that as low-confidence would fire on every ficha for a
+# field that is a smooth interpolated normal, not a coarse sample (JDB-017,
+# design §1.3). ``K = 0`` in ``extract_zonal_profile`` never flags.
+_PRECIP_K = 0.0
 
 M2_POR_HA = 10_000.0
 SEMAFORO_TIMEOUT_S = 2.0
@@ -574,6 +587,154 @@ def _raster_dataset(
     )
 
 
+# ── precipitation dataset (CHIRPS monthly normals via extract_zonal_profile) ─
+
+
+def _precip_raster_path(layer: GeoLayer) -> str | None:
+    """On-disk path of a registered ``precip_normal`` layer, or ``None`` if gone.
+
+    Mirrors ``_raster_path``'s file-existence check (a registered row whose file
+    was pruned reads as missing) but takes the already-resolved ``GeoLayer`` — the
+    month-scoped lookup (B1b) hands back one row PER month, so there is no "newest
+    of tipo X" query to run here. CHIRPS normals carry no COG variant, so only
+    ``archivo_path`` is probed.
+    """
+    ruta = layer.archivo_path
+    if not (ruta and Path(ruta).exists()):
+        logger.info("raster precip_normal registrado pero archivo ausente", ruta=ruta)
+        return None
+    return ruta
+
+
+def _precipitacion_dataset(
+    db: Session, geom4326: dict[str, Any], area_m2: float
+) -> PrecipitacionFicha:
+    """Monthly precipitation normals for the zone through the SHARED zonal path.
+
+    Reads the 12 monthly (+ annual) CHIRPS normals with ``extract_zonal_profile``
+    — the same primitive flood_risk / drainage_need use — and shapes them into the
+    typed ``{serie:[{mes, mm}], anual_mm}`` exception (spec delta, JDB-011). No
+    bespoke precipitation statistics.
+
+    Coverage rules (spec "Monthly series for a zone" + "Zone outside precipitation
+    coverage", design §4):
+
+    * ZERO months registered → 503 ``dataset_no_cargado`` (``precipitacion``): the
+      normals pipeline has not run for this deployment. Distinct from
+      ``sin_cobertura`` (the dataset IS installed, this zone just has no data).
+    * SOME months registered (an incomplete product) → ``sin_cobertura`` for the
+      whole dataset: a partial series would be authoritative-looking fiction, and
+      the spec forbids fabricating the missing months as zeros.
+    * All 12 registered but the zone lies OUTSIDE the normals extent (every month
+      reads ``coverage="none"``) → ``sin_cobertura``, empty ``serie`` — again no
+      fabricated zeros.
+    * All 12 registered AND covered → ``serie`` with 12 entries in CALENDAR order,
+      each ``mm`` the raster mean, plus ``anual_mm`` from the annual raster.
+
+    ``K = 0`` per call (``_PRECIP_K``) so a sub-pixel parcel is NEVER flagged
+    low-confidence against the ~5 km CHIRPS pixel (JDB-017).
+    """
+    with _traducir_fallas_db():
+        layers = _repo.get_latest_precip_normals_by_month(db, settings.ficha_precip_area_id)
+
+    meses = [layers.get(str(mes)) for mes in range(1, 13)]
+    # Guard ORDER is load-bearing: all-None (pipeline never ran → 503) MUST be
+    # checked before any-None (incomplete product → sin_cobertura). Reversing them
+    # would silently downgrade the "not installed" 503 into sin_cobertura.
+    if all(layer is None for layer in meses):
+        # Zero monthly normals registered → the pipeline never ran here.
+        raise ficha_errors.dataset_no_cargado("precipitacion")
+    if any(layer is None for layer in meses):
+        # Incomplete product: some months missing. Do NOT fabricate zeros, do NOT
+        # publish a partial series as if it were the full year. A half-registered
+        # product is an operator-actionable state (interrupted ETL), distinct from
+        # a zone genuinely outside the extent — log it so ops can tell them apart.
+        registrados = sum(1 for layer in meses if layer is not None)
+        logger.warning(
+            "Producto de precipitacion incompleto para ficha",
+            meses_registrados=registrados,
+            area_id=settings.ficha_precip_area_id,
+        )
+        return PrecipitacionFicha(cobertura="sin_cobertura")
+
+    serie: list[PrecipMes] = []
+    coberturas: list[str] = []
+    ratios: list[float] = []
+    low_confidence = False
+    pixel_count = 0
+    for mes, layer in enumerate(meses, start=1):
+        ruta = _precip_raster_path(layer)  # type: ignore[arg-type]  # None ruled out above
+        if ruta is None:
+            # A registered layer whose file vanished breaks the 12-month product.
+            return PrecipitacionFicha(cobertura="sin_cobertura")
+        perfil = _perfil_precip(ruta, geom4326, area_m2)
+        coberturas.append(perfil["coverage"])
+        ratios.append(perfil["coverage_ratio"])
+        low_confidence = low_confidence or perfil["low_confidence"]
+        pixel_count = max(pixel_count, perfil["valid_pixels"])
+        if perfil["coverage"] != "none" and perfil["mean"] is not None:
+            serie.append(PrecipMes(mes=mes, mm=perfil["mean"]))
+
+    if len(serie) < 12:
+        # Zone (partly) outside the normals extent — no fabricated zeros for the
+        # months that did not resolve. A partial year is reported as no coverage.
+        return PrecipitacionFicha(cobertura="sin_cobertura", pixel_count=pixel_count)
+
+    anual_mm = _anual_mm(layers.get("anual"), geom4326, area_m2)
+    cobertura = "total" if all(c == "full" for c in coberturas) else "parcial"
+    return PrecipitacionFicha(
+        cobertura=cobertura,
+        low_confidence=low_confidence,
+        pixel_count=pixel_count,
+        cobertura_ratio=round(min(ratios), 4) if ratios else 0.0,
+        serie=serie,
+        anual_mm=anual_mm,
+    )
+
+
+def _perfil_precip(ruta: str, geom4326: dict[str, Any], area_m2: float) -> dict[str, Any]:
+    """One ``extract_zonal_profile`` call with the precip conventions.
+
+    ``breaks=None`` (precip is a continuous mm field, not a class partition, so
+    there are no bins) and ``K = 0`` (never low-confidence). An unreadable raster
+    is 503 ``raster_ilegible`` exactly as in ``_raster_dataset``.
+    """
+    try:
+        return extract_zonal_profile(
+            ruta,
+            geom4326,
+            geom_crs="EPSG:4326",
+            breaks=None,
+            geom_area_m2=area_m2,
+            low_confidence_pixel_ratio=_PRECIP_K,
+        )
+    except ficha_errors.FichaError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — any read failure is 503 raster_ilegible (§2.6)
+        logger.error("Raster de precipitacion ilegible para ficha", ruta=ruta, exc_info=True)
+        raise ficha_errors.raster_ilegible("precipitacion") from exc
+
+
+def _anual_mm(
+    layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float
+) -> float | None:
+    """Annual-total mean mm for the zone, or ``None`` when unavailable.
+
+    The annual raster is a convenience total registered alongside the 12 monthly
+    normals (``mes="anual"``). It is not load-bearing: a missing or uncovered
+    annual raster yields ``None``, never an error and never a fabricated value.
+    """
+    if layer is None:
+        return None
+    ruta = _precip_raster_path(layer)
+    if ruta is None:
+        return None
+    perfil = _perfil_precip(ruta, geom4326, area_m2)
+    if perfil["coverage"] == "none" or perfil["mean"] is None:
+        return None
+    return perfil["mean"]
+
+
 # ── orchestration ───────────────────────────────────────────────────────────
 
 
@@ -602,7 +763,7 @@ def _ficha_de_geometria(
             suelos=_suelos_dataset(db, geojson_4326, area_ha),
             flood_risk=_raster_dataset(db, "flood_risk", geom4326, area_m2),
             drainage_need=_raster_dataset(db, "drainage_need", geom4326, area_m2),
-            precipitacion_mensual=PrecipitacionFicha(cobertura="sin_cobertura"),
+            precipitacion_mensual=_precipitacion_dataset(db, geom4326, area_m2),
         )
 
 

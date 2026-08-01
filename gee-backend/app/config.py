@@ -168,6 +168,13 @@ class Settings(BaseSettings):
     # threadpool thread unbounded. 5 s is deliberately generous over the 1.5 s
     # p95 gate — it only ever trips a pathological query, never a normal ficha.
     ficha_statement_timeout_ms: int = 5000
+    # Area id the ficha resolves precipitation normals for. The CHIRPS pipeline
+    # (``etl/generate_chirps_normals.py``) registers its 13 rasters under an
+    # ``area_id`` (default ``"consorcio"``); the ficha's month-scoped lookup
+    # (``get_latest_precip_normals_by_month``) needs the SAME id, so it is a knob
+    # instead of a literal buried in the service. One consorcio per deployment →
+    # one value.
+    ficha_precip_area_id: str = "consorcio"
 
     # Error tracking (Sentry) — wired in app/main.py only when sentry_dsn
     # is non-empty. Leaving it empty silently disables the integration

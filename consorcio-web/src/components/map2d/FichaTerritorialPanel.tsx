@@ -9,12 +9,10 @@
  *   - loading  → a spinner, never a stale previous result presented as current;
  *   - error    → the server's actionable Spanish message (404/422/429/503),
  *                not a generic failure;
- *   - result   → one table per dataset (tables are the contract, JD-A-012);
+ *   - result   → one table per dataset (tables are the contract, JD-A-012),
+ *                plus the monthly precipitation chart + table (`PrecipChart`);
  *   - the per-dataset `sin_cobertura` / low-confidence handling lives inside the
  *     dataset components.
- *
- * The monthly precipitation chart is deliberately NOT rendered here — it ships
- * in B2 (`PrecipChart`), which also fills `precipitacion_mensual` server-side.
  */
 
 import { Alert, CloseButton, Divider, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
@@ -26,6 +24,7 @@ import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
 import { FichaResumen } from './FichaResumen';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
+import { PrecipChart } from './PrecipChart';
 import { RiesgoBins } from './RiesgoBins';
 import { SuelosBreakdown } from './SuelosBreakdown';
 
@@ -92,6 +91,8 @@ function PanelBody({
         dataset={data.drainage_need}
         testId="ficha-drainage-need"
       />
+      <Divider />
+      <PrecipChart dataset={data.precipitacion_mensual} />
       <Divider />
       <PilarVerdeBadges tipo={tipo} nroCuenta={nroCuenta} bpaEnriched={bpaEnriched} />
     </Stack>
