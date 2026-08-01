@@ -10,12 +10,14 @@ offscreen renderer later in the run — segfault 3/3 in CI (see
 ``test_geo_public_layers`` and ``test_suelos_etl``). Both structural attempts
 documented in ``test_suelos_etl.TestAdminRefreshEndpoint`` (``app.main.routes``
 AND ``api_router.routes``) also hit a module-identity quirk that emptied the
-aggregator on the CI interpreter only. This module therefore builds the route
-table in a fresh SUBPROCESS (``_SCRIPT_TABLA_DE_RUTAS``) — a clean interpreter
-has none of the shared-process global-state contamination — and asserts the
-route set is non-empty first, so an empty table fails as "no pude construir la
-tabla" instead of passing vacuously. (The behavioural tests below still mount a
-local app in-process; only the structural route walk needs the subprocess.)
+aggregator on the CI interpreter only. The route table is therefore built
+in-process with ``_app_de_ficha()`` from inside a FUNCTION-scoped fixture: a
+MODULE-scoped fixture runs during early setup, when ``geo_router`` has no routes
+yet on the CI interpreter (the table came back empty). The behavioural tests in
+this file mount ``_app_de_ficha()`` inside the test body and pass in CI; the
+structural walk now uses that same moment. It asserts the route set is non-empty
+first, so an empty table fails as "no pude construir la tabla" instead of
+passing vacuously.
 
 **Reality check recorded here (deviation from the spec wording).** The spec says
 ``analisis-zona`` will be "the ONLY ``/api/v2/geo`` route without an operator
@@ -30,7 +32,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from pathlib import Path
 import pytest
 
 FICHA_PATH = "/api/v2/geo/analisis-zona"
@@ -91,68 +92,32 @@ def _nombres_de_dependencias(dependant: Any, acumulado: set[str]) -> set[str]:
     return acumulado
 
 
-# El armado de la tabla corre en un SUBPROCESO limpio a proposito. Importar
-# el router geo dentro del proceso pytest compartido devuelve, SOLO en el
-# interprete de CI, una tabla vacia (0 rutas) — la misma rareza de identidad
-# de modulos que ya mordio en test_suelos_etl (montar via app.main y via el
-# agregador v2 fallaba identico). Un interprete fresco no tiene ese estado
-# global contaminado, asi que el contrato de rutas se prueba de forma
-# reproducible en CI y local por igual.
-_SCRIPT_TABLA_DE_RUTAS = """
-import json
-from fastapi import FastAPI
-from fastapi.routing import APIRoute
-from app.domains.geo.router import router as geo_router
-
-
-def nombres(dependant, acc):
-    for sub in dependant.dependencies:
-        acc.add(getattr(sub.call, "__name__", type(sub.call).__name__))
-        nombres(sub, acc)
-    return acc
-
-
-app = FastAPI()
-app.include_router(geo_router, prefix="/api/v2/geo")
-tabla = [
-    [metodo, ruta.path, sorted(nombres(ruta.dependant, set()))]
-    for ruta in app.routes
-    if isinstance(ruta, APIRoute)
-    for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
-]
-# Marcador: importar la app emite logs/warnings a stdout (p.ej.
-# MARTIN_PUBLIC_URL), asi que el padre no puede json.loads del stdout
-# entero — extrae SOLO la linea marcada.
-print("__RUTAS_JSON__" + json.dumps(tabla))
-"""
-
-
 def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
     """(metodo, path, nombres de dependencias) para cada ruta bajo /api/v2/geo.
 
-    Corre en subproceso (ver comentario en `_SCRIPT_TABLA_DE_RUTAS`).
+    Construida in-process con `_app_de_ficha()`, DENTRO de una fixture de
+    scope funcion — NO module-scope. Ese era el bug: una fixture module-scope
+    corre en el setup temprano, y en el interprete de CI el `geo_router` todavia
+    no tiene sus rutas en ese punto (aparecen vacias -> 0 rutas). Los tests de
+    comportamiento de este mismo archivo montan `_app_de_ficha()` dentro del
+    cuerpo (scope funcion) y pasan en CI; esta funcion usa el mismo momento.
     """
-    import json
-    import subprocess
-    import sys
+    from fastapi.routing import APIRoute
 
-    salida = subprocess.run(
-        [sys.executable, "-c", _SCRIPT_TABLA_DE_RUTAS],
-        capture_output=True,
-        text=True,
-        cwd=str(Path(__file__).resolve().parents[2]),
-    )
-    assert salida.returncode == 0, f"el subproceso de la tabla de rutas fallo:\n{salida.stderr}"
-    lineas = [ln for ln in salida.stdout.splitlines() if ln.startswith("__RUTAS_JSON__")]
-    assert lineas, f"el subproceso no emitio la linea marcada. stdout:\n{salida.stdout}"
-    tabla = [(m, p, set(deps)) for m, p, deps in json.loads(lineas[-1][len("__RUTAS_JSON__") :])]
+    app = _app_de_ficha()
+    tabla = [
+        (metodo, ruta.path, _nombres_de_dependencias(ruta.dependant, set()))
+        for ruta in app.routes
+        if isinstance(ruta, APIRoute)
+        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
+    ]
     assert len(tabla) > 20, (
         "la tabla de rutas geo salio vacia o mutilada — el test no puede probar nada"
     )
     return tabla
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def tabla() -> list[tuple[str, str, set[str]]]:
     return _tabla_de_rutas()
 
