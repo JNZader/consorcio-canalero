@@ -116,11 +116,12 @@ export function useMapDerivedState(params: {
     });
   }, [activeDemLayerId, allGeoLayers, hiddenClasses, hiddenRanges]);
 
-  const compositeTypes = useMemo(() => new Set(['flood_risk', 'drainage_need']), []);
-  const demLayers = useMemo(
-    () => allGeoLayers.filter((layer) => !compositeTypes.has(layer.tipo)),
-    [allGeoLayers, compositeTypes]
-  );
+  // flood_risk/drainage_need (composites de riesgo/drenaje) ya se publican como
+  // overlays raster seleccionables en el dropdown single-select del mapa
+  // (2026-08-01), asi que dejan de excluirse de las opciones DEM. Su leyenda la
+  // resuelve RasterLegend via LAYER_LEGEND_CONFIG y el tile URL sale de
+  // allGeoLayers, igual que el resto de los tipos tile-capable.
+  const demLayers = allGeoLayers;
 
   const activeLegendItems = useMemo(
     () =>
