@@ -100,6 +100,12 @@ export interface MapUiPanelsProps {
   readonly fichaData: FichaResponse | undefined;
   readonly onCloseFicha: () => void;
   /**
+   * On-map overlay toggle (A(b) slice 1) — the container owns the overlay query
+   * + map paint; these thread its toggle state down to the ficha panel.
+   */
+  readonly fichaOverlayVisible?: boolean;
+  readonly onToggleFichaOverlay?: (visible: boolean) => void;
+  /**
    * Optional Pilar Verde enriched catastro data — when present, InfoPanel
    * will render `<BpaCard>` for any feature whose `nro_cuenta` matches a
    * parcel with a non-null `bpa_2025` record.
@@ -176,6 +182,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaError,
   fichaData,
   onCloseFicha,
+  fichaOverlayVisible,
+  onToggleFichaOverlay,
   bpaEnriched,
   bpaHistory,
   exportPngModalOpen,
@@ -321,6 +329,8 @@ export const MapUiPanels = memo(function MapUiPanels({
         error={fichaError}
         data={fichaData}
         onClose={onCloseFicha}
+        overlayVisible={fichaOverlayVisible}
+        onToggleOverlay={onToggleFichaOverlay}
       />
 
       <ExportPngModal
