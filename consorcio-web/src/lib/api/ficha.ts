@@ -21,6 +21,16 @@
 
 import { API_PREFIX, API_URL } from './core';
 
+/**
+ * Canal-buffer distance bounds (A6). Mirror the backend `ficha_max_buffer_m`
+ * (config.py, 2 000 m) so the buffer control cannot request an over-cap value
+ * the server would only reject with 422. The default is a generous first strip
+ * a user can then tighten. Kept here (next to the request type) so the one file
+ * that owns the wire contract also owns its numeric bounds.
+ */
+export const FICHA_MAX_BUFFER_M = 2000;
+export const FICHA_DEFAULT_BUFFER_M = 500;
+
 /** One class row of a dataset breakdown. `pct` is authoritative (server-side). */
 export interface FichaClase {
   clase: string;

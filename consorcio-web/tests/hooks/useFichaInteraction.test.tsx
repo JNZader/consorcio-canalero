@@ -114,3 +114,103 @@ describe('useFichaInteraction', () => {
     expect(result.current.state.drawing).toBe(true);
   });
 });
+
+describe('useFichaInteraction · canal buffer (A6)', () => {
+  it('entering canal mode derives ficha-canal and cancels measurement, no request yet', () => {
+    const onEnterDraw = vi.fn();
+    const { result } = renderHook(() => useFichaInteraction('measuring-distance', onEnterDraw));
+
+    act(() => result.current.startCanal());
+    expect(onEnterDraw).toHaveBeenCalledTimes(1); // measurement cancelled
+    expect(result.current.state.canalMode).toBe(true);
+    expect(result.current.interactionMode).toBe('ficha-canal');
+    expect(result.current.request).toBeNull(); // no canal clicked yet
+  });
+
+  it('resolving a canal fires a tipo=canal_buffer request with the default buffer', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(42));
+
+    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 42, buffer_m: 500 });
+    expect(result.current.tipo).toBe('canal_buffer');
+    expect(result.current.state.canal).toEqual({ canalId: 42, bufferM: 500 });
+  });
+
+  it('setBuffer re-fires the request with the new distance, keeping the canal', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(7));
+    act(() => result.current.setBuffer(1200));
+
+    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 7, buffer_m: 1200 });
+  });
+
+  it('picking another canal keeps the buffer the user already dialed in', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(1));
+    act(() => result.current.setBuffer(800));
+    act(() => result.current.resolveCanal(2)); // click a different canal
+
+    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 2, buffer_m: 800 });
+  });
+
+  it('setBuffer is a no-op before any canal is selected', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.setBuffer(1500));
+    expect(result.current.request).toBeNull();
+    expect(result.current.state.canal).toBeNull();
+  });
+
+  it('starting canal mode DISCARDS a previous parcel ficha', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.resolveParcela(PARCELA));
+    expect(result.current.tipo).toBe('parcela');
+
+    act(() => result.current.startCanal());
+    expect(result.current.request).toBeNull(); // parcel ficha gone
+    expect(result.current.state.parcela).toBeNull();
+  });
+
+  it('a parcel click is IGNORED while in canal mode (canal owns clicks)', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(9));
+    act(() => result.current.resolveParcela(PARCELA)); // stray parcel resolution
+    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 9, buffer_m: 500 });
+  });
+
+  it('startDraw and startCanal are mutually exclusive (one machine)', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(3));
+    expect(result.current.interactionMode).toBe('ficha-canal');
+
+    act(() => result.current.startDraw()); // switch to drawing
+    expect(result.current.state.canalMode).toBe(false);
+    expect(result.current.state.canal).toBeNull();
+    expect(result.current.interactionMode).toBe('ficha-dibujo');
+    expect(result.current.request).toBeNull();
+  });
+
+  it('stopCanal resets to idle', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(5));
+    act(() => result.current.stopCanal());
+    expect(result.current.state.canalMode).toBe(false);
+    expect(result.current.request).toBeNull();
+    expect(result.current.interactionMode).toBe('idle');
+  });
+
+  it('resolveCanal(null) clears the selection but stays in canal mode', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    act(() => result.current.startCanal());
+    act(() => result.current.resolveCanal(5));
+    act(() => result.current.resolveCanal(null)); // click missed a canal
+    expect(result.current.request).toBeNull();
+    expect(result.current.state.canalMode).toBe(true);
+  });
+});

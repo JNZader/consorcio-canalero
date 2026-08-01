@@ -42,6 +42,13 @@ export const SOURCE_IDS = {
   // so the source id == the master-toggle id (no translation table).
   CANALES_RELEVADOS: 'canales_relevados',
   CANALES_PROPUESTOS: 'canales_propuestos',
+  // ── Ficha territorial (A6) — the id-bearing canal network (Martin MVT) ──
+  // Distinct from the static CANALES_* layers above: those come from geojson
+  // and carry NO `canal_network.id`, so a `tipo=canal_buffer` request cannot be
+  // built from them (design §6.3, JDB-013). `vt_canal_network` is Martin's view
+  // over `canal_network` (SERIAL id) and is the ONLY canal layer clickable in
+  // `'ficha-canal'` mode. Mounted/hidden on demand, never in the idle whitelist.
+  CANAL_NETWORK: 'map2d-canal-network',
   // ── Pilar Azul (Escuelas rurales) ──
   // String value `'escuelas'` matches the master-toggle key in
   // `defaultVisibleVectors` AND `ESCUELAS_SOURCE_ID` in `escuelasLayers.ts`

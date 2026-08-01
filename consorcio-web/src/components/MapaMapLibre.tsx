@@ -31,6 +31,7 @@ import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useFichaTerritorial } from '../hooks/useFichaTerritorial';
+import { FICHA_MAX_BUFFER_M } from '../lib/api/ficha';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -55,7 +56,9 @@ import {
   type ComparisonOverlaySyncInputs,
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
+import { CanalBufferControl } from './map2d/CanalBufferControl';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import { syncCanalNetworkLayer } from './map2d/mapLayerEffectHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
@@ -348,6 +351,7 @@ export default function MapaMapLibre() {
     measurementMode: fichaInteraction.interactionMode,
     setSelectedFeatures,
     onParcelaResolved: fichaInteraction.resolveParcela,
+    onCanalResolved: fichaInteraction.resolveCanal,
   });
 
   // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
@@ -363,6 +367,16 @@ export default function MapaMapLibre() {
     if (isFichaDrawing) drawControlRef.current?.startDrawing();
   }, [isFichaDrawing]);
 
+  // Canal mode (A6): mount + show `vt_canal_network` (the id-bearing Martin
+  // layer) ONLY while selecting a canal, so it never competes for clicks with
+  // the parcel/BPA stack in idle. Hidden again on exit (design §6.3, JDB-013).
+  const isFichaCanal = fichaInteraction.interactionMode === 'ficha-canal';
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncCanalNetworkLayer(map, isFichaCanal);
+  }, [mapReady, isFichaCanal]);
+
   // Measurement and ficha-draw are mutually exclusive: starting a measurement
   // ends drawing first (the reverse — draw cancelling measurement — is handled by
   // `useFichaInteraction.startDraw` → `clearMeasurements`).
@@ -377,6 +391,10 @@ export default function MapaMapLibre() {
   const handleToggleFichaDraw = useCallback(() => {
     if (fichaInteraction.state.drawing) fichaInteraction.stopDraw();
     else fichaInteraction.startDraw();
+  }, [fichaInteraction]);
+  const handleToggleFichaCanal = useCallback(() => {
+    if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
+    else fichaInteraction.startCanal();
   }, [fichaInteraction]);
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
@@ -610,7 +628,21 @@ export default function MapaMapLibre() {
               onClear={clearMeasurements}
               fichaDrawActive={isFichaDrawing}
               onToggleFichaDraw={handleToggleFichaDraw}
+              fichaCanalActive={isFichaCanal}
+              onToggleFichaCanal={handleToggleFichaCanal}
             />
+
+            {/* Canal buffer (A6): the distance input appears once a canal line is
+                clicked in 'ficha-canal' mode; each change re-fires the ficha. */}
+            {isFichaCanal && fichaInteraction.state.canal && (
+              <CanalBufferControl
+                canalId={fichaInteraction.state.canal.canalId}
+                bufferM={fichaInteraction.state.canal.bufferM}
+                maxBufferM={FICHA_MAX_BUFFER_M}
+                onBufferChange={fichaInteraction.setBuffer}
+                onClose={fichaInteraction.stopCanal}
+              />
+            )}
             <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 

@@ -67,6 +67,27 @@ describe('buildClickableLayers · mode gate (A5.3, ficha free-draw)', () => {
   });
 });
 
+describe('buildClickableLayers · canal mode (A6, ficha-canal)', () => {
+  it('returns ONLY the vt_canal_network line layer in ficha-canal', () => {
+    // Design §6.3 / JDB-013: a canal click must resolve a `canal_id`, never a
+    // parcel, so the whitelist is the id-bearing canal layer and nothing else.
+    expect(buildClickableLayers('ficha-canal')).toEqual([`${SOURCE_IDS.CANAL_NETWORK}-line`]);
+  });
+
+  it('EXCLUDES parcels/soil/BPA in canal mode (a canal click cannot open a parcel)', () => {
+    const layers = buildClickableLayers('ficha-canal');
+    expect(layers).not.toContain(`${SOURCE_IDS.CATASTRO}-fill`);
+    expect(layers).not.toContain(`${SOURCE_IDS.SOIL}-fill`);
+    expect(layers).not.toContain(`${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`);
+  });
+
+  it('does NOT add the canal-network layer to the idle whitelist (idle unchanged)', () => {
+    // The canal layer is mounted/clickable only in canal mode; the pinned idle
+    // ordering must not gain a new entry.
+    expect(buildClickableLayers('idle')).not.toContain(`${SOURCE_IDS.CANAL_NETWORK}-line`);
+  });
+});
+
 describe('buildClickableLayers · Pilar Azul (Canales) inclusion', () => {
   it('includes both Canales line layer ids in the whitelist', () => {
     const layers = buildClickableLayers();

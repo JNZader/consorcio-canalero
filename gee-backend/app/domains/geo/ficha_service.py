@@ -16,20 +16,22 @@ parsed" and "a raster is opened" (design §2.1, §2.4, §2.5):
    call. This is the hard bound on simultaneous raster memory, independent of
    Redis.
 
-WHAT IS WIRED (A3b + A5): ``tipo=parcela`` and ``tipo=poligono`` are both real
-compute. ``parcela`` resolves the catastro geometry by ``nomenclatura``;
-``poligono`` takes the geometry from the REQUEST and REPAIRS it in PostGIS
-(``ST_CollectionExtract(ST_MakeValid(...), 3)``) so a self-intersecting
-hand-drawn ring cannot reach ``ST_Intersection``/``rasterio_mask`` raw and yield
-a silently wrong area (§2.7, JDB-008). Both then call ``assert_within_caps`` over
-the resolved EPSG:32720 shape — for ``poligono`` the caps are the whole point,
-since the caller controls the geometry — commit the audit row, and run the
-IDENTICAL soils overlay + flood_risk/drainage_need raster loop under the
-semaphore (``_ficha_de_geometria``). The other two tipos still resolve a geometry
-the caller never sent — a canal buffer (A6), a precomputed catchment (A7) — so
-they keep the audit + semaphore path and a ``sin_cobertura`` placeholder until
-those slices land. The route stays off by default (``settings.ficha_enabled``);
-tests flip it on via monkeypatch.
+WHAT IS WIRED (A3b + A5 + A6): ``tipo=parcela``, ``tipo=poligono`` and
+``tipo=canal_buffer`` are all real compute. ``parcela`` resolves the catastro
+geometry by ``nomenclatura``; ``poligono`` takes the geometry from the REQUEST
+and REPAIRS it in PostGIS (``ST_CollectionExtract(ST_MakeValid(...), 3)``) so a
+self-intersecting hand-drawn ring cannot reach ``ST_Intersection``/``rasterio_mask``
+raw and yield a silently wrong area (§2.7, JDB-008); ``canal_buffer`` resolves a
+``canal_network`` trace by id and sweeps it with ``ST_Buffer`` in EPSG:32720
+(§2.1, JDB-006). All three then call ``assert_within_caps`` over the resolved
+EPSG:32720 shape — for ``poligono``/``canal_buffer`` the caps are the whole
+point, since the resolved AREA is not what the caller sent — commit the audit
+row, and run the IDENTICAL soils overlay + flood_risk/drainage_need raster loop
+under the semaphore (``_ficha_de_geometria``). ``canal_cuenca`` still resolves a
+geometry the caller never sent — a precomputed catchment (A7) — so it keeps the
+audit + semaphore path and a ``sin_cobertura`` placeholder until that slice
+lands. The route stays off by default (``settings.ficha_enabled``); tests flip it
+on via monkeypatch.
 """
 
 from __future__ import annotations
@@ -344,6 +346,50 @@ def _resolver_poligono(db: Session, geometry: dict[str, Any]) -> tuple[str, str,
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
+# The influence strip around a canal (§2, §2.1, JDB-006). ``canal_network.geom``
+# is a LINESTRING in EPSG:4326; the buffer is taken in EPSG:32720 (metric — a
+# metre is a metre) and the resulting polygon is what the whole ficha runs on.
+# ``geom IS NOT NULL`` treats a topology row with no trace as "no canal" (there
+# is nothing to buffer) → 404, same as a missing id. The buffered zone is
+# returned both as 4326 (soils + raster loop) and 32720 (the caps measurement +
+# ``area_m2``), mirroring ``_resolver_parcela``/``_resolver_poligono``.
+_CANAL_BUFFER_SQL = text(
+    """
+    WITH canal AS (
+        SELECT ST_Transform(geom, 32720) AS geom_m
+        FROM canal_network
+        WHERE id = :canal_id AND geom IS NOT NULL
+        LIMIT 1
+    ), zona AS (
+        SELECT ST_Buffer(geom_m, :buffer_m) AS geom_m FROM canal
+    )
+    SELECT ST_AsGeoJSON(ST_Transform(geom_m, 4326)) AS g4326,
+           ST_AsGeoJSON(geom_m) AS g32720,
+           ST_Area(geom_m) AS area_m2
+    FROM zona
+    """
+)
+
+
+def _resolver_canal_buffer(db: Session, canal_id: int, buffer_m: float) -> tuple[str, str, float]:
+    """Buffer a canal by ``buffer_m`` metres. 404 when the canal is absent.
+
+    Returns ``(geojson_4326, geojson_32720, area_m2)``, same contract as
+    ``_resolver_parcela`` so the compute tail is shared. The buffered geometry is
+    server-derived — the caller only chose an id and a distance — so
+    ``assert_within_caps`` over the returned 32720 shape is the authority on the
+    resolved AREA (a 2 km buffer on a long canal is a big polygon; the schema
+    caps only the distance, not the area it sweeps — JDB-006).
+    """
+    with _traducir_fallas_db():
+        fila = db.execute(
+            _CANAL_BUFFER_SQL, {"canal_id": canal_id, "buffer_m": buffer_m}
+        ).one_or_none()
+    if fila is None or fila.area_m2 is None:
+        raise ficha_errors.canal_no_encontrado(canal_id)
+    return fila.g4326, fila.g32720, float(fila.area_m2)
+
+
 # ── soils overlay (PostGIS ST_Intersection, parameterized geometry; §3) ─────
 
 # The 0015 mv_suelos_por_zona SQL SHAPE, re-parameterized by the REQUEST geometry
@@ -600,22 +646,51 @@ def _analizar_poligono(db: Session, payload: Any, *, client_ip: str | None) -> F
     return _ficha_de_geometria(db, tipo="poligono", geojson_4326=geojson_4326, area_m2=area_m2)
 
 
+def _analizar_canal_buffer(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
+    """Real compute for ``tipo=canal_buffer`` — a canal's influence strip (A6).
+
+    Same §2.5 order as the other tipos, but the geometry is doubly server-derived:
+    the caller sends a ``canal_id`` + a ``buffer_m``, and the service resolves the
+    canal trace and sweeps it. That makes ``assert_within_caps`` LOAD-BEARING here
+    for a reason the schema cannot cover: the schema caps ``buffer_m`` (the cheap
+    distance check), but the AREA a 2 km buffer sweeps along a long canal is what
+    actually costs, so the cap runs over the RESOLVED buffered polygon in
+    EPSG:32720 — after the buffer, before any raster open (§2.1, JDB-006).
+
+    ``buffer_m`` is passed to ``assert_within_caps`` too, so the distance cap is
+    re-checked defensively even though the schema already rejected an over-cap
+    value. There is a 404 (``canal_no_encontrado``) but no ``geometria_invalida``:
+    the trace comes from ``canal_network``, not from a caller-drawn ring.
+    """
+    _aplicar_statement_timeout(db)  # bounds the ST_Transform/ST_Buffer/ST_Area resolver query
+    geojson_4326, geojson_32720, area_m2 = _resolver_canal_buffer(
+        db, payload.canal_id, payload.buffer_m
+    )
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo="canal_buffer", buffer_m=payload.buffer_m)
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(db, tipo="canal_buffer", geojson_4326=geojson_4326, area_m2=area_m2)
+
+
 def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) -> FichaResponse:
     """Enforcement order (design §2.5): resolve → caps → audit → semaphore → compute.
 
     Rate limit and the body-size guard already ran as router dependencies, and
     the cheap ``poligono`` validators ran in the schema.
 
-    ``tipo=parcela`` and ``tipo=poligono`` are the real compute this slice ships.
-    The other two tipos resolve a geometry the caller never sent — a canal buffer
-    (A6), a precomputed catchment (A7) — and until those land they keep the audit
-    + semaphore path and a ``sin_cobertura`` placeholder (never fabricated
+    ``tipo=parcela``, ``tipo=poligono`` and ``tipo=canal_buffer`` are the real
+    compute this chain ships. ``canal_cuenca`` still resolves a geometry the caller
+    never sent — a precomputed catchment (A7) — and until that lands it keeps the
+    audit + semaphore path and a ``sin_cobertura`` placeholder (never fabricated
     hectares). The route stays gated by ``settings.ficha_enabled``.
     """
     if payload.tipo == "parcela":
         return _analizar_parcela(db, payload, client_ip=client_ip)
     if payload.tipo == "poligono":
         return _analizar_poligono(db, payload, client_ip=client_ip)
+    if payload.tipo == "canal_buffer":
+        return _analizar_canal_buffer(db, payload, client_ip=client_ip)
 
     escribir_auditoria(db, payload, client_ip=client_ip)
     with slot_de_computo():

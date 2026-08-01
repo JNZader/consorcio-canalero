@@ -574,6 +574,51 @@ export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayers
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Ficha territorial — vt_canal_network clickable layer (A6, JDB-013)         */
+/*                                                                            */
+/*  The static CANALES_RELEVADOS / CANALES_PROPUESTOS layers come from geojson */
+/*  and carry NO `canal_network.id`, so a `tipo=canal_buffer` request cannot   */
+/*  be produced from them. `vt_canal_network` (published by Martin over the    */
+/*  `canal_network` table with `id_column: id`) is the id-bearing source the   */
+/*  backend resolves. It is a Martin MVT vector source, mounted once and       */
+/*  shown ONLY while the map is in `'ficha-canal'` mode — outside that mode it  */
+/*  is hidden so it never competes for clicks with the parcel/BPA stack.       */
+/* -------------------------------------------------------------------------- */
+
+export function syncCanalNetworkLayer(map: maplibregl.Map, isVisible: boolean): void {
+  const id = SOURCE_IDS.CANAL_NETWORK;
+
+  if (!map.getSource(id)) {
+    map.addSource(id, {
+      type: 'vector',
+      tiles: [getMartinTileUrl('vt_canal_network')],
+      minzoom: 0,
+      maxzoom: 22,
+    });
+  }
+
+  const lineId = `${id}-line`;
+  if (!map.getLayer(lineId)) {
+    map.addLayer({
+      id: lineId,
+      type: 'line',
+      source: id,
+      // Martin names the MVT source-layer after the published table id.
+      'source-layer': 'vt_canal_network',
+      paint: {
+        // Cyan, thick, high-opacity so the selectable canal reads as the active
+        // target while in canal mode.
+        'line-color': '#06b6d4',
+        'line-width': 4,
+        'line-opacity': 0.9,
+      },
+    });
+  }
+
+  setLayerVisibility(map, lineId, isVisible);
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Pilar Azul (Escuelas rurales) sync helper                                 */
 /*                                                                            */
 /*  ONE MapLibre-native layer backed by a single geojson source:              */
