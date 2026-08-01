@@ -30,9 +30,13 @@ TIPOS_VALIDOS = ("parcela", "poligono", "canal_buffer", "canal_cuenca")
 # 5xx codes that describe a state somebody CHOSE, not something that broke.
 # Logged at WARNING so a switched-off deployment does not emit an ERROR per
 # public request (the gate runs before the rate limiter). ``sobrecarga``,
-# ``dataset_no_cargado`` and ``raster_ilegible`` stay ERROR on purpose: those
-# are real capacity / installation faults an operator has to act on.
-_ESTADOS_DELIBERADOS = frozenset({"funcionalidad_no_disponible"})
+# ``dataset_no_cargado``, ``raster_ilegible`` and ``base_de_datos_no_disponible``
+# stay ERROR on purpose: those are real capacity / installation / infrastructure
+# faults an operator has to act on. ``analisis_timeout`` joins the WARNING set:
+# the per-request statement_timeout is the DESIGN's protective bound on a public
+# endpoint, so an abusive polygon tripping it is an expected outcome, not a fault
+# — logging it at ERROR would just hand that caller a Sentry amplifier.
+_ESTADOS_DELIBERADOS = frozenset({"funcionalidad_no_disponible", "analisis_timeout"})
 
 
 class FichaError(Exception):
@@ -193,6 +197,46 @@ def sobrecarga(retry_after: int = 2) -> FichaError:
         status_code=503,
         codigo="sobrecarga",
         detail="El servicio esta procesando el maximo de analisis simultaneos",
+        retry_after=retry_after,
+    )
+
+
+def analisis_timeout(retry_after: int = 2) -> FichaError:
+    """503 when this request's LOCAL statement_timeout fired (SQLSTATE 57014).
+
+    The ficha sets a transaction-local ``statement_timeout`` per request
+    (``ficha_service._aplicar_statement_timeout``); a caller-drawn polygon too
+    expensive to intersect trips it, PostgreSQL cancels the query
+    (psycopg2 ``QueryCanceled`` → SQLAlchemy ``OperationalError``, pgcode 57014).
+    That ceiling is DELIBERATE — the protective bound on a public, unauthenticated
+    endpoint — so it is a caller-facing "try a smaller area / retry", not an
+    infrastructure fault. Logged at WARNING (see ``_ESTADOS_DELIBERADOS``) so an
+    abusive polygon cannot flood Sentry with ERRORs. Distinct ``codigo`` from
+    ``sobrecarga`` (which means concurrency saturation, not a per-query timeout).
+    """
+    return FichaError(
+        status_code=503,
+        codigo="analisis_timeout",
+        detail="El analisis del area supero el tiempo maximo permitido. Reduzca el area o reintente.",
+        retry_after=retry_after,
+    )
+
+
+def base_de_datos_no_disponible(retry_after: int = 2) -> FichaError:
+    """503 for a DB fault that is NOT the deliberate statement_timeout.
+
+    A dropped connection or a deadlock (any ``DBAPIError`` whose pgcode is not
+    57014) is real infrastructure trouble an operator has to see, so unlike
+    ``analisis_timeout`` this stays ERROR. It still answers with the flat FichaError
+    contract instead of escaping to ``generic_exception_handler`` as a bare 500.
+    """
+    return FichaError(
+        status_code=503,
+        codigo="base_de_datos_no_disponible",
+        detail=(
+            "No se pudo completar el analisis por un problema temporal de la base "
+            "de datos. Reintente en unos segundos."
+        ),
         retry_after=retry_after,
     )
 

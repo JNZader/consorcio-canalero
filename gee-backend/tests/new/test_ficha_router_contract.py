@@ -426,6 +426,11 @@ def test_con_la_ficha_encendida_el_pipeline_responde_el_placeholder(db, monkeypa
     limitador → schema → auditoría → semáforo) y se comprueba que el
     placeholder es explícito: ``sin_cobertura`` en los CUATRO datasets, nunca
     hectáreas inventadas ni un dataset omitido (R3-007).
+
+    Desde A5 ``poligono`` es cómputo REAL (toca ``suelos_catastro``), así que el
+    placeholder que queda por ejercitar es ``canal_buffer`` — todavía sin resolver
+    su geometría hasta A6 —, cuya rama devuelve exactamente ese placeholder sin
+    tocar la base. El punto de F4 (misma ruta, placeholder explícito) es idéntico.
     """
     from fastapi.testclient import TestClient
 
@@ -437,15 +442,7 @@ def test_con_la_ficha_encendida_el_pipeline_responde_el_placeholder(db, monkeypa
     with TestClient(_app_de_ficha(db)) as cliente:
         respuesta = cliente.post(
             FICHA_PATH,
-            json={
-                "tipo": "poligono",
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [[-62.0, -32.0], [-62.0, -32.1], [-61.9, -32.1], [-62.0, -32.0]]
-                    ],
-                },
-            },
+            json={"tipo": "canal_buffer", "canal_id": 1, "buffer_m": 100},
         )
 
     assert respuesta.status_code == 200, respuesta.text

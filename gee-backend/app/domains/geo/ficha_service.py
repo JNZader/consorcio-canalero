@@ -16,15 +16,20 @@ parsed" and "a raster is opened" (design §2.1, §2.4, §2.5):
    call. This is the hard bound on simultaneous raster memory, independent of
    Redis.
 
-WHAT IS WIRED (A3b): ``tipo=parcela`` is the real compute. ``analizar_zona``
-resolves the catastro geometry, calls ``assert_within_caps`` over the resolved
-EPSG:32720 shape (so the cap ENFORCEMENT is now live, not just designed), commits
-the audit row, then runs the soils overlay + the flood_risk/drainage_need raster
-loop under the semaphore. The other three tipos still resolve a geometry the
-caller never sent — a drawn polygon (A5), a canal buffer (A6), a precomputed
-catchment (A7) — so they keep the audit + semaphore path and a ``sin_cobertura``
-placeholder until those slices land. The route stays off by default
-(``settings.ficha_enabled``); tests flip it on via monkeypatch.
+WHAT IS WIRED (A3b + A5): ``tipo=parcela`` and ``tipo=poligono`` are both real
+compute. ``parcela`` resolves the catastro geometry by ``nomenclatura``;
+``poligono`` takes the geometry from the REQUEST and REPAIRS it in PostGIS
+(``ST_CollectionExtract(ST_MakeValid(...), 3)``) so a self-intersecting
+hand-drawn ring cannot reach ``ST_Intersection``/``rasterio_mask`` raw and yield
+a silently wrong area (§2.7, JDB-008). Both then call ``assert_within_caps`` over
+the resolved EPSG:32720 shape — for ``poligono`` the caps are the whole point,
+since the caller controls the geometry — commit the audit row, and run the
+IDENTICAL soils overlay + flood_risk/drainage_need raster loop under the
+semaphore (``_ficha_de_geometria``). The other two tipos still resolve a geometry
+the caller never sent — a canal buffer (A6), a precomputed catchment (A7) — so
+they keep the audit + semaphore path and a ``sin_cobertura`` placeholder until
+those slices land. The route stays off by default (``settings.ficha_enabled``);
+tests flip it on via monkeypatch.
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ from typing import Any, Iterator
 
 from shapely.geometry import shape
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -231,6 +237,40 @@ def _aplicar_statement_timeout(db: Session) -> None:
     )
 
 
+# psycopg2 sets ``pgcode`` to this SQLSTATE when ``statement_timeout`` cancels a
+# query; SQLAlchemy surfaces it as ``OperationalError`` with the psycopg2 error
+# under ``.orig``.
+_SQLSTATE_QUERY_CANCELED = "57014"
+
+
+@contextmanager
+def _traducir_fallas_db() -> Iterator[None]:
+    """Map a DB fault to a clean FichaError instead of a bare 500 (R4-001).
+
+    Every resolver/overlay query runs on the sync request session under a LOCAL
+    ``statement_timeout`` (``_aplicar_statement_timeout``). A caller-drawn polygon
+    too expensive to intersect trips that bound → psycopg2 ``QueryCanceled`` →
+    SQLAlchemy ``OperationalError`` (SQLSTATE 57014). That is the design's
+    DELIBERATE protective ceiling, not a fault, so it maps to 503
+    ``analisis_timeout`` (WARNING). Any OTHER ``DBAPIError`` (connection drop,
+    deadlock) is real infrastructure trouble → 503 ``base_de_datos_no_disponible``
+    (ERROR).
+
+    Mirrors ``_raster_dataset``: re-raise a ``FichaError`` untouched, translate the
+    DB layer, and never let a raw DB exception escape to
+    ``generic_exception_handler`` as a 500 + Sentry event.
+    """
+    try:
+        yield
+    except ficha_errors.FichaError:
+        raise
+    except (OperationalError, DBAPIError) as exc:
+        pgcode = getattr(getattr(exc, "orig", None), "pgcode", None)
+        if pgcode == _SQLSTATE_QUERY_CANCELED:
+            raise ficha_errors.analisis_timeout() from exc
+        raise ficha_errors.base_de_datos_no_disponible() from exc
+
+
 # ── geometry resolution (parcela only in this slice; §2, A3b) ───────────────
 
 
@@ -243,17 +283,64 @@ def _resolver_parcela(db: Session, nomenclatura: str) -> tuple[str, str, float]:
     EPSG:32720, the projection the whole ficha uses) is both ``area_ha`` and the
     ``geom_area_m2`` the primitive needs for its relative confidence rule.
     """
-    fila = db.execute(
-        text(
-            "SELECT ST_AsGeoJSON(geometria) AS g4326, "
-            "ST_AsGeoJSON(ST_Transform(geometria, 32720)) AS g32720, "
-            "ST_Area(ST_Transform(geometria, 32720)) AS area_m2 "
-            "FROM parcelas_catastro WHERE nomenclatura = :nom LIMIT 1"
-        ),
-        {"nom": nomenclatura},
-    ).one_or_none()
+    with _traducir_fallas_db():
+        fila = db.execute(
+            text(
+                "SELECT ST_AsGeoJSON(geometria) AS g4326, "
+                "ST_AsGeoJSON(ST_Transform(geometria, 32720)) AS g32720, "
+                "ST_Area(ST_Transform(geometria, 32720)) AS area_m2 "
+                "FROM parcelas_catastro WHERE nomenclatura = :nom LIMIT 1"
+            ),
+            {"nom": nomenclatura},
+        ).one_or_none()
     if fila is None:
         raise ficha_errors.parcela_no_encontrada(nomenclatura)
+    return fila.g4326, fila.g32720, float(fila.area_m2)
+
+
+# The caller-drawn polygon repaired in PostGIS (§2.7, JDB-008). ``ST_MakeValid``
+# fixes a self-intersecting (bow-tie) ring; ``ST_CollectionExtract(..., 3)`` keeps
+# only the polygonal component (a bow-tie that collapses to a line/point yields an
+# EMPTY polygon here — surfaced as 422 ``geometria_invalida`` by the caller). The
+# repaired shape is returned both as 4326 (soils + raster loop) and projected to
+# 32720 (the caps measurement + ``area_m2``), mirroring ``_resolver_parcela``.
+_POLIGONO_SQL = text(
+    """
+    WITH reparada AS (
+        SELECT ST_CollectionExtract(
+                   ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)), 3
+               ) AS geom
+    )
+    SELECT ST_IsEmpty(geom) AS vacio,
+           ST_AsGeoJSON(geom) AS g4326,
+           ST_AsGeoJSON(ST_Transform(geom, 32720)) AS g32720,
+           ST_Area(ST_Transform(geom, 32720)) AS area_m2
+    FROM reparada
+    """
+)
+
+
+def _resolver_poligono(db: Session, geometry: dict[str, Any]) -> tuple[str, str, float]:
+    """Repair a caller-drawn polygon and measure it. 422 when it degenerates.
+
+    The cheap schema validators (``schemas_ficha``) already rejected a malformed
+    body — wrong type, unclosed ring, out-of-range coord, over the vertex cap.
+    What they CANNOT see is a true self-intersection: a bow-tie ring is
+    well-formed GeoJSON. ``ST_MakeValid`` + ``ST_CollectionExtract(..., 3)`` is
+    the authority for that class (§2.7, JDB-008). If the repair leaves nothing
+    polygonal (empty geometry) or zero area, the drawing is unusable → 422
+    ``geometria_invalida``, never a silently wrong intersection.
+
+    Returns ``(geojson_4326, geojson_32720, area_m2)``, same contract as
+    ``_resolver_parcela`` so the compute tail is shared.
+    """
+    with _traducir_fallas_db():
+        fila = db.execute(_POLIGONO_SQL, {"geojson": json.dumps(geometry)}).one()
+    if fila.vacio or fila.area_m2 is None or float(fila.area_m2) <= 0.0:
+        raise ficha_errors.geometria_invalida(
+            "la geometria quedo vacia o sin area tras repararla "
+            "(posible auto-interseccion o anillo degenerado)"
+        )
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
@@ -312,12 +399,15 @@ def _suelos_dataset(db: Session, geojson_4326: str, area_ha: float) -> DatasetFi
     remainder is emitted as ``"sin dato"`` so the UI never claims full soil
     knowledge of a parcel the source does not tile (§3.1, JDB-009).
     """
-    total = db.execute(text("SELECT count(*) FROM suelos_catastro")).scalar_one()
+    with _traducir_fallas_db():
+        total = db.execute(text("SELECT count(*) FROM suelos_catastro")).scalar_one()
     if not total:
         raise ficha_errors.dataset_no_cargado("suelos")
 
+    with _traducir_fallas_db():
+        filas_suelos = db.execute(_SUELOS_SQL, {"geojson": geojson_4326}).all()
     grupos: dict[str, dict[str, Any]] = {}
-    for cap, ha in db.execute(_SUELOS_SQL, {"geojson": geojson_4326}).all():
+    for cap, ha in filas_suelos:
         prefijo = _normalizar_cap(cap)
         clase = prefijo if prefijo else _SIN_CLASIFICAR
         grupo = grupos.setdefault(clase, {"ha": 0.0, "detalles": set()})
@@ -441,6 +531,35 @@ def _raster_dataset(
 # ── orchestration ───────────────────────────────────────────────────────────
 
 
+def _ficha_de_geometria(
+    db: Session, *, tipo: str, geojson_4326: str, area_m2: float
+) -> FichaResponse:
+    """Shared compute tail: soils overlay + raster loop under the semaphore.
+
+    Both ``parcela`` and ``poligono`` reduce to the same computation once the
+    geometry is resolved and the caps have passed — the design's "N rasters × 1
+    geometry (rasterio) + 1 vector overlay × 1 geometry (PostGIS)". Keeping it in
+    one place is what makes the response byte-compatible across tipos (the spec's
+    "uniform response shape") instead of two paths that can drift.
+
+    The caller has ALREADY committed the audit row, so the LOCAL statement_timeout
+    set before that commit is gone; it is re-applied here so the soils overlay +
+    raster loop are bounded too (F1).
+    """
+    with slot_de_computo():
+        _aplicar_statement_timeout(db)
+        area_ha = area_m2 / M2_POR_HA
+        geom4326 = json.loads(geojson_4326)
+        return FichaResponse(
+            tipo=tipo,
+            area_ha=round(area_ha, 4),
+            suelos=_suelos_dataset(db, geojson_4326, area_ha),
+            flood_risk=_raster_dataset(db, "flood_risk", geom4326, area_m2),
+            drainage_need=_raster_dataset(db, "drainage_need", geom4326, area_m2),
+            precipitacion_mensual=PrecipitacionFicha(cobertura="sin_cobertura"),
+        )
+
+
 def _analizar_parcela(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
     """Real compute for ``tipo=parcela`` (§2.5 enforcement order).
 
@@ -454,21 +573,31 @@ def _analizar_parcela(db: Session, payload: Any, *, client_ip: str | None) -> Fi
     assert_within_caps(geom_metrico, tipo="parcela")
 
     escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(db, tipo="parcela", geojson_4326=geojson_4326, area_m2=area_m2)
 
-    with slot_de_computo():
-        # The audit COMMIT ended the first transaction (and its LOCAL timeout);
-        # re-apply so the soils overlay + raster loop are bounded too (F1).
-        _aplicar_statement_timeout(db)
-        area_ha = area_m2 / M2_POR_HA
-        geom4326 = json.loads(geojson_4326)
-        return FichaResponse(
-            tipo="parcela",
-            area_ha=round(area_ha, 4),
-            suelos=_suelos_dataset(db, geojson_4326, area_ha),
-            flood_risk=_raster_dataset(db, "flood_risk", geom4326, area_m2),
-            drainage_need=_raster_dataset(db, "drainage_need", geom4326, area_m2),
-            precipitacion_mensual=PrecipitacionFicha(cobertura="sin_cobertura"),
-        )
+
+def _analizar_poligono(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
+    """Real compute for ``tipo=poligono`` — geometry comes from the REQUEST (A5).
+
+    Same §2.5 order as ``parcela``, but the geometry is caller-supplied, so the
+    two guards that were unreachable for a server-derived shape are LIVE here:
+
+    * ``_resolver_poligono`` repairs the drawing and rejects a degenerate result
+      → 422 ``geometria_invalida`` (JDB-008);
+    * ``assert_within_caps`` over the resolved 32720 shape → 422 ``cap_excedido``
+      (area / envelope / vertices) — the caps are the whole reason they exist for
+      a user-drawn polygon (§2.1).
+
+    Both fire BEFORE the audit commit and BEFORE the semaphore, i.e. before any
+    raster is opened. There is no 404: there is no parcel to not-find.
+    """
+    _aplicar_statement_timeout(db)  # bounds the ST_MakeValid/ST_Transform resolver query
+    geojson_4326, geojson_32720, area_m2 = _resolver_poligono(db, payload.geometry)
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo="poligono")
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(db, tipo="poligono", geojson_4326=geojson_4326, area_m2=area_m2)
 
 
 def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) -> FichaResponse:
@@ -477,14 +606,16 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
     Rate limit and the body-size guard already ran as router dependencies, and
     the cheap ``poligono`` validators ran in the schema.
 
-    ``tipo=parcela`` is the real compute this slice ships. The other three tipos
-    resolve a geometry the caller never sent — a drawn polygon (A5), a canal
-    buffer (A6), a precomputed catchment (A7) — and until those land they keep the
-    audit + semaphore path and a ``sin_cobertura`` placeholder (never fabricated
+    ``tipo=parcela`` and ``tipo=poligono`` are the real compute this slice ships.
+    The other two tipos resolve a geometry the caller never sent — a canal buffer
+    (A6), a precomputed catchment (A7) — and until those land they keep the audit
+    + semaphore path and a ``sin_cobertura`` placeholder (never fabricated
     hectares). The route stays gated by ``settings.ficha_enabled``.
     """
     if payload.tipo == "parcela":
         return _analizar_parcela(db, payload, client_ip=client_ip)
+    if payload.tipo == "poligono":
+        return _analizar_poligono(db, payload, client_ip=client_ip)
 
     escribir_auditoria(db, payload, client_ip=client_ip)
     with slot_de_computo():

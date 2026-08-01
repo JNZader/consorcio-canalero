@@ -37,6 +37,7 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 from sqlalchemy import event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 # ``parcelas_catastro`` lives in the intelligence models module, which nothing in
@@ -644,3 +645,49 @@ def test_cap_parcela_excedido_rechaza_antes_de_compute(ficha_db, monkeypatch, tm
     body = rs.json()
     assert body["codigo"] == "cap_excedido"
     assert body["cap"] == "area_ha"
+
+
+# ── R4-001 — a DB fault in the parcela resolver is a coded 503, never a 500 ───
+
+
+class _FakeOrig(Exception):
+    """Stand-in for the psycopg2 error under ``OperationalError.orig``."""
+
+    def __init__(self, pgcode: str | None) -> None:
+        super().__init__("simulated db fault")
+        self.pgcode = pgcode
+
+
+def test_parcela_db_timeout_es_503_analisis_timeout(ficha_db, monkeypatch, tmp_path):
+    """A statement_timeout (57014) resolving the parcela → 503 ``analisis_timeout``.
+
+    ``parcela`` and ``poligono`` share the compute tail, but each has its OWN
+    resolver query; this pins the mapping for the parcela resolver too, proving the
+    R4-001 gap is closed for BOTH tipos and never escapes as a 500 ``INTERNAL_ERROR``.
+    """
+    from fastapi.testclient import TestClient
+
+    _enable(monkeypatch)
+    _crear_tabla_suelos(ficha_db)
+    _seed_parcela(ficha_db)
+    _seed_suelos(ficha_db)
+
+    # "parcelas_catastro" is unique to the parcela resolver query. Applied after
+    # seeding so the INSERTs run for real; 57014 = statement_timeout / QueryCanceled.
+    real_execute = ficha_db.execute
+
+    def _fake(statement, *args, **kwargs):  # noqa: ANN001, ANN202
+        if "parcelas_catastro" in str(statement):
+            raise OperationalError("stmt", {}, _FakeOrig("57014"))
+        return real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(ficha_db, "execute", _fake)
+
+    with TestClient(_app(ficha_db)) as cliente:
+        rs = cliente.post(FICHA_PATH, json={"tipo": "parcela", "nomenclatura": NOMENCLATURA})
+
+    assert rs.status_code == 503, rs.text
+    body = rs.json()
+    assert body["codigo"] == "analisis_timeout"
+    assert body["codigo"] != "INTERNAL_ERROR"
+    assert "error" not in body  # flat FichaError body, not the nested 500 shape

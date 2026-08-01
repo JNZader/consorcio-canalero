@@ -2,7 +2,7 @@ import type { Feature } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
-import type { MeasurementMode } from './measurement/useMeasurement';
+import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 
 /** A catastro parcel resolved from a click, for the ficha territorial request. */
 export interface ParcelaResuelta {
@@ -80,8 +80,16 @@ function resolveParcela(features: FeatureWithLayer[]): ParcelaResuelta | null {
  *     are intentionally NOT clickable so they don't hijack parcel clicks.
  *
  * Exported so tests can assert the ordering without running the hook.
+ *
+ * **Mode gate (A5.3, design §6.2):** in `'ficha-dibujo'` the `DrawControl` owns
+ * every click (the user is drawing a polygon, not selecting a feature), so
+ * NOTHING on the map is clickable for feature selection and the whitelist is
+ * empty. All other modes get the full ordered list; the `'idle'` default
+ * preserves the pre-existing behaviour exactly. Canal-only filtering for
+ * `'ficha-canal'` lands in A6.
  */
-export function buildClickableLayers(): string[] {
+export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[] {
+  if (mode === 'ficha-dibujo') return [];
   return [
     // ── Pilar Verde (top-most — wins click precedence on overlap) ──
     `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`,
@@ -127,7 +135,8 @@ export function useMapInteractionEffects({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const clickableLayers = buildClickableLayers();
+    // Mode-aware whitelist: empty in 'ficha-dibujo' (DrawControl owns clicks).
+    const clickableLayers = buildClickableLayers(measurementMode);
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       if (measurementMode !== 'idle') {
