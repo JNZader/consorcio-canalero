@@ -32,7 +32,7 @@ import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
-import { FICHA_MAX_BUFFER_M } from '../lib/api/ficha';
+import { FICHA_MAX_BUFFER_M, type FichaOverlayDataset } from '../lib/api/ficha';
 import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
@@ -381,10 +381,21 @@ export default function MapaMapLibre() {
   // the coordinator to IDLE) drops the fetch and the paint effect below removes
   // any lingering layer.
   const [showFichaOverlay, setShowFichaOverlay] = useState(false);
+  // Which dataset the overlay paints, clipped, one at a time (single-overlay model,
+  // matching the single-select map). Switching it re-keys the query → refetch +
+  // repaint. Defaults to soils, the cheap exact vector path.
+  const [fichaOverlayDataset, setFichaOverlayDataset] = useState<FichaOverlayDataset>('suelos');
   const fichaOverlayEnabled = showFichaOverlay && fichaInteraction.request !== null;
-  const fichaOverlay = useFichaOverlay(fichaInteraction.request, 'suelos', fichaOverlayEnabled);
+  const fichaOverlay = useFichaOverlay(
+    fichaInteraction.request,
+    fichaOverlayDataset,
+    fichaOverlayEnabled
+  );
   const handleToggleFichaOverlay = useCallback((visible: boolean) => {
     setShowFichaOverlay(visible);
+  }, []);
+  const handleChangeFichaOverlayDataset = useCallback((dataset: FichaOverlayDataset) => {
+    setFichaOverlayDataset(dataset);
   }, []);
 
   // Paint / clear the clipped overlay. `visible` is false whenever the toggle is
@@ -396,10 +407,10 @@ export default function MapaMapLibre() {
     if (!map || !mapReady) return;
     syncFichaOverlayLayers(map, {
       featureCollection: (fichaOverlay.data as unknown as FeatureCollection | undefined) ?? null,
-      dataset: 'suelos',
+      dataset: fichaOverlayDataset,
       visible: fichaOverlayEnabled && !!fichaOverlay.data,
     });
-  }, [mapReady, fichaOverlayEnabled, fichaOverlay.data]);
+  }, [mapReady, fichaOverlayEnabled, fichaOverlay.data, fichaOverlayDataset]);
 
   // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
   // own mount effect (which populates its imperative handle) is a CHILD passive
@@ -765,6 +776,8 @@ export default function MapaMapLibre() {
               onCloseFicha={fichaInteraction.clearFicha}
               fichaOverlayVisible={showFichaOverlay}
               onToggleFichaOverlay={handleToggleFichaOverlay}
+              fichaOverlayDataset={fichaOverlayDataset}
+              onChangeFichaOverlayDataset={handleChangeFichaOverlayDataset}
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}

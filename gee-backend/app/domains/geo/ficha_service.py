@@ -52,7 +52,7 @@ from app.config import settings
 from app.core.logging import get_logger
 from app.domains.geo import ficha_errors
 from app.domains.geo.class_breaks import RANGE_CONFIGS
-from app.domains.geo.composites import extract_zonal_profile
+from app.domains.geo.composites import extract_zonal_profile, vectorize_zonal_classes
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas_ficha import (
@@ -908,7 +908,7 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
         )
 
 
-# ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
+# ── on-map overlay (A(b) slice 1: soils vector) ─────────────────────────────
 
 
 def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str, str] | None:
@@ -987,14 +987,83 @@ def _overlay_suelos(
         return FichaOverlayResponse(dataset="suelos", features=_clip_suelos(db, geojson_4326))
 
 
+# ── on-map overlay (A(b) slice 2: flood_risk / drainage_need rasters) ────────
+
+
+def _clip_raster(db: Session, tipo: str, geojson_4326: str) -> list[FichaOverlayFeature]:
+    """Vectorize a raster (``flood_risk`` / ``drainage_need``) to per-class Features.
+
+    Mirrors ``_raster_dataset``: resolve the newest registered raster (``None`` →
+    ``sin_cobertura``, i.e. an EMPTY overlay, never a 503 — the 503 hard dependency
+    is ``suelos_catastro``), then vectorize the SAME classified pixels the panel bins
+    into dissolved GeoJSON polygons. ``clase`` is the ``RANGE_CONFIGS[tipo]`` label
+    (Bajo/Medio/Alto/Crítico), so an overlay class equals the panel's ``RiesgoBins``
+    class exactly. An unreadable raster is 503 ``raster_ilegible`` (§2.6), same as the
+    ficha compute path; a zone that is empty / all-nodata / disjoint yields no features.
+    """
+    ruta = _raster_path(db, tipo)
+    if ruta is None:
+        return []
+    try:
+        vectorizado = vectorize_zonal_classes(
+            ruta,
+            json.loads(geojson_4326),
+            RANGE_CONFIGS.get(tipo) or [],
+            geom_crs="EPSG:4326",
+        )
+    except ficha_errors.FichaError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — any read failure is 503 raster_ilegible (§2.6)
+        logger.error("Raster ilegible para overlay de ficha", dataset=tipo, exc_info=True)
+        raise ficha_errors.raster_ilegible(tipo) from exc
+
+    return [
+        FichaOverlayFeature(properties={"clase": feat["clase"]}, geometry=feat["geometry"])
+        for feat in vectorizado
+    ]
+
+
+def _overlay_raster(
+    db: Session, payload: FichaRequest, dataset: str, *, client_ip: str | None
+) -> FichaOverlayResponse:
+    """Raster overlay (flood_risk / drainage_need) — SAME guard chain as the soils overlay.
+
+    resolve geometry (404 if absent) → ``assert_within_caps`` (422, outside the
+    semaphore) → audit COMMITTED (survives a later failure) → semaphore (503) →
+    raster vectorization. This is a SECOND raster mask pass (the ficha compute already
+    masks flood/drainage for their bins), acceptable because it runs opt-in only, on
+    the toggle, per the design. The ``canal_cuenca`` stub has no geometry yet, so it
+    keeps the audit + semaphore path and returns an EMPTY FeatureCollection.
+    """
+    _aplicar_statement_timeout(db)  # bounds the resolver query
+    resuelto = _resolver_geometria_overlay(db, payload)
+    if resuelto is None:
+        escribir_auditoria(db, payload, client_ip=client_ip)
+        with slot_de_computo():
+            return FichaOverlayResponse(dataset=dataset, features=[])
+
+    geojson_4326, geojson_32720 = resuelto
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo=payload.tipo, buffer_m=getattr(payload, "buffer_m", None))
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    with slot_de_computo():
+        _aplicar_statement_timeout(db)  # re-apply: the audit COMMIT ended the prior LOCAL
+        return FichaOverlayResponse(
+            dataset=dataset, features=_clip_raster(db, dataset, geojson_4326)
+        )
+
+
 def overlay_zona(
     db: Session, payload: FichaRequest, *, dataset: str, client_ip: str | None
 ) -> FichaOverlayResponse:
-    """Opt-in on-map overlay of the analysis clipped to the zone (A(b) slice 1).
+    """Opt-in on-map overlay of the analysis clipped to the zone (A(b)).
 
-    Reuses the ficha's geometry resolvers, caps, audit and semaphore/timeout
-    chain. ``dataset`` is validated to ``"suelos"`` in the router (422 otherwise),
-    so this only ever runs the soils clip here; ``flood_risk`` / ``drainage_need``
-    raster vectorization is slice 2.
+    Reuses the ficha's geometry resolvers, caps, audit and semaphore/timeout chain.
+    ``dataset`` is validated in the router (422 otherwise) to one of ``suelos``
+    (exact PostGIS vector clip) or ``flood_risk`` / ``drainage_need`` (raster
+    vectorization per class). One dataset per call — the map paints a single overlay.
     """
-    return _overlay_suelos(db, payload, client_ip=client_ip)
+    if dataset == "suelos":
+        return _overlay_suelos(db, payload, client_ip=client_ip)
+    return _overlay_raster(db, payload, dataset, client_ip=client_ip)

@@ -204,7 +204,7 @@ class FichaResponse(BaseModel):
 # CLIPPED to the analyzed zone as GeoJSON so the map can paint it. Slice 1 is
 # soils only — the cheap, exact PostGIS vector path; flood_risk/drainage raster
 # vectorization is slice 2. ``dataset`` is validated to ``"suelos"`` for now.
-DatasetOverlay = Literal["suelos"]
+DatasetOverlay = Literal["suelos", "flood_risk", "drainage_need"]
 
 
 class FichaOverlayFeature(BaseModel):

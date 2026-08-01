@@ -234,17 +234,18 @@ async def parse_ficha_body(request: Request) -> Any:
         raise ficha_errors.geometria_invalida(f"{campo or 'cuerpo'}: {primero.get('msg', '')}")
 
 
-# Overlay datasets this slice serves. Slice 1 = soils only (exact PostGIS vector);
-# flood_risk / drainage_need raster vectorization is slice 2.
-_OVERLAY_DATASETS: tuple[str, ...] = ("suelos",)
+# Overlay datasets this endpoint serves: soils (exact PostGIS vector) plus the two
+# raster datasets vectorized per class (slice 2). Any other value is a 422.
+_OVERLAY_DATASETS: tuple[str, ...] = ("suelos", "flood_risk", "drainage_need")
 
 
 async def parse_overlay_body(request: Request) -> tuple[Any, str]:
     """Validate the overlay body: the SAME ficha discriminated union + ``dataset``.
 
     Mirrors ``parse_ficha_body`` so the §2.6 codes survive (``tipo_desconocido`` /
-    ``geometria_invalida``), and adds the ``dataset`` selector: only ``"suelos"``
-    is served in this slice, any other value is a clean 422 ``dataset_no_soportado``.
+    ``geometria_invalida``), and adds the ``dataset`` selector: ``"suelos"``,
+    ``"flood_risk"`` and ``"drainage_need"`` are served, any other value is a clean
+    422 ``dataset_no_soportado``.
     ``dataset`` is popped before the ficha adapter runs because the request models
     are ``extra="forbid"`` and would otherwise reject the extra key.
     """

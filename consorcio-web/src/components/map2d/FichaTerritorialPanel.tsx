@@ -23,6 +23,7 @@ import {
   Group,
   Loader,
   Paper,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
@@ -30,7 +31,7 @@ import {
 } from '@mantine/core';
 import { memo } from 'react';
 
-import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
+import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
@@ -67,7 +68,24 @@ export interface FichaTerritorialPanelProps {
    */
   readonly overlayVisible?: boolean;
   readonly onToggleOverlay?: (visible: boolean) => void;
+  /**
+   * Which dataset the overlay paints, clipped, one at a time. When the toggle is
+   * on a segmented control lets the user switch between soils, flood risk and
+   * drainage need; switching refetches + repaints. Optional, defaults to soils.
+   */
+  readonly overlayDataset?: FichaOverlayDataset;
+  readonly onChangeOverlayDataset?: (dataset: FichaOverlayDataset) => void;
 }
+
+/** Overlay dataset options for the picker (label ⇄ wire value). */
+const OVERLAY_DATASET_OPTIONS: ReadonlyArray<{
+  value: FichaOverlayDataset;
+  label: string;
+}> = [
+  { value: 'suelos', label: 'Suelos' },
+  { value: 'flood_risk', label: 'Riesgo hídrico' },
+  { value: 'drainage_need', label: 'Necesidad de drenaje' },
+];
 
 function errorMessage(error: FichaApiError | Error | null): string {
   // The server ships an actionable Spanish `detail` for every ficha failure;
@@ -179,6 +197,8 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   onClose,
   overlayVisible,
   onToggleOverlay,
+  overlayDataset = 'suelos',
+  onChangeOverlayDataset,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
 
@@ -229,6 +249,22 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
             label="Ver recortado en el mapa"
             data-testid="ficha-overlay-toggle"
           />
+          {overlayVisible && onChangeOverlayDataset && (
+            <SegmentedControl
+              size="xs"
+              fullWidth
+              mt="xs"
+              value={overlayDataset}
+              onChange={(value) => onChangeOverlayDataset(value as FichaOverlayDataset)}
+              data={
+                OVERLAY_DATASET_OPTIONS as unknown as {
+                  value: string;
+                  label: string;
+                }[]
+              }
+              data-testid="ficha-overlay-dataset"
+            />
+          )}
         </>
       )}
     </Paper>
