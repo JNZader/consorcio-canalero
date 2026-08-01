@@ -7,18 +7,16 @@ and › "Existing geo endpoints unaffected" (JDB-003).
 ``app.main``**: pytest imports test modules at COLLECTION time, and pulling the
 full app graph there (sentry / GEE / matplotlib side effects) poisoned the VTK
 offscreen renderer later in the run — segfault 3/3 in CI (see
-``test_geo_public_layers`` and ``test_suelos_etl``). Both structural attempts
-documented in ``test_suelos_etl.TestAdminRefreshEndpoint`` (``app.main.routes``
-AND ``api_router.routes``) also hit a module-identity quirk that emptied the
-aggregator on the CI interpreter only. The route table is therefore built
-in-process with ``_app_de_ficha()`` INSIDE each test body — never in a
-module-scoped fixture, which runs during early setup when ``geo_router`` still
-has no routes on the CI interpreter (the table came back empty three times).
-The behavioural tests here mount ``_app_de_ficha()`` in the body and pass in CI,
-proving the in-body app has its routes; the structural walks now use that same
-moment, and ``test_la_ficha_esta_montada_y_es_publica`` is a pure TestClient
-behavioural check that does not depend on the route table at all. Each walk
-asserts the route set is non-empty first, failing loudly instead of vacuously.
+``test_geo_public_layers`` and ``test_suelos_etl``). In CI ``fastapi.routing`` ends up imported under TWO module identities, so an
+``isinstance(route, APIRoute)`` walk over a locally-built app returns False for
+every route and yields an EMPTY table — even though a ``TestClient`` on the same
+app serves a 503 on the ficha route (proving the route object is really there).
+That mismatch — behavioural 503 OK, structural walk empty — is the tell; it cost
+five CI rounds chasing timing/scope/subprocess red herrings before the class
+identity was the actual cause. The route walk therefore DUCK-TYPES (methods +
+dependant + path) instead of ``isinstance``, and ``_app_de_ficha()`` is built
+inside each test body (never ``app.main``, never a module-scoped fixture). Each
+walk asserts the set is non-empty first, failing loudly instead of vacuously.
 
 **Reality check recorded here (deviation from the spec wording).** The spec says
 ``analisis-zona`` will be "the ONLY ``/api/v2/geo`` route without an operator
@@ -103,13 +101,18 @@ def _tabla_de_rutas() -> list[tuple[str, str, set[str]]]:
     comportamiento de este mismo archivo montan `_app_de_ficha()` dentro del
     cuerpo (scope funcion) y pasan en CI; esta funcion usa el mismo momento.
     """
-    from fastapi.routing import APIRoute
-
+    # DUCK TYPING, no isinstance(ruta, APIRoute): en el interprete de CI
+    # `fastapi.routing` termina importado con DOS identidades de modulo, asi
+    # que el `APIRoute` que importa el test NO es la clase de las instancias del
+    # app y el isinstance devuelve False para TODAS -> tabla vacia (0 rutas)
+    # aunque el TestClient sirva 503 sobre la misma ruta. Ese fue el fantasma de
+    # las 5 pasadas. Filtrar por atributos (methods+dependant+path) es inmune a
+    # la identidad de clase.
     app = _app_de_ficha()
     tabla = [
         (metodo, ruta.path, _nombres_de_dependencias(ruta.dependant, set()))
         for ruta in app.routes
-        if isinstance(ruta, APIRoute)
+        if hasattr(ruta, "methods") and hasattr(ruta, "dependant") and hasattr(ruta, "path")
         for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"})
     ]
     assert len(tabla) > 20, (
