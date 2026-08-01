@@ -24,6 +24,7 @@ import {
   Loader,
   Paper,
   Stack,
+  Switch,
   Text,
   Title,
 } from '@mantine/core';
@@ -58,6 +59,14 @@ export interface FichaTerritorialPanelProps {
   readonly error: FichaApiError | Error | null;
   readonly data: FichaResponse | undefined;
   readonly onClose: () => void;
+  /**
+   * On-map overlay toggle (A(b) slice 1). When present, a "Ver recortado en el
+   * mapa" switch renders once the ficha has a result; flipping it paints the
+   * soils analysis clipped to the analyzed zone on the map. Optional so the
+   * panel stays usable without the overlay wiring.
+   */
+  readonly overlayVisible?: boolean;
+  readonly onToggleOverlay?: (visible: boolean) => void;
 }
 
 function errorMessage(error: FichaApiError | Error | null): string {
@@ -70,7 +79,10 @@ function errorMessage(error: FichaApiError | Error | null): string {
 
 /** Field order + labels for the parcel identity header (matches the fields the
  * old InfoPanel catastro card showed, now combined into this single panel). */
-const IDENTITY_FIELDS: ReadonlyArray<{ key: keyof ParcelaDisplayProps; label: string }> = [
+const IDENTITY_FIELDS: ReadonlyArray<{
+  key: keyof ParcelaDisplayProps;
+  label: string;
+}> = [
   { key: 'nroCuenta', label: 'Nro. cuenta' },
   { key: 'desigOficial', label: 'Designación' },
   { key: 'nomenclatura', label: 'Nomenclatura' },
@@ -165,8 +177,14 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   error,
   data,
   onClose,
+  overlayVisible,
+  onToggleOverlay,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
+
+  // The overlay toggle only makes sense once there is a result to clip on the
+  // map, and only when the container wired the handler in.
+  const showOverlayToggle = !!onToggleOverlay && !isLoading && !isError && !!data;
 
   // Identity header (bug-3 combine): a clicked parcel's account/identity fields
   // sit at the top of this single panel, replacing the old InfoPanel catastro
@@ -201,6 +219,18 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         error={error}
         data={data}
       />
+      {showOverlayToggle && (
+        <>
+          <Divider my="xs" />
+          <Switch
+            size="xs"
+            checked={!!overlayVisible}
+            onChange={(event) => onToggleOverlay?.(event.currentTarget.checked)}
+            label="Ver recortado en el mapa"
+            data-testid="ficha-overlay-toggle"
+          />
+        </>
+      )}
     </Paper>
   );
 });
