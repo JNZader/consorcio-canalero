@@ -69,17 +69,12 @@ describe('mapLayerEffectHelpers', () => {
 
     syncBaseTileVisibility(map as never, 'satellite');
 
-    expect(map.setLayoutProperty).toHaveBeenNthCalledWith(
-      1,
-      'osm-tiles',
-      'visibility',
-      'none',
-    );
+    expect(map.setLayoutProperty).toHaveBeenNthCalledWith(1, 'osm-tiles', 'visibility', 'none');
     expect(map.setLayoutProperty).toHaveBeenNthCalledWith(
       2,
       'satellite-tiles',
       'visibility',
-      'visible',
+      'visible'
     );
   });
 
@@ -107,10 +102,7 @@ describe('mapLayerEffectHelpers', () => {
 
   it('cleans comparison overlays when not in comparison mode', () => {
     const map = createMapMock({
-      layers: [
-        `${SOURCE_IDS.COMPARISON_LEFT}-layer`,
-        `${SOURCE_IDS.COMPARISON_RIGHT}-layer`,
-      ],
+      layers: [`${SOURCE_IDS.COMPARISON_LEFT}-layer`, `${SOURCE_IDS.COMPARISON_RIGHT}-layer`],
       sources: [SOURCE_IDS.COMPARISON_LEFT, SOURCE_IDS.COMPARISON_RIGHT],
     });
 
@@ -161,7 +153,7 @@ describe('mapLayerEffectHelpers', () => {
     syncCatastroLayers(map as never, true);
 
     const catastroLineCall = map.addLayer.mock.calls.find(
-      ([layer]) => layer?.id === `${SOURCE_IDS.CATASTRO}-line`,
+      ([layer]) => layer?.id === `${SOURCE_IDS.CATASTRO}-line`
     );
     expect(catastroLineCall).toBeDefined();
     const [catastroLineLayer] = catastroLineCall ?? [];
@@ -178,7 +170,7 @@ describe('mapLayerEffectHelpers', () => {
     syncSoilLayers(map as never, emptyCollection(), true);
 
     const fillCall = map.addLayer.mock.calls.find(
-      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-fill`,
+      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-fill`
     );
     expect(fillCall).toBeDefined();
     const [fillLayer] = fillCall ?? [];
@@ -187,7 +179,7 @@ describe('mapLayerEffectHelpers', () => {
     });
 
     const lineCall = map.addLayer.mock.calls.find(
-      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-line`,
+      ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-line`
     );
     expect(lineCall).toBeDefined();
     const [lineLayer] = lineCall ?? [];
@@ -208,7 +200,7 @@ describe('mapLayerEffectHelpers', () => {
     });
 
     const demCall = map.addLayer.mock.calls.find(
-      ([layer]) => layer?.id === `${SOURCE_IDS.DEM_RASTER}-layer`,
+      ([layer]) => layer?.id === `${SOURCE_IDS.DEM_RASTER}-layer`
     );
     expect(demCall).toBeDefined();
     const [demLayer] = demCall ?? [];

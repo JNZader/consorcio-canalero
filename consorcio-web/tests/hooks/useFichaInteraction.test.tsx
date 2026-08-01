@@ -17,7 +17,19 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DrawnPolygon } from '../../src/components/map/DrawControl';
 import { useFichaInteraction } from '../../src/components/map2d/useFichaInteraction';
 
-const PARCELA = { nomenclatura: '13-06-01-0203', nroCuenta: '110123' };
+const PARCELA = {
+  nomenclatura: '13-06-01-0203',
+  nroCuenta: '110123',
+  props: {
+    nomenclatura: '13-06-01-0203',
+    nroCuenta: '110123',
+    desigOficial: 'Lote 4',
+    superficieHa: '25.4',
+    departamento: 'General San Martín',
+    pedania: 'Arroyo Algodón',
+    tipoParcela: 'rural',
+  },
+};
 const POLY: DrawnPolygon = {
   type: 'Polygon',
   coordinates: [
@@ -91,6 +103,17 @@ describe('useFichaInteraction', () => {
     act(() => result.current.resolveParcela(PARCELA));
     expect(result.current.request).toEqual({ tipo: 'parcela', nomenclatura: PARCELA.nomenclatura });
     expect(result.current.nroCuenta).toBe('110123');
+  });
+
+  it('exposes the parcel display props (for the ficha identity header)', () => {
+    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
+    expect(result.current.parcelaProps).toBeNull();
+
+    act(() => result.current.resolveParcela(PARCELA));
+    expect(result.current.parcelaProps).toEqual(PARCELA.props);
+
+    act(() => result.current.clearFicha());
+    expect(result.current.parcelaProps).toBeNull();
   });
 
   it('stopDraw and clearFicha reset to idle', () => {
