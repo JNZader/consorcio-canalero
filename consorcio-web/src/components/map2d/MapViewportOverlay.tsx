@@ -1,19 +1,29 @@
 import { Box, Loader, Stack, Text } from '@mantine/core';
-import { type MouseEventHandler, memo } from 'react';
+import { type PointerEventHandler, memo } from 'react';
 import { IconGitCompare } from '../ui/icons';
+
+/** Interactive width of the comparison divider (map-fluidity T2, fix 3). The
+ * visible bar stays 3px; the extra width is transparent padding so the target
+ * clears the 24px minimum instead of asking for a 3px-precise touch. */
+const SLIDER_HIT_AREA_PX = 24;
+const SLIDER_BAR_PX = 3;
 
 interface MapViewportOverlayProps {
   readonly viewMode: string;
   readonly sliderPosition: number;
   readonly mapReady: boolean;
-  readonly onSliderMouseDown: MouseEventHandler<HTMLDivElement>;
+  /**
+   * Pointer-down on the comparison divider. POINTER, not mouse: the same
+   * handler has to serve mouse, touch and pen (see `useComparisonSlider`).
+   */
+  readonly onSliderPointerDown: PointerEventHandler<HTMLDivElement>;
 }
 
 export const MapViewportOverlay = memo(function MapViewportOverlay({
   viewMode,
   sliderPosition,
   mapReady,
-  onSliderMouseDown,
+  onSliderPointerDown,
 }: MapViewportOverlayProps) {
   return (
     <>
@@ -23,19 +33,36 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
             position: 'absolute',
             top: 0,
             left: `${sliderPosition}%`,
-            width: 3,
+            width: SLIDER_HIT_AREA_PX,
             height: '100%',
-            background: 'rgba(255,255,255,0.9)',
+            background: 'transparent',
             cursor: 'col-resize',
             zIndex: 15,
             transform: 'translateX(-50%)',
+            // Without this the browser claims the gesture for panning and
+            // never delivers `pointermove` to the divider.
+            touchAction: 'none',
           }}
-          onMouseDown={onSliderMouseDown}
+          onPointerDown={onSliderPointerDown}
           aria-label="Divisor de comparación"
           role="separator"
           aria-orientation="vertical"
           tabIndex={0}
+          data-testid="map-comparison-divider"
         >
+          {/* The visible bar — unchanged 3px, centred in the wider hit area. */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: SLIDER_BAR_PX,
+              height: '100%',
+              background: 'rgba(255,255,255,0.9)',
+              pointerEvents: 'none',
+            }}
+          />
           <div
             style={{
               position: 'absolute',

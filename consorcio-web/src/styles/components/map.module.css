@@ -205,8 +205,9 @@
    Fix: on desktop both panels stop at `right: 56px`, which clears the column
    (10px offset + 29px button + 17px gutter) and leaves every control reachable
    while a panel is open. Widths shrink by the same amount so the panels do not
-   grow to compensate. Narrow viewports keep the old full-bleed behaviour — the
-   mobile bottom-sheet is a later tanda. */
+   grow to compensate. Narrow viewports normally swap these cards for the bottom
+   sheet below (`.panelSheet`); the `@media (max-width: 62em)` overrides further
+   down are the no-`matchMedia` fallback for that swap. */
 .infoPanel {
   position: absolute;
   top: calc(var(--mantine-spacing-md) + 108px);
@@ -280,9 +281,14 @@
     /* height inherits the mobile --map-canvas-height defined above */
   }
 
-  /* Panels go full-bleed here, so the desktop right:56px inset (which exists to
-     clear the control column) would only waste width. Restore the edge anchor —
-     the mobile bottom-sheet treatment lands in a later tanda.
+  /* FALLBACK ONLY. `MapUiPanels` swaps both panels for `.panelSheet` at this
+     same 62em breakpoint via `matchMedia`, so in a normal browser these rules
+     never match anything — the sheet replaces the cards outright. They are kept
+     deliberately for the environments where the swap cannot happen (no
+     `matchMedia`: old embedders, SSR/pre-render snapshots, some test harnesses).
+     There the floating cards still render at narrow widths and the desktop
+     `right: 56px` inset (which exists to clear the control column) would only
+     waste width, so the edge anchor is restored.
      NOTE: this block MUST stay after the `.infoPanel` / `.fichaPanel` base
      rules — it used to sit above them and, at equal specificity, the later base
      rules silently won, so the mobile override never applied. */
@@ -299,6 +305,229 @@
 
   .mapBottomBarItem {
     max-height: 50vh;
+  }
+}
+
+/* ── Mobile bottom sheet (map-fluidity T2, fix 1) ──────────────────────────── */
+/* On a ~390px phone the floating cards above are ~358px wide and up to ~396px
+   tall on a ~520px canvas: opening either one covers the map almost entirely.
+   Below 62em `MapUiPanels` therefore swaps BOTH panels for this bottom sheet:
+   anchored to the canvas' bottom edge, full width, capped at 45% of the canvas
+   height (so the top 55% of the map stays visible) and internally scrollable.
+   A handle bar toggles 45% ⇄ 85% — a tap toggle instead of a pointer-drag
+   gesture, which is far more robust and needs no gesture code.
+
+   NOTE: the sheet REPLACES `.infoPanel` / `.fichaPanel` (it is not additive), so
+   none of the desktop offsets above apply while a sheet is rendered.
+
+   The 45% / 85% figures are a CAP, not a size: `max-height` only, never
+   `height`. With a fixed `height` a short InfoPanel (one canal feature, ~120px
+   of content) still ate 45% of the canvas and padded the rest with empty
+   backdrop. Content-sized + capped means a small panel occupies only what it
+   needs while a tall ficha still stops at the cap and scrolls internally. */
+.panelSheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: 1000;
+  width: 100%;
+  max-width: none;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
+  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
+  backdrop-filter: blur(6px);
+}
+
+.panelSheetExpanded {
+  max-height: 85%;
+}
+
+/* The scrollable region — the header bar stays pinned while the body scrolls. */
+.panelSheetBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Pinned header strip: the expand/collapse handle PLUS the close control
+   (map-fluidity T2, fix R3-005). The panels' own `Title + CloseButton` row lives
+   inside `children`, i.e. inside the scrollable body — on a tall ficha the close
+   button scrolled out of reach and the sheet could only be dismissed by
+   scrolling back up. In sheet mode the panels therefore drop their inline close
+   button and hand `onClose` to the shell, which renders it here, outside the
+   scroll region. Exactly one close affordance in either shape. */
+.panelSheetHeader {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.panelSheetClose {
+  position: absolute;
+  right: 0;
+  top: 2px;
+}
+
+.panelSheetHandle {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 0 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* The grab affordance itself — a short rounded bar, the platform convention. */
+.panelSheetGrabber {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-2));
+}
+
+/* ── Touch targets on coarse pointers (map-fluidity T2, fix 2) ─────────────── */
+/* Every custom map control mirrors MapLibre's 29×29 ctrl button, which is well
+   under the 44px WCAG 2.5.5 target. `global.css` deliberately excludes them from
+   its blanket 44px rule, so they get an explicit opt-in here: on coarse pointers
+   the button grows to 44px and reveals a compact text label under the icon
+   (tooltips are hover-only, so a touch user otherwise gets an unlabeled glyph). */
+.mapCtrlButton {
+  width: 29px;
+  height: 29px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mapCtrlButtonLabel {
+  display: none;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The measurement toolbar's inner stack. This used to be an inline
+   `flexDirection: 'column'`, which a media query cannot reach — it has to be a
+   class so the coarse breakpoint below can flip the toolbar to a horizontal
+   row. */
+.measurementGroup {
+  flex-direction: column;
+}
+
+/* Shared dock for the right-hand control column. The `top` offsets used to be
+   inline styles, which a media query cannot reach — they live here so the coarse
+   breakpoint can push them down past the (now 44px) MapLibre stack. */
+.mapCtrlDock {
+  position: absolute;
+  right: 10px;
+  z-index: 16;
+  margin: 0;
+}
+
+/* Fine-pointer column budget (unchanged): nav 3×29 + fullscreen 29 + gutters. */
+.mapActionsDock {
+  top: 144px;
+}
+
+.measurementDock {
+  top: 180px;
+}
+
+@media (pointer: coarse) {
+  .mapCtrlButton {
+    width: auto;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    gap: 1px;
+    padding: 0 4px;
+  }
+
+  .mapCtrlButtonLabel {
+    display: block;
+  }
+
+  /* MapLibre's own ctrl buttons (zoom in/out, compass, fullscreen) are rendered
+     by the library, so they need a `:global` override rather than a prop.
+     `:not(.mapCtrlButton)` is LOAD-BEARING: our custom controls live inside the
+     same `.maplibregl-ctrl-group` wrapper (they reuse it on purpose, to inherit
+     MapLibre's exact chrome), and this selector's specificity beats
+     `.mapCtrlButton` — so without the exclusion it pinned them to a square 44px
+     box and the `width: auto; min-width: 44px` above never applied, clipping the
+     visible touch labels ("Exportar", "Cancelar"…). Note the `:not()` argument
+     sits OUTSIDE `:global`, so CSS Modules hashes it and it really matches our
+     buttons. */
+  .mapCanvasWrapper :global(.maplibregl-ctrl-group) button:not(.mapCtrlButton),
+  .workspaceCanvas :global(.maplibregl-ctrl-group) button:not(.mapCtrlButton) {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* ── Coarse control layout: it must fit a 380px canvas ──────────────────────
+     The canvas floor on a narrow viewport is 380px (`--map-canvas-height`
+     clamp) with `overflow: hidden`, so anything the column pushes past 380 is
+     CLIPPED, not scrolled into view.
+
+     Right column budget (vertical, top-anchored):
+       MapLibre nav   3 × 44 = 132   → top 10, ends 142
+       +10 gutter → fullscreen 44    → top 152, ends 196
+       +10 gutter → Exportar   44    → top 206, ends 250   ✔ 250 < 380
+
+     The measurement toolbar cannot join that column: it carries up to FOUR
+     buttons (Medir / Dibujar / Canal / Limpiar-Cancelar), so stacked at 260 it
+     would end at 260 + 4×44 = 436 — the last two buttons off-canvas entirely.
+     On coarse pointers it therefore becomes a HORIZONTAL row anchored to the
+     bottom-left of the canvas (above the scale/attribution strip), which is also
+     the better thumb-reach position on a phone. Horizontal budget: 10 + 4×44 =
+     186px, comfortable even on a 360px-wide screen.
+
+     Sheet collision, decided deliberately: `.panelSheet` also anchors to the
+     bottom (z-index 1000) and will COVER this toolbar while a panel sheet is
+     open. That is accepted rather than worked around — the modes this toolbar
+     controls (measure / draw / pick a canal) all require map interaction, which
+     is exactly what an open sheet is already blocking, and the sheet has its own
+     always-reachable close button. `.mapCtrlDock` stays at z-index 16, i.e.
+     below the sheet, so the sheet is never occluded by a floating control. */
+  .mapActionsDock {
+    top: 206px;
+  }
+
+  .measurementDock {
+    top: auto;
+    right: auto;
+    bottom: 40px;
+    left: 10px;
+  }
+
+  .measurementGroup {
+    flex-direction: row;
+  }
+}
+
+/* Desktop-width touch devices keep the floating cards, so their `right: 56px`
+   clearance (derived from a 29px column) has to grow with the buttons:
+   10px offset + 44px button + 17px gutter = 71px. Below 62em the panels are
+   full-bleed sheets, so this only applies above the mobile breakpoint. */
+@media (pointer: coarse) and (min-width: 62.0625em) {
+  .infoPanel {
+    right: 71px;
+    width: min(360px, calc(100% - 87px));
+  }
+
+  .fichaPanel {
+    right: 71px;
+    width: min(380px, calc(100% - 87px));
   }
 }
 

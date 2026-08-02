@@ -567,7 +567,7 @@ export default function MapaMapLibre() {
   /* ---------------------------------------------------------------------- */
   /*  Comparison slider — Task 2.11 (CSS clip-path on right image layer)    */
   /* ---------------------------------------------------------------------- */
-  const handleSliderMouseDown = useComparisonSlider({
+  const handleSliderPointerDown = useComparisonSlider({
     sliderContainerRef,
     isDraggingSlider,
     setSliderPosition,
@@ -697,7 +697,7 @@ export default function MapaMapLibre() {
                 viewMode={viewMode}
                 sliderPosition={sliderPosition}
                 mapReady={mapReady}
-                onSliderMouseDown={handleSliderMouseDown}
+                onSliderPointerDown={handleSliderPointerDown}
               />
             </div>
 
@@ -794,9 +794,11 @@ export default function MapaMapLibre() {
               fichaNroCuenta={fichaInteraction.nroCuenta}
               fichaParcelaProps={fichaInteraction.parcelaProps}
               fichaLoading={ficha.isLoading}
+              fichaFetching={ficha.isFetching}
               fichaError={ficha.error}
               fichaData={ficha.data}
               onCloseFicha={fichaInteraction.clearFicha}
+              onRetryFicha={ficha.refetch}
               fichaOverlayVisible={showFichaOverlay}
               onToggleFichaOverlay={handleToggleFichaOverlay}
               fichaOverlayDataset={fichaOverlayDataset}

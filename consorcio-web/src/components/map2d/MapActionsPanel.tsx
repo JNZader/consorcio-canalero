@@ -1,5 +1,6 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
+import styles from '../../styles/components/map.module.css';
 import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 
 interface MapActionsPanelProps {
@@ -36,7 +37,11 @@ interface MapActionsPanelProps {
  *
  * Position: `top: 144, right: 10` puts it directly under the
  * FullscreenControl (which lands around 110–135px) and above the
- * MeasurementToolbar at `top: 180`.
+ * MeasurementToolbar at `top: 180`. Both the dock offset and the button size
+ * live in `map.module.css` (`.mapCtrlDock` / `.mapActionsDock` /
+ * `.mapCtrlButton`) because a coarse pointer grows every control to the 44px
+ * WCAG target, which shifts the whole column — a media query cannot reach an
+ * inline style (map-fluidity T2, fix 2).
  */
 export const MapActionsPanel = memo(function MapActionsPanel({
   hasApprovedZones,
@@ -47,14 +52,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
 }: MapActionsPanelProps) {
   return (
     <Box
-      className="maplibregl-ctrl maplibregl-ctrl-group"
-      style={{
-        position: 'absolute',
-        top: 144,
-        right: 10,
-        zIndex: 16,
-        margin: 0,
-      }}
+      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.mapActionsDock}`}
     >
       <Menu shadow="md" width={200} onOpen={onExportMenuOpen}>
         <Menu.Target>
@@ -62,17 +60,13 @@ export const MapActionsPanel = memo(function MapActionsPanel({
             <UnstyledButton
               type="button"
               aria-label="Exportar"
-              style={{
-                width: 29,
-                height: 29,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: '#333',
-              }}
+              className={styles.mapCtrlButton}
+              style={{ color: '#333' }}
             >
               <IconDownload size={16} />
+              {/* Visible only on coarse pointers: tooltips are hover-only, so a
+                  touch user would otherwise face an unlabeled glyph. */}
+              <span className={styles.mapCtrlButtonLabel}>Exportar</span>
             </UnstyledButton>
           </Tooltip>
         </Menu.Target>

@@ -130,7 +130,7 @@ describe('map2d extracted panels', () => {
     const onIncludeLegendChange = vi.fn();
     const onIncludeMetadataChange = vi.fn();
     const onExport = vi.fn();
-    const onSliderMouseDown = vi.fn();
+    const onSliderPointerDown = vi.fn();
 
     renderWithMantine(
       <>
@@ -149,7 +149,7 @@ describe('map2d extracted panels', () => {
           viewMode="comparison"
           sliderPosition={37}
           mapReady={false}
-          onSliderMouseDown={onSliderMouseDown}
+          onSliderPointerDown={onSliderPointerDown}
         />
       </>
     );
@@ -169,8 +169,18 @@ describe('map2d extracted panels', () => {
     await user.click(screen.getByRole('button', { name: /descargar png/i }));
     expect(onExport).toHaveBeenCalledTimes(1);
 
-    fireEvent.mouseDown(screen.getByRole('separator', { name: /divisor de comparación/i }));
-    expect(onSliderMouseDown).toHaveBeenCalledTimes(1);
+    // Pointer, not mouse (map-fluidity T2, fix 3): ONE handler serves mouse,
+    // touch and pen. A mouseDown must NOT drive the divider any more.
+    const divider = screen.getByRole('separator', { name: /divisor de comparación/i });
+    fireEvent.mouseDown(divider);
+    expect(onSliderPointerDown).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(divider);
+    expect(onSliderPointerDown).toHaveBeenCalledTimes(1);
+
+    // The interactive area is >= 24px wide even though the visible bar stays 3px.
+    expect(divider.style.width).toBe('24px');
+    expect(divider.style.touchAction).toBe('none');
   });
 
   it('composes the extracted panels through MapUiPanels', async () => {

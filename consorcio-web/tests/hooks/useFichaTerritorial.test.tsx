@@ -170,4 +170,75 @@ describe("useFichaTerritorial", () => {
 		expect((error as FichaApiError).codigo).toBe("parcela_no_encontrada");
 		expect((error as FichaApiError).message).toBe("No existe una parcela");
 	});
+
+	it("exposes refetch so the panel can recover from a client error (T2 fix 4)", async () => {
+		// 429 is NOT retried by the hook predicate — the only way back is the
+		// user-triggered refetch the error state now offers.
+		fetchMock.mockResolvedValue(
+			jsonResponse(429, {
+				detail: "Demasiados pedidos.",
+				codigo: "limite_de_tasa",
+				retry_after: 2,
+			}),
+		);
+
+		const { result } = renderHook(
+			() => useFichaTerritorial({ tipo: "parcela", nomenclatura: "13-06-02" }),
+			{ wrapper: wrapper() },
+		);
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect((result.current.error as FichaApiError).extra.retry_after).toBe(2);
+
+		fetchMock.mockResolvedValue(
+			jsonResponse(200, { tipo: "parcela", area_ha: 8 }),
+		);
+		result.current.refetch();
+
+		await waitFor(() => expect(result.current.data).toBeDefined());
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	// A retry ALWAYS returns to the loading state, so the spinner IS the
+	// acknowledgement and the "Reintentar" button is unmounted (not merely
+	// disabled) while the request is in flight — there is no double-tap window.
+	// Root cause, pinned here so it cannot regress silently: query-core's
+	// `fetchState()` resets `status` to "pending" and clears `error` on every
+	// fetch where `data === undefined`, which a failed ficha always is.
+	it("a retry returns the query to the LOADING state (data is always undefined)", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse(429, {
+				detail: "Demasiados pedidos.",
+				codigo: "limite_de_tasa",
+			}),
+		);
+
+		const { result } = renderHook(
+			() => useFichaTerritorial({ tipo: "parcela", nomenclatura: "13-06-03" }),
+			{ wrapper: wrapper() },
+		);
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(result.current.isLoading).toBe(false);
+
+		let release: (value: Response) => void = () => {};
+		fetchMock.mockImplementation(
+			() =>
+				new Promise<Response>((resolve) => {
+					release = resolve;
+				}),
+		);
+		result.current.refetch();
+
+		await waitFor(() => expect(result.current.isLoading).toBe(true));
+		// The error is cleared for the duration of the retry — the panel shows the
+		// spinner, not a stale alert with a live button.
+		expect(result.current.isError).toBe(false);
+		expect(result.current.error).toBeNull();
+
+		release(jsonResponse(200, { tipo: "parcela", area_ha: 3 }));
+		await waitFor(() => expect(result.current.data).toBeDefined());
+		expect(result.current.isLoading).toBe(false);
+	});
 });

@@ -1,4 +1,5 @@
 import { Box } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import type { Feature } from 'geojson';
 import { memo } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
@@ -104,8 +105,12 @@ export interface MapUiPanelsProps {
   readonly fichaParcelaProps?: ParcelaDisplayProps | null;
   readonly fichaLoading: boolean;
   readonly fichaError: FichaApiError | Error | null;
+  /** In-flight signal incl. retry-over-cached-data (threaded to the error alert). */
+  readonly fichaFetching?: boolean;
   readonly fichaData: FichaResponse | undefined;
   readonly onCloseFicha: () => void;
+  /** Re-runs the ficha query (`refetch`) from the panel's error state. */
+  readonly onRetryFicha?: () => void;
   /**
    * On-map overlay toggle (A(b) slice 1) — the container owns the overlay query
    * + map paint; these thread its toggle state down to the ficha panel.
@@ -204,8 +209,10 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaParcelaProps,
   fichaLoading,
   fichaError,
+  fichaFetching,
   fichaData,
   onCloseFicha,
+  onRetryFicha,
   fichaOverlayVisible,
   onToggleFichaOverlay,
   fichaOverlayDataset,
@@ -236,6 +243,25 @@ export const MapUiPanels = memo(function MapUiPanels({
   // buried under the ficha. The compact modifiers split the right-hand column
   // between them (InfoPanel top, ficha bottom) — see `map.module.css`.
   const bothPanelsOpen = selectedFeatures.length > 0 && fichaActive;
+
+  // Narrow viewports (map-fluidity T2, fix 1). Same 62em breakpoint the CSS
+  // module already uses, resolved synchronously on first render like
+  // `MapWorkspace` does, so the panels never flash as floating cards on a phone.
+  const isNarrow = useMediaQuery('(max-width: 62em)', false, {
+    getInitialValueInEffect: false,
+  });
+
+  // BOTH-OPEN MODEL ON MOBILE — "the ficha wins, the InfoPanel queues".
+  // Two stacked sheets would eat the whole canvas again, and merging both bodies
+  // into one sheet would need a second header/scroll region inside a 45%-tall
+  // box. So on a narrow viewport only ONE sheet renders: the ficha (the richer,
+  // deliberately-requested analysis). The InfoPanel is NOT discarded — it is
+  // driven by `selectedFeatures`, which the container keeps — so closing the
+  // ficha immediately surfaces the InfoPanel sheet for the same click.
+  const showInfoPanel = selectedFeatures.length > 0 && !(isNarrow && fichaActive);
+
+  // The 45/55 desktop split is meaningless when only one sheet can be open.
+  const compactPanels = bothPanelsOpen && !isNarrow;
 
   return (
     <>
@@ -349,10 +375,11 @@ export const MapUiPanels = memo(function MapUiPanels({
         />
       )}
 
-      {selectedFeatures.length > 0 && (
+      {showInfoPanel && (
         <InfoPanel
           features={selectedFeatures}
-          compact={bothPanelsOpen}
+          compact={compactPanels}
+          sheet={isNarrow}
           onClose={onCloseInfoPanel}
           bpaEnriched={bpaEnriched}
           bpaHistory={bpaHistory}
@@ -361,16 +388,19 @@ export const MapUiPanels = memo(function MapUiPanels({
 
       <FichaTerritorialPanel
         active={fichaActive}
-        compact={bothPanelsOpen}
+        compact={compactPanels}
+        sheet={isNarrow}
         tipo={fichaTipo}
         nroCuenta={fichaNroCuenta}
         parcelaProps={fichaParcelaProps}
         bpaEnriched={bpaEnriched}
         isLoading={fichaLoading}
+        isFetching={fichaFetching}
         isError={fichaError !== null}
         error={fichaError}
         data={fichaData}
         onClose={onCloseFicha}
+        onRetry={onRetryFicha}
         overlayVisible={fichaOverlayVisible}
         onToggleOverlay={onToggleFichaOverlay}
         overlayDataset={fichaOverlayDataset}

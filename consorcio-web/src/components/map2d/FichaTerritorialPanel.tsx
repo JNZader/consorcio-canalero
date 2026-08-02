@@ -18,18 +18,18 @@
 import {
   Alert,
   Badge,
+  Button,
   CloseButton,
   Divider,
   Group,
   Loader,
-  Paper,
   SegmentedControl,
   Stack,
   Switch,
   Text,
   Title,
 } from '@mantine/core';
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
@@ -37,6 +37,7 @@ import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
 import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
+import { MapPanelShell } from './MapPanelShell';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
@@ -53,6 +54,12 @@ export interface FichaTerritorialPanelProps {
    * `.fichaPanelCompact` in `map.module.css` for the budget derivation).
    */
   readonly compact?: boolean;
+  /**
+   * Narrow viewports (<= 62em): render as a bottom sheet anchored to the map's
+   * bottom edge instead of a floating card (map-fluidity T2, fix 1). `compact`
+   * is ignored in sheet mode — only ONE sheet is ever rendered at a time.
+   */
+  readonly sheet?: boolean;
   readonly tipo: FichaTipo;
   /** Clicked parcel account, for the client-side BPA join. `null` for other tipos. */
   readonly nroCuenta: string | null;
@@ -64,6 +71,8 @@ export interface FichaTerritorialPanelProps {
   readonly parcelaProps?: ParcelaDisplayProps | null;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
   readonly isLoading: boolean;
+  /** In-flight signal incl. retry-over-cached-data (see FichaErrorAlert). */
+  readonly isFetching?: boolean;
   readonly isError: boolean;
   readonly error: FichaApiError | Error | null;
   readonly data: FichaResponse | undefined;
@@ -99,6 +108,14 @@ export interface FichaTerritorialPanelProps {
   readonly canalBufferM?: number;
   readonly canalMaxBufferM?: number;
   readonly onCanalBufferChange?: (bufferM: number) => void;
+  /**
+   * Re-run the ficha query (map-fluidity T2, fix 4). Wired to the TanStack
+   * `refetch` by the container. When present the error state offers a
+   * "Reintentar" button for retryable failures — a 429 gates it behind a live
+   * countdown derived from the server's `retry_after`. Omit it and the error
+   * state stays informative-only (previous behaviour).
+   */
+  readonly onRetry?: () => void;
 }
 
 /** Overlay dataset options for the picker (label ⇄ wire value). */
@@ -117,6 +134,137 @@ function errorMessage(error: FichaApiError | Error | null): string {
   if (error instanceof FichaApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return 'No se pudo completar el análisis. Reintentá en unos instantes.';
+}
+
+/**
+ * Failures the user cannot recover from by retrying the SAME request:
+ *   - 404 → the area has no coverage;
+ *   - 413 / `cuenca_demasiado_grande` → the area exceeds the analysis cap;
+ *   - 422 → the geometry itself is invalid;
+ *   - `cuenca_no_computada` → a deliberate 503, the batch has not produced this
+ *     canal's catchment yet, so a retry hits the same wall.
+ * Everything else (5xx, network, 429 after its window) is worth a retry.
+ */
+const NON_RETRYABLE_STATUS: ReadonlySet<number> = new Set([404, 413, 422]);
+const NON_RETRYABLE_CODIGOS: ReadonlySet<string> = new Set([
+  'cuenca_no_computada',
+  'cuenca_demasiado_grande',
+]);
+
+function isRetryableError(error: FichaApiError | Error | null): boolean {
+  if (!(error instanceof FichaApiError)) return true; // network / parse failure
+  if (NON_RETRYABLE_CODIGOS.has(error.codigo)) return false;
+  return !NON_RETRYABLE_STATUS.has(error.status);
+}
+
+/**
+ * Upper bound for the 429 countdown. The value comes from the server, and an
+ * absurd one (a misconfigured limiter answering `retry_after: 86400`) would lock
+ * the panel's only recovery path for hours with no way out but a page reload.
+ * Five minutes is well past any sane rate-limit window, so clamping there costs
+ * a legitimate caller nothing.
+ */
+const MAX_RETRY_AFTER_SECONDS = 300;
+
+/**
+ * Seconds the server asked us to wait, from the 429's `retry_after`. The field
+ * is already parsed into `FichaApiError.extra` but was never surfaced. Accepts a
+ * number or a numeric string; anything else (or a non-429) yields 0 → the retry
+ * button is enabled immediately. Capped at `MAX_RETRY_AFTER_SECONDS`.
+ */
+function retryAfterSeconds(error: FichaApiError | Error | null): number {
+  if (!(error instanceof FichaApiError) || error.status !== 429) return 0;
+  const raw = error.extra.retry_after;
+  const parsed = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.min(Math.ceil(parsed), MAX_RETRY_AFTER_SECONDS);
+}
+
+/**
+ * Actionable error state (map-fluidity T2, fix 4).
+ *
+ * TanStack never retries a client error, so before this the user's only recovery
+ * was re-clicking the parcel. Now: a 429 shows a live countdown and enables
+ * "Reintentar" when it reaches 0; other retryable failures offer the button
+ * straight away; non-retryable ones stay informative-only.
+ *
+ * IN-FLIGHT FEEDBACK — deliberately NOT handled here. A retry always leaves the
+ * ficha without `data`, and `query-core`'s `fetchState()` resets `status` to
+ * `pending` (clearing `error`) whenever `data === undefined`. So pressing
+ * "Reintentar" swaps this whole alert for the `ficha-loading` spinner in the
+ * same commit: the acknowledgement is the spinner, and the button is unmounted
+ * rather than merely disabled, which is what closes the double-tap window.
+ */
+function FichaErrorAlert({
+  error,
+  onRetry,
+  isRetrying = false,
+}: {
+  readonly error: FichaApiError | Error | null;
+  readonly onRetry?: () => void;
+  /**
+   * In-flight signal for the CACHED-data path: when the query already holds
+   * data, TanStack keeps `status: 'error'` across a refetch (it only resets to
+   * pending when `data === undefined`), so this alert STAYS MOUNTED during the
+   * retry. Without this flag the button reads enabled with zero feedback and
+   * every extra tap cancels + re-issues the request (cancelRefetch default).
+   */
+  readonly isRetrying?: boolean;
+}) {
+  const isRateLimited = error instanceof FichaApiError && error.status === 429;
+  // Lazy initial state so the first paint already shows the countdown instead of
+  // a briefly-enabled button.
+  const [remaining, setRemaining] = useState(() => retryAfterSeconds(error));
+
+  // Keyed on the ERROR object, not on the parsed seconds: a second 429 carrying
+  // the same `retry_after` must still re-arm the countdown. The cleanup tears
+  // the interval down on unmount and on every error change, so nothing keeps
+  // ticking against a dead panel.
+  useEffect(() => {
+    let left = retryAfterSeconds(error);
+    setRemaining(left);
+    if (left <= 0) return;
+    const id = setInterval(() => {
+      left -= 1;
+      setRemaining(left);
+      if (left <= 0) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [error]);
+
+  const showRetry = !!onRetry && isRetryableError(error);
+  const waiting = remaining > 0;
+
+  return (
+    <Alert
+      color="red"
+      variant="light"
+      title={isRateLimited ? 'Demasiados pedidos' : 'No disponible'}
+      data-testid="ficha-error"
+    >
+      <Stack gap="xs">
+        <Text size="sm">{errorMessage(error)}</Text>
+        {isRateLimited && waiting && (
+          <Text size="xs" c="dimmed" data-testid="ficha-error-countdown">
+            Reintentá en {remaining}s
+          </Text>
+        )}
+        {showRetry && (
+          <Button
+            size="xs"
+            variant="light"
+            color="red"
+            disabled={waiting || isRetrying}
+            loading={isRetrying}
+            onClick={onRetry}
+            data-testid="ficha-error-retry"
+          >
+            {isRetrying ? 'Reintentando…' : 'Reintentar'}
+          </Button>
+        )}
+      </Stack>
+    </Alert>
+  );
 }
 
 /** Field order + labels for the parcel identity header (matches the fields the
@@ -160,9 +308,11 @@ function PanelBody({
   nroCuenta,
   bpaEnriched,
   isLoading,
+  isFetching,
   isError,
   error,
   data,
+  onRetry,
 }: Omit<FichaTerritorialPanelProps, 'active' | 'onClose' | 'parcelaProps'>) {
   if (isLoading) {
     return (
@@ -176,11 +326,7 @@ function PanelBody({
   }
 
   if (isError || !data) {
-    return (
-      <Alert color="red" variant="light" title="No disponible" data-testid="ficha-error">
-        {errorMessage(error)}
-      </Alert>
-    );
+    return <FichaErrorAlert error={error ?? null} onRetry={onRetry} isRetrying={isFetching} />;
   }
 
   return (
@@ -211,11 +357,13 @@ function PanelBody({
 export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   active,
   compact = false,
+  sheet = false,
   tipo,
   nroCuenta,
   parcelaProps,
   bpaEnriched,
   isLoading,
+  isFetching,
   isError,
   error,
   data,
@@ -230,6 +378,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   canalBufferM,
   canalMaxBufferM,
   onCanalBufferChange,
+  onRetry,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
 
@@ -250,16 +399,24 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   const isCanalTipo = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
 
   return (
-    <Paper
-      shadow="md"
-      p="md"
-      radius="md"
-      className={compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel}
-      data-testid="ficha-territorial-panel"
+    <MapPanelShell
+      sheet={sheet}
+      floatingClassName={
+        compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel
+      }
+      testId="ficha-territorial-panel"
+      sheetLabel="ficha territorial"
+      onClose={onClose}
+      closeLabel="Cerrar ficha territorial"
     >
+      {/* In sheet mode the close button lives in the shell's PINNED header, so
+          it stays reachable on a tall ficha; rendering it here too would
+          duplicate the affordance. */}
       <Group justify="space-between" mb="xs">
         <Title order={5}>Ficha territorial</Title>
-        <CloseButton onClick={onClose} size="sm" aria-label="Cerrar ficha territorial" />
+        {!sheet && (
+          <CloseButton onClick={onClose} size="sm" aria-label="Cerrar ficha territorial" />
+        )}
       </Group>
       <Divider mb="xs" />
       {isCanalTipo &&
@@ -291,9 +448,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         nroCuenta={nroCuenta}
         bpaEnriched={bpaEnriched}
         isLoading={isLoading}
+        isFetching={isFetching}
         isError={isError}
         error={error}
         data={data}
+        onRetry={onRetry}
       />
       {showOverlayToggle && (
         <>
@@ -323,6 +482,6 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
           )}
         </>
       )}
-    </Paper>
+    </MapPanelShell>
   );
 });
