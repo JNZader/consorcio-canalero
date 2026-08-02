@@ -30,10 +30,11 @@ import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
-import { useFichaTerritorial } from '../hooks/useFichaTerritorial';
+import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
 import { FICHA_MAX_BUFFER_M, type FichaOverlayDataset } from '../lib/api/ficha';
 import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
+import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -383,6 +384,13 @@ export default function MapaMapLibre() {
   // A `tipo=parcela` (click) or `tipo=poligono` (free draw) request, or null.
   const ficha = useFichaTerritorial(fichaInteraction.request);
 
+  // Identity of the selection, derived from the REQUEST (same derivation as the
+  // query key). The panels use it as their reset trigger, so it must never be
+  // rebuilt from display fields: `nro_cuenta` is optional and a drawn polygon or
+  // a duplicated canal name has none, which made two different selections look
+  // identical and left the new analysis stuck behind the old pill.
+  const fichaKey = fichaSelectionKey(fichaInteraction.request);
+
   // On-map overlay (A(b) slice 1, soils): opt-in "ver recortado en el mapa"
   // toggle. The overlay query is ENABLED only while the toggle is on AND a zone
   // is selected, so it never fetches unless the user opts in. The geometry lives
@@ -406,6 +414,11 @@ export default function MapaMapLibre() {
   const handleChangeFichaOverlayDataset = useCallback((dataset: FichaOverlayDataset) => {
     setFichaOverlayDataset(dataset);
   }, []);
+
+  // Auto-minimize signal (T3a, fix 2): one bump per map DRAG gesture, so open
+  // panels collapse to their pills the moment the user starts panning. Zoom and
+  // click are deliberately NOT subscribed — see `useMapDragSignal`.
+  const mapDragSignal = useMapDragSignal(mapRef, mapReady);
 
   // Paint / clear the clipped overlay. `visible` is false whenever the toggle is
   // off, no zone is selected, or the fetch has no data yet — so a stale overlay
@@ -792,6 +805,7 @@ export default function MapaMapLibre() {
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}
+              fichaSelectionKey={fichaKey}
               fichaParcelaProps={fichaInteraction.parcelaProps}
               fichaLoading={ficha.isLoading}
               fichaFetching={ficha.isFetching}
@@ -803,6 +817,9 @@ export default function MapaMapLibre() {
               onToggleFichaOverlay={handleToggleFichaOverlay}
               fichaOverlayDataset={fichaOverlayDataset}
               onChangeFichaOverlayDataset={handleChangeFichaOverlayDataset}
+              fichaOverlayLoading={fichaOverlay.isLoading}
+              fichaOverlayError={fichaOverlay.isError}
+              mapDragSignal={mapDragSignal}
               fichaCanalNombre={fichaInteraction.state.canal?.canalNombre ?? null}
               fichaCanalAnalysisMode={fichaInteraction.state.canal?.analysisMode}
               onFichaCanalAnalysisModeChange={fichaInteraction.setCanalAnalysisMode}

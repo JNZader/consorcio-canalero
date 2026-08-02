@@ -42,6 +42,11 @@ interface MapActionsPanelProps {
  * `.mapCtrlButton`) because a coarse pointer grows every control to the 44px
  * WCAG target, which shifts the whole column — a media query cannot reach an
  * inline style (map-fluidity T2, fix 2).
+ *
+ * On a coarse pointer the button stays a 44×44 SQUARE and drops its visible
+ * caption, so the right column is one uniform family of icon buttons; captions
+ * live only in the horizontal bottom toolbar, where they cost width instead of
+ * column shape.
  */
 export const MapActionsPanel = memo(function MapActionsPanel({
   hasApprovedZones,
@@ -64,8 +69,14 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               style={{ color: '#333' }}
             >
               <IconDownload size={16} />
-              {/* Visible only on coarse pointers: tooltips are hover-only, so a
-                  touch user would otherwise face an unlabeled glyph. */}
+              {/* The shared coarse-pointer caption slot. It is deliberately
+                  HIDDEN for this button (`.mapActionsDock .mapCtrlButtonLabel`
+                  in `map.module.css`): a labeled, wider box in the right-hand
+                  column broke the uniform 44×44 grid of the MapLibre controls it
+                  docks under. The markup stays so the two toolbars keep one
+                  component contract, and the touch user is not left with a bare
+                  glyph — the `aria-label` above names it and the dropdown it
+                  opens spells out every export format. */}
               <span className={styles.mapCtrlButtonLabel}>Exportar</span>
             </UnstyledButton>
           </Tooltip>

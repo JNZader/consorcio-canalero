@@ -22,8 +22,16 @@ import {
   fetchAnalisisZona,
 } from '../lib/api/ficha';
 
-/** Stable reference key per area of interest, used in the query key. */
-function refKeyFor(request: FichaRequest): string {
+/**
+ * Stable reference key per area of interest, used in the query key.
+ *
+ * Exported because it is the ONLY honest identity of a selection: display
+ * fields (nro_cuenta, canal name) are optional and repeat across different
+ * targets. Anything that needs to answer "is this a different selection?" —
+ * the query key here, the panels' reset trigger via `fichaSelectionKey` —
+ * must derive it from the request, never from what the card happens to show.
+ */
+export function refKeyFor(request: FichaRequest): string {
   switch (request.tipo) {
     case 'parcela':
       return request.nomenclatura;
@@ -36,6 +44,21 @@ function refKeyFor(request: FichaRequest): string {
     case 'canal_cuenca':
       return `${request.canal_ref}:${request.variante ?? 'natural'}`;
   }
+}
+
+/** Selection key while nothing is selected. A constant: idle never "changes". */
+export const FICHA_IDLE_SELECTION_KEY = 'ficha:idle';
+
+/**
+ * Identity of the CURRENT ficha selection, as a single comparable string.
+ *
+ * Same derivation as the query key above (`tipo` + `refKeyFor`), so "the UI
+ * considers this a new selection" and "the query refetches" can never disagree.
+ * Consumers use it as an opaque reset TRIGGER — only its identity matters.
+ */
+export function fichaSelectionKey(request: FichaRequest | null): string {
+  if (!request) return FICHA_IDLE_SELECTION_KEY;
+  return `${request.tipo}|${refKeyFor(request)}`;
 }
 
 export interface UseFichaTerritorialResult {

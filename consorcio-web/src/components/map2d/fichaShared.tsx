@@ -6,13 +6,50 @@
  * duplicating them.
  */
 
-import { Badge, Text, Tooltip } from '@mantine/core';
+import { Badge, Box, Text, Tooltip } from '@mantine/core';
 
 export const DATASET_LABELS = {
   suelos: 'Suelos',
   flood_risk: 'Riesgo de inundación',
   drainage_need: 'Necesidad de drenaje',
 } as const;
+
+/**
+ * Color chip rendered at the start of every class row in the ficha tables
+ * (T3a, fix 1a).
+ *
+ * The on-map overlay paints one color per class, but nothing on screen said WHICH
+ * color meant which class: the owner read matching percentages as wrong because
+ * the painted classes had no legend. The tables now ARE that legend — the chip's
+ * color MUST come from the same source the overlay paints with
+ * (`riesgoClassColor` / `getSoilColor`), never from a chip-local palette.
+ */
+export const CLASS_CHIP_SIZE = 12;
+
+export function ClassColorChip({
+  color,
+  testId,
+}: {
+  readonly color: string;
+  readonly testId?: string;
+}) {
+  return (
+    <Box
+      aria-hidden="true"
+      data-testid={testId}
+      data-chip-color={color}
+      style={{
+        display: 'inline-block',
+        flex: '0 0 auto',
+        width: CLASS_CHIP_SIZE,
+        height: CLASS_CHIP_SIZE,
+        borderRadius: 3,
+        backgroundColor: color,
+        border: '1px solid rgba(0, 0, 0, 0.2)',
+      }}
+    />
+  );
+}
 
 /** Hectares with one decimal. Numbers come from the server; only the display is ours. */
 export function fmtHa(value: number): string {

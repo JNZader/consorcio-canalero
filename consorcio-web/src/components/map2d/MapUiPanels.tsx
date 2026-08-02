@@ -1,7 +1,8 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import type { Feature } from 'geojson';
-import { memo } from 'react';
+import { memo, useCallback, useState } from 'react';
+import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
@@ -102,6 +103,21 @@ export interface MapUiPanelsProps {
   readonly fichaActive: boolean;
   readonly fichaTipo: FichaTipo;
   readonly fichaNroCuenta: string | null;
+  /**
+   * Identity of the analyzed target, computed by the container with
+   * `fichaSelectionKey(request)` — the SAME derivation the query key uses.
+   *
+   * It is the reset trigger for the ficha's minimized state and for the bottom
+   * sheet's stage, so it MUST come from the request and never from display
+   * fields: `tipo|nroCuenta|canalNombre` collided for perfectly reachable
+   * selections (two parcels without `nro_cuenta`, any two free-draw polygons,
+   * two canals sharing a name), and a collision means the new analysis silently
+   * stays minimized behind the previous selection's pill.
+   *
+   * Optional only so panel-level tests can mount without a container; omitted,
+   * it degenerates to the constant idle key (no selection ever "changes").
+   */
+  readonly fichaSelectionKey?: string;
   readonly fichaParcelaProps?: ParcelaDisplayProps | null;
   readonly fichaLoading: boolean;
   readonly fichaError: FichaApiError | Error | null;
@@ -120,6 +136,20 @@ export interface MapUiPanelsProps {
   /** Which dataset the on-map overlay paints (soils / flood_risk / drainage_need). */
   readonly fichaOverlayDataset?: FichaOverlayDataset;
   readonly onChangeFichaOverlayDataset?: (dataset: FichaOverlayDataset) => void;
+  /**
+   * Overlay fetch state (T3a, fix 4) — threaded from `useFichaOverlay` so the
+   * ficha panel can show an inline spinner / failure line instead of leaving
+   * "Ver recortado en el mapa" silent.
+   */
+  readonly fichaOverlayLoading?: boolean;
+  readonly fichaOverlayError?: boolean;
+  /**
+   * Monotonic counter bumped by `useMapDragSignal` on every map `dragstart`
+   * (T3a, fix 2). Each bump auto-minimizes any open panel to its pill so the
+   * user pans a map instead of panning around a card. Restoring is always an
+   * explicit tap on the pill — never automatic on dragend.
+   */
+  readonly mapDragSignal?: number;
   /**
    * Canal analysis control (A6 + A7). When the active ficha is a canal
    * (`canal_buffer` / `canal_cuenca`), these thread the canal name + analysis
@@ -206,6 +236,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
+  fichaSelectionKey = FICHA_IDLE_SELECTION_KEY,
   fichaParcelaProps,
   fichaLoading,
   fichaError,
@@ -217,6 +248,9 @@ export const MapUiPanels = memo(function MapUiPanels({
   onToggleFichaOverlay,
   fichaOverlayDataset,
   onChangeFichaOverlayDataset,
+  fichaOverlayLoading,
+  fichaOverlayError,
+  mapDragSignal = 0,
   fichaCanalNombre,
   fichaCanalAnalysisMode,
   onFichaCanalAnalysisModeChange,
@@ -262,6 +296,57 @@ export const MapUiPanels = memo(function MapUiPanels({
 
   // The 45/55 desktop split is meaningless when only one sheet can be open.
   const compactPanels = bothPanelsOpen && !isNarrow;
+
+  /* ── Minimize-to-pill state (T3a, fix 2) ────────────────────────────────── */
+  // The state lives HERE, not inside `MapPanelShell`, because two different
+  // actors drive it: the user (the minimize button / the pill) and the map (a
+  // drag auto-minimizes). The panels stay presentational.
+  const [infoMinimized, setInfoMinimized] = useState(false);
+  const [fichaMinimized, setFichaMinimized] = useState(false);
+
+  // A NEW selection always shows its content: minimizing is a statement about
+  // the thing you were looking at, not a preference that should survive into the
+  // next parcel you click. `selectedFeatures` is a fresh array per click and
+  // `fichaSelectionKey` is the request's identity, so both are honest reset
+  // signals. Re-selecting the SAME target keeps the key — and keeps the panel
+  // minimized — which is the correct behavior: nothing new to show.
+  // All three transitions below are state ADJUSTED DURING RENDER (React's
+  // documented "resetting state when a prop changes" pattern) rather than in an
+  // effect: the panel must never paint one frame minimized-from-the-last-click
+  // before an effect corrects it, and the trigger values are compared by
+  // identity, never read.
+  const [lastInfoSelection, setLastInfoSelection] = useState<unknown>(selectedFeatures);
+  if (lastInfoSelection !== selectedFeatures) {
+    setLastInfoSelection(selectedFeatures);
+    setInfoMinimized(false);
+  }
+
+  const [lastFichaSelection, setLastFichaSelection] = useState(fichaSelectionKey);
+  if (lastFichaSelection !== fichaSelectionKey) {
+    setLastFichaSelection(fichaSelectionKey);
+    setFichaMinimized(false);
+  }
+
+  // Auto-minimize on map drag. The counter's INITIAL value is captured, so a
+  // mount never minimizes a panel that was just opened — only a real bump does.
+  const [lastDragSignal, setLastDragSignal] = useState(mapDragSignal);
+  if (lastDragSignal !== mapDragSignal) {
+    setLastDragSignal(mapDragSignal);
+    setInfoMinimized(true);
+    setFichaMinimized(true);
+  }
+
+  const toggleInfoMinimized = useCallback(() => {
+    setInfoMinimized((value) => !value);
+  }, []);
+  const toggleFichaMinimized = useCallback(() => {
+    setFichaMinimized((value) => !value);
+  }, []);
+
+  // A pill occupies almost nothing, so the moment either panel is minimized the
+  // other one gets the whole column back — capping it at 45/55 would waste half
+  // the height against a neighbour that is no longer there.
+  const compactPanelsResolved = compactPanels && !infoMinimized && !fichaMinimized;
 
   return (
     <>
@@ -378,17 +463,20 @@ export const MapUiPanels = memo(function MapUiPanels({
       {showInfoPanel && (
         <InfoPanel
           features={selectedFeatures}
-          compact={compactPanels}
+          compact={compactPanelsResolved}
           sheet={isNarrow}
           onClose={onCloseInfoPanel}
           bpaEnriched={bpaEnriched}
           bpaHistory={bpaHistory}
+          minimized={infoMinimized}
+          onToggleMinimize={toggleInfoMinimized}
+          resetKey={selectedFeatures}
         />
       )}
 
       <FichaTerritorialPanel
         active={fichaActive}
-        compact={compactPanels}
+        compact={compactPanelsResolved}
         sheet={isNarrow}
         tipo={fichaTipo}
         nroCuenta={fichaNroCuenta}
@@ -405,6 +493,11 @@ export const MapUiPanels = memo(function MapUiPanels({
         onToggleOverlay={onToggleFichaOverlay}
         overlayDataset={fichaOverlayDataset}
         onChangeOverlayDataset={onChangeFichaOverlayDataset}
+        overlayLoading={fichaOverlayLoading}
+        overlayError={fichaOverlayError}
+        minimized={fichaMinimized}
+        onToggleMinimize={toggleFichaMinimized}
+        resetKey={fichaSelectionKey}
         canalNombre={fichaCanalNombre}
         canalAnalysisMode={fichaCanalAnalysisMode}
         onCanalAnalysisModeChange={onFichaCanalAnalysisModeChange}

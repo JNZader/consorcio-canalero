@@ -43,6 +43,23 @@ function coarseBlock(): string {
 	throw new Error("unterminated @media (pointer: coarse) block");
 }
 
+/** The `@media (pointer: coarse) and (min-width: 62.0625em)` block. */
+function coarseDesktopBlock(): string {
+	const start = MAP_CSS.indexOf(
+		"@media (pointer: coarse) and (min-width: 62.0625em) {",
+	);
+	expect(start).toBeGreaterThan(-1);
+	let depth = 0;
+	for (let i = MAP_CSS.indexOf("{", start); i < MAP_CSS.length; i += 1) {
+		if (MAP_CSS[i] === "{") depth += 1;
+		if (MAP_CSS[i] === "}") {
+			depth -= 1;
+			if (depth === 0) return MAP_CSS.slice(start, i + 1);
+		}
+	}
+	throw new Error("unterminated coarse-desktop @media block");
+}
+
 /** `.selector { … prop: 123px … }` → 123, inside the given CSS text. */
 function pxOf(css: string, selector: string, prop: string): number {
 	const rule = new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`).exec(css);
@@ -192,7 +209,7 @@ describe("map control touch targets", () => {
 		expect(group.style.flexDirection).toBe("");
 	});
 
-	it("MapActionsPanel: the Exportar button carries its coarse-pointer label", () => {
+	it("MapActionsPanel: the Exportar button still renders the label slot (hidden by CSS in this dock)", () => {
 		renderWithMantine(
 			<MapActionsPanel
 				hasApprovedZones={false}
@@ -284,5 +301,99 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 		expect(coarse).toMatch(
 			/\.mapCtrlButton\s*\{[^}]*width:\s*auto[^}]*min-width:\s*44px/,
 		);
+	});
+});
+
+/**
+ * OWNER POLISH (phone screenshot) — the coarse UI read as a mishmash: the right
+ * column mixed square MapLibre buttons with a WIDE labeled "Exportar" pill, and
+ * the bottom toolbar sat almost on top of the scale bar.
+ */
+describe("coarse-pointer right column is one uniform icon family", () => {
+	const TOUCH = 44;
+
+	it("the Exportar button drops its visible label inside the actions dock", () => {
+		const coarse = coarseBlock();
+		// Scoped to the dock: the bottom toolbar KEEPS its captions.
+		expect(coarse).toMatch(
+			/\.mapActionsDock\s+\.mapCtrlButtonLabel\s*\{[^}]*display:\s*none/,
+		);
+		// The generic label rule still reveals labels everywhere else.
+		expect(coarse).toMatch(
+			/\.mapCtrlButtonLabel\s*\{[^}]*display:\s*block/,
+		);
+	});
+
+	it("and returns to a fixed 44×44 square, matching the MapLibre controls", () => {
+		const coarse = coarseBlock();
+		const rule =
+			/\.mapActionsDock\s+\.mapCtrlButton\s*\{([^}]*)\}/.exec(coarse)?.[1] ??
+			"";
+		expect(rule).toMatch(new RegExp(`width:\\s*${TOUCH}px`));
+		expect(rule).toMatch(new RegExp(`min-width:\\s*${TOUCH}px`));
+		expect(rule).toMatch(/padding:\s*0/);
+	});
+
+	it("the accessible name survives the hidden label", () => {
+		renderWithMantine(
+			<MapActionsPanel
+				hasApprovedZones={false}
+				onOpenExportPng={() => {}}
+				onExportApprovedZonesPdf={() => {}}
+			/>,
+		);
+		// The label is hidden by CSS only; the button is still named, and the menu
+		// it opens spells out each format.
+		expect(
+			screen.getByRole("button", { name: "Exportar" }),
+		).toBeInTheDocument();
+	});
+});
+
+describe("coarse-pointer bottom toolbar clears the scale bar", () => {
+	const TOUCH = 44;
+	const CANVAS_FLOOR = 380;
+
+	it("sits at 56px, above MapLibre's bottom-left ScaleControl", () => {
+		const coarse = coarseBlock();
+		const bottom = pxOf(coarse, "measurementDock", "bottom");
+		// ScaleControl is added `bottom-left` and ends ~32px up (10px corner
+		// margin + ~22px control). 40 left an 8px smudge; 56 leaves ~24px.
+		expect(bottom).toBe(56);
+		expect(bottom).toBeGreaterThanOrEqual(32 + 16);
+		// …and the raised row still fits the 380px floor.
+		expect(bottom + TOUCH).toBeLessThanOrEqual(CANVAS_FLOOR);
+	});
+
+	it("wears MapLibre's own control-group chrome so it reads as native", () => {
+		const coarse = coarseBlock();
+		const rule =
+			/\.measurementDock\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? "";
+		expect(rule).toMatch(/border-radius:\s*4px/);
+		expect(rule).toMatch(/overflow:\s*hidden/);
+		expect(rule).toMatch(/box-shadow:\s*0 0 0 2px rgba\(0, 0, 0, 0\.1\)/);
+	});
+});
+
+/**
+ * R2-002 — the coarse-DESKTOP block moved the panels to `right: 71px` (the 44px
+ * column needs more clearance than the 29px one) but forgot the minimized PILL,
+ * which anchors in the same place. The pill therefore overlapped the control
+ * column: minimizing a panel to reach the controls left them unclickable.
+ */
+describe("coarse-desktop clearance covers the pill too", () => {
+	it("panel and pill share the 71px inset", () => {
+		const block = coarseDesktopBlock();
+		expect(pxOf(block, "infoPanel", "right")).toBe(71);
+		expect(pxOf(block, "fichaPanel", "right")).toBe(71);
+		expect(pxOf(block, "panelPill", "right")).toBe(71);
+		// 10px dock offset + 44px button + 17px gutter.
+		expect(10 + 44 + 17).toBe(71);
+	});
+
+	it("the pill width shrinks by the same amount as the cards", () => {
+		const block = coarseDesktopBlock();
+		const pill = /\.panelPill\s*\{([^}]*)\}/.exec(block)?.[1] ?? "";
+		expect(pill).toContain("calc(100% - 87px)");
 	});
 });
