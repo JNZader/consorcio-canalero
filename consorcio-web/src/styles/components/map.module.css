@@ -343,6 +343,13 @@
   backdrop-filter: blur(6px);
 }
 
+/* Peek — the DEFAULT opening stage (T3a, fix 3). ~25% of the canvas: the pinned
+   header plus the first summary line. The map stays ~75% visible until the user
+   asks for more by tapping the handle (peek → medio 45% → alto 85% → peek). */
+.panelSheetPeek {
+  max-height: 25%;
+}
+
 .panelSheetExpanded {
   max-height: 85%;
 }
@@ -366,10 +373,15 @@
   flex: 0 0 auto;
 }
 
-.panelSheetClose {
+/* Pinned header controls: minimize + close, stacked to the right of the handle
+   (T3a, fix 2 added the minimize affordance next to the existing close). */
+.panelSheetActions {
   position: absolute;
   right: 0;
   top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .panelSheetHandle {
@@ -391,6 +403,78 @@
   height: 4px;
   border-radius: 2px;
   background: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-2));
+}
+
+/* ── Minimize-to-pill (T3a, fix 2) ────────────────────────────────────────── */
+/* Panning the map with a panel open meant panning around the panel. Both panels
+   now minimize — by an explicit button, or automatically when the user starts
+   DRAGGING the map — into a pill that keeps the selection alive and gives the
+   canvas back. Restoring is always an explicit tap: auto-restoring on dragend
+   would make the panel flicker in and out during a normal pan.
+
+   Desktop pill: a chip anchored where the card was (same `right: 56px` inset
+   that clears the map control column). The per-panel anchor classes below keep
+   the two pills from stacking on top of each other when BOTH are minimized. */
+.panelPill {
+  position: absolute;
+  right: 56px;
+  z-index: 1000;
+  max-width: min(260px, calc(100% - 72px));
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-md);
+  cursor: pointer;
+}
+
+.infoPanelPill {
+  top: calc(var(--mantine-spacing-md) + 108px);
+}
+
+.fichaPanelPill {
+  bottom: var(--mantine-spacing-md);
+}
+
+/* Sheet pill: a slim bar on the canvas' bottom edge. Only ONE sheet is ever
+   rendered on a narrow viewport, so it needs no per-panel anchor. */
+.panelSheetPill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
+  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-md);
+  cursor: pointer;
+}
+
+/* Floating-card minimize button. The card's own `Title + CloseButton` row is
+   rendered by the PANEL (inside `children`), so the shell cannot sit a sibling
+   next to that close button in flow — it anchors here instead, on the same line
+   and immediately to its left (`right: 16px` card padding + 28px close button).
+
+   BOTH offsets are derived from inputs this file does NOT own: the card is a
+   Mantine `<Paper p="md">` (16px padding) and the close control a
+   `<CloseButton size="sm">` (28×28) — both set in `MapPanelShell.tsx`.
+     right = 16 (padding) + 28 (close button)                       = 44px
+     top   = 16 (padding) − (28 − 24)/2 ≈ 14px, i.e. the 24px-tall
+             minimize ActionIcon (size="sm") centered on the 28px
+             close button's line                                    = 14px
+   If either Mantine prop changes there, these two numbers must be re-derived
+   here — CSS cannot read them. */
+.panelCardMinimize {
+  position: absolute;
+  right: 44px;
+  top: 14px;
+  z-index: 1;
 }
 
 /* ── Touch targets on coarse pointers (map-fluidity T2, fix 2) ─────────────── */
@@ -479,18 +563,33 @@
      clamp) with `overflow: hidden`, so anything the column pushes past 380 is
      CLIPPED, not scrolled into view.
 
-     Right column budget (vertical, top-anchored):
+     Right column budget (vertical, top-anchored) — every box is 44×44:
        MapLibre nav   3 × 44 = 132   → top 10, ends 142
        +10 gutter → fullscreen 44    → top 152, ends 196
        +10 gutter → Exportar   44    → top 206, ends 250   ✔ 250 < 380
+
+     ONE VISUAL FAMILY IN THAT COLUMN. The Exportar button used to keep its
+     visible "Exportar" caption on coarse pointers, so it grew to ~64px wide and
+     the column read as a ragged mishmash: square library buttons plus one wide
+     labeled pill. It is icon-only here (the label is hidden below; the
+     `aria-label` and the tooltip stay, and the menu it opens names every entry),
+     which restores a uniform 44×44 stack. Text labels survive ONLY in the
+     horizontal bottom toolbar, where a caption costs width, not column shape.
 
      The measurement toolbar cannot join that column: it carries up to FOUR
      buttons (Medir / Dibujar / Canal / Limpiar-Cancelar), so stacked at 260 it
      would end at 260 + 4×44 = 436 — the last two buttons off-canvas entirely.
      On coarse pointers it therefore becomes a HORIZONTAL row anchored to the
-     bottom-left of the canvas (above the scale/attribution strip), which is also
-     the better thumb-reach position on a phone. Horizontal budget: 10 + 4×44 =
-     186px, comfortable even on a 360px-wide screen.
+     bottom-left of the canvas, which is also the better thumb-reach position on
+     a phone. Horizontal budget: 10 + 4 × ~56 (44 + label padding) = ~234px, fine
+     on a 360px-wide screen.
+
+     Bottom offset 56px, NOT 40: MapLibre's ScaleControl is added `bottom-left`
+     (`useMapInitialization`), i.e. inside the corner container's 10px margin and
+     ~22px tall, so it ends around y=32 from the bottom. At 40 the toolbar sat
+     8px above the scale and the two read as one smudged block; 56 leaves a clear
+     ~24px gap. Vertical cost: 56 + 44 = 100px of the 380px floor, so the toolbar
+     and the 250px-deep right column never meet.
 
      Sheet collision, decided deliberately: `.panelSheet` also anchors to the
      bottom (z-index 1000) and will COVER this toolbar while a panel sheet is
@@ -506,8 +605,28 @@
   .measurementDock {
     top: auto;
     right: auto;
-    bottom: 40px;
+    bottom: 56px;
     left: 10px;
+    /* Mirrors `.maplibregl-ctrl-group` (4px radius + the same halo shadow) and
+       clips the row's end buttons to it, so the horizontal toolbar reads as a
+       native MapLibre control group instead of a second visual language. The
+       wrapper already carries the library class; these are pinned explicitly
+       because the row re-lays out here and the corners are what sells it. */
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Icon-only Exportar (see the column budget above). Scoped to the actions
+     dock so the bottom toolbar keeps its captions. */
+  .mapActionsDock .mapCtrlButtonLabel {
+    display: none;
+  }
+
+  .mapActionsDock .mapCtrlButton {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
   }
 
   .measurementGroup {
@@ -515,10 +634,13 @@
   }
 }
 
-/* Desktop-width touch devices keep the floating cards, so their `right: 56px`
+/* Desktop-width touch devices keep the floating cards, so the `right: 56px`
    clearance (derived from a 29px column) has to grow with the buttons:
-   10px offset + 44px button + 17px gutter = 71px. Below 62em the panels are
-   full-bleed sheets, so this only applies above the mobile breakpoint. */
+   10px offset + 44px button + 17px gutter = 71px. It applies to BOTH shapes a
+   panel can take on the right edge — the card AND its minimized pill; they
+   share the inset value, not a single rule, so each one is overridden below.
+   Below 62em the panels are full-bleed sheets, so this only applies above the
+   mobile breakpoint. */
 @media (pointer: coarse) and (min-width: 62.0625em) {
   .infoPanel {
     right: 71px;
@@ -528,6 +650,15 @@
   .fichaPanel {
     right: 71px;
     width: min(380px, calc(100% - 87px));
+  }
+
+  /* The pill anchors where its card was, so it needs the SAME clearance —
+     without this it kept the 56px inset and overlapped the 44px control
+     column, making the controls unclickable exactly when the user minimized a
+     panel to reach them. */
+  .panelPill {
+    right: 71px;
+    max-width: min(260px, calc(100% - 87px));
   }
 }
 

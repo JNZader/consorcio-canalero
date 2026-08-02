@@ -146,26 +146,73 @@ describe("map panels — mobile bottom sheet", () => {
 			expect(panel).toHaveAttribute("data-sheet", "true");
 		});
 
-		it("the handle toggles the sheet between compact and expanded", () => {
+		// T3a, fix 3 — the sheet used to OPEN at its 45% cap and the handle was a
+		// 45 ⇄ 85 toggle. It now opens at `peek` (~25%) and one handle tap CYCLES
+		// peek → medio (45%) → alto (85%) → peek.
+		it("the handle cycles the sheet peek → medio → alto → peek", () => {
 			renderWithMantine(<MapUiPanels {...panelProps()} />);
 
 			const panel = screen.getByTestId("map-2d-info-panel");
 			const handle = screen.getByTestId("map-2d-info-panel-sheet-handle");
 
+			// Opens at peek: the map stays ~75% visible until the user asks for more.
+			expect(panel).toHaveAttribute("data-stage", "peek");
+			expect(panel.className).toContain("panelSheetPeek");
 			expect(panel.className).not.toContain("panelSheetExpanded");
 			expect(handle).toHaveAttribute("aria-expanded", "false");
 
 			fireEvent.click(handle);
-			expect(screen.getByTestId("map-2d-info-panel").className).toContain(
-				"panelSheetExpanded",
-			);
+			const medio = screen.getByTestId("map-2d-info-panel");
+			expect(medio).toHaveAttribute("data-stage", "medio");
+			// `medio` is the base 45% cap — no modifier class at all.
+			expect(medio.className).not.toContain("panelSheetPeek");
+			expect(medio.className).not.toContain("panelSheetExpanded");
 			expect(
 				screen.getByTestId("map-2d-info-panel-sheet-handle"),
 			).toHaveAttribute("aria-expanded", "true");
 
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
-			expect(screen.getByTestId("map-2d-info-panel").className).not.toContain(
-				"panelSheetExpanded",
+			const alto = screen.getByTestId("map-2d-info-panel");
+			expect(alto).toHaveAttribute("data-stage", "alto");
+			expect(alto.className).toContain("panelSheetExpanded");
+			expect(alto).toHaveAttribute("data-expanded", "true");
+
+			// …and back around to peek — one affordance, one direction.
+			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
+			const back = screen.getByTestId("map-2d-info-panel");
+			expect(back).toHaveAttribute("data-stage", "peek");
+			expect(back.className).toContain("panelSheetPeek");
+		});
+
+		it("a NEW selection reopens the sheet at peek", () => {
+			const { rerender } = renderWithMantine(<MapUiPanels {...panelProps()} />);
+
+			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
+			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
+			expect(screen.getByTestId("map-2d-info-panel")).toHaveAttribute(
+				"data-stage",
+				"alto",
+			);
+
+			// A fresh click on the map hands down a NEW `selectedFeatures` array.
+			rerender(
+				<MantineProvider env="test">
+					<MapUiPanels
+						{...panelProps({
+							selectedFeatures: [
+								{
+									...feature,
+									properties: { nombre: "Canal Oeste" },
+								},
+							],
+						})}
+					/>
+				</MantineProvider>,
+			);
+
+			expect(screen.getByTestId("map-2d-info-panel")).toHaveAttribute(
+				"data-stage",
+				"peek",
 			);
 		});
 
@@ -218,9 +265,7 @@ describe("map panels — mobile bottom sheet", () => {
 
 		it("the pinned close button calls onClose", () => {
 			const onCloseInfoPanel = vi.fn();
-			renderWithMantine(
-				<MapUiPanels {...panelProps({ onCloseInfoPanel })} />,
-			);
+			renderWithMantine(<MapUiPanels {...panelProps({ onCloseInfoPanel })} />);
 
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-close"));
 			expect(onCloseInfoPanel).toHaveBeenCalledTimes(1);
@@ -277,10 +322,15 @@ describe("map panels — mobile bottom sheet", () => {
 		const sheet = /\.panelSheet\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 		const expanded = /\.panelSheetExpanded\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 
+		const peek = /\.panelSheetPeek\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
 		expect(sheet).toMatch(/max-height:\s*45%/);
 		expect(sheet).not.toMatch(/(^|[;{\s])height:/);
 		expect(expanded).toMatch(/max-height:\s*85%/);
 		expect(expanded).not.toMatch(/(^|[;{\s])height:/);
+		// T3a, fix 3 — the new default stage is a cap too, never a fixed height.
+		expect(peek).toMatch(/max-height:\s*25%/);
+		expect(peek).not.toMatch(/(^|[;{\s])height:/);
 		// The internal scroll region survives — a tall ficha still scrolls.
 		expect(css).toMatch(/\.panelSheetBody\s*\{[^}]*overflow-y:\s*auto/);
 	});
