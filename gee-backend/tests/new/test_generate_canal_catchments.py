@@ -1,17 +1,22 @@
-"""Batch tests for the canal_cuenca precompute engine (A7, slice 1).
+"""Batch tests for the canal_cuenca precompute engine (A7, curated retarget).
 
 Real PostgreSQL for the ``canal_catchment`` registration and the resumability
 key; WhiteboxTools and the raster I/O (open/rasterize/shapes) are injected fakes —
 no GDAL, no WBT binary, no scratch files. The tests pin the contract the design
 fixed:
 
+* the batch iterates the curated ``canal_consorcio`` registry (60 canals in prod),
+  keyed by the string ``canal_ref`` — NOT the old ``canal_network`` int graph;
 * the watershed is seeded with the D8 POINTER (flow_dir), never the DEM
   (the A7 "D8 blocker" regression);
+* v1 computes every catchment against the base/relevado ``flow_dir_{area}`` raster
+  and stamps ``variante = 'relevado'``;
 * a normal canal yields a MultiPolygon catchment with the right ``area_ha``;
 * an oversized basin (> ``ficha_max_area_ha``) is stored ``oversized`` with a NULL
   geometry — the multi-MB polygon is dropped;
 * re-running with the same ``flow_dir`` version SKIPS done canals (idempotent /
-  resumable) and RECOMPUTES when the pointer version changes.
+  resumable) and RECOMPUTES when the pointer version changes;
+* ``--estado`` scopes which canals are processed without changing the raster.
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ from app.domains.geo.repository import GeoRepository
 # Eagerly register intelligence models so ``create_all`` builds every geo table.
 import app.domains.geo.intelligence.models  # noqa: F401, E402
 
-_MIGRATION = importlib.import_module("app.db.migrations.versions.0019_add_canal_catchment")
+_MIGRATION = importlib.import_module("app.db.migrations.versions.0020_add_canal_consorcio")
 
 AREA = "cc_test_area"
 FLOW_DIR_PATH = "/data/geo/cc_test_area/output/flow_dir.tif"
@@ -146,21 +151,14 @@ def catchment_db(test_engine) -> Session:
     # ``join_transaction_mode="create_savepoint"`` (SQLAlchemy 2.0) keeps every
     # session.commit()/rollback() the batch issues inside a SAVEPOINT nested in the
     # outer transaction — so the per-canal commit AND the per-canal failure
-    # rollback both work without escaping to (or dropping) the fixture DDL. The
-    # older after_transaction_end recipe only survived commit(); the batch's
-    # failure path calls db.rollback(), which that recipe rolled back past.
+    # rollback both work without escaping to (or dropping) the fixture DDL.
     connection = test_engine.connect()
     trans = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
-    # canal_network + canal_catchment are migration-only (no ORM model).
-    session.execute(
-        text(
-            "CREATE TABLE canal_network ("
-            "id SERIAL PRIMARY KEY, nombre VARCHAR(255), "
-            "geom geometry(LINESTRING, 4326))"
-        )
-    )
+    # canal_consorcio + canal_catchment are migration-only (no ORM model); build
+    # them from 0020's real DDL. geo_layers already exists (ORM model) as the FK
+    # target of flow_dir_layer_id.
     for statement in _MIGRATION.UPGRADE_STATEMENTS:
         session.execute(text(statement))
     session.commit()  # release the DDL savepoint → committed floor a rollback can't undo
@@ -188,26 +186,30 @@ def _register_flow_dir(db: Session, nombre: str = f"flow_dir_{AREA}") -> str:
 
 
 def _seed_canal(
-    db: Session, canal_id: int, wkt: str = "LINESTRING(-62.0 -33.0, -62.01 -33.01)"
+    db: Session,
+    canal_ref: str,
+    *,
+    estado: str = "relevado",
+    wkt: str = "LINESTRING(-62.0 -33.0, -62.01 -33.01)",
 ) -> None:
     db.execute(
         text(
-            "INSERT INTO canal_network (id, nombre, geom) "
-            "VALUES (:id, :n, ST_GeomFromText(:wkt, 4326))"
+            "INSERT INTO canal_consorcio (id, nombre, estado, geom) "
+            "VALUES (:id, :n, :estado, ST_GeomFromText(:wkt, 4326))"
         ),
-        {"id": canal_id, "n": f"canal-{canal_id}", "wkt": wkt},
+        {"id": canal_ref, "n": f"canal {canal_ref}", "estado": estado, "wkt": wkt},
     )
 
 
-def _row(db: Session, canal_id: int, variante: str = "natural"):
+def _row(db: Session, canal_ref: str, variante: str = "relevado"):
     return db.execute(
         text(
             "SELECT area_ha, oversized, version, flow_dir_layer_id, "
             "geometria IS NULL AS geom_null, "
             "GeometryType(geometria) AS geom_type "
-            "FROM canal_catchment WHERE canal_id = :cid AND variante = :v"
+            "FROM canal_catchment WHERE canal_ref = :ref AND variante = :v"
         ),
-        {"cid": canal_id, "v": variante},
+        {"ref": canal_ref, "v": variante},
     ).one_or_none()
 
 
@@ -215,7 +217,6 @@ def _run(db: Session, wbt: _RecordingWbt, shapes_fn, **kwargs) -> gcc.BatchResul
     return gcc.generate_catchments(
         db,
         area_id=AREA,
-        variante="natural",
         rasterio_module=_FakeRasterio(),
         rasterize_fn=_fake_rasterize,
         shapes_fn=shapes_fn,
@@ -265,7 +266,7 @@ def _run_main(
 
 def test_normal_canal_yields_catchment_with_correct_area(catchment_db: Session) -> None:
     version = _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     wbt = _RecordingWbt()
     result = _run(catchment_db, wbt, _shapes_returning(_NORMAL_POLY))
@@ -275,7 +276,7 @@ def test_normal_canal_yields_catchment_with_correct_area(catchment_db: Session) 
     assert result.oversized == 0
     assert result.failed == 0
 
-    row = _row(catchment_db, 1)
+    row = _row(catchment_db, "canal-a")
     assert row is not None
     assert row.area_ha == pytest.approx(12.0)
     assert row.oversized is False
@@ -285,9 +286,23 @@ def test_normal_canal_yields_catchment_with_correct_area(catchment_db: Session) 
     assert str(row.flow_dir_layer_id) == version
 
 
+def test_variante_stamped_is_v1_relevado(catchment_db: Session) -> None:
+    _register_flow_dir(catchment_db)
+    # Even a PROPUESTO canal is stored with variante='relevado' in v1 (computed
+    # against the base/relevado flow_dir, not a per-canal escenario).
+    _seed_canal(catchment_db, "canal-prop", estado="propuesto")
+
+    _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
+
+    stored_variante = catchment_db.execute(
+        text("SELECT variante FROM canal_catchment WHERE canal_ref = 'canal-prop'")
+    ).scalar_one()
+    assert stored_variante == gcc.V1_VARIANTE == "relevado"
+
+
 def test_watershed_is_seeded_with_flow_dir_not_dem(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     wbt = _RecordingWbt()
     _run(catchment_db, wbt, _shapes_returning(_NORMAL_POLY))
@@ -298,7 +313,7 @@ def test_watershed_is_seeded_with_flow_dir_not_dem(catchment_db: Session) -> Non
 
 def test_oversized_basin_stored_without_geometry(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     wbt = _RecordingWbt()
     result = _run(catchment_db, wbt, _shapes_returning(_OVERSIZED_POLY))
@@ -306,7 +321,7 @@ def test_oversized_basin_stored_without_geometry(catchment_db: Session) -> None:
     assert result.computed == 1
     assert result.oversized == 1
 
-    row = _row(catchment_db, 1)
+    row = _row(catchment_db, "canal-a")
     assert row is not None
     assert row.area_ha == pytest.approx(30000.0)
     assert row.oversized is True
@@ -315,7 +330,7 @@ def test_oversized_basin_stored_without_geometry(catchment_db: Session) -> None:
 
 def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     first = _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
     assert first.computed == 1
@@ -328,16 +343,16 @@ def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:
     assert second_wbt.calls == [], "a skipped canal must not touch WBT"
 
     count = catchment_db.execute(
-        text("SELECT count(*) FROM canal_catchment WHERE canal_id = 1")
+        text("SELECT count(*) FROM canal_catchment WHERE canal_ref = 'canal-a'")
     ).scalar_one()
     assert count == 1  # still one current row, not duplicated
 
 
 def test_new_flow_dir_version_recomputes(catchment_db: Session) -> None:
     v1 = _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
     _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
-    assert _row(catchment_db, 1).version == v1
+    assert _row(catchment_db, "canal-a").version == v1
 
     # A fresh terrain run mints a NEW flow_dir layer (new id → new version).
     catchment_db.execute(
@@ -349,24 +364,53 @@ def test_new_flow_dir_version_recomputes(catchment_db: Session) -> None:
     result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
     assert result.computed == 1
     assert result.skipped == 0
-    assert _row(catchment_db, 1).version == v2
+    assert _row(catchment_db, "canal-a").version == v2
 
 
 def test_missing_flow_dir_layer_raises(catchment_db: Session) -> None:
-    _seed_canal(catchment_db, 1)  # no flow_dir layer registered
+    _seed_canal(catchment_db, "canal-a")  # no flow_dir layer registered
     with pytest.raises(RuntimeError, match="no flow_dir layer"):
         _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
 
 
 def test_limit_scopes_the_run(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
-    _seed_canal(catchment_db, 2)
-    _seed_canal(catchment_db, 3)
+    _seed_canal(catchment_db, "canal-a")
+    _seed_canal(catchment_db, "canal-b")
+    _seed_canal(catchment_db, "canal-c")
 
     result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY), limit=2)
     assert result.total == 2
     assert result.computed == 2
+
+
+def test_estado_scopes_the_run(catchment_db: Session) -> None:
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-rel-1", estado="relevado")
+    _seed_canal(catchment_db, "canal-rel-2", estado="relevado")
+    _seed_canal(catchment_db, "canal-prop-1", estado="propuesto")
+
+    result = _run(
+        catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY), estado="propuesto"
+    )
+    assert result.total == 1  # only the propuesto canal is in scope
+    assert result.computed == 1
+    assert _row(catchment_db, "canal-prop-1") is not None
+    assert _row(catchment_db, "canal-rel-1") is None
+
+
+def test_canal_ref_scopes_a_single_canal(catchment_db: Session) -> None:
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-a")
+    _seed_canal(catchment_db, "canal-b")
+
+    result = _run(
+        catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY), canal_ref="canal-b"
+    )
+    assert result.total == 1
+    assert result.computed == 1
+    assert _row(catchment_db, "canal-b") is not None
+    assert _row(catchment_db, "canal-a") is None
 
 
 # ── CRS guard (R3-003): a geographic flow_dir CRS must fail loud ─────────────
@@ -374,14 +418,13 @@ def test_limit_scopes_the_run(catchment_db: Session) -> None:
 
 def test_geographic_flow_dir_crs_raises_before_the_loop(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     wbt = _RecordingWbt()
     with pytest.raises(RuntimeError, match="geographic, not projected"):
         gcc.generate_catchments(
             catchment_db,
             area_id=AREA,
-            variante="natural",
             rasterio_module=_FakeGeographicRasterio(),
             rasterize_fn=_fake_rasterize,
             shapes_fn=_shapes_returning(_NORMAL_POLY),
@@ -389,7 +432,7 @@ def test_geographic_flow_dir_crs_raises_before_the_loop(catchment_db: Session) -
         )
     # Failed loud BEFORE any per-canal work: WBT never ran, no row written.
     assert wbt.calls == []
-    assert _row(catchment_db, 1) is None
+    assert _row(catchment_db, "canal-a") is None
 
 
 # ── failure-continue + exit-code contract (R4-002 + R3-002) ──────────────────
@@ -401,50 +444,50 @@ def test_one_canal_failure_is_isolated_and_batch_continues(
     """A single canal blowing up is caught, rolled back, counted in ``failed``,
     and the OTHER canals are still computed and committed."""
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
-    _seed_canal(catchment_db, 2)
-    _seed_canal(catchment_db, 3)
+    _seed_canal(catchment_db, "canal-a")
+    _seed_canal(catchment_db, "canal-b")
+    _seed_canal(catchment_db, "canal-c")
 
     original_compute = gcc._compute_one
 
-    def _flaky_compute(db: Session, *, canal_id: int, **kwargs: Any) -> None:
-        if canal_id == 2:
-            raise RuntimeError("boom computing canal 2")
-        return original_compute(db, canal_id=canal_id, **kwargs)
+    def _flaky_compute(db: Session, *, canal_ref: str, **kwargs: Any) -> None:
+        if canal_ref == "canal-b":
+            raise RuntimeError("boom computing canal-b")
+        return original_compute(db, canal_ref=canal_ref, **kwargs)
 
     monkeypatch.setattr(gcc, "_compute_one", _flaky_compute)
 
     result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
 
     assert result.total == 3
-    assert result.computed == 2  # canals 1 and 3 processed despite canal 2 failing
+    assert result.computed == 2  # canals a and c processed despite canal-b failing
     assert result.failed == 1
-    assert result.failed_canal_ids == [2]
+    assert result.failed_canal_refs == ["canal-b"]
 
     # The good canals persisted; the failed one was rolled back (no row).
-    assert _row(catchment_db, 1) is not None
-    assert _row(catchment_db, 3) is not None
-    assert _row(catchment_db, 2) is None
+    assert _row(catchment_db, "canal-a") is not None
+    assert _row(catchment_db, "canal-c") is not None
+    assert _row(catchment_db, "canal-b") is None
 
 
 def test_main_success_returns_exit_ok(
     catchment_db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     code = _run_main(catchment_db, monkeypatch, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
     assert code == gcc.EXIT_OK  # 0
-    assert _row(catchment_db, 1) is not None
+    assert _row(catchment_db, "canal-a") is not None
 
 
 def test_main_per_canal_failure_returns_exit_failed(
     catchment_db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
-    def _always_fail(db: Session, *, canal_id: int, **kwargs: Any) -> None:
+    def _always_fail(db: Session, *, canal_ref: str, **kwargs: Any) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(gcc, "_compute_one", _always_fail)
@@ -456,7 +499,7 @@ def test_main_per_canal_failure_returns_exit_failed(
 def test_main_missing_flow_dir_returns_exit_prereq_failed(
     catchment_db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _seed_canal(catchment_db, 1)  # no flow_dir layer registered → RuntimeError
+    _seed_canal(catchment_db, "canal-a")  # no flow_dir layer registered → RuntimeError
 
     code = _run_main(catchment_db, monkeypatch, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
     assert code == gcc.EXIT_PREREQ_FAILED  # 1 — prerequisite missing
@@ -469,7 +512,7 @@ def test_empty_basin_upserts_null_geometry_and_counts_empty(catchment_db: Sessio
     """A watershed that polygonizes to nothing (``dissolved is None``) stores a
     NULL geometry with area_ha=0, is counted as empty, and does not crash."""
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1)
+    _seed_canal(catchment_db, "canal-a")
 
     wbt = _RecordingWbt()
     result = _run(catchment_db, wbt, _shapes_returning())  # no polygons → empty basin
@@ -478,7 +521,7 @@ def test_empty_basin_upserts_null_geometry_and_counts_empty(catchment_db: Sessio
     assert result.computed == 0
     assert result.failed == 0
 
-    row = _row(catchment_db, 1)
+    row = _row(catchment_db, "canal-a")
     assert row is not None
     assert row.geom_null is True
     assert row.area_ha == pytest.approx(0.0)
@@ -491,7 +534,7 @@ def test_null_line_canal_upserts_null_geometry_without_running_wbt(
     """A canal whose trace is empty (``_canal_line_in_grid_crs`` yields an empty
     geometry) takes the same NULL/0 path, never touching WBT, without crashing."""
     _register_flow_dir(catchment_db)
-    _seed_canal(catchment_db, 1, wkt="LINESTRING EMPTY")
+    _seed_canal(catchment_db, "canal-a", wkt="LINESTRING EMPTY")
 
     wbt = _RecordingWbt()
     result = _run(catchment_db, wbt, _shapes_returning(_NORMAL_POLY))
@@ -501,7 +544,7 @@ def test_null_line_canal_upserts_null_geometry_without_running_wbt(
     assert result.failed == 0
     assert wbt.calls == [], "an empty trace must not touch WBT"
 
-    row = _row(catchment_db, 1)
+    row = _row(catchment_db, "canal-a")
     assert row is not None
     assert row.geom_null is True
     assert row.area_ha == pytest.approx(0.0)

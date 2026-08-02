@@ -1,4 +1,4 @@
-"""Precompute the upstream hydrological catchment of every canal (A7, slice 1).
+"""Precompute the upstream hydrological catchment of every curated canal (A7).
 
 Run it inside the deployed backend container — like ``generate_chirps_normals``
 the runner lives under ``app/`` precisely so it exists inside the runtime image
@@ -10,15 +10,16 @@ The backend container mounts ``geo-data:/data/geo``, so the ``flow_dir`` rasters
 this reads and the seed/basins scratch rasters it writes all live on the same
 volume the geo-worker produced.
 
-**What it produces.** One ``canal_catchment`` row per ``canal × variante``: the
-real upstream watershed of the canal's trace, precomputed so the ``canal_cuenca``
-ficha can look it up instead of running WBT on the request path (slice 2 wires the
-lookup). The recipe per canal, mirroring the pour-points build in
+**What it produces.** One ``canal_catchment`` row per curated canal (keyed by
+``canal_ref``, the ``canal_consorcio.id`` string): the real upstream watershed of
+the canal's trace, precomputed so the ``canal_cuenca`` ficha can look it up instead
+of running WBT on the request path (a later slice wires the lookup). The recipe
+per canal mirrors the pour-points build in
 ``calculations_hydrology_support.generar_zonificacion_impl``:
 
-1. Rasterize the canal's LINESTRING onto the variant's ``flow_dir`` grid as int16
-   seed cells — the WHOLE trace is the pour set (NO Jensen snapping, which would
-   collapse the trace onto a single high-accumulation cell — JD-A-015).
+1. Rasterize the canal's LINESTRING onto the ``flow_dir`` grid as int16 seed cells
+   — the WHOLE trace is the pour set (NO Jensen snapping, which would collapse the
+   trace onto a single high-accumulation cell — JD-A-015).
 2. ``wbt.watershed(d8_pntr=<flow_dir>, pour_pts=<seed>, output=<basins>)`` — the
    D8 flow-direction POINTER as arg 1, explicitly NOT the DEM (the historical D8
    miscall this whole feature was blocked on).
@@ -27,17 +28,16 @@ lookup). The recipe per canal, mirroring the pour-points build in
 4. If ``area_ha`` exceeds ``settings.ficha_max_area_ha`` (20 000) the basin is
    ``oversized``: the row is stored WITHOUT its multi-MB geometry (the ficha would
    reject it anyway), ``geometria`` NULL, ``area_ha`` kept for audit.
-5. UPSERT onto ``(canal_id, variante)``.
+5. UPSERT onto ``(canal_ref, variante)``.
 
-**Variante → flow_dir raster.** ``natural`` is the drainage WITHOUT the canal
-network burned into the DEM; ``relevado`` is WITH it. They never share a
-catchment, so the precompute resolves the matching raster and never silently
-falls back across variants:
-
-* ``natural``  → the ``natural_flow_dir_{area}`` layer if it exists; else the base
-  ``flow_dir_{area}`` (when no canals were burned the base DEM already IS the
-  natural hydrology, so base == natural — a legitimate, not silent, fallback).
-* ``relevado`` → the base ``flow_dir_{area}`` layer (burned/operational drainage).
+**V1 flow_dir policy — one base raster for all 60 canals.** The consorcio manages
+41 relevados + 19 propuestos; v1 computes EVERY catchment against the base/relevado
+``flow_dir_{area}`` raster — the operational drainage with the relevado canals
+burned in. It is NOT the natural drainage and NOT a per-canal escenario raster; the
+propuesto-against-escenario refinement is deferred. ``variante`` is kept as a
+column but stamped with the single v1 value :data:`V1_VARIANTE` (``relevado``). The
+``--estado`` flag only scopes WHICH ``canal_consorcio`` rows are processed; it does
+not change the raster or the stored ``variante``.
 
 **Resumable + idempotent (the ``version`` key).** ``version`` is the id of the
 ``flow_dir`` ``geo_layers`` row the catchment was derived from. A fresh terrain
@@ -49,12 +49,12 @@ run mints a NEW ``geo_layers`` row (a new UUID), so re-running the batch:
   ``version``).
 
 Progress is committed per canal, so a crash mid-run leaves every finished canal
-persisted and a re-run picks up where it stopped. ``--limit`` / ``--canal-id``
+persisted and a re-run picks up where it stopped. ``--limit`` / ``--canal-ref``
 scope a test run.
 
 Exit codes:
     0  success — every in-scope canal computed or skipped, no failures
-    1  prerequisite missing — no ``flow_dir`` layer for the area/variante, or its
+    1  prerequisite missing — no base ``flow_dir`` layer for the area, or its
        raster is unreadable (nothing was written)
     2  invalid invocation
     3  one or more canals failed to compute (the rest were still committed) — a
@@ -94,10 +94,13 @@ GEO_DATA_ROOT = "/data/geo"
 #: partitioned deployment.
 DEFAULT_AREA_ID = "zona_principal"
 
-#: Slice 1 defaults to the natural drainage; ``relevado`` is supported but the
-#: ficha wiring for it is deferred to slice 2.
-DEFAULT_VARIANTE = "natural"
-VARIANTES = ("natural", "relevado")
+#: The single ``variante`` v1 stamps on every catchment. All 60 canals are computed
+#: against the base/relevado ``flow_dir`` raster; the per-canal escenario refinement
+#: is deferred, so there is only one variante for now (kept as a column for it).
+V1_VARIANTE = "relevado"
+
+#: ``canal_consorcio.estado`` values that ``--estado`` may scope the run to.
+CANAL_ESTADOS = ("relevado", "propuesto")
 
 #: Hectares per square metre denominator (a hectare is 10 000 m²).
 M2_PER_HA = 10_000.0
@@ -120,7 +123,7 @@ class BatchResult:
     oversized: int = 0
     empty: int = 0
     failed: int = 0
-    failed_canal_ids: list[int] = field(default_factory=list)
+    failed_canal_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -165,24 +168,22 @@ def _resolve_io(
     return rasterio_module, rasterize_fn, shapes_fn, get_wbt
 
 
-def _flow_dir_layer_name(area_id: str, variante: str) -> str:
-    """The ``geo_layers.nombre`` the DEM pipeline registered for this variante."""
-    if variante == "natural":
-        return f"natural_flow_dir_{area_id}"
+def _flow_dir_layer_name(area_id: str) -> str:
+    """The ``geo_layers.nombre`` the DEM pipeline registered for the base drainage.
+
+    V1 always uses the base/relevado ``flow_dir_{area}`` layer (the operational
+    drainage with the relevado canals burned in) for every curated canal.
+    """
     return f"flow_dir_{area_id}"
 
 
-def resolve_flow_dir_layer(db: Session, area_id: str, variante: str, *, repo: GeoRepository):
-    """Return the ``flow_dir`` ``GeoLayer`` for ``(area_id, variante)`` or ``None``.
+def resolve_flow_dir_layer(db: Session, area_id: str, *, repo: GeoRepository):
+    """Return the base ``flow_dir`` ``GeoLayer`` for ``area_id`` or ``None``.
 
-    ``natural`` prefers the ``natural_flow_dir_{area}`` layer and, only when it is
-    absent (no canals were burned, so base == natural), falls back to the base
-    ``flow_dir_{area}`` layer. ``relevado`` uses the base layer directly. This is
-    a deliberate resolution, never a cross-variant silent fallback.
+    V1 resolves a single raster — the base/relevado ``flow_dir_{area}`` — and every
+    catchment is computed against it. There is no natural / per-canal fallback.
     """
-    layer = repo.get_layer_by_nombre(db, _flow_dir_layer_name(area_id, variante))
-    if layer is None and variante == "natural":
-        layer = repo.get_layer_by_nombre(db, f"flow_dir_{area_id}")
+    layer = repo.get_layer_by_nombre(db, _flow_dir_layer_name(area_id))
     if layer is None or layer.tipo != TipoGeoLayer.FLOW_DIR.value:
         return None
     return layer
@@ -228,21 +229,21 @@ def _open_flow_dir_grid(flow_dir_path: str, *, rasterio_module: Any) -> _FlowDir
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _canal_line_in_grid_crs(db: Session, canal_id: int, epsg: int):
+def _canal_line_in_grid_crs(db: Session, canal_ref: str, epsg: int):
     """Return the canal trace as a shapely geometry in the flow_dir CRS, or ``None``.
 
-    ``geom IS NULL`` (a topology row with no trace) yields ``None`` — the same
-    "no canal" treatment ``canal_buffer`` uses. PostGIS does the reprojection so
-    the seed lines up exactly with the metric ``flow_dir`` grid.
+    ``geom IS NULL`` (a row with no trace) yields ``None`` — the same "no canal"
+    treatment ``canal_buffer`` uses. PostGIS does the reprojection so the seed lines
+    up exactly with the metric ``flow_dir`` grid.
     """
     from shapely.geometry import shape  # noqa: PLC0415
 
     row = db.execute(
         text(
             "SELECT ST_AsGeoJSON(ST_Transform(geom, :epsg)) AS g "
-            "FROM canal_network WHERE id = :cid AND geom IS NOT NULL LIMIT 1"
+            "FROM canal_consorcio WHERE id = :ref AND geom IS NOT NULL LIMIT 1"
         ),
-        {"epsg": epsg, "cid": canal_id},
+        {"epsg": epsg, "ref": canal_ref},
     ).one_or_none()
     if row is None or row.g is None:
         return None
@@ -288,7 +289,7 @@ def _dissolve_basins(
 def _upsert_catchment(
     db: Session,
     *,
-    canal_id: int,
+    canal_ref: str,
     variante: str,
     metric_geojson: str | None,
     epsg: int,
@@ -297,7 +298,7 @@ def _upsert_catchment(
     flow_dir_layer_id: uuid.UUID,
     version: str,
 ) -> None:
-    """UPSERT the catchment onto ``(canal_id, variante)``.
+    """UPSERT the catchment onto ``(canal_ref, variante)``.
 
     When ``metric_geojson`` is ``None`` (oversized or empty basin) the geometry is
     stored NULL; otherwise the metric polygon is reprojected to 4326 in PostGIS
@@ -312,12 +313,12 @@ def _upsert_catchment(
         text(
             f"""
             INSERT INTO canal_catchment
-                (id, canal_id, variante, geometria, area_ha, oversized,
+                (id, canal_ref, variante, geometria, area_ha, oversized,
                  flow_dir_layer_id, version)
             VALUES
-                (:id, :canal_id, :variante, {geom_sql}, :area_ha, :oversized,
+                (:id, :canal_ref, :variante, {geom_sql}, :area_ha, :oversized,
                  :flow_dir_layer_id, :version)
-            ON CONFLICT (canal_id, variante) DO UPDATE SET
+            ON CONFLICT (canal_ref, variante) DO UPDATE SET
                 geometria = EXCLUDED.geometria,
                 area_ha = EXCLUDED.area_ha,
                 oversized = EXCLUDED.oversized,
@@ -328,7 +329,7 @@ def _upsert_catchment(
         ),
         {
             "id": uuid.uuid4(),
-            "canal_id": canal_id,
+            "canal_ref": canal_ref,
             "variante": variante,
             "geojson": metric_geojson,
             "epsg": epsg,
@@ -340,34 +341,41 @@ def _upsert_catchment(
     )
 
 
-def _existing_version(db: Session, canal_id: int, variante: str) -> str | None:
+def _existing_version(db: Session, canal_ref: str, variante: str) -> str | None:
     row = db.execute(
-        text("SELECT version FROM canal_catchment WHERE canal_id = :cid AND variante = :v LIMIT 1"),
-        {"cid": canal_id, "v": variante},
+        text(
+            "SELECT version FROM canal_catchment WHERE canal_ref = :ref AND variante = :v LIMIT 1"
+        ),
+        {"ref": canal_ref, "v": variante},
     ).one_or_none()
     return row.version if row is not None else None
 
 
-def _in_scope_canal_ids(db: Session, *, canal_id: int | None, limit: int | None) -> list[int]:
+def _in_scope_canal_refs(
+    db: Session, *, canal_ref: str | None, estado: str | None, limit: int | None
+) -> list[str]:
     clauses = ["geom IS NOT NULL"]
     params: dict[str, Any] = {}
-    if canal_id is not None:
-        clauses.append("id = :cid")
-        params["cid"] = canal_id
-    sql = f"SELECT id FROM canal_network WHERE {' AND '.join(clauses)} ORDER BY id"
+    if canal_ref is not None:
+        clauses.append("id = :ref")
+        params["ref"] = canal_ref
+    if estado is not None:
+        clauses.append("estado = :estado")
+        params["estado"] = estado
+    sql = f"SELECT id FROM canal_consorcio WHERE {' AND '.join(clauses)} ORDER BY id"
     if limit is not None:
         sql += " LIMIT :limit"
         params["limit"] = limit
-    return [int(r.id) for r in db.execute(text(sql), params)]
+    return [str(r.id) for r in db.execute(text(sql), params)]
 
 
 def generate_catchments(
     db: Session,
     *,
     area_id: str = DEFAULT_AREA_ID,
-    variante: str = DEFAULT_VARIANTE,
+    estado: str | None = None,
     limit: int | None = None,
-    canal_id: int | None = None,
+    canal_ref: str | None = None,
     max_area_ha: float | None = None,
     rasterio_module: Any = None,
     rasterize_fn: Callable[..., Any] | None = None,
@@ -375,47 +383,53 @@ def generate_catchments(
     get_wbt: Callable[[], Any] | None = None,
     log_every: int = LOG_EVERY,
 ) -> BatchResult:
-    """Precompute (or refresh) canal catchments for ``area_id`` and ``variante``.
+    """Precompute (or refresh) curated-canal catchments for ``area_id``.
+
+    Every catchment is computed against the base/relevado ``flow_dir_{area}`` raster
+    and stamped with :data:`V1_VARIANTE`. ``estado`` optionally scopes which
+    ``canal_consorcio`` rows are processed (it does not change the raster or the
+    stored variante).
 
     Raises ``RuntimeError`` on a prerequisite failure (no flow_dir layer/raster);
     per-canal failures are caught, logged, counted, and do NOT abort the batch —
     a re-run retries only the failures. Progress is committed per canal.
     """
-    if variante not in VARIANTES:
-        raise ValueError(f"unknown variante {variante!r}; expected one of {VARIANTES}")
+    if estado is not None and estado not in CANAL_ESTADOS:
+        raise ValueError(f"unknown estado {estado!r}; expected one of {CANAL_ESTADOS}")
 
+    variante = V1_VARIANTE
     max_area_ha = settings.ficha_max_area_ha if max_area_ha is None else max_area_ha
     rasterio_module, rasterize_fn, shapes_fn, get_wbt = _resolve_io(
         rasterio_module, rasterize_fn, shapes_fn, get_wbt
     )
 
     repo = GeoRepository()
-    flow_dir_layer = resolve_flow_dir_layer(db, area_id, variante, repo=repo)
+    flow_dir_layer = resolve_flow_dir_layer(db, area_id, repo=repo)
     if flow_dir_layer is None:
         raise RuntimeError(
-            f"no flow_dir layer for area_id={area_id!r} variante={variante!r}; "
-            "run the terrain pipeline first"
+            f"no flow_dir layer for area_id={area_id!r}; run the terrain pipeline first"
         )
 
     version = str(flow_dir_layer.id)
     grid = _open_flow_dir_grid(flow_dir_layer.archivo_path, rasterio_module=rasterio_module)
 
-    canal_ids = _in_scope_canal_ids(db, canal_id=canal_id, limit=limit)
-    result = BatchResult(total=len(canal_ids))
+    canal_refs = _in_scope_canal_refs(db, canal_ref=canal_ref, estado=estado, limit=limit)
+    result = BatchResult(total=len(canal_refs))
     logger.info(
         "canal_catchment.start",
         area_id=area_id,
         variante=variante,
+        estado=estado,
         version=version,
         canales=result.total,
     )
 
     import tempfile  # noqa: PLC0415
 
-    for index, cid in enumerate(canal_ids, start=1):
-        # Heartbeat BEFORE the resume-skip so a long resume (thousands of already
-        # done canals) still shows liveness — otherwise the operator sees no log
-        # until the first canal that needs recompute.
+    for index, ref in enumerate(canal_refs, start=1):
+        # Heartbeat BEFORE the resume-skip so a long resume (many already done
+        # canals) still shows liveness — otherwise the operator sees no log until
+        # the first canal that needs recompute.
         if index % log_every == 0:
             logger.info(
                 "canal_catchment.progress",
@@ -424,13 +438,13 @@ def generate_catchments(
                 computed=result.computed,
                 skipped=result.skipped,
             )
-        if _existing_version(db, cid, variante) == version:
+        if _existing_version(db, ref, variante) == version:
             result.skipped += 1
             continue
         try:
             _compute_one(
                 db,
-                canal_id=cid,
+                canal_ref=ref,
                 variante=variante,
                 grid=grid,
                 version=version,
@@ -447,8 +461,8 @@ def generate_catchments(
         except Exception:
             db.rollback()
             result.failed += 1
-            result.failed_canal_ids.append(cid)
-            logger.error("canal_catchment.canal_failed", canal_id=cid, exc_info=True)
+            result.failed_canal_refs.append(ref)
+            logger.error("canal_catchment.canal_failed", canal_ref=ref, exc_info=True)
 
     logger.info(
         "canal_catchment.done",
@@ -466,7 +480,7 @@ def generate_catchments(
 def _compute_one(
     db: Session,
     *,
-    canal_id: int,
+    canal_ref: str,
     variante: str,
     grid: _FlowDirGrid,
     version: str,
@@ -484,13 +498,13 @@ def _compute_one(
 
     from shapely.geometry import mapping  # noqa: PLC0415
 
-    line = _canal_line_in_grid_crs(db, canal_id, grid.epsg)
+    line = _canal_line_in_grid_crs(db, canal_ref, grid.epsg)
     if line is None or line.is_empty:
         # No trace to seed — nothing to compute (treated like a missing canal).
         result.empty += 1
         _upsert_catchment(
             db,
-            canal_id=canal_id,
+            canal_ref=canal_ref,
             variante=variante,
             metric_geojson=None,
             epsg=grid.epsg,
@@ -528,7 +542,7 @@ def _compute_one(
         result.empty += 1
         _upsert_catchment(
             db,
-            canal_id=canal_id,
+            canal_ref=canal_ref,
             variante=variante,
             metric_geojson=None,
             epsg=grid.epsg,
@@ -543,7 +557,7 @@ def _compute_one(
     metric_geojson = None if oversized else json.dumps(mapping(dissolved))
     _upsert_catchment(
         db,
-        canal_id=canal_id,
+        canal_ref=canal_ref,
         variante=variante,
         metric_geojson=metric_geojson,
         epsg=grid.epsg,
@@ -566,8 +580,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.domains.geo.etl.generate_canal_catchments",
         description=(
-            "Precomputa la cuenca hidrologica aguas-arriba de cada canal "
-            "(canal_catchment) usando WBT watershed sobre el puntero D8 flow_dir."
+            "Precomputa la cuenca hidrologica aguas-arriba de cada canal curado "
+            "del consorcio (canal_catchment) usando WBT watershed sobre el puntero "
+            "D8 flow_dir base/relevado."
         ),
     )
     parser.add_argument(
@@ -576,10 +591,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Area de procesamiento (subdirectorio de /data/geo). Por defecto {DEFAULT_AREA_ID!r}.",
     )
     parser.add_argument(
-        "--variante",
-        choices=VARIANTES,
-        default=DEFAULT_VARIANTE,
-        help=f"Variante de drenaje (por defecto {DEFAULT_VARIANTE!r}).",
+        "--estado",
+        choices=CANAL_ESTADOS,
+        default=None,
+        help="Acota los canales procesados por estado (relevado/propuesto). Por "
+        "defecto procesa los 60. No cambia el raster ni la variante almacenada.",
     )
     parser.add_argument(
         "--limit",
@@ -588,10 +604,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Procesar como maximo N canales (para pruebas).",
     )
     parser.add_argument(
-        "--canal-id",
-        type=int,
+        "--canal-ref",
         default=None,
-        help="Procesar un unico canal por id (para pruebas).",
+        help="Procesar un unico canal por id de canal_consorcio (para pruebas).",
     )
     return parser
 
@@ -610,9 +625,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = generate_catchments(
                 db,
                 area_id=args.area_id,
-                variante=args.variante,
+                estado=args.estado,
                 limit=args.limit,
-                canal_id=args.canal_id,
+                canal_ref=args.canal_ref,
             )
         except RuntimeError as exc:
             print(
@@ -626,7 +641,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_FAILED
 
     print(
-        f"canal_catchment area_id={args.area_id!r} variante={args.variante!r}: "
+        f"canal_catchment area_id={args.area_id!r} variante={V1_VARIANTE!r}: "
         f"{result.computed} calculadas ({result.oversized} oversized, {result.empty} vacias), "
         f"{result.skipped} omitidas, {result.failed} fallidas de {result.total} canales."
     )
