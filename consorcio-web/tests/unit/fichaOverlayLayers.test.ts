@@ -17,10 +17,15 @@ import {
   FICHA_OVERLAY_FILL_LAYER,
   FICHA_OVERLAY_LINE_LAYER,
   FICHA_OVERLAY_SOURCE,
+  FICHA_OVERLAY_FILL_OPACITY,
+  FICHA_OVERLAY_LINE_COLOR,
+  FICHA_OVERLAY_LINE_OPACITY,
+  FICHA_OVERLAY_LINE_WIDTH,
   RIESGO_OVERLAY_FALLBACK_COLOR,
   SOIL_OVERLAY_FALLBACK_COLOR,
   buildRiesgoOverlayColorExpression,
   buildSoilOverlayColorExpression,
+  riesgoClassColor,
   syncFichaOverlayLayers,
 } from '../../src/components/map2d/fichaOverlayLayers';
 import { LAYER_LEGEND_CONFIG } from '../../src/config/rasterLegend';
@@ -158,7 +163,32 @@ describe('syncFichaOverlayLayers · visible with data', () => {
     expect(color).toContain(SOIL_CAPABILITY_COLORS.IV);
     expect(color[color.length - 1]).toBe(SOIL_OVERLAY_FALLBACK_COLOR);
     // Opacity applied so the clipped analysis is translucent over the basemap.
-    expect(fill?.paint?.['fill-opacity']).toBe(0.55);
+    // T3a fix 1b raised it 0.55 -> 0.7: at 0.55 the pale "Alto" swatch fused with
+    // tan farmland and the class read as unpainted.
+    expect(fill?.paint?.['fill-opacity']).toBe(FICHA_OVERLAY_FILL_OPACITY);
+    expect(FICHA_OVERLAY_FILL_OPACITY).toBe(0.7);
+  });
+
+  // T3a, fix 1b - the outline used to reuse the per-class fill color, i.e. the
+  // very color that failed to separate a class from the terrain. It is now a
+  // neutral dark 1px hairline, so adjacent classes are always distinguishable.
+  it('outlines each class with a thin neutral dark line, not the fill color', () => {
+    const { map, layers } = createFakeMap();
+
+    syncFichaOverlayLayers(map, {
+      featureCollection: FC,
+      dataset: 'flood_risk',
+      visible: true,
+    });
+
+    const line = layers.get(FICHA_OVERLAY_LINE_LAYER);
+    expect(line?.paint?.['line-color']).toBe(FICHA_OVERLAY_LINE_COLOR);
+    expect(FICHA_OVERLAY_LINE_COLOR).toBe('#212121');
+    expect(line?.paint?.['line-width']).toBe(FICHA_OVERLAY_LINE_WIDTH);
+    expect(FICHA_OVERLAY_LINE_WIDTH).toBe(1);
+    expect(line?.paint?.['line-opacity']).toBe(FICHA_OVERLAY_LINE_OPACITY);
+    // Never a match expression - that was the old, unreadable behaviour.
+    expect(Array.isArray(line?.paint?.['line-color'])).toBe(false);
   });
 
   it('is idempotent: re-sync updates the source, does not duplicate layers', () => {
@@ -250,6 +280,21 @@ describe('buildRiesgoOverlayColorExpression', () => {
       }
       // Falls back to the shared neutral grey for an unknown clase.
       expect(expr[expr.length - 1]).toBe(RIESGO_OVERLAY_FALLBACK_COLOR);
+    }
+  );
+
+  // T3a, fix 1a - the panel tables now read their chip colors from
+  // `riesgoClassColor`, and the paint expression is built from that SAME
+  // function, so a drift between legend and overlay is structurally impossible.
+  it.each(['flood_risk', 'drainage_need'] as const)(
+    'riesgoClassColor is the single %s source shared with the panel chips',
+    (dataset) => {
+      for (const range of LAYER_LEGEND_CONFIG[dataset]?.ranges ?? []) {
+        expect(riesgoClassColor(dataset, range.label)).toBe(range.color);
+      }
+      expect(riesgoClassColor(dataset, 'clase inexistente')).toBe(
+        RIESGO_OVERLAY_FALLBACK_COLOR
+      );
     }
   );
 

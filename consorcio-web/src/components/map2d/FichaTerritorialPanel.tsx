@@ -37,6 +37,7 @@ import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
 import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
+import { fmtHa } from './fichaShared';
 import { MapPanelShell } from './MapPanelShell';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
@@ -116,6 +117,52 @@ export interface FichaTerritorialPanelProps {
    * state stays informative-only (previous behaviour).
    */
   readonly onRetry?: () => void;
+  /**
+   * Overlay fetch feedback (T3a, fix 4). Flipping "Ver recortado en el mapa" used
+   * to be a silent action: the request could be in flight or already failed and
+   * the panel showed nothing, so a slow or broken overlay was indistinguishable
+   * from "the map simply has nothing to paint here".
+   */
+  readonly overlayLoading?: boolean;
+  readonly overlayError?: boolean;
+  /**
+   * Minimize-to-pill (T3a, fix 2). Owned by `MapUiPanels` because the map drives
+   * it too (dragging auto-minimizes). When `onToggleMinimize` is absent the
+   * affordance is not rendered at all.
+   */
+  readonly minimized?: boolean;
+  readonly onToggleMinimize?: () => void;
+  /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
+  readonly resetKey?: unknown;
+}
+
+/** Human label per ficha tipo, used by the minimized pill summary. */
+const TIPO_PILL_LABELS: Record<FichaTipo, string> = {
+  parcela: 'Parcela',
+  poligono: 'Polígono',
+  canal_buffer: 'Canal',
+  canal_cuenca: 'Cuenca',
+};
+
+/**
+ * Summary carried by the minimized pill: WHAT is analyzed plus its size, e.g.
+ * "Ficha · Parcela 116.8 ha" or "Ficha · Canal Este". A canal ficha leads with
+ * the canal name because that is how the user picked it. Everything is derived
+ * from props already in hand — no extra lookup, no extra fetch.
+ */
+export function fichaPillLabel(params: {
+  tipo: FichaTipo;
+  canalNombre?: string | null;
+  areaHa?: number | null;
+}): string {
+  const { tipo, canalNombre, areaHa } = params;
+  const isCanal = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
+  const head = isCanal && canalNombre ? canalNombre : TIPO_PILL_LABELS[tipo];
+  // `fmtHa` — the SAME formatter the panel body uses for every hectare figure.
+  // The pill used to hand-roll a comma decimal separator, so the minimized pill
+  // and the card it restores disagreed on the format of the same number.
+  const size = typeof areaHa === 'number' && Number.isFinite(areaHa) ? ` ${fmtHa(areaHa)}` : '';
+  return `Ficha · ${head}${size}`;
 }
 
 /** Overlay dataset options for the picker (label ⇄ wire value). */
@@ -338,12 +385,14 @@ function PanelBody({
       <RiesgoBins
         label="Riesgo de inundación"
         dataset={data.flood_risk}
+        legendKey="flood_risk"
         testId="ficha-flood-risk"
       />
       <Divider />
       <RiesgoBins
         label="Necesidad de drenaje"
         dataset={data.drainage_need}
+        legendKey="drainage_need"
         testId="ficha-drainage-need"
       />
       <Divider />
@@ -379,6 +428,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   canalMaxBufferM,
   onCanalBufferChange,
   onRetry,
+  overlayLoading = false,
+  overlayError = false,
+  minimized = false,
+  onToggleMinimize,
+  resetKey,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
 
@@ -408,6 +462,15 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       sheetLabel="ficha territorial"
       onClose={onClose}
       closeLabel="Cerrar ficha territorial"
+      minimized={minimized}
+      onToggleMinimize={onToggleMinimize}
+      pillLabel={fichaPillLabel({
+        tipo,
+        canalNombre,
+        areaHa: data?.area_ha ?? null,
+      })}
+      pillClassName={styles.fichaPanelPill}
+      resetKey={resetKey}
     >
       {/* In sheet mode the close button lives in the shell's PINNED header, so
           it stays reachable on a tall ficha; rendering it here too would
@@ -457,13 +520,25 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       {showOverlayToggle && (
         <>
           <Divider my="xs" />
-          <Switch
-            size="xs"
-            checked={!!overlayVisible}
-            onChange={(event) => onToggleOverlay?.(event.currentTarget.checked)}
-            label="Ver recortado en el mapa"
-            data-testid="ficha-overlay-toggle"
-          />
+          <Group gap="xs" wrap="nowrap">
+            <Switch
+              size="xs"
+              checked={!!overlayVisible}
+              onChange={(event) => onToggleOverlay?.(event.currentTarget.checked)}
+              label="Ver recortado en el mapa"
+              data-testid="ficha-overlay-toggle"
+            />
+            {/* T3a, fix 4 — the overlay fetch used to be silent. No retry
+						    button: toggling the switch off and on refetches. */}
+            {overlayVisible && overlayLoading && (
+              <Loader size="xs" data-testid="ficha-overlay-loading" />
+            )}
+          </Group>
+          {overlayVisible && overlayError && !overlayLoading && (
+            <Text size="xs" c="red" mt={4} data-testid="ficha-overlay-error">
+              No se pudo pintar el recorte
+            </Text>
+          )}
           {overlayVisible && onChangeOverlayDataset && (
             <SegmentedControl
               size="xs"

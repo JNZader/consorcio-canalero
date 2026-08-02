@@ -9,6 +9,10 @@
  *
  * Colors reuse `getSoilColor` (roman-prefix aware) from `useSoilMap` so the bar
  * matches the soil-capability palette used elsewhere on the map.
+ *
+ * T3a, fix 1a — each row also leads with a `ClassColorChip` painted by that same
+ * `getSoilColor`, so this table doubles as the legend for the clipped on-map
+ * overlay (`fichaOverlayLayers` uses the identical palette).
  */
 
 import { Box, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
@@ -16,12 +20,24 @@ import { memo } from 'react';
 
 import { getSoilColor } from '../../hooks/useSoilMap';
 import type { FichaDataset } from '../../lib/api/ficha';
-import { DATASET_LABELS, LowConfidenceBadge, SinCobertura, fmtHa, fmtPct } from './fichaShared';
+import {
+  ClassColorChip,
+  DATASET_LABELS,
+  LowConfidenceBadge,
+  SinCobertura,
+  fmtHa,
+  fmtPct,
+} from './fichaShared';
 
 function StackedBar({ dataset }: { readonly dataset: FichaDataset }) {
   return (
     <Box
-      style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden' }}
+      style={{
+        display: 'flex',
+        height: 8,
+        borderRadius: 4,
+        overflow: 'hidden',
+      }}
       aria-hidden="true"
       data-testid="suelos-stacked-bar"
     >
@@ -71,15 +87,23 @@ export const SuelosBreakdown = memo(function SuelosBreakdown({
               {dataset.clases.map((clase) => (
                 <Table.Tr key={clase.clase}>
                   <Table.Td>
-                    {clase.detalle ? (
-                      <Tooltip label={clase.detalle} withArrow>
-                        <Text component="span" size="xs" style={{ borderBottom: '1px dotted' }}>
+                    <Group gap={6} wrap="nowrap">
+                      <ClassColorChip
+                        color={getSoilColor(clase.clase)}
+                        testId={`ficha-suelos-chip-${clase.clase}`}
+                      />
+                      {clase.detalle ? (
+                        <Tooltip label={clase.detalle} withArrow>
+                          <Text component="span" size="xs" style={{ borderBottom: '1px dotted' }}>
+                            {clase.clase}
+                          </Text>
+                        </Tooltip>
+                      ) : (
+                        <Text component="span" size="xs">
                           {clase.clase}
                         </Text>
-                      </Tooltip>
-                    ) : (
-                      clase.clase
-                    )}
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td ta="right">{fmtHa(clase.ha)}</Table.Td>
                   <Table.Td ta="right">{fmtPct(clase.pct)}</Table.Td>

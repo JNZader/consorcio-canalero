@@ -96,6 +96,31 @@ interface InfoPanelProps {
    * endpoint lands.
    */
   readonly bpaHistory?: BpaHistoryFile | null;
+  /**
+   * Minimize-to-pill (T3a, fix 2). Owned by `MapUiPanels` because the map drives
+   * it too (dragging auto-minimizes). When `onToggleMinimize` is absent the
+   * affordance is not rendered at all.
+   */
+  readonly minimized?: boolean;
+  readonly onToggleMinimize?: () => void;
+  /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
+  readonly resetKey?: unknown;
+}
+
+/**
+ * Summary carried by the minimized pill. A pill reading only "Información" tells
+ * the user nothing about which selection it restores, so it leads with the
+ * first (top-most) feature's own title. Everything is derived from props already
+ * in hand — no extra lookup, no extra fetch.
+ */
+export function infoPillLabel(features: readonly Feature[]): string {
+  const first = features[0];
+  const props = (first?.properties as Record<string, unknown> | null) ?? {};
+  const raw =
+    props.nombre ?? props.name ?? props.designacion ?? props.nro_cuenta ?? props.cuenta ?? null;
+  const title = raw === null || raw === undefined ? '' : String(raw).trim();
+  const extra = features.length > 1 ? ` +${features.length - 1}` : '';
+  return title.length > 0 ? `Info · ${title}${extra}` : `Información (${features.length})`;
 }
 
 /**
@@ -301,6 +326,9 @@ export const InfoPanel = memo(function InfoPanel({
   bpaEnriched,
   compact = false,
   sheet = false,
+  minimized = false,
+  onToggleMinimize,
+  resetKey,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -322,6 +350,11 @@ export const InfoPanel = memo(function InfoPanel({
       sheetLabel="panel de información"
       onClose={onClose}
       closeLabel="Cerrar panel de informacion"
+      minimized={minimized}
+      onToggleMinimize={onToggleMinimize}
+      pillLabel={infoPillLabel(resolved)}
+      pillClassName={styles.infoPanelPill}
+      resetKey={resetKey}
     >
       {/* In sheet mode the close button lives in the shell's PINNED header, so
           it stays reachable on a long feature list; rendering it here too would
