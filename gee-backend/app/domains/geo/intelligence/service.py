@@ -240,6 +240,7 @@ def generate_zones(
     db: Session,
     dem_path: str,
     flow_acc_path: str,
+    flow_dir_path: str,
     cuenca: str = "default",
     threshold: int = 2000,
 ) -> dict[str, Any]:
@@ -247,8 +248,9 @@ def generate_zones(
 
     Args:
         db: Database session.
-        dem_path: Path to the DEM.
-        flow_acc_path: Path to flow accumulation raster.
+        dem_path: Path to the DEM (provenance only — NOT the watershed pointer).
+        flow_acc_path: Path to flow accumulation raster (seeds pour points).
+        flow_dir_path: Path to the D8 flow-direction pointer — watershed's arg 1.
         cuenca: Watershed name.
         threshold: Pour point threshold.
 
@@ -258,6 +260,7 @@ def generate_zones(
     gdf = generar_zonificacion(
         dem_path=dem_path,
         flow_acc_path=flow_acc_path,
+        flow_dir_path=flow_dir_path,
         threshold=threshold,
     )
 

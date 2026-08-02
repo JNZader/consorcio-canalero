@@ -238,6 +238,9 @@ class TestRenderCuencas:
             mapping = {
                 TipoGeoLayer.DEM_RAW: ([_make_fake_layer(dem_path)], 1),
                 TipoGeoLayer.FLOW_ACC: ([_make_fake_layer(flow_acc_path)], 1),
+                # render_cuencas now also resolves the D8 pointer (flow_dir) so
+                # generar_zonificacion receives it as watershed's arg 1.
+                TipoGeoLayer.FLOW_DIR: ([_make_fake_layer(flow_acc_path)], 1),
             }
             return mapping.get(tipo_filter, ([], 0))
 
@@ -336,6 +339,8 @@ class TestRenderCuencas:
             if tipo == TipoGeoLayer.DEM_RAW:
                 return fake_dem
             if tipo == TipoGeoLayer.FLOW_ACC:
+                return fake_flow_acc
+            if tipo == TipoGeoLayer.FLOW_DIR:
                 return fake_flow_acc
             return None
 
@@ -603,6 +608,8 @@ class TestRenderAnimacion:
                 TipoGeoLayer.DEM_RAW: ([_make_fake_layer(dem_path)], 1),
                 TipoGeoLayer.FLOW_ACC: ([_make_fake_layer(flow_acc_path)], 1),
                 TipoGeoLayer.SLOPE: ([_make_fake_layer(slope_path)], 1),
+                # render_animacion now also resolves the D8 pointer (flow_dir).
+                TipoGeoLayer.FLOW_DIR: ([_make_fake_layer(flow_acc_path)], 1),
             }
             return mapping.get(tipo_filter, ([], 0))
 

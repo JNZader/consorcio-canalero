@@ -348,10 +348,26 @@ def task_generate_zonification(dem_layer_id: str, threshold: int = 2000) -> dict
                 "status": "failed",
                 "error": "No flow_acc layer available for this area",
             }
+        # WBT ``watershed`` needs the D8 flow-direction POINTER as its first
+        # argument, so the matching flow_dir raster has to be resolved alongside
+        # flow_acc — passing the DEM there was the historical D8 miscall.
+        flow_dir_layers, _ = deps["geo_repo"].get_layers(
+            db,
+            tipo_filter=deps["TipoGeoLayer"].FLOW_DIR,
+            area_id_filter=layer.area_id,
+            page=1,
+            limit=1,
+        )
+        if not flow_dir_layers:
+            return {
+                "status": "failed",
+                "error": "No flow_dir layer available for this area",
+            }
         result = deps["intel_service"].generate_zones(
             db,
             dem_path=layer.archivo_path,
             flow_acc_path=flow_acc_layers[0].archivo_path,
+            flow_dir_path=flow_dir_layers[0].archivo_path,
             cuenca=layer.area_id or "default",
             threshold=threshold,
         )
