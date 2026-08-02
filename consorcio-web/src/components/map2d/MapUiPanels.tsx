@@ -5,12 +5,12 @@ import { memo, useCallback, useState } from 'react';
 import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
-import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
+import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import type { FichaApiError } from '../../lib/api/ficha';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
 import type { CanalAnalysisMode } from './useFichaInteraction';
-import { FichaTerritorialPanel } from './FichaTerritorialPanel';
+import { FichaTerritorialPanel, type FichaPanelTab } from './FichaTerritorialPanel';
 import { InfoPanel } from './InfoPanel';
 import {
   type CanalToggleEntry,
@@ -133,9 +133,16 @@ export interface MapUiPanelsProps {
    */
   readonly fichaOverlayVisible?: boolean;
   readonly onToggleFichaOverlay?: (visible: boolean) => void;
-  /** Which dataset the on-map overlay paints (soils / flood_risk / drainage_need). */
-  readonly fichaOverlayDataset?: FichaOverlayDataset;
-  readonly onChangeFichaOverlayDataset?: (dataset: FichaOverlayDataset) => void;
+  /**
+   * Selected ficha dataset tab (T3b). ONE control now drives both the table the
+   * panel shows and the dataset the overlay paints — the old separate
+   * overlay-dataset picker is gone, so the two can no longer disagree.
+   */
+  readonly fichaTab?: FichaPanelTab;
+  readonly onChangeFichaTab?: (tab: FichaPanelTab) => void;
+  /** Classes of the selected dataset currently filtered OUT of the overlay. */
+  readonly fichaHiddenClases?: readonly string[];
+  readonly onToggleFichaClase?: (clase: string) => void;
   /**
    * Overlay fetch state (T3a, fix 4) — threaded from `useFichaOverlay` so the
    * ficha panel can show an inline spinner / failure line instead of leaving
@@ -246,8 +253,10 @@ export const MapUiPanels = memo(function MapUiPanels({
   onRetryFicha,
   fichaOverlayVisible,
   onToggleFichaOverlay,
-  fichaOverlayDataset,
-  onChangeFichaOverlayDataset,
+  fichaTab,
+  onChangeFichaTab,
+  fichaHiddenClases,
+  onToggleFichaClase,
   fichaOverlayLoading,
   fichaOverlayError,
   mapDragSignal = 0,
@@ -491,8 +500,10 @@ export const MapUiPanels = memo(function MapUiPanels({
         onRetry={onRetryFicha}
         overlayVisible={fichaOverlayVisible}
         onToggleOverlay={onToggleFichaOverlay}
-        overlayDataset={fichaOverlayDataset}
-        onChangeOverlayDataset={onChangeFichaOverlayDataset}
+        tab={fichaTab}
+        onChangeTab={onChangeFichaTab}
+        hiddenClases={fichaHiddenClases}
+        onToggleClase={onToggleFichaClase}
         overlayLoading={fichaOverlayLoading}
         overlayError={fichaOverlayError}
         minimized={fichaMinimized}

@@ -9,10 +9,19 @@
  *   - loading  → a spinner, never a stale previous result presented as current;
  *   - error    → the server's actionable Spanish message (404/422/429/503),
  *                not a generic failure;
- *   - result   → one table per dataset (tables are the contract, JD-A-012),
- *                plus the monthly precipitation chart + table (`PrecipChart`);
+ *   - result   → the identity/summary header, then a DATASET SELECTOR and the
+ *                table of the selected dataset only (tables are still the
+ *                contract, JD-A-012 — one at a time instead of four stacked);
  *   - the per-dataset `sin_cobertura` / low-confidence handling lives inside the
  *     dataset components.
+ *
+ * TABS (T3b). The body used to stack all four dataset blocks, so the panel was a
+ * sheet the owner had to scroll through to reach anything, and the overlay had
+ * its OWN dataset picker further down — two controls answering the same question
+ * ("which dataset am I looking at?") that could disagree. There is now ONE
+ * segmented control at the top of the body: it picks the visible table AND the
+ * dataset the map paints. The visible table is, literally, the legend of what is
+ * painted.
  */
 
 import {
@@ -29,7 +38,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { memo, useEffect, useState } from 'react';
+import { type ReactNode, memo, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
@@ -87,12 +96,25 @@ export interface FichaTerritorialPanelProps {
   readonly overlayVisible?: boolean;
   readonly onToggleOverlay?: (visible: boolean) => void;
   /**
-   * Which dataset the overlay paints, clipped, one at a time. When the toggle is
-   * on a segmented control lets the user switch between soils, flood risk and
-   * drainage need; switching refetches + repaints. Optional, defaults to soils.
+   * Selected dataset tab (T3b). It picks BOTH the table rendered in the body and
+   * the dataset the overlay paints — there is no second overlay-only picker. The
+   * container owns the value because it also owns the overlay query key.
+   * Uncontrolled callers get the soils tab; without `onChangeTab` the selector
+   * still renders but cannot move, so panels are always wired in practice.
    */
-  readonly overlayDataset?: FichaOverlayDataset;
-  readonly onChangeOverlayDataset?: (dataset: FichaOverlayDataset) => void;
+  readonly tab?: FichaPanelTab;
+  readonly onChangeTab?: (tab: FichaPanelTab) => void;
+  /**
+   * Class labels of the SELECTED dataset that are currently hidden from the
+   * painted overlay (T3b). Their table rows render dimmed with a hollow chip.
+   */
+  readonly hiddenClases?: readonly string[];
+  /**
+   * Toggles one class of the selected dataset on the map. The container both
+   * flips the filter and, when the overlay is off, turns it on — clicking a
+   * class is an unambiguous "show me this on the map".
+   */
+  readonly onToggleClase?: (clase: string) => void;
   /**
    * Canal analysis header (A6 + A7). When the analyzed tipo is `canal_buffer` or
    * `canal_cuenca` and these are wired, a header section renders at the TOP of
@@ -165,15 +187,29 @@ export function fichaPillLabel(params: {
   return `Ficha · ${head}${size}`;
 }
 
-/** Overlay dataset options for the picker (label ⇄ wire value). */
-const OVERLAY_DATASET_OPTIONS: ReadonlyArray<{
-  value: FichaOverlayDataset;
+/**
+ * Tab of the ficha body (T3b). The three raster/vector datasets are exactly the
+ * `FichaOverlayDataset` values — the tab IS the overlay dataset — plus rainfall,
+ * which has monthly normals instead of classes and therefore no overlay.
+ */
+export const FICHA_PRECIP_TAB = 'precipitacion' as const;
+export type FichaPanelTab = FichaOverlayDataset | typeof FICHA_PRECIP_TAB;
+
+/** Tabs in display order (label ⇄ value). Short labels: the strip is narrow. */
+const FICHA_TAB_OPTIONS: ReadonlyArray<{
+  value: FichaPanelTab;
   label: string;
 }> = [
   { value: 'suelos', label: 'Suelos' },
-  { value: 'flood_risk', label: 'Riesgo hídrico' },
-  { value: 'drainage_need', label: 'Necesidad de drenaje' },
+  { value: 'flood_risk', label: 'Riesgo' },
+  { value: 'drainage_need', label: 'Drenaje' },
+  { value: FICHA_PRECIP_TAB, label: 'Lluvia' },
 ];
+
+/** The rainfall tab has no clipped overlay to paint (monthly means, not classes). */
+export function fichaTabPaintsOverlay(tab: FichaPanelTab): tab is FichaOverlayDataset {
+  return tab !== FICHA_PRECIP_TAB;
+}
 
 function errorMessage(error: FichaApiError | Error | null): string {
   // The server ships an actionable Spanish `detail` for every ficha failure;
@@ -360,7 +396,19 @@ function PanelBody({
   error,
   data,
   onRetry,
-}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose' | 'parcelaProps'>) {
+  tab = 'suelos',
+  onChangeTab,
+  hiddenClases,
+  onToggleClase,
+  overlayControls,
+}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose' | 'parcelaProps'> & {
+  /**
+   * Overlay switch + feedback, built by the panel and injected here so it sits
+   * directly under the selector that drives it instead of at the bottom of the
+   * body, half a scroll away from the table it paints.
+   */
+  readonly overlayControls?: ReactNode;
+}) {
   if (isLoading) {
     return (
       <Group gap="xs" data-testid="ficha-loading">
@@ -378,27 +426,52 @@ function PanelBody({
 
   return (
     <Stack gap="sm" data-testid="ficha-result">
+      {/* Fixed header: WHAT was analyzed. It never scrolls out from under the
+			    selector, so the numbers below always have their context. */}
       <FichaResumen ficha={data} />
+      <PilarVerdeBadges tipo={tipo} nroCuenta={nroCuenta} bpaEnriched={bpaEnriched} compact />
       <Divider />
-      <SuelosBreakdown dataset={data.suelos} />
-      <Divider />
-      <RiesgoBins
-        label="Riesgo de inundación"
-        dataset={data.flood_risk}
-        legendKey="flood_risk"
-        testId="ficha-flood-risk"
+      <SegmentedControl
+        size="xs"
+        fullWidth
+        value={tab}
+        onChange={(value) => onChangeTab?.(value as FichaPanelTab)}
+        data={FICHA_TAB_OPTIONS as unknown as { value: string; label: string }[]}
+        data-testid="ficha-dataset-tabs"
+        aria-label="Conjunto de datos"
       />
+      {overlayControls}
       <Divider />
-      <RiesgoBins
-        label="Necesidad de drenaje"
-        dataset={data.drainage_need}
-        legendKey="drainage_need"
-        testId="ficha-drainage-need"
-      />
-      <Divider />
-      <PrecipChart dataset={data.precipitacion_mensual} />
-      <Divider />
-      <PilarVerdeBadges tipo={tipo} nroCuenta={nroCuenta} bpaEnriched={bpaEnriched} />
+      {tab === 'suelos' && (
+        <SuelosBreakdown
+          dataset={data.suelos}
+          hiddenClases={hiddenClases}
+          onToggleClase={onToggleClase}
+        />
+      )}
+      {tab === 'flood_risk' && (
+        <RiesgoBins
+          label="Riesgo de inundación"
+          dataset={data.flood_risk}
+          legendKey="flood_risk"
+          testId="ficha-flood-risk"
+          hiddenClases={hiddenClases}
+          onToggleClase={onToggleClase}
+        />
+      )}
+      {tab === 'drainage_need' && (
+        <RiesgoBins
+          label="Necesidad de drenaje"
+          dataset={data.drainage_need}
+          legendKey="drainage_need"
+          testId="ficha-drainage-need"
+          hiddenClases={hiddenClases}
+          onToggleClase={onToggleClase}
+        />
+      )}
+      {/* Rainfall is a 12-month series, not a class partition: nothing to
+			    toggle and nothing to clip on the map. */}
+      {tab === FICHA_PRECIP_TAB && <PrecipChart dataset={data.precipitacion_mensual} />}
     </Stack>
   );
 }
@@ -419,8 +492,10 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   onClose,
   overlayVisible,
   onToggleOverlay,
-  overlayDataset = 'suelos',
-  onChangeOverlayDataset,
+  tab = 'suelos',
+  onChangeTab,
+  hiddenClases,
+  onToggleClase,
   canalNombre,
   canalAnalysisMode = 'buffer',
   onCanalAnalysisModeChange,
@@ -438,7 +513,14 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
 
   // The overlay toggle only makes sense once there is a result to clip on the
   // map, and only when the container wired the handler in.
-  const showOverlayToggle = !!onToggleOverlay && !isLoading && !isError && !!data;
+  //
+  // LLUVIA TAB (T3b) — the toggle is HIDDEN, not disabled. There is no rainfall
+  // overlay to paint, so a disabled switch would be a control the user has to
+  // reason about ("why can't I?") in the tightest strip of the panel. Hiding it
+  // says the same thing in zero pixels, and the user's ON/OFF intent is kept by
+  // the container: switching back to a dataset tab repaints exactly as before.
+  const showOverlayToggle =
+    !!onToggleOverlay && !isLoading && !isError && !!data && fichaTabPaintsOverlay(tab);
 
   // Identity header (bug-3 combine): a clicked parcel's account/identity fields
   // sit at the top of this single panel, replacing the old InfoPanel catastro
@@ -451,6 +533,32 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   // ficha is loading or erroring (e.g. `cuenca_no_computada`). The full prop set
   // is asserted inline in the JSX so TypeScript narrows the optional handlers.
   const isCanalTipo = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
+
+  // Built here (the panel owns the overlay props) and injected into the body so
+  // it renders immediately under the selector that decides WHAT gets painted.
+  const overlayControls = showOverlayToggle ? (
+    <>
+      <Group gap="xs" wrap="nowrap">
+        <Switch
+          size="xs"
+          checked={!!overlayVisible}
+          onChange={(event) => onToggleOverlay?.(event.currentTarget.checked)}
+          label="Ver recortado en el mapa"
+          data-testid="ficha-overlay-toggle"
+        />
+        {/* T3a, fix 4 — the overlay fetch used to be silent. No retry
+				    button: toggling the switch off and on refetches. */}
+        {overlayVisible && overlayLoading && (
+          <Loader size="xs" data-testid="ficha-overlay-loading" />
+        )}
+      </Group>
+      {overlayVisible && overlayError && !overlayLoading && (
+        <Text size="xs" c="red" data-testid="ficha-overlay-error">
+          No se pudo pintar el recorte
+        </Text>
+      )}
+    </>
+  ) : null;
 
   return (
     <MapPanelShell
@@ -516,47 +624,12 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         error={error}
         data={data}
         onRetry={onRetry}
+        tab={tab}
+        onChangeTab={onChangeTab}
+        hiddenClases={hiddenClases}
+        onToggleClase={onToggleClase}
+        overlayControls={overlayControls}
       />
-      {showOverlayToggle && (
-        <>
-          <Divider my="xs" />
-          <Group gap="xs" wrap="nowrap">
-            <Switch
-              size="xs"
-              checked={!!overlayVisible}
-              onChange={(event) => onToggleOverlay?.(event.currentTarget.checked)}
-              label="Ver recortado en el mapa"
-              data-testid="ficha-overlay-toggle"
-            />
-            {/* T3a, fix 4 — the overlay fetch used to be silent. No retry
-						    button: toggling the switch off and on refetches. */}
-            {overlayVisible && overlayLoading && (
-              <Loader size="xs" data-testid="ficha-overlay-loading" />
-            )}
-          </Group>
-          {overlayVisible && overlayError && !overlayLoading && (
-            <Text size="xs" c="red" mt={4} data-testid="ficha-overlay-error">
-              No se pudo pintar el recorte
-            </Text>
-          )}
-          {overlayVisible && onChangeOverlayDataset && (
-            <SegmentedControl
-              size="xs"
-              fullWidth
-              mt="xs"
-              value={overlayDataset}
-              onChange={(value) => onChangeOverlayDataset(value as FichaOverlayDataset)}
-              data={
-                OVERLAY_DATASET_OPTIONS as unknown as {
-                  value: string;
-                  label: string;
-                }[]
-              }
-              data-testid="ficha-overlay-dataset"
-            />
-          )}
-        </>
-      )}
     </MapPanelShell>
   );
 });

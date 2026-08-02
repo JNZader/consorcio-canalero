@@ -21,7 +21,7 @@ import { memo } from 'react';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import type { FichaDataset } from '../../lib/api/ficha';
 import {
-  ClassColorChip,
+  ClassToggleCell,
   DATASET_LABELS,
   LowConfidenceBadge,
   SinCobertura,
@@ -29,7 +29,15 @@ import {
   fmtPct,
 } from './fichaShared';
 
-function StackedBar({ dataset }: { readonly dataset: FichaDataset }) {
+const NO_HIDDEN_CLASES: readonly string[] = [];
+
+function StackedBar({
+  dataset,
+  hiddenClases,
+}: {
+  readonly dataset: FichaDataset;
+  readonly hiddenClases: readonly string[];
+}) {
   return (
     <Box
       style={{
@@ -47,6 +55,8 @@ function StackedBar({ dataset }: { readonly dataset: FichaDataset }) {
           style={{
             width: `${Math.max(0, clase.pct)}%`,
             backgroundColor: getSoilColor(clase.clase),
+            // Mirrors the table: a class turned off is not painted on the map.
+            opacity: hiddenClases.includes(clase.clase) ? 0.25 : 1,
           }}
         />
       ))}
@@ -56,8 +66,18 @@ function StackedBar({ dataset }: { readonly dataset: FichaDataset }) {
 
 export const SuelosBreakdown = memo(function SuelosBreakdown({
   dataset,
+  hiddenClases = NO_HIDDEN_CLASES,
+  onToggleClase,
 }: {
   readonly dataset: FichaDataset;
+  /**
+   * Soil classes currently NOT painted on the map (T3b, fix 3). The overlay's
+   * soils features carry the SAME `properties.clase` labels this table renders,
+   * so a row label is a valid filter value with no translation step.
+   */
+  readonly hiddenClases?: readonly string[];
+  /** Toggles one class in the painted overlay. Omitted → static table. */
+  readonly onToggleClase?: (clase: string) => void;
 }) {
   const hasData = dataset.cobertura !== 'sin_cobertura' && dataset.clases.length > 0;
 
@@ -74,7 +94,7 @@ export const SuelosBreakdown = memo(function SuelosBreakdown({
         <SinCobertura testId="ficha-suelos-sin-cobertura" />
       ) : (
         <>
-          <StackedBar dataset={dataset} />
+          <StackedBar dataset={dataset} hiddenClases={hiddenClases} />
           <Table withRowBorders={false} verticalSpacing={2} fz="xs">
             <Table.Thead>
               <Table.Tr>
@@ -87,11 +107,14 @@ export const SuelosBreakdown = memo(function SuelosBreakdown({
               {dataset.clases.map((clase) => (
                 <Table.Tr key={clase.clase}>
                   <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <ClassColorChip
-                        color={getSoilColor(clase.clase)}
-                        testId={`ficha-suelos-chip-${clase.clase}`}
-                      />
+                    <ClassToggleCell
+                      color={getSoilColor(clase.clase)}
+                      clase={clase.clase}
+                      hidden={hiddenClases.includes(clase.clase)}
+                      onToggle={onToggleClase}
+                      chipTestId={`ficha-suelos-chip-${clase.clase}`}
+                      rowTestId={`ficha-suelos-row-${clase.clase}`}
+                    >
                       {clase.detalle ? (
                         <Tooltip label={clase.detalle} withArrow>
                           <Text component="span" size="xs" style={{ borderBottom: '1px dotted' }}>
@@ -103,7 +126,7 @@ export const SuelosBreakdown = memo(function SuelosBreakdown({
                           {clase.clase}
                         </Text>
                       )}
-                    </Group>
+                    </ClassToggleCell>
                   </Table.Td>
                   <Table.Td ta="right">{fmtHa(clase.ha)}</Table.Td>
                   <Table.Td ta="right">{fmtPct(clase.pct)}</Table.Td>
