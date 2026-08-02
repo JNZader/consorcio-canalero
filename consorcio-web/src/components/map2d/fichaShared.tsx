@@ -6,7 +6,8 @@
  * duplicating them.
  */
 
-import { Badge, Box, Text, Tooltip } from '@mantine/core';
+import { Badge, Box, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import type { ReactNode } from 'react';
 
 export const DATASET_LABELS = {
   suelos: 'Suelos',
@@ -29,25 +30,103 @@ export const CLASS_CHIP_SIZE = 12;
 export function ClassColorChip({
   color,
   testId,
+  hollow = false,
 }: {
   readonly color: string;
   readonly testId?: string;
+  /**
+   * Class currently HIDDEN from the painted overlay (T3b, fix 3). The chip keeps
+   * the class color in its outline — so the row still reads as the legend entry
+   * for that class — but drops the fill, mirroring "nothing of this color is on
+   * the map right now". `data-chip-color` is unchanged: the color the row stands
+   * for does not depend on whether it is painted.
+   */
+  readonly hollow?: boolean;
 }) {
   return (
     <Box
       aria-hidden="true"
       data-testid={testId}
       data-chip-color={color}
+      data-chip-hollow={hollow ? 'true' : undefined}
       style={{
         display: 'inline-block',
         flex: '0 0 auto',
         width: CLASS_CHIP_SIZE,
         height: CLASS_CHIP_SIZE,
         borderRadius: 3,
-        backgroundColor: color,
-        border: '1px solid rgba(0, 0, 0, 0.2)',
+        backgroundColor: hollow ? 'transparent' : color,
+        border: hollow ? `1px solid ${color}` : '1px solid rgba(0, 0, 0, 0.2)',
       }}
     />
+  );
+}
+
+/**
+ * The "Clase" cell of a ficha table row (T3b, fix 3).
+ *
+ * Two shapes, one component, so the soils and risk tables can never drift on
+ * semantics or on keyboard behaviour:
+ *
+ *   - no `onToggle` → a plain chip + label, exactly the pre-T3b row. Panels that
+ *     do not wire the overlay (and every existing test) keep the static table.
+ *   - `onToggle` → the row is a TOGGLE for the painted overlay: `role=button`
+ *     with `aria-pressed` reflecting "this class is painted", so a screen reader
+ *     announces the state, and Enter/Space activate it (`UnstyledButton` renders
+ *     a real `<button>`, which gives both for free).
+ *
+ * A hidden class is DIMMED rather than removed: the row is still the legend
+ * entry for its color and still carries its ha/% figures, which are facts about
+ * the analysis and do not change with what is painted.
+ */
+export function ClassToggleCell({
+  color,
+  clase,
+  hidden = false,
+  onToggle,
+  chipTestId,
+  rowTestId,
+  children,
+}: {
+  readonly color: string;
+  readonly clase: string;
+  readonly hidden?: boolean;
+  readonly onToggle?: (clase: string) => void;
+  readonly chipTestId?: string;
+  readonly rowTestId?: string;
+  /** Label content — plain text, or the soils tooltip trigger. */
+  readonly children: ReactNode;
+}) {
+  const chip = <ClassColorChip color={color} testId={chipTestId} hollow={hidden} />;
+
+  if (!onToggle) {
+    return (
+      <Group gap={6} wrap="nowrap">
+        {chip}
+        {children}
+      </Group>
+    );
+  }
+
+  return (
+    <UnstyledButton
+      onClick={() => onToggle(clase)}
+      aria-pressed={!hidden}
+      aria-label={`${clase}: ${hidden ? 'mostrar' : 'ocultar'} en el mapa`}
+      data-testid={rowTestId}
+      data-hidden={hidden ? 'true' : 'false'}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        width: '100%',
+        cursor: 'pointer',
+        opacity: hidden ? 0.45 : 1,
+      }}
+    >
+      {chip}
+      {children}
+    </UnstyledButton>
   );
 }
 
