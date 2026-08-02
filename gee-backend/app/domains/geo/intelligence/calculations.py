@@ -178,11 +178,12 @@ def _empty_runoff_geojson(
 
 
 def generar_zonificacion(
-    dem_path: str, flow_acc_path: str, threshold: int = 2000
+    dem_path: str, flow_acc_path: str, flow_dir_path: str, threshold: int = 2000
 ) -> "gpd.GeoDataFrame":
     return generar_zonificacion_impl(
         dem_path,
         flow_acc_path,
+        flow_dir_path,
         threshold=threshold,
         get_wbt=_get_wbt,
         build_empty_geojson=_build_empty_geojson,
