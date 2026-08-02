@@ -264,7 +264,7 @@ def test_422_cap_excedido_buffer_m_por_el_cable(db, monkeypatch):
 
     cuerpo = {
         "tipo": "canal_buffer",
-        "canal_id": 1,
+        "canal_ref": "canal-a",
         "buffer_m": settings.ficha_max_buffer_m + 1.0,
     }
     with TestClient(_app_de_ficha(db)) as cliente:

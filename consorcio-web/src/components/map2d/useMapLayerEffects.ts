@@ -300,15 +300,16 @@ export function useMapLayerEffects({
     .map(([key, value]) => `${key}:${value ? 1 : 0}`)
     .sort()
     .join('|');
-  // Single source of truth for `canales_relevados-line` visibility: its master
-  // toggle AND canal mode. While selecting a canal the cyan `vt_canal_network`
-  // line renders the SAME geometry, so the static relevados twin is hidden here
-  // to avoid a double trace. Folding `isFichaCanal` into this boolean (a dep of
-  // the canales sync effect) makes the suppression race-free — toggling any
-  // unrelated layer while in canal mode re-runs the effect with the twin still
-  // hidden, and leaving canal mode restores it to the live toggle state.
-  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados && !isFichaCanal;
-  const canalesPropuestosVisible = !!vectorVisibility.canales_propuestos;
+  // Single source of truth for the `canales_*-line` visibility: their master
+  // toggles AND canal mode. The curated relevados/propuestos layers ARE the ficha
+  // canal source now (A7 slice 2 — `vt_canal_network` is no longer used), so while
+  // selecting a canal they must be SHOWN and clickable regardless of the user's
+  // master toggles. Folding `isFichaCanal` into these booleans (a dep of the
+  // canales sync effect) makes it race-free — toggling any unrelated layer while
+  // in canal mode re-runs the effect with the canals still forced visible, and
+  // leaving canal mode restores each to its live toggle state.
+  const canalesRelevadosVisible = !!vectorVisibility.canales_relevados || isFichaCanal;
+  const canalesPropuestosVisible = !!vectorVisibility.canales_propuestos || isFichaCanal;
 
   useEffect(() => {
     // Reference the signature so the effect re-runs on per-canal toggles

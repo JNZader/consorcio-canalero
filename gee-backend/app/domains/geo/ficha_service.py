@@ -22,16 +22,15 @@ geometry by ``nomenclatura``; ``poligono`` takes the geometry from the REQUEST
 and REPAIRS it in PostGIS (``ST_CollectionExtract(ST_MakeValid(...), 3)``) so a
 self-intersecting hand-drawn ring cannot reach ``ST_Intersection``/``rasterio_mask``
 raw and yield a silently wrong area (§2.7, JDB-008); ``canal_buffer`` resolves a
-``canal_network`` trace by id and sweeps it with ``ST_Buffer`` in EPSG:32720
-(§2.1, JDB-006). All three then call ``assert_within_caps`` over the resolved
+curated ``canal_consorcio`` trace by its string id and sweeps it with
+``ST_Buffer`` in EPSG:32720 (§2.1, JDB-006); ``canal_cuenca`` reads the
+precomputed upstream catchment ``generate_canal_catchments`` stored for that
+canal (A7). All four then call ``assert_within_caps`` over the resolved
 EPSG:32720 shape — for ``poligono``/``canal_buffer`` the caps are the whole
 point, since the resolved AREA is not what the caller sent — commit the audit
 row, and run the IDENTICAL soils overlay + flood_risk/drainage_need raster loop
-under the semaphore (``_ficha_de_geometria``). ``canal_cuenca`` still resolves a
-geometry the caller never sent — a precomputed catchment (A7) — so it keeps the
-audit + semaphore path and a ``sin_cobertura`` placeholder until that slice
-lands. The route stays off by default (``settings.ficha_enabled``); tests flip it
-on via monkeypatch.
+under the semaphore (``_ficha_de_geometria``). The route stays off by default
+(``settings.ficha_enabled``); tests flip it on via monkeypatch.
 """
 
 from __future__ import annotations
@@ -190,8 +189,8 @@ def referencia_auditable(payload: FichaRequest) -> str:
     if tipo == "poligono":
         return f"tipo=poligono,ref=geom:{_huella_geometria(payload.geometry)}"
     if tipo == "canal_buffer":
-        return f"tipo=canal_buffer,ref={payload.canal_id},buffer_m={payload.buffer_m}"
-    return f"tipo=canal_cuenca,ref={payload.canal_id},variante={payload.variante}"
+        return f"tipo=canal_buffer,ref={payload.canal_ref},buffer_m={payload.buffer_m}"
+    return f"tipo=canal_cuenca,ref={payload.canal_ref},variante={payload.variante}"
 
 
 def escribir_auditoria(db: Session, payload: FichaRequest, *, client_ip: str | None) -> None:
@@ -361,19 +360,21 @@ def _resolver_poligono(db: Session, geometry: dict[str, Any]) -> tuple[str, str,
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
-# The influence strip around a canal (§2, §2.1, JDB-006). ``canal_network.geom``
-# is a LINESTRING in EPSG:4326; the buffer is taken in EPSG:32720 (metric — a
-# metre is a metre) and the resulting polygon is what the whole ficha runs on.
-# ``geom IS NOT NULL`` treats a topology row with no trace as "no canal" (there
-# is nothing to buffer) → 404, same as a missing id. The buffered zone is
-# returned both as 4326 (soils + raster loop) and 32720 (the caps measurement +
-# ``area_m2``), mirroring ``_resolver_parcela``/``_resolver_poligono``.
+# The influence strip around a CURATED consorcio canal (§2, §2.1, JDB-006).
+# ``canal_consorcio.geom`` is a LineString in EPSG:4326, keyed by the string id
+# (e.g. ``canal-ne-sin-intervencion``); the buffer is taken in EPSG:32720
+# (metric — a metre is a metre) and the resulting polygon is what the whole ficha
+# runs on. ``geom IS NOT NULL`` is defensive (the column is NOT NULL in the
+# schema, but a row with no trace has nothing to buffer) → 404, same as a missing
+# id. The buffered zone is returned both as 4326 (soils + raster loop) and 32720
+# (the caps measurement + ``area_m2``), mirroring
+# ``_resolver_parcela``/``_resolver_poligono``.
 _CANAL_BUFFER_SQL = text(
     """
     WITH canal AS (
         SELECT ST_Transform(geom, 32720) AS geom_m
-        FROM canal_network
-        WHERE id = :canal_id AND geom IS NOT NULL
+        FROM canal_consorcio
+        WHERE id = :canal_ref AND geom IS NOT NULL
         LIMIT 1
     ), zona AS (
         SELECT ST_Buffer(geom_m, :buffer_m) AS geom_m FROM canal
@@ -386,10 +387,11 @@ _CANAL_BUFFER_SQL = text(
 )
 
 
-def _resolver_canal_buffer(db: Session, canal_id: int, buffer_m: float) -> tuple[str, str, float]:
-    """Buffer a canal by ``buffer_m`` metres. 404 when the canal is absent.
+def _resolver_canal_buffer(db: Session, canal_ref: str, buffer_m: float) -> tuple[str, str, float]:
+    """Buffer a curated canal by ``buffer_m`` metres. 404 when the canal is absent.
 
-    Returns ``(geojson_4326, geojson_32720, area_m2)``, same contract as
+    ``canal_ref`` is the ``canal_consorcio`` string id. Returns
+    ``(geojson_4326, geojson_32720, area_m2)``, same contract as
     ``_resolver_parcela`` so the compute tail is shared. The buffered geometry is
     server-derived — the caller only chose an id and a distance — so
     ``assert_within_caps`` over the returned 32720 shape is the authority on the
@@ -398,10 +400,58 @@ def _resolver_canal_buffer(db: Session, canal_id: int, buffer_m: float) -> tuple
     """
     with _traducir_fallas_db():
         fila = db.execute(
-            _CANAL_BUFFER_SQL, {"canal_id": canal_id, "buffer_m": buffer_m}
+            _CANAL_BUFFER_SQL, {"canal_ref": canal_ref, "buffer_m": buffer_m}
         ).one_or_none()
     if fila is None or fila.area_m2 is None:
-        raise ficha_errors.canal_no_encontrado(canal_id)
+        raise ficha_errors.canal_no_encontrado(canal_ref)
+    return fila.g4326, fila.g32720, float(fila.area_m2)
+
+
+# The precomputed upstream catchment of a curated canal (A7 slice 2). Unlike the
+# buffer, the geometry is not derived on the fly — ``generate_canal_catchments``
+# stored it in ``canal_catchment`` keyed by ``(canal_ref, variante)``. Two bound
+# lookups, in this order, so the three failure modes stay distinct:
+#   1. the canal itself is unknown            → 404 canal_no_encontrado
+#   2. the canal exists but has no catchment  → 503 cuenca_no_computada
+#   3. the catchment is oversized (geom NULL) → 422 cuenca_demasiado_grande
+_CANAL_EXISTE_SQL = text("SELECT 1 FROM canal_consorcio WHERE id = :canal_ref LIMIT 1")
+
+_CANAL_CATCHMENT_SQL = text(
+    """
+    SELECT c.oversized AS oversized,
+           c.geometria IS NULL AS geom_null,
+           ST_AsGeoJSON(c.geometria) AS g4326,
+           ST_AsGeoJSON(ST_Transform(c.geometria, 32720)) AS g32720,
+           ST_Area(ST_Transform(c.geometria, 32720)) AS area_m2
+    FROM canal_catchment c
+    WHERE c.canal_ref = :canal_ref AND c.variante = :variante
+    LIMIT 1
+    """
+)
+
+
+def _resolver_canal_cuenca(db: Session, canal_ref: str, variante: str) -> tuple[str, str, float]:
+    """Resolve a canal's precomputed catchment. Distinct 404 / 503 / 422 by cause.
+
+    Returns ``(geojson_4326, geojson_32720, area_m2)``, same contract as the other
+    resolvers so the compute tail is shared. The stored catchment is already
+    dissolved and within ``ficha_max_area_ha`` by construction (the batch drops the
+    geometry of anything larger and flags it ``oversized``), so this only reads it
+    back — the caps still re-run in ``assert_within_caps`` for symmetry.
+    """
+    with _traducir_fallas_db():
+        existe = db.execute(_CANAL_EXISTE_SQL, {"canal_ref": canal_ref}).one_or_none()
+    if existe is None:
+        raise ficha_errors.canal_no_encontrado(canal_ref)
+
+    with _traducir_fallas_db():
+        fila = db.execute(
+            _CANAL_CATCHMENT_SQL, {"canal_ref": canal_ref, "variante": variante}
+        ).one_or_none()
+    if fila is None:
+        raise ficha_errors.cuenca_no_computada(canal_ref, variante)
+    if fila.oversized or fila.geom_null or fila.area_m2 is None:
+        raise ficha_errors.cuenca_demasiado_grande(canal_ref)
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
@@ -782,15 +832,25 @@ def _anual_mm(layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float) 
 
 
 def _ficha_de_geometria(
-    db: Session, *, tipo: str, geojson_4326: str, area_m2: float
+    db: Session,
+    *,
+    tipo: str,
+    geojson_4326: str,
+    area_m2: float,
+    variante: str | None = None,
+    geometria_cuenca: dict[str, Any] | None = None,
 ) -> FichaResponse:
     """Shared compute tail: soils overlay + raster loop under the semaphore.
 
-    Both ``parcela`` and ``poligono`` reduce to the same computation once the
-    geometry is resolved and the caps have passed — the design's "N rasters × 1
-    geometry (rasterio) + 1 vector overlay × 1 geometry (PostGIS)". Keeping it in
-    one place is what makes the response byte-compatible across tipos (the spec's
-    "uniform response shape") instead of two paths that can drift.
+    All four tipos reduce to the same computation once the geometry is resolved
+    and the caps have passed — the design's "N rasters × 1 geometry (rasterio) + 1
+    vector overlay × 1 geometry (PostGIS)". Keeping it in one place is what makes
+    the datasets byte-compatible across tipos (the spec's "uniform response
+    shape") instead of parallel paths that can drift.
+
+    ``variante`` / ``geometria_cuenca`` are the ``canal_cuenca``-only additive
+    fields (echoed back so the frontend can draw the catchment outline); they stay
+    ``None`` for the other three tipos.
 
     The caller has ALREADY committed the audit row, so the LOCAL statement_timeout
     set before that commit is gone; it is re-applied here so the soils overlay +
@@ -807,6 +867,8 @@ def _ficha_de_geometria(
             flood_risk=_raster_dataset(db, "flood_risk", geom4326, area_m2),
             drainage_need=_raster_dataset(db, "drainage_need", geom4326, area_m2),
             precipitacion_mensual=_precipitacion_dataset(db, geom4326, area_m2),
+            variante=variante,
+            geometria_cuenca=geometria_cuenca,
         )
 
 
@@ -851,24 +913,25 @@ def _analizar_poligono(db: Session, payload: Any, *, client_ip: str | None) -> F
 
 
 def _analizar_canal_buffer(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
-    """Real compute for ``tipo=canal_buffer`` — a canal's influence strip (A6).
+    """Real compute for ``tipo=canal_buffer`` — a curated canal's influence strip.
 
     Same §2.5 order as the other tipos, but the geometry is doubly server-derived:
-    the caller sends a ``canal_id`` + a ``buffer_m``, and the service resolves the
-    canal trace and sweeps it. That makes ``assert_within_caps`` LOAD-BEARING here
-    for a reason the schema cannot cover: the schema caps ``buffer_m`` (the cheap
-    distance check), but the AREA a 2 km buffer sweeps along a long canal is what
-    actually costs, so the cap runs over the RESOLVED buffered polygon in
-    EPSG:32720 — after the buffer, before any raster open (§2.1, JDB-006).
+    the caller sends a ``canal_ref`` + a ``buffer_m``, and the service resolves the
+    curated ``canal_consorcio`` trace and sweeps it. That makes ``assert_within_caps``
+    LOAD-BEARING here for a reason the schema cannot cover: the schema caps
+    ``buffer_m`` (the cheap distance check), but the AREA a 2 km buffer sweeps
+    along a long canal is what actually costs, so the cap runs over the RESOLVED
+    buffered polygon in EPSG:32720 — after the buffer, before any raster open
+    (§2.1, JDB-006).
 
     ``buffer_m`` is passed to ``assert_within_caps`` too, so the distance cap is
     re-checked defensively even though the schema already rejected an over-cap
     value. There is a 404 (``canal_no_encontrado``) but no ``geometria_invalida``:
-    the trace comes from ``canal_network``, not from a caller-drawn ring.
+    the trace comes from ``canal_consorcio``, not from a caller-drawn ring.
     """
     _aplicar_statement_timeout(db)  # bounds the ST_Transform/ST_Buffer/ST_Area resolver query
     geojson_4326, geojson_32720, area_m2 = _resolver_canal_buffer(
-        db, payload.canal_id, payload.buffer_m
+        db, payload.canal_ref, payload.buffer_m
     )
     geom_metrico = shape(json.loads(geojson_32720))
     assert_within_caps(geom_metrico, tipo="canal_buffer", buffer_m=payload.buffer_m)
@@ -877,17 +940,45 @@ def _analizar_canal_buffer(db: Session, payload: Any, *, client_ip: str | None) 
     return _ficha_de_geometria(db, tipo="canal_buffer", geojson_4326=geojson_4326, area_m2=area_m2)
 
 
+def _analizar_canal_cuenca(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
+    """Real compute for ``tipo=canal_cuenca`` — a canal's precomputed catchment (A7).
+
+    Same §2.5 order as the other tipos. The geometry is neither caller-drawn nor
+    derived on the fly: ``_resolver_canal_cuenca`` reads the dissolved catchment
+    ``generate_canal_catchments`` stored for ``(canal_ref, variante)``, raising the
+    three distinct coded failures (404 unknown canal / 503 not computed / 422
+    oversized) BEFORE the audit commit and any raster open. The resolved catchment
+    then runs the IDENTICAL shared tail as parcela/poligono/buffer, and the
+    catchment outline is echoed back as ``geometria_cuenca`` so the map can draw it.
+    """
+    _aplicar_statement_timeout(db)  # bounds the catchment lookup queries
+    geojson_4326, geojson_32720, area_m2 = _resolver_canal_cuenca(
+        db, payload.canal_ref, payload.variante
+    )
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo="canal_cuenca")
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(
+        db,
+        tipo="canal_cuenca",
+        geojson_4326=geojson_4326,
+        area_m2=area_m2,
+        variante=payload.variante,
+        geometria_cuenca=json.loads(geojson_4326),
+    )
+
+
 def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) -> FichaResponse:
     """Enforcement order (design §2.5): resolve → caps → audit → semaphore → compute.
 
     Rate limit and the body-size guard already ran as router dependencies, and
     the cheap ``poligono`` validators ran in the schema.
 
-    ``tipo=parcela``, ``tipo=poligono`` and ``tipo=canal_buffer`` are the real
-    compute this chain ships. ``canal_cuenca`` still resolves a geometry the caller
-    never sent — a precomputed catchment (A7) — and until that lands it keeps the
-    audit + semaphore path and a ``sin_cobertura`` placeholder (never fabricated
-    hectares). The route stays gated by ``settings.ficha_enabled``.
+    All four tipos are real compute now: ``parcela``/``poligono`` resolve a parcel
+    or a drawn ring, ``canal_buffer`` sweeps a curated canal, and ``canal_cuenca``
+    reads its precomputed catchment (A7). The route stays gated by
+    ``settings.ficha_enabled``.
     """
     if payload.tipo == "parcela":
         return _analizar_parcela(db, payload, client_ip=client_ip)
@@ -895,17 +986,7 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
         return _analizar_poligono(db, payload, client_ip=client_ip)
     if payload.tipo == "canal_buffer":
         return _analizar_canal_buffer(db, payload, client_ip=client_ip)
-
-    escribir_auditoria(db, payload, client_ip=client_ip)
-    with slot_de_computo():
-        return FichaResponse(
-            tipo=payload.tipo,
-            area_ha=0.0,
-            suelos=_dataset_vacio(),
-            flood_risk=_dataset_vacio(),
-            drainage_need=_dataset_vacio(),
-            precipitacion_mensual=PrecipitacionFicha(cobertura="sin_cobertura"),
-        )
+    return _analizar_canal_cuenca(db, payload, client_ip=client_ip)
 
 
 # ── on-map overlay (A(b) slice 1: soils vector) ─────────────────────────────
@@ -915,9 +996,10 @@ def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str
     """Resolve the analysis geometry the same way the ficha does, for the overlay.
 
     Returns ``(geojson_4326, geojson_32720)`` — the 4326 shape feeds the soils
-    clip, the 32720 shape feeds ``assert_within_caps``. ``None`` for the
-    ``canal_cuenca`` stub, which still resolves a geometry the caller never sent
-    (a precomputed catchment, A7) and therefore has nothing to clip yet.
+    clip, the 32720 shape feeds ``assert_within_caps``. All four tipos resolve a
+    geometry now: ``canal_cuenca`` resolves to its precomputed catchment (A7) so
+    the on-map overlay clips to the catchment, with the SAME distinct 404 / 503 /
+    422 coded failures as the ficha compute path.
     """
     tipo = payload.tipo
     if tipo == "parcela":
@@ -928,10 +1010,13 @@ def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str
         return geojson_4326, geojson_32720
     if tipo == "canal_buffer":
         geojson_4326, geojson_32720, _area_m2 = _resolver_canal_buffer(
-            db, payload.canal_id, payload.buffer_m
+            db, payload.canal_ref, payload.buffer_m
         )
         return geojson_4326, geojson_32720
-    return None
+    geojson_4326, geojson_32720, _area_m2 = _resolver_canal_cuenca(
+        db, payload.canal_ref, payload.variante
+    )
+    return geojson_4326, geojson_32720
 
 
 def _clip_suelos(db: Session, geojson_4326: str) -> list[FichaOverlayFeature]:

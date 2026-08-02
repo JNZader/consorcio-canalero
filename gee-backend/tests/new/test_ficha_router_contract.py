@@ -419,37 +419,46 @@ def test_la_ficha_esta_apagada_por_defecto_y_no_deja_rastro(db, monkeypatch):
     assert slots._value == libres_antes, "una ficha apagada consumió un slot de cómputo"
 
 
-def test_con_la_ficha_encendida_el_pipeline_responde_el_placeholder(db, monkeypatch):
+def test_con_la_ficha_encendida_el_pipeline_responde_coded(db, monkeypatch):
     """F4 › la contracara: encendida, la ruta sigue siendo la misma ruta.
 
     Prendiendo el flag se ejercita el pipeline completo (gate → cuerpo →
-    limitador → schema → auditoría → semáforo) y se comprueba que el
-    placeholder es explícito: ``sin_cobertura`` en los CUATRO datasets, nunca
-    hectáreas inventadas ni un dataset omitido (R3-007).
-
-    Desde A5/A6 ``poligono`` y ``canal_buffer`` son cómputo REAL (tocan
-    ``suelos_catastro`` / ``canal_network``), así que el ÚNICO placeholder que
-    queda por ejercitar es ``canal_cuenca`` — todavía sin precomputar su cuenca
-    hasta A7 —, cuya rama devuelve exactamente ese placeholder sin tocar la base.
-    El punto de F4 (misma ruta, placeholder explícito) es idéntico.
+    limitador → schema → resolución) y se comprueba que responde un estado CODED,
+    no un 500 crudo. Desde A7 (slice 2) los CUATRO tipos son cómputo real: no
+    queda placeholder. Se usa ``canal_cuenca`` sobre un canal curado SIN cuenca
+    precomputada — la rama resuelve la existencia del canal y contesta 503
+    ``cuenca_no_computada`` ANTES de la auditoría, sin abrir raster: prueba que la
+    ruta es la misma ruta y que el pipeline está cableado extremo a extremo.
     """
+    import importlib
+
     from fastapi.testclient import TestClient
+    from sqlalchemy import text
 
     from app.config import settings
 
     monkeypatch.setattr(settings, "ficha_enabled", True)
     monkeypatch.setattr(settings, "rate_limit_disabled", True, raising=False)
 
+    migration = importlib.import_module("app.db.migrations.versions.0020_add_canal_consorcio")
+    for statement in migration.UPGRADE_STATEMENTS:
+        db.execute(text(statement))
+    db.execute(
+        text(
+            "INSERT INTO canal_consorcio (id, nombre, estado, geom) "
+            "VALUES ('canal-a', 'Canal A', 'relevado', "
+            "ST_GeomFromText('LINESTRING(-62.0 -32.0, -62.01 -32.01)', 4326))"
+        )
+    )
+    db.flush()
+
     with TestClient(_app_de_ficha(db)) as cliente:
         respuesta = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_id": 1, "variante": "natural"},
+            json={"tipo": "canal_cuenca", "canal_ref": "canal-a", "variante": "relevado"},
         )
 
-    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.status_code == 503, respuesta.text
     cuerpo = respuesta.json()
-    assert cuerpo["area_ha"] == 0.0
-    for dataset in ("suelos", "flood_risk", "drainage_need", "precipitacion_mensual"):
-        assert cuerpo[dataset] is not None, f"{dataset} se omitió en vez de reportarse"
-        assert cuerpo[dataset]["cobertura"] == "sin_cobertura"
-        assert cuerpo[dataset]["cobertura_ratio"] == 0.0
+    assert cuerpo["codigo"] == "cuenca_no_computada"
+    assert cuerpo["canal_ref"] == "canal-a"

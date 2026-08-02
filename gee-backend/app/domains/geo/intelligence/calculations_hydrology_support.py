@@ -232,12 +232,39 @@ def simular_escorrentia_impl(
 
 
 def generar_zonificacion_impl(
-    dem_path: str, flow_acc_path: str, *, threshold: int, get_wbt, build_empty_geojson
+    dem_path: str,
+    flow_acc_path: str,
+    flow_dir_path: str,
+    *,
+    threshold: int,
+    get_wbt,
+    build_empty_geojson,
+    rasterio_module: Any = None,
+    shapes_fn: Any = None,
 ):
+    """Delineate sub-basins by seeding WBT ``watershed`` with a D8 pointer.
+
+    ``dem_path`` is kept for provenance/logging only — WBT ``watershed`` needs the
+    **D8 flow-direction pointer** as its first argument (``d8_pntr``), NOT the DEM.
+    Passing the DEM there was the historical A7 "D8 blocker": ``watershed``
+    silently misread the elevation raster as a pointer. ``flow_dir_path`` is the
+    real WBT-native D8 pointer the pipeline already produces
+    (``wbt.d8_pointer`` → ``flow_dir*.tif``).
+
+    ``rasterio_module``/``shapes_fn`` are injectable so tests can drive the whole
+    routine with mocked raster I/O (mirroring ``generate_chirps_normals``);
+    production passes nothing and gets the real ``rasterio`` + ``rasterio.features.shapes``.
+    """
     import geopandas as gpd
-    import rasterio
-    from rasterio.features import shapes as rasterio_shapes
     from shapely.geometry import shape
+
+    if rasterio_module is None:
+        import rasterio as rasterio_module  # noqa: PLC0415
+    if shapes_fn is None:
+        from rasterio.features import shapes as shapes_fn  # noqa: PLC0415
+
+    rasterio = rasterio_module
+    rasterio_shapes = shapes_fn
 
     with tempfile.TemporaryDirectory() as tmpdir:
         pour_points, basins = (
@@ -252,7 +279,8 @@ def generar_zonificacion_impl(
         meta.update({"dtype": "int16", "count": 1, "nodata": 0})
         with rasterio.open(pour_points, "w", **meta) as dst:
             dst.write(pp, 1)
-        get_wbt().watershed(dem_path, pour_points, basins)
+        # D8 fix: the pointer (flow_dir_path), not the DEM, is watershed's arg 1.
+        get_wbt().watershed(flow_dir_path, pour_points, basins)
         with rasterio.open(basins) as src:
             basin_data, basin_transform, basin_crs = src.read(1), src.transform, src.crs
         geometries, basin_ids = [], []

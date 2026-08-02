@@ -1,17 +1,21 @@
-"""Real-compute integration tests for ``tipo=canal_buffer`` (PR A6).
+"""Real-compute integration tests for ``tipo=canal_buffer`` (curated retarget).
 
 `spec geo-analysis-endpoint` › "Buffer distance cap" (JDB-006) and the §2.6 rows
 that only become reachable once a canal is resolved through PostGIS: 404
 ``canal_no_encontrado`` and 422 ``cap_excedido`` naming ``area_ha`` for a buffer
 that sweeps too large an area.
 
-The geometry is DOUBLY server-derived: the caller sends only ``canal_id`` +
-``buffer_m``; the service resolves the ``canal_network`` trace and sweeps it with
-``ST_Buffer`` in EPSG:32720. So, unlike ``tipo=poligono``, there is a 404 (an
-unknown canal) and no ``geometria_invalida`` (the trace is not caller-drawn).
-Everything downstream — soils overlay, raster loop, wire vocabulary, caps, audit,
-semaphore — is the SAME shared tail (``_ficha_de_geometria``) as parcela/poligono,
-which is exactly what these tests pin.
+The geometry is DOUBLY server-derived: the caller sends only ``canal_ref`` +
+``buffer_m``; the service resolves the CURATED ``canal_consorcio`` trace (the 60
+consorcio canals, keyed by their GeoJSON string id) and sweeps it with
+``ST_Buffer`` in EPSG:32720. This is the A7-slice-2 correction: ``canal_buffer``
+used to resolve the pgRouting ``canal_network`` graph by an int id — the wrong
+set — and now targets the curated canals by their string ``canal_ref``. So, unlike
+``tipo=poligono``, there is a 404 (an unknown canal) and no ``geometria_invalida``
+(the trace is not caller-drawn). Everything downstream — soils overlay, raster
+loop, wire vocabulary, caps, audit, semaphore — is the SAME shared tail
+(``_ficha_de_geometria``) as parcela/poligono, which is exactly what these tests
+pin.
 
 **PURELY BEHAVIORAL (TestClient), never a route-table walk** — the CI
 module-identity pathology documented in ``test_ficha_router_contract`` /
@@ -101,11 +105,11 @@ def _precip_normals_para_ficha(ficha_db, tmp_path):
 
     B2 made monthly precipitation a HARD dependency: with ZERO precip normals
     registered the ficha answers 503 ``dataset_no_cargado`` (spec
-    ``precip-normals-pipeline``). These A6 canal-buffer tests predate B2 and
-    assert the soils / flood / drainage datasets, so a 200 now requires the
-    precip product to exist. A single wide 0.05° raster registered under mes
-    1..12 + ``anual`` covers the buffered strip; error-path tests short-circuit
-    before precip assembly, so the extra rows are harmless.
+    ``precip-normals-pipeline``). These canal-buffer tests assert the soils /
+    flood / drainage datasets, so a 200 now requires the precip product to exist.
+    A single wide 0.05° raster registered under mes 1..12 + ``anual`` covers the
+    buffered strip; error-path tests short-circuit before precip assembly, so the
+    extra rows are harmless.
     """
     ruta = str(tmp_path / "precip_region.tif")
     with rasterio.open(
@@ -162,30 +166,33 @@ def _enable(monkeypatch: Any) -> None:
 
 
 def _crear_tabla_canal(db: Session) -> None:
-    """A minimal ``canal_network`` — only ``id`` + ``geom`` are read by the resolver.
+    """The curated ``canal_consorcio`` registry — only ``id`` + ``geom`` are read.
 
-    The real table (migration ``w7r4s5t6u593``) has the pgRouting columns too, but
-    ``create_all`` never sees it (no ORM model), so the test owns the DDL, exactly
-    like ``suelos_catastro``.
+    The real table is created by migration ``0020``; ``create_all`` never sees it
+    (no ORM model), so the test owns the DDL, exactly like ``suelos_catastro``. A
+    minimal shape (id TEXT PK + estado CHECK + geom) is enough for the resolver.
     """
     db.execute(
         text(
-            "CREATE TABLE IF NOT EXISTS canal_network ("
-            "  id SERIAL PRIMARY KEY,"
-            "  nombre VARCHAR(255),"
-            "  geom GEOMETRY(LINESTRING, 4326))"
+            "CREATE TABLE IF NOT EXISTS canal_consorcio ("
+            "  id TEXT PRIMARY KEY,"
+            "  nombre TEXT NOT NULL,"
+            "  estado TEXT NOT NULL,"
+            "  geom geometry(LineString, 4326) NOT NULL,"
+            "  CONSTRAINT ck_canal_consorcio_estado CHECK (estado IN ('relevado', 'propuesto')))"
         )
     )
 
 
-def _seed_canal(db: Session, wkt: str) -> int:
-    return db.execute(
+def _seed_canal(db: Session, wkt: str, *, canal_ref: str = "canal-a") -> str:
+    db.execute(
         text(
-            "INSERT INTO canal_network (nombre, geom) "
-            "VALUES (:n, ST_GeomFromText(:wkt, 4326)) RETURNING id"
+            "INSERT INTO canal_consorcio (id, nombre, estado, geom) "
+            "VALUES (:id, :n, 'relevado', ST_GeomFromText(:wkt, 4326))"
         ),
-        {"n": "Canal de prueba", "wkt": wkt},
-    ).scalar_one()
+        {"id": canal_ref, "n": f"Canal {canal_ref}", "wkt": wkt},
+    )
+    return canal_ref
 
 
 def _crear_tabla_suelos(db: Session) -> None:
@@ -252,7 +259,7 @@ def _registrar(db: Session, tipo: TipoGeoLayer, path: str) -> None:
     db.flush()
 
 
-# ── A6.1 happy path — a buffered canal reduces to the shared ficha tail ───────
+# ── happy path — a buffered curated canal reduces to the shared ficha tail ────
 
 
 def test_canal_buffer_computa_la_franja_de_influencia(ficha_db, monkeypatch, tmp_path):
@@ -261,7 +268,7 @@ def test_canal_buffer_computa_la_franja_de_influencia(ficha_db, monkeypatch, tmp
 
     _enable(monkeypatch)
     _crear_tabla_canal(ficha_db)
-    canal_id = _seed_canal(ficha_db, _CANAL_WKT)
+    canal_ref = _seed_canal(ficha_db, _CANAL_WKT)
     _crear_tabla_suelos(ficha_db)
     _seed_suelos(ficha_db)
     _registrar(ficha_db, TipoGeoLayer.FLOOD_RISK, _raster_full(tmp_path, "flood.tif", 40.0))
@@ -270,7 +277,7 @@ def test_canal_buffer_computa_la_franja_de_influencia(ficha_db, monkeypatch, tmp
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": canal_id, "buffer_m": 200},
+            json={"tipo": "canal_buffer", "canal_ref": canal_ref, "buffer_m": 200},
         )
 
     assert rs.status_code == 200, rs.text
@@ -286,18 +293,20 @@ def test_canal_buffer_computa_la_franja_de_influencia(ficha_db, monkeypatch, tmp
     assert {c["clase"] for c in body["flood_risk"]["clases"]} == {"Medio"}  # 40 → 30..55
     assert body["drainage_need"]["cobertura"] == "total"
 
-    # canal_buffer carries no BPA/account block — there is no single parcel.
+    # canal_buffer carries no BPA/account block, and no canal_cuenca extras.
     assert "nro_cuenta" not in body
     assert "pilar_verde" not in body
+    assert body["geometria_cuenca"] is None
+    assert body["variante"] is None
 
 
 def test_canal_buffer_deja_una_fila_de_auditoria(ficha_db, monkeypatch, tmp_path):
-    """One ``zona.analisis`` row, referencing the canal id + buffer (§2.5)."""
+    """One ``zona.analisis`` row, referencing the canal ref + buffer (§2.5)."""
     from fastapi.testclient import TestClient
 
     _enable(monkeypatch)
     _crear_tabla_canal(ficha_db)
-    canal_id = _seed_canal(ficha_db, _CANAL_WKT)
+    canal_ref = _seed_canal(ficha_db, _CANAL_WKT)
     _crear_tabla_suelos(ficha_db)
     _seed_suelos(ficha_db)
     _registrar(ficha_db, TipoGeoLayer.FLOOD_RISK, _raster_full(tmp_path, "flood.tif", 40.0))
@@ -305,22 +314,22 @@ def test_canal_buffer_deja_una_fila_de_auditoria(ficha_db, monkeypatch, tmp_path
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": canal_id, "buffer_m": 200},
+            json={"tipo": "canal_buffer", "canal_ref": canal_ref, "buffer_m": 200},
         )
 
     assert rs.status_code == 200, rs.text
     fila = ficha_db.execute(
         text("SELECT resource FROM audit_log WHERE action = 'zona.analisis' LIMIT 1")
     ).scalar_one()
-    assert f"tipo=canal_buffer,ref={canal_id}" in fila
+    assert f"tipo=canal_buffer,ref={canal_ref}" in fila
     assert "buffer_m=200" in fila
 
 
-# ── A6.1 / §2.6 — 404 canal_no_encontrado (unknown id) ────────────────────────
+# ── §2.6 — 404 canal_no_encontrado (unknown ref) ──────────────────────────────
 
 
 def test_canal_desconocido_es_404_sin_raster(ficha_db, monkeypatch):
-    """An unknown ``canal_id`` → 404 ``canal_no_encontrado``, no raster opened.
+    """An unknown ``canal_ref`` → 404 ``canal_no_encontrado``, no raster opened.
 
     Resolution returns no row → the 404 fires before ``assert_within_caps`` and
     long before any raster loop. We prove NO raster was opened by making
@@ -341,13 +350,13 @@ def test_canal_desconocido_es_404_sin_raster(ficha_db, monkeypatch):
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": 999_999, "buffer_m": 200},
+            json={"tipo": "canal_buffer", "canal_ref": "canal-inexistente", "buffer_m": 200},
         )
 
     assert rs.status_code == 404, rs.text
     body = rs.json()
     assert body["codigo"] == "canal_no_encontrado"
-    assert body["canal_id"] == 999_999
+    assert body["canal_ref"] == "canal-inexistente"
 
 
 def test_canal_desconocido_no_audita(ficha_db, monkeypatch):
@@ -360,7 +369,7 @@ def test_canal_desconocido_no_audita(ficha_db, monkeypatch):
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": 424_242, "buffer_m": 200},
+            json={"tipo": "canal_buffer", "canal_ref": "canal-fantasma", "buffer_m": 200},
         )
 
     assert rs.status_code == 404, rs.text
@@ -370,56 +379,14 @@ def test_canal_desconocido_no_audita(ficha_db, monkeypatch):
     assert filas == 0, "un canal inexistente no debe dejar rastro de auditoria"
 
 
-def test_canal_con_geom_nula_es_404_sin_raster(ficha_db, monkeypatch):
-    """A canal row that EXISTS but has NULL geom → 404, no audit, no raster.
-
-    This pins the ``geom IS NOT NULL`` branch of ``_CANAL_BUFFER_SQL``: a topology
-    row with no trace has nothing to buffer, so the ``canal AS`` CTE returns zero
-    rows and the resolver 404s exactly like a missing id — BEFORE the audit commit
-    and long before any raster loop. We seed a valid id (proving it is the NULL
-    geom, not the id, that 404s) and make ``extract_zonal_profile`` explode.
-    """
-    from fastapi.testclient import TestClient
-
-    from app.domains.geo import ficha_service
-
-    _enable(monkeypatch)
-    _crear_tabla_canal(ficha_db)
-    canal_id = ficha_db.execute(
-        text("INSERT INTO canal_network (nombre, geom) VALUES (:n, NULL) RETURNING id"),
-        {"n": "Canal sin traza"},
-    ).scalar_one()
-
-    def _boom(*a: Any, **k: Any) -> Any:
-        raise AssertionError("se abrio un raster pese al canal sin geometria")
-
-    monkeypatch.setattr(ficha_service, "extract_zonal_profile", _boom)
-
-    with TestClient(_app(ficha_db)) as cliente:
-        rs = cliente.post(
-            FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": canal_id, "buffer_m": 200},
-        )
-
-    assert rs.status_code == 404, rs.text
-    body = rs.json()
-    assert body["codigo"] == "canal_no_encontrado"
-    assert body["canal_id"] == canal_id
-
-    filas = ficha_db.execute(
-        text("SELECT count(*) FROM audit_log WHERE action = 'zona.analisis'")
-    ).scalar_one()
-    assert filas == 0, "un canal sin traza no debe dejar rastro de auditoria"
-
-
-# ── A6.4 / §2.6 — 422 cap_excedido naming buffer_m (schema cap) ───────────────
+# ── §2.6 — 422 cap_excedido naming buffer_m (schema cap) ───────────────────────
 
 
 def test_buffer_sobre_cap_es_422_naming_buffer_m(ficha_db, monkeypatch):
     """``buffer_m`` over ``ficha_max_buffer_m`` → 422 ``cap_excedido`` naming buffer_m.
 
     The schema validator is the cheap gate: it rejects an over-cap distance on the
-    wire, before any DB round-trip or canal lookup. No ``canal_network`` row is
+    wire, before any DB round-trip or canal lookup. No ``canal_consorcio`` row is
     even needed.
     """
     from fastapi.testclient import TestClient
@@ -438,7 +405,7 @@ def test_buffer_sobre_cap_es_422_naming_buffer_m(ficha_db, monkeypatch):
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_buffer", "canal_id": 1, "buffer_m": over},
+            json={"tipo": "canal_buffer", "canal_ref": "canal-a", "buffer_m": over},
         )
 
     assert rs.status_code == 422, rs.text
@@ -448,7 +415,7 @@ def test_buffer_sobre_cap_es_422_naming_buffer_m(ficha_db, monkeypatch):
     assert body["valor"] > body["limite"]
 
 
-# ── A6.1 / §2.6 — 422 cap_excedido naming area_ha (buffered AREA over cap) ─────
+# ── §2.6 — 422 cap_excedido naming area_ha (buffered AREA over cap) ────────────
 
 
 def test_area_barrida_sobre_cap_es_422_naming_area_ha(ficha_db, monkeypatch):
@@ -467,7 +434,7 @@ def test_area_barrida_sobre_cap_es_422_naming_area_ha(ficha_db, monkeypatch):
 
     _enable(monkeypatch)
     _crear_tabla_canal(ficha_db)
-    canal_id = _seed_canal(ficha_db, _CANAL_LARGO_WKT)
+    canal_ref = _seed_canal(ficha_db, _CANAL_LARGO_WKT, canal_ref="canal-largo")
 
     def _boom(*a: Any, **k: Any) -> Any:
         raise AssertionError("se abrio un raster pese al area sobre cap")
@@ -479,7 +446,7 @@ def test_area_barrida_sobre_cap_es_422_naming_area_ha(ficha_db, monkeypatch):
             FICHA_PATH,
             json={
                 "tipo": "canal_buffer",
-                "canal_id": canal_id,
+                "canal_ref": canal_ref,
                 "buffer_m": settings.ficha_max_buffer_m,
             },
         )
@@ -492,7 +459,7 @@ def test_area_barrida_sobre_cap_es_422_naming_area_ha(ficha_db, monkeypatch):
     assert body["valor"] > body["limite"]
 
 
-# ── A6.4 — the limiter prices canal_buffer at cost 5 (design §2.2, JDB-006) ────
+# ── the limiter prices canal_buffer at cost 5 (design §2.2, JDB-006) ───────────
 
 
 def test_canal_buffer_cuesta_5_en_el_limitador():

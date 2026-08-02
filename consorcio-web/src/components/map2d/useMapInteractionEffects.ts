@@ -51,14 +51,23 @@ interface UseMapInteractionEffectsParams {
    */
   onParcelaResolved?: (parcela: ParcelaResuelta | null) => void;
   /**
-   * Ficha territorial canal buffer (A6). In `'ficha-canal'` mode a click is
-   * resolved against the `vt_canal_network` layer ONLY (never parcels), and the
-   * clicked feature's `canal_network.id` is reported here so the container can
-   * fire a `tipo=canal_buffer` request. `null` when the click missed a canal.
-   * Optional — callers that do not offer the canal mode omit it (design §6.3,
-   * JDB-013).
+   * Ficha territorial canal analysis (A6 + A7). In `'ficha-canal'` mode a click is
+   * resolved against the CURATED relevados/propuestos line layers ONLY (never
+   * parcels), and the clicked feature's string `properties.id` (+ `nombre`) is
+   * reported here so the container can fire a `tipo=canal_buffer` /
+   * `tipo=canal_cuenca` request against `canal_consorcio`. `null` when the click
+   * missed a canal. Optional — callers that do not offer the canal mode omit it
+   * (design §6.3, JDB-013).
    */
-  onCanalResolved?: (canalId: number | null) => void;
+  onCanalResolved?: (canal: CanalResuelta | null) => void;
+}
+
+/** A curated consorcio canal resolved from a click in `'ficha-canal'` mode. */
+export interface CanalResuelta {
+  /** The `canal_consorcio` string id (from the GeoJSON `properties.id`). */
+  readonly ref: string;
+  /** Display name for the analysis control (`properties.nombre`, falls back to the ref). */
+  readonly nombre: string;
 }
 
 type FeatureWithLayer = Feature & { readonly layer?: { readonly id?: string } };
@@ -107,23 +116,33 @@ function resolveParcela(features: FeatureWithLayer[]): ParcelaResuelta | null {
   };
 }
 
+/** The two curated canal line layers that are clickable in `'ficha-canal'` mode. */
+const CANAL_FICHA_LAYER_IDS = [
+  `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+  `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+];
+
 /**
- * Read the `canal_network.id` off a clicked `vt_canal_network` feature.
+ * Read the curated `canal_consorcio` string id (+ nombre) off a clicked
+ * relevados/propuestos feature.
  *
- * Martin publishes the view with `id_column: id`, so the value can surface
- * either as the MVT feature id (`feature.id`) or as a property, depending on the
- * tiler version — we accept both. Returns a positive integer id, or `null` when
- * the click did not land on a canal (the caller then clears the selection).
+ * These layers are rendered from `capas/canales/{relevados,propuestas}.geojson`,
+ * whose features carry `properties.id` = the `canal_consorcio` string id (e.g.
+ * `canal-ne-sin-intervencion`) and `properties.nombre`. We prefer a feature on the
+ * two curated canal layers; the top-most hit wins on overlap. Returns `null` when
+ * the click did not land on a curated canal (the caller then clears the selection).
  */
-export function resolveCanalId(features: FeatureWithLayer[]): number | null {
-  const canalLayerId = `${SOURCE_IDS.CANAL_NETWORK}-line`;
-  const feature = features.find((f) => f.layer?.id === canalLayerId) ?? features[0];
+export function resolveCanalRef(features: FeatureWithLayer[]): CanalResuelta | null {
+  const feature =
+    features.find((f) => f.layer?.id && CANAL_FICHA_LAYER_IDS.includes(f.layer.id)) ?? features[0];
   if (!feature) return null;
-  const raw =
-    (feature as { id?: unknown }).id ?? (feature.properties as Record<string, unknown> | null)?.id;
-  const asNumber = typeof raw === 'string' ? Number(raw) : raw;
-  if (typeof asNumber !== 'number' || !Number.isFinite(asNumber) || asNumber < 1) return null;
-  return Math.trunc(asNumber);
+  const props = (feature.properties as Record<string, unknown> | null) ?? {};
+  const rawId = props.id;
+  const ref = typeof rawId === 'string' ? rawId.trim() : '';
+  if (!ref) return null;
+  const rawNombre = props.nombre;
+  const nombre = typeof rawNombre === 'string' && rawNombre.trim() ? rawNombre.trim() : ref;
+  return { ref, nombre };
 }
 
 /**
@@ -144,16 +163,16 @@ export function resolveCanalId(features: FeatureWithLayer[]): number | null {
  * **Mode gate (A5.3/A6, design §6.2/§6.3):** in `'ficha-dibujo'` the `DrawControl`
  * owns every click (the user is drawing a polygon, not selecting a feature), so
  * NOTHING on the map is clickable for feature selection and the whitelist is
- * empty. In `'ficha-canal'` the ONLY clickable layer is `vt_canal_network` (the
- * id-bearing canal source) — parcels/BPA/soil are excluded so a canal click can
- * only ever resolve a `canal_id`, never a parcel (JDB-013). All other modes get
- * the full ordered list; the `'idle'` default preserves the pre-existing
- * behaviour exactly (its ordering is pinned by tests, so the two ficha modes are
- * handled as early returns and never perturb it).
+ * empty. In `'ficha-canal'` the ONLY clickable layers are the two CURATED canal
+ * line layers (relevados + propuestos) — parcels/BPA/soil are excluded so a canal
+ * click can only ever resolve a curated `canal_ref`, never a parcel (JDB-013).
+ * All other modes get the full ordered list; the `'idle'` default preserves the
+ * pre-existing behaviour exactly (its ordering is pinned by tests, so the two
+ * ficha modes are handled as early returns and never perturb it).
  */
 export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[] {
   if (mode === 'ficha-dibujo') return [];
-  if (mode === 'ficha-canal') return [`${SOURCE_IDS.CANAL_NETWORK}-line`];
+  if (mode === 'ficha-canal') return [...CANAL_FICHA_LAYER_IDS];
   return [
     // ── Pilar Verde (top-most — wins click precedence on overlap) ──
     `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`,
@@ -205,16 +224,17 @@ export function useMapInteractionEffects({
     const clickableLayers = buildClickableLayers(measurementMode);
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
-      // A6 — canal mode: resolve a `canal_id` off `vt_canal_network` ONLY. The
-      // InfoPanel/parcel path is bypassed entirely so a canal click can never
-      // open a parcel card or fire a `tipo=parcela` ficha (design §6.3).
+      // A6/A7 — canal mode: resolve a curated `canal_ref` off the relevados /
+      // propuestos layers ONLY. The InfoPanel/parcel path is bypassed entirely so
+      // a canal click can never open a parcel card or fire a `tipo=parcela` ficha
+      // (design §6.3).
       if (measurementMode === 'ficha-canal') {
         const canalFeatures = map.queryRenderedFeatures(event.point, {
           layers: clickableLayers.filter((id) => map.getLayer(id)),
         });
         setSelectedFeatures([]);
         onParcelaResolved?.(null);
-        onCanalResolved?.(resolveCanalId(canalFeatures as unknown as FeatureWithLayer[]));
+        onCanalResolved?.(resolveCanalRef(canalFeatures as unknown as FeatureWithLayer[]));
         return;
       }
 

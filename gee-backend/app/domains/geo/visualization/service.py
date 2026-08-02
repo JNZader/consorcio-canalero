@@ -135,10 +135,11 @@ class VisualizationService:
         """
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        flow_dir_path = self._get_layer_path(db, TipoGeoLayer.FLOW_DIR, area_id)
         from app.domains.geo.intelligence.calculations import generar_zonificacion  # noqa: PLC0415
 
         elevation, transform = self._load_dem(dem_path)
-        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
+        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path, flow_dir_path)
         return renderer.render_cuencas_3d(elevation, transform, cuencas_gdf)
 
     def render_escorrentia(
@@ -242,6 +243,7 @@ class VisualizationService:
         """
         dem_path = self._get_layer_path(db, TipoGeoLayer.DEM_RAW, area_id)
         flow_acc_path = self._get_layer_path(db, TipoGeoLayer.FLOW_ACC, area_id)
+        flow_dir_path = self._get_layer_path(db, TipoGeoLayer.FLOW_DIR, area_id)
         slope_path = self._get_layer_path(db, TipoGeoLayer.SLOPE, area_id)
         from app.domains.geo.intelligence.calculations import (  # noqa: PLC0415
             detectar_puntos_conflicto,
@@ -250,7 +252,7 @@ class VisualizationService:
 
         empty = _empty_lines_gdf()
         elevation, transform = self._load_dem(dem_path)
-        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path)
+        cuencas_gdf = generar_zonificacion(dem_path, flow_acc_path, flow_dir_path)
         conflictos_gdf = detectar_puntos_conflicto(
             empty,
             empty,
