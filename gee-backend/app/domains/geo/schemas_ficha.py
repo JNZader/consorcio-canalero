@@ -127,14 +127,15 @@ class FichaCanalCuencaRequest(_FichaRequestBase):
     """Precomputed upstream catchment of a curated consorcio canal (A7).
 
     ``canal_ref`` is the ``canal_consorcio`` string id. ``variante`` defaults to
-    ``relevado``: v1 precomputes every catchment against the base/relevado
-    ``flow_dir`` raster, so ``relevado`` is the only variante with a stored
-    catchment (``natural`` is reserved for a later slice).
+    ``natural``: v1 precomputes every catchment against the NATURAL ``flow_dir``
+    raster (terrain without canals burned in — the only one registered here, since
+    the burned/relevado layer was pruned), so ``natural`` is the only variante with a
+    stored catchment (``relevado`` is reserved for a later slice).
     """
 
     tipo: Literal["canal_cuenca"]
     canal_ref: str = Field(min_length=1, max_length=128)
-    variante: VarianteCuenca = "relevado"
+    variante: VarianteCuenca = "natural"
 
 
 FichaRequest = Annotated[
