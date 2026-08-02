@@ -9,8 +9,8 @@ fixed:
   keyed by the string ``canal_ref`` — NOT the old ``canal_network`` int graph;
 * the watershed is seeded with the D8 POINTER (flow_dir), never the DEM
   (the A7 "D8 blocker" regression);
-* v1 computes every catchment against the base/relevado ``flow_dir_{area}`` raster
-  and stamps ``variante = 'relevado'``;
+* v1 computes every catchment against the natural ``natural_flow_dir_{area}`` raster
+  and stamps ``variante = 'natural'``;
 * a normal canal yields a MultiPolygon catchment with the right ``area_ha``;
 * an oversized basin (> ``ficha_max_area_ha``) is stored ``oversized`` with a NULL
   geometry — the multi-MB polygon is dropped;
@@ -175,7 +175,7 @@ def catchment_db(test_engine) -> Session:
     connection.close()
 
 
-def _register_flow_dir(db: Session, nombre: str = f"flow_dir_{AREA}") -> str:
+def _register_flow_dir(db: Session, nombre: str = f"natural_flow_dir_{AREA}") -> str:
     layer = GeoRepository().create_layer(
         db,
         nombre=nombre,
@@ -206,7 +206,7 @@ def _seed_canal(
     )
 
 
-def _row(db: Session, canal_ref: str, variante: str = "relevado"):
+def _row(db: Session, canal_ref: str, variante: str = "natural"):
     return db.execute(
         text(
             "SELECT area_ha, oversized, version, flow_dir_layer_id, "
@@ -291,10 +291,10 @@ def test_normal_canal_yields_catchment_with_correct_area(catchment_db: Session) 
     assert str(row.flow_dir_layer_id) == version
 
 
-def test_variante_stamped_is_v1_relevado(catchment_db: Session) -> None:
+def test_variante_stamped_is_v1_natural(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
-    # Even a PROPUESTO canal is stored with variante='relevado' in v1 (computed
-    # against the base/relevado flow_dir, not a per-canal escenario).
+    # Even a PROPUESTO canal is stored with variante='natural' in v1 (computed
+    # against the natural flow_dir, not a per-canal escenario).
     _seed_canal(catchment_db, "canal-prop", estado="propuesto")
 
     _run(catchment_db, _RecordingWbt(), _shapes_returning(_NORMAL_POLY))
@@ -302,7 +302,7 @@ def test_variante_stamped_is_v1_relevado(catchment_db: Session) -> None:
     stored_variante = catchment_db.execute(
         text("SELECT variante FROM canal_catchment WHERE canal_ref = 'canal-prop'")
     ).scalar_one()
-    assert stored_variante == gcc.V1_VARIANTE == "relevado"
+    assert stored_variante == gcc.V1_VARIANTE == "natural"
 
 
 def test_watershed_is_seeded_with_flow_dir_not_dem(catchment_db: Session) -> None:
@@ -358,7 +358,7 @@ def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
         text(
             "SELECT oversized, geometria IS NULL AS geom_null, "
             "ST_NPoints(geometria) AS npoints "
-            "FROM canal_catchment WHERE canal_ref = 'canal-a' AND variante = 'relevado'"
+            "FROM canal_catchment WHERE canal_ref = 'canal-a' AND variante = 'natural'"
         )
     ).one()
     assert row.oversized is False
@@ -395,7 +395,7 @@ def test_new_flow_dir_version_recomputes(catchment_db: Session) -> None:
 
     # A fresh terrain run mints a NEW flow_dir layer (new id → new version).
     catchment_db.execute(
-        text("DELETE FROM geo_layers WHERE nombre = :n"), {"n": f"flow_dir_{AREA}"}
+        text("DELETE FROM geo_layers WHERE nombre = :n"), {"n": f"natural_flow_dir_{AREA}"}
     )
     v2 = _register_flow_dir(catchment_db)
     assert v2 != v1

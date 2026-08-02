@@ -103,9 +103,11 @@ GEO_DATA_ROOT = "/data/geo"
 DEFAULT_AREA_ID = "zona_principal"
 
 #: The single ``variante`` v1 stamps on every catchment. All 60 canals are computed
-#: against the base/relevado ``flow_dir`` raster; the per-canal escenario refinement
-#: is deferred, so there is only one variante for now (kept as a column for it).
-V1_VARIANTE = "relevado"
+#: against the NATURAL ``flow_dir`` raster (terrain without canals burned in) — the
+#: burned/relevado + escenario variants were pruned from this deployment (the
+#: operator distrusts stream burning), so natural is the registered + trusted base.
+#: The per-canal escenario refinement is deferred (kept as a column for it).
+V1_VARIANTE = "natural"
 
 #: ``canal_consorcio.estado`` values that ``--estado`` may scope the run to.
 CANAL_ESTADOS = ("relevado", "propuesto")
@@ -186,25 +188,28 @@ def _resolve_io(
     return rasterio_module, rasterize_fn, shapes_fn, get_wbt
 
 
-def _flow_dir_layer_name(area_id: str) -> str:
-    """The ``geo_layers.nombre`` the DEM pipeline registered for the base drainage.
+def _flow_dir_layer_names(area_id: str) -> tuple[str, ...]:
+    """The ``geo_layers.nombre`` candidates for v1, most-preferred first.
 
-    V1 always uses the base/relevado ``flow_dir_{area}`` layer (the operational
-    drainage with the relevado canals burned in) for every curated canal.
+    V1 uses the NATURAL ``flow_dir`` (``natural_flow_dir_{area}``) — the drainage of
+    the terrain WITHOUT canals burned in. This deployment pruned the burned/relevado
+    layer, keeping only natural. The base ``flow_dir_{area}`` is a fallback for a
+    deployment that only registered the base raster.
     """
-    return f"flow_dir_{area_id}"
+    return (f"natural_flow_dir_{area_id}", f"flow_dir_{area_id}")
 
 
 def resolve_flow_dir_layer(db: Session, area_id: str, *, repo: GeoRepository):
-    """Return the base ``flow_dir`` ``GeoLayer`` for ``area_id`` or ``None``.
+    """Return the v1 ``flow_dir`` ``GeoLayer`` for ``area_id`` or ``None``.
 
-    V1 resolves a single raster — the base/relevado ``flow_dir_{area}`` — and every
-    catchment is computed against it. There is no natural / per-canal fallback.
+    Prefers the NATURAL raster (``natural_flow_dir_{area}``), falling back to the base
+    ``flow_dir_{area}``. Every catchment is computed against the resolved raster.
     """
-    layer = repo.get_layer_by_nombre(db, _flow_dir_layer_name(area_id))
-    if layer is None or layer.tipo != TipoGeoLayer.FLOW_DIR.value:
-        return None
-    return layer
+    for nombre in _flow_dir_layer_names(area_id):
+        layer = repo.get_layer_by_nombre(db, nombre)
+        if layer is not None and layer.tipo == TipoGeoLayer.FLOW_DIR.value:
+            return layer
+    return None
 
 
 def _open_flow_dir_grid(flow_dir_path: str, *, rasterio_module: Any) -> _FlowDirGrid:
