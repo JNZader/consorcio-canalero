@@ -20,7 +20,7 @@ import { memo } from 'react';
 
 import type { FichaDataset } from '../../lib/api/ficha';
 import { riesgoClassColor } from './fichaOverlayLayers';
-import { ClassColorChip, LowConfidenceBadge, SinCobertura, fmtHa, fmtPct } from './fichaShared';
+import { ClassToggleCell, LowConfidenceBadge, SinCobertura, fmtHa, fmtPct } from './fichaShared';
 
 /** Which legend the class labels are resolved against — the overlay dataset key. */
 export type RiesgoLegendKey = 'flood_risk' | 'drainage_need';
@@ -28,9 +28,11 @@ export type RiesgoLegendKey = 'flood_risk' | 'drainage_need';
 function SeverityBar({
   dataset,
   legendKey,
+  hiddenClases,
 }: {
   readonly dataset: FichaDataset;
   readonly legendKey: RiesgoLegendKey;
+  readonly hiddenClases: readonly string[];
 }) {
   return (
     <Box
@@ -56,6 +58,10 @@ function SeverityBar({
             // add to each segment's box and make the percentage widths (which
             // must sum to 100%) overflow.
             boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.2)',
+            // A class turned off in the table is not painted on the map, so
+            // the complement bar fades with it — the widths stay put because
+            // the percentages are facts about the analysis, not about paint.
+            opacity: hiddenClases.includes(clase.clase) ? 0.25 : 1,
           }}
         />
       ))}
@@ -63,17 +69,31 @@ function SeverityBar({
   );
 }
 
+const NO_HIDDEN_CLASES: readonly string[] = [];
+
 export const RiesgoBins = memo(function RiesgoBins({
   label,
   dataset,
   legendKey,
   testId,
+  hiddenClases = NO_HIDDEN_CLASES,
+  onToggleClase,
 }: {
   readonly label: string;
   readonly dataset: FichaDataset;
   /** Dataset key used to resolve each class label to the overlay's color. */
   readonly legendKey: RiesgoLegendKey;
   readonly testId: string;
+  /**
+   * Classes currently NOT painted on the map (T3b, fix 3). Their rows render
+   * dimmed with a hollow chip. Empty (the default) = every class is painted.
+   */
+  readonly hiddenClases?: readonly string[];
+  /**
+   * Toggles one class in the painted overlay. Omitted, the table stays static —
+   * this component is also mounted in contexts with no overlay to drive.
+   */
+  readonly onToggleClase?: (clase: string) => void;
 }) {
   const hasData = dataset.cobertura !== 'sin_cobertura' && dataset.clases.length > 0;
 
@@ -90,7 +110,7 @@ export const RiesgoBins = memo(function RiesgoBins({
         <SinCobertura testId={`${testId}-sin-cobertura`} />
       ) : (
         <>
-          <SeverityBar dataset={dataset} legendKey={legendKey} />
+          <SeverityBar dataset={dataset} legendKey={legendKey} hiddenClases={hiddenClases} />
           <Table withRowBorders={false} verticalSpacing={2} fz="xs">
             <Table.Thead>
               <Table.Tr>
@@ -103,15 +123,18 @@ export const RiesgoBins = memo(function RiesgoBins({
               {dataset.clases.map((clase) => (
                 <Table.Tr key={clase.clase}>
                   <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <ClassColorChip
-                        color={riesgoClassColor(legendKey, clase.clase)}
-                        testId={`${testId}-chip-${clase.clase}`}
-                      />
+                    <ClassToggleCell
+                      color={riesgoClassColor(legendKey, clase.clase)}
+                      clase={clase.clase}
+                      hidden={hiddenClases.includes(clase.clase)}
+                      onToggle={onToggleClase}
+                      chipTestId={`${testId}-chip-${clase.clase}`}
+                      rowTestId={`${testId}-row-${clase.clase}`}
+                    >
                       <Text component="span" size="xs">
                         {clase.clase}
                       </Text>
-                    </Group>
+                    </ClassToggleCell>
                   </Table.Td>
                   <Table.Td ta="right">{fmtHa(clase.ha)}</Table.Td>
                   <Table.Td ta="right">{fmtPct(clase.pct)}</Table.Td>

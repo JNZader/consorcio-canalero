@@ -114,6 +114,53 @@ export function buildOverlayColorExpression(
     : buildRiesgoOverlayColorExpression(dataset);
 }
 
+/**
+ * Restrict the painted overlay to a set of class labels (T3b, fix 3).
+ *
+ * The ficha table IS the overlay's legend, so clicking a class row has to act on
+ * the map. That is a pure STYLE operation: the FeatureCollection already on the
+ * source carries every class, so filtering costs no refetch and no re-add.
+ *
+ * `null` (the default state, "all classes on") REMOVES the filter instead of
+ * writing an all-inclusive one, so the common path leaves the layers exactly as
+ * they were before this feature existed. A non-null list is applied verbatim —
+ * an EMPTY list is legitimate and paints nothing (the user turned every class
+ * off), it is not treated as "show everything".
+ *
+ * ONE-WRITER RULE: production code must reach this ONLY through
+ * `syncFichaOverlayLayers` (its last step). A second caller in its own effect
+ * reintroduces the re-add ordering bug: a re-created layer carries no filter,
+ * so hidden classes repaint for a frame. Exported for tests only.
+ *
+ * Idempotent and safe when the layers are absent (overlay off / not yet added)
+ * and when the map implementation has no `setFilter` (the same optional-call
+ * guard `setPaintProperty` already uses here).
+ *
+ * The layer ids are dataset-INDEPENDENT — one fill + one line pair is reused
+ * across datasets — so this takes no `dataset`: the caller switching datasets
+ * repaints the palette through `syncFichaOverlayLayers` and passes the new
+ * dataset's visible classes in the same call.
+ */
+export function setFichaOverlayClassFilter(
+  map: maplibregl.Map,
+  visibleClases: readonly string[] | null
+) {
+  const filter =
+    visibleClases === null
+      ? null
+      : ([
+          'in',
+          ['get', 'clase'],
+          ['literal', [...visibleClases]],
+        ] as unknown as maplibregl.FilterSpecification);
+
+  for (const layerId of [FICHA_OVERLAY_FILL_LAYER, FICHA_OVERLAY_LINE_LAYER]) {
+    if (!map.getLayer(layerId)) continue;
+    // `undefined` is MapLibre's "no filter"; `null` is not accepted by the type.
+    map.setFilter?.(layerId, filter ?? undefined);
+  }
+}
+
 function removeFichaOverlay(map: maplibregl.Map) {
   if (map.getLayer(FICHA_OVERLAY_LINE_LAYER)) {
     map.removeLayer(FICHA_OVERLAY_LINE_LAYER);
@@ -136,6 +183,12 @@ const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
  *   ficha on every mode/selection switch; this mirrors that).
  * - `visible: true` with a FeatureCollection → the source is added (or its data
  *   updated) and the fill + line layers are (re)created, colored by `clase`.
+ *
+ * `visibleClases` (T3b) is applied HERE, as the last step, rather than by the
+ * caller in a second effect: this function CREATES the layers when they are
+ * absent, and a freshly created layer carries no filter. Folding the filter in
+ * makes this the single writer and removes the ordering bug where a re-add
+ * silently repaints classes the user had turned off.
  */
 export function syncFichaOverlayLayers(
   map: maplibregl.Map,
@@ -143,9 +196,11 @@ export function syncFichaOverlayLayers(
     featureCollection: FeatureCollection | null | undefined;
     dataset: FichaOverlayDataset;
     visible: boolean;
+    /** Class labels to paint; `null`/omitted = every class (no filter). */
+    visibleClases?: readonly string[] | null;
   }
 ) {
-  const { featureCollection, dataset, visible } = params;
+  const { featureCollection, dataset, visible, visibleClases = null } = params;
 
   if (!visible || !featureCollection) {
     removeFichaOverlay(map);
@@ -200,6 +255,10 @@ export function syncFichaOverlayLayers(
       },
     });
   }
+
+  // Last: the layers now certainly exist, whether they were just created or
+  // reused, so the class filter lands on both of them exactly once.
+  setFichaOverlayClassFilter(map, visibleClases);
 }
 
 /** Convenience for a clean teardown (unmount / map removal). */

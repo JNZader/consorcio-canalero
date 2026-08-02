@@ -147,7 +147,10 @@ describe('FichaTerritorialPanel', () => {
     expect(alert).toHaveTextContent(detail);
   });
 
-  it('renders one table per dataset with the server numbers', () => {
+  // T3b — the body no longer stacks the four dataset blocks: the dataset TAB
+  // selects which single table is rendered. The default tab is soils, so the
+  // soils table (and only it) renders with the server's numbers verbatim.
+  it('renders the selected dataset table with the server numbers', () => {
     renderWithMantine(<FichaTerritorialPanel {...baseProps} data={ficha()} />);
     expect(screen.getByTestId('ficha-result')).toBeInTheDocument();
     expect(screen.getByText('Superficie analizada:')).toBeInTheDocument();
@@ -155,8 +158,9 @@ describe('FichaTerritorialPanel', () => {
     expect(screen.getByText('12.5 ha')).toBeInTheDocument();
     expect(screen.getByText('62.5%')).toBeInTheDocument();
     expect(screen.getByTestId('ficha-suelos')).toBeInTheDocument();
-    expect(screen.getByTestId('ficha-flood-risk')).toBeInTheDocument();
-    expect(screen.getByTestId('ficha-drainage-need')).toBeInTheDocument();
+    // The other datasets are one tab away, not stacked below.
+    expect(screen.queryByTestId('ficha-flood-risk')).toBeNull();
+    expect(screen.queryByTestId('ficha-drainage-need')).toBeNull();
   });
 
   it('renders the parcel identity header above the analysis for a tipo=parcela ficha', () => {

@@ -26,6 +26,13 @@ interface PilarVerdeBadgesProps {
   readonly tipo: FichaTipo;
   readonly nroCuenta: string | null;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
+  /**
+   * Compact shape (T3b): a single inline row — a dimmed "Pilar Verde" label plus
+   * the badges — instead of a titled block. The tabbed ficha keeps this in the
+   * fixed header above the dataset selector, where vertical space is the scarce
+   * resource. The CONTENT is identical: no badge is dropped, only shrunk.
+   */
+  readonly compact?: boolean;
 }
 
 function SinVinculacion() {
@@ -40,6 +47,7 @@ export const PilarVerdeBadges = memo(function PilarVerdeBadges({
   tipo,
   nroCuenta,
   bpaEnriched,
+  compact = false,
 }: PilarVerdeBadgesProps) {
   // No single account for a drawn polygon or a canal-derived area.
   if (tipo !== 'parcela') return null;
@@ -50,35 +58,50 @@ export const PilarVerdeBadges = memo(function PilarVerdeBadges({
       : null;
 
   const anios = parcel?.años_bpa ?? 0;
+  const badgeSize = compact ? 'xs' : 'sm';
+
+  const content =
+    !parcel || anios < 1 ? (
+      <SinVinculacion />
+    ) : (
+      <Group gap="xs" wrap="wrap">
+        <Badge size={badgeSize} color="green" variant="light">
+          {anios} {anios === 1 ? 'año' : 'años'} de BPA
+        </Badge>
+        {/* Stricter than InfoPanel/BpaCard, which treat presence of `bpa_2025` as
+            active app-wide: HERE the enriched record carries the authoritative,
+            ETL-normalized `activa` boolean (false is real), so we honor it. */}
+        {parcel.bpa_2025?.activa === true ? (
+          <Badge size={badgeSize} color="teal" variant="light">
+            Activa 2025
+          </Badge>
+        ) : (
+          parcel.bpa_2025 !== null && (
+            <Badge size={badgeSize} color="gray" variant="light">
+              2025: inactiva
+            </Badge>
+          )
+        )}
+      </Group>
+    );
+
+  if (compact) {
+    return (
+      <Group gap="xs" wrap="nowrap" data-testid="ficha-pilar-verde">
+        <Text size="xs" c="dimmed" style={{ flex: '0 0 auto' }}>
+          Pilar Verde
+        </Text>
+        {content}
+      </Group>
+    );
+  }
 
   return (
     <Stack gap={4} data-testid="ficha-pilar-verde">
       <Text size="sm" fw={600}>
         Pilar Verde
       </Text>
-      {!parcel || anios < 1 ? (
-        <SinVinculacion />
-      ) : (
-        <Group gap="xs" wrap="wrap">
-          <Badge size="sm" color="green" variant="light">
-            {anios} {anios === 1 ? 'año' : 'años'} de BPA
-          </Badge>
-          {/* Stricter than InfoPanel/BpaCard, which treat presence of `bpa_2025` as
-              active app-wide: HERE the enriched record carries the authoritative,
-              ETL-normalized `activa` boolean (false is real), so we honor it. */}
-          {parcel.bpa_2025?.activa === true ? (
-            <Badge size="sm" color="teal" variant="light">
-              Activa 2025
-            </Badge>
-          ) : (
-            parcel.bpa_2025 !== null && (
-              <Badge size="sm" color="gray" variant="light">
-                2025: inactiva
-              </Badge>
-            )
-          )}
-        </Group>
-      )}
+      {content}
     </Stack>
   );
 });

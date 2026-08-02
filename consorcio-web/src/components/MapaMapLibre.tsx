@@ -32,8 +32,9 @@ import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
-import { FICHA_MAX_BUFFER_M, type FichaOverlayDataset } from '../lib/api/ficha';
+import { FICHA_MAX_BUFFER_M } from '../lib/api/ficha';
 import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
+import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
 import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { useGeoLayers } from '../hooks/useGeoLayers';
@@ -397,23 +398,24 @@ export default function MapaMapLibre() {
   // in the ficha state, so a null request (clearFicha / every mode switch resets
   // the coordinator to IDLE) drops the fetch and the paint effect below removes
   // any lingering layer.
-  const [showFichaOverlay, setShowFichaOverlay] = useState(false);
-  // Which dataset the overlay paints, clipped, one at a time (single-overlay model,
-  // matching the single-select map). Switching it re-keys the query → refetch +
-  // repaint. Defaults to soils, the cheap exact vector path.
-  const [fichaOverlayDataset, setFichaOverlayDataset] = useState<FichaOverlayDataset>('suelos');
-  const fichaOverlayEnabled = showFichaOverlay && fichaInteraction.request !== null;
+  //
+  // ONE selector (T3b): the ficha panel's dataset TAB picks both the table the
+  // user reads and the dataset the map paints, and the class rows of that table
+  // filter the paint. All of it lives in `useFichaOverlayTabs` because the
+  // pieces are only correct together (see that file's header).
+  const fichaTabs = useFichaOverlayTabs({
+    selectionKey: fichaKey,
+    ficha: ficha.data,
+  });
+
+  // A selected zone is the container's business, not the panel's: with no
+  // request there is no geometry to clip and the query must stay idle.
+  const fichaOverlayEnabled = fichaTabs.overlayEnabled && fichaInteraction.request !== null;
   const fichaOverlay = useFichaOverlay(
     fichaInteraction.request,
-    fichaOverlayDataset,
+    fichaTabs.overlayDataset,
     fichaOverlayEnabled
   );
-  const handleToggleFichaOverlay = useCallback((visible: boolean) => {
-    setShowFichaOverlay(visible);
-  }, []);
-  const handleChangeFichaOverlayDataset = useCallback((dataset: FichaOverlayDataset) => {
-    setFichaOverlayDataset(dataset);
-  }, []);
 
   // Auto-minimize signal (T3a, fix 2): one bump per map DRAG gesture, so open
   // panels collapse to their pills the moment the user starts panning. Zoom and
@@ -429,10 +431,20 @@ export default function MapaMapLibre() {
     if (!map || !mapReady) return;
     syncFichaOverlayLayers(map, {
       featureCollection: (fichaOverlay.data as unknown as FeatureCollection | undefined) ?? null,
-      dataset: fichaOverlayDataset,
+      dataset: fichaTabs.overlayDataset,
       visible: fichaOverlayEnabled && !!fichaOverlay.data,
+      // Same call, same effect: the sync re-creates the layers whenever they
+      // were removed, and a fresh layer carries no filter — reapplying it in a
+      // second effect would leave one frame painting the hidden classes.
+      visibleClases: fichaTabs.visibleClases,
     });
-  }, [mapReady, fichaOverlayEnabled, fichaOverlay.data, fichaOverlayDataset]);
+  }, [
+    mapReady,
+    fichaOverlayEnabled,
+    fichaOverlay.data,
+    fichaTabs.overlayDataset,
+    fichaTabs.visibleClases,
+  ]);
 
   // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
   // own mount effect (which populates its imperative handle) is a CHILD passive
@@ -813,10 +825,12 @@ export default function MapaMapLibre() {
               fichaData={ficha.data}
               onCloseFicha={fichaInteraction.clearFicha}
               onRetryFicha={ficha.refetch}
-              fichaOverlayVisible={showFichaOverlay}
-              onToggleFichaOverlay={handleToggleFichaOverlay}
-              fichaOverlayDataset={fichaOverlayDataset}
-              onChangeFichaOverlayDataset={handleChangeFichaOverlayDataset}
+              fichaOverlayVisible={fichaTabs.overlayVisible}
+              onToggleFichaOverlay={fichaTabs.setOverlayVisible}
+              fichaTab={fichaTabs.tab}
+              onChangeFichaTab={fichaTabs.changeTab}
+              fichaHiddenClases={fichaTabs.hiddenClases}
+              onToggleFichaClase={fichaTabs.toggleClase}
               fichaOverlayLoading={fichaOverlay.isLoading}
               fichaOverlayError={fichaOverlay.isError}
               mapDragSignal={mapDragSignal}
