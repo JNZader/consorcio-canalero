@@ -15,6 +15,13 @@ interface MapActionsPanelProps {
    * itself (try/catch + red notification).
    */
   readonly onExportKmz?: () => void;
+  /**
+   * Fired when the Export dropdown OPENS — i.e. the first observable signal of
+   * export INTENT, before the user picks a format. The container uses it to
+   * kick off the heavy catastro GeoJSON fetch that only the KMZ export needs,
+   * so a plain map visitor never pays for it.
+   */
+  readonly onExportMenuOpen?: () => void;
 }
 
 /**
@@ -36,6 +43,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
+  onExportMenuOpen,
 }: MapActionsPanelProps) {
   return (
     <Box
@@ -48,7 +56,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
         margin: 0,
       }}
     >
-      <Menu shadow="md" width={200}>
+      <Menu shadow="md" width={200} onOpen={onExportMenuOpen}>
         <Menu.Target>
           <Tooltip label="Exportar" position="left" withArrow>
             <UnstyledButton

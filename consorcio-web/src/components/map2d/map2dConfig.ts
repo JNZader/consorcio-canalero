@@ -13,6 +13,22 @@ export const GEE_LAYER_NAMES = ['zona'] as const;
  */
 export const DEFAULT_BASE_LAYER: 'osm' | 'satellite' = 'satellite';
 
+/**
+ * Fill opacity of the clickable catastro parcels — SINGLE SOURCE OF TRUTH.
+ *
+ * This fill is the ONLY visual affordance telling a citizen the parcels are
+ * clickable (they open the ficha territorial), so it must not silently drift
+ * back towards invisible.
+ *
+ * It lives in this leaf module (no runtime imports) because BOTH the paint
+ * (`mapLayerEffectHelpers.ts::syncCatastroLayers`) and the opacity-multiplier
+ * registry (`layerRenderRegistry.ts`) must read the exact same number: the
+ * registry's `defaultOpacity` is multiplied by the persisted per-layer
+ * multiplier, so a stale mirror there stomps the paint back down.
+ * `tests/unit/layerRenderRegistry.test.ts` pins the two together.
+ */
+export const CATASTRO_FILL_OPACITY = 0.12;
+
 export const SOURCE_IDS = {
   WATERWAYS: 'map2d-waterways',
   SOIL: 'map2d-soil',

@@ -47,6 +47,12 @@ import { SuelosBreakdown } from './SuelosBreakdown';
 export interface FichaTerritorialPanelProps {
   /** Whether an area of interest is currently selected. When false, nothing renders. */
   readonly active: boolean;
+  /**
+   * True when the InfoPanel is open at the same time. Caps this panel's height
+   * so both panels share the right-hand column instead of overlapping (see
+   * `.fichaPanelCompact` in `map.module.css` for the budget derivation).
+   */
+  readonly compact?: boolean;
   readonly tipo: FichaTipo;
   /** Clicked parcel account, for the client-side BPA join. `null` for other tipos. */
   readonly nroCuenta: string | null;
@@ -204,6 +210,7 @@ function PanelBody({
 
 export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   active,
+  compact = false,
   tipo,
   nroCuenta,
   parcelaProps,
@@ -247,7 +254,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       shadow="md"
       p="md"
       radius="md"
-      className={styles.fichaPanel}
+      className={compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel}
       data-testid="ficha-territorial-panel"
     >
       <Group justify="space-between" mb="xs">

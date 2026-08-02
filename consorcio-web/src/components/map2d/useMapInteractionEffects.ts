@@ -252,13 +252,17 @@ export function useMapInteractionEffects({
       const featuresWithLayer = features as unknown as FeatureWithLayer[];
       const parcela = resolveParcela(featuresWithLayer);
 
-      // Bug-3 (combine): when a catastro parcel resolves, its identity + analysis
-      // live in the SINGLE ficha panel, so the redundant generic InfoPanel
-      // catastro card must NOT also open. Suppress the catastro feature(s) from
-      // the InfoPanel while keeping every NON-catastro feature (BPA, canales,
-      // escuelas, soil, …) so those layers keep working. When no parcel
-      // resolved, the full feature list flows through unchanged.
-      const featuresForInfoPanel = parcela
+      // De-duplication (bug-3 combine): when a catastro parcel resolves, its
+      // identity is already rendered by the ficha's header, so the redundant
+      // catastro CARD is dropped from the InfoPanel — but ONLY that card. Every
+      // other feature under the same click (canal, escuela, BPA, suelo, camino)
+      // still opens its InfoPanel card; suppressing them wholesale made those
+      // cards unreachable on any rural click now that catastro defaults to ON.
+      // The two panels are laid out so they coexist (InfoPanel top-right, ficha
+      // bottom-right, both capped — see `map.module.css` `.infoPanelCompact` /
+      // `.fichaPanelCompact`), which is what the blanket suppression was really
+      // trying to solve.
+      const featuresForInfoPanel: FeatureWithLayer[] = parcela
         ? featuresWithLayer.filter((f) => f.layer?.id !== CATASTRO_LAYER_ID)
         : featuresWithLayer;
 

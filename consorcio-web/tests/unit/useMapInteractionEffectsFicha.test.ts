@@ -3,9 +3,20 @@
  *
  * A4.7 — parcel click is the DEFAULT, not a mode. In `'idle'` a click that
  * resolves a `parcelas_catastro` feature ADDITIONALLY reports the parcel to the
- * container (design §6.2). This asserts:
- *   - a catastro click reports { nomenclatura, nroCuenta }, alongside the usual
- *     selectedFeatures (InfoPanel path is untouched);
+ * container (design §6.2).
+ *
+ * De-duplication, NOT mutual exclusion: a resolved parcel drops ONLY the
+ * redundant catastro card (the ficha header already carries that identity).
+ * Suppressing the whole InfoPanel made canal / escuela / BPA / suelo / camino
+ * cards unreachable on any rural click once catastro defaulted to ON; the
+ * panel overlap that motivated the blanket suppression is solved by LAYOUT
+ * instead (`.infoPanelCompact` / `.fichaPanelCompact`).
+ *
+ * This asserts:
+ *   - a catastro click reports { nomenclatura, nroCuenta };
+ *   - a resolved parcel filters out the catastro feature but PASSES THROUGH
+ *     every other feature under the same click (canal, escuela, BPA);
+ *   - with NO parcel resolved the InfoPanel path is untouched (passthrough);
  *   - a click that hits no parcel clears the ficha (null);
  *   - a click while measuring clears the ficha and selects nothing.
  */
@@ -50,7 +61,10 @@ function renderEffect(
   );
 }
 
-const clickEvent = { point: { x: 10, y: 10 }, lngLat: { lat: -32.6, lng: -62.6 } };
+const clickEvent = {
+  point: { x: 10, y: 10 },
+  lngLat: { lat: -32.6, lng: -62.6 },
+};
 
 describe('useMapInteractionEffects — ficha parcel resolution', () => {
   it('reports a catastro parcel (nomenclatura + nro_cuenta + display props) on an idle click', () => {
@@ -89,7 +103,31 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     });
   });
 
-  it('SUPPRESSES the catastro feature from InfoPanel but keeps non-catastro features', () => {
+  it('drops the redundant catastro card when the parcel is the ONLY hit', () => {
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203', nro_cuenta: '110123' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela]);
+    const onParcelaResolved = vi.fn();
+    const setSelectedFeatures = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved, setSelectedFeatures);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(onParcelaResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+    );
+    // Nothing left after the catastro card is filtered out → no InfoPanel.
+    expect(setSelectedFeatures).toHaveBeenCalledWith([]);
+  });
+
+  it('KEEPS the canal card when a canal feature sits under the same parcel click', () => {
+    // Regression guard (R3-001/R4-002): the blanket `parcela ? [] : …`
+    // suppression made every non-catastro card unreachable on rural clicks once
+    // catastro defaulted to ON. Only the redundant catastro card is dropped.
     const parcela = {
       type: 'Feature',
       layer: { id: CATASTRO_LAYER },
@@ -113,8 +151,41 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     expect(onParcelaResolved).toHaveBeenCalledWith(
       expect.objectContaining({ nomenclatura: '13-06-01-0203' })
     );
-    // …but the InfoPanel only receives the NON-catastro feature (no double panel).
+    // …and the canal card survives: catastro filtered, canal passed through.
     expect(setSelectedFeatures).toHaveBeenCalledWith([canal]);
+  });
+
+  it('KEEPS escuela and BPA cards under the same parcel click (ordered passthrough)', () => {
+    const bpa = {
+      type: 'Feature',
+      layer: { id: `${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill` },
+      properties: { bpa_total: 3 },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const escuela = {
+      type: 'Feature',
+      layer: { id: `${SOURCE_IDS.ESCUELAS}-circle` },
+      properties: { nombre: 'Escuela Rural 12' },
+      geometry: { type: 'Point', coordinates: [0, 0] },
+    };
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203', nro_cuenta: '110123' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    // MapLibre order: top-most first (BPA, escuela, then catastro).
+    const { map, handlers } = createMapMock([bpa, escuela, parcela]);
+    const onParcelaResolved = vi.fn();
+    const setSelectedFeatures = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved, setSelectedFeatures);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(onParcelaResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+    );
+    expect(setSelectedFeatures).toHaveBeenCalledWith([bpa, escuela]);
   });
 
   it('passes ALL features to InfoPanel when no catastro parcel resolved', () => {

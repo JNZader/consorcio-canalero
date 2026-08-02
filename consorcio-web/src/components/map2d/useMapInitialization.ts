@@ -30,12 +30,47 @@ export function installMapNativeDragGuards(container: HTMLElement): () => void {
   container.style.setProperty('-webkit-user-drag', 'none');
 
   return () => {
-    container.removeEventListener('dragstart', preventNativeDrag, { capture: true });
+    container.removeEventListener('dragstart', preventNativeDrag, {
+      capture: true,
+    });
     container.style.userSelect = '';
     container.style.webkitUserSelect = '';
     container.style.removeProperty('-webkit-user-drag');
   };
 }
+
+/**
+ * True when the primary pointer is coarse (finger/stylus), i.e. a touch device.
+ *
+ * Cooperative gestures exist to stop the DESKTOP wheel from hijacking page
+ * scroll. On touch they do the opposite of what we want: MapLibre requires TWO
+ * fingers to pan, so a one-finger drag scrolls the page and the map becomes
+ * unpannable with the gesture every user tries first. We therefore enable the
+ * handler only for fine pointers.
+ *
+ * Read ONCE at map construction (the option is not reactive in MapLibre);
+ * falls back to `false` (= cooperative gestures ON) when `matchMedia` is
+ * unavailable, which keeps the safer desktop behaviour as the default.
+ */
+export function isCoarsePointerDevice(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  try {
+    return window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Spanish copy for MapLibre's cooperative-gestures hint overlay. Keys are the
+ * canonical MapLibre locale ids (see `CooperativeGesturesHandler.*HelpText` in
+ * the installed `maplibre-gl` typings) — the library ships English-only text.
+ */
+export const MAP_LOCALE_ES = {
+  'CooperativeGesturesHandler.WindowsHelpText': 'Usá Ctrl + desplazamiento para hacer zoom',
+  'CooperativeGesturesHandler.MacHelpText': 'Usá ⌘ + desplazamiento para hacer zoom',
+  'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
+} as const;
 
 export function useMapInitialization({
   maplibre,
@@ -91,7 +126,10 @@ export function useMapInitialization({
           {
             id: 'vector-layers-start',
             type: 'background',
-            paint: { 'background-color': 'rgba(0,0,0,0)', 'background-opacity': 0 },
+            paint: {
+              'background-color': 'rgba(0,0,0,0)',
+              'background-opacity': 0,
+            },
           },
         ],
       },
@@ -100,10 +138,13 @@ export function useMapInitialization({
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
       preserveDrawingBuffer: true,
-      // Wheel/one-finger gestures must NOT hijack the page scroll. MapLibre's
-      // native cooperative-gestures mode requires Ctrl+wheel (or two fingers)
-      // to zoom and shows a hint otherwise. See change `rediseno-ux-mapa`.
-      cooperativeGestures: true,
+      // Desktop wheel must NOT hijack the page scroll: cooperative gestures
+      // require Ctrl+wheel to zoom and show a hint otherwise (see change
+      // `rediseno-ux-mapa`). On TOUCH the same handler forces two-finger pan,
+      // which makes the map unresponsive to the one-finger drag every user
+      // tries first — so it is enabled for FINE pointers only.
+      cooperativeGestures: !isCoarsePointerDevice(),
+      locale: { ...MAP_LOCALE_ES },
     });
 
     map.addControl(new maplibre.NavigationControl(), 'top-right');

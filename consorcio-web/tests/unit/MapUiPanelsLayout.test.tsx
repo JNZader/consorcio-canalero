@@ -60,6 +60,13 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
     onRangeToggle: noop,
     selectedFeatures: [],
     onCloseInfoPanel: noop,
+    fichaActive: false,
+    fichaTipo: 'parcela',
+    fichaNroCuenta: null,
+    fichaLoading: false,
+    fichaError: null,
+    fichaData: undefined,
+    onCloseFicha: noop,
     exportPngModalOpen: false,
     onCloseExportPngModal: noop,
     exportTitle: '',
@@ -96,5 +103,45 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
   it('skips the LeyendaPanel when showLegend is false', () => {
     renderWithMantine(<MapUiPanels {...buildProps({ showLegend: false })} />);
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
+  });
+});
+
+describe('<MapUiPanels /> — InfoPanel + ficha coexistence', () => {
+  const feat: Feature = {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [0, 0] },
+    properties: { nombre: 'Canal Este' },
+  };
+
+  it('applies the compact modifier to BOTH panels when both are open', () => {
+    // A catastro click opens the ficha AND (now that only the catastro card is
+    // filtered) the InfoPanel for the canal/escuela/BPA feature under it. Their
+    // solo max-heights overlap, so both must switch to the split budget.
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: true })} />
+    );
+
+    expect(screen.getByTestId('map-2d-info-panel').className).toContain('infoPanelCompact');
+    expect(screen.getByTestId('ficha-territorial-panel').className).toContain('fichaPanelCompact');
+  });
+
+  it('keeps the full max-height when ONLY the InfoPanel is open', () => {
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: false })} />
+    );
+
+    expect(screen.getByTestId('map-2d-info-panel').className).not.toContain('infoPanelCompact');
+    expect(screen.queryByTestId('ficha-territorial-panel')).not.toBeInTheDocument();
+  });
+
+  it('keeps the full max-height when ONLY the ficha is open', () => {
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ selectedFeatures: [], fichaActive: true })} />
+    );
+
+    expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ficha-territorial-panel').className).not.toContain(
+      'fichaPanelCompact'
+    );
   });
 });

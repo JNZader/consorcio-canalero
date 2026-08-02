@@ -69,6 +69,7 @@ import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
+import { useMapEscapeExit } from './map2d/useMapEscapeExit';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useReportHighlight } from './map2d/useReportHighlight';
@@ -125,6 +126,10 @@ export default function MapaMapLibre() {
   const [showDemOverlay, setShowDemOverlay] = useState(false);
   const [activeDemLayerId, setActiveDemLayerId] = useState<string | null>(null);
   const [exportPngModalOpen, setExportPngModalOpen] = useState(false);
+  // Latched export INTENT: flipped on the first time the user opens the Export
+  // dropdown and never reset, so the heavy catastro GeoJSON (KMZ-only) is
+  // fetched once, on demand. See the `useCatastroMap` call below.
+  const [exportIntent, setExportIntent] = useState(false);
   const [exportIncludeLegend, setExportIncludeLegend] = useState(true);
   const [exportIncludeMetadata, setExportIncludeMetadata] = useState(true);
   const [exportTitle, setExportTitle] = useState('Mapa del Consorcio');
@@ -212,18 +217,22 @@ export default function MapaMapLibre() {
   );
   const { collection: escuelasCollection } = useEscuelas();
   const escuelasData = { collection: escuelasCollection };
-  // Lazy fetch (~1.8MB geojson): the 2D catastro RENDER uses Martin vector
-  // tiles (mapLayerEffectHelpers.ts::syncCatastroLayers) — this geojson's
-  // only 2D consumer is `exportSources.catastro` for the KMZ export. The
-  // KMZ builder only includes catastro when the layer is visible
-  // (kmzBuilder.ts::shouldIncludeLayer → visibleLayers.catastro === true),
-  // so gating the fetch on visibility is lossless for the export.
-  // Known race (documented trade-off): toggling catastro ON and exporting
-  // KMZ before the fetch resolves silently omits the layer — same graceful
-  // degradation buildKmz already applies to any missing slot.
-  const { catastroMap } = useCatastroMap({
-    enabled: !!vectorVisibility.catastro,
-  });
+  // Lazy fetch (~1.8MB geojson) gated on export INTENT, not on layer
+  // visibility: the 2D catastro RENDER uses Martin vector tiles
+  // (mapLayerEffectHelpers.ts::syncCatastroLayers), so this geojson's only 2D
+  // consumer is `exportSources.catastro` for the KMZ export. Catastro now
+  // defaults to ON, so gating on visibility meant every visitor paid a
+  // multi-MB download + main-thread parse for a file the map never renders.
+  // `exportIntent` latches when the Export dropdown opens — one paint frame
+  // before the user can even click "Exportar KMZ" — and `staleTime: Infinity`
+  // keeps the single fetch cached for the rest of the session.
+  // Known race (unchanged trade-off): exporting KMZ while the fetch is still
+  // in flight omits the catastro slot, the same graceful degradation buildKmz
+  // already applies to any missing slot.
+  const { catastroMap } = useCatastroMap({ enabled: exportIntent });
+  // Stable identity: `MapActionsPanel` is memoized, so an inline arrow here
+  // would re-render it on every parent render.
+  const handleExportIntent = useCallback(() => setExportIntent(true), []);
 
   const {
     zonaCollection,
@@ -318,6 +327,7 @@ export default function MapaMapLibre() {
     startDistance: startMeasureDistance,
     startArea: startMeasureArea,
     clear: clearMeasurements,
+    cancel: cancelMeasurement,
   } = useMeasurement(measurementMap);
 
   // The ONE interaction-mode coordinator (design §6.1, JDB-012): it derives the
@@ -456,6 +466,18 @@ export default function MapaMapLibre() {
     if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
     else fichaInteraction.startCanal();
   }, [fichaInteraction]);
+
+  // Escape is the universal exit from ANY active interaction mode. Until this
+  // was wired, `useMeasurement.cancel()` had no caller at all and a user who
+  // started measuring had no way back to idle (map-fluidity T1).
+  const handleExitDraw = useCallback(() => fichaInteraction.stopDraw(), [fichaInteraction]);
+  const handleExitCanal = useCallback(() => fichaInteraction.stopCanal(), [fichaInteraction]);
+  useMapEscapeExit({
+    mode: fichaInteraction.interactionMode,
+    onCancelMeasurement: cancelMeasurement,
+    onExitDraw: handleExitDraw,
+    onExitCanal: handleExitCanal,
+  });
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
@@ -686,6 +708,7 @@ export default function MapaMapLibre() {
               onStartDistance={handleStartMeasureDistance}
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
+              onCancel={cancelMeasurement}
               fichaDrawActive={isFichaDrawing}
               onToggleFichaDraw={handleToggleFichaDraw}
               fichaCanalActive={isFichaCanal}
@@ -739,6 +762,7 @@ export default function MapaMapLibre() {
               onOpenExportPng={() => setExportPngModalOpen(true)}
               onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
               onExportKmz={handleExportKmz}
+              onExportMenuOpen={handleExportIntent}
               showLegend={showLegend}
               consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
               activeLegendItems={activeLegendItems}

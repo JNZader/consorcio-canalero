@@ -21,10 +21,7 @@ vi.mock('zustand/middleware', async () => {
   };
 });
 
-import {
-  useMapLayerSyncStore,
-  migrateMapLayerState,
-} from '../../src/stores/mapLayerSyncStore';
+import { useMapLayerSyncStore, migrateMapLayerState } from '../../src/stores/mapLayerSyncStore';
 
 describe('mapLayerSyncStore — opacity/order defaults', () => {
   it('both views start with empty opacityByLayer {} and orderByLayer []', () => {
@@ -97,11 +94,20 @@ describe('migrateMapLayerState — v3 → v4', () => {
     const v3State = {
       map2d: {
         activeRasterType: 'dem',
-        visibleVectors: { roads: true, soil: false, catastro: true, escuelas: false },
+        visibleVectors: {
+          roads: true,
+          soil: false,
+          catastro: true,
+          escuelas: false,
+        },
       },
       map3d: {
         activeRasterType: null,
-        visibleVectors: { roads: true, waterways: true, canales_relevados: true },
+        visibleVectors: {
+          roads: true,
+          waterways: true,
+          canales_relevados: true,
+        },
       },
       propuestasEtapasVisibility: { Alta: false, Media: true },
       terrainSmoothingEnabled: false,
@@ -126,7 +132,10 @@ describe('migrateMapLayerState — v3 → v4', () => {
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.terrainSmoothingEnabled).toBe(false);
     expect(migrated.terrainSmoothingThreshold).toBe('high');
-    expect(migrated.propuestasEtapasVisibility).toEqual({ Alta: false, Media: true });
+    expect(migrated.propuestasEtapasVisibility).toEqual({
+      Alta: false,
+      Media: true,
+    });
 
     // New slots seeded empty on BOTH views.
     expect(migrated.map2d?.opacityByLayer).toEqual({});
@@ -165,5 +174,117 @@ describe('migrateMapLayerState — v3 → v4', () => {
     // ... and v3→v4 seeds the new slots.
     expect(migrated.map3d?.opacityByLayer).toEqual({});
     expect(migrated.map3d?.orderByLayer).toEqual([]);
+  });
+});
+
+/**
+ * v4 → v5 (map-fluidity T1) — the `catastro` default flipped false → true.
+ *
+ * Returning visitors carry a persisted `catastro: false` that is the OLD
+ * DEFAULT, not a considered choice, and it would pin them to the broken
+ * experience the flip exists to fix (clicking a parcel does nothing because the
+ * clickable fill is hidden). The migration therefore OVERRIDES it once. This is
+ * deliberate and is the only visibility flag the step is allowed to touch.
+ */
+describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
+  it('forces catastro ON for map2d, overriding a persisted false', () => {
+    const v4State = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: { roads: true, catastro: false, soil: false },
+        opacityByLayer: {},
+        orderByLayer: [],
+      },
+      map3d: {
+        activeRasterType: null,
+        visibleVectors: { roads: true, catastro: false },
+        opacityByLayer: {},
+        orderByLayer: [],
+      },
+    };
+
+    const migrated = migrateMapLayerState(v4State, 4);
+
+    expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
+    // map3d is deliberately NOT migrated: the 3D viewer has no ficha
+    // territorial, so it keeps the historical OFF default.
+    expect(migrated.map3d?.visibleVectors?.catastro).toBe(false);
+  });
+
+  it('touches ONLY catastro — every other persisted preference survives', () => {
+    const v4State = {
+      map2d: {
+        activeRasterType: 'dem',
+        visibleVectors: {
+          roads: false,
+          waterways: false,
+          soil: true,
+          escuelas: true,
+          catastro: false,
+        },
+        opacityByLayer: { soil: 0.4 },
+        orderByLayer: ['soil', 'roads'],
+      },
+      map3d: {
+        activeRasterType: null,
+        visibleVectors: { roads: false, catastro: false },
+        opacityByLayer: {},
+        orderByLayer: [],
+      },
+      propuestasEtapasVisibility: { Alta: false, Media: true },
+      terrainSmoothingEnabled: false,
+      terrainSmoothingThreshold: 'high',
+    };
+
+    const migrated = migrateMapLayerState(v4State, 4);
+
+    // Deliberate user OFFs on other layers are NOT resurrected.
+    expect(migrated.map2d?.visibleVectors).toEqual({
+      roads: false,
+      waterways: false,
+      soil: true,
+      escuelas: true,
+      catastro: true,
+    });
+    expect(migrated.map2d?.activeRasterType).toBe('dem');
+    expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
+    expect(migrated.map2d?.orderByLayer).toEqual(['soil', 'roads']);
+    expect(migrated.terrainSmoothingEnabled).toBe(false);
+    expect(migrated.terrainSmoothingThreshold).toBe('high');
+    expect(migrated.propuestasEtapasVisibility).toEqual({
+      Alta: false,
+      Media: true,
+    });
+  });
+
+  it('is a no-op for a state already at v5', () => {
+    const v5State = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: { catastro: false },
+        opacityByLayer: {},
+        orderByLayer: [],
+      },
+    };
+
+    const migrated = migrateMapLayerState(v5State, 5);
+
+    // Already migrated → a later deliberate OFF is respected.
+    expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
+  });
+
+  it('runs as part of a full v1 → v5 upgrade chain', () => {
+    const v1State = {
+      map2d: { activeRasterType: null, visibleVectors: { catastro: false } },
+      map3d: { activeRasterType: null, visibleVectors: { roads: false } },
+    };
+
+    const migrated = migrateMapLayerState(v1State, 1);
+
+    expect(migrated.terrainSmoothingEnabled).toBe(true);
+    expect(migrated.map3d?.visibleVectors?.roads).toBe(true);
+    expect(migrated.map2d?.opacityByLayer).toEqual({});
+    expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
+    expect(migrated.map3d?.visibleVectors?.catastro).toBeUndefined();
   });
 });
