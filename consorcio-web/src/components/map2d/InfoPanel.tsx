@@ -30,11 +30,12 @@
  * flow explicit and avoids a hidden cross-cutting coupling in a small UI atom.
  */
 
-import { Badge, CloseButton, Divider, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { memo, useMemo } from 'react';
 
 import styles from '../../styles/components/map.module.css';
+import { MapPanelShell } from './MapPanelShell';
 import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
@@ -73,6 +74,13 @@ interface InfoPanelProps {
    * (see `.infoPanelCompact` in `map.module.css` for the budget derivation).
    */
   readonly compact?: boolean;
+  /**
+   * Narrow viewports (<= 62em): render as a bottom sheet anchored to the map's
+   * bottom edge instead of a floating card, so the top of the map stays visible
+   * (map-fluidity T2, fix 1). `compact` is ignored in sheet mode — only ONE
+   * sheet is ever rendered at a time.
+   */
+  readonly sheet?: boolean;
   /**
    * Pilar Verde enriched catastro dataset — optional. When present, used to
    * resolve BPA info for catastro-only features whose flat `bpa_total` field
@@ -171,7 +179,16 @@ function detectBpa(
 
   const shouldRenderBpa = anios >= 1 || bpa !== null;
 
-  return { shouldRenderBpa, bpa, cuenta, nombre, superficie, anios, lista, activa2025 };
+  return {
+    shouldRenderBpa,
+    bpa,
+    cuenta,
+    nombre,
+    superficie,
+    anios,
+    lista,
+    activa2025,
+  };
 }
 
 function FeatureSection({
@@ -283,6 +300,7 @@ export const InfoPanel = memo(function InfoPanel({
   onClose,
   bpaEnriched,
   compact = false,
+  sheet = false,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -295,16 +313,24 @@ export const InfoPanel = memo(function InfoPanel({
   if (resolved.length === 0) return null;
 
   return (
-    <Paper
-      shadow="md"
-      p="md"
-      radius="md"
-      className={compact ? `${styles.infoPanel} ${styles.infoPanelCompact}` : styles.infoPanel}
-      data-testid="map-2d-info-panel"
+    <MapPanelShell
+      sheet={sheet}
+      floatingClassName={
+        compact ? `${styles.infoPanel} ${styles.infoPanelCompact}` : styles.infoPanel
+      }
+      testId="map-2d-info-panel"
+      sheetLabel="panel de información"
+      onClose={onClose}
+      closeLabel="Cerrar panel de informacion"
     >
+      {/* In sheet mode the close button lives in the shell's PINNED header, so
+          it stays reachable on a long feature list; rendering it here too would
+          duplicate the affordance. */}
       <Group justify="space-between" mb="xs">
         <Title order={5}>Informacion</Title>
-        <CloseButton onClick={onClose} size="sm" aria-label="Cerrar panel de informacion" />
+        {!sheet && (
+          <CloseButton onClick={onClose} size="sm" aria-label="Cerrar panel de informacion" />
+        )}
       </Group>
       <Divider mb="xs" />
       <Stack gap="sm">
@@ -315,6 +341,6 @@ export const InfoPanel = memo(function InfoPanel({
           </div>
         ))}
       </Stack>
-    </Paper>
+    </MapPanelShell>
   );
 });

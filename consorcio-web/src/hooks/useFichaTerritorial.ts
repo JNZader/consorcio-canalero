@@ -41,9 +41,24 @@ function refKeyFor(request: FichaRequest): string {
 export interface UseFichaTerritorialResult {
   data: FichaResponse | undefined;
   isLoading: boolean;
+  /**
+   * True while ANY fetch is in flight — including a retry over CACHED data,
+   * where TanStack keeps `status: 'error'` (it only resets to pending when
+   * `data === undefined`), so `isLoading` stays false for the whole refetch.
+   * The error alert uses this to disable "Reintentar" and show in-flight
+   * feedback on that path.
+   */
+  isFetching: boolean;
   isError: boolean;
   /** Present only on failure. `FichaApiError` carries the HTTP status + codigo. */
   error: FichaApiError | Error | null;
+  /**
+   * Re-run the query on demand (map-fluidity T2, fix 4). TanStack never retries
+   * a client error (429 included), so the panel's error state needs an explicit
+   * user-triggered path back — without it the only recovery was re-clicking the
+   * parcel on the map.
+   */
+  refetch: () => void;
 }
 
 /**
@@ -76,7 +91,13 @@ export function useFichaTerritorial(request: FichaRequest | null): UseFichaTerri
   return {
     data: query.data,
     isLoading: query.isLoading && query.fetchStatus !== 'idle',
+    isFetching: query.isFetching,
     isError: query.isError,
     error: (query.error as FichaApiError | Error | null) ?? null,
+    // Discard the returned promise: the panel only needs the side effect, and
+    // an unhandled rejection would surface as a console error on a failed retry.
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

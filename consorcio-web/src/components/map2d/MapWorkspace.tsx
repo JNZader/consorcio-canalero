@@ -7,6 +7,13 @@ import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import styles from '../../styles/components/map.module.css';
 import { IconArrowLeft, IconArrowRight, IconLayers } from '../ui/icons';
 
+/**
+ * Width of the mobile layers Drawer. Deliberately NOT 100%: see the Drawer
+ * comment below (map-fluidity T2, fix 5). Exported so the test asserts the
+ * contract instead of a magic string.
+ */
+export const MOBILE_DRAWER_SIZE = '75%';
+
 interface MapWorkspaceProps {
   /** The map canvas node (MapLibre container + its floating overlays). */
   canvas: ReactNode;
@@ -140,7 +147,11 @@ export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspac
           <Drawer
             opened={drawerOpened}
             onClose={drawer.close}
-            size="100%"
+            /* Partial, not full-screen (map-fluidity T2, fix 5). At 100% the
+               user could not see the effect of a layer toggle without closing
+               the Drawer first — open → toggle → close → look → repeat. 75%
+               keeps a slice of the map on screen while toggling. */
+            size={MOBILE_DRAWER_SIZE}
             padding="md"
             zIndex={1200}
             trapFocus

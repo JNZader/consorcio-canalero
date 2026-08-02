@@ -18,7 +18,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MapWorkspace } from '../../src/components/map2d/MapWorkspace';
+import { MOBILE_DRAWER_SIZE, MapWorkspace } from '../../src/components/map2d/MapWorkspace';
 import { useMapWorkspaceStore } from '../../src/stores/mapWorkspaceStore';
 
 function mockViewport(isDesktop: boolean) {
@@ -142,6 +142,26 @@ describe('<MapWorkspace />', () => {
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
     // Drawer content mounts through Mantine's open transition.
     expect(await screen.findByTestId('controls-marker')).toBeInTheDocument();
+  });
+
+  it('T2 fix 5: the mobile Drawer is PARTIAL so the map stays partly visible', async () => {
+    mockViewport(false);
+    const { container } = renderWithMantine(
+      <MapWorkspace canvas={canvas} controls={controls} activeLayerCount={2} />,
+    );
+
+    fireEvent.click(screen.getByTestId('map-workspace-burger'));
+    await screen.findByTestId('controls-marker');
+
+    // Mantine publishes the `size` prop as the `--drawer-size` custom property.
+    // Full-screen (100%) made a layer toggle unobservable: the user had to
+    // open → toggle → close → look → repeat.
+    const root = container.ownerDocument.querySelector(
+      '[style*="--drawer-size"]',
+    ) as HTMLElement;
+    expect(root).not.toBeNull();
+    expect(root.style.getPropertyValue('--drawer-size')).toBe(MOBILE_DRAWER_SIZE);
+    expect(MOBILE_DRAWER_SIZE).not.toBe('100%');
   });
 
   it('FIX 1: the canvas node is NEVER remounted across the 48em breakpoint', () => {
