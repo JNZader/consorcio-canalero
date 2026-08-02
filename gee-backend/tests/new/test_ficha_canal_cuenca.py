@@ -172,7 +172,7 @@ def _seed_catchment(
     db: Session,
     canal_ref: str,
     *,
-    variante: str = "relevado",
+    variante: str = "natural",
     wkt: str | None = _CATCHMENT_WKT,
     oversized: bool = False,
     area_ha: float = 62.0,
@@ -282,7 +282,7 @@ def test_canal_cuenca_computa_sobre_la_cuenca_precalculada(ficha_db, monkeypatch
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "relevado"},
+            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "natural"},
         )
 
     assert rs.status_code == 200, rs.text
@@ -297,13 +297,13 @@ def test_canal_cuenca_computa_sobre_la_cuenca_precalculada(ficha_db, monkeypatch
     assert body["drainage_need"]["cobertura"] == "total"
 
     # canal_cuenca-only additive fields: the echoed variante + the outline to draw.
-    assert body["variante"] == "relevado"
+    assert body["variante"] == "natural"
     assert body["geometria_cuenca"] is not None
     assert body["geometria_cuenca"]["type"] in {"Polygon", "MultiPolygon"}
 
 
-def test_canal_cuenca_default_variante_es_relevado(ficha_db, monkeypatch, tmp_path):
-    """Omitting ``variante`` defaults to ``relevado`` (v1's only stored variante)."""
+def test_canal_cuenca_default_variante_es_natural(ficha_db, monkeypatch, tmp_path):
+    """Omitting ``variante`` defaults to ``natural`` (v1's only stored variante)."""
     from fastapi.testclient import TestClient
 
     _enable(monkeypatch)
@@ -313,7 +313,7 @@ def test_canal_cuenca_default_variante_es_relevado(ficha_db, monkeypatch, tmp_pa
         rs = cliente.post(FICHA_PATH, json={"tipo": "canal_cuenca", "canal_ref": canal_ref})
 
     assert rs.status_code == 200, rs.text
-    assert rs.json()["variante"] == "relevado"
+    assert rs.json()["variante"] == "natural"
 
 
 def test_canal_cuenca_deja_una_fila_de_auditoria(ficha_db, monkeypatch, tmp_path):
@@ -326,7 +326,7 @@ def test_canal_cuenca_deja_una_fila_de_auditoria(ficha_db, monkeypatch, tmp_path
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "relevado"},
+            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "natural"},
         )
 
     assert rs.status_code == 200, rs.text
@@ -334,7 +334,7 @@ def test_canal_cuenca_deja_una_fila_de_auditoria(ficha_db, monkeypatch, tmp_path
         text("SELECT resource FROM audit_log WHERE action = 'zona.analisis' LIMIT 1")
     ).scalar_one()
     assert f"tipo=canal_cuenca,ref={canal_ref}" in fila
-    assert "variante=relevado" in fila
+    assert "variante=natural" in fila
 
 
 # ── R3-001/R3-002 — a realistic high-vertex basin the BATCH stores is servable ─
@@ -397,7 +397,7 @@ def test_canal_cuenca_basin_de_muchos_vertices_es_servible_end_to_end(
     npoints = ficha_db.execute(
         text(
             "SELECT ST_NPoints(geometria) FROM canal_catchment "
-            "WHERE canal_ref = :ref AND variante = 'relevado'"
+            "WHERE canal_ref = :ref AND variante = 'natural'"
         ),
         {"ref": canal_ref},
     ).scalar_one()
@@ -406,7 +406,7 @@ def test_canal_cuenca_basin_de_muchos_vertices_es_servible_end_to_end(
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "relevado"},
+            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "natural"},
         )
 
     # 200, NOT 422 on the vertices cap — a realistic stored catchment is servable.
@@ -435,14 +435,14 @@ def test_cuenca_no_precalculada_es_503_sin_raster(ficha_db, monkeypatch):
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "relevado"},
+            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "natural"},
         )
 
     assert rs.status_code == 503, rs.text
     body = rs.json()
     assert body["codigo"] == "cuenca_no_computada"
     assert body["canal_ref"] == canal_ref
-    assert body["variante"] == "relevado"
+    assert body["variante"] == "natural"
 
 
 def test_cuenca_no_precalculada_no_audita(ficha_db, monkeypatch):
@@ -488,7 +488,7 @@ def test_cuenca_oversized_es_422(ficha_db, monkeypatch):
     with TestClient(_app(ficha_db)) as cliente:
         rs = cliente.post(
             FICHA_PATH,
-            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "relevado"},
+            json={"tipo": "canal_cuenca", "canal_ref": canal_ref, "variante": "natural"},
         )
 
     assert rs.status_code == 422, rs.text
@@ -535,7 +535,7 @@ def test_overlay_suelos_recorta_a_la_cuenca(ficha_db, monkeypatch, tmp_path):
             json={
                 "tipo": "canal_cuenca",
                 "canal_ref": canal_ref,
-                "variante": "relevado",
+                "variante": "natural",
                 "dataset": "suelos",
             },
         )

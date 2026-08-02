@@ -34,7 +34,7 @@ function refKeyFor(request: FichaRequest): string {
     case 'canal_buffer':
       return `${request.canal_ref}:${request.buffer_m}`;
     case 'canal_cuenca':
-      return `${request.canal_ref}:${request.variante ?? 'relevado'}`;
+      return `${request.canal_ref}:${request.variante ?? 'natural'}`;
   }
 }
 
