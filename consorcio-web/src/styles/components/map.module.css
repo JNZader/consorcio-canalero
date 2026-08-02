@@ -84,7 +84,9 @@
   flex-direction: column;
   gap: 0;
   min-width: 0;
-  height: clamp(560px, calc(100dvh - 250px), 980px);
+  /* Same budget as `.mapCanvasWrapper`, via the shared var — the sidebar and canvas are
+     grid siblings and must resolve to the same height. */
+  height: var(--map-canvas-height);
   border-radius: var(--mantine-radius-md);
   border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
   background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
@@ -134,33 +136,35 @@
   padding: 4px;
 }
 
+/* Canvas height budget (map-fluidity T1).
+   Measured desktop chrome ABOVE the canvas, after the MapaPage header merge:
+     site Header ~61px + Container py-sm 12px + merged controls Paper ~67px
+     + mb-sm 12px + MapaMapLibre `.mapTopBar` ~62px + workspace grid gap 12px
+     = ~226px, plus ~12px of bottom breathing room → 250px subtracted.
+   The old `min-height: 560px` floor is what actually broke 1366×768: at 768px
+   viewport height the calc resolves to 518px but the clamp floor forced 560px,
+   pushing the map's bottom edge off screen. 420px keeps the map usable while
+   letting the calc win on short laptops. */
+/* The budget is published as a custom property so it has exactly ONE definition
+   per breakpoint. `.canvasHeightBudget` exists for consumers that cannot be
+   targeted by a media query: `TerrainViewer3D` takes its height as a PROP that
+   lands on an inline style deep inside `TerrainViewer3DChrome`, so `MapaPage`
+   wraps it in this class and passes `height="var(--map-canvas-height)"`. That
+   keeps 2D ↔ 3D height parity at BOTH breakpoints — the previous inline
+   `clamp(...)` literal only matched desktop. */
+.mapCanvasWrapper,
+.canvasHeightBudget,
+.workspaceSidebar {
+  --map-canvas-height: clamp(420px, calc(100dvh - 250px), 980px);
+}
+
 .mapCanvasWrapper {
   position: relative;
   min-width: 0;
-  min-height: 560px;
-  height: clamp(560px, calc(100dvh - 250px), 980px);
+  min-height: 420px;
+  height: var(--map-canvas-height);
   overflow: hidden;
   border-radius: var(--mantine-radius-md);
-}
-
-@media (max-width: 62em) {
-  .mapCanvasWrapper {
-    min-height: 500px;
-    height: clamp(500px, calc(100dvh - 220px), 860px);
-  }
-
-  .workspaceSidebar {
-    height: clamp(500px, calc(100dvh - 220px), 860px);
-  }
-
-  /* 3D terrain bottom bar (out-of-scope legacy) */
-  .mapBottomBar {
-    grid-template-columns: 1fr;
-  }
-
-  .mapBottomBarItem {
-    max-height: 50vh;
-  }
 }
 
 .captureMode :global(.leaflet-control-container) {
@@ -190,12 +194,25 @@
   backdrop-filter: blur(6px);
 }
 
+/* ── Floating panels vs the right-hand control column ─────────────────────── */
+/* The map's controls live in a single 29px-wide column pinned at `right: 10px`
+   (MapLibre nav + fullscreen at z-index 2, `MapActionsPanel` at top:144 and
+   `MeasurementToolbar` at top:180, both z-index 16). Both floating panels sit at
+   z-index 1000, so anchoring them at `right: 16px` parked them ON TOP of that
+   column: opening either panel made Exportar / Medir / Dibujar / Canal /
+   fullscreen / zoom unclickable.
+
+   Fix: on desktop both panels stop at `right: 56px`, which clears the column
+   (10px offset + 29px button + 17px gutter) and leaves every control reachable
+   while a panel is open. Widths shrink by the same amount so the panels do not
+   grow to compensate. Narrow viewports keep the old full-bleed behaviour — the
+   mobile bottom-sheet is a later tanda. */
 .infoPanel {
   position: absolute;
   top: calc(var(--mantine-spacing-md) + 108px);
-  right: var(--mantine-spacing-md);
+  right: 56px;
   z-index: 1000;
-  width: min(360px, calc(100% - 32px));
+  width: min(360px, calc(100% - 72px));
   max-width: 360px;
   max-height: calc(100% - 124px);
   overflow-y: auto;
@@ -206,14 +223,83 @@
 .fichaPanel {
   position: absolute;
   bottom: var(--mantine-spacing-md);
-  right: var(--mantine-spacing-md);
+  right: 56px;
   z-index: 1000;
-  width: min(380px, calc(100% - 32px));
+  width: min(380px, calc(100% - 72px));
   max-width: 380px;
   max-height: calc(100% - 124px);
   overflow-y: auto;
   background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
   backdrop-filter: blur(6px);
+}
+
+/* ── Both panels open at once ─────────────────────────────────────────────── */
+/* A catastro click opens the ficha (bottom-right) AND, when the click also hit
+   a canal / escuela / BPA / suelo / camino feature, the InfoPanel (top-right).
+   With their solo max-heights (`calc(100% - 124px)` each) the two rects overlap
+   and the InfoPanel ends up buried under the ficha. `MapUiPanels` adds these
+   modifiers whenever BOTH are rendered so they share the column instead.
+
+   Vertical budget derivation (canvas-relative):
+     InfoPanel top offset   = 16px (spacing-md) + 108px       = 124px
+     ficha bottom inset     = 16px (spacing-md)               =  16px
+     gap kept between them                                    =  12px
+     shared budget          = 100% - 124px - 16px - 12px = 100% - 152px
+   Split 45 / 55 (the ficha is the denser card: charts + bins + breakdown):
+     InfoPanel  45% of 152px = 68.4px → calc(45% - 70px)
+     ficha      55% of 152px = 83.6px → calc(55% - 82px)
+   The two max-heights sum to `100% - 152px`, so the 12px gap always holds.
+   Both panels stay scrollable internally (`overflow-y: auto` above).
+
+   Two-class selectors so these win over the narrow-viewport overrides below
+   regardless of source order. */
+.infoPanel.infoPanelCompact {
+  max-height: calc(45% - 70px);
+}
+
+.fichaPanel.fichaPanelCompact {
+  max-height: calc(55% - 82px);
+}
+
+@media (max-width: 62em) {
+  /* Narrow viewports: the page chrome wraps to several rows, so the canvas has
+     to give back more height than on desktop (measured ~300px above the canvas
+     after the header merge). The floor drops to 380px so the map's bottom edge
+     stays on screen on short phones instead of forcing a page scroll. */
+  .mapCanvasWrapper,
+  .canvasHeightBudget,
+  .workspaceSidebar {
+    --map-canvas-height: clamp(380px, calc(100dvh - 300px), 860px);
+  }
+
+  .mapCanvasWrapper {
+    min-height: 380px;
+  }
+
+  .workspaceSidebar {
+    /* height inherits the mobile --map-canvas-height defined above */
+  }
+
+  /* Panels go full-bleed here, so the desktop right:56px inset (which exists to
+     clear the control column) would only waste width. Restore the edge anchor —
+     the mobile bottom-sheet treatment lands in a later tanda.
+     NOTE: this block MUST stay after the `.infoPanel` / `.fichaPanel` base
+     rules — it used to sit above them and, at equal specificity, the later base
+     rules silently won, so the mobile override never applied. */
+  .infoPanel,
+  .fichaPanel {
+    right: var(--mantine-spacing-md);
+    width: min(360px, calc(100% - 32px));
+  }
+
+  /* 3D terrain bottom bar (out-of-scope legacy) */
+  .mapBottomBar {
+    grid-template-columns: 1fr;
+  }
+
+  .mapBottomBarItem {
+    max-height: 50vh;
+  }
 }
 
 .legendItemBorder {

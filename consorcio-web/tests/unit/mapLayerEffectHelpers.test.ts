@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import {
+  CATASTRO_FILL_OPACITY,
   syncBaseTileVisibility,
   syncCatastroLayers,
   syncSoilLayers,
@@ -22,6 +23,9 @@ function createMapMock(options?: {
   sources?: string[] | Record<string, unknown>;
 }) {
   const layers = new Set(options?.layers ?? []);
+  // Stable canvas identity — production reads `map.getCanvas().style` on every
+  // hover event, so a fresh object per call would hide the cursor writes.
+  const canvas = { style: {} as Record<string, string> };
   const sourceRecords = new Map<string, unknown>();
   if (Array.isArray(options?.sources)) {
     for (const id of options.sources) {
@@ -49,6 +53,12 @@ function createMapMock(options?: {
       sourceRecords.delete(id);
     }),
     setLayoutProperty: vi.fn(),
+    // A real MapLibre `Map` always exposes these; the mock was simply
+    // incomplete. `syncCatastroLayers` now registers hover handlers to give the
+    // clickable parcel fill a pointer cursor, which needs both.
+    on: vi.fn(),
+    off: vi.fn(),
+    getCanvas: vi.fn(() => canvas),
   };
 }
 
@@ -87,7 +97,9 @@ describe('mapLayerEffectHelpers', () => {
     syncImageOverlays(map as never, {
       baseLayer: 'satellite',
       viewMode: 'single',
-      selectedImage: { tile_url: 'https://tiles.example.com/single/{z}/{x}/{y}.png' },
+      selectedImage: {
+        tile_url: 'https://tiles.example.com/single/{z}/{x}/{y}.png',
+      },
       comparison: null,
     });
 
@@ -164,6 +176,59 @@ describe('mapLayerEffectHelpers', () => {
     });
   });
 
+  it('renders the catastro FILL at a perceivable opacity (clickable affordance)', () => {
+    // map-fluidity T1: the fill was 0.08 — effectively invisible over both base
+    // maps — so nobody discovered the parcels were clickable (they open the
+    // ficha territorial). Pinned so it cannot silently drift back.
+    const map = createMapMock();
+
+    syncCatastroLayers(map as never, true);
+
+    const fillCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${SOURCE_IDS.CATASTRO}-fill`
+    );
+    expect(fillCall).toBeDefined();
+    const [fillLayer] = fillCall ?? [];
+    expect(fillLayer?.paint).toMatchObject({
+      'fill-color': '#8d6e63',
+      'fill-opacity': CATASTRO_FILL_OPACITY,
+    });
+    expect(CATASTRO_FILL_OPACITY).toBeGreaterThan(0.08);
+  });
+
+  it('gives the catastro fill a pointer cursor without clobbering the measure crosshair', () => {
+    const map = createMapMock();
+
+    syncCatastroLayers(map as never, true);
+
+    const enter = map.on.mock.calls.find(
+      ([event, layer]) => event === 'mouseenter' && layer === `${SOURCE_IDS.CATASTRO}-fill`
+    );
+    const leave = map.on.mock.calls.find(
+      ([event, layer]) => event === 'mouseleave' && layer === `${SOURCE_IDS.CATASTRO}-fill`
+    );
+    expect(enter).toBeDefined();
+    expect(leave).toBeDefined();
+
+    // Default cursor → pointer on enter, back to default on leave.
+    const canvas = map.getCanvas() as unknown as {
+      style: Record<string, string>;
+    };
+    canvas.style.cursor = '';
+    enter?.[2]?.();
+    expect(canvas.style.cursor).toBe('pointer');
+    leave?.[2]?.();
+    expect(canvas.style.cursor).toBe('');
+
+    // `useMeasurement` owns the same canvas cursor: a live crosshair must survive
+    // a parcel hover, otherwise measuring mode loses its cue.
+    canvas.style.cursor = 'crosshair';
+    enter?.[2]?.();
+    expect(canvas.style.cursor).toBe('crosshair');
+    leave?.[2]?.();
+    expect(canvas.style.cursor).toBe('crosshair');
+  });
+
   it('renders the soil fill and line with the audited visibility-boost paint', () => {
     const map = createMapMock();
 
@@ -214,7 +279,9 @@ describe('mapLayerEffectHelpers', () => {
       layers: [`${SOURCE_IDS.DEM_RASTER}-layer`],
       sources: {
         [SOURCE_IDS.DEM_RASTER]: {
-          serialize: () => ({ tiles: ['https://tiles.example.com/old/{z}/{x}/{y}.png'] }),
+          serialize: () => ({
+            tiles: ['https://tiles.example.com/old/{z}/{x}/{y}.png'],
+          }),
         },
       },
     });

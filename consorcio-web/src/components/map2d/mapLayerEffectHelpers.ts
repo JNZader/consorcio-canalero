@@ -12,7 +12,7 @@ import {
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
-import { SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
+import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   PILAR_VERDE_Z_ORDER,
@@ -47,7 +47,10 @@ export function syncWaterwayLayers(
 
   for (const waterwayFile of waterwayFiles) {
     if (!map.getSource(waterwayFile.id)) {
-      map.addSource(waterwayFile.id, { type: 'geojson', data: waterwayFile.url });
+      map.addSource(waterwayFile.id, {
+        type: 'geojson',
+        data: waterwayFile.url,
+      });
     }
 
     const lineLayerId = `${waterwayFile.id}-line`;
@@ -92,13 +95,24 @@ export function syncSoilLayers(
       id: `${SOURCE_IDS.SOIL}-line`,
       type: 'line',
       source: SOURCE_IDS.SOIL,
-      paint: { 'line-color': '#6d4c41', 'line-width': 1.2, 'line-opacity': 0.85 },
+      paint: {
+        'line-color': '#6d4c41',
+        'line-width': 1.2,
+        'line-opacity': 0.85,
+      },
     });
   }
 
   setLayerVisibility(map, `${SOURCE_IDS.SOIL}-fill`, isVisible);
   setLayerVisibility(map, `${SOURCE_IDS.SOIL}-line`, isVisible);
 }
+
+/**
+ * Re-exported for the existing consumers/tests of this module. The value is
+ * DEFINED in `map2dConfig.ts` so the render registry can import it without
+ * pulling this (much heavier) module into its graph.
+ */
+export { CATASTRO_FILL_OPACITY };
 
 export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
   if (!map.getSource(SOURCE_IDS.CATASTRO)) {
@@ -116,7 +130,27 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
       type: 'fill',
       source: SOURCE_IDS.CATASTRO,
       'source-layer': 'parcelas_catastro',
-      paint: { 'fill-color': '#8d6e63', 'fill-opacity': 0.08 },
+      // 0.08 was effectively invisible over both base maps, so the parcels read
+      // as decoration and nobody discovered they were clickable. 0.12 keeps the
+      // fill subtle (the white outline still carries the shape) while making the
+      // clickable surface actually perceivable.
+      paint: { 'fill-color': '#8d6e63', 'fill-opacity': CATASTRO_FILL_OPACITY },
+    });
+    // Pointer affordance: the fill IS the ficha-territorial hit target, so the
+    // cursor has to say so. Registered inside the create-once branch — this
+    // whole function re-runs on every visibility sync and duplicate handlers
+    // would leak. They die with the map instance (`map.remove()`).
+    //
+    // Both handlers only ever touch the DEFAULT ↔ pointer pair. `useMeasurement`
+    // owns the same canvas cursor and sets `crosshair` while measuring; without
+    // these guards, hovering a parcel mid-measurement would wipe the crosshair.
+    map.on('mouseenter', `${SOURCE_IDS.CATASTRO}-fill`, () => {
+      const canvas = map.getCanvas();
+      if (canvas.style.cursor === '') canvas.style.cursor = 'pointer';
+    });
+    map.on('mouseleave', `${SOURCE_IDS.CATASTRO}-fill`, () => {
+      const canvas = map.getCanvas();
+      if (canvas.style.cursor === 'pointer') canvas.style.cursor = '';
     });
   }
 
@@ -126,7 +160,11 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
       type: 'line',
       source: SOURCE_IDS.CATASTRO,
       'source-layer': 'parcelas_catastro',
-      paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-opacity': 0.85 },
+      paint: {
+        'line-color': '#FFFFFF',
+        'line-width': 1.5,
+        'line-opacity': 0.85,
+      },
     });
   }
 
@@ -199,7 +237,11 @@ export function syncBasinLayers(
       id: `${SOURCE_IDS.BASINS}-line`,
       type: 'line',
       source: SOURCE_IDS.BASINS,
-      paint: { 'line-color': '#00897B', 'line-width': 1.5, 'line-opacity': 0.95 },
+      paint: {
+        'line-color': '#00897B',
+        'line-width': 1.5,
+        'line-opacity': 0.95,
+      },
     });
   }
 

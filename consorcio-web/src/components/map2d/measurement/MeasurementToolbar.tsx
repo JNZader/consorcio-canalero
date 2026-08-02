@@ -54,6 +54,13 @@ export interface MeasurementToolbarProps {
   readonly onStartArea: () => void;
   readonly onClear: () => void;
   /**
+   * Cancel the ACTIVE measurement without saving (map-fluidity T1). When
+   * provided, the Medir trigger turns into a toggle-OFF while measuring instead
+   * of re-opening its menu, which is what gives the mode a visible exit. Omit it
+   * (3D viewer / legacy callers) and the old menu-always behaviour is kept.
+   */
+  readonly onCancel?: () => void;
+  /**
    * Ficha territorial free-draw (A5). When `onToggleFichaDraw` is provided, a
    * "Dibujar polígono" toggle renders BESIDE the measurement buttons (design
    * §6.2 — same floating toolbar). `fichaDrawActive` drives its active cue. The
@@ -77,6 +84,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onStartDistance,
   onStartArea,
   onClear,
+  onCancel,
   fichaDrawActive = false,
   onToggleFichaDraw,
   fichaCanalActive = false,
@@ -85,6 +93,43 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
   // while drawing, but the "Medir" cue must only light for measurement modes.
   const isMeasuring = mode === 'measuring-distance' || mode === 'measuring-area';
+
+  // Exit affordance (map-fluidity T1). Measuring mode used to be a one-way door:
+  // the trash button was gated on `hasMeasurements`, so a user who started a
+  // measurement and drew nothing had NO visible way out. The button now shows
+  // for the whole of measuring mode and renames itself when there is nothing to
+  // wipe — it cancels the mode instead.
+  const showExitButton = hasMeasurements || isMeasuring;
+  const exitLabel = hasMeasurements ? 'Limpiar mediciones' : 'Cancelar medición';
+  const handleExit = hasMeasurements ? onClear : (onCancel ?? onClear);
+
+  // While measuring, the trigger is a toggle-OFF rather than a menu re-opener.
+  const isToggleOff = isMeasuring && !!onCancel;
+  const measureTriggerButton = (
+    <Tooltip label={isMeasuring ? 'Cancelar medición' : 'Medir'} position="left" withArrow>
+      <UnstyledButton
+        type="button"
+        aria-label="Medir"
+        aria-pressed={isMeasuring}
+        // Spread conditionally: passing an explicit `onClick={undefined}` would
+        // OVERRIDE the handler `Menu.Target` injects when it clones this node,
+        // silently breaking the dropdown in the non-measuring case.
+        {...(isToggleOff ? { onClick: onCancel } : {})}
+        style={{
+          width: 29,
+          height: 29,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          background: isMeasuring ? '#fb923c' : 'transparent',
+          color: isMeasuring ? '#fff' : '#333',
+        }}
+      >
+        <IconRuler size={16} />
+      </UnstyledButton>
+    </Tooltip>
+  );
 
   return (
     <Box
@@ -98,36 +143,22 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
       }}
     >
       <Group gap={0} wrap="nowrap" style={{ flexDirection: 'column' }}>
-        <Menu shadow="md" width={200}>
-          <Menu.Target>
-            <Tooltip label="Medir" position="left" withArrow>
-              <UnstyledButton
-                type="button"
-                aria-label="Medir"
-                style={{
-                  width: 29,
-                  height: 29,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  background: isMeasuring ? '#fb923c' : 'transparent',
-                  color: isMeasuring ? '#fff' : '#333',
-                }}
-              >
-                <IconRuler size={16} />
-              </UnstyledButton>
-            </Tooltip>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item leftSection={<IconRuler size={14} />} onClick={onStartDistance}>
-              Medir distancia
-            </Menu.Item>
-            <Menu.Item leftSection={<IconPolygon size={14} />} onClick={onStartArea}>
-              Medir área
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        {isToggleOff ? (
+          // Toggle-OFF: no menu, the trigger itself ends the mode.
+          measureTriggerButton
+        ) : (
+          <Menu shadow="md" width={200}>
+            <Menu.Target>{measureTriggerButton}</Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconRuler size={14} />} onClick={onStartDistance}>
+                Medir distancia
+              </Menu.Item>
+              <Menu.Item leftSection={<IconPolygon size={14} />} onClick={onStartArea}>
+                Medir área
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
 
         {onToggleFichaDraw && (
           <Tooltip label="Dibujar polígono (ficha territorial)" position="left" withArrow>
@@ -175,12 +206,12 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           </Tooltip>
         )}
 
-        {hasMeasurements && (
-          <Tooltip label="Limpiar mediciones" position="left" withArrow>
+        {showExitButton && (
+          <Tooltip label={exitLabel} position="left" withArrow>
             <UnstyledButton
               type="button"
-              aria-label="Limpiar mediciones"
-              onClick={onClear}
+              aria-label={exitLabel}
+              onClick={handleExit}
               style={{
                 width: 29,
                 height: 29,

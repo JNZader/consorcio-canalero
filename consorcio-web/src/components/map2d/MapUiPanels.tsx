@@ -72,6 +72,12 @@ export interface MapUiPanelsProps {
    * existing Export dropdown.
    */
   readonly onExportKmz?: () => void;
+  /**
+   * Fired when the Export dropdown opens. Threaded straight to
+   * `MapActionsPanel` so the container can lazily start the KMZ-only catastro
+   * GeoJSON fetch on export intent instead of on every mount.
+   */
+  readonly onExportMenuOpen?: () => void;
   readonly showLegend: boolean;
   readonly consorcios: ConsorcioInfo[];
   readonly activeLegendItems: LegendItem[];
@@ -181,6 +187,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
+  onExportMenuOpen,
   showLegend,
   consorcios,
   activeLegendItems,
@@ -223,6 +230,13 @@ export const MapUiPanels = memo(function MapUiPanels({
   showEmbeddedMapControls = true,
   showEmbeddedRasterLegend = true,
 }: MapUiPanelsProps) {
+  // A catastro click can open BOTH panels at once (ficha for the parcel +
+  // InfoPanel for whatever canal / escuela / BPA / suelo feature sat under the
+  // same click). Their solo max-heights overlap, so the InfoPanel would end up
+  // buried under the ficha. The compact modifiers split the right-hand column
+  // between them (InfoPanel top, ficha bottom) — see `map.module.css`.
+  const bothPanelsOpen = selectedFeatures.length > 0 && fichaActive;
+
   return (
     <>
       {/*
@@ -322,6 +336,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         onOpenExportPng={onOpenExportPng}
         onExportApprovedZonesPdf={onExportApprovedZonesPdf}
         onExportKmz={onExportKmz}
+        onExportMenuOpen={onExportMenuOpen}
       />
 
       {showEmbeddedRasterLegend && visibleRasterLayers.length > 0 && (
@@ -337,6 +352,7 @@ export const MapUiPanels = memo(function MapUiPanels({
       {selectedFeatures.length > 0 && (
         <InfoPanel
           features={selectedFeatures}
+          compact={bothPanelsOpen}
           onClose={onCloseInfoPanel}
           bpaEnriched={bpaEnriched}
           bpaHistory={bpaHistory}
@@ -345,6 +361,7 @@ export const MapUiPanels = memo(function MapUiPanels({
 
       <FichaTerritorialPanel
         active={fichaActive}
+        compact={bothPanelsOpen}
         tipo={fichaTipo}
         nroCuenta={fichaNroCuenta}
         parcelaProps={fichaParcelaProps}

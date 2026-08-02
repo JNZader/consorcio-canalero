@@ -20,6 +20,7 @@ import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
+import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
 import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
 
@@ -70,22 +71,32 @@ export function MapaContent() {
 
   return (
     <Box
-      style={{ background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}
+      style={{
+        background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+      }}
       mih="100vh"
     >
-      {/* Header */}
-      <Paper shadow="xs" p="sm" mb={0}>
-        <Container fluid px={{ base: 'sm', md: 'md' }}>
-          <Title order={2}>Mapa Interactivo</Title>
-          <Text c="gray.6">Explora las cuencas, caminos e infraestructura del consorcio</Text>
-        </Container>
-      </Paper>
-
       <Container fluid px={{ base: 'xs', md: 'md' }} py="sm">
-        {/* Controles */}
+        {/* Title + controls in ONE Paper (map-fluidity T1).
+            The page used to stack a full-width title Paper (~82px) on top of a
+            separate controls Paper; together with MapaMapLibre's own top bar
+            that pushed the canvas ~300px down the page and the map's bottom
+            edge off screen at 1366×768. Merging them removes one Paper's
+            padding, one margin and the oversized title block (~74px on
+            desktop, more on mobile where every row wraps) without dropping any
+            content. */}
         <Paper shadow="sm" p="sm" mb="sm" radius="md">
           <Group justify="space-between" wrap="wrap" gap="sm">
             <Group gap="sm" wrap="wrap">
+              <Stack gap={0}>
+                <Title order={2} fz="h4">
+                  Mapa Interactivo
+                </Title>
+                <Text size="xs" c="gray.6">
+                  Explora las cuencas, caminos e infraestructura del consorcio
+                </Text>
+              </Stack>
+
               {/* Selected satellite image info */}
               {selectedImage ? (
                 <Group gap="xs">
@@ -205,10 +216,16 @@ export function MapaContent() {
                 </Box>
               }
             >
-              <TerrainViewer3D
-                demLayerId={demRawLayer?.id}
-                height="clamp(560px, calc(100dvh - 250px), 980px)"
-              />
+              {/*
+                `.canvasHeightBudget` publishes the SAME `--map-canvas-height`
+                as `.mapCanvasWrapper`, media query included, so switching
+                2D ↔ 3D does not change the page height on desktop OR mobile
+                (an inline `clamp(...)` literal here could only match one
+                breakpoint). See map.module.css.
+              */}
+              <Box className={mapStyles.canvasHeightBudget}>
+                <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
+              </Box>
             </Suspense>
           )}
         </Paper>

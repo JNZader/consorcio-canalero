@@ -31,7 +31,7 @@
 
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
-import { SOURCE_IDS } from './map2dConfig';
+import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
 
 /** MapLibre opacity paint property, keyed by layer geometry type. */
 export const OPACITY_PROP = {
@@ -156,7 +156,9 @@ const WATERWAY_ML_LAYERS: readonly MlLayerRender[] = buildWaterwayLayerConfigs([
  *   - waterways         → mapLayerEffectHelpers.ts:62  (line 0.9, ×5 files)
  *   - roads             → mapLayerEffectHelpers.ts:162 (line 0.9)
  *   - soil              → mapLayerEffectHelpers.ts:86  (fill 0.3)  / :95  (line 0.85)
- *   - catastro          → mapLayerEffectHelpers.ts:119 (fill 0.08) / :129 (line 0.85)
+ *   - catastro          → fill imports `CATASTRO_FILL_OPACITY` from
+ *                         `map2dConfig.ts` (shared with the paint — NOT a
+ *                         copied literal) / line 0.85 (mapLayerEffectHelpers)
  *   - puntos_conflicto  → mapRasterOverlayHelpers.ts:274 (circle 0.85 = MARTIN_SOURCES.puntos_conflicto.style.fillOpacity)
  *   - pilar_verde_*     → pilarVerdeLayers.ts paint factories
  *   - canales_*         → canalesLayers.ts (line 0.95 both)
@@ -200,7 +202,14 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   },
   catastro: {
     mlLayers: [
-      { id: `${SOURCE_IDS.CATASTRO}-fill`, opacityProp: OPACITY_PROP.fill, defaultOpacity: 0.08 },
+      {
+        id: `${SOURCE_IDS.CATASTRO}-fill`,
+        opacityProp: OPACITY_PROP.fill,
+        // NOT a copied literal: the paint reads the same constant, so a
+        // persisted opacity multiplier can never stomp the fill back to the
+        // old (effectively invisible) 0.08.
+        defaultOpacity: CATASTRO_FILL_OPACITY,
+      },
       { id: `${SOURCE_IDS.CATASTRO}-line`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0.85 },
     ],
   },
