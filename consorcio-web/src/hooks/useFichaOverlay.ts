@@ -31,9 +31,9 @@ function refKeyFor(request: FichaRequest): string {
     case 'poligono':
       return JSON.stringify(request.geometry);
     case 'canal_buffer':
-      return `${request.canal_id}:${request.buffer_m}`;
+      return `${request.canal_ref}:${request.buffer_m}`;
     case 'canal_cuenca':
-      return `${request.canal_id}:${request.variante ?? 'natural'}`;
+      return `${request.canal_ref}:${request.variante ?? 'relevado'}`;
   }
 }
 

@@ -60,7 +60,7 @@ import {
 } from './map2d/comparisonOverlay';
 import { CanalBufferControl } from './map2d/CanalBufferControl';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
-import { syncCanalNetworkLayer } from './map2d/mapLayerEffectHelpers';
+import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
@@ -420,17 +420,23 @@ export default function MapaMapLibre() {
     if (isFichaDrawing) drawControlRef.current?.startDrawing();
   }, [isFichaDrawing]);
 
-  // Canal mode (A6): mount + show `vt_canal_network` (the id-bearing Martin
-  // layer) ONLY while selecting a canal, so it never competes for clicks with
-  // the parcel/BPA stack in idle. Hidden again on exit (design §6.3, JDB-013).
-  // The redundant static `canales_relevados` twin is NOT touched here — its
-  // suppression is owned by `useMapLayerEffects` via `isFichaCanal` so there is
-  // exactly one source of truth for that layer's visibility (no flicker race).
+  // Canal mode (A6 + A7): the CURATED relevados/propuestos layers are the ficha
+  // canal source now (their visibility in canal mode is owned by
+  // `useMapLayerEffects` via `isFichaCanal`), so there is no separate clickable
+  // layer to mount here. Instead this effect paints the CATCHMENT outline the
+  // backend echoed for a resolved `tipo=canal_cuenca` ficha, and clears it for
+  // any other tipo or when the selection changes (the query key drops stale data
+  // and `geometria_cuenca` goes undefined). The A(b) "ver recortado" overlay
+  // clips to this same basin.
+  const cuencaOutline =
+    ficha.data?.tipo === 'canal_cuenca'
+      ? ((ficha.data.geometria_cuenca as unknown as import('geojson').Geometry | undefined) ?? null)
+      : null;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncCanalNetworkLayer(map, isFichaCanal);
-  }, [mapReady, isFichaCanal]);
+    syncCanalCuencaLayer(map, cuencaOutline);
+  }, [mapReady, cuencaOutline]);
 
   // Measurement and ficha-draw are mutually exclusive: starting a measurement
   // ends drawing first (the reverse — draw cancelling measurement — is handled by
@@ -687,11 +693,14 @@ export default function MapaMapLibre() {
               onToggleFichaCanal={handleToggleFichaCanal}
             />
 
-            {/* Canal buffer (A6): the distance input appears once a canal line is
-                clicked in 'ficha-canal' mode; each change re-fires the ficha. */}
+            {/* Canal analysis (A6 + A7): the control appears once a curated canal is
+                clicked in 'ficha-canal' mode. It lets the user pick influence-strip
+                (buffer) vs catchment (cuenca); each change re-fires the ficha. */}
             {isFichaCanal && fichaInteraction.state.canal && (
               <CanalBufferControl
-                canalId={fichaInteraction.state.canal.canalId}
+                canalNombre={fichaInteraction.state.canal.canalNombre}
+                analysisMode={fichaInteraction.state.canal.analysisMode}
+                onAnalysisModeChange={fichaInteraction.setCanalAnalysisMode}
                 bufferM={fichaInteraction.state.canal.bufferM}
                 maxBufferM={FICHA_MAX_BUFFER_M}
                 onBufferChange={fichaInteraction.setBuffer}

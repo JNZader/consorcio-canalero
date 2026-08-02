@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import Point, Polygon, mapping
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,11 @@ _NORMAL_POLY = Polygon([(500000, 6000000), (500300, 6000000), (500300, 6000400),
 _OVERSIZED_POLY = Polygon(
     [(500000, 6000000), (530000, 6000000), (530000, 6010000), (500000, 6010000)]
 )
+# A 400 m-radius disc approximated with 1200 segments (>1000 raw vertices) →
+# ~50 ha, area/envelope-valid but WAY over the vertices cap as raw pixel geometry.
+# After the batch's topology-preserving simplify it collapses to a handful of
+# vertices, so it is stored servably (the "stored ⟹ under read caps" invariant).
+_HIGH_VERTEX_POLY = Point(500000, 6000000).buffer(400.0, quad_segs=300)
 
 
 # ── injected raster/WBT fakes ────────────────────────────────────────────────
@@ -326,6 +331,40 @@ def test_oversized_basin_stored_without_geometry(catchment_db: Session) -> None:
     assert row.area_ha == pytest.approx(30000.0)
     assert row.oversized is True
     assert row.geom_null is True  # multi-MB geometry dropped
+
+
+def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
+    catchment_db: Session,
+) -> None:
+    """A realistic high-vertex basin (raw pixel staircase) must be simplified so the
+    STORED catchment stays under ``ficha_max_vertices`` — the core producer/consumer
+    invariant: a non-oversized stored catchment is guaranteed servable by the
+    ``canal_cuenca`` ficha (``assert_within_caps``). Without the batch simplify this
+    stores a >1000-vertex geometry the read path would 422 on."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import _contar_vertices_shapely
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-a")
+
+    # Sanity: the raw basin really is over the read-path vertices cap.
+    assert _contar_vertices_shapely(_HIGH_VERTEX_POLY) > settings.ficha_max_vertices
+
+    result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_HIGH_VERTEX_POLY))
+    assert result.computed == 1
+    assert result.oversized == 0
+
+    row = catchment_db.execute(
+        text(
+            "SELECT oversized, geometria IS NULL AS geom_null, "
+            "ST_NPoints(geometria) AS npoints "
+            "FROM canal_catchment WHERE canal_ref = 'canal-a' AND variante = 'relevado'"
+        )
+    ).one()
+    assert row.oversized is False
+    assert row.geom_null is False  # simplified → servable, geometry kept
+    # The stored geometry passes the read-path vertices cap (stored ⟹ servable).
+    assert row.npoints <= settings.ficha_max_vertices
 
 
 def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:

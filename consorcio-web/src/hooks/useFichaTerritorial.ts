@@ -15,7 +15,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { type FichaRequest, type FichaResponse, FichaApiError, fetchAnalisisZona } from '../lib/api/ficha';
+import {
+  type FichaRequest,
+  type FichaResponse,
+  FichaApiError,
+  fetchAnalisisZona,
+} from '../lib/api/ficha';
 
 /** Stable reference key per area of interest, used in the query key. */
 function refKeyFor(request: FichaRequest): string {
@@ -27,9 +32,9 @@ function refKeyFor(request: FichaRequest): string {
       // the raw stringified geometry is a correct — if verbose — reference.
       return JSON.stringify(request.geometry);
     case 'canal_buffer':
-      return `${request.canal_id}:${request.buffer_m}`;
+      return `${request.canal_ref}:${request.buffer_m}`;
     case 'canal_cuenca':
-      return `${request.canal_id}:${request.variante ?? 'natural'}`;
+      return `${request.canal_ref}:${request.variante ?? 'relevado'}`;
   }
 }
 
@@ -56,9 +61,15 @@ export function useFichaTerritorial(request: FichaRequest | null): UseFichaTerri
     gcTime: 30 * 60 * 1000,
     // Client errors (bad geometry, caps, rate limit) never fix themselves on a
     // blind retry — only transient server/network faults are worth one retry.
+    // `cuenca_no_computada` is a 503 but a DELIBERATE not-yet-computed state (the
+    // batch has not produced this canal's catchment), so a blind retry would just
+    // hit the same 503 — exclude it too so it never retry-storms.
     retry: (failureCount, error) =>
       failureCount < 1 &&
-      !(error instanceof FichaApiError && [413, 422, 429].includes(error.status)),
+      !(
+        error instanceof FichaApiError &&
+        ([413, 422, 429].includes(error.status) || error.codigo === 'cuenca_no_computada')
+      ),
     // No `placeholderData: keepPreviousData` — see the staleness contract above.
   });
 

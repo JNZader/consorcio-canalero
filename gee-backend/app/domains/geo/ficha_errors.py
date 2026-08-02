@@ -36,7 +36,9 @@ TIPOS_VALIDOS = ("parcela", "poligono", "canal_buffer", "canal_cuenca")
 # the per-request statement_timeout is the DESIGN's protective bound on a public
 # endpoint, so an abusive polygon tripping it is an expected outcome, not a fault
 # — logging it at ERROR would just hand that caller a Sentry amplifier.
-_ESTADOS_DELIBERADOS = frozenset({"funcionalidad_no_disponible", "analisis_timeout"})
+_ESTADOS_DELIBERADOS = frozenset(
+    {"funcionalidad_no_disponible", "analisis_timeout", "cuenca_no_computada"}
+)
 
 
 class FichaError(Exception):
@@ -75,22 +77,57 @@ def parcela_no_encontrada(nomenclatura: str) -> FichaError:
     )
 
 
-def canal_no_encontrado(canal_id: int) -> FichaError:
+def canal_no_encontrado(canal_ref: str) -> FichaError:
+    """404 when the ``canal_ref`` is not one of the curated ``canal_consorcio`` ids.
+
+    The ficha's ``canal_buffer`` / ``canal_cuenca`` variants now operate on the 60
+    curated consorcio canals (``canal_consorcio``, keyed by the GeoJSON string id
+    such as ``canal-ne-sin-intervencion``), NOT the pgRouting ``canal_network``
+    graph, so ``canal_ref`` is a string.
+    """
     return FichaError(
         status_code=404,
         codigo="canal_no_encontrado",
-        detail=f"No existe un canal con id {canal_id}",
-        canal_id=canal_id,
+        detail=f"No existe un canal con id {canal_ref}",
+        canal_ref=canal_ref,
     )
 
 
-def variante_no_disponible(canal_id: int, disponibles: list[str]) -> FichaError:
+def cuenca_no_computada(canal_ref: str, variante: str) -> FichaError:
+    """503 when a curated canal has no precomputed catchment yet (A7 slice 2).
+
+    The canal EXISTS in ``canal_consorcio`` but the ``generate_canal_catchments``
+    batch has not produced a ``canal_catchment`` row for this ``(canal_ref,
+    variante)`` — a fresh box, or a canal added after the last batch run. Distinct
+    from ``canal_no_encontrado`` (the canal itself is unknown) and from
+    ``cuenca_demasiado_grande`` (the row exists but its basin was too large to
+    store). Coded so the UI can say "not available yet" instead of a generic
+    failure, and logged at WARNING (``_ESTADOS_DELIBERADOS``): it is a deliberate,
+    operator-actionable state on a public endpoint, not a fault worth a Sentry
+    ERROR per request.
+    """
     return FichaError(
-        status_code=409,
-        codigo="variante_no_disponible",
-        detail="La variante de cuenca solicitada no esta precalculada para este canal",
-        canal_id=canal_id,
-        variantes_disponibles=disponibles,
+        status_code=503,
+        codigo="cuenca_no_computada",
+        detail="La cuenca de este canal aún no está disponible",
+        canal_ref=canal_ref,
+        variante=variante,
+    )
+
+
+def cuenca_demasiado_grande(canal_ref: str) -> FichaError:
+    """422 when the precomputed catchment is oversized (``geometria`` is NULL).
+
+    ``generate_canal_catchments`` stores an over-``ficha_max_area_ha`` basin
+    WITHOUT its geometry (``oversized = true``) so a multi-MB polygon never lands
+    in the table. The ficha cannot analyze a geometry that is not there, so this
+    is a clear, coded 422 (caller-facing) rather than a raster failure.
+    """
+    return FichaError(
+        status_code=422,
+        codigo="cuenca_demasiado_grande",
+        detail="La cuenca es demasiado grande para analizar",
+        canal_ref=canal_ref,
     )
 
 

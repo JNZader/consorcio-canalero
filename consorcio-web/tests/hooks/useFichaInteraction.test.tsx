@@ -11,229 +11,304 @@
  *     supersedes a drawn ficha otherwise.
  */
 
-import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-import type { DrawnPolygon } from '../../src/components/map/DrawControl';
-import { useFichaInteraction } from '../../src/components/map2d/useFichaInteraction';
+import type { DrawnPolygon } from "../../src/components/map/DrawControl";
+import { useFichaInteraction } from "../../src/components/map2d/useFichaInteraction";
 
 const PARCELA = {
-  nomenclatura: '13-06-01-0203',
-  nroCuenta: '110123',
-  props: {
-    nomenclatura: '13-06-01-0203',
-    nroCuenta: '110123',
-    desigOficial: 'Lote 4',
-    superficieHa: '25.4',
-    departamento: 'General San Martín',
-    pedania: 'Arroyo Algodón',
-    tipoParcela: 'rural',
-  },
+	nomenclatura: "13-06-01-0203",
+	nroCuenta: "110123",
+	props: {
+		nomenclatura: "13-06-01-0203",
+		nroCuenta: "110123",
+		desigOficial: "Lote 4",
+		superficieHa: "25.4",
+		departamento: "General San Martín",
+		pedania: "Arroyo Algodón",
+		tipoParcela: "rural",
+	},
 };
 const POLY: DrawnPolygon = {
-  type: 'Polygon',
-  coordinates: [
-    [
-      [-62, -32],
-      [-62, -32.1],
-      [-61.9, -32.1],
-      [-62, -32],
-    ],
-  ],
+	type: "Polygon",
+	coordinates: [
+		[
+			[-62, -32],
+			[-62, -32.1],
+			[-61.9, -32.1],
+			[-62, -32],
+		],
+	],
 };
 
-describe('useFichaInteraction', () => {
-  it('starts idle: no request, mode mirrors the measurement mode', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    expect(result.current.request).toBeNull();
-    expect(result.current.interactionMode).toBe('idle');
-    expect(result.current.state.drawing).toBe(false);
-  });
+describe("useFichaInteraction", () => {
+	it("starts idle: no request, mode mirrors the measurement mode", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		expect(result.current.request).toBeNull();
+		expect(result.current.interactionMode).toBe("idle");
+		expect(result.current.state.drawing).toBe(false);
+	});
 
-  it('passes the measurement mode through when not drawing (one machine)', () => {
-    const { result } = renderHook(() => useFichaInteraction('measuring-area', vi.fn()));
-    expect(result.current.interactionMode).toBe('measuring-area');
-  });
+	it("passes the measurement mode through when not drawing (one machine)", () => {
+		const { result } = renderHook(() =>
+			useFichaInteraction("measuring-area", vi.fn()),
+		);
+		expect(result.current.interactionMode).toBe("measuring-area");
+	});
 
-  it('starting a drawing DISCARDS the previous parcel ficha and cancels measurement', () => {
-    const onEnterDraw = vi.fn();
-    const { result } = renderHook(() => useFichaInteraction('idle', onEnterDraw));
+	it("starting a drawing DISCARDS the previous parcel ficha and cancels measurement", () => {
+		const onEnterDraw = vi.fn();
+		const { result } = renderHook(() =>
+			useFichaInteraction("idle", onEnterDraw),
+		);
 
-    // A parcel is selected first (a prior click).
-    act(() => result.current.resolveParcela(PARCELA));
-    expect(result.current.request).toEqual({ tipo: 'parcela', nomenclatura: PARCELA.nomenclatura });
+		// A parcel is selected first (a prior click).
+		act(() => result.current.resolveParcela(PARCELA));
+		expect(result.current.request).toEqual({
+			tipo: "parcela",
+			nomenclatura: PARCELA.nomenclatura,
+		});
 
-    // Entering draw mode wipes it and cancels any live measurement.
-    act(() => result.current.startDraw());
-    expect(onEnterDraw).toHaveBeenCalledTimes(1);
-    expect(result.current.state.drawing).toBe(true);
-    expect(result.current.interactionMode).toBe('ficha-dibujo');
-    expect(result.current.request).toBeNull(); // previous parcel ficha discarded
-    expect(result.current.nroCuenta).toBeNull();
-  });
+		// Entering draw mode wipes it and cancels any live measurement.
+		act(() => result.current.startDraw());
+		expect(onEnterDraw).toHaveBeenCalledTimes(1);
+		expect(result.current.state.drawing).toBe(true);
+		expect(result.current.interactionMode).toBe("ficha-dibujo");
+		expect(result.current.request).toBeNull(); // previous parcel ficha discarded
+		expect(result.current.nroCuenta).toBeNull();
+	});
 
-  it('a completed polygon fires a tipo=poligono request and stays in draw mode', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startDraw());
-    act(() => result.current.completePolygon(POLY));
+	it("a completed polygon fires a tipo=poligono request and stays in draw mode", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
 
-    expect(result.current.request).toEqual({ tipo: 'poligono', geometry: POLY });
-    expect(result.current.tipo).toBe('poligono');
-    expect(result.current.state.drawing).toBe(true); // shape stays visible while its ficha shows
-    expect(result.current.interactionMode).toBe('ficha-dibujo');
-  });
+		expect(result.current.request).toEqual({
+			tipo: "poligono",
+			geometry: POLY,
+		});
+		expect(result.current.tipo).toBe("poligono");
+		expect(result.current.state.drawing).toBe(true); // shape stays visible while its ficha shows
+		expect(result.current.interactionMode).toBe("ficha-dibujo");
+	});
 
-  it('ignores a parcel click WHILE drawing (DrawControl owns clicks)', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startDraw());
-    act(() => result.current.completePolygon(POLY));
+	it("ignores a parcel click WHILE drawing (DrawControl owns clicks)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
 
-    act(() => result.current.resolveParcela(PARCELA)); // a stray click mid-draw
-    expect(result.current.request).toEqual({ tipo: 'poligono', geometry: POLY });
-  });
+		act(() => result.current.resolveParcela(PARCELA)); // a stray click mid-draw
+		expect(result.current.request).toEqual({
+			tipo: "poligono",
+			geometry: POLY,
+		});
+	});
 
-  it('a fresh parcel click supersedes a drawn ficha once drawing has stopped', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startDraw());
-    act(() => result.current.completePolygon(POLY));
-    act(() => result.current.stopDraw()); // leave draw mode → everything cleared
+	it("a fresh parcel click supersedes a drawn ficha once drawing has stopped", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
+		act(() => result.current.stopDraw()); // leave draw mode → everything cleared
 
-    expect(result.current.request).toBeNull();
+		expect(result.current.request).toBeNull();
 
-    act(() => result.current.resolveParcela(PARCELA));
-    expect(result.current.request).toEqual({ tipo: 'parcela', nomenclatura: PARCELA.nomenclatura });
-    expect(result.current.nroCuenta).toBe('110123');
-  });
+		act(() => result.current.resolveParcela(PARCELA));
+		expect(result.current.request).toEqual({
+			tipo: "parcela",
+			nomenclatura: PARCELA.nomenclatura,
+		});
+		expect(result.current.nroCuenta).toBe("110123");
+	});
 
-  it('exposes the parcel display props (for the ficha identity header)', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    expect(result.current.parcelaProps).toBeNull();
+	it("exposes the parcel display props (for the ficha identity header)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		expect(result.current.parcelaProps).toBeNull();
 
-    act(() => result.current.resolveParcela(PARCELA));
-    expect(result.current.parcelaProps).toEqual(PARCELA.props);
+		act(() => result.current.resolveParcela(PARCELA));
+		expect(result.current.parcelaProps).toEqual(PARCELA.props);
 
-    act(() => result.current.clearFicha());
-    expect(result.current.parcelaProps).toBeNull();
-  });
+		act(() => result.current.clearFicha());
+		expect(result.current.parcelaProps).toBeNull();
+	});
 
-  it('stopDraw and clearFicha reset to idle', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startDraw());
-    act(() => result.current.stopDraw());
-    expect(result.current.state.drawing).toBe(false);
-    expect(result.current.request).toBeNull();
+	it("stopDraw and clearFicha reset to idle", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.stopDraw());
+		expect(result.current.state.drawing).toBe(false);
+		expect(result.current.request).toBeNull();
 
-    act(() => result.current.resolveParcela(PARCELA));
-    act(() => result.current.clearFicha());
-    expect(result.current.request).toBeNull();
-  });
+		act(() => result.current.resolveParcela(PARCELA));
+		act(() => result.current.clearFicha());
+		expect(result.current.request).toBeNull();
+	});
 
-  it('deletePolygon clears the drawn ficha without leaving draw mode', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startDraw());
-    act(() => result.current.completePolygon(POLY));
-    act(() => result.current.deletePolygon());
-    expect(result.current.request).toBeNull();
-    expect(result.current.state.drawing).toBe(true);
-  });
+	it("deletePolygon clears the drawn ficha without leaving draw mode", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
+		act(() => result.current.deletePolygon());
+		expect(result.current.request).toBeNull();
+		expect(result.current.state.drawing).toBe(true);
+	});
 });
 
-describe('useFichaInteraction · canal buffer (A6)', () => {
-  it('entering canal mode derives ficha-canal and cancels measurement, no request yet', () => {
-    const onEnterDraw = vi.fn();
-    const { result } = renderHook(() => useFichaInteraction('measuring-distance', onEnterDraw));
+const CANAL_A = { ref: "canal-a", nombre: "Canal A" };
+const CANAL_B = { ref: "canal-b", nombre: "Canal B" };
 
-    act(() => result.current.startCanal());
-    expect(onEnterDraw).toHaveBeenCalledTimes(1); // measurement cancelled
-    expect(result.current.state.canalMode).toBe(true);
-    expect(result.current.interactionMode).toBe('ficha-canal');
-    expect(result.current.request).toBeNull(); // no canal clicked yet
-  });
+describe("useFichaInteraction · canal analysis (A6 + A7)", () => {
+	it("entering canal mode derives ficha-canal and cancels measurement, no request yet", () => {
+		const onEnterDraw = vi.fn();
+		const { result } = renderHook(() =>
+			useFichaInteraction("measuring-distance", onEnterDraw),
+		);
 
-  it('resolving a canal fires a tipo=canal_buffer request with the default buffer', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(42));
+		act(() => result.current.startCanal());
+		expect(onEnterDraw).toHaveBeenCalledTimes(1); // measurement cancelled
+		expect(result.current.state.canalMode).toBe(true);
+		expect(result.current.interactionMode).toBe("ficha-canal");
+		expect(result.current.request).toBeNull(); // no canal clicked yet
+	});
 
-    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 42, buffer_m: 500 });
-    expect(result.current.tipo).toBe('canal_buffer');
-    expect(result.current.state.canal).toEqual({ canalId: 42, bufferM: 500 });
-  });
+	it("resolving a curated canal fires a tipo=canal_buffer request with canal_ref + default buffer", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
 
-  it('setBuffer re-fires the request with the new distance, keeping the canal', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(7));
-    act(() => result.current.setBuffer(1200));
+		expect(result.current.request).toEqual({
+			tipo: "canal_buffer",
+			canal_ref: "canal-a",
+			buffer_m: 500,
+		});
+		expect(result.current.tipo).toBe("canal_buffer");
+		expect(result.current.state.canal).toEqual({
+			canalRef: "canal-a",
+			canalNombre: "Canal A",
+			bufferM: 500,
+			analysisMode: "buffer",
+		});
+	});
 
-    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 7, buffer_m: 1200 });
-  });
+	it("setBuffer re-fires the request with the new distance, keeping the canal", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.setBuffer(1200));
 
-  it('picking another canal keeps the buffer the user already dialed in', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(1));
-    act(() => result.current.setBuffer(800));
-    act(() => result.current.resolveCanal(2)); // click a different canal
+		expect(result.current.request).toEqual({
+			tipo: "canal_buffer",
+			canal_ref: "canal-a",
+			buffer_m: 1200,
+		});
+	});
 
-    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 2, buffer_m: 800 });
-  });
+	it("switching to Cuenca fires a tipo=canal_cuenca request (variante relevado), same canal_ref", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.setCanalAnalysisMode("cuenca"));
 
-  it('setBuffer is a no-op before any canal is selected', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.setBuffer(1500));
-    expect(result.current.request).toBeNull();
-    expect(result.current.state.canal).toBeNull();
-  });
+		expect(result.current.request).toEqual({
+			tipo: "canal_cuenca",
+			canal_ref: "canal-a",
+			variante: "relevado",
+		});
+		expect(result.current.tipo).toBe("canal_cuenca");
+	});
 
-  it('starting canal mode DISCARDS a previous parcel ficha', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.resolveParcela(PARCELA));
-    expect(result.current.tipo).toBe('parcela');
+	it("switching back to Zona de influencia restores the canal_buffer request", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.setBuffer(900));
+		act(() => result.current.setCanalAnalysisMode("cuenca"));
+		act(() => result.current.setCanalAnalysisMode("buffer"));
 
-    act(() => result.current.startCanal());
-    expect(result.current.request).toBeNull(); // parcel ficha gone
-    expect(result.current.state.parcela).toBeNull();
-  });
+		expect(result.current.request).toEqual({
+			tipo: "canal_buffer",
+			canal_ref: "canal-a",
+			buffer_m: 900,
+		});
+	});
 
-  it('a parcel click is IGNORED while in canal mode (canal owns clicks)', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(9));
-    act(() => result.current.resolveParcela(PARCELA)); // stray parcel resolution
-    expect(result.current.request).toEqual({ tipo: 'canal_buffer', canal_id: 9, buffer_m: 500 });
-  });
+	it("picking another canal keeps the buffer AND the analysis mode the user chose", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.setBuffer(800));
+		act(() => result.current.setCanalAnalysisMode("cuenca"));
+		act(() => result.current.resolveCanal(CANAL_B)); // click a different canal
 
-  it('startDraw and startCanal are mutually exclusive (one machine)', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(3));
-    expect(result.current.interactionMode).toBe('ficha-canal');
+		// Cuenca mode carries over → the new canal is analyzed as a catchment too.
+		expect(result.current.request).toEqual({
+			tipo: "canal_cuenca",
+			canal_ref: "canal-b",
+			variante: "relevado",
+		});
+		expect(result.current.state.canal?.bufferM).toBe(800); // buffer preserved for a later switch
+	});
 
-    act(() => result.current.startDraw()); // switch to drawing
-    expect(result.current.state.canalMode).toBe(false);
-    expect(result.current.state.canal).toBeNull();
-    expect(result.current.interactionMode).toBe('ficha-dibujo');
-    expect(result.current.request).toBeNull();
-  });
+	it("setBuffer / setCanalAnalysisMode are no-ops before any canal is selected", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.setBuffer(1500));
+		act(() => result.current.setCanalAnalysisMode("cuenca"));
+		expect(result.current.request).toBeNull();
+		expect(result.current.state.canal).toBeNull();
+	});
 
-  it('stopCanal resets to idle', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(5));
-    act(() => result.current.stopCanal());
-    expect(result.current.state.canalMode).toBe(false);
-    expect(result.current.request).toBeNull();
-    expect(result.current.interactionMode).toBe('idle');
-  });
+	it("starting canal mode DISCARDS a previous parcel ficha", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.resolveParcela(PARCELA));
+		expect(result.current.tipo).toBe("parcela");
 
-  it('resolveCanal(null) clears the selection but stays in canal mode', () => {
-    const { result } = renderHook(() => useFichaInteraction('idle', vi.fn()));
-    act(() => result.current.startCanal());
-    act(() => result.current.resolveCanal(5));
-    act(() => result.current.resolveCanal(null)); // click missed a canal
-    expect(result.current.request).toBeNull();
-    expect(result.current.state.canalMode).toBe(true);
-  });
+		act(() => result.current.startCanal());
+		expect(result.current.request).toBeNull(); // parcel ficha gone
+		expect(result.current.state.parcela).toBeNull();
+	});
+
+	it("a parcel click is IGNORED while in canal mode (canal owns clicks)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.resolveParcela(PARCELA)); // stray parcel resolution
+		expect(result.current.request).toEqual({
+			tipo: "canal_buffer",
+			canal_ref: "canal-a",
+			buffer_m: 500,
+		});
+	});
+
+	it("startDraw and startCanal are mutually exclusive (one machine)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		expect(result.current.interactionMode).toBe("ficha-canal");
+
+		act(() => result.current.startDraw()); // switch to drawing
+		expect(result.current.state.canalMode).toBe(false);
+		expect(result.current.state.canal).toBeNull();
+		expect(result.current.interactionMode).toBe("ficha-dibujo");
+		expect(result.current.request).toBeNull();
+	});
+
+	it("stopCanal resets to idle", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.stopCanal());
+		expect(result.current.state.canalMode).toBe(false);
+		expect(result.current.request).toBeNull();
+		expect(result.current.interactionMode).toBe("idle");
+	});
+
+	it("resolveCanal(null) clears the selection but stays in canal mode", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startCanal());
+		act(() => result.current.resolveCanal(CANAL_A));
+		act(() => result.current.resolveCanal(null)); // click missed a canal
+		expect(result.current.request).toBeNull();
+		expect(result.current.state.canalMode).toBe(true);
+	});
 });

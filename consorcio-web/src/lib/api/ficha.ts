@@ -75,6 +75,10 @@ export interface FichaResponse {
   flood_risk: FichaDataset;
   drainage_need: FichaDataset;
   precipitacion_mensual: FichaPrecipitacion;
+  /** `canal_cuenca` only: which precomputed catchment variante answered. `null` otherwise. */
+  variante?: 'natural' | 'relevado' | null;
+  /** `canal_cuenca` only: the catchment outline (GeoJSON geometry) to draw. `null` otherwise. */
+  geometria_cuenca?: Record<string, unknown> | null;
 }
 
 /** Server-resolved geometry from `parcelas_catastro`. */
@@ -89,17 +93,25 @@ export interface FichaPoligonoRequest {
   geometry: Record<string, unknown>;
 }
 
-/** Influence strip around a canal (phase A6). */
+/**
+ * Influence strip around a CURATED consorcio canal (A6, retargeted in A7 slice 2).
+ * `canal_ref` is the `canal_consorcio` string id (e.g. `canal-ne-sin-intervencion`),
+ * NOT the pgRouting `canal_network` int id.
+ */
 export interface FichaCanalBufferRequest {
   tipo: 'canal_buffer';
-  canal_id: number;
+  canal_ref: string;
   buffer_m: number;
 }
 
-/** Precomputed catchment of a canal (phase A7). */
+/**
+ * Precomputed upstream catchment of a curated consorcio canal (A7). `canal_ref` is
+ * the `canal_consorcio` string id; `variante` defaults to `relevado` (v1's only
+ * stored catchment).
+ */
 export interface FichaCanalCuencaRequest {
   tipo: 'canal_cuenca';
-  canal_id: number;
+  canal_ref: string;
   variante?: 'natural' | 'relevado';
 }
 

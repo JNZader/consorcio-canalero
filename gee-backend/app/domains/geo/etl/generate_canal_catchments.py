@@ -25,9 +25,17 @@ per canal mirrors the pour-points build in
    miscall this whole feature was blocked on).
 3. Polygonize the basins raster, dissolve to one MultiPolygon, measure ``area_ha``
    in EPSG:32720 (the projection the whole ficha uses).
-4. If ``area_ha`` exceeds ``settings.ficha_max_area_ha`` (20 000) the basin is
-   ``oversized``: the row is stored WITHOUT its multi-MB geometry (the ficha would
-   reject it anyway), ``geometria`` NULL, ``area_ha`` kept for audit.
+4. Simplify the dissolved basin (topology-preserving, 8 m in EPSG:32720) so the
+   raw pixel-boundary staircase — whose vertex count scales with basin perimeter
+   and routinely blows past ``settings.ficha_max_vertices`` — collapses to a
+   low-vertex outline; then gate the SIMPLIFIED geometry against EVERY read-path
+   cap ``ficha_service.assert_within_caps(tipo='canal_cuenca')`` enforces:
+   ``ficha_max_area_ha`` AND ``ficha_max_envelope_ha`` AND ``ficha_max_vertices``.
+   If the simplified basin exceeds ANY of those it is ``oversized``: the row is
+   stored WITHOUT its geometry (``geometria`` NULL, ``area_ha`` kept for audit).
+   A stored (non-oversized) catchment is therefore GUARANTEED to pass
+   ``assert_within_caps`` at read time — producer and consumer read the SAME
+   settings, so the "stored ⟹ servable" invariant can never drift.
 5. UPSERT onto ``(canal_ref, variante)``.
 
 **V1 flow_dir policy — one base raster for all 60 canals.** The consorcio manages
@@ -104,6 +112,16 @@ CANAL_ESTADOS = ("relevado", "propuesto")
 
 #: Hectares per square metre denominator (a hectare is 10 000 m²).
 M2_PER_HA = 10_000.0
+
+#: Topology-preserving simplify tolerance (metres, EPSG:32720) applied to the
+#: dissolved catchment BEFORE it is measured, cap-gated and stored. The raw basin
+#: is a pixel-boundary staircase whose vertex count scales with basin perimeter —
+#: so any real basin exceeds ``settings.ficha_max_vertices`` (1000). Simplifying at
+#: 8 m (the SAME tolerance the soils on-map overlay uses in
+#: ``ficha_service._SUELOS_OVERLAY_SQL``, well below the flow_dir grid's visible
+#: detail so basin boundaries stay faithful) collapses the staircase and keeps a
+#: stored catchment servable.
+CATCHMENT_SIMPLIFY_TOLERANCE_M = 8.0
 
 #: Log a heartbeat every this many canals.
 LOG_EVERY = 50
@@ -284,6 +302,50 @@ def _dissolve_basins(
         dissolved = MultiPolygon([dissolved])
     area_ha = dissolved.area / M2_PER_HA
     return dissolved, area_ha
+
+
+def _simplify_catchment(dissolved: Any) -> tuple[Any, float]:
+    """Topology-preserving simplify of a dissolved catchment, in its metric CRS.
+
+    ``dissolved`` is a (Multi)Polygon in EPSG:32720. Collapses the pixel staircase
+    at :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M`, heals any simplify self-touch with
+    ``buffer(0)``, and re-coerces to MultiPolygon. Returns ``(simplified, area_ha)``
+    measured on the SIMPLIFIED geometry (the value that is stored and gated). Falls
+    back to the raw geometry if simplify degenerates to empty (never expected for a
+    real basin — the cap gate then still runs on the raw shape).
+    """
+    from shapely.geometry import MultiPolygon  # noqa: PLC0415
+
+    simplified = dissolved.simplify(CATCHMENT_SIMPLIFY_TOLERANCE_M, preserve_topology=True).buffer(
+        0
+    )
+    if simplified.is_empty:
+        return dissolved, dissolved.area / M2_PER_HA
+    if simplified.geom_type == "Polygon":
+        simplified = MultiPolygon([simplified])
+    return simplified, simplified.area / M2_PER_HA
+
+
+def _exceeds_read_path_caps(geom: Any, area_ha: float, max_area_ha: float) -> bool:
+    """True when ``geom`` would fail ``ficha_service.assert_within_caps``.
+
+    Mirrors EVERY cap the read path (``canal_cuenca`` ficha) enforces — area,
+    envelope AND vertices — reusing the SAME ``settings`` thresholds and the SAME
+    vertex counter (``_contar_vertices_shapely``) as ``assert_within_caps`` so the
+    numbers are directly comparable and producer/consumer can never drift. Anything
+    stored as non-oversized is therefore guaranteed servable at read time.
+    """
+    from app.domains.geo.ficha_service import _contar_vertices_shapely  # noqa: PLC0415
+
+    if area_ha > max_area_ha:
+        return True
+    minx, miny, maxx, maxy = geom.bounds
+    envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_PER_HA
+    if envelope_ha > settings.ficha_max_envelope_ha:
+        return True
+    if _contar_vertices_shapely(geom) > settings.ficha_max_vertices:
+        return True
+    return False
 
 
 def _upsert_catchment(
@@ -553,7 +615,12 @@ def _compute_one(
         )
         return
 
-    oversized = area_ha > max_area_ha
+    # Simplify FIRST (drops the pixel staircase), then gate the simplified shape
+    # against ALL read-path caps assert_within_caps(tipo="canal_cuenca") enforces —
+    # area, envelope AND vertices — so a stored (non-oversized) catchment is
+    # guaranteed to pass at read time. area_ha is reported off the simplified geom.
+    dissolved, area_ha = _simplify_catchment(dissolved)
+    oversized = _exceeds_read_path_caps(dissolved, area_ha, max_area_ha)
     metric_geojson = None if oversized else json.dumps(mapping(dissolved))
     _upsert_catchment(
         db,
