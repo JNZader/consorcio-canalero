@@ -101,10 +101,15 @@ class FichaPoligonoRequest(_FichaRequestBase):
 
 
 class FichaCanalBufferRequest(_FichaRequestBase):
-    """Influence strip around a canal; buffered in EPSG:32720 server-side."""
+    """Influence strip around a curated consorcio canal; buffered in EPSG:32720.
+
+    ``canal_ref`` is the ``canal_consorcio`` string id (e.g.
+    ``canal-ne-sin-intervencion``) — the ficha operates on the 60 curated canals,
+    not the pgRouting ``canal_network`` graph.
+    """
 
     tipo: Literal["canal_buffer"]
-    canal_id: int = Field(ge=1)
+    canal_ref: str = Field(min_length=1, max_length=128)
     buffer_m: float = Field(gt=0)
 
     @field_validator("buffer_m")
@@ -119,11 +124,17 @@ class FichaCanalBufferRequest(_FichaRequestBase):
 
 
 class FichaCanalCuencaRequest(_FichaRequestBase):
-    """Precomputed catchment of a canal (phase 5)."""
+    """Precomputed upstream catchment of a curated consorcio canal (A7).
+
+    ``canal_ref`` is the ``canal_consorcio`` string id. ``variante`` defaults to
+    ``relevado``: v1 precomputes every catchment against the base/relevado
+    ``flow_dir`` raster, so ``relevado`` is the only variante with a stored
+    catchment (``natural`` is reserved for a later slice).
+    """
 
     tipo: Literal["canal_cuenca"]
-    canal_id: int = Field(ge=1)
-    variante: VarianteCuenca = "natural"
+    canal_ref: str = Field(min_length=1, max_length=128)
+    variante: VarianteCuenca = "relevado"
 
 
 FichaRequest = Annotated[
@@ -197,6 +208,13 @@ class FichaResponse(BaseModel):
     # one dataset and would have made "we have no precipitation product" look
     # identical to "the server forgot to include it".
     precipitacion_mensual: PrecipitacionFicha = Field(default_factory=PrecipitacionFicha)
+    # ── canal_cuenca-only additive fields (A7) ──────────────────────────────
+    # ``variante`` echoes which precomputed catchment variante answered, and
+    # ``geometria_cuenca`` carries the catchment outline (GeoJSON, EPSG:4326) so
+    # the frontend can draw it on the map. Both are ``None`` for the other three
+    # tipos — additive, so the datasets above stay byte-compatible across tipos.
+    variante: VarianteCuenca | None = None
+    geometria_cuenca: dict[str, Any] | None = None
 
 
 # ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────

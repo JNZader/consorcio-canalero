@@ -89,28 +89,57 @@ function relevadosFlags(): boolean[] {
   );
 }
 
-describe('useMapLayerEffects · canal-mode relevados suppression', () => {
+/** propuestasVisible flags from every syncCanalesLayers call, in order. */
+function propuestasFlags(): boolean[] {
+  return (helpers.syncCanalesLayers as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(
+    ([, params]) => (params as { propuestasVisible: boolean }).propuestasVisible
+  );
+}
+
+// A7 slice 2 INVERTS the old behavior: the curated relevados/propuestos layers ARE
+// the ficha canal source now (`vt_canal_network` is gone), so canal mode must SHOW
+// them (and make them clickable) regardless of the user's master toggles.
+describe('useMapLayerEffects · canal-mode canals are shown (ficha source)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('hides the relevados line while in canal mode even when its toggle is on', () => {
+  it('FORCES the relevados line visible in canal mode even when its toggle is OFF', () => {
     renderHook(() =>
       useMapLayerEffects(
-        baseParams({ vectorVisibility: { canales_relevados: true }, isFichaCanal: true })
+        baseParams({
+          vectorVisibility: { canales_relevados: false },
+          isFichaCanal: true,
+        })
       )
     );
 
     expect(helpers.syncCanalesLayers).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ relevadosVisible: false })
+      expect.objectContaining({ relevadosVisible: true })
     );
   });
 
-  it('keeps the relevados line hidden when an UNRELATED layer is toggled during canal mode (no flicker)', () => {
+  it('FORCES the propuestos line visible in canal mode even when its toggle is OFF', () => {
+    renderHook(() =>
+      useMapLayerEffects(
+        baseParams({
+          vectorVisibility: { canales_propuestos: false },
+          isFichaCanal: true,
+        })
+      )
+    );
+
+    expect(helpers.syncCanalesLayers).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ propuestasVisible: true })
+    );
+  });
+
+  it('keeps the canals shown when an UNRELATED layer is toggled during canal mode (no flicker)', () => {
     const { rerender } = renderHook((props: Params) => useMapLayerEffects(props), {
       initialProps: baseParams({
-        vectorVisibility: { canales_relevados: true },
+        vectorVisibility: { canales_relevados: false },
         isFichaCanal: true,
       }),
     });
@@ -118,39 +147,40 @@ describe('useMapLayerEffects · canal-mode relevados suppression', () => {
     // Toggle an unrelated layer (soil) while STILL in canal mode.
     rerender(
       baseParams({
-        vectorVisibility: { canales_relevados: true, soil: true },
+        vectorVisibility: { canales_relevados: false, soil: true },
         soilCollection: fc(),
         isFichaCanal: true,
       })
     );
 
-    // The relevados twin was NEVER re-shown at any point during canal mode.
-    expect(relevadosFlags().every((v) => v === false)).toBe(true);
+    // The relevados layer was shown at EVERY point during canal mode.
+    expect(relevadosFlags().every((v) => v === true)).toBe(true);
+    expect(propuestasFlags().every((v) => v === true)).toBe(true);
   });
 
   it('restores the relevados line to its live toggle state on leaving canal mode', () => {
     const { rerender } = renderHook((props: Params) => useMapLayerEffects(props), {
       initialProps: baseParams({
-        vectorVisibility: { canales_relevados: true },
+        vectorVisibility: { canales_relevados: false },
         isFichaCanal: true,
       }),
     });
-    expect(relevadosFlags().at(-1)).toBe(false); // hidden in canal mode
+    expect(relevadosFlags().at(-1)).toBe(true); // forced shown in canal mode
 
-    rerender(baseParams({ vectorVisibility: { canales_relevados: true }, isFichaCanal: false }));
-    expect(relevadosFlags().at(-1)).toBe(true); // restored to the toggle
-
-    rerender(baseParams({ vectorVisibility: { canales_relevados: false }, isFichaCanal: false }));
-    expect(relevadosFlags().at(-1)).toBe(false); // follows the toggle when off
-  });
-
-  it('keeps the relevados line hidden when both the toggle is off and canal mode is on', () => {
-    renderHook(() =>
-      useMapLayerEffects(
-        baseParams({ vectorVisibility: { canales_relevados: false }, isFichaCanal: true })
-      )
+    rerender(
+      baseParams({
+        vectorVisibility: { canales_relevados: false },
+        isFichaCanal: false,
+      })
     );
+    expect(relevadosFlags().at(-1)).toBe(false); // back to the (off) toggle
 
-    expect(relevadosFlags().every((v) => v === false)).toBe(true);
+    rerender(
+      baseParams({
+        vectorVisibility: { canales_relevados: true },
+        isFichaCanal: false,
+      })
+    );
+    expect(relevadosFlags().at(-1)).toBe(true); // follows the toggle when on
   });
 });

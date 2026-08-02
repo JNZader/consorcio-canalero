@@ -67,11 +67,15 @@ describe('buildClickableLayers · mode gate (A5.3, ficha free-draw)', () => {
   });
 });
 
-describe('buildClickableLayers · canal mode (A6, ficha-canal)', () => {
-  it('returns ONLY the vt_canal_network line layer in ficha-canal', () => {
-    // Design §6.3 / JDB-013: a canal click must resolve a `canal_id`, never a
-    // parcel, so the whitelist is the id-bearing canal layer and nothing else.
-    expect(buildClickableLayers('ficha-canal')).toEqual([`${SOURCE_IDS.CANAL_NETWORK}-line`]);
+describe('buildClickableLayers · canal mode (A6 + A7, ficha-canal)', () => {
+  it('returns ONLY the curated relevados + propuestos line layers in ficha-canal', () => {
+    // A7 slice 2 / JDB-013: a canal click must resolve a curated `canal_ref`, never
+    // a parcel, so the whitelist is the two curated canal layers and nothing else
+    // (`vt_canal_network` is no longer the ficha canal source).
+    expect(buildClickableLayers('ficha-canal')).toEqual([
+      `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+      `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+    ]);
   });
 
   it('EXCLUDES parcels/soil/BPA in canal mode (a canal click cannot open a parcel)', () => {
@@ -81,10 +85,13 @@ describe('buildClickableLayers · canal mode (A6, ficha-canal)', () => {
     expect(layers).not.toContain(`${SOURCE_IDS.PILAR_VERDE_BPA_HISTORICO}-fill`);
   });
 
-  it('does NOT add the canal-network layer to the idle whitelist (idle unchanged)', () => {
-    // The canal layer is mounted/clickable only in canal mode; the pinned idle
-    // ordering must not gain a new entry.
-    expect(buildClickableLayers('idle')).not.toContain(`${SOURCE_IDS.CANAL_NETWORK}-line`);
+  it('keeps the pinned idle ordering unchanged (canals present once, in place)', () => {
+    // The curated canals are already in the idle whitelist (their pixel-overlap
+    // precedence is pinned elsewhere); canal mode reuses those same layer ids and
+    // does not perturb the idle list.
+    const idle = buildClickableLayers('idle');
+    expect(idle).toContain(`${SOURCE_IDS.CANALES_RELEVADOS}-line`);
+    expect(idle).toContain(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
   });
 });
 
