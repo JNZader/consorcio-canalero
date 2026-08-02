@@ -106,8 +106,8 @@ export interface FichaCanalBufferRequest {
 
 /**
  * Precomputed upstream catchment of a curated consorcio canal (A7). `canal_ref` is
- * the `canal_consorcio` string id; `variante` defaults to `relevado` (v1's only
- * stored catchment).
+ * the `canal_consorcio` string id; `variante` defaults to `natural` (v1's stored
+ * catchment, derived from the natural flow_dir; relevado/escenario deferred).
  */
 export interface FichaCanalCuencaRequest {
   tipo: 'canal_cuenca';
