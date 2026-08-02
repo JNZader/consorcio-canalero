@@ -112,7 +112,7 @@ describe("useFichaTerritorial", () => {
 				useFichaTerritorial({
 					tipo: "canal_cuenca",
 					canal_ref: "canal-a",
-					variante: "relevado",
+					variante: "natural",
 				}),
 			{ wrapper: wrapper() },
 		);
