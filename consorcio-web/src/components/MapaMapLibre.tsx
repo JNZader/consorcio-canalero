@@ -58,7 +58,6 @@ import {
   type ComparisonOverlaySyncInputs,
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
-import { CanalBufferControl } from './map2d/CanalBufferControl';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
 import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
@@ -693,20 +692,11 @@ export default function MapaMapLibre() {
               onToggleFichaCanal={handleToggleFichaCanal}
             />
 
-            {/* Canal analysis (A6 + A7): the control appears once a curated canal is
-                clicked in 'ficha-canal' mode. It lets the user pick influence-strip
-                (buffer) vs catchment (cuenca); each change re-fires the ficha. */}
-            {isFichaCanal && fichaInteraction.state.canal && (
-              <CanalBufferControl
-                canalNombre={fichaInteraction.state.canal.canalNombre}
-                analysisMode={fichaInteraction.state.canal.analysisMode}
-                onAnalysisModeChange={fichaInteraction.setCanalAnalysisMode}
-                bufferM={fichaInteraction.state.canal.bufferM}
-                maxBufferM={FICHA_MAX_BUFFER_M}
-                onBufferChange={fichaInteraction.setBuffer}
-                onClose={fichaInteraction.stopCanal}
-              />
-            )}
+            {/* Canal analysis (A6 + A7): the influence-strip vs catchment control
+                is NO LONGER a standalone floating card — it now renders as a
+                header section INSIDE `FichaTerritorialPanel` (threaded below via
+                the `fichaCanal*` props) so it can never be covered by the ficha
+                card and stays reachable in loading/error states. */}
             <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 
@@ -787,6 +777,12 @@ export default function MapaMapLibre() {
               onToggleFichaOverlay={handleToggleFichaOverlay}
               fichaOverlayDataset={fichaOverlayDataset}
               onChangeFichaOverlayDataset={handleChangeFichaOverlayDataset}
+              fichaCanalNombre={fichaInteraction.state.canal?.canalNombre ?? null}
+              fichaCanalAnalysisMode={fichaInteraction.state.canal?.analysisMode}
+              onFichaCanalAnalysisModeChange={fichaInteraction.setCanalAnalysisMode}
+              fichaCanalBufferM={fichaInteraction.state.canal?.bufferM}
+              fichaCanalMaxBufferM={FICHA_MAX_BUFFER_M}
+              onFichaCanalBufferChange={fichaInteraction.setBuffer}
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}

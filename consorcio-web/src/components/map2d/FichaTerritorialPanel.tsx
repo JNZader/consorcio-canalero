@@ -35,7 +35,9 @@ import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/ap
 import { FichaApiError } from '../../lib/api/ficha';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import styles from '../../styles/components/map.module.css';
+import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
+import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
 import { PrecipChart } from './PrecipChart';
@@ -75,6 +77,22 @@ export interface FichaTerritorialPanelProps {
    */
   readonly overlayDataset?: FichaOverlayDataset;
   readonly onChangeOverlayDataset?: (dataset: FichaOverlayDataset) => void;
+  /**
+   * Canal analysis header (A6 + A7). When the analyzed tipo is `canal_buffer` or
+   * `canal_cuenca` and these are wired, a header section renders at the TOP of
+   * the panel (like `ParcelaIdentityHeader` for a parcel): the canal name, the
+   * "Zona de influencia / Cuenca" segmented control and — in buffer mode — the
+   * influence-distance input. It lives inside the card (not a separate floating
+   * control) so the mode toggle stays reachable in loading and error states,
+   * including the `cuenca_no_computada` 503, letting the user switch back to
+   * buffer. Optional so parcel/polígono fichas render without any canal wiring.
+   */
+  readonly canalNombre?: string | null;
+  readonly canalAnalysisMode?: CanalAnalysisMode;
+  readonly onCanalAnalysisModeChange?: (mode: CanalAnalysisMode) => void;
+  readonly canalBufferM?: number;
+  readonly canalMaxBufferM?: number;
+  readonly onCanalBufferChange?: (bufferM: number) => void;
 }
 
 /** Overlay dataset options for the picker (label ⇄ wire value). */
@@ -199,6 +217,12 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   onToggleOverlay,
   overlayDataset = 'suelos',
   onChangeOverlayDataset,
+  canalNombre,
+  canalAnalysisMode = 'buffer',
+  onCanalAnalysisModeChange,
+  canalBufferM,
+  canalMaxBufferM,
+  onCanalBufferChange,
 }: FichaTerritorialPanelProps) {
   if (!active) return null;
 
@@ -210,6 +234,13 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   // sit at the top of this single panel, replacing the old InfoPanel catastro
   // card. Only for `tipo=parcela`; other tipos (poligono/canal) have no parcel.
   const showParcelaHeader = tipo === 'parcela' && !!parcelaProps;
+
+  // Canal analysis header (A6 + A7): the influence-strip vs catchment control now
+  // lives inside this panel instead of a separate floating card. Rendered above
+  // the analysis body for canal tipos so the toggle stays reachable while the
+  // ficha is loading or erroring (e.g. `cuenca_no_computada`). The full prop set
+  // is asserted inline in the JSX so TypeScript narrows the optional handlers.
+  const isCanalTipo = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
 
   return (
     <Paper
@@ -224,6 +255,24 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         <CloseButton onClick={onClose} size="sm" aria-label="Cerrar ficha territorial" />
       </Group>
       <Divider mb="xs" />
+      {isCanalTipo &&
+        canalNombre &&
+        onCanalAnalysisModeChange &&
+        onCanalBufferChange &&
+        typeof canalBufferM === 'number' &&
+        typeof canalMaxBufferM === 'number' && (
+          <>
+            <CanalBufferControl
+              canalNombre={canalNombre}
+              analysisMode={canalAnalysisMode}
+              onAnalysisModeChange={onCanalAnalysisModeChange}
+              bufferM={canalBufferM}
+              maxBufferM={canalMaxBufferM}
+              onBufferChange={onCanalBufferChange}
+            />
+            <Divider my="xs" />
+          </>
+        )}
       {showParcelaHeader && parcelaProps && (
         <>
           <ParcelaIdentityHeader props={parcelaProps} />
