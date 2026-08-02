@@ -1,12 +1,14 @@
 /**
  * CanalBufferControl — the canal analysis control for `'ficha-canal'` mode (A6 + A7).
  *
- * Shows the active curated canal by NAME and lets the user pick influence-strip
- * (buffer) vs catchment (cuenca) with a segmented control. In buffer mode a
- * distance input commits the new value up (`onBufferChange`) ONLY on blur or
- * Enter — never per keystroke. The committed value + analysis mode live in
- * `useFichaInteraction`; the input keeps a local draft while editing. In cuenca
- * mode there is no distance to pick, so the input is hidden.
+ * Now a header SECTION rendered inside `FichaTerritorialPanel` (no standalone
+ * floating card, no close button — the panel owns close). Shows the active
+ * curated canal by NAME and lets the user pick influence-strip (buffer) vs
+ * catchment (cuenca) with a segmented control. In buffer mode a distance input
+ * commits the new value up (`onBufferChange`) ONLY on blur or Enter — never per
+ * keystroke. The committed value + analysis mode live in `useFichaInteraction`;
+ * the input keeps a local draft while editing. In cuenca mode there is no
+ * distance to pick, so the input is hidden.
  */
 
 import { MantineProvider } from "@mantine/core";
@@ -31,7 +33,6 @@ function bufferProps(
 		bufferM: 500,
 		maxBufferM: 2000,
 		onBufferChange: () => {},
-		onClose: () => {},
 		...overrides,
 	};
 }
@@ -160,14 +161,13 @@ describe("<CanalBufferControl />", () => {
 		expect(onBufferChange.mock.calls[0][0]).toBeLessThanOrEqual(2000);
 	});
 
-	it("calls onClose when the close button is clicked", async () => {
-		const user = userEvent.setup();
-		const onClose = vi.fn();
-		renderWithMantine(<CanalBufferControl {...bufferProps({ onClose })} />);
+	it("renders as a plain header section (no standalone close button)", () => {
+		renderWithMantine(<CanalBufferControl {...bufferProps()} />);
 
-		await user.click(
-			screen.getByRole("button", { name: /cerrar selección de canal/i }),
-		);
-		expect(onClose).toHaveBeenCalledTimes(1);
+		// The header lives inside the ficha panel, which owns the single close
+		// button; this section must not ship its own canal-close control.
+		expect(
+			screen.queryByRole("button", { name: /cerrar selección de canal/i }),
+		).toBeNull();
 	});
 });
