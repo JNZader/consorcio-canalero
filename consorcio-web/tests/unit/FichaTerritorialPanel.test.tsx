@@ -14,9 +14,10 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FichaTerritorialPanel } from '../../src/components/map2d/FichaTerritorialPanel';
 import { FichaApiError, type FichaDataset, type FichaResponse } from '../../src/lib/api/ficha';
@@ -275,5 +276,140 @@ describe('FichaTerritorialPanel', () => {
     expect(screen.getByText(/2 años de BPA/)).toBeInTheDocument();
     expect(screen.queryByText('Activa 2025')).toBeNull();
     expect(screen.getByText('2025: inactiva')).toBeInTheDocument();
+  });
+});
+
+// Canal analysis header (A6 + A7): the influence-strip vs catchment control now
+// lives as a header section INSIDE this panel instead of a separate floating
+// card, so it can never be covered by the ficha card and stays reachable while
+// the ficha is loading or erroring (e.g. `cuenca_no_computada`).
+const CANAL_PROPS = {
+  canalNombre: 'Canal NE sin intervención',
+  canalAnalysisMode: 'buffer' as const,
+  onCanalAnalysisModeChange: () => {},
+  canalBufferM: 500,
+  canalMaxBufferM: 2000,
+  onCanalBufferChange: () => {},
+};
+
+describe('FichaTerritorialPanel — canal analysis header', () => {
+  it('renders the canal control INSIDE the ficha panel for a canal_buffer ficha', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        {...CANAL_PROPS}
+        tipo="canal_buffer"
+        data={ficha({ tipo: 'canal_buffer' })}
+      />
+    );
+    const panel = screen.getByTestId('ficha-territorial-panel');
+    const control = screen.getByTestId('canal-buffer-control');
+    // The control is a DESCENDANT of the ficha card, not a sibling floating card.
+    expect(panel).toContainElement(control);
+    expect(within(control).getByText('Canal NE sin intervención')).toBeInTheDocument();
+    // The analysis result still renders below the header.
+    expect(screen.getByTestId('ficha-result')).toBeInTheDocument();
+  });
+
+  it('renders the canal control for a canal_cuenca ficha too', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        {...CANAL_PROPS}
+        tipo="canal_cuenca"
+        canalAnalysisMode="cuenca"
+        data={ficha({ tipo: 'canal_cuenca' })}
+      />
+    );
+    const control = screen.getByTestId('canal-buffer-control');
+    expect(screen.getByTestId('ficha-territorial-panel')).toContainElement(control);
+    // Cuenca mode hides the distance input (no half-width to pick).
+    expect(
+      screen.queryByRole('textbox', { name: /distancia de influencia/i })
+    ).toBeNull();
+  });
+
+  it('does NOT render the canal header for a tipo=parcela ficha', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel {...baseProps} {...CANAL_PROPS} tipo="parcela" data={ficha()} />
+    );
+    expect(screen.queryByTestId('canal-buffer-control')).toBeNull();
+  });
+
+  it('switching Zona de influencia ↔ Cuenca changes the analysis mode (drives the tipo)', async () => {
+    const user = userEvent.setup();
+    const onCanalAnalysisModeChange = vi.fn();
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        {...CANAL_PROPS}
+        onCanalAnalysisModeChange={onCanalAnalysisModeChange}
+        tipo="canal_buffer"
+        data={ficha({ tipo: 'canal_buffer' })}
+      />
+    );
+    await user.click(screen.getByRole('radio', { name: /cuenca/i }));
+    expect(onCanalAnalysisModeChange).toHaveBeenCalledWith('cuenca');
+  });
+
+  it('keeps the canal control reachable WHILE the ficha is loading (before any data)', () => {
+    renderWithMantine(
+      <FichaTerritorialPanel {...baseProps} {...CANAL_PROPS} tipo="canal_buffer" isLoading />
+    );
+    // Loading body shows, and the mode toggle is still present above it.
+    expect(screen.getByTestId('ficha-loading')).toBeInTheDocument();
+    expect(screen.getByTestId('canal-buffer-control')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /cuenca/i })).toBeInTheDocument();
+  });
+
+  it('keeps the canal control reachable on a cuenca_no_computada 503 so the user can switch back to buffer', async () => {
+    const user = userEvent.setup();
+    const onCanalAnalysisModeChange = vi.fn();
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        {...CANAL_PROPS}
+        onCanalAnalysisModeChange={onCanalAnalysisModeChange}
+        tipo="canal_cuenca"
+        canalAnalysisMode="cuenca"
+        isError
+        error={
+          new FichaApiError(
+            503,
+            'cuenca_no_computada',
+            'La cuenca de este canal aún no fue computada.'
+          )
+        }
+      />
+    );
+    // The error surfaces, but the control stays reachable to switch back.
+    expect(screen.getByTestId('ficha-error')).toHaveTextContent(
+      'La cuenca de este canal aún no fue computada.'
+    );
+    expect(screen.getByTestId('canal-buffer-control')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /zona de influencia/i }));
+    expect(onCanalAnalysisModeChange).toHaveBeenCalledWith('buffer');
+  });
+
+  it('commits the buffer distance on blur (once, with the typed value)', async () => {
+    const user = userEvent.setup();
+    const onCanalBufferChange = vi.fn();
+    renderWithMantine(
+      <FichaTerritorialPanel
+        {...baseProps}
+        {...CANAL_PROPS}
+        onCanalBufferChange={onCanalBufferChange}
+        tipo="canal_buffer"
+        data={ficha({ tipo: 'canal_buffer' })}
+      />
+    );
+    const input = screen.getByRole('textbox', { name: /distancia de influencia/i });
+    await user.clear(input);
+    await user.type(input, '1200');
+    // No per-keystroke firing.
+    expect(onCanalBufferChange).not.toHaveBeenCalled();
+    await user.tab();
+    expect(onCanalBufferChange).toHaveBeenCalledTimes(1);
+    expect(onCanalBufferChange).toHaveBeenCalledWith(1200);
   });
 });

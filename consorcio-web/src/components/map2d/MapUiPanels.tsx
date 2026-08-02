@@ -7,6 +7,7 @@ import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/ap
 import type { FichaApiError } from '../../lib/api/ficha';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
+import type { CanalAnalysisMode } from './useFichaInteraction';
 import { FichaTerritorialPanel } from './FichaTerritorialPanel';
 import { InfoPanel } from './InfoPanel';
 import {
@@ -109,6 +110,19 @@ export interface MapUiPanelsProps {
   readonly fichaOverlayDataset?: FichaOverlayDataset;
   readonly onChangeFichaOverlayDataset?: (dataset: FichaOverlayDataset) => void;
   /**
+   * Canal analysis control (A6 + A7). When the active ficha is a canal
+   * (`canal_buffer` / `canal_cuenca`), these thread the canal name + analysis
+   * mode + buffer distance down so `FichaTerritorialPanel` renders the control as
+   * a header section INSIDE the card (replacing the old standalone floating
+   * `CanalBufferControl`). Optional so non-canal fichas need no canal wiring.
+   */
+  readonly fichaCanalNombre?: string | null;
+  readonly fichaCanalAnalysisMode?: CanalAnalysisMode;
+  readonly onFichaCanalAnalysisModeChange?: (mode: CanalAnalysisMode) => void;
+  readonly fichaCanalBufferM?: number;
+  readonly fichaCanalMaxBufferM?: number;
+  readonly onFichaCanalBufferChange?: (bufferM: number) => void;
+  /**
    * Optional Pilar Verde enriched catastro data — when present, InfoPanel
    * will render `<BpaCard>` for any feature whose `nro_cuenta` matches a
    * parcel with a non-null `bpa_2025` record.
@@ -189,6 +203,12 @@ export const MapUiPanels = memo(function MapUiPanels({
   onToggleFichaOverlay,
   fichaOverlayDataset,
   onChangeFichaOverlayDataset,
+  fichaCanalNombre,
+  fichaCanalAnalysisMode,
+  onFichaCanalAnalysisModeChange,
+  fichaCanalBufferM,
+  fichaCanalMaxBufferM,
+  onFichaCanalBufferChange,
   bpaEnriched,
   bpaHistory,
   exportPngModalOpen,
@@ -338,6 +358,12 @@ export const MapUiPanels = memo(function MapUiPanels({
         onToggleOverlay={onToggleFichaOverlay}
         overlayDataset={fichaOverlayDataset}
         onChangeOverlayDataset={onChangeFichaOverlayDataset}
+        canalNombre={fichaCanalNombre}
+        canalAnalysisMode={fichaCanalAnalysisMode}
+        onCanalAnalysisModeChange={onFichaCanalAnalysisModeChange}
+        canalBufferM={fichaCanalBufferM}
+        canalMaxBufferM={fichaCanalMaxBufferM}
+        onCanalBufferChange={onFichaCanalBufferChange}
       />
 
       <ExportPngModal
