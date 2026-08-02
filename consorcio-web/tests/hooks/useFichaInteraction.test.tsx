@@ -203,7 +203,7 @@ describe("useFichaInteraction · canal analysis (A6 + A7)", () => {
 		});
 	});
 
-	it("switching to Cuenca fires a tipo=canal_cuenca request (variante relevado), same canal_ref", () => {
+	it("switching to Cuenca fires a tipo=canal_cuenca request (variante natural), same canal_ref", () => {
 		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
 		act(() => result.current.startCanal());
 		act(() => result.current.resolveCanal(CANAL_A));
@@ -212,7 +212,7 @@ describe("useFichaInteraction · canal analysis (A6 + A7)", () => {
 		expect(result.current.request).toEqual({
 			tipo: "canal_cuenca",
 			canal_ref: "canal-a",
-			variante: "relevado",
+			variante: "natural",
 		});
 		expect(result.current.tipo).toBe("canal_cuenca");
 	});
@@ -244,7 +244,7 @@ describe("useFichaInteraction · canal analysis (A6 + A7)", () => {
 		expect(result.current.request).toEqual({
 			tipo: "canal_cuenca",
 			canal_ref: "canal-b",
-			variante: "relevado",
+			variante: "natural",
 		});
 		expect(result.current.state.canal?.bufferM).toBe(800); // buffer preserved for a later switch
 	});

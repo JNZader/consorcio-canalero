@@ -217,7 +217,9 @@ export function useFichaInteraction(
         ? {
             tipo: 'canal_cuenca',
             canal_ref: state.canal.canalRef,
-            variante: 'relevado',
+            // v1 computes catchments against the NATURAL flow_dir (the burned/
+            // relevado layer was pruned); the precomputed rows are variante=natural.
+            variante: 'natural',
           }
         : {
             tipo: 'canal_buffer',
