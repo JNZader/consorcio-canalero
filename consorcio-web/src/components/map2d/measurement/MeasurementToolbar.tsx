@@ -26,6 +26,16 @@
  *   so the row doesn't clash visually with the fullscreen button.
  * - `zIndex: 16` matches `MapActionsPanel`'s layer so we're above the
  *   map canvas but below modals/menus.
+ * - The dock offset, the button box AND the stack direction now live in
+ *   `map.module.css` (`.mapCtrlDock` / `.measurementDock` / `.mapCtrlButton` /
+ *   `.measurementGroup`): on a coarse pointer every control grows to the 44px
+ *   WCAG target and reveals a text label — a media query cannot reach an inline
+ *   style (map-fluidity T2, fix 2).
+ * - COARSE POINTERS RE-LAY THIS TOOLBAR. Four 44px buttons stacked under the
+ *   right-hand column would end at 436px on a 380px canvas with
+ *   `overflow: hidden`, i.e. two buttons clipped off-canvas. On coarse pointers
+ *   it becomes a horizontal row anchored bottom-left instead (see the fit-budget
+ *   comment in `map.module.css`), which also lands it in the thumb zone.
  *
  * Accessibility:
  * - The Medir trigger carries an explicit `aria-label="Medir"`
@@ -44,6 +54,7 @@
 import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 
+import styles from '../../../styles/components/map.module.css';
 import { IconPolygon, IconRoute, IconRuler, IconTrash, IconVectorTriangle } from '../../ui/icons';
 import type { MeasurementMode } from './useMeasurement';
 
@@ -115,34 +126,24 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
         // OVERRIDE the handler `Menu.Target` injects when it clones this node,
         // silently breaking the dropdown in the non-measuring case.
         {...(isToggleOff ? { onClick: onCancel } : {})}
+        className={styles.mapCtrlButton}
         style={{
-          width: 29,
-          height: 29,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
           background: isMeasuring ? '#fb923c' : 'transparent',
           color: isMeasuring ? '#fff' : '#333',
         }}
       >
         <IconRuler size={16} />
+        {/* Coarse-pointer only (CSS): tooltips never fire on touch. */}
+        <span className={styles.mapCtrlButtonLabel}>Medir</span>
       </UnstyledButton>
     </Tooltip>
   );
 
   return (
     <Box
-      className="maplibregl-ctrl maplibregl-ctrl-group"
-      style={{
-        position: 'absolute',
-        top: 180,
-        right: 10,
-        zIndex: 16,
-        margin: 0,
-      }}
+      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.measurementDock}`}
     >
-      <Group gap={0} wrap="nowrap" style={{ flexDirection: 'column' }}>
+      <Group gap={0} wrap="nowrap" className={styles.measurementGroup}>
         {isToggleOff ? (
           // Toggle-OFF: no menu, the trigger itself ends the mode.
           measureTriggerButton
@@ -167,18 +168,14 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               aria-label="Dibujar polígono"
               aria-pressed={fichaDrawActive}
               onClick={onToggleFichaDraw}
+              className={styles.mapCtrlButton}
               style={{
-                width: 29,
-                height: 29,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
                 background: fichaDrawActive ? '#fb923c' : 'transparent',
                 color: fichaDrawActive ? '#fff' : '#333',
               }}
             >
               <IconVectorTriangle size={16} />
+              <span className={styles.mapCtrlButtonLabel}>Dibujar</span>
             </UnstyledButton>
           </Tooltip>
         )}
@@ -190,18 +187,14 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               aria-label="Seleccionar canal"
               aria-pressed={fichaCanalActive}
               onClick={onToggleFichaCanal}
+              className={styles.mapCtrlButton}
               style={{
-                width: 29,
-                height: 29,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
                 background: fichaCanalActive ? '#06b6d4' : 'transparent',
                 color: fichaCanalActive ? '#fff' : '#333',
               }}
             >
               <IconRoute size={16} />
+              <span className={styles.mapCtrlButtonLabel}>Canal</span>
             </UnstyledButton>
           </Tooltip>
         )}
@@ -212,17 +205,15 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               type="button"
               aria-label={exitLabel}
               onClick={handleExit}
-              style={{
-                width: 29,
-                height: 29,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: '#dc2626',
-              }}
+              className={styles.mapCtrlButton}
+              style={{ color: '#dc2626' }}
             >
               <IconTrash size={16} />
+              {/* The exit button shares the coarse-pointer label treatment: a
+                  44px trash glyph with no text reads as ambiguous on touch. */}
+              <span className={styles.mapCtrlButtonLabel}>
+                {hasMeasurements ? 'Limpiar' : 'Cancelar'}
+              </span>
             </UnstyledButton>
           </Tooltip>
         )}
