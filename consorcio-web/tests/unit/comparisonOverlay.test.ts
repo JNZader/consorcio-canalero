@@ -68,6 +68,11 @@ function createFakeMap(initialStyleLoaded = true): FakeMapHarness {
       listeners.set(event, eventListeners);
     },
     off,
+    // A real MapLibre `Map` always exposes these; the mock was simply
+    // incomplete. `syncCatastroLayers` now registers hover handlers so the
+    // clickable parcel fill gets a pointer cursor, which needs both.
+    on: vi.fn(),
+    getCanvas: vi.fn(() => ({ style: {} as Record<string, string> })),
   } as unknown as maplibregl.Map;
 
   return {

@@ -68,6 +68,12 @@ interface InfoPanelProps {
   readonly feature?: Feature | null;
   readonly onClose: () => void;
   /**
+   * True when the ficha territorial is open at the same time. Caps this panel's
+   * height so both panels share the right-hand column instead of overlapping
+   * (see `.infoPanelCompact` in `map.module.css` for the budget derivation).
+   */
+  readonly compact?: boolean;
+  /**
    * Pilar Verde enriched catastro dataset — optional. When present, used to
    * resolve BPA info for catastro-only features whose flat `bpa_total` field
    * is absent.
@@ -276,6 +282,7 @@ export const InfoPanel = memo(function InfoPanel({
   feature,
   onClose,
   bpaEnriched,
+  compact = false,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -288,7 +295,13 @@ export const InfoPanel = memo(function InfoPanel({
   if (resolved.length === 0) return null;
 
   return (
-    <Paper shadow="md" p="md" radius="md" className={styles.infoPanel}>
+    <Paper
+      shadow="md"
+      p="md"
+      radius="md"
+      className={compact ? `${styles.infoPanel} ${styles.infoPanelCompact}` : styles.infoPanel}
+      data-testid="map-2d-info-panel"
+    >
       <Group justify="space-between" mb="xs">
         <Title order={5}>Informacion</Title>
         <CloseButton onClick={onClose} size="sm" aria-label="Cerrar panel de informacion" />

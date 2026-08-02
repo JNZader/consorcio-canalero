@@ -23,6 +23,8 @@ import {
   applyLayerOrder,
   type MapLayerImperativeApi,
 } from '../../src/components/map2d/layerRenderRegistry';
+import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
+import { CATASTRO_FILL_OPACITY as CATASTRO_FILL_OPACITY_FROM_PAINT } from '../../src/components/map2d/mapLayerEffectHelpers';
 
 const VALID_OPACITY_PROPS = new Set(Object.values(OPACITY_PROP));
 
@@ -49,6 +51,20 @@ describe('layerRenderRegistry — coverage', () => {
       expect(LAYER_RENDER_REGISTRY[id], `missing registry entry for ${id}`).toBeDefined();
       expect(LAYER_RENDER_REGISTRY[id].mlLayers.length).toBeGreaterThan(0);
     }
+  });
+
+  it('catastro-fill defaultOpacity IS the shared paint constant (no mirror drift)', () => {
+    // Regression guard (R4-001): the registry used to hard-code 0.08 while the
+    // paint used 0.12. `applyLayerOpacity` multiplies `defaultOpacity` by ANY
+    // present multiplier, so a persisted catastro opacity stomped the fill back
+    // to an effectively invisible value.
+    const entry = LAYER_RENDER_REGISTRY.catastro.mlLayers.find(
+      (layer) => layer.id === `${SOURCE_IDS.CATASTRO}-fill`
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.defaultOpacity).toBe(CATASTRO_FILL_OPACITY);
+    // …and the paint module re-exports the very same binding.
+    expect(CATASTRO_FILL_OPACITY_FROM_PAINT).toBe(CATASTRO_FILL_OPACITY);
   });
 
   it('every registry key is a declared renderable UI layer id (no strays)', () => {
@@ -201,9 +217,7 @@ describe('applyLayerOrder', () => {
 
   it('is null-safe: undefined order list does not throw and makes zero calls (FF-A2)', () => {
     const { map, moveLayer } = makeMap();
-    expect(() =>
-      applyLayerOrder(map, undefined as unknown as readonly string[])
-    ).not.toThrow();
+    expect(() => applyLayerOrder(map, undefined as unknown as readonly string[])).not.toThrow();
     expect(moveLayer).not.toHaveBeenCalled();
   });
 });

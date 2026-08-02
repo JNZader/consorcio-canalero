@@ -127,7 +127,11 @@ const defaultVisibleVectors: Record<string, boolean> = {
   waterways_arroyo_las_mojarras: true,
   ign_historico: false,
   soil: false,
-  catastro: false,
+  // Catastro rural starts ON: it is the ONLY affordance that makes the ficha
+  // territorial discoverable — with the layer off a citizen clicks a parcel and
+  // nothing happens at all. Flipped from `false` in the map-fluidity pass; the
+  // v4 → v5 persist migration below carries existing visitors forward.
+  catastro: true,
   hydraulic_risk: false,
   puntos_conflicto: false,
   // ── Pilar Azul — Escuelas rurales (design §7) ──
@@ -149,6 +153,12 @@ const defaultVisibleVectors: Record<string, boolean> = {
 // instead of keeping a divergent copy (single source of truth for defaults).
 export const MAP3D_DEFAULT_VISIBLE_VECTORS: Record<string, boolean> = {
   ...defaultVisibleVectors,
+  // EXCEPTION to the 2D/3D mirror (map-fluidity T1): `catastro` was flipped ON
+  // for 2D purely to make the ficha territorial discoverable — clicking a parcel
+  // opens its ficha. The 3D terrain viewer has NO ficha, so mirroring the flip
+  // would load a heavy vector-tile fill on every 3D mount for zero user benefit.
+  // The 3D side therefore keeps the historical OFF default.
+  catastro: false,
 };
 const defaultMap3dVisibleVectors = MAP3D_DEFAULT_VISIBLE_VECTORS;
 
@@ -253,6 +263,14 @@ interface PilarAzulActions {
  *   v3 → v4 (2026-07-04): seed per-layer `opacityByLayer` / `orderByLayer`
  *     slots as `{}` / `[]` on both views WITHOUT touching any persisted
  *     visibility — empty = untouched default → no render change.
+ *   v4 → v5 (map-fluidity T1): force `catastro = true` on map2d ONLY. The old
+ *     default was `false`, so every returning visitor has a persisted `false`
+ *     that would pin them to the broken experience (clicking a parcel does
+ *     nothing because the clickable fill is hidden). Since the old value was
+ *     the DEFAULT and not a considered choice, overriding it once is the
+ *     correct call; the user can still switch it off afterwards and that
+ *     choice persists. Only `catastro` is touched — every other persisted
+ *     preference is carried through untouched.
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -304,6 +322,24 @@ export function migrateMapLayerState(
           ...next.map3d,
           opacityByLayer: next.map3d.opacityByLayer ?? {},
           orderByLayer: next.map3d.orderByLayer ?? [],
+        },
+      };
+    }
+  }
+  if (fromVersion < 5) {
+    // Catastro default flipped false → true on the 2D map. A persisted `false`
+    // is the OLD DEFAULT, not a user choice, so we override it once. This is
+    // the ONLY key the step touches — every other visibility flag (including
+    // deliberate user OFFs) is preserved verbatim.
+    //
+    // map3d is INTENTIONALLY left alone: the 3D viewer has no ficha
+    // territorial, so it keeps `catastro` off (see MAP3D_DEFAULT_VISIBLE_VECTORS).
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: { ...next.map2d.visibleVectors, catastro: true },
         },
       };
     }
@@ -501,7 +537,11 @@ export const useMapLayerSyncStore = create<
       //   `orderByLayer` slots (map-redesign Fase 3) as empty `{}` / `[]` on
       //   both views so existing users get the new fields without touching any
       //   persisted visibility. Empty = "untouched default" → no render change.
-      version: 4,
+      //   v4 → v5 (map-fluidity T1): force `catastro = true` on map2d so
+      //   returning visitors are not pinned to the old OFF default, which made
+      //   the ficha territorial undiscoverable (clicking a parcel did nothing).
+      //   map3d is untouched — the 3D viewer has no ficha.
+      version: 5,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

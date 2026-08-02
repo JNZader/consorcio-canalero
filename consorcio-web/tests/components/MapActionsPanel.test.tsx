@@ -72,6 +72,13 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
     onRangeToggle: noop,
     selectedFeatures: [],
     onCloseInfoPanel: noop,
+    fichaActive: false,
+    fichaTipo: 'parcela',
+    fichaNroCuenta: null,
+    fichaLoading: false,
+    fichaError: null,
+    fichaData: undefined,
+    onCloseFicha: noop,
     exportPngModalOpen: false,
     onCloseExportPngModal: noop,
     exportTitle: '',
@@ -197,5 +204,57 @@ describe('<MapUiPanels /> — onExportKmz wiring to MapActionsPanel', () => {
     await user.click(screen.getByRole('button', { name: /exportar/i }));
     expect(screen.getByText('Exportar PNG')).toBeInTheDocument();
     expect(screen.queryByText('Exportar KMZ')).not.toBeInTheDocument();
+  });
+});
+
+describe('<MapActionsPanel /> — export INTENT signal (R4-003)', () => {
+  it('does NOT fire onExportMenuOpen before the dropdown is opened', () => {
+    const onExportMenuOpen = vi.fn();
+
+    renderWithMantine(
+      <MapActionsPanel
+        hasApprovedZones={false}
+        onOpenExportPng={() => {}}
+        onExportApprovedZonesPdf={() => {}}
+        onExportKmz={() => {}}
+        onExportMenuOpen={onExportMenuOpen}
+      />
+    );
+
+    expect(onExportMenuOpen).not.toHaveBeenCalled();
+  });
+
+  it('fires onExportMenuOpen when the Export dropdown opens — BEFORE any format is picked', async () => {
+    // This is what starts the multi-MB catastro geojson fetch, so it must land
+    // on menu-open (one frame before the user can reach "Exportar KMZ"), not on
+    // mount and not on the KMZ click itself.
+    const user = userEvent.setup();
+    const onExportMenuOpen = vi.fn();
+
+    renderWithMantine(
+      <MapActionsPanel
+        hasApprovedZones={false}
+        onOpenExportPng={() => {}}
+        onExportApprovedZonesPdf={() => {}}
+        onExportKmz={() => {}}
+        onExportMenuOpen={onExportMenuOpen}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /exportar/i }));
+
+    expect(onExportMenuOpen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Exportar KMZ')).toBeInTheDocument();
+  });
+
+  it('threads onExportMenuOpen through MapUiPanels', async () => {
+    const user = userEvent.setup();
+    const onExportMenuOpen = vi.fn();
+
+    renderWithMantine(<MapUiPanels {...buildMapUiPanelsProps({ onExportMenuOpen })} />);
+
+    await user.click(screen.getByRole('button', { name: /exportar/i }));
+
+    expect(onExportMenuOpen).toHaveBeenCalledTimes(1);
   });
 });

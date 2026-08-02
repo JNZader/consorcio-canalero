@@ -3,11 +3,15 @@
  *
  * Locks in the startup-default layer visibility contract for the 2D map.
  *
- * Contract (see feat(ui): startup defaults):
- *   - Only Hidrografía (`waterways`) + Red Vial (`roads`) start visible.
- *   - Every other registered vector layer (Catastro rural, approved zones,
- *     Pilar Verde, IGN histórico, DEM overlays, hydraulic risk, soil, etc.)
- *     starts hidden.
+ * Contract (see feat(ui): startup defaults + map-fluidity T1):
+ *   - Hidrografía (`waterways`), Red Vial (`roads`) and Catastro rural
+ *     (`catastro`) start visible.
+ *   - Every other registered vector layer (approved zones, Pilar Verde, IGN
+ *     histórico, DEM overlays, hydraulic risk, soil, etc.) starts hidden.
+ *
+ * `catastro` was flipped OFF → ON in the map-fluidity pass: its fill is the only
+ * clickable surface that opens the ficha territorial, so while it was hidden a
+ * citizen could click a parcel and get no response whatsoever.
  *
  * The base layer default lives in `MapaMapLibre.tsx` (component-local state),
  * not in this store — but the 4 canonical layers are: Satélite, Imagen,
@@ -27,10 +31,7 @@ vi.mock('zustand/middleware', async () => {
   };
 });
 
-import {
-  useMapLayerSyncStore,
-  PILAR_VERDE_LAYER_IDS,
-} from '../../src/stores/mapLayerSyncStore';
+import { useMapLayerSyncStore, PILAR_VERDE_LAYER_IDS } from '../../src/stores/mapLayerSyncStore';
 import { DEFAULT_BASE_LAYER } from '../../src/components/map2d/map2dConfig';
 
 /**
@@ -38,7 +39,14 @@ import { DEFAULT_BASE_LAYER } from '../../src/components/map2d/map2dConfig';
  * Sub-layers of Hidrografía (`waterways_*`) are not user-visible toggles —
  * they are implicit filters activated alongside the parent `waterways` layer.
  */
-const INITIAL_ON_VECTORS = ['roads', 'waterways'] as const;
+const INITIAL_ON_VECTORS = [
+  'roads',
+  'waterways',
+  // map-fluidity T1: Catastro rural flipped OFF → ON. The parcel fill is the
+  // only clickable surface that opens the ficha territorial, so with the layer
+  // hidden a citizen clicking a parcel got no response at all.
+  'catastro',
+] as const;
 
 /**
  * Top-level user-facing vector ids that MUST start hidden.
@@ -51,12 +59,21 @@ const INITIAL_OFF_VECTORS = [
   'basins',
   'ign_historico',
   'soil',
-  'catastro',
+  // `catastro` MOVED to INITIAL_ON_VECTORS (map-fluidity T1) — see above.
   'hydraulic_risk',
   'puntos_conflicto',
   // Pilar Azul — Escuelas rurales (v1 master toggle, opt-in per design §7).
   'escuelas',
 ] as const;
+
+/**
+ * map3d startup lists. They mirror map2d EXCEPT for `catastro`: the flip to ON
+ * exists to make the ficha territorial discoverable, and the 3D terrain viewer
+ * has no ficha — mirroring it there would only load a heavy vector-tile fill for
+ * no user benefit. See MAP3D_DEFAULT_VISIBLE_VECTORS.
+ */
+const MAP3D_ON_VECTORS = INITIAL_ON_VECTORS.filter((id) => id !== 'catastro');
+const MAP3D_OFF_VECTORS = [...INITIAL_OFF_VECTORS, 'catastro'] as const;
 
 describe('mapLayerSyncStore — startup defaults', () => {
   beforeEach(() => {
@@ -94,11 +111,11 @@ describe('mapLayerSyncStore — startup defaults', () => {
     // relevados start VISIBLE so switching 2D→3D shows a consistent map.
     const initial = useMapLayerSyncStore.getState().map3d.visibleVectors;
 
-    it.each(INITIAL_ON_VECTORS)('%s starts visible on map3d', (id) => {
+    it.each(MAP3D_ON_VECTORS)('%s starts visible on map3d', (id) => {
       expect(initial[id]).toBe(true);
     });
 
-    it.each(INITIAL_OFF_VECTORS)('%s starts hidden on map3d', (id) => {
+    it.each(MAP3D_OFF_VECTORS)('%s starts hidden on map3d', (id) => {
       expect(initial[id]).toBe(false);
     });
 
