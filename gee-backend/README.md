@@ -1,6 +1,6 @@
 # Consorcio Canalero 10 de Mayo · Backend
 
-API y motor de procesamiento geoespacial del **Consorcio Canalero 10 de Mayo** — Marcos Juárez, Córdoba, Argentina.
+API y motor de procesamiento geoespacial del **Consorcio Canalero 10 de Mayo** — departamento Unión, Córdoba, Argentina.
 
 Backend FastAPI con arquitectura por dominios (Screaming Architecture), PostgreSQL+PostGIS, integración con Google Earth Engine y workers Celery para análisis pesados.
 
@@ -462,4 +462,4 @@ Templates en `app/shared/pdf_templates/` o por dominio en `app/domains/{dominio}
 
 ---
 
-Desarrollado para el **Consorcio Canalero 10 de Mayo** — Marcos Juárez, Córdoba, Argentina.
+Desarrollado para el **Consorcio Canalero 10 de Mayo** — departamento Unión, Córdoba, Argentina.

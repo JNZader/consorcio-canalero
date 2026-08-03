@@ -179,7 +179,7 @@ export function LoginFormContent() {
             </Text>
           </Group>
           <Text c="gray.6" size="sm">
-            10 de Mayo - Marcos Juárez
+            10 de Mayo - Departamento Unión
           </Text>
         </Box>
 
