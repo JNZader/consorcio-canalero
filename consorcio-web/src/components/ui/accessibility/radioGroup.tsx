@@ -1,4 +1,4 @@
-import { Box, Text } from '@mantine/core';
+import { Box, SimpleGrid, Text } from '@mantine/core';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useState } from 'react';
 import { AccessibleError } from './primitives';
@@ -9,6 +9,19 @@ interface RadioOption {
   readonly icon?: ReactNode;
 }
 
+// Alias (no interface): Mantine espera un StyleProp con index signature implicita,
+// que TypeScript solo infiere para type aliases.
+//
+// Solo la forma responsive. Existio una rama numerica por compatibilidad, pero
+// al sacar `columns={4}` de `ReportFormFields` se quedo sin un solo caller — y
+// un numero suelto es justo lo que rompia el formulario en 360px (4 columnas
+// fijas), asi que no vale la pena dejar la puerta abierta.
+type ResponsiveColumns = {
+  readonly base?: number;
+  readonly sm?: number;
+  readonly md?: number;
+};
+
 interface AccessibleRadioGroupProps {
   readonly name: string;
   readonly label: string;
@@ -17,7 +30,7 @@ interface AccessibleRadioGroupProps {
   readonly onChange: (value: string) => void;
   readonly error?: string | null;
   readonly required?: boolean;
-  readonly columns?: number;
+  readonly columns?: ResponsiveColumns;
 }
 
 export function AccessibleRadioGroup({
@@ -28,7 +41,7 @@ export function AccessibleRadioGroup({
   onChange,
   error,
   required = false,
-  columns = 4,
+  columns = { base: 2, sm: 4 },
 }: AccessibleRadioGroupProps) {
   const [focusedIndex, setFocusedIndex] = useState(() => {
     const index = options.findIndex((option) => option.value === value);
@@ -73,13 +86,14 @@ export function AccessibleRadioGroup({
         {label} {required && <span style={{ color: 'var(--mantine-color-red-6)' }}>*</span>}
       </Text>
 
-      <Box
+      <SimpleGrid
+        cols={columns}
+        spacing="sm"
         role="radiogroup"
         aria-labelledby={labelId}
         aria-describedby={error ? errorId : undefined}
         aria-required={required}
         aria-invalid={!!error}
-        style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '0.5rem' }}
       >
         {options.map((option, index) => {
           const isSelected = value === option.value;
@@ -119,7 +133,7 @@ export function AccessibleRadioGroup({
             </button>
           );
         })}
-      </Box>
+      </SimpleGrid>
 
       <AccessibleError id={errorId} error={error} />
     </Box>

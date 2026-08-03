@@ -70,15 +70,9 @@ const verifiedContactState = {
   contactoVerificado: true,
   userEmail: 'vecino@example.com',
   userName: 'Vecino',
-  metodoVerificacion: 'google',
   loading: false,
-  magicLinkSent: false,
-  magicLinkEmail: null,
-  setMetodoVerificacion: vi.fn(),
   loginWithGoogle: vi.fn(),
-  sendMagicLink: vi.fn(),
   logout: vi.fn(),
-  resetVerificacion: vi.fn(),
 };
 
 describe('FormularioSugerencia', () => {
@@ -111,15 +105,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: false,
         userEmail: null,
         userName: null,
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
 
       renderForm();
@@ -137,15 +125,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
       vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining, limit: 5, reset_seconds: 86400 });
 
@@ -211,15 +193,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
 
       const user = userEvent.setup();
@@ -248,15 +224,9 @@ describe('FormularioSugerencia', () => {
           contactoVerificado: true,
           userEmail: 'vecino@example.com',
           userName: 'Vecino',
-          metodoVerificacion: 'google',
           loading: false,
-          magicLinkSent: false,
-          magicLinkEmail: null,
-          setMetodoVerificacion: vi.fn(),
           loginWithGoogle: vi.fn(),
-          sendMagicLink: vi.fn(),
           logout: vi.fn(),
-          resetVerificacion: vi.fn(),
         };
       });
       vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({ remaining: 0, limit: 5, reset_seconds: 86400 });
@@ -282,15 +252,9 @@ describe('FormularioSugerencia', () => {
           contactoVerificado: true,
           userEmail: 'vecino@example.com',
           userName: 'Vecino',
-          metodoVerificacion: 'google',
           loading: false,
-          magicLinkSent: false,
-          magicLinkEmail: null,
-          setMetodoVerificacion: vi.fn(),
           loginWithGoogle: vi.fn(),
-          sendMagicLink: vi.fn(),
           logout: vi.fn(),
-          resetVerificacion: vi.fn(),
         };
       });
       vi.mocked(sugerenciasApi.checkLimit).mockResolvedValue({
@@ -313,15 +277,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
       vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error('limite diario alcanzado'));
 
@@ -350,15 +308,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
       vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error('Server error'));
 
@@ -388,15 +340,9 @@ describe('FormularioSugerencia', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
-        resetVerificacion: vi.fn(),
       });
       vi.mocked(sugerenciasApi.create).mockRejectedValue(new Error(error));
 

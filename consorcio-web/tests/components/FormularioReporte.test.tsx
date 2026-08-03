@@ -127,13 +127,8 @@ describe('FormularioReporte', () => {
       contactoVerificado: true,
       userEmail: 'vecino@example.com',
       userName: 'Vecino',
-      metodoVerificacion: 'google',
       loading: false,
-      magicLinkSent: false,
-      magicLinkEmail: null,
-      setMetodoVerificacion: vi.fn(),
       loginWithGoogle: vi.fn(),
-      sendMagicLink: vi.fn(),
       logout: vi.fn(),
     });
   });
@@ -248,13 +243,8 @@ describe('FormularioReporte', () => {
         contactoVerificado,
         userEmail: contactoVerificado ? 'vecino@example.com' : null,
         userName: contactoVerificado ? 'Vecino' : null,
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
       });
 
@@ -268,13 +258,8 @@ describe('FormularioReporte', () => {
         contactoVerificado: false,
         userEmail: null,
         userName: null,
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
       });
 
@@ -287,13 +272,8 @@ describe('FormularioReporte', () => {
         contactoVerificado: false,
         userEmail: null,
         userName: null,
-        metodoVerificacion: 'google',
         loading: false,
-        magicLinkSent: false,
-        magicLinkEmail: null,
-        setMetodoVerificacion: vi.fn(),
         loginWithGoogle: vi.fn(),
-        sendMagicLink: vi.fn(),
         logout: vi.fn(),
       });
 

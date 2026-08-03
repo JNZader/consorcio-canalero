@@ -12,6 +12,14 @@
  *
  * The two viewers diverge only on outer chrome (one floats, the other
  * lives in a grid); from "Canales relevados" downward they are identical.
+ *
+ * CONTRATO DE ANCESTRO (B2-2.3): las casillas de aca NO llevan `size`. El alto
+ * sale de `--checkbox-size`, que publica `.layerTogglesRoot` (map.module.css)
+ * sobre la raiz del panel que las contiene — 24px en escritorio, 28px + etiqueta
+ * de 44px en tactil. Un viewer que renderice esta seccion SIN esa clase en algun
+ * ancestro va a mostrar los canales en el default de Mantine mientras sus
+ * hermanos siguen la variable: incoherente y, en tactil, sin objetivo de 44px.
+ * Hoy la ponen `LayerControlsPanel` (2D) y `TerrainLayerTogglesPanel` (3D).
  */
 import { Checkbox, Stack, Tooltip } from '@mantine/core';
 
@@ -43,7 +51,6 @@ function CanalLeafRow({
   return (
     <div data-testid={`canal-toggle-${id}`}>
       <Checkbox
-        size="xs"
         label={label}
         checked={!!vectorVisibility[id]}
         onChange={(event) => {
@@ -85,7 +92,6 @@ function CanalGroupRow({
         titleWeight={500}
         rightAccessory={
           <Checkbox
-            size="xs"
             aria-label={`Toggle ${label}`}
             checked={allOn}
             indeterminate={indeterminate}
@@ -172,7 +178,6 @@ export function CanalesLayerSection({
         openDelay={400}
       >
         <Checkbox
-          size="xs"
           label={masterLabel}
           checked={bulk.allOn}
           indeterminate={bulk.indeterminate}

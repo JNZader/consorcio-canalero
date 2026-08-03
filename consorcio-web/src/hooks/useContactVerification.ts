@@ -3,7 +3,6 @@
  *
  * Soporta:
  * - Google OAuth (1 click) via JWT adapter
- * - Magic Link (disabled — requires backend support)
  *
  */
 
@@ -13,10 +12,7 @@ import { signOut } from '../lib/auth';
 import { authAdapter } from '../lib/auth/index';
 import { consumeLocalLogoutWarning } from '../lib/auth/storage';
 import { logger } from '../lib/logger';
-import { isValidEmail } from '../lib/validators';
 import { useAuthStore } from '../stores/authStore';
-
-export type VerificationMethod = 'google' | 'email';
 
 export interface UseContactVerificationOptions {
   /**
@@ -32,27 +28,15 @@ export interface ContactVerificationState {
   userEmail: string | null;
   /** Nombre del usuario (si disponible) */
   userName: string | null;
-  /** Metodo de verificacion seleccionado */
-  metodoVerificacion: VerificationMethod;
   /** Cargando autenticacion */
   loading: boolean;
-  /** Magic link fue enviado */
-  magicLinkSent: boolean;
-  /** Email al que se envio el magic link */
-  magicLinkEmail: string | null;
 }
 
 export interface ContactVerificationActions {
-  /** Cambiar metodo de verificacion */
-  setMetodoVerificacion: (method: VerificationMethod) => void;
   /** Iniciar login con Google */
   loginWithGoogle: () => Promise<void>;
-  /** Enviar magic link */
-  sendMagicLink: (email: string) => Promise<void>;
   /** Cerrar sesion */
   logout: () => Promise<void>;
-  /** Resetear estado */
-  resetVerificacion: () => void;
 }
 
 export type UseContactVerificationReturn = ContactVerificationState & ContactVerificationActions;
@@ -69,10 +53,7 @@ export function useContactVerification(
   const authLoading = useAuthStore((state) => state.loading);
 
   // Estado local
-  const [metodoVerificacion, setMetodoVerificacion] = useState<VerificationMethod>('google');
   const [loading, setLoading] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const [magicLinkEmail, setMagicLinkEmail] = useState<string | null>(null);
 
   // Derivar estado de verificacion del auth store
   const contactoVerificado = !!user && initialized;
@@ -103,31 +84,11 @@ export function useContactVerification(
     }
   }, []);
 
-  // Enviar magic link — not supported with JWT adapter
-  const sendMagicLink = useCallback(async (email: string) => {
-    if (!isValidEmail(email)) {
-      notifications.show({
-        title: 'Email invalido',
-        message: 'Ingresa un email valido',
-        color: 'red',
-      });
-      return;
-    }
-
-    notifications.show({
-      title: 'No disponible',
-      message: 'El acceso por magic link no esta disponible. Usa Google o crea una cuenta.',
-      color: 'yellow',
-    });
-  }, []);
-
   // Logout
   const logout = useCallback(async () => {
     try {
       const result = await signOut();
-      const warning = result?.warning
-        ? (consumeLocalLogoutWarning() ?? result.warning)
-        : null;
+      const warning = result?.warning ? (consumeLocalLogoutWarning() ?? result.warning) : null;
       notifications.show(
         warning
           ? {
@@ -146,29 +107,16 @@ export function useContactVerification(
     }
   }, []);
 
-  // Reset
-  const resetVerificacion = useCallback(() => {
-    setMagicLinkSent(false);
-    setMagicLinkEmail(null);
-    setMetodoVerificacion('google');
-  }, []);
-
   return {
     // Estado
     contactoVerificado,
     userEmail,
     userName,
-    metodoVerificacion,
     loading: loading || authLoading,
-    magicLinkSent,
-    magicLinkEmail,
 
     // Acciones
-    setMetodoVerificacion,
     loginWithGoogle,
-    sendMagicLink,
     logout,
-    resetVerificacion,
   };
 }
 

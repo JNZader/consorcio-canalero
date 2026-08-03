@@ -14,7 +14,6 @@ interface UseSuggestionFormStateParams {
   contactoVerificado: boolean;
   userEmail: string | null;
   userName: string | null;
-  resetVerificacion: () => void;
   logout: () => void;
   form: { reset: () => void };
   pendingRateLimitCheck?: boolean;
@@ -25,7 +24,6 @@ export function useSuggestionFormState({
   contactoVerificado,
   userEmail,
   userName,
-  resetVerificacion,
   logout,
   form,
   pendingRateLimitCheck = false,
@@ -67,8 +65,7 @@ export function useSuggestionFormState({
 
   const handleCambiarContacto = useCallback(() => {
     logout();
-    resetVerificacion();
-  }, [logout, resetVerificacion]);
+  }, [logout]);
 
   const handleSubmit = useCallback(
     async (values: SuggestionValues) => {
@@ -129,8 +126,7 @@ export function useSuggestionFormState({
 
   const resetSuccess = useCallback(() => {
     setEnviado(false);
-    resetVerificacion();
-  }, [resetVerificacion]);
+  }, []);
 
   return {
     checkRateLimit,

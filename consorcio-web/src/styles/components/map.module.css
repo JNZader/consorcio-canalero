@@ -469,25 +469,61 @@
   cursor: pointer;
 }
 
+/* ── Tamano del cerrar/minimizar de los paneles (B2-2.3) ──────────────────── */
+/* UNA sola fuente de verdad para el alto del chrome de cierre. Antes cada
+   control traia `size="sm"` en el JSX, o sea 22px fijos en tactil — la mitad del
+   objetivo WCAG 2.5.5 (44px). Ahora el tamano es esta variable y los controles
+   se sirven de ella, asi que la media query de abajo los agranda a los tres de
+   una sola vez.
+
+   Los selectores son descendientes A PROPOSITO: Mantine declara `--cb-size` /
+   `--ai-size` en la clase raiz del propio componente, asi que una regla de una
+   sola clase empata en especificidad y el ganador dependeria del orden de
+   inyeccion de las hojas. `.panelSheet .panelCloseButton` gana siempre. */
+.infoPanel,
+.fichaPanel,
+.panelSheet {
+  --panel-close-size: 22px;
+}
+
+.infoPanel .panelCloseButton,
+.fichaPanel .panelCloseButton,
+.panelSheet .panelCloseButton {
+  --cb-size: var(--panel-close-size);
+}
+
+.infoPanel .panelActionIcon,
+.fichaPanel .panelActionIcon,
+.panelSheet .panelActionIcon {
+  --ai-size: var(--panel-close-size);
+}
+
 /* Floating-card minimize button. The card's own `Title + CloseButton` row is
    rendered by the PANEL (inside `children`), so the shell cannot sit a sibling
    next to that close button in flow — it anchors here instead, on the same line
-   and immediately to its left (`right: 16px` card padding + 28px close button).
+   and immediately to its left.
 
-   BOTH offsets are derived from inputs this file does NOT own: the card is a
-   Mantine `<Paper p="md">` (16px padding) and the close control a
-   `<CloseButton size="sm">` (28×28) — both set in `MapPanelShell.tsx`.
-     right = 16 (padding) + 28 (close button)                       = 44px
-     top   = 16 (padding) − (28 − 24)/2 ≈ 14px, i.e. the 24px-tall
-             minimize ActionIcon (size="sm") centered on the 28px
-             close button's line                                    = 14px
-   If either Mantine prop changes there, these two numbers must be re-derived
-   here — CSS cannot read them. */
+   Los dos offsets se DERIVAN de `--panel-close-size`, no se calculan a mano: el
+   comentario anterior afirmaba un cerrar de 28×28 y un minimizar de 24 (de ahi
+   `right: 44px; top: 14px`), pero `size="sm"` son 22px en AMBOS
+   (`--cb-size-sm` = `--ai-size-sm` = 1.375rem) — el boton estaba 6px corrido y
+   1px alto. Con minimizar y cerrar del mismo alto, `top` es simplemente el
+   padding de la Paper (`p="md"` = 16px) y `right` ese padding mas el ancho del
+   cerrar. Cambia la variable y los dos offsets siguen. */
 .panelCardMinimize {
   position: absolute;
-  right: 44px;
-  top: 14px;
+  right: calc(var(--mantine-spacing-md) + var(--panel-close-size));
+  top: var(--mantine-spacing-md);
   z-index: 1;
+}
+
+/* ── Filas de capas: casillas y slider tocables (B2-2.3) ──────────────────── */
+/* Mismo motivo que arriba: `size="xs"` fijaba 16px inline y ninguna media query
+   lo alcanzaba. El tamano vive ahora en `--checkbox-size` / `--slider-size`, y
+   se aplica por descendencia sobre la clase estatica de Mantine para ganarle en
+   especificidad a la declaracion que el propio componente trae en su raiz. */
+.layerTogglesRoot :global(.mantine-Checkbox-root) {
+  --checkbox-size: 24px;
 }
 
 /* ── Touch targets on coarse pointers (map-fluidity T2, fix 2) ─────────────── */
@@ -645,6 +681,47 @@
   .measurementGroup {
     flex-direction: row;
   }
+
+  /* ── Objetivos tactiles de 44px (B2-2.3) ─────────────────────────────────
+     El cerrar/minimizar de los paneles y las filas del panel de capas quedaban
+     en 22px y 16px: se erraba el toque y el usuario cerraba el panel queriendo
+     tocar otra cosa. `global.css` sube a 44px los controles genericos pero
+     EXCLUYE ActionIcon a proposito (rompe los iconos densos de las tablas), asi
+     que estos se anotan explicitamente aca. */
+  .infoPanel,
+  .fichaPanel,
+  .panelSheet {
+    --panel-close-size: 44px;
+  }
+
+  .layerTogglesRoot :global(.mantine-Checkbox-root) {
+    --checkbox-size: 28px;
+  }
+
+  /* La casilla sola llega a 28px; el objetivo de 44 lo da la ETIQUETA, que es lo
+     que el dedo busca (28 + 8 + 8 = 44). `min-height` lo fija aunque el texto
+     entre en una sola linea. */
+  .layerTogglesRoot :global(.mantine-Checkbox-label) {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  /* `!important` A PROPOSITO, y es el UNICO de los cuatro controles que lo
+     necesita. Slider es el unico con `size` en sus `defaultProps` (`md`), asi
+     que su `varsResolver` SIEMPRE emite `--slider-size` inline aunque el JSX no
+     pase `size` — y una regla de hoja de estilos no le gana a un inline. Con
+     `!important` si (inline sin `!important` pierde). Checkbox, CloseButton y
+     ActionIcon no traen `size` por defecto: sin la prop no emiten nada inline y
+     alcanzan los selectores descendientes de arriba.
+
+     Se maneja `--slider-size` y no `--slider-thumb-size` porque Mantine escribe
+     el thumb como `calc(var(--slider-size) * 2)`: 14 × 2 = 28px. En escritorio
+     no hay regla y manda el default `md` (8px) → 16px de thumb. */
+  .layerTogglesRoot :global(.mantine-Slider-root) {
+    --slider-size: 14px !important;
+  }
 }
 
 /* Desktop-width touch devices keep the floating cards, so the `right: 56px`
@@ -672,6 +749,114 @@
   .panelPill {
     right: 71px;
     max-width: min(260px, calc(100% - 87px));
+  }
+}
+
+/* ── Sheet y pill anclados al viewport en tactil angosto (B2-2.2) ─────────── */
+/* Solo `pointer: coarse` + `max-width: 62em`, o sea exactamente donde
+   `MapUiPanels` cambia las tarjetas por el bottom sheet. El `.panelPill` de
+   escritorio NO se toca: ahi la pildora tiene que quedarse pegada al canvas,
+   donde estaba la tarjeta.
+
+   `fixed` en vez de `absolute`: anclada al canvas, la pildora se iba con el
+   scroll de la pagina y en un telefono quedaba fuera de pantalla justo cuando el
+   usuario minimizaba el panel para ver el mapa. Al viewport siempre esta a un
+   toque.
+
+   `env(safe-area-inset-bottom)` en las tres cajas de abajo: en un iPhone con
+   home indicator los ultimos ~34px son zona de gesto del sistema, y un control
+   ahi es intocable.
+
+   OJO — HOY ESTO ES INERTE. Las variables `env(safe-area-inset-*)` solo tienen
+   valor distinto de cero con `viewport-fit=cover` en el meta viewport, que este
+   proyecto NO declara: por ahora las tres reglas resuelven al fallback `0px` y
+   no cambian nada. Quedan escritas a proposito, para que el dia que se agregue
+   `viewport-fit=cover` el sheet y la pildora ya esten despejados.
+   FOLLOW-UP: agregar `viewport-fit=cover` obliga a re-auditar TODO lo anclado a
+   los bordes del canvas (`.legendPanel`, `.measurementDock`, `.mapCtrlDock`),
+   no solo estas tres — por eso no se hace en este batch. */
+@media (pointer: coarse) and (max-width: 62em) {
+  .panelSheetPill {
+    position: fixed;
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    min-height: calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .panelSheet {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .measurementDock {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ── Reflow en telefono horizontal (B2-2.1) ───────────────────────────────── */
+/* Las tres condiciones son load-bearing: `pointer: coarse` deja afuera un
+   desktop con ventana baja, `orientation: landscape` es el caso que rompe (el
+   chrome vertical se come el canvas) y `max-height: 30em` (480px) excluye a las
+   tablets, que en horizontal tienen altura de sobra. NADA se oculta: el titulo y
+   los CTAs bajan DEBAJO del mapa, que es lo unico que el usuario vino a ver. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 30em) {
+  .mapPageContainer {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
+     el canvas de MapLibre. El resto de los hijos queda en `order: 0`, asi que el
+     titulo cae ultimo y el mapa sube al tope. */
+  .mapPageContainer > .mapPageHeader {
+    order: 2;
+  }
+
+  .mapWorkspace {
+    position: relative;
+    /* La fila `auto` del grid queda vacia al sacar la top bar del flujo; sin
+       esto el `gap` deja 12px muertos arriba del canvas. */
+    gap: 0;
+  }
+
+  /* El selector de capa base pasa a flotar SOBRE el canvas: en horizontal sus
+     ~62px de alto valen mas como mapa.
+
+     A la DERECHA no puede ir: `useMapInitialization` monta Navigation +
+     Fullscreen en `top-right` (y = 10..196) y `.mapActionsDock` sigue esa
+     columna hasta y = 250, asi que anclado a `right` con z-index 17 tapaba el
+     zoom y lo dejaba inclickeable. El `max-width` le reserva esa columna.
+
+     Arriba a la izquierda hay UNA cosa: el `.workspaceBurger` (z-index 1100, en
+     `spacing-sm` = 12px). El sidebar NO — `MapWorkspace` exige ahora tambien
+     `min-height: 30.0625em` para el modo escritorio, asi que en un telefono
+     acostado los controles viven en el Drawer y esta esquina es canvas de
+     verdad. Sin esa condicion de alto el 844×390 daba isDesktop = true y esta
+     regla tapaba la cabecera "Capas" del sidebar (y con el sidebar colapsado, el
+     boton de expandir: panel irrecuperable).
+
+     `left` = 12 (offset del burger) + 44 (su caja tactil) + 8 (aire). */
+  .mapTopBar {
+    position: absolute;
+    top: 8px;
+    left: calc(var(--mantine-spacing-sm) + 44px + 8px);
+    z-index: 17;
+    max-width: calc(100% - 70px);
+  }
+
+  /* Presupuesto de alto propio: en horizontal solo queda el header del sitio
+     mas el padding del Container arriba del canvas. */
+  .mapCanvasWrapper,
+  .canvasHeightBudget,
+  .mapSkeletonWrapper,
+  .workspaceSidebar {
+    --map-canvas-height: calc(100dvh - 84px);
+  }
+
+  /* Los pisos de 420px / 380px son mas altos que el viewport entero acostado:
+     sin bajarlos el mapa se sale de pantalla y vuelve el scroll. */
+  .mapCanvasWrapper,
+  .mapSkeletonWrapper {
+    min-height: 260px;
   }
 }
 

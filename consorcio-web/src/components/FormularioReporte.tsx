@@ -87,24 +87,13 @@ function FormularioContenido() {
     ubicacion,
   } = useReportLocation({ announce, form });
 
-  const {
-    contactoVerificado,
-    userEmail,
-    userName,
-    metodoVerificacion,
-    loading,
-    magicLinkSent,
-    magicLinkEmail,
-    setMetodoVerificacion,
-    loginWithGoogle,
-    sendMagicLink,
-    logout,
-  } = useContactVerification({
-    onVerified: (email, name) => {
-      const displayName = name || email;
-      announce(`Identidad verificada como ${displayName}. Puedes continuar con la denuncia.`);
-    },
-  });
+  const { contactoVerificado, userEmail, userName, loading, loginWithGoogle, logout } =
+    useContactVerification({
+      onVerified: (email, name) => {
+        const displayName = name || email;
+        announce(`Identidad verificada como ${displayName}. Puedes continuar con la denuncia.`);
+      },
+    });
 
   // Pull initial quota when the user logs in. Espejo del flujo de
   // sugerencias — `null` mientras no haya JWT, número real luego.
@@ -177,13 +166,8 @@ function FormularioContenido() {
             contactoVerificado={contactoVerificado}
             userEmail={userEmail}
             userName={userName}
-            metodoVerificacion={metodoVerificacion}
             loading={loading}
-            magicLinkSent={magicLinkSent}
-            magicLinkEmail={magicLinkEmail}
-            onMetodoChange={setMetodoVerificacion}
             onLoginWithGoogle={loginWithGoogle}
-            onSendMagicLink={sendMagicLink}
             onLogout={logout}
           />
         </Stack>

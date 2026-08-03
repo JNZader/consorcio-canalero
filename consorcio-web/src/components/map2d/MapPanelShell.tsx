@@ -136,11 +136,25 @@ export function MapPanelShell({
 
   const canMinimize = !!onToggleMinimize;
 
+  // Restaurar desde la pildora: la pildora en sheet es `position: fixed` (B2-2.2),
+  // asi que sigue tocable con la pagina scrolleada — pero el panel que restaura
+  // esta anclado al CANVAS, y si el usuario scrolleo mientras estaba minimizada,
+  // el panel reaparece fuera de vista y la restauracion se lee como "no pasó
+  // nada". Traer el canvas a cuadro cierra el circulo. `block: 'nearest'` no
+  // mueve nada si ya se ve.
+  const handleRestore = () => {
+    onToggleMinimize?.();
+    if (!sheet) return;
+    document
+      .querySelector('[data-testid="map-workspace-canvas"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  };
+
   if (minimized && canMinimize) {
     return (
       <UnstyledButton
         className={sheet ? styles.panelSheetPill : `${styles.panelPill} ${pillClassName ?? ''}`}
-        onClick={onToggleMinimize}
+        onClick={handleRestore}
         data-testid={`${testId}-pill`}
         data-sheet={sheet ? 'true' : undefined}
         aria-label={`Restaurar ${sheetLabel}`}
@@ -156,7 +170,7 @@ export function MapPanelShell({
     <ActionIcon
       variant="subtle"
       color="gray"
-      size="sm"
+      className={styles.panelActionIcon}
       onClick={onToggleMinimize}
       aria-label={`Minimizar ${sheetLabel}`}
       data-testid={`${testId}-minimize`}
@@ -214,7 +228,7 @@ export function MapPanelShell({
           {onClose && closeLabel && (
             <CloseButton
               onClick={onClose}
-              size="sm"
+              className={styles.panelCloseButton}
               aria-label={closeLabel}
               data-testid={`${testId}-sheet-close`}
             />

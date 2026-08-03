@@ -59,7 +59,6 @@ export function TipoProblemaField({
         onChange={onChange}
         error={error}
         required
-        columns={4}
       />
     );
   }
@@ -98,7 +97,11 @@ export function DescripcionField({
         {...getInputProps('descripcion')}
         required
         error={error}
-        errorProps={{ id: DESCRIPCION_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
+        errorProps={{
+          id: DESCRIPCION_ERROR_ID,
+          role: 'alert',
+          'aria-live': 'assertive',
+        }}
       />
     );
   }

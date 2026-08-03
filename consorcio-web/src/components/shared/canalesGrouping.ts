@@ -95,12 +95,23 @@ export function collectChildIds(entries: readonly CanalToggleEntry[] | undefined
  * `MapaMapLibre` (workspace "N capas activas" badge) each open-coded the same
  * `[...collectChildIds(relevados), ...collectChildIds(propuestos)]` spread; two
  * copies of the count input defeat the point of sharing one derivation.
+ *
+ * B2-2.6: each side is gated by its OWN master toggle, because that is what
+ * gates rendering (`isCanalVisible` returns `false` for every child of a side
+ * whose master is off). Counting children under a master that is off made the
+ * badge claim 60 canales while the map drew 41 — the exact contradiction the
+ * shared derivation exists to prevent. `vectorVisibility` is REQUIRED so a new
+ * call site cannot silently reintroduce the ungated count.
  */
 export function collectCanalChildIds(
   relevados: readonly CanalToggleEntry[] | undefined,
-  propuestos: readonly CanalToggleEntry[] | undefined
+  propuestos: readonly CanalToggleEntry[] | undefined,
+  vectorVisibility: Record<string, boolean>
 ): string[] {
-  return [...collectChildIds(relevados), ...collectChildIds(propuestos)];
+  return [
+    ...(vectorVisibility.canales_relevados ? collectChildIds(relevados) : []),
+    ...(vectorVisibility.canales_propuestos ? collectChildIds(propuestos) : []),
+  ];
 }
 
 /**
