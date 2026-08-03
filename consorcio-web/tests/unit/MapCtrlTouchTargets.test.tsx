@@ -397,3 +397,98 @@ describe("coarse-desktop clearance covers the pill too", () => {
 		expect(pill).toContain("calc(100% - 87px)");
 	});
 });
+
+/**
+ * B2-2.3 — touch targets del chrome de paneles y de las filas de capas.
+ *
+ * Los tamanos venian como props `size` en el JSX (`size="xs"` / `size="sm"`),
+ * que Mantine escribe INLINE: ninguna media query los alcanzaba, asi que en un
+ * telefono la casilla medida 16px y el cerrar 22px, muy por debajo de los 44px
+ * de WCAG 2.5.5. Ahora salen de variables CSS, y esto fija los numeros.
+ */
+describe("panel + layer-row touch targets (B2-2.3)", () => {
+	const TOUCH = 44;
+
+	it("declares ONE close-size variable for the three panel shapes", () => {
+		const rule =
+			/\.infoPanel,\s*\.fichaPanel,\s*\.panelSheet\s*\{([^}]*)\}/.exec(
+				MAP_CSS,
+			)?.[1] ?? "";
+		expect(rule).toMatch(/--panel-close-size:\s*22px/);
+	});
+
+	it("grows that variable to 44px on coarse pointers", () => {
+		const coarse = coarseBlock();
+		const rule =
+			/\.infoPanel,\s*\.fichaPanel,\s*\.panelSheet\s*\{([^}]*)\}/.exec(
+				coarse,
+			)?.[1] ?? "";
+		expect(rule).toMatch(new RegExp(`--panel-close-size:\\s*${TOUCH}px`));
+	});
+
+	it("feeds both Mantine size vars from it, via descendant selectors", () => {
+		// Mantine declara `--cb-size` / `--ai-size` en la raiz del componente: una
+		// regla de una sola clase empataria en especificidad y ganaria la ultima
+		// hoja inyectada.
+		expect(MAP_CSS).toMatch(
+			/\.panelSheet \.panelCloseButton\s*\{[^}]*--cb-size:\s*var\(--panel-close-size\)/,
+		);
+		expect(MAP_CSS).toMatch(
+			/\.panelSheet \.panelActionIcon\s*\{[^}]*--ai-size:\s*var\(--panel-close-size\)/,
+		);
+	});
+
+	it("derives the card minimize offsets from the variable, not by hand", () => {
+		const rule = /\.panelCardMinimize\s*\{([^}]*)\}/.exec(MAP_CSS)?.[1] ?? "";
+		// right = padding de la Paper + ancho del cerrar; top = ese mismo padding.
+		expect(rule).toMatch(
+			/right:\s*calc\(var\(--mantine-spacing-md\) \+ var\(--panel-close-size\)\)/,
+		);
+		expect(rule).toMatch(/top:\s*var\(--mantine-spacing-md\)/);
+		// Los numeros a mano que esto reemplaza (44 / 14) partian de un cerrar de
+		// 28px y un minimizar de 24px; `size="sm"` son 22px en ambos.
+		expect(rule).not.toMatch(/right:\s*44px/);
+		expect(rule).not.toMatch(/top:\s*14px/);
+	});
+
+	it("sizes the layer checkboxes by variable at both pointer types", () => {
+		expect(MAP_CSS).toMatch(
+			/\.layerTogglesRoot :global\(\.mantine-Checkbox-root\)\s*\{[^}]*--checkbox-size:\s*24px/,
+		);
+		const coarse = coarseBlock();
+		const box = /--checkbox-size:\s*(\d+)px/.exec(coarse)?.[1];
+		const label =
+			/\.layerTogglesRoot :global\(\.mantine-Checkbox-label\)\s*\{([^}]*)\}/.exec(
+				coarse,
+			)?.[1] ?? "";
+		const padding = Number(/padding-block:\s*(\d+)px/.exec(label)?.[1]);
+
+		expect(Number(box)).toBe(28);
+		expect(padding).toBe(8);
+		// Lo que el dedo toca es la ETIQUETA: 28 + 8 + 8 = 44.
+		expect(Number(box) + 2 * padding).toBe(TOUCH);
+		expect(label).toMatch(new RegExp(`min-height:\\s*${TOUCH}px`));
+	});
+
+	it("drives the slider thumb through --slider-size (the thumb var is inline)", () => {
+		const coarse = coarseBlock();
+		const size = Number(
+			/\.layerTogglesRoot :global\(\.mantine-Slider-root\)\s*\{[^}]*--slider-size:\s*(\d+)px/.exec(
+				coarse,
+			)?.[1],
+		);
+		// Mantine: `--slider-thumb-size: calc(var(--slider-size) * 2)`.
+		expect(size * 2).toBe(28);
+		// `!important` LOAD-BEARING: Slider es el unico de los cuatro controles con
+		// `size` en sus `defaultProps` ('md'), asi que su varsResolver SIEMPRE emite
+		// `--slider-size` inline aunque el JSX no pase `size`. Sin `!important` esta
+		// regla pierde contra el inline y el thumb se queda en 16px en tactil.
+		expect(coarse).toMatch(
+			/\.layerTogglesRoot :global\(\.mantine-Slider-root\)\s*\{[^}]*--slider-size:\s*14px !important/,
+		);
+		// En escritorio no hay regla: manda el default `md` (0.5rem) → thumb 16px.
+		// Y nunca se DECLARA el thumb: Mantine lo escribe inline y solo `!important`
+		// lo pisaria.
+		expect(MAP_CSS).not.toMatch(/--slider-thumb-size:/);
+	});
+});

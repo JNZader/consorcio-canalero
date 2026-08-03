@@ -827,7 +827,11 @@ export default function MapaMapLibre() {
   // construction. Counting raw `vectorVisibility` keys instead reported ~68
   // "active" layers (per-canal + per-waterway sub-keys) over a map with ~6
   // visible ones, flatly contradicting the badges beside it.
-  const canalChildIds = collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems);
+  const canalChildIds = collectCanalChildIds(
+    canalesRelevadosItems,
+    canalesPropuestosItems,
+    vectorVisibility
+  );
   const activeLayerCount = sumFamilyActiveCounts(
     buildFamilyActiveCounts({
       layerItems: vectorLayerItems,

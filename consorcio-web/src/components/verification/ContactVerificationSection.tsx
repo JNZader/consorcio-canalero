@@ -1,26 +1,10 @@
 /**
  * Complete contact verification section component.
- * Uses Google OAuth (1-click) and Magic Link (any email) for verification.
+ * Uses Google OAuth (1-click) for verification.
  */
 
-import {
-  Alert,
-  Button,
-  Divider,
-  Group,
-  Loader,
-  Paper,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
-import { useForm } from '@mantine/form';
-import { validateEmail } from '../../lib/validators';
-import { IconCheck, IconMail, IconShieldCheck } from '../ui/icons';
-import type { VerificationMethod } from './types';
-
-const MAGIC_LINK_EMAIL_ERROR_ID = 'magic-link-email-error';
+import { Alert, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { IconShieldCheck } from '../ui/icons';
 
 export interface ContactVerificationSectionProps {
   /** Usuario esta verificado (autenticado) */
@@ -29,20 +13,10 @@ export interface ContactVerificationSectionProps {
   readonly userEmail: string | null;
   /** Nombre del usuario (si disponible) */
   readonly userName: string | null;
-  /** Metodo de verificacion seleccionado */
-  readonly metodoVerificacion: VerificationMethod;
   /** Cargando autenticacion */
   readonly loading: boolean;
-  /** Magic link fue enviado */
-  readonly magicLinkSent: boolean;
-  /** Email al que se envio el magic link */
-  readonly magicLinkEmail: string | null;
-  /** Cambiar metodo de verificacion */
-  readonly onMetodoChange: (method: VerificationMethod) => void;
   /** Iniciar login con Google */
   readonly onLoginWithGoogle: () => void;
-  /** Enviar magic link */
-  readonly onSendMagicLink: (email: string) => void;
   /** Cerrar sesion / cambiar usuario */
   readonly onLogout: () => void;
   /** Optional: Custom verification explanation text */
@@ -78,13 +52,8 @@ export function ContactVerificationSection({
   contactoVerificado,
   userEmail,
   userName,
-  metodoVerificacion: _metodoVerificacion,
   loading,
-  magicLinkSent,
-  magicLinkEmail,
-  onMetodoChange,
   onLoginWithGoogle,
-  onSendMagicLink,
   onLogout,
   // Mismo copy que el lado sugerencias (que lo overridea solo para cambiar
   // el sustantivo): el mecanismo es identico en ambos flujos — auth + cupo
@@ -93,19 +62,6 @@ export function ContactVerificationSection({
   // se lee como si fueran reglas distintas.
   verificationExplanation = 'Para evitar spam, necesitamos verificar tu identidad. Limite: 5 reportes cada 24 horas.',
 }: ContactVerificationSectionProps) {
-  const _form = useForm({
-    initialValues: {
-      email: '',
-    },
-    validate: {
-      email: validateEmail,
-    },
-  });
-
-  const handleMagicLinkSubmit = (values: { email: string }) => {
-    onSendMagicLink(values.email);
-  };
-
   // Estado verificado
   if (contactoVerificado) {
     return (
@@ -139,39 +95,13 @@ export function ContactVerificationSection({
     );
   }
 
-  // Magic link enviado
-  if (magicLinkSent && magicLinkEmail) {
-    return (
-      <Stack align="center" gap="md" py="md">
-        <Paper p="md" radius="md" bg="green.0" c="green.9">
-          <IconCheck size={48} />
-        </Paper>
-        <Title order={4}>Revisa tu email</Title>
-        <Text ta="center" c="dimmed">
-          Enviamos un link de acceso a:
-        </Text>
-        <Text fw={600}>{magicLinkEmail}</Text>
-        <Alert color="blue" title="Siguiente paso">
-          <Text size="sm">
-            Haz click en el link del email para verificar tu identidad. Despues podras completar tu
-            reporte.
-          </Text>
-        </Alert>
-        <Button variant="subtle" onClick={() => onMetodoChange('google')}>
-          Usar otro metodo
-        </Button>
-      </Stack>
-    );
-  }
-
-  // Seleccion de metodo
+  // Google es el unico metodo de verificacion disponible.
   return (
     <Stack gap="md">
       <Alert color="blue" variant="light">
         <Text size="sm">{verificationExplanation}</Text>
       </Alert>
 
-      {/* Google OAuth - opcion principal */}
       <Button
         size="lg"
         variant="default"
@@ -181,30 +111,6 @@ export function ContactVerificationSection({
       >
         Continuar con Google
       </Button>
-
-      <Divider label="o usa tu email" labelPosition="center" />
-
-      {/* Magic Link */}
-      <form onSubmit={_form.onSubmit(handleMagicLinkSubmit)} noValidate>
-        <Stack gap="sm">
-          <TextInput
-            label="Email"
-            placeholder="tu@email.com"
-            leftSection={<IconMail size={16} />}
-            {..._form.getInputProps('email')}
-            required
-            size="md"
-            errorProps={{
-              id: MAGIC_LINK_EMAIL_ERROR_ID,
-              role: 'alert',
-              'aria-live': 'assertive',
-            }}
-          />
-          <Button type="submit" variant="light" fullWidth>
-            Enviar link de acceso
-          </Button>
-        </Stack>
-      </form>
 
       <Text size="xs" c="dimmed" ta="center">
         Solo usamos tu email para identificarte y notificarte sobre tu reporte.

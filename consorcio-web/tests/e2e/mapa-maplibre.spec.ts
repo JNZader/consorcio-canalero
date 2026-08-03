@@ -9,7 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 
-const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
+import { APP_URL, gotoMapWorkspace } from './helpers/mapWorkspace';
 
 test.describe('MapaMapLibre — /mapa route', () => {
   test('/mapa route responds with 200', async ({ request }) => {
@@ -71,12 +71,6 @@ test.describe('MapaMapLibre — /mapa route', () => {
  * E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD (see tests/e2e/playwright.local.config.ts).
  */
 
-/** Navigate to /mapa and report whether the responsive workspace shell mounted. */
-async function gotoMapWorkspace(page: import('@playwright/test').Page): Promise<boolean> {
-  await page.goto(`${APP_URL}/mapa`);
-  const root = page.getByTestId('map-workspace-root');
-  return root.isVisible({ timeout: 15000 }).catch(() => false);
-}
 
 test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
   test(

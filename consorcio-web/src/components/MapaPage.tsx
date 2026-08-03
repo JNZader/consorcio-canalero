@@ -76,7 +76,7 @@ export function MapaContent() {
       }}
       mih="100vh"
     >
-      <Container fluid px={{ base: 'xs', md: 'md' }} py="sm">
+      <Container fluid px={{ base: 'xs', md: 'md' }} py="sm" className={mapStyles.mapPageContainer}>
         {/* Title + controls in ONE Paper (map-fluidity T1).
             The page used to stack a full-width title Paper (~82px) on top of a
             separate controls Paper; together with MapaMapLibre's own top bar
@@ -85,7 +85,7 @@ export function MapaContent() {
             padding, one margin and the oversized title block (~74px on
             desktop, more on mobile where every row wraps) without dropping any
             content. */}
-        <Paper shadow="sm" p="sm" mb="sm" radius="md">
+        <Paper shadow="sm" p="sm" mb="sm" radius="md" className={mapStyles.mapPageHeader}>
           <Group justify="space-between" wrap="wrap" gap="sm">
             <Group gap="sm" wrap="wrap">
               <Stack gap={0}>

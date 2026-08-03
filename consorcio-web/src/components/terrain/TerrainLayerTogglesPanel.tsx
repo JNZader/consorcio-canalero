@@ -31,6 +31,7 @@ import { useMemo } from 'react';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import styles from '../../styles/components/map.module.css';
 import { getActiveAttributions } from '../map2d/layerAttributions';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
@@ -136,6 +137,7 @@ export function TerrainLayerTogglesPanel({
       shadow="md"
       p="sm"
       radius="md"
+      className={styles.layerTogglesRoot}
       data-testid="terrain-3d-toggles-panel"
       style={
         embedded

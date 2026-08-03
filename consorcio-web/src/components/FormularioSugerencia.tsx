@@ -66,26 +66,13 @@ function FormularioContenido() {
     onVerified: handleVerified,
   });
 
-  const {
-    contactoVerificado,
-    userEmail,
-    userName,
-    metodoVerificacion,
-    loading,
-    magicLinkSent,
-    magicLinkEmail,
-    setMetodoVerificacion,
-    loginWithGoogle,
-    sendMagicLink,
-    logout,
-    resetVerificacion,
-  } = verification;
+  const { contactoVerificado, userEmail, userName, loading, loginWithGoogle, logout } =
+    verification;
 
   const suggestionState = useSuggestionFormState({
     contactoVerificado,
     userEmail,
     userName,
-    resetVerificacion,
     logout,
     form,
     pendingRateLimitCheck,
@@ -141,13 +128,8 @@ function FormularioContenido() {
           contactoVerificado={contactoVerificado}
           userEmail={userEmail}
           userName={userName}
-          metodoVerificacion={metodoVerificacion}
           loading={loading}
-          magicLinkSent={magicLinkSent}
-          magicLinkEmail={magicLinkEmail}
-          onMetodoChange={setMetodoVerificacion}
           onLoginWithGoogle={loginWithGoogle}
-          onSendMagicLink={sendMagicLink}
           onLogout={handleCambiarContacto}
           verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Limite: 5 sugerencias cada 24 horas."
         />

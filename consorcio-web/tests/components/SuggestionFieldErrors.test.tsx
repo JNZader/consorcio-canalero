@@ -12,15 +12,9 @@ vi.mock('../../src/hooks/useContactVerification', () => ({
     contactoVerificado: true,
     userEmail: 'persona@example.com',
     userName: 'Persona Verificada',
-    metodoVerificacion: 'google',
     loading: false,
-    magicLinkSent: false,
-    magicLinkEmail: null,
-    setMetodoVerificacion: vi.fn(),
     loginWithGoogle: vi.fn(),
-    sendMagicLink: vi.fn(),
     logout: vi.fn(),
-    resetVerificacion: vi.fn(),
   }),
 }));
 

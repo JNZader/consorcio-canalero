@@ -41,10 +41,6 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-vi.mock('../../src/lib/validators', () => ({
-  isValidEmail: (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
-}));
-
 import { useContactVerification } from '../../src/hooks/useContactVerification';
 
 function setAuthState(overrides: Partial<typeof mockAuthState>) {
@@ -67,10 +63,7 @@ describe('useContactVerification', () => {
     const { result } = renderHook(() => useContactVerification());
 
     expect(result.current.contactoVerificado).toBe(false);
-    expect(result.current.metodoVerificacion).toBe('google');
     expect(result.current.loading).toBe(false);
-    expect(result.current.magicLinkSent).toBe(false);
-    expect(result.current.magicLinkEmail).toBeNull();
     expect(result.current.userEmail).toBeNull();
     expect(result.current.userName).toBeNull();
   });
@@ -121,19 +114,6 @@ describe('useContactVerification', () => {
     expect(onVerified).toHaveBeenCalledWith('solo@example.com', undefined);
   });
 
-  it('changes verification method without affecting derived auth state', () => {
-    setAuthState({ user: { email: 'test@example.com' }, initialized: true });
-    const { result } = renderHook(() => useContactVerification());
-
-    act(() => {
-      result.current.setMetodoVerificacion('email');
-    });
-
-    expect(result.current.metodoVerificacion).toBe('email');
-    expect(result.current.contactoVerificado).toBe(true);
-    expect(result.current.userEmail).toBe('test@example.com');
-  });
-
   it('starts Google login successfully', async () => {
     mockLoginWithGoogle.mockResolvedValue(undefined);
     const { result } = renderHook(() => useContactVerification());
@@ -163,40 +143,6 @@ describe('useContactVerification', () => {
         color: 'red',
       })
     );
-  });
-
-  it('validates email before attempting a magic link', async () => {
-    const { result } = renderHook(() => useContactVerification());
-
-    await act(async () => {
-      await result.current.sendMagicLink('invalid-email');
-    });
-
-    expect(mockNotificationsShow).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Email invalido',
-        message: 'Ingresa un email valido',
-        color: 'red',
-      })
-    );
-  });
-
-  it('shows that magic link access is unavailable for valid emails', async () => {
-    const { result } = renderHook(() => useContactVerification());
-
-    await act(async () => {
-      await result.current.sendMagicLink('test@example.com');
-    });
-
-    expect(mockNotificationsShow).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'No disponible',
-        message: 'El acceso por magic link no esta disponible. Usa Google o crea una cuenta.',
-        color: 'yellow',
-      })
-    );
-    expect(result.current.magicLinkSent).toBe(false);
-    expect(result.current.magicLinkEmail).toBeNull();
   });
 
   it('logs out and shows a success notification', async () => {
@@ -245,22 +191,5 @@ describe('useContactVerification', () => {
 
     expect(mockLoggerError).toHaveBeenCalled();
     expect(result.current.contactoVerificado).toBe(false);
-  });
-
-  it('resets verification UI state to defaults', () => {
-    const { result } = renderHook(() => useContactVerification());
-
-    act(() => {
-      result.current.setMetodoVerificacion('email');
-    });
-    expect(result.current.metodoVerificacion).toBe('email');
-
-    act(() => {
-      result.current.resetVerificacion();
-    });
-
-    expect(result.current.metodoVerificacion).toBe('google');
-    expect(result.current.magicLinkSent).toBe(false);
-    expect(result.current.magicLinkEmail).toBeNull();
   });
 });

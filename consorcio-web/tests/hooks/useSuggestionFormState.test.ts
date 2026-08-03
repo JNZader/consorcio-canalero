@@ -49,7 +49,6 @@ describe('useSuggestionFormState', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        resetVerificacion: vi.fn(),
         logout: vi.fn(),
         form: { reset: vi.fn() },
         pendingRateLimitCheck: true,
@@ -68,14 +67,12 @@ describe('useSuggestionFormState', () => {
 
   it('submits a suggestion and resets form state', async () => {
     const reset = vi.fn();
-    const resetVerificacion = vi.fn();
 
     const { result } = renderHook(() =>
       useSuggestionFormState({
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        resetVerificacion,
         logout: vi.fn(),
         form: { reset },
       })
@@ -93,10 +90,12 @@ describe('useSuggestionFormState', () => {
     expect(reset).toHaveBeenCalled();
     expect(result.current.enviado).toBe(true);
 
+    // `resetSuccess` solo baja la pantalla de exito: la verificacion ya no
+    // tiene estado propio que resetear (B2-2.5 retiro el selector de metodo).
     act(() => {
       result.current.resetSuccess();
     });
-    expect(resetVerificacion).toHaveBeenCalled();
+    expect(result.current.enviado).toBe(false);
   });
 
   it('shows the error notification when create fails (e.g. 429 limit)', async () => {
@@ -109,7 +108,6 @@ describe('useSuggestionFormState', () => {
         contactoVerificado: true,
         userEmail: 'vecino@example.com',
         userName: 'Vecino',
-        resetVerificacion: vi.fn(),
         logout: vi.fn(),
         form: { reset: vi.fn() },
       })

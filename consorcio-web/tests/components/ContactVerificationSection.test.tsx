@@ -1,9 +1,9 @@
 /**
  * ContactVerificationSection.test.tsx
- * Tests for contact verification component with Google OAuth and Magic Link flows
+ * Tests for contact verification component with the Google OAuth flow
  */
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { describe, it, expect, vi } from 'vitest';
 import { ContactVerificationSection } from '../../src/components/verification/ContactVerificationSection';
@@ -16,13 +16,8 @@ const defaultProps = {
   contactoVerificado: false,
   userEmail: null,
   userName: null,
-  metodoVerificacion: 'google' as const,
   loading: false,
-  magicLinkSent: false,
-  magicLinkEmail: null,
-  onMetodoChange: vi.fn(),
   onLoginWithGoogle: vi.fn(),
-  onSendMagicLink: vi.fn(),
   onLogout: vi.fn(),
 };
 
@@ -38,21 +33,6 @@ describe('ContactVerificationSection', () => {
       expect(screen.getByRole('button', { name: /continuar con google/i })).toBeInTheDocument();
     });
 
-    it('should render divider text', () => {
-      render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
-      expect(screen.getByText(/o usa tu email/i)).toBeInTheDocument();
-    });
-
-    it('should render email input', () => {
-      render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
-      expect(screen.getByPlaceholderText(/tu@email.com/i)).toBeInTheDocument();
-    });
-
-    it('should render send magic link button', () => {
-      render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
-      expect(screen.getByRole('button', { name: /enviar link de acceso/i })).toBeInTheDocument();
-    });
-
     it('should render privacy notice', () => {
       render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
       expect(screen.getByText(/solo usamos tu email para identificarte/i)).toBeInTheDocument();
@@ -65,35 +45,6 @@ describe('ContactVerificationSection', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: /continuar con google/i }));
       expect(onLoginWithGoogle).toHaveBeenCalledTimes(1);
-    });
-
-    it('should call onSendMagicLink with email when form submitted', () => {
-      const onSendMagicLink = vi.fn();
-      render(<ContactVerificationSection {...defaultProps} onSendMagicLink={onSendMagicLink} />, {
-        wrapper: Wrapper,
-      });
-      const input = screen.getByPlaceholderText(/tu@email.com/i);
-      fireEvent.change(input, { target: { value: 'user@example.com' } });
-      fireEvent.click(screen.getByRole('button', { name: /enviar link de acceso/i }));
-      expect(onSendMagicLink).toHaveBeenCalledWith('user@example.com');
-    });
-
-    it('should connect email validation error to the magic link field', async () => {
-      const onSendMagicLink = vi.fn();
-      render(<ContactVerificationSection {...defaultProps} onSendMagicLink={onSendMagicLink} />, {
-        wrapper: Wrapper,
-      });
-
-      const input = screen.getByLabelText(/email/i);
-      fireEvent.click(screen.getByRole('button', { name: /enviar link de acceso/i }));
-
-      await waitFor(() => {
-        expect(input).toHaveAttribute('aria-invalid', 'true');
-        expect(input.getAttribute('aria-describedby')).toContain('magic-link-email-error');
-      });
-
-      expect(screen.getByText(/el email es requerido/i)).toHaveAttribute('role', 'alert');
-      expect(onSendMagicLink).not.toHaveBeenCalled();
     });
   });
 
@@ -192,71 +143,6 @@ describe('ContactVerificationSection', () => {
     });
   });
 
-  describe('Magic Link Sent state', () => {
-    it('should display success message when magic link sent', () => {
-      render(
-        <ContactVerificationSection
-          {...defaultProps}
-          magicLinkSent={true}
-          magicLinkEmail="user@example.com"
-        />,
-        { wrapper: Wrapper }
-      );
-      expect(screen.getByText('Revisa tu email')).toBeInTheDocument();
-    });
-
-    it('should display magic link email', () => {
-      render(
-        <ContactVerificationSection
-          {...defaultProps}
-          magicLinkSent={true}
-          magicLinkEmail="user@example.com"
-        />,
-        { wrapper: Wrapper }
-      );
-      expect(screen.getByText('user@example.com')).toBeInTheDocument();
-    });
-
-    it('should show confirmation message', () => {
-      render(
-        <ContactVerificationSection
-          {...defaultProps}
-          magicLinkSent={true}
-          magicLinkEmail="user@example.com"
-        />,
-        { wrapper: Wrapper }
-      );
-      expect(screen.getByText(/haz click en el link/i)).toBeInTheDocument();
-    });
-
-    it('should render "Usar otro metodo" button', () => {
-      render(
-        <ContactVerificationSection
-          {...defaultProps}
-          magicLinkSent={true}
-          magicLinkEmail="user@example.com"
-        />,
-        { wrapper: Wrapper }
-      );
-      expect(screen.getByRole('button', { name: /usar otro metodo/i })).toBeInTheDocument();
-    });
-
-    it('should call onMetodoChange when "Usar otro metodo" clicked', () => {
-      const onMetodoChange = vi.fn();
-      render(
-        <ContactVerificationSection
-          {...defaultProps}
-          magicLinkSent={true}
-          magicLinkEmail="user@example.com"
-          onMetodoChange={onMetodoChange}
-        />,
-        { wrapper: Wrapper }
-      );
-      fireEvent.click(screen.getByRole('button', { name: /usar otro metodo/i }));
-      expect(onMetodoChange).toHaveBeenCalledWith('google');
-    });
-  });
-
   describe('Custom verification explanation', () => {
     it('should use custom explanation text when provided', () => {
       const customText = 'Customizado para este flujo';
@@ -290,6 +176,23 @@ describe('ContactVerificationSection', () => {
       const svg = googleButton.querySelector('svg');
       const title = svg?.querySelector('title');
       expect(title?.textContent).toBe('Google logo');
+    });
+  });
+
+  describe('Magic link retirado', () => {
+    it('should not offer any email-based verification affordance', () => {
+      render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
+      expect(screen.queryByPlaceholderText(/tu@email.com/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /enviar link de acceso/i })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/o usa tu email/i)).not.toBeInTheDocument();
+    });
+
+    it('should leave Google as the only verification button', () => {
+      render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: /continuar con google/i })).toBeInTheDocument();
     });
   });
 });

@@ -362,7 +362,11 @@ export const InfoPanel = memo(function InfoPanel({
       <Group justify="space-between" mb="xs">
         <Title order={5}>Informacion</Title>
         {!sheet && (
-          <CloseButton onClick={onClose} size="sm" aria-label="Cerrar panel de informacion" />
+          <CloseButton
+            onClick={onClose}
+            className={styles.panelCloseButton}
+            aria-label="Cerrar panel de informacion"
+          />
         )}
       </Group>
       <Divider mb="xs" />

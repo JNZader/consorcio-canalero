@@ -22,6 +22,7 @@ import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
+import styles from '../../styles/components/map.module.css';
 import { type CanalToggleEntry, collectCanalChildIds } from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
@@ -236,7 +237,6 @@ function LayerOpacityControl({
   return (
     <Group gap={6} wrap="nowrap" pl={26} pr={4} data-testid={`layer-opacity-${layerId}`}>
       <Slider
-        size="xs"
         style={{ flex: 1 }}
         min={0}
         max={100}
@@ -391,10 +391,17 @@ export function LayerControlsPanel({
   const relevadosMaster = !!vectorVisibility.canales_relevados;
   const propuestosMaster = !!vectorVisibility.canales_propuestos;
 
-  // FF1: the Canales badge counts the ACTUAL visible canal children (leaves +
-  // group children), NOT the master flags — a master can stay `true` after its
-  // last child is toggled off, which used to leave the badge stale.
-  const canalesChildIds = collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems);
+  // FF1 + B2-2.6: el badge de Canales cuenta los HIJOS visibles (hojas + hijos de
+  // grupo), no los masters — un master puede quedar en `true` despues de apagar
+  // su ultimo hijo, y el badge quedaba viejo. Pero los masters SI entran como
+  // filtro: `collectCanalChildIds` exige `vectorVisibility` (3er argumento, NO
+  // es opcional) porque un lado con el master apagado no se dibuja, y contar sus
+  // hijos hacia que el badge dijera 60 sobre un mapa con 41 canales.
+  const canalesChildIds = collectCanalChildIds(
+    canalesRelevadosItems,
+    canalesPropuestosItems,
+    vectorVisibility
+  );
   // Fix 3 (T3c): per-family badges and the workspace "N capas activas" badge now
   // share ONE derivation, so they cannot disagree.
   const familyActiveCounts = buildFamilyActiveCounts({
@@ -532,7 +539,6 @@ export function LayerControlsPanel({
                 </>
               )}
               <Checkbox
-                size="xs"
                 label="IGN Altimetría"
                 checked={showIGNOverlay}
                 onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
@@ -540,7 +546,6 @@ export function LayerControlsPanel({
               {demEnabled && (
                 <>
                   <Checkbox
-                    size="xs"
                     label="Capa DEM"
                     checked={showDemOverlay}
                     onChange={(event) => handleDemOverlayChange(event.currentTarget.checked)}
@@ -670,7 +675,6 @@ export function LayerControlsPanel({
               return (
                 <Box key={item.id}>
                   <Checkbox
-                    size="xs"
                     label={item.label}
                     checked={isOn}
                     onChange={(event) =>
@@ -724,7 +728,6 @@ export function LayerControlsPanel({
             {rasterSearchMatches.map((option) => (
               <Checkbox
                 key={option.value}
-                size="xs"
                 label={option.label}
                 data-testid={`raster-search-option-${option.value}`}
                 checked={showDemOverlay && activeDemLayerId === option.value}
@@ -753,6 +756,7 @@ export function LayerControlsPanel({
     // top-left stack at `calc(100vh - 180px)` and let it scroll internally.
     <Box
       data-testid="layer-controls-panel-scroll"
+      className={styles.layerTogglesRoot}
       role="region"
       aria-label="Controles de capas del mapa"
       style={{

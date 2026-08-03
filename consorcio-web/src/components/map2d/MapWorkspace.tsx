@@ -27,10 +27,10 @@ interface MapWorkspaceProps {
  * Responsive controls shell for the 2D map (change `rediseno-ux-mapa`).
  *
  * A SINGLE `controls` tree is placed either in a collapsible left sidebar
- * (desktop, viewport >= 48em) or in a full-screen `Drawer` opened by a ☰
- * burger (mobile). The breakpoint is derived with `useMediaQuery` — NOT with
- * patched desktop styles — mirroring `Header.tsx`. The desktop collapse state
- * is persisted (`mapWorkspaceStore`) so the preference survives reloads.
+ * (desktop) or in a full-screen `Drawer` opened by a ☰ burger (mobile). The
+ * breakpoint is derived with `useMediaQuery` — NOT with patched desktop styles
+ * — mirroring `Header.tsx`. The desktop collapse state is persisted
+ * (`mapWorkspaceStore`) so the preference survives reloads.
  *
  * CRITICAL — single-tree render: `{canvas}` is ALWAYS child index 0 inside the
  * SAME wrapper (`styles.workspaceCanvas`), regardless of `isDesktop` or
@@ -50,7 +50,15 @@ export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspac
   // (correct, no flash), and ONLY when `matchMedia` is unavailable (SSR / no
   // window) does it fall back to `false` → MOBILE-first. The `true` below is
   // therefore never consumed at runtime; it stays only to document intent.
-  const isDesktop = useMediaQuery('(min-width: 48em)', true, {
+  // El alto es tan load-bearing como el ancho (B2-2.1). Con `min-width` sola, un
+  // telefono acostado (844×390) supera los 48em y entraba en modo escritorio: un
+  // sidebar fijo de 300-360px sobre un canvas de ~306px de alto, y el reflow
+  // apaisado terminaba flotando la top bar ENCIMA de la cabecera del sidebar
+  // (con el panel colapsado, el boton de expandir quedaba tapado del todo y el
+  // panel era irrecuperable). 30.0625em = 481px deja del lado escritorio a las
+  // tablets y a cualquier laptop (768px de alto y para arriba), y manda al
+  // telefono acostado al burger + Drawer, que es la forma correcta ahi.
+  const isDesktop = useMediaQuery('(min-width: 48em) and (min-height: 30.0625em)', true, {
     getInitialValueInEffect: false,
   });
   const sidebarCollapsed = useMapWorkspaceStore((state) => state.sidebarCollapsed);

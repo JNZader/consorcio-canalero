@@ -47,11 +47,33 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
 
   it('shares the height budget with .mapCanvasWrapper at EVERY breakpoint', () => {
     const blocks = budgetSelectorBlocks();
-    // Desktop + the 62em media query.
-    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    // Desktop + the 62em media query + the landscape-phone query (B2-2.1).
+    expect(blocks.length).toBeGreaterThanOrEqual(3);
     for (const selectors of blocks) {
       expect(selectors).toContain('.mapCanvasWrapper');
+      expect(selectors).toContain('.canvasHeightBudget');
       expect(selectors).toContain('.mapSkeletonWrapper');
+      expect(selectors).toContain('.workspaceSidebar');
     }
+  });
+
+  /**
+   * B2-2.1 — landscape phones. A block that redefines the budget for FEWER than
+   * the four consumers silently desyncs 2D from 3D (or the skeleton from the
+   * canvas) at that breakpoint only; the loop above is what catches it.
+   */
+  it('gives landscape phones their own budget and a reachable floor', () => {
+    const query = css.match(
+      /@media \(pointer: coarse\) and \(orientation: landscape\) and \(max-height: 30em\)\s*\{([\s\S]*?)\n\}/
+    );
+    expect(query).not.toBeNull();
+    const body = query?.[1] ?? '';
+
+    expect(body).toContain('--map-canvas-height: calc(100dvh - 84px)');
+    // El piso de 420/380px no entra en un viewport acostado.
+    expect(body).toContain('min-height: 260px');
+    // El titulo baja debajo del mapa; nada se oculta.
+    expect(body).toContain('order: 2');
+    expect(body).not.toContain('display: none');
   });
 });
