@@ -52,7 +52,9 @@ export function useBasins(options: UseBasinsOptions = {}) {
     },
     enabled,
     staleTime: 1000 * 60 * 5,
-    // Public geo layer that degrades gracefully (inline error + `reload`).
+    // Public geo layer that degrades gracefully: the map renders without it and
+    // the failure surfaces as an inline row + "Reintentar" in the layer panel
+    // (`layerHealth.ts` → `LayerControlsPanel`), wired to the `reload` below.
     // One retry covers transient blips without the global retry-3
     // exponential-backoff pile-up on a hard failure.
     retry: 1,

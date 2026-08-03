@@ -15,10 +15,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  CANALES_PATHS,
-  useCanales,
-} from '../../src/hooks/useCanales';
+import { CANALES_PATHS, useCanales } from '../../src/hooks/useCanales';
 
 import indexSample from '../fixtures/canales/indexSample.json';
 import propuestasSample from '../fixtures/canales/propuestasSample.json';
@@ -51,8 +48,7 @@ function setHappyPath() {
       return Promise.resolve(mockOk(relevadosSample));
     if (url.endsWith('/capas/canales/propuestas.geojson'))
       return Promise.resolve(mockOk(propuestasSample));
-    if (url.endsWith('/capas/canales/index.json'))
-      return Promise.resolve(mockOk(indexSample));
+    if (url.endsWith('/capas/canales/index.json')) return Promise.resolve(mockOk(indexSample));
     return Promise.resolve(mockNotOk(404));
   });
 }
@@ -114,8 +110,7 @@ describe('useCanales · graceful degradation', () => {
         return Promise.resolve(mockOk(relevadosSample));
       if (url.endsWith('/capas/canales/propuestas.geojson'))
         return Promise.resolve(mockOk(propuestasSample));
-      if (url.endsWith('/capas/canales/index.json'))
-        return Promise.resolve(mockNotOk(404));
+      if (url.endsWith('/capas/canales/index.json')) return Promise.resolve(mockNotOk(404));
       return Promise.resolve(mockNotOk(404));
     });
     const wrapper = createQueryWrapper();
@@ -134,8 +129,7 @@ describe('useCanales · graceful degradation', () => {
         return Promise.reject(new Error('network down'));
       if (url.endsWith('/capas/canales/propuestas.geojson'))
         return Promise.resolve(mockOk(propuestasSample));
-      if (url.endsWith('/capas/canales/index.json'))
-        return Promise.resolve(mockOk(indexSample));
+      if (url.endsWith('/capas/canales/index.json')) return Promise.resolve(mockOk(indexSample));
       return Promise.resolve(mockNotOk(404));
     });
     const wrapper = createQueryWrapper();
@@ -158,5 +152,51 @@ describe('useCanales · graceful degradation', () => {
     expect(result.current.propuestas).toBeNull();
     expect(result.current.index).toBeNull();
     expect(result.current.isError).toBe(true);
+  });
+});
+
+/**
+ * Batch 1 "datos honestos" — `error` + `reload`.
+ *
+ * The subtle part: `loadAllCanales` NEVER rejects, it resolves with
+ * `{ anyFailed: true }`. Under `staleTime: Infinity` TanStack files that as a
+ * SUCCESS and caches it for the whole session — no retry, no backoff, no
+ * self-healing. `reload()` is therefore the only way back, which is exactly why
+ * the panel has to expose it.
+ */
+describe('useCanales · error message + reload', () => {
+  it('exposes a user-facing message alongside isError', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockNotOk(404)));
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useCanales(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error).toBe('No se pudieron cargar los canales');
+  });
+
+  it('keeps `error` null on the happy path', async () => {
+    setHappyPath();
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useCanales(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reload() re-fires the fetches and recovers from the CACHED failure', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockNotOk(404)));
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useCanales(), { wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    const callsAfterFailure = mockFetch.mock.calls.length;
+    setHappyPath();
+    result.current.reload();
+
+    await waitFor(() => expect(result.current.isError).toBe(false));
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(callsAfterFailure);
+    expect(result.current.error).toBeNull();
+    expect(result.current.index).not.toBeNull();
   });
 });

@@ -55,6 +55,9 @@ import styles from '../styles/components/map.module.css';
 import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { RasterLegend } from './RasterLegend';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
+import { buildLayerProvenance } from './map2d/layerProvenance';
+import { useLayerHealth } from './map2d/useLayerHealth';
+import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
@@ -198,7 +201,12 @@ export default function MapaMapLibre() {
 
   // ── Data hooks ────────────────────────────────────────────────────────────
   const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
-  const { caminos, consorcios } = useCaminosColoreados();
+  const {
+    caminos,
+    consorcios,
+    error: caminosError,
+    reload: reloadCaminos,
+  } = useCaminosColoreados();
   const { conflictos } = useConflictos();
   // Lazy fetch (~2.2MB geojson): the soil layer starts OFF
   // (mapLayerSyncStore soil: false), so defer the download until the user
@@ -206,10 +214,16 @@ export default function MapaMapLibre() {
   // Correctness: soilCollection is only consumed by syncSoilLayers (hidden
   // while OFF) and the KMZ export, which skips soil unless
   // visibleLayers.soil === true (kmzBuilder.ts::shouldIncludeLayer).
-  const { soilMap } = useSoilMap({ enabled: !!vectorVisibility.soil });
-  const { basins } = useBasins();
-  const { waterways } = useWaterways();
-  const { layers: allGeoLayers } = useGeoLayers();
+  const soilEnabled = !!vectorVisibility.soil;
+  const { soilMap, error: soilError, reload: reloadSoil } = useSoilMap({ enabled: soilEnabled });
+  const { basins, error: basinsError, reload: reloadBasins } = useBasins();
+  const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways();
+  const {
+    layers: allGeoLayers,
+    error: geoLayersError,
+    reload: reloadGeoLayers,
+    enabled: geoLayersEnabled,
+  } = useGeoLayers();
   const { approvedZones, hasApprovedZones } = useApprovedZones();
 
   const selectedImage = useSelectedImageListener();
@@ -230,6 +244,7 @@ export default function MapaMapLibre() {
     bpaError: bpaJoinError,
     layersLoading: pilarVerdeLayersLoading,
     layersError: pilarVerdeLayersError,
+    reloadLayers: reloadPilarVerdeLayers,
   } = usePilarVerde({
     layers: pilarVerdeLayersNeeded,
     bpa: pilarVerdeLayersNeeded || bpaJoinIntent,
@@ -238,6 +253,8 @@ export default function MapaMapLibre() {
     relevados: canalesRelevados,
     propuestas: canalesPropuestas,
     index: canalesIndex,
+    error: canalesError,
+    reload: reloadCanales,
   } = useCanales();
   const canalesData = {
     relevados: canalesRelevados,
@@ -252,7 +269,11 @@ export default function MapaMapLibre() {
     () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
   );
-  const { collection: escuelasCollection } = useEscuelas();
+  const {
+    collection: escuelasCollection,
+    error: escuelasError,
+    reload: reloadEscuelas,
+  } = useEscuelas();
   const escuelasData = { collection: escuelasCollection };
   // Lazy fetch (~1.8MB geojson) gated on export INTENT, not on layer
   // visibility: the 2D catastro RENDER uses Martin vector tiles
@@ -266,7 +287,11 @@ export default function MapaMapLibre() {
   // Known race (unchanged trade-off): exporting KMZ while the fetch is still
   // in flight omits the catastro slot, the same graceful degradation buildKmz
   // already applies to any missing slot.
-  const { catastroMap } = useCatastroMap({ enabled: exportIntent });
+  const {
+    catastroMap,
+    error: catastroError,
+    reload: reloadCatastro,
+  } = useCatastroMap({ enabled: exportIntent });
   // Stable identity: `MapActionsPanel` is memoized, so an inline arrow here
   // would re-render it on every parent render.
   const handleExportIntent = useCallback(() => setExportIntent(true), []);
@@ -341,6 +366,43 @@ export default function MapaMapLibre() {
     return () => resizeObserver.disconnect();
   }, [mapReady]);
 
+  // Raster mosaics fail per TILE, not per layer: `useRasterTileHealth` folds
+  // that firehose into a per-source "degradado" flag and only re-renders on a
+  // transition. `onMapError` enters `useMapInitialization` through a REF — it
+  // must never join that hook's dependency array (it would remount the map).
+  const { degradedSourceIds, onMapError } = useRasterTileHealth();
+
+  const layerHealth = useLayerHealth({
+    caminos: { error: caminosError, reload: reloadCaminos },
+    basins: { error: basinsError, reload: reloadBasins },
+    waterways: { error: waterwaysError, reload: reloadWaterways },
+    geo_layers: { error: geoLayersError, reload: reloadGeoLayers },
+    soil: { error: soilError, reload: reloadSoil },
+    catastro: { error: catastroError, reload: reloadCatastro },
+    canales: { error: canalesError, reload: reloadCanales },
+    escuelas: { error: escuelasError, reload: reloadEscuelas },
+    pilar_verde: {
+      error: pilarVerdeLayersError,
+      loading: pilarVerdeLayersLoading,
+      reload: reloadPilarVerdeLayers,
+    },
+    raster_tiles: { degradedSourceIds },
+    // Lazy families: a CLOSED gate produces no entry, so an anonymous visitor
+    // never reads a failure for a fetch that never ran, and "Reintentar" can
+    // never pull a multi-MB asset the gate exists to defer.
+    gates: {
+      geoLayers: geoLayersEnabled,
+      soil: soilEnabled,
+      catastro: exportIntent,
+      pilarVerde: pilarVerdeLayersNeeded,
+    },
+  });
+
+  const layerProvenance = buildLayerProvenance({
+    canalesGeneratedAt: canalesIndex?.generated_at,
+    pilarVerdeGeneratedAt: pilarVerde?.aggregates?.generated_at,
+  });
+
   useMapInitialization({
     maplibre: maplibregl,
     containerRef,
@@ -349,6 +411,7 @@ export default function MapaMapLibre() {
     zoom,
     mapRef,
     setMapReady,
+    onMapError,
   });
 
   /* ---------------------------------------------------------------------- */
@@ -967,6 +1030,8 @@ export default function MapaMapLibre() {
               onExportIncludeLegendChange={setExportIncludeLegend}
               onExportIncludeMetadataChange={setExportIncludeMetadata}
               onExportPng={handleExportPng}
+              layerHealth={layerHealth}
+              layerProvenance={layerProvenance}
               showEmbeddedMapControls={false}
               showEmbeddedRasterLegend={false}
             />
@@ -991,6 +1056,8 @@ export default function MapaMapLibre() {
               layerFineControl={layerFineControl}
               pilarVerdeLayersLoading={pilarVerdeLayersLoading}
               pilarVerdeLayersError={pilarVerdeLayersError}
+              layerHealth={layerHealth}
+              layerProvenance={layerProvenance}
             />
             {showLegend && (
               <>

@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Button,
   Checkbox,
   CloseButton,
   Divider,
@@ -35,6 +36,7 @@ import {
 } from '../ui/icons';
 import { LayerOrderSection } from './LayerOrderSection';
 import { getActiveAttributions } from './layerAttributions';
+import { buildHealthBannerText, type LayerHealth } from './layerHealth';
 import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
 import {
   buildFamilyActiveCounts,
@@ -136,6 +138,17 @@ interface LayerControlsPanelProps {
    */
   readonly pilarVerdeLayersLoading?: boolean;
   readonly pilarVerdeLayersError?: string | null;
+  /**
+   * Derived per-family load status (Batch 1 — "datos honestos"). Drives the
+   * aggregate banner above the search box and one inline error row per family.
+   * Optional: omitted → the panel renders exactly as it did before.
+   */
+  readonly layerHealth?: LayerHealth;
+  /**
+   * "Datos al DD/MM/AAAA" per family, from `buildLayerProvenance`. Only the
+   * families with a REAL `generated_at` appear — see `layerProvenance.ts`.
+   */
+  readonly layerProvenance?: Partial<Record<LayerCategory, string>>;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -252,6 +265,79 @@ function LayerOpacityControl({
   );
 }
 
+/**
+ * Inline failure row for ONE layer family. Generalized from the old
+ * pilar-verde-only markup; `testId` stays a parameter because the Pilar Verde
+ * row keeps its historical `pilar-verde-layers-error` id (two tests pin it).
+ */
+function LayerHealthErrorRow({
+  testId,
+  message,
+  onRetry,
+}: {
+  testId: string;
+  message: string;
+  onRetry?: (() => void) | null;
+}) {
+  return (
+    <Group gap={6} wrap="nowrap" align="center">
+      <Text size="xs" c="red" data-testid={testId} style={{ flex: 1 }}>
+        {message}
+      </Text>
+      {onRetry && (
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          color="red"
+          leftSection={<IconRefresh size={12} />}
+          onClick={onRetry}
+        >
+          Reintentar
+        </Button>
+      )}
+    </Group>
+  );
+}
+
+/**
+ * Resolve the inline failure row for one family, or `null` when it is healthy.
+ *
+ * Pilar Verde keeps its legacy contract: while the `pilarVerdeLayersError` prop
+ * is set it wins over the registry, so its historical copy AND its
+ * `pilar-verde-layers-error` testid survive untouched (two tests pin them).
+ * Extracted from the render loop to keep that precedence in ONE readable place.
+ */
+function resolveFamilyHealthRow(
+  category: LayerCategory,
+  isPilarVerde: boolean,
+  pilarVerdeLayersError: string | null,
+  layerHealth: LayerHealth | undefined
+): { testId: string; message: string; onRetry: (() => void) | null } | null {
+  const entry = layerHealth?.byCategory[category] ?? null;
+  if (isPilarVerde && pilarVerdeLayersError) {
+    return {
+      testId: 'pilar-verde-layers-error',
+      message: 'No se pudieron cargar las capas — reintentá',
+      onRetry: entry?.reload ?? null,
+    };
+  }
+  if (!entry?.message) return null;
+  return {
+    testId: isPilarVerde ? 'pilar-verde-layers-error' : `layer-health-error-${category}`,
+    message: entry.message,
+    onRetry: entry.reload,
+  };
+}
+
+/** Dimmed "Datos al …" footer line, sibling of the attribution lines. */
+function LayerProvenanceLine({ category, text }: { category: LayerCategory; text: string }) {
+  return (
+    <Text size="xs" c="dimmed" data-testid={`layer-provenance-${category}`}>
+      {text}
+    </Text>
+  );
+}
+
 function FamilyControlLabel({ label, count }: { label: string; count: number }) {
   return (
     <Group gap="xs" justify="space-between" wrap="nowrap" style={{ flex: 1 }}>
@@ -290,6 +376,8 @@ export function LayerControlsPanel({
   layerFineControl = NOOP_FINE_CONTROL,
   pilarVerdeLayersLoading = false,
   pilarVerdeLayersError = null,
+  layerHealth,
+  layerProvenance,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -343,6 +431,19 @@ export function LayerControlsPanel({
   }
   const activeAttributions = getActiveAttributions(visibleSet);
 
+  // Aggregate health: the banner counts FAILED families only (a family still
+  // `cargando` has not failed yet — see `layerHealth.ts`).
+  const failed = layerHealth?.failed ?? [];
+  const bannerText = buildHealthBannerText(failed);
+  // A degraded raster source has no `reload` (tiles retry themselves on the next
+  // pan/zoom). Offering a button that calls nothing would be worse than showing
+  // none, so the banner only grows one when SOMETHING can actually be retried.
+  const canRetryAll = failed.some((entry) => entry.reload !== null);
+  // Canales is rendered by its own accordion branch below, so it reads the
+  // registry here instead of inside the shared vector-family loop.
+  const canalesHealth = layerHealth?.byCategory[LAYER_CATEGORY.CANALES] ?? null;
+  const canalesProvenance = layerProvenance?.[LAYER_CATEGORY.CANALES] ?? null;
+
   const firstDemLayerId = demOptions[0]?.value ?? null;
 
   useEffect(() => {
@@ -394,6 +495,10 @@ export function LayerControlsPanel({
         continue;
       }
       const baseActiveCount = familyActiveCounts[LAYER_CATEGORY.BASE];
+      // The DEM catalog (`geo_layers`) lives in BASE, and this branch `continue`s
+      // before the shared vector-family loop — without this row the banner would
+      // count a failure the panel never explains.
+      const baseHealthRow = resolveFamilyHealthRow(family.value, false, null, layerHealth);
       accordionItems.push(
         <Accordion.Item key={family.value} value={family.value} data-testid="layer-controls-capas">
           <Accordion.Control icon={<Icon size={16} />}>
@@ -401,6 +506,13 @@ export function LayerControlsPanel({
           </Accordion.Control>
           <Accordion.Panel>
             <Stack gap={4}>
+              {baseHealthRow && (
+                <LayerHealthErrorRow
+                  testId={baseHealthRow.testId}
+                  message={baseHealthRow.message}
+                  onRetry={baseHealthRow.onRetry}
+                />
+              )}
               {baseLayer !== undefined && onBaseLayerChange && (
                 <>
                   <Text size="xs" fw={600} c="dimmed">
@@ -454,7 +566,10 @@ export function LayerControlsPanel({
 
     // ── Canales: shared master + per-canal section (Pilar Azul).
     if (family.value === LAYER_CATEGORY.CANALES) {
-      if (!showCanalesSection) continue;
+      // `showCanalesSection` is data-driven: when index.json fails outright there
+      // are no entries, so the whole item used to disappear — the one case where
+      // the user MOST needs to be told something broke.
+      if (!showCanalesSection && !canalesHealth) continue;
       // FF2: keep the section reachable while searching (keyword or a matching
       // canal label); otherwise it hides like any non-matching family.
       if (isSearching && !showCanalesDuringSearch) continue;
@@ -469,6 +584,13 @@ export function LayerControlsPanel({
           </Accordion.Control>
           <Accordion.Panel>
             <Stack gap={6}>
+              {canalesHealth?.message && (
+                <LayerHealthErrorRow
+                  testId={`layer-health-error-${family.value}`}
+                  message={canalesHealth.message}
+                  onRetry={canalesHealth.reload}
+                />
+              )}
               <CanalesLayerSection
                 side="relevados"
                 entries={relevadosToRender}
@@ -490,6 +612,9 @@ export function LayerControlsPanel({
                 ``LeyendaPanel`` as interactive checkboxes — single source of
                 truth for both swatch colors AND toggle controls.
               */}
+              {canalesProvenance && (
+                <LayerProvenanceLine category={family.value} text={canalesProvenance} />
+              )}
             </Stack>
           </Accordion.Panel>
         </Accordion.Item>
@@ -514,7 +639,13 @@ export function LayerControlsPanel({
     // the group failed (R4-001) — otherwise the toggle just looks broken.
     const isPilarVerde = family.value === LAYER_CATEGORY.PILAR_VERDE;
     const showPilarVerdeSpinner = isPilarVerde && pilarVerdeLayersLoading && familyActiveCount > 0;
-    const showPilarVerdeError = isPilarVerde && !!pilarVerdeLayersError;
+    const familyHealthRow = resolveFamilyHealthRow(
+      family.value,
+      isPilarVerde,
+      pilarVerdeLayersError,
+      layerHealth
+    );
+    const familyProvenance = layerProvenance?.[family.value] ?? null;
 
     accordionItems.push(
       <Accordion.Item key={family.value} value={family.value}>
@@ -526,10 +657,12 @@ export function LayerControlsPanel({
         </Accordion.Control>
         <Accordion.Panel>
           <Stack gap={4}>
-            {showPilarVerdeError && (
-              <Text size="xs" c="red" data-testid="pilar-verde-layers-error">
-                No se pudieron cargar las capas — reintentá
-              </Text>
+            {familyHealthRow && (
+              <LayerHealthErrorRow
+                testId={familyHealthRow.testId}
+                message={familyHealthRow.message}
+                onRetry={familyHealthRow.onRetry}
+              />
             )}
             {familyVisible.map((item) => {
               const isOn = !!vectorVisibility[item.id];
@@ -570,6 +703,9 @@ export function LayerControlsPanel({
                   </Text>
                 ))}
               </>
+            )}
+            {familyProvenance && (
+              <LayerProvenanceLine category={family.value} text={familyProvenance} />
             )}
           </Stack>
         </Accordion.Panel>
@@ -637,6 +773,25 @@ export function LayerControlsPanel({
         style={{ background: GLASS_BG, backdropFilter: 'blur(6px)' }}
       >
         <Stack gap={6}>
+          {bannerText && (
+            <Group gap={6} wrap="nowrap" align="center" data-testid="layer-health-banner">
+              <Text size="xs" c="red" style={{ flex: 1 }}>
+                ⚠ {bannerText}
+              </Text>
+              {canRetryAll && (
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  color="red"
+                  leftSection={<IconRefresh size={12} />}
+                  data-testid="layer-health-retry-all"
+                  onClick={() => layerHealth?.retryAll()}
+                >
+                  Reintentar
+                </Button>
+              )}
+            </Group>
+          )}
           <TextInput
             size="xs"
             aria-label="Buscar capa"

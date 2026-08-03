@@ -18,10 +18,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ESCUELAS_GEOJSON_URL,
-  useEscuelas,
-} from '../../src/hooks/useEscuelas';
+import { ESCUELAS_GEOJSON_URL, useEscuelas } from '../../src/hooks/useEscuelas';
 
 import escuelasSample from '../fixtures/escuelas/escuelasSample.json';
 import { createQueryWrapper } from '../test-utils';
@@ -125,14 +122,56 @@ describe('useEscuelas · graceful degradation', () => {
   });
 
   it('network reject resolves with collection=null and isError=true (no throw)', async () => {
-    mockFetch.mockImplementation(() =>
-      Promise.reject(new Error('network down')),
-    );
+    mockFetch.mockImplementation(() => Promise.reject(new Error('network down')));
     const wrapper = createQueryWrapper();
     const { result } = renderHook(() => useEscuelas(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.collection).toBeNull();
     expect(result.current.isError).toBe(true);
+  });
+});
+
+/**
+ * Batch 1 "datos honestos" — `error` + `reload`.
+ *
+ * Same trap as `useCanales`: the queryFn resolves with `{ failed: true }` instead
+ * of rejecting, so `staleTime: Infinity` caches the failure for the session.
+ * `reload()` is the only recovery, and the layer panel is what offers it.
+ */
+describe('useEscuelas · error message + reload', () => {
+  it('exposes a user-facing message alongside isError', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockNotOk(404)));
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useEscuelas(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error).toBe('No se pudieron cargar las escuelas rurales');
+  });
+
+  it('keeps `error` null on the happy path', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockOk(escuelasSample)));
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useEscuelas(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reload() re-fires the fetch and recovers from the CACHED failure', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockNotOk(404)));
+    const wrapper = createQueryWrapper();
+    const { result } = renderHook(() => useEscuelas(), { wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    const callsAfterFailure = mockFetch.mock.calls.length;
+    mockFetch.mockImplementation(() => Promise.resolve(mockOk(escuelasSample)));
+    result.current.reload();
+
+    await waitFor(() => expect(result.current.isError).toBe(false));
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(callsAfterFailure);
+    expect(result.current.error).toBeNull();
+    expect(result.current.collection).not.toBeNull();
   });
 });

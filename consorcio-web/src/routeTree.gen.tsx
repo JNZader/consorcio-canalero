@@ -54,9 +54,14 @@ const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
 
-// Suspense fallback for lazy loaded components
+// Suspense fallback for lazy loaded components.
+// 100dvh, not 50vh: with a half-viewport fallback the (static, full-height)
+// footer painted INSIDE the first viewport and was shoved off-screen when the
+// lazy route chunk arrived — a 0.41 CLS hit on every route. A full-viewport
+// reserve keeps the footer below the fold on first paint, so its later move
+// never counts as layout shift.
 const PageLoader = () => (
-  <Center mih="50vh">
+  <Center mih="100dvh">
     <Loader size="lg" />
   </Center>
 );

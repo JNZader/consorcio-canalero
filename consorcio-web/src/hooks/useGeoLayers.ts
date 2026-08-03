@@ -98,6 +98,8 @@ const TILE_CAPABLE_TYPES = new Set([
 
 export function useGeoLayers() {
   const { loading: authLoading, initialized } = useAuthStore();
+  /** ONE definition of the auth gate — consumed by `enabled` and re-exported. */
+  const authGateOpen = initialized && !authLoading;
 
   const query = useQuery({
     queryKey: queryKeys.geoLayers(),
@@ -136,7 +138,7 @@ export function useGeoLayers() {
       }
       return Array.from(seen.values());
     },
-    enabled: initialized && !authLoading,
+    enabled: authGateOpen,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -145,6 +147,12 @@ export function useGeoLayers() {
     loading: authLoading || query.isLoading,
     error: query.error ? 'No se pudieron cargar las capas DEM' : null,
     reload: query.refetch,
+    /**
+     * Whether the query's auth gate is OPEN. Exposed so consumers report this
+     * family's health from ONE source of truth instead of re-deriving the gate
+     * from the auth store (see `map2d/layerHealth.ts`).
+     */
+    enabled: authGateOpen,
   };
 }
 
