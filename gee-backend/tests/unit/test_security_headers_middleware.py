@@ -2,6 +2,7 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
 
 
@@ -49,6 +50,42 @@ async def test_hsts_is_added_for_forwarded_https_requests():
     )
 
     assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+
+@pytest.mark.asyncio
+async def test_csp_denies_everything_on_api_responses():
+    middleware = SecurityHeadersMiddleware(app=None)
+
+    response = await middleware.dispatch(make_request("/api/v2/public"), call_next)
+
+    assert response.headers["Content-Security-Policy"] == (
+        "default-src 'none'; frame-ancestors 'none'"
+    )
+
+
+@pytest.mark.asyncio
+async def test_csp_is_not_applied_to_the_docs_ui_when_docs_are_enabled(monkeypatch):
+    # Swagger/ReDoc load their bundles from a CDN; the deny-all policy would
+    # leave the page blank.
+    monkeypatch.setattr(settings, "enable_docs", True)
+    middleware = SecurityHeadersMiddleware(app=None)
+
+    for path in ("/docs", "/redoc"):
+        response = await middleware.dispatch(make_request(path), call_next)
+        assert "Content-Security-Policy" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_docs_paths_still_get_csp_when_docs_are_disabled(monkeypatch):
+    # With the flag off those paths 404, so there is nothing to exempt.
+    monkeypatch.setattr(settings, "enable_docs", False)
+    middleware = SecurityHeadersMiddleware(app=None)
+
+    response = await middleware.dispatch(make_request("/docs"), call_next)
+
+    assert response.headers["Content-Security-Policy"] == (
+        "default-src 'none'; frame-ancestors 'none'"
+    )
 
 
 @pytest.mark.asyncio

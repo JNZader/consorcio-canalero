@@ -141,12 +141,29 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
+    # The only paths that ever return HTML meant to execute scripts: the
+    # Swagger/ReDoc UIs, which pull their bundles from a CDN. They exist only
+    # while ``settings.enable_docs`` is on, so the exemption is scoped to that
+    # flag — with docs off these paths 404 and get the strict policy like
+    # everything else.
+    DOCS_PATHS: set[str] = {"/docs", "/docs/oauth2-redirect", "/redoc"}
+
+    # The API serves JSON, never a document that should load subresources or
+    # be framed. Denying everything by default is the accurate description of
+    # that surface, and ``frame-ancestors`` is the modern counterpart of the
+    # ``X-Frame-Options: DENY`` above (kept for legacy browsers).
+    API_CSP = "default-src 'none'; frame-ancestors 'none'"
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        is_docs_ui = settings.enable_docs and request.url.path in self.DOCS_PATHS
+        if not is_docs_ui:
+            response.headers["Content-Security-Policy"] = self.API_CSP
 
         # Keep browser capability exposure low for API responses. The frontend
         # may request geolocation, but the API never needs direct device access.
