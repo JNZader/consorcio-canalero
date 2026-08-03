@@ -4,7 +4,7 @@
 Request: ONE Pydantic v2 discriminated union on ``tipo`` so the UI has a single
 code path and an unknown ``tipo`` dies before any geometry or raster work.
 
-Response: ONE shape for the four variants — the spec requires a ficha for a
+Response: ONE shape for every variant — the spec requires a ficha for a
 precomputed catchment to be byte-compatible with a ficha for a parcel.
 
 Two things this module deliberately does NOT do:
@@ -14,8 +14,8 @@ Two things this module deliberately does NOT do:
   BPA/forestación membership is joined client-side against the already-public
   tile property (design [R1]);
 * it does NOT own the caps. The ``poligono`` validators below are the CHEAP
-  pre-checks over a caller-supplied polygon; three of the four ``tipo`` values
-  resolve a geometry the caller never sends, so ``ficha_service.assert_within_caps``
+  pre-checks over a caller-supplied polygon; every OTHER ``tipo`` resolves a
+  geometry the caller never sends, so ``ficha_service.assert_within_caps``
   is the authority (design §2.1, JD-A-002).
 """
 
@@ -28,11 +28,31 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.config import settings
 from app.domains.geo import ficha_errors
 
-TipoFicha = Literal["parcela", "poligono", "canal_buffer", "canal_cuenca"]
+TipoFicha = Literal["parcela", "parcelas", "poligono", "canal_buffer", "canal_cuenca"]
 Cobertura = Literal["total", "parcial", "sin_cobertura"]
 VarianteCuenca = Literal["natural", "relevado"]
 
 _GEOMETRIAS_ACEPTADAS = ("Polygon", "MultiPolygon")
+
+# ── multi-parcel selection caps (tipo=parcelas) ─────────────────────────────
+# The union is computed SERVER-SIDE from ``parcelas_catastro`` (the tile
+# geometries the map paints are clipped/simplified and are NOT analysis grade),
+# so every requested nomenclatura is one indexed lookup plus one geometry fed to
+# ``ST_Union``. Two bounds therefore exist, and they are different things:
+#
+# * ``FICHA_PARCELAS_MIN`` = 2 — a single parcel is ``tipo=parcela``; accepting a
+#   one-element list here would create two wire shapes for the same analysis.
+# * ``FICHA_PARCELAS_MAX`` = 30 — the DoS bound on the LOOKUP + union cost. It is
+#   deliberately far above what a human accumulates by ctrl-clicking and far
+#   below anything that would make the union query expensive.
+#
+# Neither bound is the area/complexity authority: ``assert_within_caps`` still
+# runs over the RESOLVED union (20 000 ha, envelope, and 1 000 vertices), and on
+# real rural parcels the VERTEX cap is what a large selection hits first. That is
+# a coded, actionable 422 (``cap_excedido`` with ``cap="vertices"``) — deselect a
+# few parcels — not a silent truncation.
+FICHA_PARCELAS_MIN = 2
+FICHA_PARCELAS_MAX = 30
 
 
 def _contar_vertices(coordinates: Any, geometry_type: str) -> int:
@@ -76,6 +96,44 @@ class FichaParcelaRequest(_FichaRequestBase):
 
     tipo: Literal["parcela"]
     nomenclatura: str = Field(min_length=1, max_length=64)
+
+
+class FichaParcelasRequest(_FichaRequestBase):
+    """Union of several catastro parcels, resolved server-side (T4).
+
+    DUPLICATES ARE REJECTED, not silently deduped. The frontend accumulates into
+    a set, so a repeated nomenclatura only ever arrives from a hand-rolled or
+    buggy caller; answering 422 tells them so instead of quietly changing the
+    request they sent. It also keeps the two things a duplicate would blur —
+    ``len(nomenclaturas)`` as the DoS bound, and the audit reference — exact.
+
+    Entries are stripped before the checks so ``" 19-04-1 "`` and ``"19-04-1"``
+    cannot slip through as two different parcels of the same selection.
+    """
+
+    tipo: Literal["parcelas"]
+    nomenclaturas: list[str] = Field(min_length=FICHA_PARCELAS_MIN, max_length=FICHA_PARCELAS_MAX)
+
+    @field_validator("nomenclaturas")
+    @classmethod
+    def _validar_nomenclaturas(cls, value: list[str]) -> list[str]:
+        limpias: list[str] = []
+        vistas: set[str] = set()
+        for cruda in value:
+            nomenclatura = cruda.strip()
+            if not nomenclatura:
+                raise ficha_errors.geometria_invalida("nomenclatura vacia en la seleccion")
+            if len(nomenclatura) > 64:
+                raise ficha_errors.geometria_invalida(
+                    f"nomenclatura demasiado larga: {nomenclatura[:16]}..."
+                )
+            if nomenclatura in vistas:
+                raise ficha_errors.geometria_invalida(
+                    f"nomenclatura repetida en la seleccion: {nomenclatura}"
+                )
+            vistas.add(nomenclatura)
+            limpias.append(nomenclatura)
+        return limpias
 
 
 class FichaPoligonoRequest(_FichaRequestBase):
@@ -141,6 +199,7 @@ class FichaCanalCuencaRequest(_FichaRequestBase):
 FichaRequest = Annotated[
     Union[
         FichaParcelaRequest,
+        FichaParcelasRequest,
         FichaPoligonoRequest,
         FichaCanalBufferRequest,
         FichaCanalCuencaRequest,
@@ -196,7 +255,14 @@ class PrecipitacionFicha(BaseModel):
 
 
 class FichaResponse(BaseModel):
-    """Uniform across the four ``tipo`` values."""
+    """Uniform across every ``tipo`` value.
+
+    ``tipo=parcelas`` is byte-compatible with ``tipo=parcela``: the union of N
+    parcels reports the SAME dataset keys, and — like every other tipo — carries
+    no ``nro_cuenta`` and no per-parcel identity. The frontend already renders the
+    identity header from the click it made, so nothing about a multi-parcel
+    selection needs a new response field.
+    """
 
     tipo: TipoFicha
     area_ha: float
