@@ -14,7 +14,7 @@ import { logger } from '../lib/logger';
 /**
  * Default system configuration used when the API is unavailable.
  * Map center is the centroid of the Consorcio Canalero 10 de Mayo zone
- * (Marcos Juárez, Córdoba).
+ * (departamento Unión, Córdoba).
  */
 const DEFAULT_CONFIG: SystemConfig = {
   consorcio_area_ha: CONSORCIO_AREA_HA,

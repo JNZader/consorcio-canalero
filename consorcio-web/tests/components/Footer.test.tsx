@@ -36,7 +36,7 @@ describe('Footer', () => {
     );
 
     expect(
-      screen.getByText('Gestión de cuencas hídricas en Marcos Juárez, Córdoba')
+      screen.getByText('Gestión de cuencas hídricas en Bell Ville, Monte Leña y San Marcos Sud (Córdoba)')
     ).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe('Footer', () => {
       </MantineProvider>
     );
 
-    expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
+    expect(screen.getByText('Departamento Unión, Córdoba')).toBeInTheDocument();
     expect(screen.getByText('Argentina')).toBeInTheDocument();
   });
 
@@ -258,9 +258,9 @@ describe('Footer', () => {
         </MantineProvider>
       );
 
-      const description = screen.getByText('Gestión de cuencas hídricas en Marcos Juárez, Córdoba');
+      const description = screen.getByText('Gestión de cuencas hídricas en Bell Ville, Monte Leña y San Marcos Sud (Córdoba)');
       expect(description).toBeInTheDocument();
-      expect(description.textContent).toBe('Gestión de cuencas hídricas en Marcos Juárez, Córdoba');
+      expect(description.textContent).toBe('Gestión de cuencas hídricas en Bell Ville, Monte Leña y San Marcos Sud (Córdoba)');
     });
 
     it('should display section headers with correct text and styling', () => {
