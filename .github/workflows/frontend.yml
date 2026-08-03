@@ -107,7 +107,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
-      - run: npm run test:run
+      # Con cobertura, no `test:run`: los thresholds de vitest.config.ts
+      # (60/60/60/60) solo actuan como gate si el reporter de coverage corre.
+      # Con `vitest run` a secas los umbrales estaban declarados pero nunca se
+      # evaluaban, asi que una caida de cobertura pasaba el CI en verde.
+      - run: npm run test:coverage
 
   typecheck:
     name: Typecheck
