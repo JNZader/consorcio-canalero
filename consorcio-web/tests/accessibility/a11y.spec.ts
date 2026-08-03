@@ -135,15 +135,24 @@ test.describe('Formularios', () => {
     await gotoAndWait(page, '/participacion');
     await expectLabelsForInputs(page, 'input, textarea, select');
 
+    // Sin sesión, /participacion ya no ofrece ningún formulario con submit: la
+    // verificación de contacto quedó en "Continuar con Google" solamente (el
+    // form de magic-link se retiró en el batch móvil). El submit real solo
+    // existe autenticado, así que el resto del chequeo es condicional — mismo
+    // patrón que el fallback de navegación por teclado de este archivo.
     const submit = page.locator('button[type="submit"]').first();
-    await expect(submit).toBeVisible();
-    if (await submit.isEnabled()) {
-      await submit.click();
-      expect(await page.locator('[role="alert"], [aria-live="assertive"]').count()).toBeGreaterThan(
-        0
-      );
+    if ((await submit.count()) > 0) {
+      await expect(submit).toBeVisible();
+      if (await submit.isEnabled()) {
+        await submit.click();
+        expect(
+          await page.locator('[role="alert"], [aria-live="assertive"]').count()
+        ).toBeGreaterThan(0);
+      } else {
+        await expect(submit).toBeDisabled();
+      }
     } else {
-      await expect(submit).toBeDisabled();
+      await expect(page.getByRole('button', { name: /continuar con google/i })).toBeVisible();
     }
 
     for (const field of await page.locator('[aria-required="true"], [required]').all()) {

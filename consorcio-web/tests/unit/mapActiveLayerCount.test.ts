@@ -19,6 +19,10 @@ import {
   buildTerrain3DLayerItems,
   PRIORITY_3D_VECTOR_LAYERS,
 } from '../../src/components/terrain/terrainLayerConfig';
+import {
+  type CanalToggleEntry,
+  collectCanalChildIds,
+} from '../../src/components/shared/canalesGrouping';
 import { PILAR_VERDE_LAYER_IDS } from '../../src/stores/mapLayerSyncStore';
 
 const layerItems = [
@@ -160,5 +164,75 @@ describe('buildTerrain3DLayerItems — 3D badge inputs (R2-002)', () => {
     expect(total).toBe(4);
     // The old formula would have said 7.
     expect(Object.values(vectorVisibility).filter(Boolean).length).toBe(7);
+  });
+});
+
+/**
+ * B2-2.6 — the badge lied when a canal master was OFF. `collectCanalChildIds`
+ * used to flatten BOTH sides unconditionally, so the 19 propuestos children kept
+ * their `true` per-canal flags and were counted even though `isCanalVisible`
+ * refuses to draw any child of a side whose master is off: badge 60, map 41.
+ */
+describe('collectCanalChildIds — master gate (B2-2.6)', () => {
+  const relevados: CanalToggleEntry[] = [
+    { kind: 'leaf', id: 'canal_relevado_uno', label: 'Uno' },
+    {
+      kind: 'group',
+      folder: 'tramos',
+      label: 'Tramos',
+      children: [{ id: 'canal_relevado_dos', label: 'Dos' }],
+    },
+  ];
+  const propuestos: CanalToggleEntry[] = [
+    { kind: 'leaf', id: 'canal_propuesto_tres', label: 'Tres' },
+  ];
+
+  it('drops the children of a side whose master is off', () => {
+    const ids = collectCanalChildIds(relevados, propuestos, {
+      canales_relevados: true,
+      canales_propuestos: false,
+      canal_relevado_uno: true,
+      canal_relevado_dos: true,
+      canal_propuesto_tres: true,
+    });
+
+    expect(ids).toEqual(['canal_relevado_uno', 'canal_relevado_dos']);
+  });
+
+  it('keeps both sides when both masters are on', () => {
+    const ids = collectCanalChildIds(relevados, propuestos, {
+      canales_relevados: true,
+      canales_propuestos: true,
+    });
+
+    expect(ids).toEqual([
+      'canal_relevado_uno',
+      'canal_relevado_dos',
+      'canal_propuesto_tres',
+    ]);
+  });
+
+  it('returns nothing when both masters are off', () => {
+    expect(collectCanalChildIds(relevados, propuestos, {})).toEqual([]);
+  });
+
+  it('makes the family badge match what the map renders', () => {
+    // Todos los hijos en `true`, propuestos master OFF: el mapa dibuja los 2
+    // relevados, y el badge debe decir 2 — no 3.
+    const visibility: Record<string, boolean> = {
+      canales_relevados: true,
+      canales_propuestos: false,
+      canal_relevado_uno: true,
+      canal_relevado_dos: true,
+      canal_propuesto_tres: true,
+    };
+
+    const counts = buildFamilyActiveCounts({
+      layerItems,
+      vectorVisibility: visibility,
+      canalChildIds: collectCanalChildIds(relevados, propuestos, visibility),
+    });
+
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
   });
 });

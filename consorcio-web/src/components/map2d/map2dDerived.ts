@@ -290,7 +290,10 @@ export function buildDemLayerOptions(
  * Counting rules (identical to the panel's own badges):
  *   - BASE     → the structural overlays (IGN, DEM), not `layerItems`.
  *   - CANALES  → visible canal CHILDREN, not the master flags (a master can
- *                stay `true` after its last child is toggled off).
+ *                stay `true` after its last child is toggled off). `canalChildIds`
+ *                must ALREADY be gated by each side's master — `collectCanalChildIds`
+ *                does it (B2-2.6); children of a master that is off are not drawn,
+ *                so counting them made the badge claim 60 over a map drawing 41.
  *   - others   → visible `layerItems` of that family.
  */
 export function buildFamilyActiveCounts(params: {

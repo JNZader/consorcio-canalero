@@ -216,7 +216,11 @@ export function TerrainViewer3DChrome({
           buildFamilyActiveCounts({
             layerItems: buildTerrain3DLayerItems({ intersectionsLength }),
             vectorVisibility: vectorLayerVisibility,
-            canalChildIds: collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems),
+            canalChildIds: collectCanalChildIds(
+              canalesRelevadosItems,
+              canalesPropuestosItems,
+              vectorLayerVisibility
+            ),
           })
         )}
         canvas={

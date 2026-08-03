@@ -93,6 +93,24 @@ afterEach(() => {
 });
 
 describe('<MapWorkspace />', () => {
+  /**
+   * B2-2.1 — el alto es tan load-bearing como el ancho. Con `min-width` sola, un
+   * telefono acostado (844×390) superaba los 48em y entraba en modo escritorio:
+   * sidebar fijo de 300-360px sobre un canvas de ~306px, y la top bar flotante
+   * del reflow apaisado tapaba la cabecera del sidebar (con el panel colapsado,
+   * el boton de expandir quedaba cubierto → panel irrecuperable).
+   */
+  it('the desktop query gates on viewport HEIGHT too, not width alone', () => {
+    mockViewport(true);
+    renderWithMantine(<MapWorkspace canvas={canvas} controls={controls} />);
+
+    const queries = vi.mocked(window.matchMedia).mock.calls.map(([query]) => query);
+    expect(queries).toContain('(min-width: 48em) and (min-height: 30.0625em)');
+    // 30.0625em = 481px: tablets y laptops siguen del lado escritorio; el
+    // telefono acostado (390-430px de alto) cae al burger + Drawer.
+    expect(queries.some((q) => q === '(min-width: 48em)')).toBe(false);
+  });
+
   it('desktop: renders sidebar + canvas with the same controls', () => {
     mockViewport(true);
     renderWithMantine(

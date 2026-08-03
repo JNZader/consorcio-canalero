@@ -720,7 +720,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       <Group justify="space-between" mb="xs">
         <Title order={5}>Ficha territorial</Title>
         {!sheet && (
-          <CloseButton onClick={onClose} size="sm" aria-label="Cerrar ficha territorial" />
+          <CloseButton
+            onClick={onClose}
+            className={styles.panelCloseButton}
+            aria-label="Cerrar ficha territorial"
+          />
         )}
       </Group>
       <Divider mb="xs" />

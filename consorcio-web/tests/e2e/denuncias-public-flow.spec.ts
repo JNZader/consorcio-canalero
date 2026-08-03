@@ -64,16 +64,15 @@ test.describe('QA Sesión C — public denuncias form', () => {
     // Discovered during F5-J automation: ``/reportes`` no longer
     // shows the type/description form to anonymous visitors. The
     // F2 anti-spam change put a "Verificar identidad" step in front
-    // of everything — the citizen must log in (Google OAuth or email
-    // magic link) BEFORE the actual report form appears.
+    // of everything — the citizen must log in with Google OAuth
+    // BEFORE the actual report form appears.
     //
-    // This test pins that contract: step 1 renders with both
-    // identity options visible. The actual report form (tipo /
-    // descripción / location / photo) is post-login and requires
-    // either a manual Google OAuth flow OR a magic-link click —
-    // neither feasible to automate against the live stack without
-    // a fake mail provider, so C1's "form fields render" portion
-    // stays manual.
+    // This test pins that contract: step 1 renders with the single
+    // identity option visible. The actual report form (tipo /
+    // descripción / location / photo) is post-login and requires a
+    // manual Google OAuth flow — not feasible to automate against
+    // the live stack, so C1's "form fields render" portion stays
+    // manual.
     await page.goto(`${APP_URL}/reportes`);
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
 
@@ -82,43 +81,17 @@ test.describe('QA Sesión C — public denuncias form', () => {
       page.getByText(/verificar identidad/i).first()
     ).toBeVisible({ timeout: 10_000 });
 
-    // Google OAuth path.
+    // Google OAuth path — unica via de verificacion desde el retiro
+    // del magic link.
     await expect(
       page.locator('button:has-text("Google")').first()
     ).toBeVisible();
 
-    // Email magic-link path.
+    // El formulario por email ya no existe: si reaparece, el retiro
+    // se revirtio sin querer.
     await expect(
-      page.locator('input[type="email"], input[placeholder*="email"]').first()
-    ).toBeVisible();
-    await expect(
-      page.locator('button:has-text("Enviar link")').first()
-    ).toBeVisible();
-  });
-
-  test('C2 (client validation): empty email submit shows error', async ({ page }) => {
-    // Same anti-spam reality as C1: the only client-side validation
-    // we can test without a real session is the email field on the
-    // magic-link step.
-    await page.goto(`${APP_URL}/reportes`);
-    await page.waitForLoadState('networkidle', { timeout: 15_000 });
-
-    const submitMagicLink = page
-      .locator('button:has-text("Enviar link")')
-      .first();
-    await expect(submitMagicLink).toBeVisible({ timeout: 10_000 });
-    await submitMagicLink.click();
-    await page.waitForTimeout(1500);
-
-    // Mantine form / HTML5 ``required`` should surface a validation
-    // hint — either an inline error or the browser-native
-    // ``:invalid`` state on the input. Both leave the user on the
-    // same step (i.e. NOT navigated forward).
-    const stillOnStep1 = await page
-      .getByText(/verificar identidad/i)
-      .first()
-      .isVisible();
-    expect(stillOnStep1).toBeTruthy();
+      page.locator('input[type="email"], input[placeholder*="email"]')
+    ).toHaveCount(0);
   });
 
   test('C2 (anti-spam contract): anonymous POST without login is rejected', async ({ request }) => {

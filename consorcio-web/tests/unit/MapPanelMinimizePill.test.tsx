@@ -241,6 +241,30 @@ describe("minimize-to-pill · mobile sheet", () => {
 			"true",
 		);
 	});
+
+	/**
+	 * B2-2.2/RES-004 — la pildora del sheet pasa a `position: fixed` (anclada al
+	 * viewport, no al canvas). Eso la deja tocable con la pagina scrolleada, pero
+	 * el panel que restaura sigue anclado al CANVAS: sin traerlo a cuadro, tocar
+	 * la pildora reabre un panel fuera de vista y se lee como "no pasó nada".
+	 */
+	it("restoring from the sheet pill brings the canvas back into view", () => {
+		const scrollIntoView = vi.fn();
+		const canvas = document.createElement("div");
+		canvas.setAttribute("data-testid", "map-workspace-canvas");
+		canvas.scrollIntoView = scrollIntoView;
+		document.body.appendChild(canvas);
+
+		try {
+			renderWithMantine(<MapUiPanels {...panelProps()} />);
+			fireEvent.click(screen.getByTestId("map-2d-info-panel-minimize"));
+			fireEvent.click(screen.getByTestId("map-2d-info-panel-pill"));
+
+			expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+		} finally {
+			canvas.remove();
+		}
+	});
 });
 
 describe("auto-minimize on map drag", () => {
