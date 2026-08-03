@@ -45,7 +45,7 @@ describe('HomePage', () => {
     describe('hero section', () => {
       it('should render hero section with badge', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
+        expect(screen.getByText('Departamento Unión, Córdoba')).toBeInTheDocument();
       });
 
       it('should render main title', () => {
@@ -308,7 +308,7 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
 
         // Hero badge
-        expect(screen.getByText('Marcos Juárez, Córdoba')).toBeInTheDocument();
+        expect(screen.getByText('Departamento Unión, Córdoba')).toBeInTheDocument();
 
         // Stats
         expect(screen.getByText('88.484')).toBeInTheDocument();
@@ -334,6 +334,47 @@ describe('HomePage', () => {
         features.forEach((feature) => {
           expect(screen.getByText(feature)).toBeInTheDocument();
         });
+      });
+    });
+
+    // Las secciones institucionales estan detras de SHOW_INSTITUTIONAL_SECTIONS
+    // (hoy en `false`) porque el contenido esta en revision y los datos de
+    // contacto son placeholders. Estos tests pinean el estado OCULTO: si se
+    // flipea el flag a `true` fallan a proposito, para forzar que se revisen
+    // junto con el contenido reactivado.
+    describe('secciones institucionales (ocultas tras el flag)', () => {
+      it('no renderiza la seccion "Sobre el consorcio"', () => {
+        renderWithMantine(<HomeContent />);
+
+        expect(screen.queryByText('Sobre el consorcio')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Somos una entidad pública/i)).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(/Cubre 88\.484 hectáreas del departamento Unión/i)
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/Padrón abierto a inspección pública/i)).not.toBeInTheDocument();
+      });
+
+      it('no renderiza la seccion "Preguntas frecuentes"', () => {
+        renderWithMantine(<HomeContent />);
+
+        expect(screen.queryByText('Preguntas frecuentes')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('¿Necesito una cuenta para reportar un problema?')
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText('¿Es gratis?')).not.toBeInTheDocument();
+      });
+
+      it('no renderiza la seccion "Contactanos" ni los datos de contacto placeholder', () => {
+        const { container } = renderWithMantine(<HomeContent />);
+
+        expect(screen.queryByText('Contactanos')).not.toBeInTheDocument();
+        expect(screen.queryByText('contacto@consorcio10demayo.gob.ar')).not.toBeInTheDocument();
+        expect(screen.queryByText('+54 353 400-0000')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Lun a Vie/i)).not.toBeInTheDocument();
+
+        // Sin links mailto/tel colgados en el DOM.
+        expect(container.querySelector('a[href^="mailto:"]')).toBeNull();
+        expect(container.querySelector('a[href^="tel:"]')).toBeNull();
       });
     });
 
