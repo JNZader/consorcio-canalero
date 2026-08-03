@@ -25,6 +25,19 @@ export interface DrawnPolygon {
 }
 
 export interface DrawControlHandle {
+  /**
+   * Enter `draw_polygon` with REPLACE semantics: any polygon already on the map
+   * is removed first, so the map never shows two shapes at once (T3c final
+   * round, R2-001 — the "Otro" button used to accumulate polygons on the map
+   * while the ficha analysed only the newest one, and "Borrar" then wiped
+   * both).
+   *
+   * The wipe is SILENT on purpose: MapboxDraw's programmatic `deleteAll()`
+   * does NOT emit `draw.delete` (only user-initiated deletion does — that is
+   * exactly why `clearDrawing` has to invoke `onPolygonDeleted` by hand). So
+   * the ficha keeps showing the previous result until the new polygon's
+   * `draw.create` replaces it, instead of blanking mid-draw.
+   */
   startDrawing: () => void;
   clearDrawing: () => void;
 }
@@ -51,9 +64,16 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
 
     useImperativeHandle(ref, () => ({
       startDrawing: () => {
+        // REPLACE, not append: wipe the previous polygon BEFORE re-entering
+        // draw mode. Silent by construction — the programmatic `deleteAll()`
+        // emits no `draw.delete`, so `onPolygonDeleted` does NOT fire and the
+        // ficha keeps its current result until `draw.create` replaces it.
+        drawRef.current?.deleteAll();
         drawRef.current?.changeMode('draw_polygon');
       },
       clearDrawing: () => {
+        // Same silent `deleteAll` — here the callback IS wanted, so it is
+        // invoked explicitly to clear the ficha.
         drawRef.current?.deleteAll();
         onPolygonDeletedRef.current();
       },

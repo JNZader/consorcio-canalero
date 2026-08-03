@@ -154,8 +154,19 @@
    `clamp(...)` literal only matched desktop. */
 .mapCanvasWrapper,
 .canvasHeightBudget,
+.mapSkeletonWrapper,
 .workspaceSidebar {
   --map-canvas-height: clamp(420px, calc(100dvh - 250px), 980px);
+}
+
+/* Loading skeleton (T3c, fix 5a). It used to reuse `.mapWrapper` (16/9 aspect,
+   max 700px) while the mounted map uses `--map-canvas-height`, so the page
+   visibly jumped the moment MapLibre finished loading. Same budget = no shift. */
+.mapSkeletonWrapper {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  height: var(--map-canvas-height);
 }
 
 .mapCanvasWrapper {
@@ -269,11 +280,13 @@
      stays on screen on short phones instead of forcing a page scroll. */
   .mapCanvasWrapper,
   .canvasHeightBudget,
+  .mapSkeletonWrapper,
   .workspaceSidebar {
     --map-canvas-height: clamp(380px, calc(100dvh - 300px), 860px);
   }
 
-  .mapCanvasWrapper {
+  .mapCanvasWrapper,
+  .mapSkeletonWrapper {
     min-height: 380px;
   }
 

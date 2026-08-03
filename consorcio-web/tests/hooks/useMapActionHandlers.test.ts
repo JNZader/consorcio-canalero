@@ -22,9 +22,17 @@ vi.mock('../../src/lib/api', () => ({
   getAuthToken: (...args: unknown[]) => getAuthTokenMock(...args),
 }));
 
-vi.mock('../../src/lib/kmzExport/kmzBuilder', () => ({
-  buildKmz: (...args: unknown[]) => buildKmzMock(...args),
-}));
+// Only `buildKmz` is faked. `findMissingVisibleLayerKeys` (R4-003) stays REAL:
+// it is pure registry logic and it is precisely what decides the toast wording.
+vi.mock('../../src/lib/kmzExport/kmzBuilder', async () => {
+  const actual = await vi.importActual<typeof import('../../src/lib/kmzExport/kmzBuilder')>(
+    '../../src/lib/kmzExport/kmzBuilder'
+  );
+  return {
+    ...actual,
+    buildKmz: (...args: unknown[]) => buildKmzMock(...args),
+  };
+});
 
 vi.mock('../../src/lib/kmzExport/triggerKmzDownload', () => ({
   triggerKmzDownload: (...args: unknown[]) => triggerKmzDownloadMock(...args),
@@ -693,20 +701,64 @@ describe('useMapActionHandlers', () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it('shows a success notification when the export completes', async () => {
+    it('shows a GREEN success notification when every visible layer had data', async () => {
       buildKmzMock.mockResolvedValue(new Blob(['kmz']));
 
-      const { result } = renderExportHook();
+      const feature = [{ type: 'Feature', geometry: null, properties: {} }];
+      // The store defaults `roads` / `waterways` / `catastro` ON, so a complete
+      // export needs data for those three too.
+      const { result } = renderExportHook({
+        exportSources: {
+          canales_relevados: fc(feature),
+          canales_propuestos: fc(feature),
+          escuelas: fc(feature),
+          pilar_verde_bpa_historico: fc(feature),
+          roads: fc(feature),
+          waterways: fc(feature),
+          catastro: fc(feature),
+          'ypf-estacion-bombeo': fc(feature),
+        },
+      });
 
       await act(async () => {
         await result.current.handleExportKmz();
       });
 
-      // At least one green-colored notification was dispatched.
-      const greenCalls = notificationsShow.mock.calls.filter(([arg]) =>
-        (arg as { color?: string })?.color === 'green',
+      const greenCalls = notificationsShow.mock.calls.filter(
+        ([arg]) => (arg as { color?: string })?.color === 'green'
       );
       expect(greenCalls.length).toBeGreaterThanOrEqual(1);
+      expect(greenCalls[0][0]).toEqual(
+        expect.objectContaining({ message: 'KMZ descargado correctamente' })
+      );
+    });
+
+    it('WARNS instead of claiming success when a visible layer had no data (R4-003)', async () => {
+      buildKmzMock.mockResolvedValue(new Blob(['kmz']));
+
+      // `escuelas` is VISIBLE but its source is still null — exactly the "layer
+      // still downloading" case that used to produce a silently incomplete KMZ
+      // behind a green toast.
+      useMapLayerSyncStoreMock.mockImplementation((selector: (state: unknown) => unknown) =>
+        selector({
+          map2d: { visibleVectors: { escuelas: true }, activeRasterType: null },
+          propuestasEtapasVisibility: {},
+        })
+      );
+      const { result } = renderExportHook({
+        exportSources: { escuelas: null, 'ypf-estacion-bombeo': fc([{ type: 'Feature' }]) },
+      });
+
+      await act(async () => {
+        await result.current.handleExportKmz();
+      });
+
+      expect(triggerKmzDownloadMock).toHaveBeenCalledTimes(1);
+      const yellowCalls = notificationsShow.mock.calls.filter(
+        ([arg]) => (arg as { color?: string })?.color === 'yellow'
+      );
+      expect(yellowCalls.length).toBe(1);
+      expect((yellowCalls[0][0] as { message: string }).message).toMatch(/aún cargaban/);
     });
   });
 

@@ -20,7 +20,12 @@ import type { CanalMetadata } from '../../types/canales';
  */
 export type CanalToggleEntry =
   | { kind: 'leaf'; id: string; label: string }
-  | { kind: 'group'; folder: string; label: string; children: { id: string; label: string }[] };
+  | {
+      kind: 'group';
+      folder: string;
+      label: string;
+      children: { id: string; label: string }[];
+    };
 
 /**
  * Group canal index rows by ``tramo_folder``. Rows without a folder, or
@@ -53,7 +58,11 @@ export function groupCanalesByFolder(
     emitted.add(folder);
     const tramos = byFolder.get(folder)!;
     if (tramos.length === 1) {
-      out.push({ kind: 'leaf', id: keyOf(tramos[0]!.id), label: tramos[0]!.nombre });
+      out.push({
+        kind: 'leaf',
+        id: keyOf(tramos[0]!.id),
+        label: tramos[0]!.nombre,
+      });
       continue;
     }
     const baseLabel = tramos[0]!.nombre.replace(/\s*\(tramo\s+\d+\s+de\s+\d+\)\s*$/i, '');
@@ -76,6 +85,22 @@ export function collectChildIds(entries: readonly CanalToggleEntry[] | undefined
     else for (const c of e.children) ids.push(c.id);
   }
   return ids;
+}
+
+/**
+ * The two canal sides flattened into ONE id list — the exact input
+ * `buildFamilyActiveCounts` expects for `canalChildIds`.
+ *
+ * Extracted (R2-003) because `LayerControlsPanel` (family badge) and
+ * `MapaMapLibre` (workspace "N capas activas" badge) each open-coded the same
+ * `[...collectChildIds(relevados), ...collectChildIds(propuestos)]` spread; two
+ * copies of the count input defeat the point of sharing one derivation.
+ */
+export function collectCanalChildIds(
+  relevados: readonly CanalToggleEntry[] | undefined,
+  propuestos: readonly CanalToggleEntry[] | undefined
+): string[] {
+  return [...collectChildIds(relevados), ...collectChildIds(propuestos)];
 }
 
 /**

@@ -97,6 +97,18 @@ export interface FichaTerritorialPanelProps {
    */
   readonly onRemoveParcelas?: (nomenclaturas: readonly string[]) => void;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
+  /**
+   * True while `bpa_enriched.json` is still downloading. The BPA payload is
+   * lazy-loaded (fetched on the first parcela ficha), so without this flag the
+   * badges would claim "Sin vinculación" during the fetch — a wrong answer, not
+   * a pending one.
+   */
+  readonly bpaLoading?: boolean;
+  /**
+   * Set when the BPA payload FAILED to load (R4-001). Forwarded to
+   * `PilarVerdeBadges` so the row says so instead of hanging on "Cargando…".
+   */
+  readonly bpaError?: string | null;
   readonly isLoading: boolean;
   /** In-flight signal incl. retry-over-cached-data (see FichaErrorAlert). */
   readonly isFetching?: boolean;
@@ -484,6 +496,8 @@ function PanelBody({
   tipo,
   nroCuenta,
   bpaEnriched,
+  bpaLoading,
+  bpaError,
   isLoading,
   isFetching,
   isError,
@@ -532,7 +546,14 @@ function PanelBody({
       {/* Fixed header: WHAT was analyzed. It never scrolls out from under the
 			    selector, so the numbers below always have their context. */}
       <FichaResumen ficha={data} />
-      <PilarVerdeBadges tipo={tipo} nroCuenta={nroCuenta} bpaEnriched={bpaEnriched} compact />
+      <PilarVerdeBadges
+        tipo={tipo}
+        nroCuenta={nroCuenta}
+        bpaEnriched={bpaEnriched}
+        loading={bpaLoading}
+        error={bpaError}
+        compact
+      />
       <Divider />
       <SegmentedControl
         size="xs"
@@ -589,6 +610,8 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   parcelasCount,
   onRemoveParcelas,
   bpaEnriched,
+  bpaLoading,
+  bpaError,
   isLoading,
   isFetching,
   isError,
@@ -739,6 +762,8 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         onRemoveParcelas={onRemoveParcelas}
         nroCuenta={nroCuenta}
         bpaEnriched={bpaEnriched}
+        bpaLoading={bpaLoading}
+        bpaError={bpaError}
         isLoading={isLoading}
         isFetching={isFetching}
         isError={isError}

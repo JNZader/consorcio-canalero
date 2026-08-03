@@ -7,6 +7,7 @@ import {
   CloseButton,
   Divider,
   Group,
+  Loader,
   Paper,
   SegmentedControl,
   Select,
@@ -20,7 +21,7 @@ import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
-import { type CanalToggleEntry, collectChildIds } from '../shared/canalesGrouping';
+import { type CanalToggleEntry, collectCanalChildIds } from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
   IconChartBar,
@@ -35,7 +36,12 @@ import {
 import { LayerOrderSection } from './LayerOrderSection';
 import { getActiveAttributions } from './layerAttributions';
 import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
-import { LAYER_CATEGORY, type LayerCategory } from './map2dDerived';
+import {
+  buildFamilyActiveCounts,
+  LAYER_CATEGORY,
+  type LayerCategory,
+  normalizeSearchText,
+} from './map2dDerived';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -121,6 +127,15 @@ interface LayerControlsPanelProps {
    * `DEFAULT_LAYER_ORDER`).
    */
   readonly layerFineControl?: LayerFineControl;
+  /**
+   * Pilar Verde render-payload status (R4-001 / R4-002). The ~1.0 MB GeoJSON
+   * group is lazy: it only downloads once a `pilar_verde_*` toggle is on, so
+   * the family needs its own feedback — a spinner while it lands and a warning
+   * row when it failed. Without them the toggle looks like it did nothing.
+   * Optional: omitted → no extra rows, panel unchanged.
+   */
+  readonly pilarVerdeLayersLoading?: boolean;
+  readonly pilarVerdeLayersError?: string | null;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -137,7 +152,11 @@ const LAYER_FAMILIES: ReadonlyArray<{
   Icon: LayerFamilyIcon;
 }> = [
   { value: LAYER_CATEGORY.BASE, label: 'Base', Icon: IconMap },
-  { value: LAYER_CATEGORY.HIDROGRAFIA, label: 'Hidrografía', Icon: IconDroplet },
+  {
+    value: LAYER_CATEGORY.HIDROGRAFIA,
+    label: 'Hidrografía',
+    Icon: IconDroplet,
+  },
   { value: LAYER_CATEGORY.TERRITORIO, label: 'Territorio', Icon: IconMapPin },
   { value: LAYER_CATEGORY.PILAR_VERDE, label: 'Pilar Verde', Icon: IconPlant },
   { value: LAYER_CATEGORY.CANALES, label: 'Canales', Icon: IconRoute },
@@ -149,7 +168,8 @@ const GLASS_BG = 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))';
 /**
  * User-facing labels of the structural Base controls, so the Base accordion
  * item stays discoverable via the search box (change rediseno-ux-mapa FF2).
- * Kept lowercased for case-insensitive `.includes` matching.
+ * Folded through `normalizeSearchText` (lowercase + accent-stripped) so they
+ * match the query the same way every other label does (R3-003).
  */
 const BASE_SEARCH_LABELS = [
   'base',
@@ -158,12 +178,15 @@ const BASE_SEARCH_LABELS = [
   'satélite',
   'ign altimetría',
   'capa dem',
-] as const;
+].map(normalizeSearchText);
 
 /**
  * Filter canal entries by label for the search box (FF2). A `leaf` matches on
  * its own label; a `group` is kept WHOLE when the group label OR any child
  * label matches (we never partially filter a group's children).
+ *
+ * `query` MUST already be normalized by `normalizeSearchText` — labels are
+ * folded here so an accented canal name is reachable without typing accents.
  */
 function filterCanalEntries(
   entries: readonly CanalToggleEntry[] | undefined,
@@ -171,10 +194,10 @@ function filterCanalEntries(
 ): CanalToggleEntry[] {
   if (!entries) return [];
   return entries.filter((entry) => {
-    if (entry.kind === 'leaf') return entry.label.toLowerCase().includes(query);
+    if (entry.kind === 'leaf') return normalizeSearchText(entry.label).includes(query);
     return (
-      entry.label.toLowerCase().includes(query) ||
-      entry.children.some((child) => child.label.toLowerCase().includes(query))
+      normalizeSearchText(entry.label).includes(query) ||
+      entry.children.some((child) => normalizeSearchText(child.label).includes(query))
     );
   });
 }
@@ -265,9 +288,14 @@ export function LayerControlsPanel({
   canalesRelevadosItems,
   canalesPropuestosItems,
   layerFineControl = NOOP_FINE_CONTROL,
+  pilarVerdeLayersLoading = false,
+  pilarVerdeLayersError = null,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLowerCase();
+  // Accent-folded, not just lowercased (R3-003): the labels mix accented
+  // ("% Forestacion obligatoria" carries a tilde) and unaccented data-driven
+  // names ("Riesgo de Inundacion"), so BOTH sides go through the same fold.
+  const normalizedQuery = normalizeSearchText(query.trim());
   const isSearching = normalizedQuery.length > 0;
 
   const showCanalesSection =
@@ -278,14 +306,17 @@ export function LayerControlsPanel({
   // FF1: the Canales badge counts the ACTUAL visible canal children (leaves +
   // group children), NOT the master flags — a master can stay `true` after its
   // last child is toggled off, which used to leave the badge stale.
-  const canalesChildIds = [
-    ...collectChildIds(canalesRelevadosItems),
-    ...collectChildIds(canalesPropuestosItems),
-  ];
-  const canalesActiveCount = canalesChildIds.reduce(
-    (count, id) => (vectorVisibility[id] ? count + 1 : count),
-    0
-  );
+  const canalesChildIds = collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems);
+  // Fix 3 (T3c): per-family badges and the workspace "N capas activas" badge now
+  // share ONE derivation, so they cannot disagree.
+  const familyActiveCounts = buildFamilyActiveCounts({
+    layerItems,
+    vectorVisibility,
+    canalChildIds: canalesChildIds,
+    showIGNOverlay,
+    showDemOverlay,
+  });
+  const canalesActiveCount = familyActiveCounts[LAYER_CATEGORY.CANALES];
 
   // FF2: canal entries are searchable. When the query is the "canal(es)"
   // keyword we surface the whole section; otherwise we pass label-filtered
@@ -332,8 +363,23 @@ export function LayerControlsPanel({
   // Vector items after applying the search filter (React Compiler memoizes this
   // — no manual `useMemo`).
   const filteredLayerItems = isSearching
-    ? layerItems.filter((item) => item.label.toLowerCase().includes(normalizedQuery))
+    ? layerItems.filter((item) => normalizeSearchText(item.label).includes(normalizedQuery))
     : layerItems;
+
+  // FF-T3c: the raster/DEM options (riesgo hídrico, drenaje, terreno…) live in
+  // the Base > "Capa DEM" Select, so they were invisible to a search that only
+  // scanned `layerItems` — typing "riesgo" answered "Sin resultados" about a
+  // layer the map can absolutely paint. They now get their own results section.
+  const rasterSearchMatches =
+    isSearching && demEnabled
+      ? demOptions.filter((option) => normalizeSearchText(option.label).includes(normalizedQuery))
+      : [];
+
+  /** Activate one raster option from the search results: select it AND turn the DEM overlay on. */
+  const handleRasterSearchSelect = (value: string) => {
+    onActiveDemLayerIdChange(value);
+    onShowDemOverlayChange(true);
+  };
 
   const accordionItems: ReactNode[] = [];
 
@@ -347,7 +393,7 @@ export function LayerControlsPanel({
       if (isSearching && !BASE_SEARCH_LABELS.some((label) => label.includes(normalizedQuery))) {
         continue;
       }
-      const baseActiveCount = (showIGNOverlay ? 1 : 0) + (showDemOverlay ? 1 : 0);
+      const baseActiveCount = familyActiveCounts[LAYER_CATEGORY.BASE];
       accordionItems.push(
         <Accordion.Item key={family.value} value={family.value} data-testid="layer-controls-capas">
           <Accordion.Control icon={<Icon size={16} />}>
@@ -452,7 +498,6 @@ export function LayerControlsPanel({
     }
 
     // ── Vector families: Hidrografía / Territorio / Pilar Verde / Análisis.
-    const familyAll = layerItems.filter((item) => item.category === family.value);
     const familyVisible = filteredLayerItems.filter((item) => item.category === family.value);
     const isAnalisis = family.value === LAYER_CATEGORY.ANALISIS;
     // Análisis carries the IDECor attribution footer. Show it when not
@@ -462,18 +507,30 @@ export function LayerControlsPanel({
 
     if (familyVisible.length === 0 && !showAttributions) continue;
 
-    const familyActiveCount = familyAll.reduce(
-      (count, item) => (vectorVisibility[item.id] ? count + 1 : count),
-      0
-    );
+    const familyActiveCount = familyActiveCounts[family.value];
+    // Pilar Verde is the only family whose render payload is lazy (~1.0 MB,
+    // fetched on first toggle), so it is the only one that needs in-panel
+    // status: a spinner while the group lands (R4-002) and a warning row when
+    // the group failed (R4-001) — otherwise the toggle just looks broken.
+    const isPilarVerde = family.value === LAYER_CATEGORY.PILAR_VERDE;
+    const showPilarVerdeSpinner = isPilarVerde && pilarVerdeLayersLoading && familyActiveCount > 0;
+    const showPilarVerdeError = isPilarVerde && !!pilarVerdeLayersError;
 
     accordionItems.push(
       <Accordion.Item key={family.value} value={family.value}>
         <Accordion.Control icon={<Icon size={16} />}>
-          <FamilyControlLabel label={family.label} count={familyActiveCount} />
+          <Group gap={6} wrap="nowrap" style={{ flex: 1 }}>
+            <FamilyControlLabel label={family.label} count={familyActiveCount} />
+            {showPilarVerdeSpinner && <Loader size={12} data-testid="pilar-verde-layers-loading" />}
+          </Group>
         </Accordion.Control>
         <Accordion.Panel>
           <Stack gap={4}>
+            {showPilarVerdeError && (
+              <Text size="xs" c="red" data-testid="pilar-verde-layers-error">
+                No se pudieron cargar las capas — reintentá
+              </Text>
+            )}
             {familyVisible.map((item) => {
               const isOn = !!vectorVisibility[item.id];
               const showOpacity = isOn && RENDERABLE_UI_LAYER_ID_SET.has(item.id);
@@ -514,6 +571,39 @@ export function LayerControlsPanel({
                 ))}
               </>
             )}
+          </Stack>
+        </Accordion.Panel>
+      </Accordion.Item>
+    );
+  }
+
+  if (rasterSearchMatches.length > 0) {
+    accordionItems.push(
+      <Accordion.Item key="raster-search" value="raster-search" data-testid="layer-controls-raster">
+        <Accordion.Control icon={<IconChartBar size={16} />}>
+          <FamilyControlLabel label="Capas raster" count={showDemOverlay ? 1 : 0} />
+        </Accordion.Control>
+        <Accordion.Panel>
+          <Stack gap={4}>
+            {rasterSearchMatches.map((option) => (
+              <Checkbox
+                key={option.value}
+                size="xs"
+                label={option.label}
+                data-testid={`raster-search-option-${option.value}`}
+                checked={showDemOverlay && activeDemLayerId === option.value}
+                onChange={(event) => {
+                  if (event.currentTarget.checked) {
+                    handleRasterSearchSelect(option.value);
+                  } else {
+                    onShowDemOverlayChange(false);
+                  }
+                }}
+              />
+            ))}
+            <Text size="9px" c="dimmed">
+              Se muestra una capa raster por vez (Base › Capa DEM).
+            </Text>
           </Stack>
         </Accordion.Panel>
       </Accordion.Item>
@@ -564,7 +654,7 @@ export function LayerControlsPanel({
             <Accordion
               multiple
               chevronPosition="right"
-              defaultValue={LAYER_FAMILIES.map((family) => family.value)}
+              defaultValue={[...LAYER_FAMILIES.map((family) => family.value), 'raster-search']}
               styles={{ content: { padding: '8px' } }}
             >
               {accordionItems}

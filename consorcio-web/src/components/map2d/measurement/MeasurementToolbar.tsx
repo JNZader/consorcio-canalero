@@ -87,6 +87,22 @@ export interface MeasurementToolbarProps {
   readonly fichaDrawActive?: boolean;
   readonly onToggleFichaDraw?: () => void;
   /**
+   * Draw-mode sub-controls (T3c, fix 4). MapboxDraw drops to `simple_select`
+   * after `draw.create`, so drawing a SECOND polygon used to require toggling
+   * the whole draw mode off and on again, and deleting one was an undiscoverable
+   * Backspace. These two render ONLY while `fichaDrawActive`:
+   *   - `onRedrawPolygon` → re-enters `draw_polygon` with REPLACE semantics:
+   *     `DrawControl.startDrawing` silently wipes the previous polygon off the
+   *     MAP before switching mode (R2-001 — it used to only `changeMode`, so
+   *     shapes accumulated on the canvas while the ficha analysed only the
+   *     newest one and "Borrar" then wiped both). The ficha state is replaced
+   *     when the new polygon completes, not when drawing starts;
+   *   - `onDeletePolygon` → wipes the drawn polygon and clears the ficha.
+   * Omit them (3D viewer / legacy callers) and the toolbar is unchanged.
+   */
+  readonly onRedrawPolygon?: () => void;
+  readonly onDeletePolygon?: () => void;
+  /**
    * Ficha territorial canal buffer (A6). When `onToggleFichaCanal` is provided, a
    * "Seleccionar canal" toggle renders beside the draw button (design §6.3 — same
    * floating toolbar). `fichaCanalActive` drives its active cue. The 3D viewer
@@ -116,6 +132,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onCancel,
   fichaDrawActive = false,
   onToggleFichaDraw,
+  onRedrawPolygon,
+  onDeletePolygon,
   fichaCanalActive = false,
   onToggleFichaCanal,
   fichaMultiSelectActive = false,
@@ -196,6 +214,38 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             >
               <IconVectorTriangle size={16} />
               <span className={styles.mapCtrlButtonLabel}>Dibujar</span>
+            </UnstyledButton>
+          </Tooltip>
+        )}
+
+        {fichaDrawActive && onRedrawPolygon && (
+          <Tooltip label="Dibujar otro polígono" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Dibujar otro polígono"
+              onClick={onRedrawPolygon}
+              className={styles.mapCtrlButton}
+              data-testid="ficha-draw-new-polygon"
+              style={{ color: '#333' }}
+            >
+              <IconPolygon size={16} />
+              <span className={styles.mapCtrlButtonLabel}>Otro</span>
+            </UnstyledButton>
+          </Tooltip>
+        )}
+
+        {fichaDrawActive && onDeletePolygon && (
+          <Tooltip label="Borrar el polígono dibujado" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Borrar el polígono dibujado"
+              onClick={onDeletePolygon}
+              className={styles.mapCtrlButton}
+              data-testid="ficha-draw-delete-polygon"
+              style={{ color: '#dc2626' }}
+            >
+              <IconTrash size={16} />
+              <span className={styles.mapCtrlButtonLabel}>Borrar</span>
             </UnstyledButton>
           </Tooltip>
         )}

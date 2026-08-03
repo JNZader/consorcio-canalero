@@ -126,6 +126,29 @@ function shouldIncludeLayer(
   return visibleLayers[entry.key] === true;
 }
 
+/**
+ * Registry keys the user has VISIBLE but whose data slot is absent/empty at
+ * export time (R4-003).
+ *
+ * `shouldIncludeLayer` skips those slots silently, so a KMZ exported while a
+ * lazy source is still downloading (or after it failed) came out incomplete
+ * behind a green "Exportación completada" toast. The caller uses this list to
+ * tell the truth in the toast instead of changing what gets exported — a
+ * partial KMZ is still useful, a silent one is not.
+ */
+export function findMissingVisibleLayerKeys(
+  visibleLayers: Record<string, boolean>,
+  data: Record<string, FeatureCollection | null | undefined>
+): string[] {
+  return KMZ_LAYER_REGISTRY.filter((entry) => {
+    if (EXCLUDED_SET.has(entry.key)) return false;
+    // Always-on layers are "requested" implicitly; anything else needs the toggle.
+    if (!ALWAYS_ON_KEYS.has(entry.key) && visibleLayers[entry.key] !== true) return false;
+    const fc = data[entry.key];
+    return !fc || !fc.features || fc.features.length === 0;
+  }).map((entry) => entry.key);
+}
+
 // Pair 4 extends this with an etapas filter for `canales_propuestos`.
 
 // ---------------------------------------------------------------------------

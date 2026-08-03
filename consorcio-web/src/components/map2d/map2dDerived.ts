@@ -30,7 +30,11 @@ function pushSoilLegendItems(
   }
   for (const cap of capOrder) {
     if (presentCaps.has(cap)) {
-      items.push({ color: getSoilColor(cap), label: `Clase ${cap}`, type: 'fill' });
+      items.push({
+        color: getSoilColor(cap),
+        label: `Clase ${cap}`,
+        type: 'fill',
+      });
     }
   }
 }
@@ -67,7 +71,11 @@ export function buildActiveLegendItems(params: {
   }
 
   if (vectorVisibility.basins && basins && basins.features.length > 0) {
-    items.push({ color: '#00897B', label: 'Subcuencas operativas', type: 'border' });
+    items.push({
+      color: '#00897B',
+      label: 'Subcuencas operativas',
+      type: 'border',
+    });
   }
 
   if (vectorVisibility.soil && soilMap && soilMap.features.length > 0) {
@@ -153,7 +161,12 @@ export function buildVectorLayerItems(params: {
       category: LAYER_CATEGORY.HIDROGRAFIA,
       show: !!approvedZonesCollection,
     },
-    { id: 'waterways', label: 'Hidrografía', category: LAYER_CATEGORY.HIDROGRAFIA, show: true },
+    {
+      id: 'waterways',
+      label: 'Hidrografía',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: true,
+    },
     {
       id: 'roads',
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
@@ -240,7 +253,12 @@ export function buildVectorLayerItems(params: {
 }
 
 export function buildDemLayerOptions(
-  demLayers: Array<{ id: string; tipo: string; nombre: string; label?: string }>,
+  demLayers: Array<{
+    id: string;
+    tipo: string;
+    nombre: string;
+    label?: string;
+  }>,
   geoLayerLabels: Record<string, string>
 ) {
   return demLayers.map((layer) => ({
@@ -251,4 +269,100 @@ export function buildDemLayerOptions(
     // tipo es el mismo para las tres; lo unico que las separa es el nombre/label.
     label: layer.label ?? geoLayerLabels[layer.tipo] ?? layer.nombre,
   }));
+}
+
+/**
+ * Per-family ACTIVE-layer counts — the SINGLE derivation behind EVERY
+ * active-layer number in the app: the 2D family badges (`LayerControlsPanel`),
+ * the 2D workspace "N capas activas" badge (`MapaMapLibre`) and, since the T3c
+ * final round (R2-002), the 3D workspace badge (`TerrainViewer3DChrome`, which
+ * feeds it `buildTerrain3DLayerItems`). The 3D viewer used to compute its badge
+ * as `Object.values(vectorLayerVisibility).filter(Boolean).length`, i.e. the
+ * exact raw-key formula this function exists to replace.
+ *
+ * Why it exists: the workspace badge used to be
+ * `Object.values(vectorVisibility).filter(Boolean).length`, which counts the
+ * per-canal and per-waterway sub-keys the panel never shows as rows — it
+ * reported "68 activas" over a map with ~6 visible layers, contradicting the
+ * per-family badges right next to it. Counting from the SAME inputs the panel
+ * renders makes the two numbers agree by construction.
+ *
+ * Counting rules (identical to the panel's own badges):
+ *   - BASE     → the structural overlays (IGN, DEM), not `layerItems`.
+ *   - CANALES  → visible canal CHILDREN, not the master flags (a master can
+ *                stay `true` after its last child is toggled off).
+ *   - others   → visible `layerItems` of that family.
+ */
+export function buildFamilyActiveCounts(params: {
+  layerItems: ReadonlyArray<{ id: string; category: LayerCategory }>;
+  vectorVisibility: Record<string, boolean>;
+  canalChildIds?: readonly string[];
+  showIGNOverlay?: boolean;
+  showDemOverlay?: boolean;
+}): Record<LayerCategory, number> {
+  const {
+    layerItems,
+    vectorVisibility,
+    canalChildIds = [],
+    showIGNOverlay = false,
+    showDemOverlay = false,
+  } = params;
+
+  const counts: Record<LayerCategory, number> = {
+    [LAYER_CATEGORY.BASE]: (showIGNOverlay ? 1 : 0) + (showDemOverlay ? 1 : 0),
+    [LAYER_CATEGORY.HIDROGRAFIA]: 0,
+    [LAYER_CATEGORY.TERRITORIO]: 0,
+    [LAYER_CATEGORY.PILAR_VERDE]: 0,
+    [LAYER_CATEGORY.CANALES]: canalChildIds.reduce(
+      (count, id) => (vectorVisibility[id] ? count + 1 : count),
+      0
+    ),
+    [LAYER_CATEGORY.ANALISIS]: 0,
+  };
+
+  for (const item of layerItems) {
+    // The CANALES family is counted from its children above; `layerItems`
+    // only carries the two master toggles, which would double-count.
+    if (item.category === LAYER_CATEGORY.CANALES) continue;
+    if (vectorVisibility[item.id]) counts[item.category] += 1;
+  }
+
+  return counts;
+}
+
+/** Total of `buildFamilyActiveCounts` — what the workspace badge shows. */
+export function sumFamilyActiveCounts(counts: Record<LayerCategory, number>): number {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
+}
+
+/**
+ * Accent- and case-insensitive normalization for the layer search box (R3-003).
+ *
+ * The panel labels are Spanish and carry diacritics ("% Forestación
+ * obligatoria", "Hidrografía"), while the data-driven ones do not ("Riesgo de
+ * Inundacion"). A plain `toLowerCase().includes()` therefore failed BOTH ways:
+ * typing "forestacion" missed the accented label and typing "inundación"
+ * missed the unaccented one. NFD + stripping the combining-marks block folds
+ * both sides onto the same key.
+ */
+export function normalizeSearchText(text: string): string {
+  // `\p{Diacritic}` (needs the `u` flag) is what NFD splits the accents into.
+  // A raw U+0300..U+036F character CLASS trips biome's
+  // `noMisleadingCharacterClass` — combining marks are not standalone chars.
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
+/**
+ * Should the ~512 KB BPA-join payload be fetched for this ficha request?
+ *
+ * Extracted from `MapaMapLibre`'s latch effect (R3-001) so the gating rule is
+ * testable: `PilarVerdeBadges` renders NOTHING for any tipo other than the
+ * exact string `'parcela'`, so no other tipo may open the gate. `'parcelas'`,
+ * `'poligono'` and `canal_*` must all stay false.
+ */
+export function shouldLatchBpaJoin(request: unknown, tipo: string | null | undefined): boolean {
+  return request !== null && request !== undefined && tipo === 'parcela';
 }

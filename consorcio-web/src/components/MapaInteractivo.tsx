@@ -11,9 +11,7 @@ const MapaMapLibre = lazy(() => import('./MapaMapLibre'));
 function MapaLoadingSkeleton() {
   return (
     <Box
-      pos="relative"
-      w="100%"
-      className={styles.mapWrapper}
+      className={styles.mapSkeletonWrapper}
       aria-live="polite"
       aria-busy="true"
       aria-label="Cargando mapa"
