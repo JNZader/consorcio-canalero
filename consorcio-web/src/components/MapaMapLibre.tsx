@@ -14,12 +14,16 @@ import type { Feature, FeatureCollection } from 'geojson';
 
 import maplibregl from 'maplibre-gl';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
-import { groupCanalesByFolder } from './shared/canalesGrouping';
+import { collectCanalChildIds, groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-// Register PMTiles protocol once at module level
+// Register PMTiles protocol once at module level.
+// NOTE: migrating the vector layers to PMTiles is a SEPARATE ticket — several
+// layers (waterways especially) are consumed as decorated FeatureCollections
+// both by the map and by the KMZ export (`exportSources`), so a tile source
+// would have to keep a GeoJSON twin alive for the export path.
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
@@ -46,7 +50,7 @@ import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { useConfigStore } from '../stores/configStore';
-import { useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
+import { PILAR_VERDE_LAYER_IDS, useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
 import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { RasterLegend } from './RasterLegend';
@@ -63,6 +67,11 @@ import {
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import {
+  buildFamilyActiveCounts,
+  shouldLatchBpaJoin,
+  sumFamilyActiveCounts,
+} from './map2d/map2dDerived';
 import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
@@ -134,6 +143,11 @@ export default function MapaMapLibre() {
   // dropdown and never reset, so the heavy catastro GeoJSON (KMZ-only) is
   // fetched once, on demand. See the `useCatastroMap` call below.
   const [exportIntent, setExportIntent] = useState(false);
+  // Latched BPA-join INTENT (same shape as `exportIntent`): flipped the first
+  // time a PARCELA ficha opens, so the ~512KB `bpa_enriched.json` + history
+  // pair is fetched on demand instead of on every /mapa mount. `staleTime:
+  // Infinity` keeps the single fetch for the rest of the session.
+  const [bpaJoinIntent, setBpaJoinIntent] = useState(false);
   const [exportIncludeLegend, setExportIncludeLegend] = useState(true);
   const [exportIncludeMetadata, setExportIncludeMetadata] = useState(true);
   const [exportTitle, setExportTitle] = useState('Mapa del Consorcio');
@@ -200,7 +214,26 @@ export default function MapaMapLibre() {
 
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
-  const { data: pilarVerde } = usePilarVerde();
+  // Lazy fetch (~1.6MB across 10 static assets). Split by consumer:
+  //  - `meta` (aggregates.json, 4KB) stays EAGER because `showPilarVerde`
+  //    (useMapDerivedState) gates the Pilar Verde toggles on it — deferring it
+  //    would hide the checkboxes that are the only way to request the rest.
+  //  - `layers` (~1.1MB of render GeoJSON) waits until a `pilar_verde_*` flag
+  //    is on; all five default OFF.
+  //  - `bpa` (~512KB) waits for a Pilar Verde layer (InfoPanel/BpaCard reads it
+  //    for clicked BPA features) OR the latched parcela-ficha intent, which is
+  //    what `PilarVerdeBadges` joins against.
+  const pilarVerdeLayersNeeded = PILAR_VERDE_LAYER_IDS.some((id) => !!vectorVisibility[id]);
+  const {
+    data: pilarVerde,
+    bpaLoading: bpaJoinLoading,
+    bpaError: bpaJoinError,
+    layersLoading: pilarVerdeLayersLoading,
+    layersError: pilarVerdeLayersError,
+  } = usePilarVerde({
+    layers: pilarVerdeLayersNeeded,
+    bpa: pilarVerdeLayersNeeded || bpaJoinIntent,
+  });
   const {
     relevados: canalesRelevados,
     propuestas: canalesPropuestas,
@@ -361,6 +394,16 @@ export default function MapaMapLibre() {
   // `isFichaCanal` lets it suppress the redundant relevados twin race-free (no
   // second effect fighting over the same layer).
   const isFichaCanal = fichaInteraction.interactionMode === 'ficha-canal';
+
+  // Latch the BPA-join fetch the first time a PARCELA ficha opens — that is the
+  // ONLY consumer of `bpa_enriched.json` in the ficha (`PilarVerdeBadges`
+  // renders nothing for `poligono`/`canal_*`). Never reset: `staleTime:
+  // Infinity` means one fetch per session.
+  useEffect(() => {
+    if (shouldLatchBpaJoin(fichaInteraction.request, fichaInteraction.tipo)) {
+      setBpaJoinIntent(true);
+    }
+  }, [fichaInteraction.request, fichaInteraction.tipo]);
 
   useMapLayerEffects({
     mapRef,
@@ -524,6 +567,15 @@ export default function MapaMapLibre() {
     if (fichaInteraction.state.drawing) fichaInteraction.stopDraw();
     else fichaInteraction.startDraw();
   }, [fichaInteraction]);
+  // Draw-mode sub-controls (T3c, fix 4). MapboxDraw returns to `simple_select`
+  // after `draw.create`, so these re-enter draw mode / wipe the polygon without
+  // toggling the whole ficha-draw mode off and on.
+  const handleRedrawPolygon = useCallback(() => {
+    drawControlRef.current?.startDrawing();
+  }, []);
+  const handleDeleteDrawnPolygon = useCallback(() => {
+    drawControlRef.current?.clearDrawing();
+  }, []);
   const handleToggleFichaCanal = useCallback(() => {
     if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
     else fichaInteraction.startCanal();
@@ -706,9 +758,22 @@ export default function MapaMapLibre() {
   /*  Render                                                                 */
   /* ---------------------------------------------------------------------- */
 
-  // "N capas activas" indicator (Phase 1). Phase 2.4 refines this to only
-  // count top-level families; for now it reflects all visible vector flags.
-  const activeLayerCount = Object.values(vectorVisibility).filter(Boolean).length;
+  // "N capas activas" indicator. It counts EXACTLY what the control panel shows
+  // as rows — same derivation as the per-family badges (`buildFamilyActiveCounts`,
+  // also called by `LayerControlsPanel`), so the two numbers agree by
+  // construction. Counting raw `vectorVisibility` keys instead reported ~68
+  // "active" layers (per-canal + per-waterway sub-keys) over a map with ~6
+  // visible ones, flatly contradicting the badges beside it.
+  const canalChildIds = collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems);
+  const activeLayerCount = sumFamilyActiveCounts(
+    buildFamilyActiveCounts({
+      layerItems: vectorLayerItems,
+      vectorVisibility,
+      canalChildIds,
+      showIGNOverlay,
+      showDemOverlay,
+    })
+  );
 
   return (
     <Box className={styles.mapWorkspace} data-testid="map-workspace">
@@ -779,6 +844,8 @@ export default function MapaMapLibre() {
               onCancel={cancelMeasurement}
               fichaDrawActive={isFichaDrawing}
               onToggleFichaDraw={handleToggleFichaDraw}
+              onRedrawPolygon={handleRedrawPolygon}
+              onDeletePolygon={handleDeleteDrawnPolygon}
               fichaCanalActive={isFichaCanal}
               onToggleFichaCanal={handleToggleFichaCanal}
               fichaMultiSelectActive={fichaInteraction.state.multiSelect}
@@ -888,6 +955,8 @@ export default function MapaMapLibre() {
               fichaCanalMaxBufferM={FICHA_MAX_BUFFER_M}
               onFichaCanalBufferChange={fichaInteraction.setBuffer}
               bpaEnriched={pilarVerde?.bpaEnriched}
+              bpaLoading={bpaJoinLoading}
+              bpaError={bpaJoinError}
               bpaHistory={pilarVerde?.bpaHistory}
               exportPngModalOpen={exportPngModalOpen}
               onCloseExportPngModal={() => setExportPngModalOpen(false)}
@@ -920,6 +989,8 @@ export default function MapaMapLibre() {
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
               layerFineControl={layerFineControl}
+              pilarVerdeLayersLoading={pilarVerdeLayersLoading}
+              pilarVerdeLayersError={pilarVerdeLayersError}
             />
             {showLegend && (
               <>

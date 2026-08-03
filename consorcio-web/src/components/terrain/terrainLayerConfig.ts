@@ -1,4 +1,6 @@
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { PILAR_VERDE_LAYER_IDS } from '../../stores/mapLayerSyncStore';
+import { LAYER_CATEGORY, type LayerCategory } from '../map2d/map2dDerived';
 
 export type Terrain3DLayerStatus = 'supported' | 'planned' | 'not_supported_yet';
 
@@ -54,4 +56,56 @@ const supportedRasterTypeSet = new Set(
 
 export function getSupported3DRasterLayers(layers: GeoLayerInfo[]): GeoLayerInfo[] {
   return layers.filter((layer) => supportedRasterTypeSet.has(layer.tipo));
+}
+
+/**
+ * Category map for the 3D vector rows, so the 3D badge can reuse the SAME
+ * derivation as 2D (`buildFamilyActiveCounts`). The ids are 3D-panel rows; the
+ * categories mirror the 2D families the same layer belongs to.
+ */
+const TERRAIN_3D_LAYER_CATEGORIES: Record<string, LayerCategory> = {
+  approved_zones: LAYER_CATEGORY.HIDROGRAFIA,
+  basins: LAYER_CATEGORY.HIDROGRAFIA,
+  waterways: LAYER_CATEGORY.HIDROGRAFIA,
+  roads: LAYER_CATEGORY.TERRITORIO,
+  soil: LAYER_CATEGORY.TERRITORIO,
+  catastro: LAYER_CATEGORY.TERRITORIO,
+  puntos_conflicto: LAYER_CATEGORY.ANALISIS,
+};
+
+/**
+ * The rows `TerrainLayerTogglesPanel` actually renders, shaped as the
+ * `layerItems` input of `buildFamilyActiveCounts` (T3c final round, R2-002).
+ *
+ * The 3D chrome has no `buildVectorLayerItems` of its own — its rows come from
+ * `PRIORITY_3D_VECTOR_LAYERS` plus the 5 Pilar Verde toggles — so this is the
+ * adapter that lets the 3D "N capas activas" badge count EXACTLY the rows the
+ * panel shows instead of every raw `vectorLayerVisibility` key (which counts
+ * the ~43 per-canal and 5 per-waterway sub-keys the panel never lists as rows).
+ *
+ * Differences from 2D, on purpose:
+ *   - No BASE family: the 3D chrome has no IGN/DEM overlay checkboxes; its
+ *     raster overlay is a single-choice Select, not a toggle.
+ *   - `canales_relevados` / `canales_propuestos` are omitted here exactly like
+ *     in 2D — `buildFamilyActiveCounts` counts the CANALES family from its
+ *     visible children (`canalChildIds`), never from the master flags.
+ */
+export function buildTerrain3DLayerItems(params: {
+  intersectionsLength?: number;
+  showPilarVerde?: boolean;
+}): Array<{ id: string; category: LayerCategory }> {
+  const { intersectionsLength = 0, showPilarVerde = true } = params;
+  const items: Array<{ id: string; category: LayerCategory }> = [];
+  for (const layer of PRIORITY_3D_VECTOR_LAYERS) {
+    // The panel hides this row when the backend reports no intersections.
+    if (layer.id === 'puntos_conflicto' && intersectionsLength === 0) continue;
+    const category = TERRAIN_3D_LAYER_CATEGORIES[layer.id];
+    if (category) items.push({ id: layer.id, category });
+  }
+  if (showPilarVerde) {
+    for (const id of PILAR_VERDE_LAYER_IDS) {
+      items.push({ id, category: LAYER_CATEGORY.PILAR_VERDE });
+    }
+  }
+  return items;
 }

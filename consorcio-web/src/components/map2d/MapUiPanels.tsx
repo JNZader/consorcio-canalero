@@ -186,6 +186,14 @@ export interface MapUiPanelsProps {
    * parcel with a non-null `bpa_2025` record.
    */
   readonly bpaEnriched?: BpaEnrichedFile | null;
+  /**
+   * True while the lazy-loaded `bpa_enriched.json` is in flight (see
+   * `usePilarVerde`). Forwarded to the ficha so its Pilar Verde row shows a
+   * pending state instead of a premature "Sin vinculación".
+   */
+  readonly bpaLoading?: boolean;
+  /** BPA group failure message (R4-001) — forwarded to the ficha badges. */
+  readonly bpaError?: string | null;
   /** Optional Pilar Verde historical BPA lookup — powers the BpaCard histórico footer. */
   readonly bpaHistory?: BpaHistoryFile | null;
   readonly exportPngModalOpen: boolean;
@@ -279,6 +287,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaCanalMaxBufferM,
   onFichaCanalBufferChange,
   bpaEnriched,
+  bpaLoading,
+  bpaError,
   bpaHistory,
   exportPngModalOpen,
   onCloseExportPngModal,
@@ -505,6 +515,8 @@ export const MapUiPanels = memo(function MapUiPanels({
         parcelasCount={fichaParcelasCount}
         onRemoveParcelas={onFichaRemoveParcelas}
         bpaEnriched={bpaEnriched}
+        bpaLoading={bpaLoading}
+        bpaError={bpaError}
         isLoading={fichaLoading}
         isFetching={fichaFetching}
         isError={fichaError !== null}

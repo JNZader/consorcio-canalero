@@ -33,6 +33,35 @@ interface PilarVerdeBadgesProps {
    * resource. The CONTENT is identical: no badge is dropped, only shrunk.
    */
   readonly compact?: boolean;
+  /**
+   * True while `bpa_enriched.json` is still in flight. The file is lazy-loaded
+   * (first parcela ficha triggers it), so rendering "Sin vinculación" during
+   * the fetch would state a FALSE fact instead of a pending one.
+   */
+  readonly loading?: boolean;
+  /**
+   * Set when the BPA group FAILED to load (R4-001). Distinct from `loading`
+   * and from "no record": the join could not even be attempted, so claiming
+   * "Sin vinculación" would state a false fact and hanging on "Cargando…"
+   * would state a pending one that will never resolve.
+   */
+  readonly error?: string | null;
+}
+
+function CargandoVinculacion() {
+  return (
+    <Text size="xs" c="dimmed" data-testid="pilar-verde-cargando">
+      Cargando vinculación…
+    </Text>
+  );
+}
+
+function ErrorVinculacion() {
+  return (
+    <Text size="xs" c="red" data-testid="pilar-verde-error">
+      No se pudo cargar la vinculación
+    </Text>
+  );
 }
 
 function SinVinculacion() {
@@ -48,6 +77,8 @@ export const PilarVerdeBadges = memo(function PilarVerdeBadges({
   nroCuenta,
   bpaEnriched,
   compact = false,
+  loading = false,
+  error = null,
 }: PilarVerdeBadgesProps) {
   // No single account for a drawn polygon or a canal-derived area.
   if (tipo !== 'parcela') return null;
@@ -60,30 +91,35 @@ export const PilarVerdeBadges = memo(function PilarVerdeBadges({
   const anios = parcel?.años_bpa ?? 0;
   const badgeSize = compact ? 'xs' : 'sm';
 
-  const content =
-    !parcel || anios < 1 ? (
-      <SinVinculacion />
-    ) : (
-      <Group gap="xs" wrap="wrap">
-        <Badge size={badgeSize} color="green" variant="light">
-          {anios} {anios === 1 ? 'año' : 'años'} de BPA
-        </Badge>
-        {/* Stricter than InfoPanel/BpaCard, which treat presence of `bpa_2025` as
+  const content = error ? (
+    // Error wins over loading: a retrying query is still `isLoading: false`
+    // here, and the honest answer is "we could not load it", not "cargando".
+    <ErrorVinculacion />
+  ) : loading ? (
+    <CargandoVinculacion />
+  ) : !parcel || anios < 1 ? (
+    <SinVinculacion />
+  ) : (
+    <Group gap="xs" wrap="wrap">
+      <Badge size={badgeSize} color="green" variant="light">
+        {anios} {anios === 1 ? 'año' : 'años'} de BPA
+      </Badge>
+      {/* Stricter than InfoPanel/BpaCard, which treat presence of `bpa_2025` as
             active app-wide: HERE the enriched record carries the authoritative,
             ETL-normalized `activa` boolean (false is real), so we honor it. */}
-        {parcel.bpa_2025?.activa === true ? (
-          <Badge size={badgeSize} color="teal" variant="light">
-            Activa 2025
+      {parcel.bpa_2025?.activa === true ? (
+        <Badge size={badgeSize} color="teal" variant="light">
+          Activa 2025
+        </Badge>
+      ) : (
+        parcel.bpa_2025 !== null && (
+          <Badge size={badgeSize} color="gray" variant="light">
+            2025: inactiva
           </Badge>
-        ) : (
-          parcel.bpa_2025 !== null && (
-            <Badge size={badgeSize} color="gray" variant="light">
-              2025: inactiva
-            </Badge>
-          )
-        )}
-      </Group>
-    );
+        )
+      )}
+    </Group>
+  );
 
   if (compact) {
     return (
