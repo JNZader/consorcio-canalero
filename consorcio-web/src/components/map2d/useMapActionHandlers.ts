@@ -5,7 +5,7 @@ import { type RefObject, useCallback } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { API_URL, getAuthToken } from '../../lib/api';
-import { buildKmz } from '../../lib/kmzExport/kmzBuilder';
+import { buildKmz, findMissingVisibleLayerKeys } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { logger } from '../../lib/logger';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
@@ -423,10 +423,17 @@ export function useMapExportHandlers({
       const dd = String(timestamp.getDate()).padStart(2, '0');
       const filename = `consorcio_canalero_${yyyy}-${mm}-${dd}.kmz`;
       triggerKmzDownload(blob, filename);
+      // R4-003: `buildKmz` filters by VISIBILITY and skips absent data slots
+      // silently, so a layer still downloading (or one whose fetch failed) was
+      // dropped behind a green "descargado correctamente". Say it instead.
+      const missing = findMissingVisibleLayerKeys(kmzVisibleLayers, exportSources ?? {});
       notifications.show({
         title: 'Exportación completada',
-        message: 'KMZ descargado correctamente',
-        color: 'green',
+        message:
+          missing.length > 0
+            ? 'KMZ descargado — algunas capas aún cargaban y no se incluyeron'
+            : 'KMZ descargado correctamente',
+        color: missing.length > 0 ? 'yellow' : 'green',
       });
     } catch (error) {
       logger.error('KMZ export failed', error);

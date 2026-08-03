@@ -14,12 +14,14 @@ import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
-import type { CanalToggleEntry } from '../shared/canalesGrouping';
+import { type CanalToggleEntry, collectCanalChildIds } from '../shared/canalesGrouping';
 
 import { InfoPanel } from '../map2d/InfoPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
+import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
+import { buildTerrain3DLayerItems } from './terrainLayerConfig';
 
 interface SelectedImageOption {
   value: string;
@@ -204,8 +206,19 @@ export function TerrainViewer3DChrome({
           collapsible sidebar (desktop) / full-screen Drawer (mobile) instead
           of the retired bottom-bar, so the 3D canvas gets the same footprint
           parity as 2D. */}
+      {/* R2-002: the 3D badge used the raw `filter(Boolean).length` formula the
+          2D badge was already fixed away from — it counted the ~43 per-canal
+          and 5 per-waterway sub-keys the panel never lists as rows. It now runs
+          the same `buildFamilyActiveCounts` derivation over the rows the 3D
+          panel actually renders (`buildTerrain3DLayerItems`). */}
       <MapWorkspace
-        activeLayerCount={Object.values(vectorLayerVisibility).filter(Boolean).length}
+        activeLayerCount={sumFamilyActiveCounts(
+          buildFamilyActiveCounts({
+            layerItems: buildTerrain3DLayerItems({ intersectionsLength }),
+            vectorVisibility: vectorLayerVisibility,
+            canalChildIds: collectCanalChildIds(canalesRelevadosItems, canalesPropuestosItems),
+          })
+        )}
         canvas={
           <Paper
             radius="md"

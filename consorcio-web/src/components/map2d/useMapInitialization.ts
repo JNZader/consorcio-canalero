@@ -137,6 +137,16 @@ export function useMapInitialization({
       zoom,
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
+      // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
+      // canvas back with `getCanvas().toDataURL()`, which returns a blank image
+      // unless the backbuffer is preserved. WebGL context attributes are frozen
+      // at context creation: MapLibre cannot flip this after `new Map()`, so
+      // "enable it only on export intent" would mean tearing the map down and
+      // rebuilding it mid-session (losing viewport, sources and draw state) the
+      // first time a user opens the Export menu. The cost is a modest GPU
+      // memory/compositing overhead on one canvas; the alternative is a broken
+      // export or a map that reloads under the user. Do not "optimize" this away
+      // without moving export to an offscreen render.
       preserveDrawingBuffer: true,
       // Desktop wheel must NOT hijack the page scroll: cooperative gestures
       // require Ctrl+wheel to zoom and show a hint otherwise (see change

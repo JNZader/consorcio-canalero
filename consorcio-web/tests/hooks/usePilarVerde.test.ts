@@ -2,17 +2,25 @@
  * usePilarVerde.test.ts
  *
  * Hook contract:
- *   - TanStack Query, queryKey = [...queryKeys.publicLayers(), 'pilar-verde']
+ *   - TanStack Query, queryKey = [...queryKeys.publicLayers(), 'pilar-verde', <group>]
  *   - staleTime = Number.POSITIVE_INFINITY (static public asset)
- *   - 9 parallel fetches via Promise.allSettled — one failed slot must NOT
- *     tank the others (graceful degradation per spec).
- *   - Returned shape: { data, loading, error } where data carries the 9 typed slots.
+ *   - 8 fetches: the 10 typed slots minus `PILAR_VERDE_UNFETCHED_SLOTS`
+ *     (`zonaAmpliada` / `bpa2025`, zero consumers — R2-004).
+ *   - A group is ATOMIC (R4-001): one failed slot rejects the whole group's
+ *     queryFn, so TanStack retries and `error` is real. It must NOT resolve
+ *     with a null slot — `staleTime: Infinity` would cache that forever.
+ *   - Groups are INDEPENDENT: a failing group must not tank the other two.
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueryWrapper } from '../test-utils';
-import { usePilarVerde, PILAR_VERDE_PUBLIC_PATHS } from '../../src/hooks/usePilarVerde';
+import {
+  PILAR_VERDE_PUBLIC_PATHS,
+  PILAR_VERDE_SLOT_GROUPS,
+  PILAR_VERDE_UNFETCHED_SLOTS,
+  usePilarVerde,
+} from '../../src/hooks/usePilarVerde';
 
 const minimalFC = { type: 'FeatureCollection', features: [] };
 const aggregatesSample = {
@@ -38,7 +46,15 @@ const aggregatesSample = {
     abandonaron_pct: 0,
     nunca_count: 0,
     nunca_pct: 0,
-    evolucion_anual: { '2019': 0, '2020': 0, '2021': 0, '2022': 0, '2023': 0, '2024': 0, '2025': 0 },
+    evolucion_anual: {
+      '2019': 0,
+      '2020': 0,
+      '2021': 0,
+      '2022': 0,
+      '2023': 0,
+      '2024': 0,
+      '2025': 0,
+    },
     ejes_distribucion: { persona: 0, planeta: 0, prosperidad: 0, alianza: 0 },
   },
   grilla_aggregates: {
@@ -83,9 +99,12 @@ afterEach(() => {
 
 function setHappyPath() {
   mockFetch.mockImplementation((url: string) => {
-    if (url.endsWith('/data/pilar-verde/aggregates.json')) return Promise.resolve(mockOk(aggregatesSample));
-    if (url.endsWith('/data/pilar-verde/bpa_enriched.json')) return Promise.resolve(mockOk(bpaEnrichedSample));
-    if (url.endsWith('/data/pilar-verde/bpa_history.json')) return Promise.resolve(mockOk(bpaHistorySample));
+    if (url.endsWith('/data/pilar-verde/aggregates.json'))
+      return Promise.resolve(mockOk(aggregatesSample));
+    if (url.endsWith('/data/pilar-verde/bpa_enriched.json'))
+      return Promise.resolve(mockOk(bpaEnrichedSample));
+    if (url.endsWith('/data/pilar-verde/bpa_history.json'))
+      return Promise.resolve(mockOk(bpaHistorySample));
     return Promise.resolve(mockOk(minimalFC));
   });
 }
@@ -104,7 +123,7 @@ describe('usePilarVerde', () => {
         'bpaEnriched',
         'bpaHistory',
         'aggregates',
-      ]),
+      ])
     );
     expect(Object.keys(PILAR_VERDE_PUBLIC_PATHS)).toHaveLength(10);
     // All paths point under the static public folder
@@ -122,15 +141,19 @@ describe('usePilarVerde', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('fires 10 parallel fetches against the expected paths', async () => {
+  it('fires 8 parallel fetches — the consumed slots only', async () => {
     setHappyPath();
     const wrapper = createQueryWrapper();
     const { result } = renderHook(() => usePilarVerde(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(mockFetch).toHaveBeenCalledTimes(10);
+    expect(mockFetch).toHaveBeenCalledTimes(8);
     const calledUrls = mockFetch.mock.calls.map((c) => c[0]);
-    for (const expected of Object.values(PILAR_VERDE_PUBLIC_PATHS)) {
-      expect(calledUrls).toContain(expected);
+    for (const slot of Object.values(PILAR_VERDE_SLOT_GROUPS).flat()) {
+      expect(calledUrls).toContain(PILAR_VERDE_PUBLIC_PATHS[slot]);
+    }
+    // R2-004: the two consumer-less assets cost 0 bytes.
+    for (const slot of PILAR_VERDE_UNFETCHED_SLOTS) {
+      expect(calledUrls).not.toContain(PILAR_VERDE_PUBLIC_PATHS[slot]);
     }
   });
 
@@ -143,43 +166,62 @@ describe('usePilarVerde', () => {
     expect(result.current.data?.aggregates?.schema_version).toBe('1.2');
     expect(result.current.data?.bpaEnriched?.schema_version).toBe('1.2');
     expect(result.current.data?.bpaHistory?.schema_version).toBe('1.0');
-    expect(result.current.data?.bpa2025).toEqual(minimalFC);
+    expect(result.current.data?.bpaHistorico).toEqual(minimalFC);
+    // Never fetched → stays null (R2-004).
+    expect(result.current.data?.bpa2025).toBeNull();
+    expect(result.current.data?.zonaAmpliada).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.layersError).toBeNull();
+    expect(result.current.bpaError).toBeNull();
   });
 
-  it('gracefully degrades: a 404 on bpaHistory leaves the slot null but other slots succeed', async () => {
+  it('FAILS the bpa group on a 404 instead of caching a null slot (R4-001)', async () => {
     mockFetch.mockImplementation((url: string) => {
-      if (url.endsWith('/data/pilar-verde/bpa_history.json')) return Promise.resolve(mockNotOk(404));
-      if (url.endsWith('/data/pilar-verde/aggregates.json')) return Promise.resolve(mockOk(aggregatesSample));
-      if (url.endsWith('/data/pilar-verde/bpa_enriched.json')) return Promise.resolve(mockOk(bpaEnrichedSample));
+      if (url.endsWith('/data/pilar-verde/bpa_history.json'))
+        return Promise.resolve(mockNotOk(404));
+      if (url.endsWith('/data/pilar-verde/aggregates.json'))
+        return Promise.resolve(mockOk(aggregatesSample));
+      if (url.endsWith('/data/pilar-verde/bpa_enriched.json'))
+        return Promise.resolve(mockOk(bpaEnrichedSample));
       return Promise.resolve(mockOk(minimalFC));
     });
     const wrapper = createQueryWrapper();
     const { result } = renderHook(() => usePilarVerde(), { wrapper });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.data).not.toBeNull();
+    await waitFor(() => expect(result.current.bpaError).not.toBeNull());
+
+    // The failing group reports WHICH slot died...
+    expect(result.current.bpaError).toContain('bpaHistory');
+    // ...and does not resolve with a poisoned null pair.
     expect(result.current.data?.bpaHistory).toBeNull();
+    expect(result.current.data?.bpaEnriched).toBeNull();
+    // The other groups are untouched.
     expect(result.current.data?.aggregates).not.toBeNull();
-    expect(result.current.data?.bpaEnriched).not.toBeNull();
-    expect(result.current.error).toBeNull(); // partial failure does NOT set error
+    expect(result.current.layersError).toBeNull();
   });
 
-  it('gracefully degrades: a network throw leaves the slot null but does not throw', async () => {
+  it('FAILS the layers group on a network throw, leaving the other groups healthy', async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url.endsWith('/capas/pilar-verde/agro_zonas.geojson')) {
         return Promise.reject(new Error('network down'));
       }
-      if (url.endsWith('/data/pilar-verde/aggregates.json')) return Promise.resolve(mockOk(aggregatesSample));
-      if (url.endsWith('/data/pilar-verde/bpa_enriched.json')) return Promise.resolve(mockOk(bpaEnrichedSample));
-      if (url.endsWith('/data/pilar-verde/bpa_history.json')) return Promise.resolve(mockOk(bpaHistorySample));
+      if (url.endsWith('/data/pilar-verde/aggregates.json'))
+        return Promise.resolve(mockOk(aggregatesSample));
+      if (url.endsWith('/data/pilar-verde/bpa_enriched.json'))
+        return Promise.resolve(mockOk(bpaEnrichedSample));
+      if (url.endsWith('/data/pilar-verde/bpa_history.json'))
+        return Promise.resolve(mockOk(bpaHistorySample));
       return Promise.resolve(mockOk(minimalFC));
     });
     const wrapper = createQueryWrapper();
     const { result } = renderHook(() => usePilarVerde(), { wrapper });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.data).not.toBeNull();
+    await waitFor(() => expect(result.current.layersError).not.toBeNull());
+
+    expect(result.current.layersError).toContain('agroZonas');
     expect(result.current.data?.agroZonas).toBeNull();
     expect(result.current.data?.aggregates).not.toBeNull();
-    expect(result.current.error).toBeNull();
+    expect(result.current.data?.bpaEnriched).not.toBeNull();
+    expect(result.current.bpaError).toBeNull();
+    // The aggregate `error` surfaces the first failing group.
+    expect(result.current.error).toContain('agroZonas');
   });
 });
