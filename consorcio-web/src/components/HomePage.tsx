@@ -144,11 +144,18 @@ const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   },
 ];
 
+// Gate de las secciones institucionales de la home ("Sobre el consorcio",
+// "Preguntas frecuentes" y "Contactanos"). El contenido institucional está
+// en revisión (los datos de contacto todavía son placeholders), así que se
+// ocultan sin borrar el código: para reactivarlas alcanza con poner esta
+// constante en `true`.
+const SHOW_INSTITUTIONAL_SECTIONS = false;
+
 // F5-I item #2: institutional context block — answers "¿quién es
 // esta gente?" for first-time visitors.
 const ABOUT_BULLETS: string[] = [
   'Persona jurídica de derecho público, creada bajo la Ley Provincial de Consorcios Canaleros de Córdoba.',
-  'Cubre 88.484 hectáreas de la zona de Marcos Juárez y consorcios linderos (San Marcos Sud, Bell Ville, Leones y otros 6).',
+  'Cubre 88.484 hectáreas del departamento Unión y consorcios linderos (San Marcos Sud, Bell Ville, Leones y otros 6).',
   'Trabaja en coordinación con APRHI (Agencia Provincial de Recursos Hídricos) y las consorcios viales viales municipales para mantenimiento de caminos rurales.',
   'Padrón abierto a inspección pública en sede; el sistema online es para tracking y reportes, no reemplaza la AGM presencial.',
 ];
@@ -195,7 +202,7 @@ export function HomeContent() {
         <Container size="lg">
           <Stack align="center" gap="xl">
             <Badge size="lg" variant="light" color="white">
-              Marcos Juárez, Córdoba
+              Departamento Unión, Córdoba
             </Badge>
             <Title order={1} ta="center" c="white" size={48} style={{ maxWidth: 700 }}>
               Consorcio Canalero 10 de Mayo
@@ -336,115 +343,119 @@ export function HomeContent() {
         </Container>
       </Box>
 
-      {/* F5-I item #2: Sobre el consorcio */}
-      <Container size="lg" py="xl">
-        <Stack align="center" gap="lg">
-          <Title order={2} ta="center">
-            Sobre el consorcio
-          </Title>
-          <Text size="lg" c="dimmed" ta="center" maw={720}>
-            Somos una entidad pública de gestión territorial focalizada en la infraestructura
-            hídrica y la red de caminos rurales del sudeste cordobés.
-          </Text>
-          <Stack gap="sm" maw={720} w="100%">
-            {ABOUT_BULLETS.map((bullet, idx) => (
-              <Group key={idx} align="flex-start" wrap="nowrap" gap="sm">
-                <Badge size="lg" variant="light" color="institucional" radius="xl">
-                  {idx + 1}
-                </Badge>
-                <Text size="md" c="dimmed" style={{ flex: 1 }}>
-                  {bullet}
-                </Text>
-              </Group>
-            ))}
-          </Stack>
-        </Stack>
-      </Container>
+      {SHOW_INSTITUTIONAL_SECTIONS && (
+        <>
+          {/* F5-I item #2: Sobre el consorcio */}
+          <Container size="lg" py="xl">
+            <Stack align="center" gap="lg">
+              <Title order={2} ta="center">
+                Sobre el consorcio
+              </Title>
+              <Text size="lg" c="dimmed" ta="center" maw={720}>
+                Somos una entidad pública de gestión territorial focalizada en la infraestructura
+                hídrica y la red de caminos rurales del sudeste cordobés.
+              </Text>
+              <Stack gap="sm" maw={720} w="100%">
+                {ABOUT_BULLETS.map((bullet, idx) => (
+                  <Group key={idx} align="flex-start" wrap="nowrap" gap="sm">
+                    <Badge size="lg" variant="light" color="institucional" radius="xl">
+                      {idx + 1}
+                    </Badge>
+                    <Text size="md" c="dimmed" style={{ flex: 1 }}>
+                      {bullet}
+                    </Text>
+                  </Group>
+                ))}
+              </Stack>
+            </Stack>
+          </Container>
 
-      {/* F5-I item #5: FAQ */}
-      <Box
-        style={{
-          background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
-        }}
-        py="xl"
-      >
-        <Container size="md">
-          <Stack align="center" mb="xl">
-            <Title order={2} ta="center">
-              Preguntas frecuentes
-            </Title>
-            <Text size="lg" c="gray.6" ta="center" maw={600}>
-              Lo que la mayoría de los vecinos pregunta antes de su primer reporte.
-            </Text>
-          </Stack>
-          <Accordion variant="separated" radius="md">
-            {FAQ_ITEMS.map((item, idx) => (
-              <Accordion.Item key={idx} value={`faq-${idx}`}>
-                <Accordion.Control>
-                  <Text fw={600}>{item.q}</Text>
-                </Accordion.Control>
-                <Accordion.Panel>
-                  <Text size="md" c="gray.7">
-                    {item.a}
-                  </Text>
-                </Accordion.Panel>
-              </Accordion.Item>
-            ))}
-          </Accordion>
-        </Container>
-      </Box>
-
-      {/* F5-I item #4: Contacto visible */}
-      <Container size="md" py="xl">
-        <Stack align="center" gap="md">
-          <Title order={2} ta="center">
-            Contactanos
-          </Title>
-          <Text size="md" c="gray.6" ta="center" maw={500}>
-            ¿Dudas que no resolvió el FAQ? Escribinos directo — respondemos en días hábiles dentro
-            de las 48 horas.
-          </Text>
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" w="100%" maw={600}>
-            <Card padding="lg" radius="md" shadow="sm" withBorder>
-              <Stack gap={4} align="center">
-                <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
-                  Email
-                </Text>
-                <Text
-                  size="md"
-                  fw={600}
-                  c="institucional.7"
-                  component="a"
-                  href="mailto:contacto@consorcio10demayo.gob.ar"
-                  style={{ textDecoration: 'none' }}
-                >
-                  contacto@consorcio10demayo.gob.ar
+          {/* F5-I item #5: FAQ */}
+          <Box
+            style={{
+              background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+            }}
+            py="xl"
+          >
+            <Container size="md">
+              <Stack align="center" mb="xl">
+                <Title order={2} ta="center">
+                  Preguntas frecuentes
+                </Title>
+                <Text size="lg" c="gray.6" ta="center" maw={600}>
+                  Lo que la mayoría de los vecinos pregunta antes de su primer reporte.
                 </Text>
               </Stack>
-            </Card>
-            <Card padding="lg" radius="md" shadow="sm" withBorder>
-              <Stack gap={4} align="center">
-                <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
-                  Teléfono
-                </Text>
-                <Text
-                  size="md"
-                  fw={600}
-                  c="institucional.7"
-                  component="a"
-                  href="tel:+543534000000"
-                  style={{ textDecoration: 'none' }}
-                >
-                  +54 353 400-0000
-                </Text>
-                <Text size="xs" c="gray.6">
-                  Lun a Vie 8:00–14:00
-                </Text>
-              </Stack>
-            </Card>
-          </SimpleGrid>
-        </Stack>
-      </Container>
+              <Accordion variant="separated" radius="md">
+                {FAQ_ITEMS.map((item, idx) => (
+                  <Accordion.Item key={idx} value={`faq-${idx}`}>
+                    <Accordion.Control>
+                      <Text fw={600}>{item.q}</Text>
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <Text size="md" c="gray.7">
+                        {item.a}
+                      </Text>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                ))}
+              </Accordion>
+            </Container>
+          </Box>
+
+          {/* F5-I item #4: Contacto visible */}
+          <Container size="md" py="xl">
+            <Stack align="center" gap="md">
+              <Title order={2} ta="center">
+                Contactanos
+              </Title>
+              <Text size="md" c="gray.6" ta="center" maw={500}>
+                ¿Dudas que no resolvió el FAQ? Escribinos directo — respondemos en días hábiles
+                dentro de las 48 horas.
+              </Text>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" w="100%" maw={600}>
+                <Card padding="lg" radius="md" shadow="sm" withBorder>
+                  <Stack gap={4} align="center">
+                    <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
+                      Email
+                    </Text>
+                    <Text
+                      size="md"
+                      fw={600}
+                      c="institucional.7"
+                      component="a"
+                      href="mailto:contacto@consorcio10demayo.gob.ar"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      contacto@consorcio10demayo.gob.ar
+                    </Text>
+                  </Stack>
+                </Card>
+                <Card padding="lg" radius="md" shadow="sm" withBorder>
+                  <Stack gap={4} align="center">
+                    <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
+                      Teléfono
+                    </Text>
+                    <Text
+                      size="md"
+                      fw={600}
+                      c="institucional.7"
+                      component="a"
+                      href="tel:+543534000000"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      +54 353 400-0000
+                    </Text>
+                    <Text size="xs" c="gray.6">
+                      Lun a Vie 8:00–14:00
+                    </Text>
+                  </Stack>
+                </Card>
+              </SimpleGrid>
+            </Stack>
+          </Container>
+        </>
+      )}
 
       {/* CTA Section */}
       <Box className={styles.ctaSection}>

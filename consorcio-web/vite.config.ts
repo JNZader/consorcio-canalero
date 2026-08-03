@@ -50,7 +50,7 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        // ``any`` so tablet users (Marcos Juárez inspectors using
+        // ``any`` so tablet users (departamento Unión inspectors using
         // iPads in the field) aren't force-rotated. Phone defaults
         // still display portrait via the device's own orientation
         // rules.
