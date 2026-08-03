@@ -35,6 +35,12 @@ export function refKeyFor(request: FichaRequest): string {
   switch (request.tipo) {
     case 'parcela':
       return request.nomenclatura;
+    case 'parcelas':
+      // The identity of a multi-parcel selection is the SET of parcels, so the
+      // key is sorted here rather than trusting the producer's order: adding or
+      // removing one parcel must change the key (new selection → panel resets,
+      // query refetches), while re-ordering the same parcels must NOT.
+      return [...request.nomenclaturas].sort().join(',');
     case 'poligono':
       // A stable hash of the rounded polygon coordinates (phase A5). Until then
       // the raw stringified geometry is a correct — if verbose — reference.

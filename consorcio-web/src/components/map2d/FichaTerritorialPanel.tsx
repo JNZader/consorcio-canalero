@@ -79,6 +79,23 @@ export interface FichaTerritorialPanelProps {
    * ficha is `tipo=parcela`. `null` for non-parcel tipos or when unavailable.
    */
   readonly parcelaProps?: ParcelaDisplayProps | null;
+  /**
+   * Size of the multi-parcel selection (T4). Only meaningful for
+   * `tipo=parcelas`, where it REPLACES the per-parcel identity header: a union of
+   * N parcels has no single nomenclatura, account or designación, and showing one
+   * parcel's fields next to N parcels' hectares would misattribute the analysis.
+   */
+  readonly parcelasCount?: number;
+  /**
+   * Drop parcels from the current multi-parcel selection (T4 fix round).
+   *
+   * The error state's recovery path for a 404 `parcela_no_encontrada`: the
+   * server already names the nomenclaturas it could not resolve, and a parcel
+   * that is no longer in the catastro cannot be ctrl-clicked away because it is
+   * not on the map — without this, one stale parcel means rebuilding the whole
+   * selection by hand. Omit it and the error state stays informative-only.
+   */
+  readonly onRemoveParcelas?: (nomenclaturas: readonly string[]) => void;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
   readonly isLoading: boolean;
   /** In-flight signal incl. retry-over-cached-data (see FichaErrorAlert). */
@@ -161,6 +178,9 @@ export interface FichaTerritorialPanelProps {
 /** Human label per ficha tipo, used by the minimized pill summary. */
 const TIPO_PILL_LABELS: Record<FichaTipo, string> = {
   parcela: 'Parcela',
+  // Overridden with the actual count when one is known (see `fichaPillLabel`);
+  // this is the fallback for a pill built before the selection size is in hand.
+  parcelas: 'Parcelas',
   poligono: 'Polígono',
   canal_buffer: 'Canal',
   canal_cuenca: 'Cuenca',
@@ -176,10 +196,20 @@ export function fichaPillLabel(params: {
   tipo: FichaTipo;
   canalNombre?: string | null;
   areaHa?: number | null;
+  /** Size of a multi-parcel selection (T4), so the pill reads "3 parcelas". */
+  parcelasCount?: number | null;
 }): string {
-  const { tipo, canalNombre, areaHa } = params;
+  const { tipo, canalNombre, areaHa, parcelasCount } = params;
   const isCanal = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
-  const head = isCanal && canalNombre ? canalNombre : TIPO_PILL_LABELS[tipo];
+  const head =
+    isCanal && canalNombre
+      ? canalNombre
+      : // A union has no name of its own; its COUNT is what identifies it to the
+        // user, and it is the one fact the pill can state before the response
+        // arrives.
+        tipo === 'parcelas' && typeof parcelasCount === 'number' && parcelasCount > 0
+        ? `${parcelasCount} parcelas`
+        : TIPO_PILL_LABELS[tipo];
   // `fmtHa` — the SAME formatter the panel body uses for every hectare figure.
   // The pill used to hand-roll a comma decimal separator, so the minimized pill
   // and the card it restores disagreed on the format of the same number.
@@ -241,6 +271,43 @@ function isRetryableError(error: FichaApiError | Error | null): boolean {
 }
 
 /**
+ * The nomenclaturas a 404 `parcela_no_encontrada` named, or `null`.
+ *
+ * The backend answers the multi-parcel 404 with the SAME codigo as the single
+ * one plus a plural `nomenclaturas` list (`ficha_errors.parcelas_no_encontradas`),
+ * which lands in `FichaApiError.extra`. It was already on the wire and nothing
+ * read it, so the user could see WHICH parcel was stale and still had no way to
+ * drop it — the parcel is gone from the catastro, so it is not on the map to
+ * ctrl-click away.
+ */
+function parcelasFaltantes(error: FichaApiError | Error | null): string[] | null {
+  if (!(error instanceof FichaApiError) || error.codigo !== 'parcela_no_encontrada') return null;
+  const raw = error.extra.nomenclaturas;
+  if (!Array.isArray(raw)) return null;
+  const nomenclaturas = raw.filter((n): n is string => typeof n === 'string' && n.length > 0);
+  return nomenclaturas.length > 0 ? nomenclaturas : null;
+}
+
+/**
+ * Extra line for the vertex cap over a multi-parcel selection.
+ *
+ * `ficha_max_vertices` is the ceiling a real selection hits first (the count cap
+ * is generous, vertex-dense rural parcels are not), and the server's message can
+ * only state the limit — it does not know the selection is a union the user can
+ * shrink. Naming the ONE action that helps turns a dead end into a next step.
+ */
+function capVerticesSugerencia(
+  error: FichaApiError | Error | null,
+  tipo: FichaTipo
+): string | null {
+  if (tipo !== 'parcelas') return null;
+  if (!(error instanceof FichaApiError) || error.codigo !== 'cap_excedido') return null;
+  return error.extra.cap === 'vertices'
+    ? 'Deseleccioná algunas parcelas para reducir el detalle de la selección.'
+    : null;
+}
+
+/**
  * Upper bound for the 429 countdown. The value comes from the server, and an
  * absurd one (a misconfigured limiter answering `retry_after: 86400`) would lock
  * the panel's only recovery path for hours with no way out but a page reload.
@@ -280,11 +347,17 @@ function retryAfterSeconds(error: FichaApiError | Error | null): number {
  */
 function FichaErrorAlert({
   error,
+  tipo,
   onRetry,
+  onRemoveParcelas,
   isRetrying = false,
 }: {
   readonly error: FichaApiError | Error | null;
+  /** Tipo of the FAILED request — the multi-parcel recoveries only apply to `parcelas`. */
+  readonly tipo: FichaTipo;
   readonly onRetry?: () => void;
+  /** Drops the parcels the server could not resolve (see `parcelasFaltantes`). */
+  readonly onRemoveParcelas?: (nomenclaturas: readonly string[]) => void;
   /**
    * In-flight signal for the CACHED-data path: when the query already holds
    * data, TanStack keeps `status: 'error'` across a refetch (it only resets to
@@ -318,6 +391,11 @@ function FichaErrorAlert({
   const showRetry = !!onRetry && isRetryableError(error);
   const waiting = remaining > 0;
 
+  // Multi-parcel recoveries. Both are actions the SERVER's message cannot offer
+  // because only the client knows the failed area was a selection it can edit.
+  const faltantes = tipo === 'parcelas' ? parcelasFaltantes(error) : null;
+  const sugerenciaVertices = capVerticesSugerencia(error, tipo);
+
   return (
     <Alert
       color="red"
@@ -327,6 +405,22 @@ function FichaErrorAlert({
     >
       <Stack gap="xs">
         <Text size="sm">{errorMessage(error)}</Text>
+        {sugerenciaVertices && (
+          <Text size="xs" c="dimmed" data-testid="ficha-error-vertices-hint">
+            {sugerenciaVertices}
+          </Text>
+        )}
+        {faltantes && onRemoveParcelas && (
+          <Button
+            size="xs"
+            variant="light"
+            color="red"
+            onClick={() => onRemoveParcelas(faltantes)}
+            data-testid="ficha-error-quitar-faltantes"
+          >
+            Quitar faltantes ({faltantes.length})
+          </Button>
+        )}
         {isRateLimited && waiting && (
           <Text size="xs" c="dimmed" data-testid="ficha-error-countdown">
             Reintentá en {remaining}s
@@ -396,6 +490,7 @@ function PanelBody({
   error,
   data,
   onRetry,
+  onRemoveParcelas,
   tab = 'suelos',
   onChangeTab,
   hiddenClases,
@@ -421,7 +516,15 @@ function PanelBody({
   }
 
   if (isError || !data) {
-    return <FichaErrorAlert error={error ?? null} onRetry={onRetry} isRetrying={isFetching} />;
+    return (
+      <FichaErrorAlert
+        error={error ?? null}
+        tipo={tipo}
+        onRetry={onRetry}
+        onRemoveParcelas={onRemoveParcelas}
+        isRetrying={isFetching}
+      />
+    );
   }
 
   return (
@@ -483,6 +586,8 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   tipo,
   nroCuenta,
   parcelaProps,
+  parcelasCount,
+  onRemoveParcelas,
   bpaEnriched,
   isLoading,
   isFetching,
@@ -526,6 +631,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   // sit at the top of this single panel, replacing the old InfoPanel catastro
   // card. Only for `tipo=parcela`; other tipos (poligono/canal) have no parcel.
   const showParcelaHeader = tipo === 'parcela' && !!parcelaProps;
+
+  // T4 — a multi-parcel selection gets a COUNT header instead. It states the two
+  // things that are true of a union ("N parcelas" and its hectares) and none of
+  // the things that are not (one parcel's nomenclatura, account or designación).
+  const showParcelasHeader = tipo === 'parcelas' && !!parcelasCount;
 
   // Canal analysis header (A6 + A7): the influence-strip vs catchment control now
   // lives inside this panel instead of a separate floating card. Rendered above
@@ -576,6 +686,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         tipo,
         canalNombre,
         areaHa: data?.area_ha ?? null,
+        parcelasCount,
       })}
       pillClassName={styles.fichaPanelPill}
       resetKey={resetKey}
@@ -608,6 +719,15 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
             <Divider my="xs" />
           </>
         )}
+      {showParcelasHeader && (
+        <>
+          <Text size="xs" fw={600} data-testid="ficha-parcelas-header">
+            {parcelasCount} parcelas
+            {typeof data?.area_ha === 'number' ? ` · ${fmtHa(data.area_ha)}` : ''}
+          </Text>
+          <Divider my="xs" />
+        </>
+      )}
       {showParcelaHeader && parcelaProps && (
         <>
           <ParcelaIdentityHeader props={parcelaProps} />
@@ -616,6 +736,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       )}
       <PanelBody
         tipo={tipo}
+        onRemoveParcelas={onRemoveParcelas}
         nroCuenta={nroCuenta}
         bpaEnriched={bpaEnriched}
         isLoading={isLoading}

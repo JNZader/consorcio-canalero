@@ -50,7 +50,7 @@ _ficha_adapter: TypeAdapter[Any] = TypeAdapter(FichaRequest)
 # sees the request models and never registers them. Pydantic's default
 # ``json_schema()`` emits ``#/$defs/...`` refs plus a sibling ``$defs`` block —
 # legal JSON Schema, but ``openapi_extra`` splices ONLY the schema into the
-# operation, so ``$defs`` is dropped and every ref (including the four in the
+# operation, so ``$defs`` is dropped and every ref (including the five in the
 # discriminator ``mapping``) dangles. Generators then fail or silently emit an
 # untyped body — and A4's author reads exactly this contract (F3).
 #
@@ -86,8 +86,14 @@ def install_ficha_openapi_schemas(app: FastAPI) -> None:
 
 # Cost per ``tipo`` — a drawn polygon, a canal buffer and a catchment all cost
 # the same raster work as each other and ~5x a parcel click (design §2.2).
+# ``parcelas`` (T4) is priced with them, not with ``parcela``: a multi-parcel
+# selection is one lookup PER parcel plus a server-side ``ST_Union``, and the
+# raster/vector work then runs over an area that is a multiple of a single
+# parcel's. Charging it 1 would make the cheap tipo the way to buy the expensive
+# work.
 COSTO_POR_TIPO: dict[str, int] = {
     "parcela": 1,
+    "parcelas": 5,
     "poligono": 5,
     "canal_buffer": 5,
     "canal_cuenca": 5,

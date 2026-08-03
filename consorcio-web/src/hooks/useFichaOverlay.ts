@@ -15,6 +15,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import { refKeyFor } from './useFichaTerritorial';
 import {
   type FichaOverlayDataset,
   type FichaOverlayResponse,
@@ -23,19 +24,12 @@ import {
   fetchFichaOverlay,
 } from '../lib/api/ficha';
 
-/** Stable reference key per area of interest (same shape as the ficha hook). */
-function refKeyFor(request: FichaRequest): string {
-  switch (request.tipo) {
-    case 'parcela':
-      return request.nomenclatura;
-    case 'poligono':
-      return JSON.stringify(request.geometry);
-    case 'canal_buffer':
-      return `${request.canal_ref}:${request.buffer_m}`;
-    case 'canal_cuenca':
-      return `${request.canal_ref}:${request.variante ?? 'natural'}`;
-  }
-}
+// The overlay's reference key is IMPORTED from `useFichaTerritorial`, not
+// re-derived here. It used to be a private copy of the same switch, and T4
+// proved why that is a bug waiting to happen: adding `tipo=parcelas` to the wire
+// union left this copy without a branch, so the overlay would have keyed a
+// multi-parcel selection as `undefined` and served one selection's clip for
+// another. One selection has ONE identity — there is exactly one function for it.
 
 export interface UseFichaOverlayResult {
   data: FichaOverlayResponse | undefined;

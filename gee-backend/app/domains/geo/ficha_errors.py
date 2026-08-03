@@ -25,7 +25,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-TIPOS_VALIDOS = ("parcela", "poligono", "canal_buffer", "canal_cuenca")
+TIPOS_VALIDOS = ("parcela", "parcelas", "poligono", "canal_buffer", "canal_cuenca")
 
 # 5xx codes that describe a state somebody CHOSE, not something that broke.
 # Logged at WARNING so a switched-off deployment does not emit an ERROR per
@@ -74,6 +74,25 @@ def parcela_no_encontrada(nomenclatura: str) -> FichaError:
         codigo="parcela_no_encontrada",
         detail=f"No existe una parcela con nomenclatura {nomenclatura}",
         nomenclatura=nomenclatura,
+    )
+
+
+def parcelas_no_encontradas(faltantes: list[str]) -> FichaError:
+    """404 when ANY parcel of a ``tipo=parcelas`` selection is missing (T4).
+
+    Deliberately the SAME ``codigo`` as the single-parcel 404 so the UI keeps one
+    branch, with the missing ids listed under ``nomenclaturas`` (plural) instead
+    of the singular ``nomenclatura``. There is no partial analysis: answering 200
+    over the parcels that happened to resolve would publish hectares and
+    percentages for an area the caller never selected, and nothing in the
+    response says which parcels were dropped.
+    """
+    listado = ", ".join(faltantes)
+    return FichaError(
+        status_code=404,
+        codigo="parcela_no_encontrada",
+        detail=f"No existen parcelas con nomenclatura {listado}",
+        nomenclaturas=faltantes,
     )
 
 

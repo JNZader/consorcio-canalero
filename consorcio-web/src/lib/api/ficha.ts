@@ -31,6 +31,23 @@ import { API_PREFIX, API_URL } from './core';
 export const FICHA_MAX_BUFFER_M = 2000;
 export const FICHA_DEFAULT_BUFFER_M = 500;
 
+/**
+ * Multi-parcel selection bounds (T4). Mirror the backend
+ * `schemas_ficha.FICHA_PARCELAS_MIN/MAX` so the UI stops accumulating at the
+ * COUNT cap instead of building a request the schema rejects outright.
+ *
+ * It does NOT stop the 422: `ficha_max_vertices` (1 000 over the UNION) is the
+ * real ceiling a big rural selection hits, and it is reached well below 30
+ * parcels — the backend schema says the same thing. That failure is surfaced as
+ * an actionable `cap_excedido` with `cap: 'vertices'`, which the panel turns
+ * into "deseleccioná algunas parcelas".
+ *
+ * `MIN = 2` is a SHAPE rule, not a limit: a single parcel is `tipo: 'parcela'`,
+ * which is why the coordinator falls back to that tipo at length 1.
+ */
+export const FICHA_PARCELAS_MIN = 2;
+export const FICHA_PARCELAS_MAX = 30;
+
 /** One class row of a dataset breakdown. `pct` is authoritative (server-side). */
 export interface FichaClase {
   clase: string;
@@ -41,7 +58,7 @@ export interface FichaClase {
 }
 
 export type FichaCobertura = 'total' | 'parcial' | 'sin_cobertura';
-export type FichaTipo = 'parcela' | 'poligono' | 'canal_buffer' | 'canal_cuenca';
+export type FichaTipo = 'parcela' | 'parcelas' | 'poligono' | 'canal_buffer' | 'canal_cuenca';
 
 export interface FichaDataset {
   cobertura: FichaCobertura;
@@ -87,6 +104,25 @@ export interface FichaParcelaRequest {
   nomenclatura: string;
 }
 
+/**
+ * UNION of several catastro parcels, resolved server-side (T4).
+ *
+ * The wire carries ONLY the nomenclaturas, never geometry: the map selects
+ * parcels from vector TILES, whose geometries are clipped at tile boundaries and
+ * simplified per zoom. Unioning those client-side would ship an
+ * analysis-grade-looking polygon that is not one, so the server rebuilds the
+ * union from `parcelas_catastro`.
+ *
+ * Contract mirrored from the backend schema: at least
+ * {@link FICHA_PARCELAS_MIN} entries (one parcel is `tipo: 'parcela'`), at most
+ * {@link FICHA_PARCELAS_MAX}, and NO duplicates — the server answers 422 rather
+ * than silently deduping.
+ */
+export interface FichaParcelasRequest {
+  tipo: 'parcelas';
+  nomenclaturas: string[];
+}
+
 /** Caller-supplied GeoJSON geometry, EPSG:4326 (phase A5). */
 export interface FichaPoligonoRequest {
   tipo: 'poligono';
@@ -117,6 +153,7 @@ export interface FichaCanalCuencaRequest {
 
 export type FichaRequest =
   | FichaParcelaRequest
+  | FichaParcelasRequest
   | FichaPoligonoRequest
   | FichaCanalBufferRequest
   | FichaCanalCuencaRequest;

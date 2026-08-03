@@ -25,7 +25,10 @@ raw and yield a silently wrong area (§2.7, JDB-008); ``canal_buffer`` resolves 
 curated ``canal_consorcio`` trace by its string id and sweeps it with
 ``ST_Buffer`` in EPSG:32720 (§2.1, JDB-006); ``canal_cuenca`` reads the
 precomputed upstream catchment ``generate_canal_catchments`` stored for that
-canal (A7). All four then call ``assert_within_caps`` over the resolved
+canal (A7); ``parcelas`` (T4) resolves the SERVER-SIDE ``ST_Union`` of a
+multi-parcel selection, because the vector-tile geometries the map selects from
+are clipped/simplified and are not analysis grade. All of them then call
+``assert_within_caps`` over the resolved
 EPSG:32720 shape — for ``poligono``/``canal_buffer`` the caps are the whole
 point, since the resolved AREA is not what the caller sent — commit the audit
 row, and run the IDENTICAL soils overlay + flood_risk/drainage_need raster loop
@@ -135,7 +138,7 @@ def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -
 
     ``geom`` is a shapely geometry in a METRIC CRS (EPSG:32720 — the same
     projection ``area_ha`` is computed in, so there is no second projection).
-    Pure computation: no DB, no file, no network. Valid for the four ``tipo``
+    Pure computation: no DB, no file, no network. Valid for the five ``tipo``
     values; ``buffer_m`` is only passed by ``canal_buffer``.
     """
     if buffer_m is not None and buffer_m > settings.ficha_max_buffer_m:
@@ -181,11 +184,32 @@ def _huella_geometria(geometry: dict[str, Any]) -> str:
     return hashlib.sha256(canonico.encode("utf-8")).hexdigest()[:16]
 
 
+# Longest joined parcel list that goes into the audit ``resource`` verbatim.
+# ``audit_log.resource`` is ``String(512)`` and ``write_audit_entry_sync`` TRUNCATES
+# to it, so a long selection would be silently cut mid-nomenclatura and stop being
+# a usable correlation key. Below the threshold the ids are readable as-is; above
+# it the reference degrades to ``count + digest`` — bounded, still deterministic
+# for the same SET of parcels (the list is sorted first), and never truncated.
+_REF_PARCELAS_MAX_CHARS = 300
+
+
+def _referencia_parcelas(nomenclaturas: list[str]) -> str:
+    """Bounded, order-independent audit reference for a multi-parcel selection."""
+    ordenadas = sorted(nomenclaturas)
+    unidas = "+".join(ordenadas)
+    if len(unidas) > _REF_PARCELAS_MAX_CHARS:
+        digest = hashlib.sha256(unidas.encode("utf-8")).hexdigest()[:16]
+        unidas = f"sha256:{digest}"
+    return f"tipo=parcelas,n={len(ordenadas)},ref={unidas}"
+
+
 def referencia_auditable(payload: FichaRequest) -> str:
     """``resource`` value for the audit row — never a person, never a geometry."""
     tipo = payload.tipo
     if tipo == "parcela":
         return f"tipo=parcela,ref={payload.nomenclatura}"
+    if tipo == "parcelas":
+        return _referencia_parcelas(payload.nomenclaturas)
     if tipo == "poligono":
         return f"tipo=poligono,ref=geom:{_huella_geometria(payload.geometry)}"
     if tipo == "canal_buffer":
@@ -311,6 +335,76 @@ def _resolver_parcela(db: Session, nomenclatura: str) -> tuple[str, str, float]:
         ).one_or_none()
     if fila is None:
         raise ficha_errors.parcela_no_encontrada(nomenclatura)
+    return fila.g4326, fila.g32720, float(fila.area_m2)
+
+
+# The UNION of several catastro parcels (T4, ``tipo=parcelas``).
+#
+# WHY SERVER-SIDE: the frontend selects parcels by clicking VECTOR TILES, whose
+# geometries are tile-clipped and simplified. Unioning those client-side would
+# produce an analysis-grade-looking polygon that is neither — with seams at every
+# tile boundary. So the wire carries only the nomenclaturas and the union is
+# rebuilt here from ``parcelas_catastro``, the same table ``_PARCELA_SQL``
+# resolves a single parcel from.
+#
+# ``DISTINCT ON (nomenclatura)`` mirrors the single-parcel resolver's ``LIMIT 1``:
+# if the catastro ever carries two rows for one nomenclatura, both paths analyze
+# the same one row rather than the multi path silently double-counting it.
+# ``ST_Union`` DISSOLVES overlaps, so overlapping parcels contribute their area
+# once; adjacent parcels merge into one polygon with the shared edge gone.
+# ``ST_MakeValid`` + ``ST_CollectionExtract(..., 3)`` is the same repair every
+# other resolver applies, run AFTER the union because that is where a topology
+# defect in any single source parcel would surface.
+#
+# ``encontradas`` comes back so the caller can name the MISSING parcels: a lookup
+# that resolves 4 of 5 is a 404, never a silent 4-parcel analysis.
+_PARCELAS_SQL = text(
+    """
+    WITH filas AS (
+        SELECT DISTINCT ON (p.nomenclatura) p.nomenclatura AS nomenclatura,
+               p.geometria AS geometria
+        FROM parcelas_catastro p
+        WHERE p.nomenclatura = ANY(CAST(:noms AS text[]))
+        ORDER BY p.nomenclatura
+    ), unida AS (
+        SELECT array_agg(nomenclatura ORDER BY nomenclatura) AS encontradas,
+               ST_CollectionExtract(ST_MakeValid(ST_Union(geometria)), 3) AS geom
+        FROM filas
+    )
+    SELECT encontradas,
+           geom IS NULL OR ST_IsEmpty(geom) AS vacio,
+           ST_AsGeoJSON(geom) AS g4326,
+           ST_AsGeoJSON(ST_Transform(geom, 32720)) AS g32720,
+           ST_Area(ST_Transform(geom, 32720)) AS area_m2
+    FROM unida
+    """
+)
+
+
+def _resolver_parcelas(db: Session, nomenclaturas: list[str]) -> tuple[str, str, float]:
+    """Union several parcels by ``nomenclatura``. 404 when ANY of them is absent.
+
+    Returns ``(geojson_4326, geojson_32720, area_m2)`` — the same contract as
+    ``_resolver_parcela`` so the compute tail is shared verbatim. ``area_m2`` is
+    ``ST_Area`` of the UNION in EPSG:32720, so overlapping parcels are not
+    double-counted and adjacent ones sum exactly.
+
+    All-or-nothing on purpose (see ``ficha_errors.parcelas_no_encontradas``).
+    """
+    with _traducir_fallas_db():
+        fila = db.execute(_PARCELAS_SQL, {"noms": nomenclaturas}).one()
+
+    encontradas = set(fila.encontradas or ())
+    faltantes = [nom for nom in nomenclaturas if nom not in encontradas]
+    if faltantes:
+        raise ficha_errors.parcelas_no_encontradas(faltantes)
+
+    if fila.vacio or fila.area_m2 is None or float(fila.area_m2) <= 0.0:
+        # Every parcel resolved, yet the union has no polygonal component or no
+        # area — degenerate source geometry, not a missing parcel.
+        raise ficha_errors.geometria_invalida(
+            "la union de las parcelas quedo vacia o sin area tras repararla"
+        )
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
@@ -842,7 +936,7 @@ def _ficha_de_geometria(
 ) -> FichaResponse:
     """Shared compute tail: soils overlay + raster loop under the semaphore.
 
-    All four tipos reduce to the same computation once the geometry is resolved
+    All five tipos reduce to the same computation once the geometry is resolved
     and the caps have passed — the design's "N rasters × 1 geometry (rasterio) + 1
     vector overlay × 1 geometry (PostGIS)". Keeping it in one place is what makes
     the datasets byte-compatible across tipos (the spec's "uniform response
@@ -886,6 +980,24 @@ def _analizar_parcela(db: Session, payload: Any, *, client_ip: str | None) -> Fi
 
     escribir_auditoria(db, payload, client_ip=client_ip)
     return _ficha_de_geometria(db, tipo="parcela", geojson_4326=geojson_4326, area_m2=area_m2)
+
+
+def _analizar_parcelas(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
+    """Real compute for ``tipo=parcelas`` — the UNION of a multi-parcel selection (T4).
+
+    Same §2.5 order as every other tipo: resolve (404 if ANY parcel is missing) →
+    ``assert_within_caps`` (422) → audit COMMITTED → semaphore (503) → the shared
+    compute tail. The cap runs over the UNION, which is the point: 30 parcels
+    that are individually well under 20 000 ha can add up to a zone that is not,
+    and the raster work is proportional to the union, not to any one parcel.
+    """
+    _aplicar_statement_timeout(db)  # bounds the ST_Union/ST_Transform resolver query
+    geojson_4326, geojson_32720, area_m2 = _resolver_parcelas(db, payload.nomenclaturas)
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo="parcelas")
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(db, tipo="parcelas", geojson_4326=geojson_4326, area_m2=area_m2)
 
 
 def _analizar_poligono(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
@@ -975,13 +1087,15 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
     Rate limit and the body-size guard already ran as router dependencies, and
     the cheap ``poligono`` validators ran in the schema.
 
-    All four tipos are real compute now: ``parcela``/``poligono`` resolve a parcel
+    All five tipos are real compute now: ``parcela``/``poligono`` resolve a parcel
     or a drawn ring, ``canal_buffer`` sweeps a curated canal, and ``canal_cuenca``
     reads its precomputed catchment (A7). The route stays gated by
     ``settings.ficha_enabled``.
     """
     if payload.tipo == "parcela":
         return _analizar_parcela(db, payload, client_ip=client_ip)
+    if payload.tipo == "parcelas":
+        return _analizar_parcelas(db, payload, client_ip=client_ip)
     if payload.tipo == "poligono":
         return _analizar_poligono(db, payload, client_ip=client_ip)
     if payload.tipo == "canal_buffer":
@@ -996,7 +1110,7 @@ def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str
     """Resolve the analysis geometry the same way the ficha does, for the overlay.
 
     Returns ``(geojson_4326, geojson_32720)`` — the 4326 shape feeds the soils
-    clip, the 32720 shape feeds ``assert_within_caps``. All four tipos resolve a
+    clip, the 32720 shape feeds ``assert_within_caps``. Every tipo resolves a
     geometry now: ``canal_cuenca`` resolves to its precomputed catchment (A7) so
     the on-map overlay clips to the catchment, with the SAME distinct 404 / 503 /
     422 coded failures as the ficha compute path.
@@ -1004,6 +1118,11 @@ def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str
     tipo = payload.tipo
     if tipo == "parcela":
         geojson_4326, geojson_32720, _area_m2 = _resolver_parcela(db, payload.nomenclatura)
+        return geojson_4326, geojson_32720
+    if tipo == "parcelas":
+        # The overlay clips to the SAME server-side union the ficha analyzes, so
+        # the painted classes and the panel's hectares can never disagree (T4).
+        geojson_4326, geojson_32720, _area_m2 = _resolver_parcelas(db, payload.nomenclaturas)
         return geojson_4326, geojson_32720
     if tipo == "poligono":
         geojson_4326, geojson_32720, _area_m2 = _resolver_poligono(db, payload.geometry)
