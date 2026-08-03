@@ -119,6 +119,16 @@ export interface MapUiPanelsProps {
    */
   readonly fichaSelectionKey?: string;
   readonly fichaParcelaProps?: ParcelaDisplayProps | null;
+  /** Size of the multi-parcel selection (T4); drives the panel's count header. */
+  readonly fichaParcelasCount?: number;
+  /**
+   * Drop specific parcels from the multi-parcel selection (T4 fix round). Wired
+   * to the coordinator's `removeParcelas`; the ficha's error state uses it to
+   * offer "Quitar faltantes" when the server 404s naming nomenclaturas that no
+   * longer exist in the catastro — otherwise a single stale parcel forces the
+   * user to rebuild the whole selection.
+   */
+  readonly onFichaRemoveParcelas?: (nomenclaturas: readonly string[]) => void;
   readonly fichaLoading: boolean;
   readonly fichaError: FichaApiError | Error | null;
   /** In-flight signal incl. retry-over-cached-data (threaded to the error alert). */
@@ -245,6 +255,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   fichaNroCuenta,
   fichaSelectionKey = FICHA_IDLE_SELECTION_KEY,
   fichaParcelaProps,
+  fichaParcelasCount,
+  onFichaRemoveParcelas,
   fichaLoading,
   fichaError,
   fichaFetching,
@@ -490,6 +502,8 @@ export const MapUiPanels = memo(function MapUiPanels({
         tipo={fichaTipo}
         nroCuenta={fichaNroCuenta}
         parcelaProps={fichaParcelaProps}
+        parcelasCount={fichaParcelasCount}
+        onRemoveParcelas={onFichaRemoveParcelas}
         bpaEnriched={bpaEnriched}
         isLoading={fichaLoading}
         isFetching={fichaFetching}

@@ -32,8 +32,10 @@ import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
-import { FICHA_MAX_BUFFER_M } from '../lib/api/ficha';
+import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
+import { showWarning } from '../lib/notifications';
 import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
+import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
 import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
 import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useGEELayers } from '../hooks/useGEELayers';
@@ -336,7 +338,22 @@ export default function MapaMapLibre() {
   // single mode from measurement + ficha-draw, enforces their mutual exclusion,
   // and owns parcel/polygon selection. Entering draw mode cancels measurement via
   // `clearMeasurements` so only one MapboxDraw instance ever mounts.
-  const fichaInteraction = useFichaInteraction(measurementState.mode, clearMeasurements);
+  // T4 fix round — at `FICHA_PARCELAS_MAX` an additive click is dropped, and a
+  // click that changes nothing and says nothing reads as a broken map. The
+  // coordinator reports the drop; the toast lives here so the hook keeps no UI
+  // dependency.
+  const handleParcelasCapReached = useCallback(() => {
+    showWarning(
+      'Selección al máximo',
+      `No se pueden analizar más de ${FICHA_PARCELAS_MAX} parcelas a la vez. Quitá alguna para agregar otra.`
+    );
+  }, []);
+
+  const fichaInteraction = useFichaInteraction(
+    measurementState.mode,
+    clearMeasurements,
+    handleParcelasCapReached
+  );
 
   // Canal-selection mode gate (A6). Declared here so it can feed BOTH the
   // vt_canal_network cyan-line effect below AND `useMapLayerEffects`, which is
@@ -377,6 +394,9 @@ export default function MapaMapLibre() {
     measurementMode: fichaInteraction.interactionMode,
     setSelectedFeatures,
     onParcelaResolved: fichaInteraction.resolveParcela,
+    // Mode transitions ALWAYS discard the selection, including with the sticky
+    // touch mode on (where a null resolve means "you missed", not "clear").
+    onClearParcelas: fichaInteraction.clearParcelas,
     onCanalResolved: fichaInteraction.resolveCanal,
   });
 
@@ -446,6 +466,23 @@ export default function MapaMapLibre() {
     fichaTabs.visibleClases,
   ]);
 
+  // Paint / clear the multi-parcel selection highlight (T4). Driven by the
+  // coordinator's `parcelas` set — NOT by the settled/analyzed one — so it
+  // answers every ctrl-click immediately while the request is still debouncing,
+  // and clears itself on every reset, mode switch and deselect without a second
+  // piece of state to keep in sync.
+  //
+  // The catastro VISIBILITY is a real input: the source stays on the map when
+  // the layer is turned off (only the layers' visibility flips), so without this
+  // the highlight painted parcels the user had just hidden.
+  const parcelasSeleccionadas = fichaInteraction.state.parcelas;
+  const catastroVisible = vectorVisibility.catastro !== false;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible);
+  }, [mapReady, parcelasSeleccionadas, catastroVisible]);
+
   // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
   // own mount effect (which populates its imperative handle) is a CHILD passive
   // effect and runs before this parent effect, so the ref is ready here.
@@ -490,6 +527,12 @@ export default function MapaMapLibre() {
   const handleToggleFichaCanal = useCallback(() => {
     if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
     else fichaInteraction.startCanal();
+  }, [fichaInteraction]);
+  // T4 — the touch equivalent of holding ctrl. Unlike draw/canal this is NOT a
+  // map interaction mode: clicks keep resolving parcels exactly as in idle, they
+  // just accumulate, so nothing here touches `interactionMode`.
+  const handleToggleFichaMultiSelect = useCallback(() => {
+    fichaInteraction.setMultiSelect(!fichaInteraction.state.multiSelect);
   }, [fichaInteraction]);
 
   // Escape is the universal exit from ANY active interaction mode. Until this
@@ -738,6 +781,8 @@ export default function MapaMapLibre() {
               onToggleFichaDraw={handleToggleFichaDraw}
               fichaCanalActive={isFichaCanal}
               onToggleFichaCanal={handleToggleFichaCanal}
+              fichaMultiSelectActive={fichaInteraction.state.multiSelect}
+              onToggleFichaMultiSelect={handleToggleFichaMultiSelect}
             />
 
             {/* Canal analysis (A6 + A7): the influence-strip vs catchment control
@@ -819,6 +864,8 @@ export default function MapaMapLibre() {
               fichaNroCuenta={fichaInteraction.nroCuenta}
               fichaSelectionKey={fichaKey}
               fichaParcelaProps={fichaInteraction.parcelaProps}
+              fichaParcelasCount={fichaInteraction.parcelasAnalizadas.length}
+              onFichaRemoveParcelas={fichaInteraction.removeParcelas}
               fichaLoading={ficha.isLoading}
               fichaFetching={ficha.isFetching}
               fichaError={ficha.error}

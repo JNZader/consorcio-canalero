@@ -48,7 +48,8 @@ function renderEffect(
   map: unknown,
   mode: 'idle' | 'measuring-distance',
   onParcelaResolved: any,
-  setSelectedFeatures: any = vi.fn()
+  setSelectedFeatures: any = vi.fn(),
+  onClearParcelas?: any
 ) {
   renderHook(() =>
     useMapInteractionEffects({
@@ -57,6 +58,7 @@ function renderEffect(
       measurementMode: mode,
       setSelectedFeatures,
       onParcelaResolved,
+      onClearParcelas,
     })
   );
 }
@@ -88,19 +90,24 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
 
     handlers.get('click')?.[0]?.(clickEvent);
 
-    expect(onParcelaResolved).toHaveBeenCalledWith({
-      nomenclatura: '13-06-01-0203',
-      nroCuenta: '110123',
-      props: {
+    expect(onParcelaResolved).toHaveBeenCalledWith(
+      {
         nomenclatura: '13-06-01-0203',
         nroCuenta: '110123',
-        desigOficial: 'Lote 4',
-        superficieHa: '25.4',
-        departamento: 'General San Martín',
-        pedania: 'Arroyo Algodón',
-        tipoParcela: 'rural',
+        props: {
+          nomenclatura: '13-06-01-0203',
+          nroCuenta: '110123',
+          desigOficial: 'Lote 4',
+          superficieHa: '25.4',
+          departamento: 'General San Martín',
+          pedania: 'Arroyo Algodón',
+          tipoParcela: 'rural',
+        },
       },
-    });
+      // T4 — the second argument is the ctrl/meta modifier. A plain click is
+      // NOT additive, so the coordinator replaces the selection.
+      false
+    );
   });
 
   it('drops the redundant catastro card when the parcel is the ONLY hit', () => {
@@ -118,7 +125,8 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     handlers.get('click')?.[0]?.(clickEvent);
 
     expect(onParcelaResolved).toHaveBeenCalledWith(
-      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' }),
+      false
     );
     // Nothing left after the catastro card is filtered out → no InfoPanel.
     expect(setSelectedFeatures).toHaveBeenCalledWith([]);
@@ -149,7 +157,8 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
 
     // The ficha still fires for the parcel…
     expect(onParcelaResolved).toHaveBeenCalledWith(
-      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' }),
+      false
     );
     // …and the canal card survives: catastro filtered, canal passed through.
     expect(setSelectedFeatures).toHaveBeenCalledWith([canal]);
@@ -183,7 +192,8 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     handlers.get('click')?.[0]?.(clickEvent);
 
     expect(onParcelaResolved).toHaveBeenCalledWith(
-      expect.objectContaining({ nomenclatura: '13-06-01-0203' })
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' }),
+      false
     );
     expect(setSelectedFeatures).toHaveBeenCalledWith([bpa, escuela]);
   });
@@ -217,7 +227,7 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
 
     handlers.get('click')?.[0]?.(clickEvent);
 
-    expect(onParcelaResolved).toHaveBeenCalledWith(null);
+    expect(onParcelaResolved).toHaveBeenCalledWith(null, false);
   });
 
   it('clears the ficha while a measurement mode is active', () => {
@@ -228,5 +238,94 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     handlers.get('click')?.[0]?.(clickEvent);
 
     expect(onParcelaResolved).toHaveBeenCalledWith(null);
+  });
+
+  it('a measurement fires the explicit mode-transition CLEAR, not just a null resolve', () => {
+    // `onParcelaResolved(null)` alone is not enough: with the sticky "selección
+    // múltiple" mode on, the coordinator reads a null as "your tap missed" and
+    // deliberately KEEPS the selection — so a measurement used to start with a
+    // stale multi-parcel ficha still on screen. A mode transition always clears
+    // (design §6.5), which is what this second callback says.
+    const { map, handlers } = createMapMock([]);
+    const onParcelaResolved = vi.fn();
+    const onClearParcelas = vi.fn();
+    renderEffect(map, 'measuring-distance', onParcelaResolved, vi.fn(), onClearParcelas);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(onClearParcelas).toHaveBeenCalledTimes(1);
+  });
+
+  it('an IDLE click never fires the mode-transition clear', () => {
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0207' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela]);
+    const onClearParcelas = vi.fn();
+    renderEffect(map, 'idle', vi.fn(), vi.fn(), onClearParcelas);
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(onClearParcelas).not.toHaveBeenCalled();
+  });
+
+  it('reports the click as ADDITIVE when ctrl is held (T4)', () => {
+    // The hook only READS the modifier; accumulating is the coordinator's job.
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela]);
+    const onParcelaResolved = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved);
+
+    handlers.get('click')?.[0]?.({ ...clickEvent, originalEvent: { ctrlKey: true } });
+
+    expect(onParcelaResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ nomenclatura: '13-06-01-0203' }),
+      true
+    );
+  });
+
+  it('treats the ⌘ (meta) key as additive too, for macOS', () => {
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela]);
+    const onParcelaResolved = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved);
+
+    handlers.get('click')?.[0]?.({ ...clickEvent, originalEvent: { metaKey: true } });
+
+    expect(onParcelaResolved).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it('an unmodified click is NOT additive even with an originalEvent present', () => {
+    // Regression guard: reading a missing modifier as truthy would turn every
+    // click into an accumulate and make single selection unreachable.
+    const parcela = {
+      type: 'Feature',
+      layer: { id: CATASTRO_LAYER },
+      properties: { nomenclatura: '13-06-01-0203' },
+      geometry: { type: 'Polygon', coordinates: [] },
+    };
+    const { map, handlers } = createMapMock([parcela]);
+    const onParcelaResolved = vi.fn();
+    renderEffect(map, 'idle', onParcelaResolved);
+
+    handlers.get('click')?.[0]?.({
+      ...clickEvent,
+      originalEvent: { ctrlKey: false, metaKey: false },
+    });
+
+    expect(onParcelaResolved).toHaveBeenCalledWith(expect.anything(), false);
   });
 });

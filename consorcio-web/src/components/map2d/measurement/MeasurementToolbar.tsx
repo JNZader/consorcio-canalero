@@ -55,7 +55,14 @@ import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 
 import styles from '../../../styles/components/map.module.css';
-import { IconPolygon, IconRoute, IconRuler, IconTrash, IconVectorTriangle } from '../../ui/icons';
+import {
+  IconLayers,
+  IconPolygon,
+  IconRoute,
+  IconRuler,
+  IconTrash,
+  IconVectorTriangle,
+} from '../../ui/icons';
 import type { MeasurementMode } from './useMeasurement';
 
 export interface MeasurementToolbarProps {
@@ -87,6 +94,17 @@ export interface MeasurementToolbarProps {
    */
   readonly fichaCanalActive?: boolean;
   readonly onToggleFichaCanal?: () => void;
+  /**
+   * Multi-parcel selection (T4). When `onToggleFichaMultiSelect` is provided, a
+   * "Selección múltiple" toggle renders beside the canal button.
+   *
+   * It exists for TOUCH, where ctrl-click is not expressible — but it is shown
+   * on every pointer type on purpose: it is also the only DISCOVERABLE hint that
+   * accumulating parcels is possible at all, and a desktop user who prefers
+   * clicking to holding a modifier gets the same behaviour.
+   */
+  readonly fichaMultiSelectActive?: boolean;
+  readonly onToggleFichaMultiSelect?: () => void;
 }
 
 export const MeasurementToolbar = memo(function MeasurementToolbar({
@@ -100,6 +118,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onToggleFichaDraw,
   fichaCanalActive = false,
   onToggleFichaCanal,
+  fichaMultiSelectActive = false,
+  onToggleFichaMultiSelect,
 }: MeasurementToolbarProps) {
   // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
   // while drawing, but the "Medir" cue must only light for measurement modes.
@@ -195,6 +215,26 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             >
               <IconRoute size={16} />
               <span className={styles.mapCtrlButtonLabel}>Canal</span>
+            </UnstyledButton>
+          </Tooltip>
+        )}
+
+        {onToggleFichaMultiSelect && (
+          <Tooltip label="Selección múltiple de parcelas (o Ctrl + clic)" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Selección múltiple de parcelas"
+              aria-pressed={fichaMultiSelectActive}
+              onClick={onToggleFichaMultiSelect}
+              className={styles.mapCtrlButton}
+              style={{
+                background: fichaMultiSelectActive ? '#f59f00' : 'transparent',
+                color: fichaMultiSelectActive ? '#fff' : '#333',
+              }}
+              data-testid="ficha-multi-select-toggle"
+            >
+              <IconLayers size={16} />
+              <span className={styles.mapCtrlButtonLabel}>Varias</span>
             </UnstyledButton>
           </Tooltip>
         )}

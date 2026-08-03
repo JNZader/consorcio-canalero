@@ -48,8 +48,27 @@ interface UseMapInteractionEffectsParams {
    * click hit, regardless of z-order. `null` clears the current ficha (click on
    * empty space, or a non-idle interaction mode). Optional — callers that do
    * not want the ficha (3D viewer) simply omit it.
+   *
+   * `additive` (T4) reports whether the click carried the ctrl/⌘ modifier, i.e.
+   * whether the user asked to ACCUMULATE this parcel into a multi-parcel
+   * selection instead of replacing it. This hook only READS the modifier — the
+   * selection itself, and the OR with the touch "selección múltiple" toggle,
+   * belong to the coordinator, which is why no mode is threaded in here.
    */
-  onParcelaResolved?: (parcela: ParcelaResuelta | null) => void;
+  onParcelaResolved?: (parcela: ParcelaResuelta | null, additive?: boolean) => void;
+  /**
+   * MODE-TRANSITION clear (T4 fix round). Called when a click arrives while a
+   * MEASUREMENT is active, i.e. when the ficha's selection must be discarded
+   * because the user switched to another tool (design §6.5 — "switching modes
+   * discards the previous result").
+   *
+   * It exists because `onParcelaResolved(null)` is NOT the same event: with the
+   * sticky "selección múltiple" mode on, a null means "your tap missed" and the
+   * coordinator deliberately KEEPS the selection. That made the mode transition a
+   * no-op and left a stale multi-parcel ficha on screen through a measurement.
+   * Optional — callers that omit it keep the previous behaviour.
+   */
+  onClearParcelas?: () => void;
   /**
    * Ficha territorial canal analysis (A6 + A7). In `'ficha-canal'` mode a click is
    * resolved against the CURATED relevados/propuestos line layers ONLY (never
@@ -213,6 +232,7 @@ export function useMapInteractionEffects({
   measurementMode,
   setSelectedFeatures,
   onParcelaResolved,
+  onClearParcelas,
   onCanalResolved,
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
@@ -240,7 +260,12 @@ export function useMapInteractionEffects({
 
       if (measurementMode !== 'idle') {
         setSelectedFeatures([]);
+        // MODE TRANSITION, not a miss: the selection goes even when the sticky
+        // touch mode is on (which is exactly the case `onParcelaResolved(null)`
+        // keeps). `onParcelaResolved(null)` stays for callers that never wired
+        // the explicit clear.
         onParcelaResolved?.(null);
+        onClearParcelas?.();
         onCanalResolved?.(null);
         return;
       }
@@ -274,12 +299,26 @@ export function useMapInteractionEffects({
       // A4 — a catastro click ADDITIONALLY fires the ficha (design §6.2). A
       // click that hit no parcel clears the current ficha so it does not linger
       // over an unrelated area.
-      onParcelaResolved?.(parcela);
+      //
+      // T4 — ctrl (Windows/Linux) or ⌘ (macOS) means ACCUMULATE. `originalEvent`
+      // is optional in the MapLibre typings and absent in synthesized events, so
+      // a missing modifier reads as a plain click — the pre-T4 behaviour.
+      const original = event.originalEvent as MouseEvent | undefined;
+      const additive = !!original && (original.ctrlKey || original.metaKey);
+      onParcelaResolved?.(parcela, additive);
     };
 
     map.on('click', handleClick);
     return () => {
       map.off('click', handleClick);
     };
-  }, [mapReady, mapRef, measurementMode, setSelectedFeatures, onParcelaResolved, onCanalResolved]);
+  }, [
+    mapReady,
+    mapRef,
+    measurementMode,
+    setSelectedFeatures,
+    onParcelaResolved,
+    onClearParcelas,
+    onCanalResolved,
+  ]);
 }

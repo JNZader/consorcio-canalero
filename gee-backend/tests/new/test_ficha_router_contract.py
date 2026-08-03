@@ -156,6 +156,28 @@ def test_tipo_desconocido_es_rechazado_por_la_union():
         TypeAdapter(FichaRequest).validate_python({"tipo": "provincia", "nomenclatura": "X"})
 
 
+def test_la_union_acepta_el_tipo_parcelas():
+    """T4 › ``tipo=parcelas`` es un miembro de primera clase de la unión.
+
+    El router valida el ``tipo`` contra ``ficha_errors.TIPOS_VALIDOS`` ANTES de
+    correr el adaptador (para conservar ``tipo_desconocido``), así que las dos
+    listas tienen que coincidir: un tipo en la unión pero fuera de la tupla se
+    rechazaría con 422 sin llegar nunca al servicio.
+    """
+    from pydantic import TypeAdapter
+
+    from app.domains.geo import ficha_errors
+    from app.domains.geo.schemas_ficha import FichaRequest
+
+    assert "parcelas" in ficha_errors.TIPOS_VALIDOS
+
+    payload = TypeAdapter(FichaRequest).validate_python(
+        {"tipo": "parcelas", "nomenclaturas": ["19-04-12-0001-1", "19-04-12-0002-2"]}
+    )
+    assert payload.tipo == "parcelas"
+    assert payload.nomenclaturas == ["19-04-12-0001-1", "19-04-12-0002-2"]
+
+
 def test_el_cap_de_vertices_corta_antes_de_cualquier_io():
     """spec › "Vertex cap rejected before raster read" — cheap schema validator."""
     from pydantic import TypeAdapter
