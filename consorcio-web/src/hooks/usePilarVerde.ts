@@ -223,6 +223,12 @@ export interface UsePilarVerdeResult {
    */
   layersError: string | null;
   bpaError: string | null;
+  /**
+   * Re-runs the ~1.0 MB render-GeoJSON group. Wired to the layer panel's
+   * "Reintentar" so a failed group has an explicit recovery instead of forcing
+   * the user to guess that re-toggling a layer retries it.
+   */
+  reloadLayers: () => void;
 }
 
 export interface UsePilarVerdeOptions {
@@ -278,5 +284,6 @@ export function usePilarVerde(options: UsePilarVerdeOptions = {}): UsePilarVerde
     layersLoading: layersQuery.isLoading,
     layersError: layersQuery.error instanceof Error ? layersQuery.error.message : null,
     bpaError: bpaQuery.error instanceof Error ? bpaQuery.error.message : null,
+    reloadLayers: layersQuery.refetch,
   };
 }

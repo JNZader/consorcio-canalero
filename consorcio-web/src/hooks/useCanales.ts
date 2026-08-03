@@ -89,6 +89,18 @@ export interface UseCanalesResult {
   isLoading: boolean;
   /** True iff at least one of the 3 slots failed to load. */
   isError: boolean;
+  /**
+   * User-facing failure message, `null` while healthy or loading.
+   *
+   * CAREFUL — this query resolves on the ERROR PATH: `loadAllCanales` never
+   * rejects, it returns `{ anyFailed: true }`. Combined with
+   * `staleTime: Infinity` that means TanStack considers the query SUCCESSFUL
+   * and caches the degraded result for the whole session: there is no retry, no
+   * backoff and no self-healing. An explicit `reload()` is the ONLY recovery.
+   */
+  error: string | null;
+  /** Re-runs the 3 fetches. See `error` — this is the only way back. */
+  reload: () => void;
 }
 
 export function useCanales(): UseCanalesResult {
@@ -99,11 +111,14 @@ export function useCanales(): UseCanalesResult {
   });
 
   const payload = query.data;
+  const anyFailed = payload?.anyFailed ?? false;
   return {
     relevados: payload?.data.relevados ?? null,
     propuestas: payload?.data.propuestas ?? null,
     index: payload?.data.index ?? null,
     isLoading: query.isLoading,
-    isError: payload?.anyFailed ?? false,
+    isError: anyFailed,
+    error: anyFailed ? 'No se pudieron cargar los canales' : null,
+    reload: query.refetch,
   };
 }

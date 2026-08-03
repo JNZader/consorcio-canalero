@@ -1,7 +1,8 @@
 import type maplibregl from 'maplibre-gl';
-import { type RefObject, useEffect } from 'react';
+import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { logger } from '../../lib/logger';
+import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
 
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
@@ -11,6 +12,16 @@ interface UseMapInitializationParams {
   zoom: number;
   mapRef: RefObject<maplibregl.Map | null>;
   setMapReady: (ready: boolean) => void;
+  /**
+   * Observer for every MapLibre `error`, already classified (tile vs real).
+   *
+   * DELIBERATELY NOT IN THE INIT EFFECT'S DEPENDENCY ARRAY. That effect's
+   * cleanup calls `map.remove()`, so adding a callback that changes identity
+   * between renders would tear down and rebuild the whole map — losing the
+   * viewport, every source and the WebGL context — on each render. The callback
+   * is therefore read through a ref that a separate effect keeps current.
+   */
+  onMapError?: (error: ClassifiedMapError) => void;
 }
 
 /**
@@ -80,7 +91,15 @@ export function useMapInitialization({
   zoom,
   mapRef,
   setMapReady,
+  onMapError,
 }: UseMapInitializationParams) {
+  // See the `onMapError` doc comment: a REF, never a dependency of the init
+  // effect below — that effect's cleanup calls `map.remove()`.
+  const onMapErrorRef = useRef(onMapError);
+  useEffect(() => {
+    onMapErrorRef.current = onMapError;
+  }, [onMapError]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -166,15 +185,11 @@ export function useMapInitialization({
     });
 
     map.on('error', (event) => {
-      const msg =
-        typeof event.error === 'string'
-          ? event.error
-          : event.error instanceof Error
-            ? event.error.message
-            : '';
-      const isTileError =
-        'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
-      if (!isTileError) {
+      // Same heuristic as before, now shared with the tile-health counter —
+      // see `mapErrorClassify.ts`.
+      const classified = classifyMapError(event);
+      onMapErrorRef.current?.(classified);
+      if (classified.kind !== 'tile') {
         logger.error('MapaMapLibre error', event.error);
       }
     });
