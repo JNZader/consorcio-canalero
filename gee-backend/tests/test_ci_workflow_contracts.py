@@ -505,7 +505,7 @@ def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
 
     for script in (
         "npm run lint",
-        "npm run test:run",
+        "npm run test:coverage",
         "npm run typecheck",
         "npm run test:smoke",
         "npm run mutation:run",

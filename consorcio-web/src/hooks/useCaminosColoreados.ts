@@ -53,7 +53,9 @@ export function useCaminosColoreados() {
       return envelope.data;
     },
     staleTime: 1000 * 60 * 10,
-    // Public geo layer that degrades gracefully (inline error + `reload`).
+    // Public geo layer that degrades gracefully: the map renders without it and
+    // the failure surfaces as an inline row + "Reintentar" in the layer panel
+    // (`layerHealth.ts` → `LayerControlsPanel`), wired to the `reload` below.
     retry: 1,
   });
 

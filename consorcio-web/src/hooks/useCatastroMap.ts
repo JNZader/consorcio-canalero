@@ -43,5 +43,10 @@ export function useCatastroMap(options: UseCatastroMapOptions = {}) {
     catastroMap: query.data ?? null,
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error.message : null,
+    // `retry: 0` above means a failure is terminal for the session — an explicit
+    // reload is the ONLY recovery path. Note `refetch()` ignores `enabled`, so
+    // callers must not offer it before export intent latched (see
+    // `layerHealth.ts` gates).
+    reload: query.refetch,
   };
 }

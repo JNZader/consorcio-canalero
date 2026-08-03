@@ -155,3 +155,43 @@ describe('useMapInitialization — cooperative gestures', () => {
     expect(isCoarsePointerDevice()).toBe(false);
   });
 });
+
+/**
+ * Batch 1 "datos honestos" — map-construction guard for the new `onMapError`.
+ *
+ * The observer must never reach the init effect's dependency array: that effect
+ * builds the MapLibre map and its cleanup destroys it, so one careless dep would
+ * rebuild the WebGL context (and lose the viewport and every source) on each
+ * render. `capturedOptions` counts map CONSTRUCTIONS, which is the cheapest
+ * possible assertion of that invariant.
+ */
+describe('useMapInitialization — onMapError does not rebuild the map', () => {
+  it('constructs the map exactly ONCE across renders with a new callback each time', () => {
+    const { maplibre, capturedOptions } = createFakeMaplibre();
+    const container = document.createElement('div');
+    const containerRef: RefObject<HTMLDivElement | null> = { current: container };
+    const mapRef: RefObject<maplibregl.Map | null> = { current: null };
+    const setMapReady = () => {};
+
+    const { rerender } = renderHook(
+      ({ onMapError }: { onMapError: () => void }) =>
+        useMapInitialization({
+          maplibre,
+          containerRef,
+          centerLat: -32.5,
+          centerLng: -62.3,
+          zoom: 10,
+          mapRef,
+          setMapReady,
+          onMapError,
+        }),
+      { initialProps: { onMapError: () => {} } }
+    );
+
+    rerender({ onMapError: () => {} });
+    rerender({ onMapError: () => {} });
+    rerender({ onMapError: () => {} });
+
+    expect(capturedOptions).toHaveLength(1);
+  });
+});

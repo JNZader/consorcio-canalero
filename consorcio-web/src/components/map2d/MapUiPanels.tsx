@@ -20,6 +20,7 @@ import {
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
+import type { LayerHealth } from './layerHealth';
 import type { LayerCategory } from './map2dDerived';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 
@@ -64,6 +65,9 @@ export interface MapUiPanelsProps {
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
   /** Per-layer opacity + render-order controls (Fase 3 — Tanda B). */
   readonly layerFineControl?: LayerFineControl;
+  /** Per-family load status + "Datos al …" lines (Batch 1 — "datos honestos"). */
+  readonly layerHealth?: LayerHealth;
+  readonly layerProvenance?: Partial<Record<LayerCategory, string>>;
   readonly hasApprovedZones: boolean;
   readonly onOpenExportPng: () => void;
   readonly onExportApprovedZonesPdf: () => void;
@@ -243,6 +247,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   canalesRelevadosItems,
   canalesPropuestosItems,
   layerFineControl,
+  layerHealth,
+  layerProvenance,
   hasApprovedZones,
   onOpenExportPng,
   onExportApprovedZonesPdf,
@@ -449,6 +455,8 @@ export const MapUiPanels = memo(function MapUiPanels({
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
             layerFineControl={layerFineControl}
+            layerHealth={layerHealth}
+            layerProvenance={layerProvenance}
           />
           {showLegend && (
             <LeyendaPanel

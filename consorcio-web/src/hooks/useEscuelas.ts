@@ -60,6 +60,17 @@ export interface UseEscuelasResult {
   isLoading: boolean;
   /** True iff the fetch failed (4xx / 5xx / network). */
   isError: boolean;
+  /**
+   * User-facing failure message, `null` while healthy or loading.
+   *
+   * CAREFUL — as documented on `loadEscuelas`, the queryFn NEVER rejects: it
+   * resolves with `{ failed: true }`. Under `staleTime: Infinity` TanStack then
+   * treats the query as SUCCESSFUL and caches the failure for the entire
+   * session — no retry, no backoff. An explicit `reload()` is the ONLY recovery.
+   */
+  error: string | null;
+  /** Re-runs the fetch. See `error` — this is the only way back. */
+  reload: () => void;
 }
 
 export function useEscuelas(): UseEscuelasResult {
@@ -70,9 +81,12 @@ export function useEscuelas(): UseEscuelasResult {
   });
 
   const payload = query.data;
+  const failed = payload?.failed ?? false;
   return {
     collection: payload?.collection ?? null,
     isLoading: query.isLoading,
-    isError: payload?.failed ?? false,
+    isError: failed,
+    error: failed ? 'No se pudieron cargar las escuelas rurales' : null,
+    reload: query.refetch,
   };
 }

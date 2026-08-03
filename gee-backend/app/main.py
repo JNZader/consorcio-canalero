@@ -144,6 +144,11 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
+    # Gated by the SAME flag as the UIs. Without this, disabling /docs and
+    # /redoc still left the raw schema at /openapi.json — the whole route
+    # inventory (paths, params, models) served publicly to anyone who guessed
+    # the default URL, which is exactly what the flag exists to prevent.
+    openapi_url="/openapi.json" if settings.enable_docs else None,
 )
 
 
