@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Path as PathParam, Query
 from fastapi.responses import Response
 from rio_tiler.io import Reader
 from rio_tiler.errors import TileOutsideBounds
@@ -80,9 +80,13 @@ def _get_layer(layer_id: uuid.UUID):
 @app.get("/tiles/{layer_id}/{z}/{x}/{y}.png")
 def get_tile(
     layer_id: uuid.UUID,
-    z: int,
-    x: int,
-    y: int,
+    # Same bound the public proxy enforces (``router_core.MAX_TILE_ZOOM`` — keep
+    # the two numbers in sync). Duplicated on purpose: this service listens on
+    # its own port inside the geo-worker, so it must not depend on an upstream
+    # having validated ``z`` before ``tile_bounds_3857`` evaluates ``2 ** z``.
+    z: int = PathParam(..., ge=0, le=22),
+    x: int = PathParam(..., ge=0),
+    y: int = PathParam(..., ge=0),
     colormap: Optional[str] = Query(
         default=None,
         description="Colormap name (e.g. viridis, terrain, RdYlGn_r)",
@@ -129,8 +133,11 @@ def get_tile(
     # serve a cached tile from a different request shape.
     # v2: visual (non terrain-rgb) tiles are clipped to the consorcio zona —
     # bump so pre-clip cached renders never get served.
+    # v3: terrain-rgb nodata is feathered down to the baseline instead of being
+    # snapped to it, so every previously cached elevation tile that straddles
+    # the DEM edge still carries the vertical curtain. Bump to retire them.
     cache_key = (
-        f"v2:{layer_id}:{z}:{x}:{y}"
+        f"v3:{layer_id}:{z}:{x}:{y}"
         f":enc={encoding or '-'}"
         f":cmap={colormap or '-'}"
         f":hc={_normalise_csv(hide_classes)}"
@@ -202,6 +209,10 @@ def get_tile(
 
         elevation, valid_mask = tile_data
         baseline = _get_elevation_baseline(str(file_path))
+        # Invalid pixels get a 0.0 PLACEHOLDER here only so the smoothing
+        # kernels see a finite array; the rendered value for them is decided by
+        # ``feather_nodata_elevation`` inside ``render_terrain_rgb_png``, which
+        # ramps them down to the baseline instead of snapping them to it.
         normalized_elevation = np.where(valid_mask, elevation - baseline, 0.0)
         normalized_elevation = _smooth_elevation_tile(
             normalized_elevation,

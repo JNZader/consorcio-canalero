@@ -16,11 +16,13 @@ from rasterio.transform import from_bounds
 
 from app.domains.geo.tile_service_support import (
     CATEGORICAL_COLORS,
+    TERRAIN_NODATA_FEATHER_PX,
     TERRAIN_SMOOTHING_METHODS,
     WEB_MERCATOR_HALF_WORLD,
     bounds_intersect,
     crop_center,
     encode_terrain_rgb,
+    feather_nodata_elevation,
     get_elevation_baseline,
     read_categorical_tile,
     read_elevation_tile,
@@ -111,6 +113,72 @@ def test_render_terrain_rgb_png_produces_a_decodable_rgb_image() -> None:
     assert image.format == "PNG"
     assert image.mode == "RGB"
     assert image.size == (8, 8)
+
+
+# ── nodata feathering (vertical-curtain fix) ───────────────────────────────
+
+
+def _decode_terrain_png(png: bytes) -> np.ndarray:
+    """Decode a terrain-RGB PNG back into elevations."""
+    pixels = np.asarray(PILImage.open(io.BytesIO(png)).convert("RGB")).astype(np.float64)
+    return -10000.0 + ((pixels[..., 0] * 65536.0 + pixels[..., 1] * 256.0 + pixels[..., 2]) * 0.1)
+
+
+def test_feather_leaves_a_fully_valid_tile_untouched() -> None:
+    data = np.linspace(0.0, 50.0, 64, dtype=np.float32).reshape(8, 8)
+
+    feathered = feather_nodata_elevation(data, np.ones((8, 8), dtype=bool))
+
+    assert np.array_equal(feathered, data)
+
+
+def test_feather_of_a_fully_invalid_tile_is_the_baseline_plane() -> None:
+    data = np.full((8, 8), 33.0, dtype=np.float32)
+
+    feathered = feather_nodata_elevation(data, np.zeros((8, 8), dtype=bool))
+
+    assert np.array_equal(feathered, np.zeros((8, 8), dtype=np.float32))
+
+
+def test_feather_ramps_the_nodata_side_down_instead_of_cliffing_to_zero() -> None:
+    """The regression this fixes: nodata used to snap to the baseline (0.0),
+    which is a full-relief vertical wall at the edge of the DEM recorte."""
+    width = 4 * TERRAIN_NODATA_FEATHER_PX
+    data = np.full((8, width), 100.0, dtype=np.float32)
+    valid = np.zeros((8, width), dtype=bool)
+    valid[:, : width // 2] = True  # left half valid, right half nodata
+
+    feathered = feather_nodata_elevation(data, valid)
+
+    row = feathered[0]
+    edge = width // 2
+    # No cliff: the first nodata column is within one ramp step of the terrain.
+    step = 100.0 / TERRAIN_NODATA_FEATHER_PX
+    assert row[edge] == pytest.approx(100.0 - step, abs=0.01)
+    # Monotonically non-increasing, and the far field is the baseline plane —
+    # the same value tiles fully outside the DEM are rendered with.
+    assert np.all(np.diff(row[edge:]) <= 1e-6)
+    assert row[edge + TERRAIN_NODATA_FEATHER_PX] == pytest.approx(0.0, abs=1e-6)
+    assert row[-1] == pytest.approx(0.0, abs=1e-6)
+    # Every consecutive step in the ramp stays small (no abrupt jump anywhere).
+    assert float(np.max(np.abs(np.diff(row)))) <= step + 0.01
+    # Valid pixels are never touched.
+    assert np.array_equal(feathered[:, :edge], data[:, :edge])
+
+
+def test_rendered_terrain_tile_feathers_its_nodata_border() -> None:
+    size = 2 * TERRAIN_NODATA_FEATHER_PX
+    data = np.full((size, size), 60.0, dtype=np.float32)
+    valid = np.zeros((size, size), dtype=bool)
+    valid[:, : size // 2] = True
+
+    elevations = _decode_terrain_png(render_terrain_rgb_png(data, valid))
+
+    edge = size // 2
+    assert elevations[0, edge - 1] == pytest.approx(60.0, abs=0.05)
+    # Used to be exactly 0.0 (the curtain); now it steps down gradually.
+    assert elevations[0, edge] > 50.0
+    assert elevations[0, -1] == pytest.approx(0.0, abs=0.05)
 
 
 def test_render_terrain_rgb_png_rejects_a_fully_invalid_tile() -> None:

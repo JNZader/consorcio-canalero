@@ -5,7 +5,6 @@ from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.utils import ImageReader
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
@@ -20,6 +19,7 @@ from app.shared.pdf.builders_common import (
     build_color_legend_table,
     decode_data_url_image,
     fmt_datetime,
+    read_map_image,
 )
 
 # A4 width (210mm) minus BrandedPDF's left+right margins (1.5cm each) →
@@ -284,7 +284,9 @@ def build_approved_zoning_map_pdf(
 
     image_buffer = decode_data_url_image(image_data_url)
     if image_buffer is not None:
-        image_reader = ImageReader(image_buffer)
+        # Pixel-capped + validated BEFORE the raster is materialised; raises
+        # ImagenDemasiadoGrande / ImagenInvalida, both 422 at the HTTP layer.
+        image_reader = read_map_image(image_buffer)
         img_width, img_height = image_reader.getSize()
         max_width = 170 * mm
         max_height = 100 * mm

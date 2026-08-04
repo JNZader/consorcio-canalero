@@ -23,7 +23,12 @@ from app.domains.geo.router_common import (
     _require_operator,
     _serialize_approved_zoning,
     _validate_geojson_filename,
+    enforce_map_pdf_body_limit,
+    parse_map_pdf_body,
+    slot_de_pdf,
+    MAP_PDF_OPENAPI_EXTRA,
 )
+from app.shared.pdf.builders_common import ImagenDemasiadoGrande, ImagenInvalida
 from app.domains.geo.schemas import ApprovedZonesDeleteResponse
 
 router = APIRouter(tags=["Geo Processing"])
@@ -232,16 +237,35 @@ def export_current_approved_basin_zones_pdf(
     )
 
 
-@router.post("/basins/approved-zones/current/export-map-pdf")
+@router.post(
+    "/basins/approved-zones/current/export-map-pdf",
+    dependencies=[Depends(enforce_map_pdf_body_limit)],
+    openapi_extra=MAP_PDF_OPENAPI_EXTRA,
+)
 def export_current_map_approved_basin_zones_pdf(
-    payload: ApprovedZonesMapPdfRequest,
+    payload: ApprovedZonesMapPdfRequest = Depends(parse_map_pdf_body),
     db: Session = Depends(get_db),
 ):
-    """Export a cartographic PDF using a clean map capture plus external legends."""
+    """Export a cartographic PDF using a clean map capture plus external legends.
+
+    PUBLIC route. Four bounds stand between the caller and reportlab: the body
+    limit (413, before anything reads the stream), the per-list caps on
+    ``ApprovedZonesMapPdfRequest`` (422), the decoded-image pixel cap the builder
+    enforces (``ImagenDemasiadoGrande`` → 422), and the in-flight slot below.
+
+    ``payload`` arrives through a DEPENDENCY on purpose — a declared body
+    parameter makes FastAPI read the whole body before dependencies run, which
+    silently disables the size guard for chunked requests. See
+    ``enforce_map_pdf_body_limit``.
+    """
     from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
 
     branding = get_branding(db)
-    pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
+    try:
+        with slot_de_pdf():
+            pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
+    except (ImagenDemasiadoGrande, ImagenInvalida) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     filename = "zonificacion-aprobada-mapa.pdf"
     return StreamingResponse(
         pdf_buffer,

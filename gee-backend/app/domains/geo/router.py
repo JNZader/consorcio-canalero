@@ -5,9 +5,7 @@ import uuid
 from datetime import date  # noqa: F401 — needed for ForwardRef resolution in gee_router endpoints
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -22,16 +20,8 @@ from app.domains.geo.router_basins_bundle import (
 )
 from app.domains.geo.router_bundle_io import router as bundle_io_router
 from app.domains.geo.router_common import (
-    ApprovedZonesMapPdfRequest,
-    ApprovedZonesSaveRequest,
-    _build_approved_zoning_export,
-    _build_zonas_operativas_export,
     _get_repo,
-    _get_tile_client,
-    _get_user_display_name,
-    _require_admin,
     _require_operator,
-    _serialize_approved_zoning,
 )
 from app.domains.geo.router_core import (
     router as core_router,
@@ -58,9 +48,6 @@ from app.domains.geo.router_gee_support import (
     list_gee_layers_impl,
 )
 from app.domains.geo.router_misc_support import (
-    export_current_approved_basin_zones_pdf_impl,
-    export_current_map_approved_basin_zones_pdf_impl,
-    export_geo_bundle_impl,
     get_gee_analysis_impl,
     list_gee_analyses_impl,
     submit_gee_analysis_impl,
@@ -70,11 +57,7 @@ from app.domains.geo.schemas import (
     AnalisisGeoCreate,
     AnalisisGeoListResponse,
     AnalisisGeoResponse,
-    DemPipelineRequest,
-    DemPipelineResponse,
-    GeoJobCreate,
 )
-from app.domains.geo.service import dispatch_job
 from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
@@ -93,119 +76,14 @@ for subrouter in (
     router.include_router(subrouter)
 
 
-def submit_geo_job(
-    payload: GeoJobCreate,
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
-):
-    return dispatch_job(db, tipo=payload.tipo, parametros=payload.parametros)
-
-
-def trigger_dem_pipeline(
-    payload: DemPipelineRequest = DemPipelineRequest(),
-    db: Session = Depends(get_db),
-    _user=Depends(_require_admin()),
-):
-    from app.domains.geo.models import TipoGeoJob
-
-    job = dispatch_job(
-        db,
-        tipo=TipoGeoJob.DEM_FULL_PIPELINE,
-        parametros={
-            "area_id": payload.area_id,
-            "min_basin_area_ha": payload.min_basin_area_ha,
-        },
-    )
-    return DemPipelineResponse(job_id=job.id, tipo=job.tipo, estado=job.estado)
-
-
-def save_current_approved_basin_zones(
-    payload: ApprovedZonesSaveRequest,
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-    user=Depends(_require_operator()),
-):
-    zoning = repo.create_approved_zoning_version(
-        db,
-        nombre=payload.nombre,
-        cuenca=payload.cuenca,
-        feature_collection=payload.feature_collection,
-        assignments=payload.assignments,
-        zone_names=payload.zone_names,
-        approved_by_id=getattr(user, "id", None),
-        notes=payload.notes,
-    )
-    db.commit()
-    db.refresh(zoning)
-    return _serialize_approved_zoning(db, zoning)
-
-
-def export_geo_bundle(
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_admin()),
-):
-    return export_geo_bundle_impl(
-        db, repo, _build_zonas_operativas_export, _build_approved_zoning_export
-    )
-
-
-def export_current_approved_basin_zones_pdf(
-    cuenca: Optional[str] = Query(default=None, description="Optional filter by cuenca name"),
-    db: Session = Depends(get_db),
-    repo: GeoRepository = Depends(_get_repo),
-):
-    return export_current_approved_basin_zones_pdf_impl(cuenca, db, repo, _get_user_display_name)
-
-
-def export_current_map_approved_basin_zones_pdf(
-    payload: ApprovedZonesMapPdfRequest, db: Session = Depends(get_db)
-):
-    return export_current_map_approved_basin_zones_pdf_impl(payload, db)
-
-
-async def proxy_tile(
-    layer_id: uuid.UUID,
-    z: int,
-    x: int,
-    y: int,
-    colormap: Optional[str] = None,
-    encoding: Optional[str] = None,
-    hide_classes: Optional[str] = None,
-    hide_ranges: Optional[str] = None,
-    terrain_smoothing: Optional[str] = None,
-):
-    from app.config import settings
-
-    params = {
-        k: v
-        for k, v in {
-            "colormap": colormap,
-            "encoding": encoding,
-            "hide_classes": hide_classes,
-            "hide_ranges": hide_ranges,
-            "terrain_smoothing": terrain_smoothing,
-        }.items()
-        if v
-    }
-    try:
-        resp = await _get_tile_client().get(
-            f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png",
-            params=params,
-        )
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*"})
-    if resp.status_code == 204 or resp.status_code >= 400:
-        return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*"})
-    return Response(
-        content=resp.content,
-        media_type="image/png",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTE: this module is an AGGREGATOR. Every geo handler lives in one of the
+# sub-routers included above. Seven un-decorated copies of those handlers used
+# to sit here — never registered, never reached, and two of them were the
+# PRE-HARDENING versions (a map-PDF export with no body/image/list caps and a
+# tile proxy with no zoom bound). Re-decorating one would have restored the
+# hole. Do not reintroduce handler bodies in this file.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 gee_router = APIRouter(

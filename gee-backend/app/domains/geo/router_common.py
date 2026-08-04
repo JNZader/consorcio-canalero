@@ -1,18 +1,22 @@
 """Shared router models and helpers for the geo domain."""
 
 import json
+import threading
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 import httpx
-from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
+from starlette.requests import ClientDisconnect
 
 from app.auth.models import User
+from app.config import settings
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.models import GeoLayer
@@ -99,18 +103,174 @@ class ZoneSummaryRowRequest(BaseModel):
     color: Optional[str] = None
 
 
+# Every list on the public map-PDF request is bounded. The body limit alone is
+# not enough: 8 MiB of minimal JSON rows is still ~100 k table rows, and a
+# reportlab Table is laid out row by row. Mirrors the ficha's "cap before
+# compute" rule for a route whose compute is PDF layout instead of raster.
+_MAX_LEGEND_ITEMS = settings.geo_map_pdf_max_legend_items
+
+
 class ApprovedZonesMapPdfRequest(BaseModel):
-    title: str
-    subtitle: Optional[str] = None
+    title: str = Field(..., max_length=300)
+    subtitle: Optional[str] = Field(default=None, max_length=300)
     map_image_data_url: str = Field(..., alias="mapImageDataUrl")
-    zone_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="zoneLegend")
-    road_legend: list[MapLegendItemRequest] = Field(default_factory=list, alias="roadLegend")
-    canal_legend: list[CanalDetailRowRequest] = Field(default_factory=list, alias="canalLegend")
-    raster_legends: list[RasterLegendGroupRequest] = Field(
-        default_factory=list, alias="rasterLegends"
+    zone_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="zoneLegend", max_length=_MAX_LEGEND_ITEMS
     )
-    info_rows: list[MapInfoRowRequest] = Field(default_factory=list, alias="infoRows")
-    zone_summary: list[ZoneSummaryRowRequest] = Field(default_factory=list, alias="zoneSummary")
+    road_legend: list[MapLegendItemRequest] = Field(
+        default_factory=list, alias="roadLegend", max_length=_MAX_LEGEND_ITEMS
+    )
+    canal_legend: list[CanalDetailRowRequest] = Field(
+        default_factory=list, alias="canalLegend", max_length=_MAX_LEGEND_ITEMS
+    )
+    raster_legends: list[RasterLegendGroupRequest] = Field(
+        default_factory=list, alias="rasterLegends", max_length=_MAX_LEGEND_ITEMS
+    )
+    info_rows: list[MapInfoRowRequest] = Field(
+        default_factory=list, alias="infoRows", max_length=_MAX_LEGEND_ITEMS
+    )
+    zone_summary: list[ZoneSummaryRowRequest] = Field(
+        default_factory=list, alias="zoneSummary", max_length=_MAX_LEGEND_ITEMS
+    )
+
+
+async def enforce_map_pdf_body_limit(request: Request) -> None:
+    """413 BEFORE parsing the public map-PDF body.
+
+    Same shape as ``router_ficha.enforce_body_limit`` (JDB-007) and for the same
+    reason: the per-field caps above only fire once the whole body has been
+    deserialized, so without this a 500 MB "map capture" would be read and
+    base64-decoded in full first. A declared ``Content-Length`` over the cap is
+    refused outright; a chunked body with no ``Content-Length`` is read through
+    a counting guard that aborts at the same threshold, and the bytes read are
+    cached on the request so the parser below reuses them.
+
+    Kept local instead of importing the ficha dependency because that one is
+    wired to the ficha error envelope (``codigo``) and to a 1 MiB cap sized for
+    a drawn polygon, which a legitimate map capture exceeds.
+
+    THE ROUTE MUST NOT DECLARE A PYDANTIC BODY PARAMETER. FastAPI resolves a
+    declared body field by awaiting ``request.body()`` BEFORE it solves
+    dependencies, so by the time this runs ``request._body`` already exists and
+    the stream-counting branch below is dead code — which leaves a chunked body
+    (no ``Content-Length``) completely uncapped. Measured on fastapi 0.135.2
+    against this app: with a body param, an 8.4 MB chunked POST reached the
+    handler; without it, the same request is a clean 413. That is why the body
+    arrives through ``parse_map_pdf_body`` instead, exactly like the ficha's
+    ``payload: Any = Depends(parse_ficha_body)``.
+    """
+    maximo = settings.geo_map_pdf_max_body_bytes
+    declarado = request.headers.get("content-length")
+    if declarado is not None:
+        try:
+            if int(declarado) > maximo:
+                raise HTTPException(status_code=413, detail=f"Cuerpo mayor a {maximo} bytes")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="content-length invalido")
+
+    if hasattr(request, "_body"):
+        return
+
+    trozos: list[bytes] = []
+    leido = 0
+    try:
+        async for trozo in request.stream():
+            leido += len(trozo)
+            if leido > maximo:
+                raise HTTPException(status_code=413, detail=f"Cuerpo mayor a {maximo} bytes")
+            trozos.append(trozo)
+    except ClientDisconnect:
+        # Never let a peer that hangs up mid-body reach the generic 500 handler:
+        # that logs with ``logger.exception`` and ships a Sentry event, which
+        # turns a dropped socket into a free way to burn the error budget.
+        raise HTTPException(status_code=400, detail="Cliente desconectado") from None
+    request._body = b"".join(trozos)
+
+
+# Hand-written request schema for the map-PDF route. Because the body is parsed
+# through a dependency (see ``enforce_map_pdf_body_limit``), FastAPI cannot infer
+# it. Pydantic's default ``$defs`` refs are valid JSON Schema 2020-12, which is
+# what OpenAPI 3.1 (the version FastAPI emits) uses, so the document stays
+# self-contained — no hoisting into ``components`` needed.
+MAP_PDF_OPENAPI_EXTRA: dict = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/json": {"schema": ApprovedZonesMapPdfRequest.model_json_schema()}},
+    }
+}
+
+
+# In-flight bound for the public map-PDF build. Own semaphore, NOT the ficha's:
+# the two are unrelated public surfaces, and sharing one would let an
+# unauthenticated PDF flood starve the ficha's raster slots (and the reverse).
+# Sized independently against the pixel cap — see ``geo_map_pdf_max_concurrency``.
+# Built lazily so tests can change the setting first, mirroring
+# ``ficha_service.get_ficha_slots``.
+_pdf_slots: threading.BoundedSemaphore | None = None
+PDF_SEMAFORO_TIMEOUT_S = 2.0
+
+
+def get_map_pdf_slots() -> threading.BoundedSemaphore:
+    """The in-flight bound for map-PDF builds. Built on first use."""
+    global _pdf_slots  # noqa: PLW0603
+    if _pdf_slots is None:
+        _pdf_slots = threading.BoundedSemaphore(settings.geo_map_pdf_max_concurrency)
+    return _pdf_slots
+
+
+def reset_map_pdf_slots() -> None:
+    """Drop the cached semaphore so the next call re-reads the setting (tests)."""
+    global _pdf_slots  # noqa: PLW0603
+    _pdf_slots = None
+
+
+@contextmanager
+def slot_de_pdf() -> Iterator[None]:
+    """Bound simultaneous PDF builds; 503 on timeout.
+
+    The pixel cap bounds ONE request (~120 MB RGB worst case); without a slot
+    bound, N unauthenticated requests materialise N of those at once. The
+    handler is sync and runs on Starlette's threadpool, so this is the real
+    ceiling on concurrent image memory for this route.
+    """
+    slots = get_map_pdf_slots()
+    if not slots.acquire(timeout=PDF_SEMAFORO_TIMEOUT_S):
+        raise HTTPException(
+            status_code=503,
+            detail="Exportacion de mapa saturada, reintente en unos segundos",
+            headers={"Retry-After": str(int(PDF_SEMAFORO_TIMEOUT_S) or 1)},
+        )
+    try:
+        yield
+    finally:
+        slots.release()
+
+
+async def parse_map_pdf_body(request: Request) -> ApprovedZonesMapPdfRequest:
+    """Validate the map-PDF body AFTER the size guard, never before.
+
+    Mirrors ``router_ficha.parse_ficha_body``: validation happens here instead of
+    through a declared body parameter so that the body-limit dependency is the
+    first thing that touches the stream. Keeping this as a dependency is what
+    makes the 413 real (see ``enforce_map_pdf_body_limit``), so do NOT "simplify"
+    it back into a typed parameter on the route signature.
+    """
+    crudo = await request.body()
+    try:
+        datos = json.loads(crudo or b"null")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="El cuerpo debe ser JSON valido")
+    if not isinstance(datos, dict):
+        raise HTTPException(status_code=422, detail="El cuerpo debe ser un objeto JSON")
+    try:
+        return ApprovedZonesMapPdfRequest.model_validate(datos)
+    except ValidationError as exc:
+        primero = exc.errors()[0]
+        campo = ".".join(str(parte) for parte in primero.get("loc", ()))
+        raise HTTPException(
+            status_code=422,
+            detail=f"{campo or 'cuerpo'}: {primero.get('msg', '')}",
+        ) from exc
 
 
 _tile_client = None

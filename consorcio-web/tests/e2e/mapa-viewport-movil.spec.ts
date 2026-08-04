@@ -132,21 +132,23 @@ test.describe('Mapa en teléfono acostado (844×390)', () => {
   );
 
   test(
-    'la top bar flotante no pisa el burger',
+    'los controles de capa base viven en el Drawer, no flotando sobre el mapa',
     { tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
       requireCondition(ready, 'El shell del mapa no montó (dev server/auth no disponible)');
 
-      const burger = await page.getByTestId('map-workspace-burger').boundingBox();
-      const topBar = await page.getByTestId('map-top-bar').boundingBox();
-      expect(burger, 'el burger tiene caja').not.toBeNull();
-      expect(topBar, 'la top bar tiene caja').not.toBeNull();
-      if (burger && topBar) {
-        // `left: calc(spacing-sm + 44px + 8px)` — la top bar arranca a la
-        // derecha de la caja táctil del burger.
-        expect(topBar.x).toBeGreaterThanOrEqual(burger.x + burger.width);
-      }
+      // Antes esto medía que la top bar FLOTANTE no pisara el burger. Esa barra
+      // ya no existe en móvil: `MapaMapLibre` la renderiza sólo cuando
+      // `useMapWorkspaceDesktop()` da true, y un teléfono acostado nunca lo da
+      // (la query exige `min-height: 30.0625em`). El selector de capa base se
+      // mudó al Drawer, que es lo que se afirma acá.
+      await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
+
+      await page.getByTestId('map-workspace-burger').click();
+      await expect(
+        page.getByLabel('Seleccionar capa base')
+      ).toBeVisible({ timeout: 10000 });
     }
   );
 });
@@ -172,15 +174,17 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
     }
   );
 
-  // PRODUCT BUG uncovered by this suite's first honest run (2026-08-04): in
-  // 360×800 the canvas TOP sits at y≈442 (measured against prod: header ≈61 +
-  // title paper + satellite banner + a 149px-tall top bar stacked in 360px of
-  // width) and the canvas is 500px tall → bottom ≈942 > 800. The ≤62em height
-  // budget in map.module.css assumes ~300px of chrome above the canvas; real
-  // chrome is ~442px. Portrait needs the same chrome rework landscape got in
-  // B2-2.1 (or a compacted top bar) — that is a design change, not a test fix.
-  // fixme (NOT skip) so the red stays visible until the product bug is fixed.
-  test.fixme(
+  // Era `fixme` por un PRODUCT BUG que la primera corrida honesta de esta suite
+  // destapó (2026-08-04): en 360×800 el canvas arrancaba en y≈442 (cabecera ≈61
+  // + Paper del título + banner satelital + una top bar de 149px, porque en
+  // 360px de ancho todo envuelve) y medía 500px → terminaba en y≈942, 142px
+  // afuera. El rework portrait lo cierra con las mismas dos palancas que B2-2.1
+  // usó en horizontal, y ninguna oculta nada:
+  //   · la top bar ya no se renderiza en móvil (vive en el Drawer);
+  //   · título + banner + Reportar bajan DEBAJO del mapa con `order`.
+  // Presupuesto nuevo: `calc(100dvh - 96px)` = 61 cabecera + 12 py del
+  // Container + 12 mb del Paper del mapa + 11 de holgura.
+  test(
     'el canvas y los controles entran en el viewport sin scroll',
     { tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'] },
     async ({ page }) => {
@@ -188,6 +192,46 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       requireCondition(ready, 'El shell del mapa no montó (dev server/auth no disponible)');
 
       await expectFitsViewport(page, PORTRAIT.height);
+    }
+  );
+
+  test(
+    'el título queda DEBAJO del mapa, no oculto',
+    { tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      requireCondition(ready, 'El shell del mapa no montó (dev server/auth no disponible)');
+
+      const titulo = page.getByRole('heading', { name: 'Mapa Interactivo' });
+      // Nada se oculta: el reflow es `order`, no `display: none`. El banner
+      // satelital y el botón Reportar viajan con él (viven en el mismo Paper).
+      await expect(titulo).toBeVisible();
+
+      const canvas = await page.getByTestId('map-workspace-canvas').boundingBox();
+      const heading = await titulo.boundingBox();
+      expect(canvas, 'el canvas tiene caja').not.toBeNull();
+      expect(heading, 'el título tiene caja').not.toBeNull();
+      if (canvas && heading) {
+        expect(heading.y).toBeGreaterThan(canvas.y);
+      }
+    }
+  );
+
+  test(
+    'los controles de capa base viven en el Drawer, no flotando sobre el mapa',
+    { tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'] },
+    async ({ page }) => {
+      const ready = await gotoMapWorkspace(page);
+      requireCondition(ready, 'El shell del mapa no montó (dev server/auth no disponible)');
+
+      // Los ~149px que la top bar flotante costaba en 360px de ancho son la
+      // mitad de la deuda de altura que este bloque arregla.
+      await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
+
+      await page.getByTestId('map-workspace-burger').click();
+      await expect(
+        page.getByLabel('Seleccionar capa base')
+      ).toBeVisible({ timeout: 10000 });
     }
   );
 

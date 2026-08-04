@@ -135,8 +135,29 @@ class Settings(BaseSettings):
     # ~100x the median parcel; at 30 m that is ~222 k px/raster (< 2 MB float64).
     ficha_max_area_ha: float = 20_000.0
     # Envelope cap: blocks a thin diagonal sliver whose bbox window would blow
-    # up ``rasterio_mask(crop=True)`` even though its own area is small.
+    # up ``rasterio_mask(crop=True)`` even though its own area is small. Applies
+    # to every CALLER-SUPPLIED or caller-selected shape (poligono, parcela,
+    # parcelas, canal_buffer) — the surface an attacker controls — and stays at
+    # its original value.
     ficha_max_envelope_ha: float = 60_000.0
+    # Envelope cap for ``tipo=canal_cuenca`` ONLY. An upstream catchment is a
+    # dendritic basin: long, branched and diagonal, so its bbox is routinely
+    # 4-7x its own area, while a hand-drawn polygon of the same area is compact.
+    # At 60 000 ha the envelope cap — not the area cap — was rejecting most of
+    # the precomputed catchments (25 of 60 servible), which is a false positive:
+    # the shape is NOT caller-supplied. It is one of a fixed set of basins the
+    # ETL generates server-side, and it is already gated by
+    # ``ficha_max_area_ha`` (20 000 ha), which is the cap that actually bounds
+    # the masked pixel count.
+    #
+    # 150 000 ha admits an envelope/area ratio of 7.5 at the area cap. Worst
+    # case window: 150 000 ha = 1.5e9 m2 / 900 m2 per 30 m pixel = 1.67 Mpx,
+    # 13 MB as float64 per raster read, transient and serialized behind
+    # ``ficha_max_concurrency`` (4 per worker, 2 workers -> ~107 MB ceiling).
+    # The area cap is UNCHANGED: catchments over 20 000 ha stay oversized by
+    # design. ``etl/generate_canal_catchments.py`` mirrors this exact value via
+    # ``ficha_service.envelope_cap_ha`` so "stored implies servable" holds.
+    ficha_max_envelope_ha_cuenca: float = 150_000.0
     # Hand-drawn DrawControl polygons are < 100 vertices; 1 000 admits a pasted
     # parcel outline while bounding the ``ST_Intersection`` cost.
     ficha_max_vertices: int = 1_000
@@ -148,6 +169,26 @@ class Settings(BaseSettings):
     # Content-Length BEFORE parsing, because the vertex cap only fires after
     # the whole body is deserialized (JDB-007).
     ficha_max_body_bytes: int = 1024 * 1024
+    # ── Public cartographic PDF export (geo /basins/.../export-map-pdf) ──
+    # That route is UNAUTHENTICATED and takes a base64 map capture plus legend
+    # rows straight into reportlab. Without these two caps the body was an
+    # unbounded amplification knob: a few MB of base64 can carry a
+    # decompression-bomb PNG (PIL's own default only trips at ~178 Mpx) and a
+    # few MB of JSON can carry ~100 k legend rows into a reportlab Table.
+    # 8 MiB fits a 4k map capture base64-encoded (+33 %) with room to spare;
+    # 40 Mpx is ~4x a 4k screenshot and decodes to ~120 MB RGB worst case.
+    geo_map_pdf_max_body_bytes: int = 8 * 1024 * 1024
+    geo_map_pdf_max_image_px: int = 40_000_000
+    # Longest legend/summary list accepted per section. A real map legend has
+    # tens of rows; 500 is generous and bounds the table build.
+    geo_map_pdf_max_legend_items: int = 500
+    # In-flight bound for the PDF build. The pixel cap bounds ONE request
+    # (40 Mpx ≈ 120 MB as RGB); this bounds how many of those can be resident at
+    # the same time. PER WORKER PROCESS (module-level semaphore) — app/server.py
+    # runs uvicorn with workers=2, so the real ceiling is 2 x 2 x ~120 MB.
+    # Deliberately NOT the ficha semaphore: two unrelated public surfaces must
+    # not be able to starve each other.
+    geo_map_pdf_max_concurrency: int = 2
     # Hard bound on simultaneous raster memory: the handler is sync and runs on
     # Starlette's threadpool, and rasterio holds real memory per call. This is
     # independent of Redis availability.

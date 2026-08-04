@@ -40,6 +40,23 @@ def fmt_money(amount: Any) -> str:
         return str(amount)
 
 
+class ImagenInvalida(ValueError):
+    """A caller-supplied image is not decodable at all.
+
+    Without this the bad bytes reached reportlab and surfaced as a 500 from the
+    generic handler (plus a Sentry event) on an UNAUTHENTICATED route — a free
+    error-budget drain. The HTTP layer maps it to 422.
+    """
+
+
+class ImagenDemasiadoGrande(ValueError):
+    """A caller-supplied image decodes to more pixels than we are willing to render.
+
+    Raised (not swallowed) so the HTTP layer can answer 422 instead of letting
+    reportlab expand a decompression bomb during ``build``.
+    """
+
+
 def decode_data_url_image(data_url: str) -> io.BytesIO | None:
     """Decode a base64 data URL into an in-memory bytes buffer."""
     if not data_url or "," not in data_url:
@@ -49,6 +66,55 @@ def decode_data_url_image(data_url: str) -> io.BytesIO | None:
         return io.BytesIO(base64.b64decode(encoded))
     except Exception:
         return None
+
+
+def read_map_image(buffer: io.BytesIO):
+    """Return a reportlab ``ImageReader`` for a caller-supplied image, gated.
+
+    ORDER MATTERS. ``ImageReader`` hands the bytes to PIL and materialises the
+    raster, so the pixel cap has to be answered from the HEADER first —
+    ``PILImage.open`` is lazy and only parses metadata. Checking the size after
+    building the reader (the obvious-looking spelling) would let the bomb expand
+    before the guard ever ran.
+
+    Raises ``ImagenDemasiadoGrande`` (too many declared pixels) or
+    ``ImagenInvalida`` (undecodable); the HTTP layer maps both to 422.
+    """
+    from PIL import Image as PILImage
+    from reportlab.lib.utils import ImageReader
+
+    try:
+        with PILImage.open(buffer) as sonda:
+            width, height = sonda.size
+    except Exception as exc:
+        raise ImagenInvalida("La imagen del mapa no se pudo leer") from exc
+
+    assert_image_within_pixel_cap(width, height)
+
+    buffer.seek(0)
+    try:
+        return ImageReader(buffer)
+    except Exception as exc:
+        raise ImagenInvalida("La imagen del mapa no se pudo leer") from exc
+
+
+def assert_image_within_pixel_cap(width: int, height: int) -> None:
+    """Reject an image whose DECODED pixel count is over the cap.
+
+    The compressed size of a PNG says nothing about its decoded cost: a few
+    hundred KB of uniform pixels expands to gigabytes of RGB. PIL's own
+    decompression-bomb guard only trips around 178 Mpx, which is far past what
+    a map capture ever needs, so this checks the header dimensions BEFORE the
+    image is handed to reportlab (which decodes it during ``build``).
+    """
+    from app.config import settings
+
+    maximo = settings.geo_map_pdf_max_image_px
+    if width * height > maximo:
+        raise ImagenDemasiadoGrande(
+            f"La imagen del mapa supera el limite de {maximo} pixeles "
+            f"({width}x{height} = {width * height})"
+        )
 
 
 def build_color_legend_table(

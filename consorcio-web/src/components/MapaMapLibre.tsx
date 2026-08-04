@@ -62,7 +62,7 @@ import { LeyendaPanel } from './map2d/LeyendaPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import { MapWorkspace } from './map2d/MapWorkspace';
+import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
 import {
   type ComparisonOverlayController,
@@ -822,6 +822,10 @@ export default function MapaMapLibre() {
   /*  Render                                                                 */
   /* ---------------------------------------------------------------------- */
 
+  // Same hook `MapWorkspace` uses for the sidebar-vs-Drawer decision, so the
+  // floating top bar and the Drawer can never both own the base-layer control.
+  const isDesktop = useMapWorkspaceDesktop();
+
   // "N capas activas" indicator. It counts EXACTLY what the control panel shows
   // as rows — same derivation as the per-family badges (`buildFamilyActiveCounts`,
   // also called by `LayerControlsPanel`), so the two numbers agree by
@@ -843,30 +847,50 @@ export default function MapaMapLibre() {
     })
   );
 
-  return (
-    <Box className={styles.mapWorkspace} data-testid="map-workspace">
-      <Box
-        className={styles.mapTopBar}
-        aria-label="Selector de capa base y vista satelital"
-        data-testid="map-top-bar"
-      >
-        <MapBaseSelectorPanel
-          baseLayer={baseLayer}
-          onBaseLayerChange={setBaseLayer}
-          viewModePanel={
-            baseLayer === 'satellite' ? (
-              <ViewModePanel
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                hasSingleImage={hasSingleImage}
-                hasComparison={hasComparison}
-                singleImageInfo={singleImageInfo}
-                comparisonInfo={comparisonInfo}
-              />
-            ) : null
-          }
+  // ONE definition of the base-layer controls (capa base + the satellite view
+  // mode slot), consumed by BOTH placements below so they cannot drift: the
+  // desktop `.mapTopBar`, and — on mobile — `LayerControlsPanel`'s own "Base"
+  // section inside the Drawer. `MapBaseSelectorPanel` and `LayerControlsPanel`
+  // take the exact same three props, so the object is spread into either one.
+  const baseControls = {
+    baseLayer,
+    onBaseLayerChange: setBaseLayer,
+    viewModePanel:
+      baseLayer === 'satellite' ? (
+        <ViewModePanel
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          hasSingleImage={hasSingleImage}
+          hasComparison={hasComparison}
+          singleImageInfo={singleImageInfo}
+          comparisonInfo={comparisonInfo}
         />
-      </Box>
+      ) : null,
+  };
+
+  return (
+    <Box
+      className={styles.mapWorkspace}
+      data-testid="map-workspace"
+      /* Published so the stylesheet can collapse the grid's first (top bar)
+         row when the bar is not rendered — otherwise the `auto` row plus the
+         `gap` leave 12px of dead space above the canvas on mobile. */
+      data-topbar={isDesktop ? 'true' : 'false'}
+    >
+      {/* Desktop ONLY. On mobile the very same controls live in the layers
+          Drawer (see the `controls` tree below): a floating bar over a 360px
+          canvas cost ~149px of map and duplicated a control the Drawer already
+          owns. Both branches read `baseControls`, so there is exactly one
+          definition of what "base layer controls" means. */}
+      {isDesktop && (
+        <Box
+          className={styles.mapTopBar}
+          aria-label="Selector de capa base y vista satelital"
+          data-testid="map-top-bar"
+        >
+          <MapBaseSelectorPanel {...baseControls} />
+        </Box>
+      )}
 
       <MapWorkspace
         activeLayerCount={activeLayerCount}
@@ -1050,6 +1074,13 @@ export default function MapaMapLibre() {
           <Stack gap="sm" data-testid="map-controls-tree">
             <LayerControlsPanel
               insideScrollContainer
+              /* Mobile ONLY. `LayerControlsPanel` renders the "Capa base"
+                 selector and the `viewModePanel` slot only when these props are
+                 defined, so spreading them exclusively on !isDesktop is what
+                 keeps EXACTLY ONE base-layer control on screen: the floating
+                 `.mapTopBar` owns it on desktop, the Drawer owns it here. Same
+                 `baseControls` either way. */
+              {...(isDesktop ? {} : baseControls)}
               layerItems={vectorLayerItems}
               vectorVisibility={vectorVisibility}
               onLayerVisibilityChange={toggleLayer}

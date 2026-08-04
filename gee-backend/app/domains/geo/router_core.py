@@ -7,6 +7,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,16 @@ from app.domains.geo.service import dispatch_job
 from app.shared.pagination import PaginatedResponse
 
 router = APIRouter(tags=["Geo Processing"])
+
+# Deepest XYZ zoom the public tile proxy will forward. Web-Mercator tiles stop
+# being meaningful long before this (z22 ≈ 4 cm/px at the equator) and every
+# raster we publish is 30 m/px; the bound exists to keep ``2 ** z`` — computed
+# downstream to derive the tile bounds — out of caller control.
+#
+# DUPLICATED ON PURPOSE in ``tile_service.py`` (the geo-worker tile service is a
+# SEPARATE process listening on its own port, so it cannot import this and must
+# not trust an upstream). If you change this number, change that one too.
+MAX_TILE_ZOOM = 22
 
 PUBLIC_TILE_CAPABLE_TYPES = {
     "dem_raw",
@@ -323,9 +334,9 @@ def trigger_dem_pipeline(
 @router.get("/layers/{layer_id}/tiles/{z}/{x}/{y}.png")
 async def proxy_tile(
     layer_id: uuid.UUID,
-    z: int,
-    x: int,
-    y: int,
+    z: int = PathParam(..., ge=0, le=MAX_TILE_ZOOM),
+    x: int = PathParam(..., ge=0),
+    y: int = PathParam(..., ge=0),
     colormap: Optional[str] = Query(default=None),
     encoding: Optional[str] = Query(default=None),
     hide_classes: Optional[str] = Query(default=None),
@@ -339,10 +350,23 @@ async def proxy_tile(
 
     Public endpoint — Leaflet TileLayer cannot set custom auth headers
     on tile requests, and DEM tiles are not sensitive data.
+
+    z/x/y are BOUNDED here. This route is public AND exempt from the global
+    rate limiter (``DistributedRateLimitMiddleware`` skips any path containing
+    ``/tiles/``, because tiles are high-volume), so an unbounded ``z`` was an
+    unauthenticated, unthrottled amplification knob: the tile service computes
+    ``2 ** z`` to derive the mercator bounds, and a caller-chosen exponent in
+    the billions turns that into a multi-hundred-MB bigint on the geo-worker.
+    Zoom 22 is already ~4 cm/px — far past any DEM product we serve.
     """
     from app.config import settings
 
     _cors = {"Access-Control-Allow-Origin": "*"}
+
+    # x/y must be inside the pyramid for this zoom; outside is "no tile here",
+    # which is exactly what the upstream answers for an out-of-bounds tile.
+    if x >= 2**z or y >= 2**z:
+        return Response(status_code=204, headers=_cors)
 
     # Build the upstream URL
     params = {}
