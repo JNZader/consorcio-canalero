@@ -49,6 +49,8 @@ describe('classifyMapError · extraction', () => {
     expect(classified).toEqual({
       kind: 'tile',
       sourceId: 'dem-tiles',
+      // No serialized `source` travels with this event → type unknown (B4c/T4).
+      sourceType: null,
       status: 404,
       url: 'https://tiles.example/1/2/3.png',
       message: 'AJAXError: Not Found (404)',
@@ -86,5 +88,48 @@ describe('classifyMapError · null safety', () => {
   it('handles an event with no `error` field at all', () => {
     expect(classifyMapError({}).kind).toBe('other');
     expect(classifyMapError({}).message).toBe('');
+  });
+});
+
+/**
+ * B4c/T4 (RES-003) — the source TYPE is what tells a one-shot `image` source
+ * (the IGN overlay: one WebP for the whole extent) apart from a mosaic source
+ * that fails one tile at a time. `Style.addSource` merges
+ * `{ sourceId, source: sourceCache.serialize() }` into every event a source
+ * fires, so the type travels with the failure.
+ */
+describe('classifyMapError · source type (B4c/T4)', () => {
+  it('reads the type off the serialized `source`', () => {
+    const classified = classifyMapError({
+      sourceId: 'map2d-ign-overlay',
+      source: { type: 'image', url: '/assets/ign.webp' },
+      error: Object.assign(new Error('Not Found'), { name: 'AJAXError', status: 404 }),
+    });
+
+    expect(classified.sourceType).toBe('image');
+    expect(classified.sourceId).toBe('map2d-ign-overlay');
+    expect(classified.status).toBe(404);
+  });
+
+  it('falls back to the source id inside `source` when the event has no `sourceId`', () => {
+    const classified = classifyMapError({
+      source: { id: 'map2d-dem-raster', type: 'raster' },
+      error: new Error('AJAXError'),
+    });
+
+    expect(classified.sourceId).toBe('map2d-dem-raster');
+    expect(classified.sourceType).toBe('raster');
+  });
+
+  it('accepts a bare `sourceType` field when no serialized source travels', () => {
+    expect(
+      classifyMapError({ sourceType: 'vector', error: new Error('AJAXError') }).sourceType
+    ).toBe('vector');
+  });
+
+  it('is null when nothing names a type, and never throws on a junk source', () => {
+    expect(classifyMapError({ error: new Error('AJAXError') }).sourceType).toBeNull();
+    expect(classifyMapError({ source: 'nope', error: new Error('x') }).sourceType).toBeNull();
+    expect(classifyMapError({ source: { type: 7 }, error: new Error('x') }).sourceType).toBeNull();
   });
 });

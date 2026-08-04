@@ -335,6 +335,9 @@ describe('useMapInitialization — onMapError', () => {
     expect(onMapError).toHaveBeenCalledWith({
       kind: 'tile',
       sourceId: 'dem-tiles',
+      // This event carries no serialized `source`, so the type is unknown and
+      // the mosaic threshold applies as before (B4c/T4).
+      sourceType: null,
       status: 404,
       url: 'https://tiles.example/1/2/3.png',
       message: 'AJAXError: Not Found (404)',

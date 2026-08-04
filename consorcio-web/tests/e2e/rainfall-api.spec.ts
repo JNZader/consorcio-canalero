@@ -1,14 +1,22 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
 const API_BASE = 'http://localhost:8000/api/v2';
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123';
+// NO DEFAULTS (B4c fix round, RISK-001): the committed `e2e@test.com` /
+// `e2etest123` pair is gone. A default turns "the environment is not configured"
+// into "we tried a well-known password against your backend" — and it made the
+// no-hardcoded-credentials rule of `helpers/auth.ts` decorative.
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 
 async function getAuthToken(request: APIRequestContext): Promise<string> {
+  test.skip(
+    !ADMIN_EMAIL || !ADMIN_PASSWORD,
+    '[datos/credenciales] set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD'
+  );
   // fastapi-users usa OAuth2PasswordRequestForm (form-urlencoded)
   const formData = new URLSearchParams();
-  formData.append('username', ADMIN_EMAIL);
-  formData.append('password', ADMIN_PASSWORD);
+  formData.append('username', ADMIN_EMAIL!);
+  formData.append('password', ADMIN_PASSWORD!);
 
   const res = await request.post(`${API_BASE}/auth/jwt/login`, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

@@ -23,7 +23,11 @@ import { useEffect, useState } from 'react';
 
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import styles from '../../styles/components/map.module.css';
-import { type CanalToggleEntry, collectCanalChildIds } from '../shared/canalesGrouping';
+import {
+  type CanalToggleEntry,
+  collectCanalChildIds,
+  type EtapaGate,
+} from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
   IconChartBar,
@@ -123,6 +127,25 @@ interface LayerControlsPanelProps {
    */
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
+  /**
+   * Etapas filter, for the Canales badge (B4c/T3). The map stops drawing the
+   * propuestos of an unchecked etapa, so counting them made the badge lie —
+   * the same "60 vs 41" as the master gate, through the legend's filter.
+   *
+   * EVERY PRODUCTION CALLER MUST PASS IT. Build it with `selectEtapaGate`
+   * (`useMapLayerSyncStore(selectEtapaGate)`) so its identity stays stable and
+   * this memoised panel does not re-render on every store notification.
+   *
+   * The `null` default is deliberate but NARROW: it exists for fixtures and
+   * tests that render the panel with no store behind it, where "no filter" is
+   * the truth. It is NOT required (unlike the 4th argument of
+   * `collectCanalChildIds`, which IS) because a required prop here would force
+   * every existing test render — and the two unrelated render sites in
+   * `MapUiPanels`/`MapaMapLibre` — to thread a value they may not have; the
+   * REQUIRED gate lives one level down, at the derivation itself, which is the
+   * one place a new call site cannot bypass.
+   */
+  readonly etapaGate?: EtapaGate | null;
   /**
    * Fine-grained per-layer opacity + render-order controls (Fase 3 — Tanda B).
    * Optional: when omitted, a no-op default keeps the panel identical to its
@@ -388,6 +411,7 @@ export function LayerControlsPanel({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
+  etapaGate = null,
   layerFineControl = NOOP_FINE_CONTROL,
   pilarVerdeLayersLoading = false,
   pilarVerdeLayersError = null,
@@ -416,7 +440,8 @@ export function LayerControlsPanel({
   const canalesChildIds = collectCanalChildIds(
     canalesRelevadosItems,
     canalesPropuestosItems,
-    vectorVisibility
+    vectorVisibility,
+    etapaGate
   );
   // Fix 3 (T3c): per-family badges and the workspace "N capas activas" badge now
   // share ONE derivation, so they cannot disagree.
