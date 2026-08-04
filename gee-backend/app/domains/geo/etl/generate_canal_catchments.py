@@ -25,7 +25,8 @@ per canal mirrors the pour-points build in
    miscall this whole feature was blocked on).
 3. Polygonize the basins raster, dissolve to one MultiPolygon, measure ``area_ha``
    in EPSG:32720 (the projection the whole ficha uses).
-4. Simplify the dissolved basin (topology-preserving, 8 m in EPSG:32720) so the
+4. Simplify the dissolved basin (topology-preserving, at
+   :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M` in EPSG:32720) so the
    raw pixel-boundary staircase — whose vertex count scales with basin perimeter
    and routinely blows past ``settings.ficha_max_vertices`` — collapses to a
    low-vertex outline; then gate the SIMPLIFIED geometry against EVERY read-path
@@ -46,13 +47,17 @@ per canal mirrors the pour-points build in
 5. UPSERT onto ``(canal_ref, variante)``.
 
 **V1 flow_dir policy — one base raster for all 60 canals.** The consorcio manages
-41 relevados + 19 propuestos; v1 computes EVERY catchment against the base/relevado
-``flow_dir_{area}`` raster — the operational drainage with the relevado canals
-burned in. It is NOT the natural drainage and NOT a per-canal escenario raster; the
-propuesto-against-escenario refinement is deferred. ``variante`` is kept as a
-column but stamped with the single v1 value :data:`V1_VARIANTE` (``relevado``). The
-``--estado`` flag only scopes WHICH ``canal_consorcio`` rows are processed; it does
-not change the raster or the stored ``variante``.
+41 relevados + 19 propuestos; v1 computes EVERY catchment against the NATURAL
+``natural_flow_dir_{area}`` raster — the drainage of the terrain WITHOUT any canal
+burned in. That is a deliberate deployment choice, not a shortcut: the operator
+distrusts stream burning, so the burned/relevado and escenario variants were pruned
+and natural is the only registered, trusted base (see
+:func:`_flow_dir_layer_names`, which prefers it and keeps the bare
+``flow_dir_{area}`` only as a fallback for a deployment that registered just the
+base raster). The per-canal escenario refinement is deferred. ``variante`` is kept
+as a column but stamped with the single v1 value :data:`V1_VARIANTE` (``natural``).
+The ``--estado`` flag only scopes WHICH ``canal_consorcio`` rows are processed; it
+does not change the raster or the stored ``variante``.
 
 **Resumable + idempotent (the ``version`` key).** ``version`` is the id of the
 ``flow_dir`` ``geo_layers`` row the catchment was derived from. A fresh terrain
@@ -67,11 +72,15 @@ Progress is committed per canal, so a crash mid-run leaves every finished canal
 persisted and a re-run picks up where it stopped. ``--limit`` / ``--canal-ref``
 scope a test run.
 
-``--force`` overrides the skip. The version key tracks the POINTER, not the
-caps, so after a cap change (the batch-4 envelope widening) a plain re-run would
-skip all 60 rows and keep the previous ``oversized`` verdicts. Re-gating stored
-catchments against new caps therefore requires
-``python -m app.domains.geo.etl.generate_canal_catchments --force``.
+``--force`` overrides the skip. The version key tracks the POINTER, and NOTHING
+else: the read-path caps AND :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M` both live
+OUTSIDE it. So after a cap change (the batch-4 envelope widening) or a tolerance
+change (batch 4d, 8 m → 20 m) a plain re-run skips all 60 rows and keeps the
+previous ``oversized`` verdicts and the previously stored geometries — the new
+value is INERT until the rows are recomputed. Re-gating stored catchments against
+new caps or a new tolerance therefore requires
+``python -m app.domains.geo.etl.generate_canal_catchments --force``, once, by hand
+(the weekly cron in ``deploy/etl-refresh.sh`` deliberately does NOT pass it).
 
 Exit codes:
     0  success — every in-scope canal computed or skipped, no failures
@@ -131,12 +140,29 @@ M2_PER_HA = 10_000.0
 #: Topology-preserving simplify tolerance (metres, EPSG:32720) applied to the
 #: dissolved catchment BEFORE it is measured, cap-gated and stored. The raw basin
 #: is a pixel-boundary staircase whose vertex count scales with basin perimeter —
-#: so any real basin exceeds ``settings.ficha_max_vertices`` (1000). Simplifying at
-#: 8 m (the SAME tolerance the soils on-map overlay uses in
-#: ``ficha_service._SUELOS_OVERLAY_SQL``, well below the flow_dir grid's visible
-#: detail so basin boundaries stay faithful) collapses the staircase and keeps a
-#: stored catchment servable.
-CATCHMENT_SIMPLIFY_TOLERANCE_M = 8.0
+#: so any real basin exceeds ``settings.ficha_max_vertices`` (1000), and the
+#: staircase has to be collapsed before the read-path caps are measured.
+#:
+#: WHY 20 m AND NOT THE 8 m THIS STARTED AT (batch 4d). The per-motivo breakdown
+#: `_read_path_cap_report` added turned "35 oversized" into a measurement:
+#: ``{area: 16, envelope: 0, vertices: 35}``. Read it carefully — envelope is
+#: ZERO, so the envelope cap rejects NOTHING; all 35 fail the vertex cap, and 19
+#: of them have a perfectly sane area (only 16 are genuinely too big by area).
+#: Those 19 are rescuable, and the ONE thing standing between them and a servable
+#: geometry is vertex count post-simplify. 8 m was inherited from the soils
+#: on-map overlay (``ficha_service._SUELOS_OVERLAY_SQL``), where the polygons are
+#: small parcels; a canal catchment is a basin of THOUSANDS of hectares, and at
+#: the zoom levels a whole-basin ficha is ever drawn at, 20 m of boundary
+#: displacement is well under one screen pixel — visually invisible, and still
+#: below the flow_dir grid's own cell size (the DEM is COPERNICUS/DEM/GLO30, so
+#: the staircase steps are ~30 m), meaning we are shaving rasterization noise,
+#: not real basin shape. Raising the tolerance is the cheap lever precisely because it does
+#: NOT touch any cap: ``ficha_max_vertices`` and the area/envelope caps stay
+#: exactly where they are, so the "stored ⟹ servable" invariant enforced by the
+#: cap mirror in `_read_path_cap_report` is untouched. The lesson from the
+#: breakdown: relaxing the envelope cap (the intuitive first guess) would have
+#: rescued zero canals.
+CATCHMENT_SIMPLIFY_TOLERANCE_M = 20.0
 
 #: Log a heartbeat every this many canals.
 LOG_EVERY = 50
@@ -367,7 +393,9 @@ def _simplify_catchment(dissolved: Any) -> tuple[Any, float]:
     """Topology-preserving simplify of a dissolved catchment, in its metric CRS.
 
     ``dissolved`` is a (Multi)Polygon in EPSG:32720. Collapses the pixel staircase
-    at :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M`, heals any simplify self-touch with
+    at :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M` (catchment-only: this tolerance is
+    NOT shared with any other consumer — the soils overlay keeps its own 8 m in
+    ``ficha_service``), heals any simplify self-touch with
     ``buffer(0)``, and re-coerces to MultiPolygon. Returns ``(simplified, area_ha)``
     measured on the SIMPLIFIED geometry (the value that is stored and gated). Falls
     back to the raw geometry if simplify degenerates to empty (never expected for a
@@ -541,8 +569,10 @@ def generate_catchments(
 ) -> BatchResult:
     """Precompute (or refresh) curated-canal catchments for ``area_id``.
 
-    Every catchment is computed against the base/relevado ``flow_dir_{area}`` raster
-    and stamped with :data:`V1_VARIANTE`. ``estado`` optionally scopes which
+    Every catchment is computed against the NATURAL ``natural_flow_dir_{area}``
+    raster (terrain without canals burned in — this deployment pruned the burned
+    variants; ``flow_dir_{area}`` is only a fallback) and stamped with
+    :data:`V1_VARIANTE` (``natural``). ``estado`` optionally scopes which
     ``canal_consorcio`` rows are processed (it does not change the raster or the
     stored variante).
 
@@ -770,7 +800,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Precomputa la cuenca hidrologica aguas-arriba de cada canal curado "
             "del consorcio (canal_catchment) usando WBT watershed sobre el puntero "
-            "D8 flow_dir base/relevado."
+            "D8 flow_dir NATURAL (terreno sin canales quemados)."
         ),
     )
     parser.add_argument(
@@ -800,8 +830,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Recalcular incluso las cuencas ya almacenadas para esta version de "
-        "flow_dir. Necesario cuando cambian los CAPS (no el puntero): sin esto "
-        "el resume las omite y se conserva el veredicto oversized anterior.",
+        "flow_dir. Necesario cuando cambian los CAPS o la TOLERANCIA de simplify "
+        "(no el puntero): sin esto el resume las omite, el valor nuevo queda "
+        "INERTE y se conserva el veredicto oversized anterior.",
     )
     return parser
 

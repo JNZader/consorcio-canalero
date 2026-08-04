@@ -1,0 +1,20 @@
+[Unit]
+Description=Consorcio Canalero — weekly geo ETL refresh (Sundays 03:00)
+Documentation=file:/home/javier/programacion/consorcio-canalero/deploy/README-etl-cron.md
+
+[Timer]
+Unit=etl-refresh.service
+# Sunday 03:00 local time: no user traffic, and a full day of margin before the
+# week starts in case the run needs a look.
+OnCalendar=Sun *-*-* 03:00:00
+# Catch-up: if the box was off (or the unit was masked) when the timer should
+# have fired, run it once at the next boot instead of skipping the week. This is
+# the whole point — the data went 2.5 months stale by silently not running.
+Persistent=true
+# Spread the start over 5 minutes so the refresh never lands exactly on top of
+# the 03:00 backup/beat crontabs.
+RandomizedDelaySec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
