@@ -668,3 +668,83 @@ def test_area_cap_is_untouched_by_the_envelope_relaxation() -> None:
     with pytest.raises(FichaError) as exc:
         assert_within_caps(geom, tipo="canal_cuenca")
     assert exc.value.extra["cap"] == "area_ha"
+
+
+# ── per-``tipo`` VERTEX cap: the 7 dendritic catchments the 20 m simplify left ─
+#
+# After the simplify tolerance went to 20 m, prod still had 7 catchments blocked
+# by the vertex cap ALONE — 1 008 to 1 883 vertices against the 1 000 cap, all of
+# them (11.4k-19.2k ha) well under the area cap. Same move as the envelope: a
+# wider cap for ``canal_cuenca`` ONLY, because that shape is precomputed
+# server-side, never caller-supplied.
+
+
+def _disc_32720(vertices: int, radio_m: float = 300.0):
+    """A compact disc in EPSG:32720 with ~``vertices`` boundary points.
+
+    Small on purpose: area and envelope stay far under their caps, so the VERTEX
+    cap is the only rule that can fire.
+    """
+    from shapely.geometry import Point
+
+    # ``buffer`` emits 4 * quad_segs segments + the closing point.
+    return Point(500_000.0, 6_000_000.0).buffer(radio_m, quad_segs=max(1, vertices // 4))
+
+
+def test_vertices_cap_is_wider_for_canal_cuenca_only() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_service import vertices_cap
+
+    assert vertices_cap("canal_cuenca") == settings.ficha_max_vertices_cuenca
+    for tipo in ("poligono", "parcela", "parcelas", "canal_buffer"):
+        assert vertices_cap(tipo) == settings.ficha_max_vertices
+    assert settings.ficha_max_vertices_cuenca > settings.ficha_max_vertices
+
+
+def test_vertices_cap_falls_back_to_the_strict_cap_for_an_unknown_tipo() -> None:
+    """Fail closed: only the exact ``canal_cuenca`` string buys the wider cap."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import vertices_cap
+
+    for tipo in ("", "cuenca", "CANAL_CUENCA", "canal_cuenca ", "desconocido"):
+        assert vertices_cap(tipo) == settings.ficha_max_vertices
+
+
+def test_catchment_over_the_old_vertex_cap_is_now_accepted() -> None:
+    """The 7 dendritic basins: 1 500 vertices used to be a 422 on vertices alone."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import _contar_vertices_shapely, assert_within_caps
+
+    geom = _disc_32720(1_500)
+    vertices = _contar_vertices_shapely(geom)
+    assert settings.ficha_max_vertices < vertices <= settings.ficha_max_vertices_cuenca
+
+    assert_within_caps(geom, tipo="canal_cuenca")  # no raise
+
+
+def test_caller_supplied_polygon_keeps_the_original_vertex_cap() -> None:
+    """The relaxation must NOT widen the attacker-controlled surface."""
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import assert_within_caps
+
+    geom = _disc_32720(1_500)
+
+    for tipo in ("poligono", "parcela"):
+        with pytest.raises(FichaError) as exc:
+            assert_within_caps(geom, tipo=tipo)
+        assert exc.value.extra["cap"] == "vertices"
+        assert exc.value.extra["limite"] == settings.ficha_max_vertices
+
+
+def test_catchment_over_the_new_vertex_cap_is_still_rejected() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import assert_within_caps
+
+    geom = _disc_32720(settings.ficha_max_vertices_cuenca * 2)
+
+    with pytest.raises(FichaError) as exc:
+        assert_within_caps(geom, tipo="canal_cuenca")
+    assert exc.value.extra["cap"] == "vertices"
+    assert exc.value.extra["limite"] == settings.ficha_max_vertices_cuenca
