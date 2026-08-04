@@ -367,6 +367,140 @@ def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
     assert row.npoints <= settings.ficha_max_vertices
 
 
+# ── B4d: the simplify tolerance is the lever that rescues the vertex-capped ──
+#
+# The per-motivo breakdown of the prod re-run measured
+# ``{area: 16, envelope: 0, vertices: 35}``: EVERY oversized catchment fails the
+# vertex cap, the envelope cap rejects nothing at all, and 19 of the 35 have a
+# perfectly sane area. Those 19 are rescuable by simplifying harder — WITHOUT
+# moving any cap, so the "stored ⟹ servable" invariant is untouched.
+
+#: Cell size of the flow_dir grid (COPERNICUS/DEM/GLO30), in metres.
+_FLOW_DIR_CELL_M = 30.0
+#: The tolerance this ETL used before B4d, still used by the soils on-map overlay.
+_LEGACY_SOILS_TOLERANCE_M = 8.0
+
+
+def _pixel_staircase_basin(radius_m: float = 3000.0):
+    """A REALISTIC raw catchment: a lobed basin traced as a pixel staircase.
+
+    ``_HIGH_VERTEX_POLY`` is a smooth disc, and a smooth disc simplifies the same
+    at 8 m and at 20 m — it cannot show what the tolerance change buys. A real
+    watershed boundary is the outline of a set of ``_FLOW_DIR_CELL_M`` cells: an
+    orthogonal staircase whose every corner sits ~half a cell off the underlying
+    curve. That is the shape the vertex cap actually rejects.
+    """
+    import math
+
+    from shapely.geometry import Polygon as _Polygon
+
+    ring: list[tuple[float, float]] = []
+    prev: tuple[float, float] | None = None
+    samples = 12_000
+    for k in range(samples + 1):
+        theta = 2 * math.pi * k / samples
+        r = radius_m * (1 + 0.35 * math.sin(9 * theta))
+        x = round(r * math.cos(theta) / _FLOW_DIR_CELL_M) * _FLOW_DIR_CELL_M
+        y = round(r * math.sin(theta) / _FLOW_DIR_CELL_M) * _FLOW_DIR_CELL_M
+        if prev == (x, y):
+            continue
+        if prev is not None and x != prev[0] and y != prev[1]:
+            # Diagonal moves do not exist on a pixel boundary: insert the corner.
+            ring.append((500_000 + x, 6_000_000 + prev[1]))
+        ring.append((500_000 + x, 6_000_000 + y))
+        prev = (x, y)
+    return _Polygon(ring).buffer(0)
+
+
+def test_catchment_simplify_tolerance_is_20m_and_is_catchment_only() -> None:
+    """Pins the B4d decision so a future "unify the tolerances" refactor has to
+    read the rationale first: 20 m is NOT the soils overlay's 8 m, on purpose."""
+    assert gcc.CATCHMENT_SIMPLIFY_TOLERANCE_M == 20.0
+    assert gcc.CATCHMENT_SIMPLIFY_TOLERANCE_M > _LEGACY_SOILS_TOLERANCE_M
+    # Still under one flow_dir cell: we shave rasterization noise, not real shape.
+    assert gcc.CATCHMENT_SIMPLIFY_TOLERANCE_M < _FLOW_DIR_CELL_M
+
+
+def test_simplify_clears_a_staircase_the_old_8m_left_over_the_vertex_cap() -> None:
+    """The measured "vertices: 35" case, reproduced: at 8 m the staircase stays
+    over ``ficha_max_vertices`` (⇒ oversized, geometry dropped); at the current
+    tolerance it drops under the cap and the basin becomes servable — with the
+    cap untouched and the area preserved."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import _contar_vertices_shapely
+
+    raw = _pixel_staircase_basin()
+    raw_area_ha = raw.area / gcc.M2_PER_HA
+
+    at_8m = raw.simplify(_LEGACY_SOILS_TOLERANCE_M, preserve_topology=True).buffer(0)
+    assert _contar_vertices_shapely(at_8m) > settings.ficha_max_vertices
+
+    simplified, area_ha = gcc._simplify_catchment(raw)
+    assert _contar_vertices_shapely(simplified) <= settings.ficha_max_vertices
+    # Boundary displacement only: the basin keeps its size (well under 1 %).
+    assert area_ha == pytest.approx(raw_area_ha, rel=0.01)
+
+
+def test_a_small_basin_keeps_its_area_within_the_measured_drift_bound() -> None:
+    """The big-basin fidelity assertion is not enough on its own.
+
+    ``area_ha`` is SHOWN in the ficha, and a 20 m shave costs proportionally more
+    on a small basin than on a 3 000 ha one: the same boundary displacement is a
+    larger fraction of a smaller area. A test that only checks a 3 000 ha basin
+    would let a small-catchment area regression through unseen.
+
+    The bound is MEASURED, not invented. Drift at 20 m across staircase basins of
+    the same shape (Shapely, 30 m cells): 2 ha → 2.27 %, 7 ha → 1.83 %,
+    13.5 ha → 1.33 %, 29 ha → 0.31 %, 120 ha → 0.63 %, 3 000 ha → 0.00 %. It stays
+    single-digit-percent all the way down and never degenerates, which is why the
+    tolerance is a single constant and not staggered by basin size.
+    """
+    raw = _pixel_staircase_basin(radius_m=200.0)
+    raw_area_ha = raw.area / gcc.M2_PER_HA
+    # Guard the fixture itself: this must stay a SMALL basin for the test to mean
+    # anything (the measured case is ~13.5 ha).
+    assert 10.0 < raw_area_ha < 15.0
+
+    simplified, area_ha = gcc._simplify_catchment(raw)
+
+    assert not simplified.is_empty
+    assert simplified.is_valid
+    drift = abs(area_ha - raw_area_ha) / raw_area_ha
+    assert drift < 0.02, f"small-basin area drift {drift:.2%} over the 2 % measured bound"
+
+
+def test_staircase_basin_is_stored_servable_and_reported_with_no_motivo(
+    catchment_db: Session,
+) -> None:
+    """End to end: one of the rescued 19. It is computed, NOT oversized, keeps its
+    geometry under the read-path caps, and the per-motivo breakdown stays all-zero
+    (the reporting added in T6 keeps working with the new tolerance)."""
+    from app.config import settings
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-staircase")
+
+    basin = _pixel_staircase_basin()
+    result = _run(catchment_db, _RecordingWbt(), _shapes_returning(basin))
+
+    assert result.computed == 1
+    assert result.oversized == 0
+    assert set(result.oversized_por_motivo) == set(gcc.CAP_MOTIVOS)
+    assert sum(result.oversized_por_motivo.values()) == 0
+
+    row = catchment_db.execute(
+        text(
+            "SELECT oversized, geometria IS NULL AS geom_null, "
+            "ST_NPoints(geometria) AS npoints, area_ha "
+            "FROM canal_catchment WHERE canal_ref = 'canal-staircase' AND variante = 'natural'"
+        )
+    ).one()
+    assert row.oversized is False
+    assert row.geom_null is False
+    assert row.npoints <= settings.ficha_max_vertices
+    assert float(row.area_ha) == pytest.approx(basin.area / gcc.M2_PER_HA, rel=0.01)
+
+
 def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:
     _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-a")
