@@ -103,6 +103,14 @@ interface MapPanelShellProps {
    * a fresh selection always opens small (T3a, fix 3).
    */
   readonly resetKey?: unknown;
+  /**
+   * Stage the SHEET opens at (and resets to on a new selection). Defaults to
+   * 'peek'. The ficha passes 'medio': the user just ASKED for this content by
+   * tapping a parcel, and a one-row peek that needs a second (undiscoverable)
+   * gesture to show anything was the top complaint from real-device testing.
+   * The incidental InfoPanel keeps 'peek' — nobody asked for it.
+   */
+  readonly initialStage?: SheetStage;
   readonly children: ReactNode;
 }
 
@@ -118,9 +126,10 @@ export function MapPanelShell({
   pillLabel,
   pillClassName,
   resetKey,
+  initialStage = 'peek',
   children,
 }: MapPanelShellProps) {
-  const [stage, setStage] = useState<SheetStage>('peek');
+  const [stage, setStage] = useState<SheetStage>(initialStage);
 
   // A new selection reuses the same mounted shell, so the stage has to be reset
   // explicitly — otherwise clicking a second parcel would open at whatever cap
@@ -131,7 +140,7 @@ export function MapPanelShell({
   const [lastResetKey, setLastResetKey] = useState(resetKey);
   if (lastResetKey !== resetKey) {
     setLastResetKey(resetKey);
-    setStage('peek');
+    setStage(initialStage);
   }
 
   const canMinimize = !!onToggleMinimize;
