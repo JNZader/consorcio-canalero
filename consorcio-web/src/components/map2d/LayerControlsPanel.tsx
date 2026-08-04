@@ -150,6 +150,21 @@ interface LayerControlsPanelProps {
    * families with a REAL `generated_at` appear — see `layerProvenance.ts`.
    */
   readonly layerProvenance?: Partial<Record<LayerCategory, string>>;
+  /**
+   * AUD-005 (T5) — set when an ANCESTOR already owns a scroll area (the
+   * `MapWorkspace` sidebar body on desktop, the layers Drawer on mobile).
+   *
+   * The panel then renders UNBOUNDED: no viewport-derived `maxHeight`, no
+   * `overflow`. Keeping its own bounded scroll inside a scrolling container
+   * produced three nested scroll areas (sidebar → controls → legend); with a few
+   * toggles on, the legend was pushed below the fold of a viewport-height box
+   * that itself lived inside another scroller, and the wheel/touch gesture got
+   * trapped in whichever one happened to be under the pointer.
+   *
+   * Default `false` — the FLOATING variant (`MapUiPanels`) has no scrolling
+   * ancestor, so there the panel's own bound is what keeps it on screen.
+   */
+  readonly insideScrollContainer?: boolean;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -378,6 +393,7 @@ export function LayerControlsPanel({
   pilarVerdeLayersError = null,
   layerHealth,
   layerProvenance,
+  insideScrollContainer = false,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -754,18 +770,25 @@ export function LayerControlsPanel({
     // and attributions are active, the stack used to grow past the viewport
     // and collide with the bottom-left `LeyendaPanel`. We cap the whole
     // top-left stack at `calc(100vh - 180px)` and let it scroll internally.
+    // Inside the sidebar/Drawer that bound is HARMFUL instead (T5) — the
+    // container is already the scroller, so the panel grows freely there.
     <Box
       data-testid="layer-controls-panel-scroll"
       className={styles.layerTogglesRoot}
       role="region"
       aria-label="Controles de capas del mapa"
+      data-inside-scroll-container={insideScrollContainer ? 'true' : 'false'}
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
-        maxHeight: 'calc(100vh - 180px)',
-        overflowY: 'auto',
-        overflowX: 'hidden',
+        ...(insideScrollContainer
+          ? { overflow: 'visible' }
+          : {
+              maxHeight: 'calc(100vh - 180px)',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+            }),
       }}
     >
       {viewModePanel}

@@ -1,10 +1,11 @@
 import { Badge, Box, Button, Collapse, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { useEffect, useRef } from 'react';
+import type maplibregl from 'maplibre-gl';
+import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
+import { logger } from '../../lib/logger';
+import { type MapLibreModule, loadMapLibre } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
@@ -12,6 +13,9 @@ import type { Ubicacion } from './reportFormTypes';
 const MANUAL_COORDINATES_PANEL_ID = 'input-coordenadas-manual';
 const LOCATION_HELP_ID = 'ubicacion-mapa-ayuda';
 const SELECTED_LOCATION_ID = 'ubicacion-seleccionada';
+const MAP_STATUS_ID = 'ubicacion-mapa-estado';
+
+type MapStatus = 'loading' | 'ready' | 'error';
 
 interface LocationSectionProps {
   ubicacion: Ubicacion | null;
@@ -68,10 +72,25 @@ export function LocationSection({
   });
   const initialCenterRef = useRef(defaultCenter);
   const initialZoomRef = useRef(defaultZoom);
+  // Runtime handle to the lazily imported module. The marker effect needs
+  // `maplibregl.Marker`, which is only available AFTER the chunk resolves.
+  const maplibreRef = useRef<MapLibreModule | null>(null);
+  const [mapStatus, setMapStatus] = useState<MapStatus>('loading');
 
   const selectedCoordinatesLabel = ubicacion
     ? `${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`
     : null;
+
+  // The map's accessible description grows with whatever is currently true:
+  // the static help text, the selected coordinates badge, and — while the
+  // engine chunk is in flight or failed — the loading/error notice.
+  const mapDescribedBy = [
+    LOCATION_HELP_ID,
+    selectedCoordinatesLabel ? SELECTED_LOCATION_ID : null,
+    mapStatus === 'ready' ? null : MAP_STATUS_ID,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -79,51 +98,82 @@ export function LocationSection({
     const SATELLITE_TILES =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-    const initialCenter = initialCenterRef.current;
-    const initialZoom = initialZoomRef.current;
+    // The effect body cannot be `async` (React expects the cleanup fn
+    // synchronously), so the await lives in an inner IIFE and `cancelled`
+    // guards the case where the section unmounts while the chunk is still
+    // in flight.
+    let cancelled = false;
+    let map: maplibregl.Map | null = null;
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: {
-        version: 8,
-        sources: {
-          basemap: {
-            type: 'raster',
-            tiles: [SATELLITE_TILES],
-            tileSize: 256,
-            attribution: 'Tiles &copy; Esri',
-          },
-        },
-        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-      },
-      center: [initialCenter[1], initialCenter[0]],
-      zoom: initialZoom,
-      minZoom: MAP_MIN_ZOOM,
-      maxBounds: MAP_MAX_BOUNDS,
-    });
-
-    map.on('click', (e) => {
-      const { lng, lat } = e.lngLat;
-      // Read zonaGeoJson via ref so we always validate against the
-      // latest data, even though the click handler was registered once
-      // at mount time when the data wasn't loaded yet.
-      if (!isInsideZona(zonaGeoJsonRef.current, [lng, lat])) {
-        notifications.show({
-          title: 'Fuera del área',
-          message: 'La ubicación seleccionada está fuera del área del consorcio.',
-          color: 'red',
-        });
+    void (async () => {
+      let maplibregl: MapLibreModule;
+      try {
+        maplibregl = await loadMapLibre();
+      } catch (error) {
+        if (cancelled) return;
+        logger.error('No se pudo cargar el motor de mapas', error);
+        setMapStatus('error');
         return;
       }
-      onLocationSelectRef.current(lat, lng);
-    });
 
-    mapInstanceRef.current = map;
+      // Container gone (unmounted) or another run already won the race.
+      if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
+
+      maplibreRef.current = maplibregl;
+
+      const initialCenter = initialCenterRef.current;
+      const initialZoom = initialZoomRef.current;
+
+      map = new maplibregl.Map({
+        container: mapContainerRef.current,
+        style: {
+          version: 8,
+          sources: {
+            basemap: {
+              type: 'raster',
+              tiles: [SATELLITE_TILES],
+              tileSize: 256,
+              attribution: 'Tiles &copy; Esri',
+            },
+          },
+          layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+        },
+        center: [initialCenter[1], initialCenter[0]],
+        zoom: initialZoom,
+        minZoom: MAP_MIN_ZOOM,
+        maxBounds: MAP_MAX_BOUNDS,
+      });
+
+      map.on('click', (e) => {
+        const { lng, lat } = e.lngLat;
+        // Read zonaGeoJson via ref so we always validate against the
+        // latest data, even though the click handler was registered once
+        // at mount time when the data wasn't loaded yet.
+        if (!isInsideZona(zonaGeoJsonRef.current, [lng, lat])) {
+          notifications.show({
+            title: 'Fuera del área',
+            message: 'La ubicación seleccionada está fuera del área del consorcio.',
+            color: 'red',
+          });
+          return;
+        }
+        onLocationSelectRef.current(lat, lng);
+      });
+
+      mapInstanceRef.current = map;
+      // Flips the dependent effects (reference layers + marker) so they
+      // re-run now that there IS a map instance to paint on.
+      setMapStatus('ready');
+    })();
 
     return () => {
-      map.remove();
+      cancelled = true;
+      map?.remove();
+      map = null;
       mapInstanceRef.current = null;
       markerRef.current = null;
+      maplibreRef.current = null;
+      setMapStatus('loading');
     };
     // Setup runs ONCE per mount. Reference layers (zona / caminos /
     // waterways) are painted by the dedicated effect below as soon as
@@ -131,6 +181,10 @@ export function LocationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // `mapStatus` is not read in the body — it is the TRIGGER. The map instance
+  // lives in a ref (invisible to the dependency analysis), so the status flip
+  // is what re-runs this effect once the lazy engine finished building it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mapStatus is the re-run trigger for a ref-held map instance
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -142,11 +196,16 @@ export function LocationSection({
     } else {
       map.once('load', paint);
     }
-  }, [zonaGeoJson, caminosGeoJson, waterways]);
+  }, [zonaGeoJson, caminosGeoJson, waterways, mapStatus]);
 
+  // `mapStatus` is not read in the body — it is the TRIGGER. The map instance
+  // lives in a ref (invisible to the dependency analysis), so the status flip
+  // is what re-runs this effect once the lazy engine finished building it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mapStatus is the re-run trigger for a ref-held map instance
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    const maplibregl = maplibreRef.current;
+    if (!map || !maplibregl) return;
 
     if (!ubicacion) {
       if (markerRef.current) {
@@ -172,9 +231,12 @@ export function LocationSection({
     const bounds = map.getBounds();
     const inView = bounds.contains([ubicacion.lng, ubicacion.lat]);
     if (!inView) {
-      map.flyTo({ center: [ubicacion.lng, ubicacion.lat], zoom: Math.max(map.getZoom(), 14) });
+      map.flyTo({
+        center: [ubicacion.lng, ubicacion.lat],
+        zoom: Math.max(map.getZoom(), 14),
+      });
     }
-  }, [ubicacion]);
+  }, [ubicacion, mapStatus]);
 
   return (
     <>
@@ -238,13 +300,32 @@ export function LocationSection({
         className={`${formStyles.mapContainer} ${formStyles.mapContainerLarge}`}
         role="application"
         aria-label="Mapa interactivo para seleccionar ubicación"
-        aria-describedby={
-          selectedCoordinatesLabel
-            ? `${LOCATION_HELP_ID} ${SELECTED_LOCATION_ID}`
-            : LOCATION_HELP_ID
-        }
+        aria-busy={mapStatus === 'loading'}
+        aria-describedby={mapDescribedBy}
+        style={{ position: 'relative' }}
       >
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        {mapStatus !== 'ready' && (
+          <Box
+            id={MAP_STATUS_ID}
+            aria-live="polite"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: 'var(--mantine-spacing-md)',
+            }}
+          >
+            <Text size="sm" c={mapStatus === 'error' ? 'red' : 'gray.6'}>
+              {mapStatus === 'error'
+                ? 'No se pudo cargar el mapa. Ingresa las coordenadas manualmente o recarga la página.'
+                : 'Cargando mapa…'}
+            </Text>
+          </Box>
+        )}
       </Box>
       <Text id={LOCATION_HELP_ID} size="xs" c="gray.6" mt="xs">
         Haz clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:

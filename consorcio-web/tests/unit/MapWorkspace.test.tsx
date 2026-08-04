@@ -14,7 +14,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -240,5 +240,46 @@ describe('<MapWorkspace />', () => {
     viewport.set(false);
     expect(screen.getByTestId('map-workspace-burger')).toBeInTheDocument();
     expect(screen.queryByTestId('controls-marker')).not.toBeInTheDocument();
+  });
+
+  /**
+   * AUD-005 — on Android, Back is "dismiss". With the layers Drawer open it used
+   * to navigate away from the map instead of closing the panel.
+   */
+  it('mobile: the browser Back button closes the Drawer instead of navigating', async () => {
+    mockViewport(false);
+    window.history.replaceState(null, '');
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+
+    renderWithMantine(<MapWorkspace canvas={canvas} controls={controls} />);
+
+    fireEvent.click(screen.getByTestId('map-workspace-burger'));
+    expect(await screen.findByTestId('controls-marker')).toBeInTheDocument();
+    // Opening pushed a synthetic entry for Back to consume.
+    expect(window.history.state).toMatchObject({ __consorcioDrawer: true });
+
+    act(() => {
+      // The browser pops the marker entry, THEN notifies the page.
+      window.history.replaceState(null, '');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('controls-marker')).not.toBeInTheDocument(),
+    );
+    // The pop was already consumed by the browser — no extra rewind.
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it('desktop: never touches the history stack (no Drawer to dismiss)', () => {
+    mockViewport(true);
+    const push = vi.spyOn(window.history, 'pushState');
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+
+    const { unmount } = renderWithMantine(<MapWorkspace canvas={canvas} controls={controls} />);
+    unmount();
+
+    expect(push).not.toHaveBeenCalled();
+    expect(back).not.toHaveBeenCalled();
   });
 });

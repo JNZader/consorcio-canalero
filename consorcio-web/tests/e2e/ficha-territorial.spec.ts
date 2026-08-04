@@ -12,6 +12,10 @@
 
 import { type APIRequestContext, expect, request, test } from '@playwright/test';
 
+// T6 — structural gates (shell, canvas) FAIL in a declared environment; the
+// feature flag, the seeded catastro and "the click landed on nothing" stay soft.
+import { requireCondition, skipForMissingData } from './helpers/strictGate';
+
 const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
 const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:8000';
 
@@ -47,19 +51,22 @@ test.describe('Ficha territorial — click parcel', () => {
       const ctx = await request.newContext({ baseURL: API_BASE });
       const status = await probeFicha(ctx);
       await ctx.dispose();
-      test.skip(status === 'off', 'Ficha territorial deshabilitada o catastro vacío en el entorno');
-      test.skip(status === 'unknown', 'Backend no disponible para la ficha territorial');
+      skipForMissingData(
+        status === 'off',
+        'Ficha territorial deshabilitada o catastro vacío en el entorno'
+      );
+      skipForMissingData(status === 'unknown', 'Backend no disponible para la ficha territorial');
 
       await page.goto(`${APP_URL}/mapa`);
       const root = page.getByTestId('map-workspace-root');
       const ready = await root.isVisible({ timeout: 15000 }).catch(() => false);
-      test.skip(!ready, 'Map workspace shell no montó (dev server/auth no disponible)');
+      requireCondition(ready, 'Map workspace shell no montó (dev server/auth no disponible)');
 
       // Enable the catastro layer so parcels are clickable.
       const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
       const catastro = controls.getByRole('checkbox', { name: /Catastro/i }).first();
       const hasCatastro = await catastro.isVisible({ timeout: 10000 }).catch(() => false);
-      test.skip(!hasCatastro, 'Capa catastro no disponible (sin datos de capas)');
+      skipForMissingData(!hasCatastro, 'Capa catastro no disponible (sin datos de capas)');
       await catastro.check();
 
       // Wait for MapLibre to initialize, then click the canvas center. Whether a
@@ -70,13 +77,13 @@ test.describe('Ficha territorial — click parcel', () => {
         .waitFor({ state: 'visible', timeout: 15000 })
         .then(() => true)
         .catch(() => false);
-      test.skip(!mounted, 'Canvas MapLibre no inicializó (sin WebGL en este entorno)');
+      requireCondition(mounted, 'Canvas MapLibre no inicializó (sin WebGL en este entorno)');
 
       await canvas.click({ position: { x: 200, y: 200 } });
 
       const panel = page.getByTestId('ficha-territorial-panel');
       const opened = await panel.isVisible({ timeout: 10000 }).catch(() => false);
-      test.skip(!opened, 'El click no cayó sobre una parcela del catastro en esta vista');
+      skipForMissingData(!opened, 'El click no cayó sobre una parcela del catastro en esta vista');
 
       // When it opens it must reach a terminal state (result or an honest error),
       // never hang on the loader forever.

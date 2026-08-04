@@ -134,7 +134,8 @@ export default defineConfig({
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
           '**/vendor-charts-*.js',
-          '**/vendor-mantine-extras-*.js',
+          '**/vendor-mantine-charts-*.js',
+          '**/vendor-mantine-dropzone-*.js',
         ],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/, /^\/version\.json$/],
@@ -237,7 +238,8 @@ export default defineConfig({
           // that legitimately benefit from offline caching (the public
           // viewer surface) are listed explicitly below.
           {
-            urlPattern: /\/api\/v2\/(auth|admin|padron|denuncias|finanzas|tramites|reuniones|monitoring|users|capas)\b/i,
+            urlPattern:
+              /\/api\/v2\/(auth|admin|padron|denuncias|finanzas|tramites|reuniones|monitoring|users|capas)\b/i,
             handler: 'NetworkOnly',
           },
           // Public viewer endpoints — cacheable. These are intentionally
@@ -311,11 +313,18 @@ export default defineConfig({
           ],
           // @mantine/dates loaded eager via DatesProvider in main.tsx —
           // keep it in its own small chunk (~30 KB) so the heavier
-          // ``vendor-mantine-extras`` (charts + dropzone) stays lazy.
-          // Without this split, DatesProvider would pull the entire
-          // 200+ KB extras bundle into the initial entry.
+          // charts/dropzone chunks stay lazy. Without this split,
+          // DatesProvider would pull the entire 200+ KB extras bundle
+          // into the initial entry.
           'vendor-mantine-dates': ['@mantine/dates'],
-          'vendor-mantine-extras': ['@mantine/charts', '@mantine/dropzone'],
+          // PERF-005 — charts and dropzone were a single ``vendor-mantine-extras``
+          // chunk. They have DISJOINT consumers: dropzone is the photo picker in
+          // ``/participacion``, charts only shows up in admin dashboards. Bundled
+          // together, opening the report form downloaded ~113 KB of charting code
+          // that page never renders. One chunk per library keeps each route paying
+          // only for what it uses.
+          'vendor-mantine-charts': ['@mantine/charts'],
+          'vendor-mantine-dropzone': ['@mantine/dropzone'],
           'vendor-charts': ['recharts'],
           'vendor-maplibre': ['maplibre-gl'],
           'vendor-map-draw': ['@mapbox/mapbox-gl-draw'],

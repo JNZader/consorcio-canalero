@@ -1,0 +1,133 @@
+name: E2E canary (prod)
+
+# Post-deploy canary for the REAL end-to-end suite (`consorcio-web/tests/e2e`),
+# which until now never ran anywhere: `test:e2e` was an alias of the
+# accessibility config, so the prod specs were dead weight in the repo.
+#
+# DESIGN — every choice here exists to keep the Actions bill near zero:
+#
+#  * push to `main` only, filtered to `consorcio-web/**`. This is a CANARY, not
+#    a PR gate: it answers "did the site that Cloudflare just published still
+#    work?", which can only be asked AFTER a deploy. Running it on
+#    `pull_request` would multiply the minutes and test a URL that does not yet
+#    contain the PR's code. The PR gate stays lint + unit + typecheck + a11y in
+#    `frontend.yml`.
+#  * ONE browser (chromium). Cross-browser coverage is already paid for by the
+#    accessibility matrix (chromium + firefox + webkit). A second engine here
+#    would double the minutes to re-prove the same rendering.
+#  * READ-ONLY SCOPE. It runs `test:e2e:canary`, NOT the whole prod config:
+#    `production.spec.ts`, `denuncias-public-flow`, `auth-protected-flow` and
+#    `rainfall-api` CREATE records (denuncias, sugerencias, users, assets) and
+#    demand `E2E_ADMIN_*`. Pointing those at the live site would have CI writing
+#    junk into production. The canary scope is the three read-only /mapa specs.
+#
+#    That scope is ENFORCED, not just documented, by
+#    `test_e2e_canary_stays_read_only_against_production` in
+#    `gee-backend/tests/test_ci_workflow_contracts.py`: it pins the exact spec
+#    list of `test:e2e:canary` and forbids `E2E_API_BASE` / `E2E_ADMIN_*` here.
+#    The older `test_ci_workflows_never_run_production_writing_e2e` does NOT
+#    cover this file and cannot — it bans the very string this workflow runs.
+#  * NO credentials. `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` are deliberately
+#    NOT passed. v1 of the canary keeps production admin secrets out of CI, and
+#    with the read-only scope above it has nothing to authenticate for.
+#  * `E2E_APP_URL` IS set, which flips `tests/e2e/helpers/strictGate.ts` into
+#    strict mode: a shell or WebGL canvas that fails to come up FAILS the run
+#    instead of skipping. Data/credential gates keep skipping, loudly.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'consorcio-web/**'
+      - '.github/workflows/e2e-canary.yml'
+  workflow_dispatch:
+
+concurrency:
+  # A newer release makes the previous canary pointless — the URL it is probing
+  # has already been replaced.
+  group: e2e-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  APP_URL: https://consorcio-canalero.pages.dev
+
+jobs:
+  canary:
+    name: E2E canary (prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: consorcio-web/package-lock.json
+
+      # Cloudflare Pages builds independently of this workflow, so the commit
+      # that triggered us is NOT live yet. `version.json` carries the deployed
+      # sha (12-char prefix — see `consorcio-web/scripts/gen-version.mjs`); poll
+      # it until it prefixes ours. Timing out here is reported as a DEPLOY
+      # problem, never as a test failure — otherwise a slow CDN build reads as
+      # a broken site.
+      #
+      # THE EMPTY-STRING TRAP (do not remove the length guard): `curl` failing,
+      # a 404/5xx, a timeout or a JSON without `sha` all yield an EMPTY
+      # `deployed`. Feeding that straight into `case "$GITHUB_SHA" in "$deployed"*)`
+      # degenerates the pattern to `*`, which matches ANY sha — so the gate used
+      # to pass instantly, against the OLD build, in exactly the scenario it
+      # exists to catch (degraded CDN). Reject anything shorter than the 12-char
+      # sha BEFORE the case, and keep polling.
+      - name: Wait for Cloudflare deploy
+        run: |
+          set -uo pipefail
+          sha_len=12
+          deadline=$(( SECONDS + 360 ))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            deployed=$(curl -fsSL --max-time 20 "$APP_URL/version.json" 2>/dev/null \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))' 2>/dev/null || true)
+            if [ -n "$deployed" ] && [ "${#deployed}" -ge "$sha_len" ]; then
+              case "$GITHUB_SHA" in
+                "$deployed"*) echo "Deployed sha matches $deployed"; exit 0 ;;
+              esac
+            fi
+            echo "waiting… deployed='${deployed:-<none>}' expected='${GITHUB_SHA}'"
+            sleep 15
+          done
+          echo "::error::Cloudflare never published ${GITHUB_SHA} within 6 minutes. This is a DEPLOY failure, not a test failure."
+          exit 1
+
+      - name: Install dependencies
+        working-directory: consorcio-web
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      # Only chromium: see the header. `--with-deps` pulls the system libs.
+      - name: Install Playwright chromium
+        working-directory: consorcio-web
+        run: npx playwright install --with-deps chromium
+
+      # Read-only /mapa specs against the just-published site. `E2E_API_BASE` is
+      # NOT set on purpose: the specs that probe the backend (ficha) fall back to
+      # localhost, get no answer and skip with a message, which is the honest
+      # outcome for a frontend canary.
+      - name: Run read-only e2e canary
+        working-directory: consorcio-web
+        env:
+          CI: '1'
+          E2E_APP_URL: ${{ env.APP_URL }}
+        run: npm run test:e2e:canary
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-canary-report
+          path: |
+            consorcio-web/playwright-report/
+            consorcio-web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

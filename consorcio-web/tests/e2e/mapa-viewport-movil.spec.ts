@@ -13,22 +13,9 @@
 import { expect, test } from '@playwright/test';
 
 import { gotoMapWorkspace } from './helpers/mapWorkspace';
-
-/**
- * Con `E2E_APP_URL` seteado, quien corre la suite DECLARÓ que hay un entorno
- * levantado: ahí un `skip` no es prudencia, es fingir verde. Sin la env (corrida
- * a ciegas) se skipea, que es el contrato del resto de los specs de /mapa.
- */
-const STRICT = !!process.env.E2E_APP_URL;
-
-/** Falla en entorno declarado, skipea a ciegas. Nunca pasa en silencio. */
-function requireCondition(condition: boolean, reason: string): void {
-  if (STRICT) {
-    expect(condition, `${reason} (E2E_APP_URL seteado → esto DEBE funcionar)`).toBe(true);
-    return;
-  }
-  test.skip(!condition, reason);
-}
+// El patrón nació acá y ahora vive en `helpers/strictGate.ts`, compartido con
+// `mapa-maplibre.spec.ts` y `ficha-territorial.spec.ts`.
+import { requireCondition } from './helpers/strictGate';
 
 /** Objetivo WCAG 2.5.5 — el mismo número que fija el test unitario del CSS. */
 const TOUCH = 44;
