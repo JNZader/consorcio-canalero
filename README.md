@@ -500,8 +500,9 @@ npm run lint
 
 ```bash
 cd consorcio-web
-npm run test:e2e         # accessibility Playwright config
+npm run test:a11y        # accessibility Playwright config
 npm run test:e2e:local   # local end-to-end Playwright config
+npm run test:e2e:prod    # end-to-end against the deployed site (writes real data)
 npm run mutation:run     # Stryker mutation testing
 ```
 
