@@ -209,6 +209,12 @@ export function MapPanelShell({
       className={className}
       data-testid={testId}
       data-sheet="true"
+      /* PUBLIC CONTRACT with map.module.css — do not rename or drop. The
+         measurement dock lifts itself clear of a PARTIAL sheet via
+         `.mapCanvasWrapper:has(.panelSheet[data-stage='peek'|'medio'])`. It
+         cannot key off the modifier classes because `medio` deliberately has
+         none (see the comment above). Guarded by
+         `tests/unit/mapDockSheetClearance.test.ts`. */
       data-stage={stage}
       data-expanded={stage === 'alto' ? 'true' : 'false'}
     >
