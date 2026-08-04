@@ -567,3 +567,104 @@ def test_overlay_canal_cuenca_no_computada_es_503(ficha_db, monkeypatch):
 
     assert rs.status_code == 503, rs.text
     assert rs.json()["codigo"] == "cuenca_no_computada"
+
+
+# ── envelope cap: per-``tipo`` (batch 4 relaxation) ──────────────────────────
+#
+# Pure shapely + settings — no DB, no fixture. A dendritic catchment has a bbox
+# several times its own area; the 60 000 ha envelope cap was rejecting most of
+# the precomputed basins even though the AREA cap (20 000 ha, unchanged) is
+# what actually bounds the raster work.
+
+
+def _rect_32720(ancho_m: float, alto_m: float):
+    """Axis-aligned rectangle in EPSG:32720 with the given side lengths."""
+    from shapely.geometry import Polygon
+
+    x0, y0 = 500_000.0, 6_000_000.0
+    return Polygon([(x0, y0), (x0 + ancho_m, y0), (x0 + ancho_m, y0 + alto_m), (x0, y0 + alto_m)])
+
+
+def _sliver_32720(envelope_ha: float, area_ha: float):
+    """A thin diagonal sliver: ``envelope_ha`` bbox, ``area_ha`` of own area.
+
+    Built as a rectangle spanning the bbox diagonal, so the bbox is the cap
+    under test while the area stays comfortably below ``ficha_max_area_ha``.
+    """
+    import math
+
+    from shapely.geometry import LineString
+
+    from app.domains.geo.ficha_service import M2_POR_HA
+
+    lado = math.sqrt(envelope_ha * M2_POR_HA)  # square bbox of the wanted size
+    x0, y0 = 500_000.0, 6_000_000.0
+    diagonal = LineString([(x0, y0), (x0 + lado, y0 + lado)])
+    # buffer width chosen so area ≈ area_ha (buffer caps add a little more)
+    ancho = (area_ha * M2_POR_HA) / (2.0 * diagonal.length)
+    return diagonal.buffer(ancho, cap_style=2)
+
+
+def test_envelope_cap_is_wider_for_canal_cuenca_only() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_service import envelope_cap_ha
+
+    assert envelope_cap_ha("canal_cuenca") == settings.ficha_max_envelope_ha_cuenca
+    for tipo in ("poligono", "parcela", "parcelas", "canal_buffer"):
+        assert envelope_cap_ha(tipo) == settings.ficha_max_envelope_ha
+    assert settings.ficha_max_envelope_ha_cuenca > settings.ficha_max_envelope_ha
+
+
+def test_catchment_over_the_old_envelope_cap_is_now_accepted() -> None:
+    """The 25/60 regression: a basin whose bbox sits between the old and the new
+    cap used to be rejected on ``envelope_ha`` alone."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
+
+    entre = (settings.ficha_max_envelope_ha + settings.ficha_max_envelope_ha_cuenca) / 2.0
+    geom = _sliver_32720(entre, area_ha=5_000.0)
+    assert geom.area / M2_POR_HA < settings.ficha_max_area_ha
+
+    assert_within_caps(geom, tipo="canal_cuenca")  # no raise
+
+
+def test_caller_supplied_polygon_keeps_the_original_envelope_cap() -> None:
+    """The relaxation must NOT widen the attacker-controlled surface."""
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import assert_within_caps
+
+    entre = (settings.ficha_max_envelope_ha + settings.ficha_max_envelope_ha_cuenca) / 2.0
+    geom = _sliver_32720(entre, area_ha=5_000.0)
+
+    with pytest.raises(FichaError) as exc:
+        assert_within_caps(geom, tipo="poligono")
+    assert exc.value.extra["cap"] == "envelope_ha"
+    assert exc.value.extra["limite"] == settings.ficha_max_envelope_ha
+
+
+def test_catchment_over_the_new_envelope_cap_is_still_rejected() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import assert_within_caps
+
+    geom = _sliver_32720(settings.ficha_max_envelope_ha_cuenca * 1.5, area_ha=5_000.0)
+
+    with pytest.raises(FichaError) as exc:
+        assert_within_caps(geom, tipo="canal_cuenca")
+    assert exc.value.extra["cap"] == "envelope_ha"
+    assert exc.value.extra["limite"] == settings.ficha_max_envelope_ha_cuenca
+
+
+def test_area_cap_is_untouched_by_the_envelope_relaxation() -> None:
+    """>20 000 ha catchments stay excluded BY DESIGN."""
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
+
+    lado = ((settings.ficha_max_area_ha * 1.2) * M2_POR_HA) ** 0.5
+    geom = _rect_32720(lado, lado)
+
+    with pytest.raises(FichaError) as exc:
+        assert_within_caps(geom, tipo="canal_cuenca")
+    assert exc.value.extra["cap"] == "area_ha"

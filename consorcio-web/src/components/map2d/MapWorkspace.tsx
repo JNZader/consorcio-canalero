@@ -15,6 +15,56 @@ import { IconArrowLeft, IconArrowRight, IconLayers } from '../ui/icons';
  */
 export const MOBILE_DRAWER_SIZE = '75%';
 
+/**
+ * The ONE desktop breakpoint of the 2D map shell.
+ *
+ * `MapWorkspace` decides sidebar-vs-Drawer with it, and `MapaMapLibre` decides
+ * whether to render its floating top bar with it. Those two decisions MUST agree
+ * — a mobile viewport that still painted the top bar would show the base-layer
+ * control twice (once floating, once inside the Drawer). Exported as a single
+ * constant so neither side can drift.
+ *
+ * El alto es tan load-bearing como el ancho (B2-2.1). Con `min-width` sola, un
+ * telefono acostado (844×390) supera los 48em y entraba en modo escritorio: un
+ * sidebar fijo de 300-360px sobre un canvas de ~306px de alto, y el reflow
+ * apaisado terminaba flotando la top bar ENCIMA de la cabecera del sidebar (con
+ * el panel colapsado, el boton de expandir quedaba tapado del todo y el panel
+ * era irrecuperable). 30.0625em = 481px deja del lado escritorio a las tablets y
+ * a cualquier laptop (768px de alto y para arriba), y manda al telefono acostado
+ * al burger + Drawer, que es la forma correcta ahi.
+ *
+ * ── OJO: el contrato es UNIDIRECCIONAL ─────────────────────────────────────
+ * `map.module.css` hardcodea el COMPLEMENTO EXACTO de este `min-width` en el
+ * bloque de portrait: `@media … and (max-width: 47.9375em)`, o sea 48em menos
+ * 0.0625em (1px), para que las dos queries nunca sean verdaderas a la vez. El
+ * CSS no puede importar esta constante, asi que cambiar el 48em de aca sin
+ * cambiar el 47.9375em de alla reabre el solape en 768px exacto: un viewport
+ * que SI pinta la top bar recibiendo el presupuesto de alto que asume que no
+ * hay ninguna. `tests/unit/mapSkeletonGeometry.test.ts` deriva el complemento
+ * DESDE esta constante y lo compara contra el CSS justamente para que ese
+ * cambio rompa el test en vez de quedar verde.
+ */
+export const MAP_DESKTOP_MEDIA_QUERY = '(min-width: 48em) and (min-height: 30.0625em)';
+
+/**
+ * `true` when the 2D map shell is in desktop mode.
+ *
+ * Wraps the `useMediaQuery` call VERBATIM (same query, same options) so every
+ * consumer resolves the breakpoint identically.
+ *
+ * `getInitialValueInEffect: false` → on first render Mantine calls
+ * `getInitialValue(query)`, which IGNORES the `initialValue` arg entirely: in a
+ * browser SPA it reads `window.matchMedia(query).matches` synchronously
+ * (correct, no flash), and ONLY when `matchMedia` is unavailable (SSR / no
+ * window) does it fall back to `false` → MOBILE-first. The `true` below is
+ * therefore never consumed at runtime; it stays only to document intent.
+ */
+export function useMapWorkspaceDesktop(): boolean {
+  return useMediaQuery(MAP_DESKTOP_MEDIA_QUERY, true, {
+    getInitialValueInEffect: false,
+  });
+}
+
 interface MapWorkspaceProps {
   /** The map canvas node (MapLibre container + its floating overlays). */
   canvas: ReactNode;
@@ -45,23 +95,11 @@ interface MapWorkspaceProps {
  * React Compiler is active → no manual `useMemo`/`useCallback`.
  */
 export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspaceProps) {
-  // `getInitialValueInEffect: false` → on first render Mantine calls
-  // `getInitialValue(query)`, which IGNORES the `initialValue` arg entirely:
-  // in a browser SPA it reads `window.matchMedia(query).matches` synchronously
-  // (correct, no flash), and ONLY when `matchMedia` is unavailable (SSR / no
-  // window) does it fall back to `false` → MOBILE-first. The `true` below is
-  // therefore never consumed at runtime; it stays only to document intent.
-  // El alto es tan load-bearing como el ancho (B2-2.1). Con `min-width` sola, un
-  // telefono acostado (844×390) supera los 48em y entraba en modo escritorio: un
-  // sidebar fijo de 300-360px sobre un canvas de ~306px de alto, y el reflow
-  // apaisado terminaba flotando la top bar ENCIMA de la cabecera del sidebar
-  // (con el panel colapsado, el boton de expandir quedaba tapado del todo y el
-  // panel era irrecuperable). 30.0625em = 481px deja del lado escritorio a las
-  // tablets y a cualquier laptop (768px de alto y para arriba), y manda al
-  // telefono acostado al burger + Drawer, que es la forma correcta ahi.
-  const isDesktop = useMediaQuery('(min-width: 48em) and (min-height: 30.0625em)', true, {
-    getInitialValueInEffect: false,
-  });
+  // ONE source of truth for the breakpoint — see `useMapWorkspaceDesktop` above
+  // (the query, its height condition and the `getInitialValueInEffect` rationale
+  // all live there). `MapaMapLibre` consumes the SAME hook to decide whether to
+  // paint its floating top bar.
+  const isDesktop = useMapWorkspaceDesktop();
   const sidebarCollapsed = useMapWorkspaceStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useMapWorkspaceStore((state) => state.toggleSidebar);
   const [drawerOpened, drawer] = useDisclosure(false);

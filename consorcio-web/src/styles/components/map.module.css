@@ -14,6 +14,17 @@
   width: 100%;
 }
 
+/* The top bar is DESKTOP-ONLY (`MapaMapLibre` gates it on
+   `useMapWorkspaceDesktop`); on mobile the same base-layer controls live inside
+   the layers Drawer. When the bar is not rendered the grid's first `auto` row
+   collapses to 0 but the `gap` would still leave 12px of dead space above the
+   canvas, so the row count and the gap are both dropped. `data-topbar` is
+   published by `MapaMapLibre` next to the class. */
+.mapWorkspace[data-topbar='false'] {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
 .mapTopBar {
   display: flex;
   flex-wrap: wrap;
@@ -273,6 +284,64 @@
   max-height: calc(55% - 82px);
 }
 
+/* ── Guillotina de contenido en los paneles de escritorio ─────────────────── */
+/* `.infoPanel` y `.fichaPanel` son sus PROPIOS scrollers (`overflow-y: auto`
+   arriba) y su fondo es opaco al 96%, asi que una tabla o un desglose cortado
+   por el borde inferior termina exactamente igual que si terminara ahi: la
+   ultima fila queda entera, con su linea inferior, y nada dice que abajo hay
+   mas. Es la "guillotina" — el usuario no scrollea porque no sabe que hay que
+   scrollear.
+
+   El degradado sticky es la afordancia estandar: la fila que se va se desvanece
+   contra el fondo del panel en vez de cortarse en seco.
+
+   Los colores NO son inventados: son los MISMOS `light-dark(...)` que declaran
+   `.infoPanel` y `.fichaPanel` arriba (0.96), o el borde del degradado se veria
+   como una banda distinta al panel.
+
+   `margin-top: -24px` deja el pseudo-elemento con ALTURA CERO en el flujo (se
+   superpone a los ultimos 24px de contenido) y el `padding-bottom` de abajo
+   agrega justo esos 24px de blanco al final: cuando el panel esta scrolleado
+   hasta el fondo, el degradado cae sobre el padding y no vela ni una linea.
+
+   `bottom: 0`, no un valor negativo: el rectangulo de anclaje de `sticky` es el
+   scrollport, o sea la CAJA DE PADDING. Un `bottom` negativo lo agranda hacia
+   abajo y empujaria el degradado fuera de la parte visible. En 0 queda al ras
+   del borde inferior, que es donde el contenido pasa por debajo.
+
+   `margin-inline` negativo lo sangra a traves del padding lateral (16px de cada
+   lado) para que el degradado llegue a los dos bordes; la caja resultante mide
+   exactamente el ancho de la caja de padding, asi que no genera scroll
+   horizontal (`overflow-y: auto` obliga a `overflow-x: auto`). */
+.infoPanel::after,
+.fichaPanel::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 24px;
+  margin-top: -24px;
+  margin-inline: calc(-1 * var(--mantine-spacing-md));
+  background: linear-gradient(
+    to top,
+    light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96)),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* `!important` A PROPOSITO y NO decorativo: `MapPanelShell` monta las dos
+   tarjetas como `<Paper p="md">`, y en Mantine 8 una style prop no responsiva se
+   emite como estilo INLINE (`parseStyleProps` → `inlineStyles`), o sea un
+   `padding` shorthand inline. Ninguna regla de hoja de estilos le gana sin
+   `!important`, y sin este padding el degradado de arriba se comeria los ultimos
+   24px de contenido en el fondo del scroll — el remedio seria peor que la
+   guillotina. Mismo criterio que `--slider-size` mas abajo. */
+.infoPanel,
+.fichaPanel {
+  padding-bottom: calc(var(--mantine-spacing-md) + 8px) !important;
+}
+
 @media (max-width: 62em) {
   /* Narrow viewports: the page chrome wraps to several rows, so the canvas has
      to give back more height than on desktop (measured ~300px above the canvas
@@ -318,6 +387,61 @@
 
   .mapBottomBarItem {
     max-height: 50vh;
+  }
+}
+
+/* ── Reflow en telefono PARADO (rework portrait) ──────────────────────────── */
+/* Mismo tratamiento que el horizontal de mas abajo (B2-2.1), por el mismo
+   motivo: el chrome vertical se comia el canvas. Medido contra produccion en
+   360×800, el canvas arrancaba en y≈442 (cabecera del sitio ≈61 + el Paper del
+   titulo + el banner satelital + una top bar de 149px de alto, porque en 360px
+   de ancho TODO envuelve) y media 500px → terminaba en y≈942, muy afuera de los
+   800 del viewport. Dos palancas, ninguna oculta nada:
+     1. la top bar ya no existe en movil (vive en el Drawer, ver `.mapTopBar`);
+     2. el titulo + Reportar + el banner satelital bajan DEBAJO del mapa con
+        `order`, igual que en horizontal.
+
+   Las tres condiciones son load-bearing:
+     `pointer: coarse`      — deja afuera una ventana de escritorio angosta.
+     `orientation: portrait`— es el caso que rompe.
+     `max-width: 47.9375em` — 767px, el complemento EXACTO y exclusivo del
+        `min-width: 48em` con el que `MapWorkspace` decide `isDesktop`. NO 48em:
+        a exactamente 768px las dos queries darian verdadero a la vez y el
+        presupuesto de abajo pisaria a un layout que SI tiene top bar. NO 62em
+        (el breakpoint del bottom sheet): capturaria tablets paradas, que entran
+        en modo escritorio y tienen alto de sobra. */
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 47.9375em) {
+  .mapPageContainer {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
+     el canvas de MapLibre. El resto de los hijos queda en `order: 0`, asi que el
+     titulo (con el banner satelital y el boton Reportar adentro) cae ultimo y el
+     mapa sube al tope. */
+  .mapPageContainer > .mapPageHeader {
+    order: 2;
+  }
+
+  /* Presupuesto de alto propio. Arriba del canvas queda SOLO la cabecera del
+     sitio mas el padding del Container:
+       cabecera del sitio                          61px
+       Container py="sm" (arriba)                  12px
+       mb="sm" del Paper del mapa                  12px
+       holgura                                     11px
+                                                   ────
+                                                   96px
+     La holgura es a proposito: deja ver un pedacito de lo que quedo debajo del
+     mapa, o sea la afordancia de que la pagina scrollea (el titulo y el CTA
+     Reportar siguen ahi). Sin `min-height` propio: los pisos de 420/380px del
+     bloque de 62em siguen valiendo, y en 800px de alto el calc (704px) los pasa
+     comodo. */
+  .mapCanvasWrapper,
+  .canvasHeightBudget,
+  .mapSkeletonWrapper,
+  .workspaceSidebar {
+    --map-canvas-height: calc(100dvh - 96px);
   }
 }
 
@@ -372,6 +496,37 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Misma guillotina, misma cura, DECLARACION APARTE a proposito: el sheet es la
+   forma movil y las tarjetas la de escritorio, y cada una tiene que poder
+   revertirse sin arrastrar a la otra.
+
+   Dos diferencias reales, no cosmeticas:
+     · el fondo es el del SHEET (0.97), no el de las tarjetas (0.96);
+     · sin `margin-inline` negativo. `.panelSheetBody` es un div PELADO (el
+       padding vive en el `Paper` que lo envuelve), asi que su caja de contenido
+       ya es su caja de padding: sangrarlo 16px generaria overflow horizontal de
+       verdad, no un sangrado.
+   El `padding-bottom` no necesita `!important` por lo mismo — no hay estilo
+   inline de Mantine sobre este div. */
+.panelSheetBody::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 24px;
+  margin-top: -24px;
+  background: linear-gradient(
+    to top,
+    light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97)),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.panelSheetBody {
+  padding-bottom: 24px;
 }
 
 /* Pinned header strip: the expand/collapse handle PLUS the close control
@@ -640,13 +795,20 @@
      ~24px gap. Vertical cost: 56 + 44 = 100px of the 380px floor, so the toolbar
      and the 250px-deep right column never meet.
 
-     Sheet collision, decided deliberately: `.panelSheet` also anchors to the
-     bottom (z-index 1000) and will COVER this toolbar while a panel sheet is
-     open. That is accepted rather than worked around — the modes this toolbar
-     controls (measure / draw / pick a canal) all require map interaction, which
-     is exactly what an open sheet is already blocking, and the sheet has its own
-     always-reachable close button. `.mapCtrlDock` stays at z-index 16, i.e.
-     below the sheet, so the sheet is never occluded by a floating control. */
+     Sheet collision — REWORKED (portrait rework). `.panelSheet` anchors to the
+     same bottom edge at z-index 1000 and used to simply COVER this toolbar. That
+     was documented as accepted, on the theory that an open sheet already blocks
+     the map. It does not: at `peek` (25%) and `medio` (45%) the sheet is a
+     deliberately partial cover — three quarters / half of the canvas stay live
+     precisely so the user can keep working the map while reading the panel — and
+     the toolbar is the tool for that work. So the dock now RIDES ABOVE the
+     sheet at those two stages (see the `:has()` rules below); z-index is
+     untouched (`.mapCtrlDock` stays at 16, below the sheet), it is pure
+     geometry, so a sheet is still never occluded by a floating control.
+
+     `alto` (85%) is the exception and stays a plain cover: there is no map left
+     to operate, and lifting the toolbar to 85% + 12px would push it into the
+     page header. Fully expanded IS the "reading" stage. */
   .mapActionsDock {
     top: 206px;
   }
@@ -790,6 +952,32 @@
   .measurementDock {
     bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
+
+  /* ── El dock se sube por encima del sheet PARCIAL (rework portrait) ───────
+     CSS puro: `.panelSheet` y `.measurementDock` son hermanos dentro de
+     `.mapCanvasWrapper`, asi que el padre se entera del estado del sheet con
+     `:has()` — sin estado en React, sin prop nueva, sin z-index.
+
+     Se ancla en `[data-stage]`, NO en la clase modificadora: la etapa del medio
+     NO TIENE clase propia (es la forma base de `.panelSheet`, ver
+     MapPanelShell.tsx), asi que un selector por clase no la podria nombrar. El
+     atributo si esta en las tres etapas y es contrato publico del shell.
+
+     Los porcentajes empatan con los `max-height` del sheet (25% / 45%) y ambos
+     resuelven contra la MISMA caja (`.mapCanvasWrapper`, el bloque contenedor
+     posicionado), asi que el dock queda 12px por encima del borde superior del
+     sheet. `env(safe-area-inset-bottom)` se conserva porque el sheet tambien lo
+     tiene: sin el, los dos se desalinean el dia que entre `viewport-fit=cover`.
+
+     `alto` (85%) NO se levanta A PROPOSITO — ver el bloque de arriba: no queda
+     mapa que operar y el dock chocaria la cabecera de la pagina. */
+  .mapCanvasWrapper:has(.panelSheet[data-stage='peek']) .measurementDock {
+    bottom: calc(25% + 12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mapCanvasWrapper:has(.panelSheet[data-stage='medio']) .measurementDock {
+    bottom: calc(45% + 12px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ── Reflow en telefono horizontal (B2-2.1) ───────────────────────────────── */
@@ -813,35 +1001,15 @@
 
   .mapWorkspace {
     position: relative;
-    /* La fila `auto` del grid queda vacia al sacar la top bar del flujo; sin
-       esto el `gap` deja 12px muertos arriba del canvas. */
-    gap: 0;
   }
 
-  /* El selector de capa base pasa a flotar SOBRE el canvas: en horizontal sus
-     ~62px de alto valen mas como mapa.
-
-     A la DERECHA no puede ir: `useMapInitialization` monta Navigation +
-     Fullscreen en `top-right` (y = 10..196) y `.mapActionsDock` sigue esa
-     columna hasta y = 250, asi que anclado a `right` con z-index 17 tapaba el
-     zoom y lo dejaba inclickeable. El `max-width` le reserva esa columna.
-
-     Arriba a la izquierda hay UNA cosa: el `.workspaceBurger` (z-index 1100, en
-     `spacing-sm` = 12px). El sidebar NO — `MapWorkspace` exige ahora tambien
-     `min-height: 30.0625em` para el modo escritorio, asi que en un telefono
-     acostado los controles viven en el Drawer y esta esquina es canvas de
-     verdad. Sin esa condicion de alto el 844×390 daba isDesktop = true y esta
-     regla tapaba la cabecera "Capas" del sidebar (y con el sidebar colapsado, el
-     boton de expandir: panel irrecuperable).
-
-     `left` = 12 (offset del burger) + 44 (su caja tactil) + 8 (aire). */
-  .mapTopBar {
-    position: absolute;
-    top: 8px;
-    left: calc(var(--mantine-spacing-sm) + 44px + 8px);
-    z-index: 17;
-    max-width: calc(100% - 70px);
-  }
+  /* La top bar flotante que vivia aca YA NO EXISTE. Un telefono acostado nunca
+     es `isDesktop` (la query exige `min-height: 30.0625em`), asi que
+     `MapaMapLibre` directamente no la renderiza y el selector de capa base vive
+     en el Drawer, junto al resto de los controles. La regla `position: absolute`
+     que la sacaba del flujo era codigo muerto; el hueco del grid lo cierra ahora
+     `.mapWorkspace[data-topbar='false']`, que aplica en TODO el modo movil y no
+     solo en horizontal. */
 
   /* Presupuesto de alto propio: en horizontal solo queda el header del sitio
      mas el padding del Container arriba del canvas. */

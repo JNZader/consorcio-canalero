@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import io
-import json
 import uuid
-import zipfile
 from collections.abc import Mapping
 from datetime import date
-from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.domains.geo.models import GeoLayer, TipoAnalisisGee
+from app.domains.geo.models import TipoAnalisisGee
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import AnalisisGeoListResponse
 from app.shared.celery_outbox import (
@@ -27,101 +22,10 @@ from app.shared.pagination import PaginatedResponse
 logger = get_logger(__name__)
 
 
-def export_geo_bundle_impl(
-    db: Session, repo: GeoRepository, build_zonas_export, build_approved_export
-):
-    zonas_payload = build_zonas_export(db)
-    approved_payload = build_approved_export(db, repo)
-    layers = db.query(GeoLayer).order_by(GeoLayer.created_at.asc()).all()
-    buffer = io.BytesIO()
-    manifest_layers = []
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        bundle.writestr(
-            "vectors/zonas_operativas.geojson",
-            json.dumps(zonas_payload, ensure_ascii=False, indent=2),
-        )
-        if approved_payload is not None:
-            bundle.writestr(
-                "vectors/approved_zoning.json",
-                json.dumps(approved_payload, ensure_ascii=False, indent=2),
-            )
-        for layer in layers:
-            file_path = Path(layer.archivo_path)
-            if not file_path.exists() or not file_path.is_file():
-                continue
-            archive_path = f"layers/{layer.id}_{file_path.name}"
-            bundle.write(file_path, archive_path)
-            manifest_layers.append(
-                {
-                    "nombre": layer.nombre,
-                    "tipo": layer.tipo,
-                    "fuente": layer.fuente,
-                    "formato": layer.formato,
-                    "srid": layer.srid,
-                    "bbox": layer.bbox,
-                    "metadata_extra": layer.metadata_extra,
-                    "area_id": layer.area_id,
-                    "archive_path": archive_path,
-                    "original_path": layer.archivo_path,
-                }
-            )
-        bundle.writestr(
-            "manifest.json",
-            json.dumps(
-                {
-                    "format": "geo-bundle-v1",
-                    "vectors": {
-                        "zonas_operativas": "vectors/zonas_operativas.geojson",
-                        "approved_zoning": "vectors/approved_zoning.json"
-                        if approved_payload
-                        else None,
-                    },
-                    "layers": manifest_layers,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-    buffer.seek(0)
-    return StreamingResponse(
-        iter([buffer.getvalue()]),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="geo_bundle_{date.today().isoformat()}.zip"'
-        },
-    )
-
-
-def export_current_approved_basin_zones_pdf_impl(
-    cuenca: Optional[str], db: Session, repo: GeoRepository, get_user_display_name
-):
-    from app.shared.pdf import build_approved_zoning_pdf, get_branding
-
-    zoning = repo.get_active_approved_zoning(db, cuenca=cuenca)
-    if zoning is None:
-        raise HTTPException(status_code=404, detail="No hay una zonificación aprobada activa")
-    pdf_buffer = build_approved_zoning_pdf(
-        zoning,
-        get_branding(db),
-        approved_by_name=get_user_display_name(db, zoning.approved_by_id),
-    )
-    return StreamingResponse(
-        pdf_buffer,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="zonificacion-aprobada-v{zoning.version}.pdf"'
-        },
-    )
-
-
-def export_current_map_approved_basin_zones_pdf_impl(payload, db: Session):
-    from app.shared.pdf import build_approved_zoning_map_pdf, get_branding
-
-    return StreamingResponse(
-        build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), get_branding(db)),
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="zonificacion-aprobada-mapa.pdf"'},
-    )
+# NOTE: three "…_impl" copies of the bundle/PDF export handlers lived here,
+# reachable only from un-decorated twins in router.py. Both sides are gone: the
+# live handlers in router_bundle_io.py / router_basins_bundle.py own that logic,
+# and the map-PDF copy in particular predated the body/image/list caps.
 
 
 def _get_gee_task_key_map() -> Mapping[TipoAnalisisGee, CeleryTaskKey]:

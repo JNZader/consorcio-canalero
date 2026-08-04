@@ -387,6 +387,38 @@ def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:
     assert count == 1  # still one current row, not duplicated
 
 
+def test_force_recomputes_even_when_the_version_is_unchanged(catchment_db: Session) -> None:
+    """Caps live outside the version key.
+
+    The resume key is the flow_dir POINTER, so after a cap change (batch 4 widened
+    the catchment envelope cap) a plain re-run skips every stored row and keeps the
+    old ``oversized`` verdicts. ``--force`` is what makes a re-gate possible.
+    """
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-a")
+
+    first = _run(catchment_db, _RecordingWbt(), _shapes_returning(_OVERSIZED_POLY))
+    assert first.oversized == 1
+    assert _row(catchment_db, "canal-a").oversized is True
+
+    # Same pointer, wider cap: without --force this is a no-op.
+    forced_wbt = _RecordingWbt()
+    forced = _run(
+        catchment_db,
+        forced_wbt,
+        _shapes_returning(_OVERSIZED_POLY),
+        force=True,
+        max_area_ha=1_000_000.0,
+    )
+
+    assert forced.skipped == 0
+    assert forced.computed == 1
+    assert forced_wbt.calls, "a forced canal must be recomputed"
+    row = _row(catchment_db, "canal-a")
+    assert row.oversized is False
+    assert row.geom_null is False
+
+
 def test_new_flow_dir_version_recomputes(catchment_db: Session) -> None:
     v1 = _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-a")
@@ -587,3 +619,40 @@ def test_null_line_canal_upserts_null_geometry_without_running_wbt(
     assert row is not None
     assert row.geom_null is True
     assert row.area_ha == pytest.approx(0.0)
+
+
+# ── read-path cap mirror: per-``tipo`` envelope (batch 4) ────────────────────
+
+
+def test_exceeds_read_path_caps_uses_the_catchment_envelope_cap() -> None:
+    """ "stored ⟹ servable": the batch gate must read the SAME envelope cap the
+    ficha applies to ``tipo=canal_cuenca``, not the caller-polygon one."""
+    import math
+
+    from shapely.geometry import LineString
+
+    from app.config import settings
+    from app.domains.geo.ficha_service import envelope_cap_ha
+
+    entre_ha = (settings.ficha_max_envelope_ha + settings.ficha_max_envelope_ha_cuenca) / 2.0
+    lado = math.sqrt(entre_ha * gcc.M2_PER_HA)
+    diagonal = LineString([(500_000, 6_000_000), (500_000 + lado, 6_000_000 + lado)])
+    geom = diagonal.buffer((5_000.0 * gcc.M2_PER_HA) / (2.0 * diagonal.length), cap_style=2)
+    area_ha = geom.area / gcc.M2_PER_HA
+
+    assert envelope_cap_ha("canal_cuenca") > settings.ficha_max_envelope_ha
+    assert not gcc._exceeds_read_path_caps(geom, area_ha, settings.ficha_max_area_ha)
+
+
+def test_exceeds_read_path_caps_still_rejects_a_huge_envelope() -> None:
+    import math
+
+    from shapely.geometry import LineString
+
+    from app.config import settings
+
+    lado = math.sqrt(settings.ficha_max_envelope_ha_cuenca * 2.0 * gcc.M2_PER_HA)
+    diagonal = LineString([(500_000, 6_000_000), (500_000 + lado, 6_000_000 + lado)])
+    geom = diagonal.buffer((5_000.0 * gcc.M2_PER_HA) / (2.0 * diagonal.length), cap_style=2)
+
+    assert gcc._exceeds_read_path_caps(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
