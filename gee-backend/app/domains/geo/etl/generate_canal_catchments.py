@@ -30,7 +30,9 @@ per canal mirrors the pour-points build in
    and routinely blows past ``settings.ficha_max_vertices`` — collapses to a
    low-vertex outline; then gate the SIMPLIFIED geometry against EVERY read-path
    cap ``ficha_service.assert_within_caps(tipo='canal_cuenca')`` enforces:
-   ``ficha_max_area_ha`` AND ``ficha_max_envelope_ha`` AND ``ficha_max_vertices``.
+   ``ficha_max_area_ha`` AND the per-``tipo`` envelope cap
+   (``ficha_service.envelope_cap_ha('canal_cuenca')`` →
+   ``ficha_max_envelope_ha_cuenca``) AND ``ficha_max_vertices``.
    If the simplified basin exceeds ANY of those it is ``oversized``: the row is
    stored WITHOUT its geometry (``geometria`` NULL, ``area_ha`` kept for audit).
    A stored (non-oversized) catchment is therefore GUARANTEED to pass
@@ -59,6 +61,12 @@ run mints a NEW ``geo_layers`` row (a new UUID), so re-running the batch:
 Progress is committed per canal, so a crash mid-run leaves every finished canal
 persisted and a re-run picks up where it stopped. ``--limit`` / ``--canal-ref``
 scope a test run.
+
+``--force`` overrides the skip. The version key tracks the POINTER, not the
+caps, so after a cap change (the batch-4 envelope widening) a plain re-run would
+skip all 60 rows and keep the previous ``oversized`` verdicts. Re-gating stored
+catchments against new caps therefore requires
+``python -m app.domains.geo.etl.generate_canal_catchments --force``.
 
 Exit codes:
     0  success — every in-scope canal computed or skipped, no failures
@@ -340,13 +348,18 @@ def _exceeds_read_path_caps(geom: Any, area_ha: float, max_area_ha: float) -> bo
     numbers are directly comparable and producer/consumer can never drift. Anything
     stored as non-oversized is therefore guaranteed servable at read time.
     """
-    from app.domains.geo.ficha_service import _contar_vertices_shapely  # noqa: PLC0415
+    from app.domains.geo.ficha_service import (  # noqa: PLC0415
+        _contar_vertices_shapely,
+        envelope_cap_ha,
+    )
 
     if area_ha > max_area_ha:
         return True
     minx, miny, maxx, maxy = geom.bounds
     envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_PER_HA
-    if envelope_ha > settings.ficha_max_envelope_ha:
+    # Per-``tipo`` envelope cap, read through the read-path helper so the
+    # wider catchment envelope can never drift from what the ficha enforces.
+    if envelope_ha > envelope_cap_ha("canal_cuenca"):
         return True
     if _contar_vertices_shapely(geom) > settings.ficha_max_vertices:
         return True
@@ -443,6 +456,7 @@ def generate_catchments(
     estado: str | None = None,
     limit: int | None = None,
     canal_ref: str | None = None,
+    force: bool = False,
     max_area_ha: float | None = None,
     rasterio_module: Any = None,
     rasterize_fn: Callable[..., Any] | None = None,
@@ -505,7 +519,11 @@ def generate_catchments(
                 computed=result.computed,
                 skipped=result.skipped,
             )
-        if _existing_version(db, ref, variante) == version:
+        # ``force`` overrides the resume-skip. The skip key is the flow_dir
+        # version, so when NOTHING about the pointer changed but the CAPS did
+        # (e.g. the catchment envelope cap was widened), a plain re-run would
+        # skip all 60 rows and silently keep the old oversized verdicts.
+        if not force and _existing_version(db, ref, variante) == version:
             result.skipped += 1
             continue
         try:
@@ -680,6 +698,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Procesar un unico canal por id de canal_consorcio (para pruebas).",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recalcular incluso las cuencas ya almacenadas para esta version de "
+        "flow_dir. Necesario cuando cambian los CAPS (no el puntero): sin esto "
+        "el resume las omite y se conserva el veredicto oversized anterior.",
+    )
     return parser
 
 
@@ -700,6 +725,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 estado=args.estado,
                 limit=args.limit,
                 canal_ref=args.canal_ref,
+                force=args.force,
             )
         except RuntimeError as exc:
             print(

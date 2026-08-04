@@ -270,7 +270,10 @@ def test_submit_pipeline_job_delegates_once_to_generic_outbox_producer() -> None
 
 @pytest.mark.parametrize(
     "module_name",
-    ["app.domains.geo.router_core", "app.domains.geo.router"],
+    # ``app.domains.geo.router`` used to carry an un-decorated COPY of this
+    # handler and was parametrized here too. The copy is gone (it was dead code
+    # that shadowed the hardened originals); ``router_core`` owns the live one.
+    ["app.domains.geo.router_core"],
 )
 def test_geo_job_router_helpers_return_accepted_pending_without_503_translation(
     module_name: str,

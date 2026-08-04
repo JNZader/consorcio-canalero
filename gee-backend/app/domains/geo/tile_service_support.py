@@ -17,7 +17,7 @@ from pyproj import CRS
 from rasterio.enums import Resampling
 from rasterio.transform import from_bounds
 from rasterio.warp import reproject, transform_bounds
-from scipy.ndimage import median_filter
+from scipy.ndimage import distance_transform_edt, median_filter
 
 from app.domains.geo.class_breaks import RANGE_CONFIGS
 
@@ -56,6 +56,21 @@ TERRAIN_SMOOTHING_METHODS_DESCRIPTION = (
 # smoothing has access to neighbour elevations. Eliminates the seam that
 # ``mode="nearest"`` would otherwise produce at tile borders.
 TERRAIN_SMOOTHING_BUFFER_PX = 8
+
+# Width (in pixels) of the ramp that carries a terrain-rgb tile from the last
+# valid elevation down to the baseline plane over the nodata area. See
+# ``feather_nodata_elevation`` for why the ramp exists at all.
+#
+# CHOSEN, not measured. The arithmetic behind the choice: 24 px is 9.4 % of a
+# 256 px tile, and at z15 (where the 3D terrain is actually read) a Web-Mercator
+# pixel at the consorcio's latitude is 156543.03 * cos(32.6°) / 2**15 ≈ 4.0 m,
+# so the ramp spans ~96 m on the ground — a slope, not a wall, against the tens
+# of metres of relief in the DEM. The trade-off runs both ways: a wider ramp is
+# gentler but pushes the skirt further past the DEM edge (and grows the residual
+# seam described in ``feather_nodata_elevation``), a narrower one hugs the data
+# but steepens each step. Safe to tune; it changes pixels only, never geometry
+# semantics — but bump the tile cache key when you do.
+TERRAIN_NODATA_FEATHER_PX = 24
 
 # Mapping from public method name → (kernel_size, optional_despike_threshold).
 # When ``threshold`` is None this is a plain median; otherwise the despike
@@ -429,10 +444,70 @@ def smooth_elevation_tile(
     return np.where(valid_mask, despiked, elevation).astype(np.float32)
 
 
+def feather_nodata_elevation(
+    data: np.ndarray,
+    valid_mask: np.ndarray,
+    feather_px: int = TERRAIN_NODATA_FEATHER_PX,
+) -> np.ndarray:
+    """Ramp the nodata area of a terrain tile down to the baseline plane.
+
+    ``data`` is a BASELINE-NORMALIZED elevation tile (``elevation - baseline``),
+    so ``0.0`` is the lowest elevation of the whole DEM. Terrain-RGB has no
+    alpha channel: every pixel encodes an elevation, and the renderer used to
+    hard-assign ``0.0`` to every invalid pixel. Because the interior is
+    normalized against the baseline, that put the whole exterior at the DEM
+    minimum and turned the edge of the recorte into a VERTICAL CURTAIN whose
+    height is the local relief times the viewer's terrain exaggeration.
+
+    The fix keeps the far field exactly where it was — ``0.0``, the same value
+    ``render_flat_terrain_rgb_png`` uses for tiles that miss the DEM entirely,
+    so no cross-tile discontinuity is introduced — and replaces the ABRUPT
+    transition with a linear ramp: each invalid pixel takes the elevation of
+    the nearest valid pixel attenuated by its distance to the data edge,
+    reaching the baseline plane ``feather_px`` pixels out. The cliff becomes a
+    skirt.
+
+    Alternatives considered:
+
+    * plain nearest-valid fill (no attenuation) — removes the cliff at the data
+      edge but moves it to the border of the next tile, which has no valid
+      pixel at all and stays flat at the baseline;
+    * per-row/column edge extension — cheaper, but it smears the border
+      elevation along the axes and produces visible cross-shaped artefacts on a
+      diagonal DEM boundary;
+    * re-normalizing the exterior to a different baseline — does not help: the
+      step is the interior relief, not the choice of datum.
+
+    Cost is one EDT over a 256x256 boolean (~0.5 ms) and only on tiles that
+    actually straddle the DEM edge; fully valid tiles take the fast path and
+    come out byte-identical to the previous renderer.
+
+    Residual (documented on purpose): the ramp is computed per tile, so when
+    the DEM edge runs closer than ``feather_px`` to the tile border, the
+    neighbouring all-nodata tile is already flat at the baseline while this
+    tile still ends part-way down the ramp. The remaining step is bounded by
+    the ramp height rather than by the full relief — an order of magnitude
+    smaller than the curtain it replaces.
+    """
+    if valid_mask.all():
+        return data.astype(np.float32, copy=False)
+    if not valid_mask.any():
+        return np.zeros(data.shape, dtype=np.float32)
+
+    distance, indices = distance_transform_edt(  # type: ignore[misc]
+        ~valid_mask,
+        return_distances=True,
+        return_indices=True,
+    )
+    nearest = data[tuple(indices)]
+    weight = np.clip(1.0 - (distance / float(feather_px)), 0.0, 1.0)
+    return np.where(valid_mask, data, nearest * weight).astype(np.float32)
+
+
 def render_terrain_rgb_png(data: np.ndarray, valid_mask: np.ndarray) -> bytes:
     if not np.any(valid_mask):
         raise ValueError("No valid elevation pixels to render")
-    terrain_rgb = encode_terrain_rgb(np.where(valid_mask, data, 0.0))
+    terrain_rgb = encode_terrain_rgb(feather_nodata_elevation(data, valid_mask))
     rgb = np.zeros((data.shape[0], data.shape[1], 3), dtype=np.uint8)
     rgb[..., 0], rgb[..., 1], rgb[..., 2] = (
         terrain_rgb[0],

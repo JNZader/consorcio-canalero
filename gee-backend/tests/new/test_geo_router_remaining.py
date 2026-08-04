@@ -110,20 +110,20 @@ class TestExtractSourceProperties:
 
 class TestGetUserDisplayName:
     def test_returns_none_for_none_user_id(self):
-        from app.domains.geo.router import _get_user_display_name
+        from app.domains.geo.router_common import _get_user_display_name
 
         db = MagicMock()
         assert _get_user_display_name(db, None) is None
 
     def test_returns_none_for_missing_user(self):
-        from app.domains.geo.router import _get_user_display_name
+        from app.domains.geo.router_common import _get_user_display_name
 
         db = MagicMock()
         db.get.return_value = None
         assert _get_user_display_name(db, uuid.uuid4()) is None
 
     def test_returns_full_name(self):
-        from app.domains.geo.router import _get_user_display_name
+        from app.domains.geo.router_common import _get_user_display_name
 
         user = SimpleNamespace(nombre="Juan", apellido="Pérez", email="j@x.com")
         db = MagicMock()
@@ -131,7 +131,7 @@ class TestGetUserDisplayName:
         assert _get_user_display_name(db, uuid.uuid4()) == "Juan Pérez"
 
     def test_falls_back_to_email(self):
-        from app.domains.geo.router import _get_user_display_name
+        from app.domains.geo.router_common import _get_user_display_name
 
         user = SimpleNamespace(nombre="", apellido="", email="j@x.com")
         db = MagicMock()
@@ -159,7 +159,7 @@ class TestGetGeoBundleStorageDir:
 
 class TestSerializeApprovedZoning:
     def test_serializes_zoning(self):
-        from app.domains.geo.router import _serialize_approved_zoning
+        from app.domains.geo.router_common import _serialize_approved_zoning
 
         zoning = SimpleNamespace(
             id=uuid.uuid4(),
@@ -413,7 +413,9 @@ class TestEnsureGee:
 
 class TestGetTileClient:
     def test_creates_client_once(self):
-        import app.domains.geo.router as router_mod
+        # Lives in router_common; ``router`` used to re-export it purely to feed
+        # a duplicated tile-proxy handler that was never registered.
+        import app.domains.geo.router_common as router_mod
 
         router_mod._tile_client = None
         client = router_mod._get_tile_client()
@@ -453,7 +455,7 @@ class TestRequestModels:
         assert req.zone_names == {}
 
     def test_approved_zones_save_request(self):
-        from app.domains.geo.router import ApprovedZonesSaveRequest
+        from app.domains.geo.router_common import ApprovedZonesSaveRequest
 
         req = ApprovedZonesSaveRequest(
             featureCollection={"type": "FeatureCollection", "features": []},
@@ -492,7 +494,7 @@ class TestRequestModels:
         assert resp.layers_imported == 3
 
     def test_approved_zones_map_pdf_request(self):
-        from app.domains.geo.router import ApprovedZonesMapPdfRequest
+        from app.domains.geo.router_common import ApprovedZonesMapPdfRequest
 
         req = ApprovedZonesMapPdfRequest(
             title="Test Map",

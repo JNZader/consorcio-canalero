@@ -133,13 +133,31 @@ def _contar_vertices_shapely(geom: Any) -> int:
     return total
 
 
+def envelope_cap_ha(tipo: str) -> float:
+    """The envelope cap that applies to ``tipo``. SINGLE source of truth.
+
+    ``canal_cuenca`` gets a wider cap than every other ``tipo``: a precomputed
+    upstream catchment is a dendritic, diagonal basin whose bbox is several
+    times its own area, and — unlike ``poligono``/``parcela``/``canal_buffer``
+    — its shape is NOT caller-supplied, it is one of a fixed set generated
+    server-side and already bounded by ``ficha_max_area_ha``. Read by
+    ``assert_within_caps`` AND by the ETL's ``_exceeds_read_path_caps`` mirror,
+    so producer and consumer cannot drift.
+    """
+    if tipo == "canal_cuenca":
+        return settings.ficha_max_envelope_ha_cuenca
+    return settings.ficha_max_envelope_ha
+
+
 def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -> None:
     """Reject a resolved geometry that would cost too much. 422 ``cap_excedido``.
 
     ``geom`` is a shapely geometry in a METRIC CRS (EPSG:32720 — the same
     projection ``area_ha`` is computed in, so there is no second projection).
     Pure computation: no DB, no file, no network. Valid for the five ``tipo``
-    values; ``buffer_m`` is only passed by ``canal_buffer``.
+    values; ``buffer_m`` is only passed by ``canal_buffer``. The area, buffer
+    and vertex caps are the same for every ``tipo``; the ENVELOPE cap is
+    per-``tipo`` (see ``envelope_cap_ha``).
     """
     if buffer_m is not None and buffer_m > settings.ficha_max_buffer_m:
         raise ficha_errors.cap_excedido("buffer_m", settings.ficha_max_buffer_m, buffer_m)
@@ -153,8 +171,9 @@ def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -
 
     minx, miny, maxx, maxy = geom.bounds
     envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_POR_HA
-    if envelope_ha > settings.ficha_max_envelope_ha:
-        raise ficha_errors.cap_excedido("envelope_ha", settings.ficha_max_envelope_ha, envelope_ha)
+    cap_envelope = envelope_cap_ha(tipo)
+    if envelope_ha > cap_envelope:
+        raise ficha_errors.cap_excedido("envelope_ha", cap_envelope, envelope_ha)
 
     vertices = _contar_vertices_shapely(geom)
     if vertices > settings.ficha_max_vertices:
