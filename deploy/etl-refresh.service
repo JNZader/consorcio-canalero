@@ -1,0 +1,33 @@
+[Unit]
+# Weekly geo-data ETL refresh. Driven by etl-refresh.timer; running it by hand
+# (`systemctl start etl-refresh.service`) is the supported manual path.
+Description=Consorcio Canalero — weekly geo ETL refresh
+Documentation=file:/home/javier/programacion/consorcio-canalero/deploy/README-etl-cron.md
+# The stack is docker-compose based: without this the timer can fire on a boot
+# where dockerd is not up yet and every step fails on a missing socket.
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Runs as the stack owner, NOT root: /home/javier/stacks/consorcio and its .env
+# belong to javier, and the docker socket is reachable through his docker group
+# (systemd loads the user's supplementary groups).
+User=javier
+Group=javier
+Environment=HOME=/home/javier
+Environment=STACK_DIR=/home/javier/stacks/consorcio
+WorkingDirectory=/home/javier/stacks/consorcio
+ExecStart=/usr/local/bin/etl-refresh.sh
+# The catchment delineation is the long pole (one watershed per canal). Two hours
+# is a ceiling that flags a hang, not a normal runtime.
+TimeoutStartSec=2h
+# Never auto-retry: these ETLs are idempotent but a failure means "look at the
+# log", and a retry storm would just re-run the whole chain on a broken box.
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=etl-refresh
+
+[Install]
+WantedBy=multi-user.target

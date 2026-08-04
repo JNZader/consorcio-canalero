@@ -1,5 +1,38 @@
 # CANDIDATE mutation config — MEASUREMENT ONLY, NOT WIRED TO CI (B4c/T5).
 #
+# ── UPDATE 2026-08-04 (B4d): ETAPA 1 EJECUTADA, finanzas YA ESTA EN EL GATE ──
+#
+#   Todo lo que sigue describe el estado ANTES de escribir los unit tests. Lo que
+#   cambio, medido igual que el resto (local, `cosmic-ray init` + `exec` real):
+#
+#     tests nuevos   tests/test_mutation_targets_finanzas.py (55 casos) y
+#                    tests/test_mutation_targets_padron.py (29). Sin DB.
+#     costo          1.83 s por invocacion del test-command (3 muestras), contra
+#                    1.67 s del comando viejo -> +0.16 s por mutante.
+#     finanzas       74 mutantes (eran 0.00 % de kill rate). Medido en LOS DOS
+#                    interpretes, porque el resultado depende del interprete:
+#                      Python 3.11 (EL DE CI): 72/74 = 97.30 %, 1 min 16 s.
+#                      Python 3.14 (venv local): 61/74 = 82.43 %, 2 min 21 s.
+#     sobrevivientes En 3.11 quedan 2, ambos del marcador `*` de keyword-only
+#                    (mutado a `/`, que no rompe las llamadas por keyword). En
+#                    3.14 quedan esos 2 + 11 del `|` de la anotacion
+#                    `FinanzasRepository | None`: PEP 649 difiere la evaluacion
+#                    de anotaciones, asi que la anotacion mutada nunca corre. En
+#                    3.11 se evalua eager, revienta al importar y muere. Ninguno
+#                    de comportamiento en ninguno de los dos.
+#     LECCION        medir mutation testing en un interprete distinto al de CI
+#                    da un numero que no es el que el gate va a ver. Aca salio
+#                    a favor (el local era el pesimista), pero pudo salir al
+#                    reves. El numero canonico es el de 3.11.
+#     gate           `.cosmic-ray.toml` pasa a 350 mutantes (276 + 74); el piso
+#                    de 0.30 de `cosmic_gate.py` no se toca.
+#
+#   La leccion, porque contradice lo que este archivo asumia: el problema NUNCA
+#   fue la DB. `FinanzasService` no toca la base — delega todo en el repository —
+#   asi que un `MagicMock` de repositorio + Session alcanza para ejercer cada
+#   rama. Las etapas 2 (padron) y 3 (refresh_tokens) siguen pendientes y se
+#   escriben con esa misma receta, no con testcontainers.
+#
 # The active gate (`.cosmic-ray.toml`, run by `scripts/cosmic_gate.py` in the
 # `mutation` job of `.github/workflows/backend.yml`) deliberately EXCLUDES the
 # three highest-risk domains, with a TODO explaining why: their only tests live
@@ -59,8 +92,11 @@ module-path = [
   "app/domains/denuncias/service.py",
   "app/domains/monitoring/service.py",
   "app/domains/tramites/schemas.py",
-  # ── candidates: 0% kill rate until the lightweight tests above exist ──
-  "app/domains/finanzas/service.py",  # 74 mutants
+  # finanzas YA NO es candidato: paso al gate real el 2026-08-04 con 97.30 % de
+  # kill rate (ver el bloque UPDATE arriba). Queda listado aca solo para que la
+  # comparacion de costos de este archivo siga cerrando.
+  "app/domains/finanzas/service.py",  # 74 mutants — ACTIVO en .cosmic-ray.toml
+  # ── candidatos de verdad: 0 % de kill rate hasta que existan sus unit tests ──
   "app/auth/refresh_tokens.py",       # 300 mutants
   "app/domains/padron/service.py",    # 191 mutants
 ]

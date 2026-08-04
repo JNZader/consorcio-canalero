@@ -3,18 +3,39 @@ module-path = [
   "app/domains/denuncias/service.py",
   "app/domains/monitoring/service.py",
   "app/domains/tramites/schemas.py",
-  # TODO(mutation-coverage): finanzas/service.py, auth/refresh_tokens.py y
-  # padron/service.py son los dominios de mayor riesgo y DEBERIAN estar aca,
-  # pero sus unicos tests viven en tests/new/ y requieren PostGIS
-  # (testcontainers). El mutation harness corre el test-command una vez por
-  # mutante, asi que apuntarlo a tests con DB lo haria tardar horas. Para
-  # sumarlos: escribir primero unit tests LIVIANOS sin DB (ej. validar_cuit
-  # mod-11 y el field_validator de rubro son logica pura y se prestan) y
-  # agregarlos al test-command de abajo.
+  # ── etapa 1 del plan escalonado, MEDIDA y habilitada (B4d, 2026-08-04) ──
+  # 74 mutantes. Medido en LOS DOS interpretes, porque el numero depende del
+  # interprete y el que manda es el de CI:
+  #
+  #   Python 3.11 (EL DE CI, `python-version: '3.11'` en backend.yml):
+  #     72/74 = 97.30 % — 1 min 16 s, ~1.0 s por mutante.
+  #     Sobreviven 2, ambos sobre el marcador `*` de keyword-only de
+  #     list_gastos / list_ingresos (mutado a `/`, que deja las llamadas por
+  #     keyword funcionando igual). Cero sobrevivientes de comportamiento.
+  #
+  #   Python 3.14 (el venv local): 61/74 = 82.43 % — 2 min 21 s.
+  #     Sobreviven 13: los 2 de arriba MAS 11 sobre el `|` de la anotacion
+  #     `FinanzasRepository | None`. En 3.14 las anotaciones se evaluan en forma
+  #     diferida (PEP 649) y la anotacion mutada nunca corre; en 3.11 se evaluan
+  #     eager, `FinanzasRepository + None` explota al importar y los 11 mueren.
+  #
+  # O sea: el numero local de 3.14 es el PESIMISTA. En CI el gate ve 97 %.
+  "app/domains/finanzas/service.py",
+  # TODO(mutation-coverage): faltan las etapas 2 y 3 -- padron/service.py (191
+  # mutantes) y auth/refresh_tokens.py (300, el de mayor valor y el mas caro).
+  # La receta ya esta probada por finanzas y NO es "correr los tests con DB mas
+  # rapido": el service no toca la base, delega todo en el repository, asi que
+  # se testea con un repositorio y una Session falsos (MagicMock). Ver
+  # tests/test_mutation_targets_finanzas.py. refresh_tokens merece su propio
+  # job/config con su propio piso antes que empujar este gate contra los 35
+  # minutos de timeout-minutes. Medicion y plan completos en
+  # .cosmic-ray.candidate.toml.
 ]
 timeout = 120.0
 excluded-modules = []
-test-command = "python3 -m pytest tests/test_tramites_schema.py tests/test_mutation_targets.py -q"
+# Solo tests SIN base de datos: el harness corre este comando una vez por
+# mutante, asi que cada segundo se multiplica por cientos.
+test-command = "python3 -m pytest tests/test_tramites_schema.py tests/test_mutation_targets.py tests/test_mutation_targets_finanzas.py tests/test_mutation_targets_padron.py -q"
 
 [cosmic-ray.distributor]
 name = "local"
