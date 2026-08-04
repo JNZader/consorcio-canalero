@@ -79,7 +79,7 @@ describe("useFichaInteraction", () => {
 		expect(result.current.nroCuenta).toBeNull();
 	});
 
-	it("a completed polygon fires a tipo=poligono request and stays in draw mode", () => {
+	it("a completed polygon fires a tipo=poligono request and keeps the draw session", () => {
 		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
 		act(() => result.current.startDraw());
 		act(() => result.current.completePolygon(POLY));
@@ -90,19 +90,88 @@ describe("useFichaInteraction", () => {
 		});
 		expect(result.current.tipo).toBe("poligono");
 		expect(result.current.state.drawing).toBe(true); // shape stays visible while its ficha shows
-		expect(result.current.interactionMode).toBe("ficha-dibujo");
+		// T4 — MapboxDraw already went back to `simple_select`, so click ownership
+		// is released too and the map stops being dead.
+		expect(result.current.state.tracing).toBe(false);
+		expect(result.current.interactionMode).toBe("idle");
 	});
 
-	it("ignores a parcel click WHILE drawing (DrawControl owns clicks)", () => {
+	it("ignores a parcel click WHILE TRACING (DrawControl owns clicks)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+
+		act(() => result.current.resolveParcela(PARCELA)); // a stray click mid-trace
+		expect(result.current.state.parcelas).toEqual([]);
+		expect(result.current.request).toBeNull();
+	});
+
+	it("T4 — a parcel click AFTER the polygon is finished supersedes it and ends the session", () => {
 		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
 		act(() => result.current.startDraw());
 		act(() => result.current.completePolygon(POLY));
 
-		act(() => result.current.resolveParcela(PARCELA)); // a stray click mid-draw
+		act(() => result.current.resolveParcela(PARCELA));
+
 		expect(result.current.request).toEqual({
-			tipo: "poligono",
-			geometry: POLY,
+			tipo: "parcela",
+			nomenclatura: PARCELA.nomenclatura,
 		});
+		expect(result.current.state.drawing).toBe(false);
+		expect(result.current.state.poligono).toBeNull();
+	});
+
+	it("T4 — redrawPolygon re-arms tracing while keeping the current ficha on screen", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
+
+		act(() => result.current.redrawPolygon());
+
+		expect(result.current.state.tracing).toBe(true);
+		expect(result.current.interactionMode).toBe("ficha-dibujo");
+		// The previous polygon (and its ficha) survives until `draw.create` replaces it.
+		expect(result.current.request).toEqual({ tipo: "poligono", geometry: POLY });
+
+		// And clicks are owned by MapboxDraw again.
+		act(() => result.current.resolveParcela(PARCELA));
+		expect(result.current.request).toEqual({ tipo: "poligono", geometry: POLY });
+	});
+
+	it("T4 — an ADDITIVE click after the polygon is finished also closes the session", () => {
+		// Regression: the additive branch dropped `poligono` but kept
+		// `drawing: true`, so DrawControl stayed mounted and MapboxDraw went on
+		// painting a polygon nothing in React owned.
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
+
+		act(() => result.current.resolveParcela(PARCELA, true));
+
+		expect(result.current.state.poligono).toBeNull();
+		expect(result.current.state.drawing).toBe(false);
+		expect(result.current.state.tracing).toBe(false);
+		expect(result.current.state.parcelas).toEqual([PARCELA.nomenclatura]);
+	});
+
+	it("T4 — the sticky multiSelect toggle closes the session too (no ctrl on touch)", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.setMultiSelect(true));
+		act(() => result.current.startDraw());
+		act(() => result.current.completePolygon(POLY));
+
+		// `startDraw` rebuilds from IDLE, so re-arm the touch toggle first.
+		act(() => result.current.setMultiSelect(true));
+		act(() => result.current.resolveParcela(PARCELA));
+
+		expect(result.current.state.poligono).toBeNull();
+		expect(result.current.state.drawing).toBe(false);
+	});
+
+	it("T4 — redrawPolygon is a no-op outside a draw session", () => {
+		const { result } = renderHook(() => useFichaInteraction("idle", vi.fn()));
+		act(() => result.current.redrawPolygon());
+		expect(result.current.state.tracing).toBe(false);
+		expect(result.current.interactionMode).toBe("idle");
 	});
 
 	it("a fresh parcel click supersedes a drawn ficha once drawing has stopped", () => {

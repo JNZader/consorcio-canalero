@@ -233,6 +233,22 @@ interface LeyendaPanelProps {
   readonly embedded?: boolean;
   /** Optional fixed width in pixels for embedded mode. */
   readonly width?: number;
+  /**
+   * AUD-005 (T5) — set when an ANCESTOR already owns a scroll area (the
+   * `MapWorkspace` sidebar body on desktop, the layers Drawer on mobile).
+   *
+   * The panel then renders UNBOUNDED: no viewport-derived `maxHeight`, no
+   * `overflow`. Keeping its own bounded scroll inside a scrolling container
+   * produced three nested scroll areas (sidebar → controls → legend); with a few
+   * toggles on, the legend was pushed below the fold of a viewport-height box
+   * that itself lived inside another scroller, and the wheel/touch gesture got
+   * trapped in whichever one happened to be under the pointer.
+   *
+   * Default `false` — the FLOATING variant (`MapUiPanels`) has no scrolling
+   * ancestor, so there the panel's own bound is what keeps it on screen.
+   */
+  readonly insideScrollContainer?: boolean;
+
   /** Optional extra inline style overrides (merged last). */
   readonly style?: CSSProperties;
   /** Optional `data-testid` forwarded to the root Paper element. */
@@ -297,6 +313,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   customItems = [],
   floating = true,
   embedded = false,
+  insideScrollContainer = false,
   width,
   style: styleOverride,
   'data-testid': dataTestId,
@@ -330,11 +347,16 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   // would fight the parent's flex layout.
   const useLegendPanelClass = floating && !embedded;
 
+  // Inside a scrolling ancestor the legend must NOT bound itself (T5): its own
+  // 80vh box was the third nested scroller and the one users actually hit.
+  const scrollStyle: CSSProperties = insideScrollContainer
+    ? { overflow: 'visible' }
+    : { maxHeight: '80vh', overflowY: 'auto' };
+
   const baseStyle: CSSProperties = useLegendPanelClass
-    ? { maxHeight: '80vh', overflowY: 'auto' }
+    ? scrollStyle
     : {
-        maxHeight: '80vh',
-        overflowY: 'auto',
+        ...scrollStyle,
         background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
         backdropFilter: 'blur(6px)',
         ...(width !== undefined ? { width } : {}),

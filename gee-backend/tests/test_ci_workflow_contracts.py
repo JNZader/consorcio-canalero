@@ -34,6 +34,19 @@ def _compose_service_block(compose: str, service: str) -> str:
     return match.group("body")
 
 
+def _without_comments(workflow: str) -> str:
+    """Drop full-line ``#`` comments.
+
+    The canary workflow DOCUMENTS what it deliberately does not do ("no
+    E2E_API_BASE", "not on pull_request"), so a naive substring assertion over
+    the raw file fails on the prose that explains the very contract being
+    asserted. Only the executable YAML is checked.
+    """
+    return "\n".join(
+        line for line in workflow.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
 def _job_block(workflow: str, job: str) -> str:
     match = re.search(
         rf"(?ms)^  {re.escape(job)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
@@ -795,6 +808,65 @@ def test_ci_workflows_never_run_production_writing_e2e() -> None:
         assert "test:e2e" not in text
         assert "tests/e2e" not in text
         assert "PLAYWRIGHT_BASE_URL" not in text
+
+
+# The three read-only /mapa specs the canary is allowed to run. Any OTHER spec
+# in `tests/e2e/` either creates records against the live site
+# (production/denuncias/auth flows) or needs admin credentials, so adding one to
+# the canary script must break this list on purpose.
+CANARY_READ_ONLY_SPECS = (
+    "tests/e2e/mapa-maplibre.spec.ts",
+    "tests/e2e/mapa-viewport-movil.spec.ts",
+    "tests/e2e/ficha-territorial.spec.ts",
+)
+
+
+def test_e2e_canary_stays_read_only_against_production() -> None:
+    """The canary is the ONE workflow allowed to touch the deployed site.
+
+    `test_ci_workflows_never_run_production_writing_e2e` cannot cover it — that
+    guard forbids the very string the canary legitimately runs — so the
+    equivalent protection lives here, asserted positively:
+
+    (a) it runs ONLY `npm run test:e2e:canary`, never `test:e2e:prod` or a bare
+        `test:e2e`;
+    (b) it passes NO backend base URL and NO admin credentials, so nothing can
+        authenticate and write;
+    (c) the `test:e2e:canary` script lists EXACTLY the read-only specs, so
+        widening it (e.g. adding `production.spec.ts`, which issues 24 writes)
+        fails this test instead of silently seeding junk into production.
+    """
+    canary = _without_comments(_read(".github/workflows/e2e-canary.yml"))
+    package = json.loads(_read("consorcio-web/package.json"))
+
+    # (a) exactly one e2e invocation, and it is the canary script.
+    run_lines = [line.strip() for line in canary.splitlines() if "npm run test:e2e" in line]
+    assert run_lines == ["run: npm run test:e2e:canary"], run_lines
+    assert "test:e2e:prod" not in canary
+    assert "playwright test" not in canary
+
+    # (b) no backend and no credentials reach the run.
+    for forbidden in ("E2E_API_BASE", "E2E_ADMIN_EMAIL", "E2E_ADMIN_PASSWORD", "PLAYWRIGHT_BASE_URL"):
+        assert forbidden not in canary, forbidden
+
+    # (c) the script itself is the allowlist.
+    script = package["scripts"]["test:e2e:canary"]
+    assert script.startswith("playwright test -c tests/e2e/playwright.config.ts ")
+    listed = tuple(script.split()[4:])
+    assert listed == CANARY_READ_ONLY_SPECS, listed
+
+    # The deploy gate must reject a missing/short sha instead of matching `*`.
+    assert '[ -n "$deployed" ]' in canary
+    assert '[ "${#deployed}" -ge "$sha_len" ]' in canary
+
+
+def test_e2e_canary_only_runs_after_a_main_push() -> None:
+    """A canary is a POST-deploy probe: on `pull_request` it would burn minutes
+    testing a URL that does not contain the PR's code yet."""
+    canary = _without_comments(_read(".github/workflows/e2e-canary.yml"))
+    assert "pull_request" not in canary
+    assert "branches: [main]" in canary
+    assert "cancel-in-progress: true" in canary
 
 
 def test_codeql_keeps_javascript_and_python_security_scans() -> None:

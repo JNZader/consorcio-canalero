@@ -67,9 +67,4 @@ test.describe('Rainfall API', () => {
       expect(typeof body).toBe('object');
     }
   });
-
-  test.skip('POST /geo/rainfall/backfill requiere GEE disponible', async ({ request }) => {
-    // El backfill llama a Google Earth Engine para descargar datos CHIRPS.
-    // No ejecutar en CI/CD sin credenciales GEE configuradas.
-  });
 });

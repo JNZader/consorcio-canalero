@@ -84,6 +84,7 @@ import { useComparisonSlider } from './map2d/useComparisonSlider';
 import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
+import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
 import { useMapEscapeExit } from './map2d/useMapEscapeExit';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
@@ -589,13 +590,15 @@ export default function MapaMapLibre() {
     syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible);
   }, [mapReady, parcelasSeleccionadas, catastroVisible]);
 
-  // Kick off polygon drawing when the mode enters 'ficha-dibujo'. DrawControl's
-  // own mount effect (which populates its imperative handle) is a CHILD passive
-  // effect and runs before this parent effect, so the ref is ready here.
-  const isFichaDrawing = fichaInteraction.interactionMode === 'ficha-dibujo';
-  useEffect(() => {
-    if (isFichaDrawing) drawControlRef.current?.startDrawing();
-  }, [isFichaDrawing]);
+  // Free-draw session wiring (T4). Lives in its own hook so the escape-mode
+  // synthesis and the "Otro" path are unit-testable — see `useFichaDrawWiring`.
+  const fichaDraw = useFichaDrawWiring({
+    interactionMode: fichaInteraction.interactionMode,
+    drawSession: fichaInteraction.state.drawing,
+    redrawPolygon: fichaInteraction.redrawPolygon,
+    drawControlRef,
+  });
+  const isFichaDrawSession = fichaDraw.isDrawSession;
 
   // Canal mode (A6 + A7): the CURATED relevados/propuestos layers are the ficha
   // canal source now (their visibility in canal mode is owned by
@@ -633,12 +636,8 @@ export default function MapaMapLibre() {
   // Draw-mode sub-controls (T3c, fix 4). MapboxDraw returns to `simple_select`
   // after `draw.create`, so these re-enter draw mode / wipe the polygon without
   // toggling the whole ficha-draw mode off and on.
-  const handleRedrawPolygon = useCallback(() => {
-    drawControlRef.current?.startDrawing();
-  }, []);
-  const handleDeleteDrawnPolygon = useCallback(() => {
-    drawControlRef.current?.clearDrawing();
-  }, []);
+  const handleRedrawPolygon = fichaDraw.handleRedrawPolygon;
+  const handleDeleteDrawnPolygon = fichaDraw.handleDeletePolygon;
   const handleToggleFichaCanal = useCallback(() => {
     if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
     else fichaInteraction.startCanal();
@@ -656,7 +655,9 @@ export default function MapaMapLibre() {
   const handleExitDraw = useCallback(() => fichaInteraction.stopDraw(), [fichaInteraction]);
   const handleExitCanal = useCallback(() => fichaInteraction.stopCanal(), [fichaInteraction]);
   useMapEscapeExit({
-    mode: fichaInteraction.interactionMode,
+    // Escape must still leave the draw SESSION after the polygon is finished,
+    // when `interactionMode` has already gone back to idle (T4).
+    mode: fichaDraw.escapeMode,
     onCancelMeasurement: cancelMeasurement,
     onExitDraw: handleExitDraw,
     onExitCanal: handleExitCanal,
@@ -909,7 +910,7 @@ export default function MapaMapLibre() {
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
               onCancel={cancelMeasurement}
-              fichaDrawActive={isFichaDrawing}
+              fichaDrawActive={isFichaDrawSession}
               onToggleFichaDraw={handleToggleFichaDraw}
               onRedrawPolygon={handleRedrawPolygon}
               onDeletePolygon={handleDeleteDrawnPolygon}
@@ -930,7 +931,7 @@ export default function MapaMapLibre() {
             {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
                 never coexists with the measurement MapboxDraw (shared-slot bug). A
                 completed polygon fires a `tipo=poligono` ficha via the container. */}
-            {measurementMap && isFichaDrawing && (
+            {measurementMap && isFichaDrawSession && (
               <DrawControl
                 ref={drawControlRef}
                 map={measurementMap}
@@ -1042,8 +1043,13 @@ export default function MapaMapLibre() {
           </Box>
         }
         controls={
+          /* ONE scroll only (T5): `.workspaceSidebarBody` (desktop) / the Drawer
+             body (mobile) is the scroller, so every panel in this tree renders
+             unbounded. Three nested scroll areas used to push the legend out of
+             reach and trap the wheel gesture. */
           <Stack gap="sm" data-testid="map-controls-tree">
             <LayerControlsPanel
+              insideScrollContainer
               layerItems={vectorLayerItems}
               vectorVisibility={vectorVisibility}
               onLayerVisibilityChange={toggleLayer}
@@ -1069,6 +1075,7 @@ export default function MapaMapLibre() {
                   consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
                   customItems={activeLegendItems}
                   embedded
+                  insideScrollContainer
                   data-testid="map-2d-external-leyenda-panel"
                   pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
                   pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}

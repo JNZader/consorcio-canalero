@@ -1,13 +1,15 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LocationSection } from '../../src/components/report-form/LocationSection';
 
-const { addReferenceLayersMock, mapInstances, MockMap, MockMarker } = vi.hoisted(() => {
+const { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMarker } = vi.hoisted(
+  () => {
   const addReferenceLayersMock = vi.fn();
   const mapInstances: MockMap[] = [];
+  const markerInstances: MockMarker[] = [];
 
   class MockMap {
     readonly handlers = new Map<string, (event?: unknown) => void>();
@@ -50,10 +52,15 @@ const { addReferenceLayersMock, mapInstances, MockMap, MockMarker } = vi.hoisted
     readonly setLngLat = vi.fn(() => this);
     readonly addTo = vi.fn(() => this);
     readonly remove = vi.fn();
+
+    constructor() {
+      markerInstances.push(this);
+    }
   }
 
-  return { addReferenceLayersMock, mapInstances, MockMap, MockMarker };
-});
+  return { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMarker };
+  },
+);
 
 vi.mock('maplibre-gl', () => ({
   default: {
@@ -194,5 +201,70 @@ describe('<LocationSection />', () => {
     expect(onToggleInputManual).toHaveBeenCalledTimes(1);
     expect(onClearLocation).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * PERF-005 — `maplibre-gl` is imported dynamically so `/participacion` does
+ * not pay for the ~215 KB map engine before the user reaches the location
+ * step. These tests pin the observable consequences of that decision.
+ */
+describe('<LocationSection /> lazy map engine', () => {
+  beforeEach(() => {
+    mapInstances.length = 0;
+    markerInstances.length = 0;
+  });
+
+  it('does not construct the map synchronously and builds it once the chunk resolves', async () => {
+    renderWithMantine(<LocationSection {...baseProps} />);
+
+    // The dynamic import has not resolved yet on the first commit.
+    expect(mapInstances).toHaveLength(0);
+    expect(screen.getByRole('application', { name: /mapa interactivo/i })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.getByText(/cargando mapa/i)).toBeInTheDocument();
+
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+
+    await waitFor(() =>
+      expect(screen.getByRole('application', { name: /mapa interactivo/i })).toHaveAttribute(
+        'aria-busy',
+        'false',
+      ),
+    );
+    expect(screen.queryByText(/cargando mapa/i)).not.toBeInTheDocument();
+  });
+
+  it('places the marker after the module is available', async () => {
+    renderWithMantine(
+      <LocationSection {...baseProps} ubicacion={{ lat: -32.6, lng: -62.7 }} />,
+    );
+
+    await waitFor(() => expect(markerInstances).toHaveLength(1));
+    expect(markerInstances[0].setLngLat).toHaveBeenCalledWith([-62.7, -32.6]);
+    expect(markerInstances[0].addTo).toHaveBeenCalledWith(mapInstances[0]);
+  });
+
+  it('keeps the click handler wiring once the engine finished loading', async () => {
+    const onLocationSelect = vi.fn();
+    renderWithMantine(<LocationSection {...baseProps} onLocationSelect={onLocationSelect} />);
+
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+
+    mapInstances[0].handlers.get('click')?.({ lngLat: { lng: -62.7, lat: -32.6 } });
+    expect(onLocationSelect).toHaveBeenCalledWith(-32.6, -62.7);
+  });
+
+  it('never builds a map when the section unmounts before the chunk resolves', async () => {
+    const { unmount } = renderWithMantine(<LocationSection {...baseProps} />);
+    unmount();
+
+    // Let the in-flight dynamic import settle: the `cancelled` guard must
+    // swallow it instead of constructing a map on a detached container.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mapInstances).toHaveLength(0);
+    expect(markerInstances).toHaveLength(0);
   });
 });

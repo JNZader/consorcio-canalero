@@ -183,7 +183,23 @@ export function getVisibleRasterLayersForDem(
   return layer ? [{ tipo: layer.tipo }] : [];
 }
 
+/**
+ * Mount (or just toggle) the historic IGN altimetry raster.
+ *
+ * LAZY BY CONTRACT (PERF): the layer is OFF by default, yet this used to add the
+ * image source unconditionally and only then set `visibility: none` — so every
+ * single visitor of `/mapa` downloaded ~1.5 MB of WebP (2.7 MB before the
+ * resize) and paid the GPU upload for a layer they never asked for. Now nothing
+ * is added until the user actually turns it on; once mounted the layer stays
+ * mounted and toggling is a cheap visibility flip (no re-download).
+ *
+ * The effect in `useMapLayerEffects` already re-runs on `showIGNOverlay`, so the
+ * first "on" reaches this function and does the real work.
+ */
 export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
+  // Never mounted and not wanted → do not touch the map at all.
+  if (!showIGNOverlay && !map.getSource(SOURCE_IDS.IGN)) return;
+
   if (!map.getSource(SOURCE_IDS.IGN)) {
     map.addSource(SOURCE_IDS.IGN, {
       type: 'image',
