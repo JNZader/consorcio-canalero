@@ -249,8 +249,16 @@ def test_export_map_pdf_rejects_a_chunked_body_over_the_cap(cliente) -> None:
 
 def test_export_map_pdf_keeps_its_request_schema_in_openapi(cliente) -> None:
     """Parsing via a dependency hides the body from FastAPI's inference, so the
-    schema is supplied by hand — assert it is there and self-contained."""
-    doc = cliente.get("/openapi.json").json()
+    schema is supplied by hand — assert it is there and self-contained.
+
+    The schema comes from ``app.openapi()`` (the method, always available), NOT
+    from ``GET /openapi.json``: that route is gated behind ``ENABLE_DOCS`` and
+    is off by default in CI, where the HTTP fetch 404s and this test would die
+    on a missing ``paths`` key while passing on any dev box with the flag on.
+    """
+    from app.main import app
+
+    doc = app.openapi()
     operacion = doc["paths"]["/api/v2/geo/basins/approved-zones/current/export-map-pdf"]["post"]
 
     esquema = operacion["requestBody"]["content"]["application/json"]["schema"]
