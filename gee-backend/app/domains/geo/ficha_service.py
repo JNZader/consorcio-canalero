@@ -133,6 +133,25 @@ def _contar_vertices_shapely(geom: Any) -> int:
     return total
 
 
+def area_cap_ha(tipo: str) -> float:
+    """The area cap that applies to ``tipo``. SINGLE source of truth.
+
+    ``canal_cuenca`` gets a wider cap than every other ``tipo``: the 16 canals of
+    the linea colectora drain real mega-basins of 30.6k-34.6k ha, and a one-off
+    clip against the consorcio boundary measured them 99.99 % INSIDE it (32 471 ha
+    of catchment, 1 ha outside), so the general 20 000 ha cap was rejecting
+    hydrology, not runaway cost. Unlike ``poligono``/``parcela``/``canal_buffer``
+    the shape is NOT caller-supplied: it is one of a fixed set of 60 basins
+    generated server-side, and the envelope cap is what actually bounds the
+    raster window. Any unknown ``tipo`` falls back to the STRICT cap. Read by
+    ``assert_within_caps`` AND by the ETL's ``_read_path_cap_report`` mirror, so
+    producer and consumer cannot drift.
+    """
+    if tipo == "canal_cuenca":
+        return settings.ficha_max_area_ha_cuenca
+    return settings.ficha_max_area_ha
+
+
 def envelope_cap_ha(tipo: str) -> float:
     """The envelope cap that applies to ``tipo``. SINGLE source of truth.
 
@@ -140,7 +159,7 @@ def envelope_cap_ha(tipo: str) -> float:
     upstream catchment is a dendritic, diagonal basin whose bbox is several
     times its own area, and — unlike ``poligono``/``parcela``/``canal_buffer``
     — its shape is NOT caller-supplied, it is one of a fixed set generated
-    server-side and already bounded by ``ficha_max_area_ha``. Read by
+    server-side and already bounded by ``area_cap_ha``. Read by
     ``assert_within_caps`` AND by the ETL's ``_exceeds_read_path_caps`` mirror,
     so producer and consumer cannot drift.
     """
@@ -152,7 +171,8 @@ def envelope_cap_ha(tipo: str) -> float:
 def vertices_cap(tipo: str) -> int:
     """The vertex cap that applies to ``tipo``. SINGLE source of truth.
 
-    Same shape and the same reasoning as :func:`envelope_cap_ha`:
+    Same shape and the same reasoning as :func:`area_cap_ha` /
+    :func:`envelope_cap_ha`:
     ``canal_cuenca`` gets a wider cap than every other ``tipo`` because a
     precomputed catchment is a dendritic basin whose vertex count is driven by
     its perimeter, not by its area, and — unlike
@@ -172,9 +192,9 @@ def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -
     ``geom`` is a shapely geometry in a METRIC CRS (EPSG:32720 — the same
     projection ``area_ha`` is computed in, so there is no second projection).
     Pure computation: no DB, no file, no network. Valid for the five ``tipo``
-    values; ``buffer_m`` is only passed by ``canal_buffer``. The area and buffer
-    caps are the same for every ``tipo``; the ENVELOPE and VERTEX caps are
-    per-``tipo`` (see ``envelope_cap_ha`` and ``vertices_cap``).
+    values; ``buffer_m`` is only passed by ``canal_buffer``. The buffer cap is the
+    same for every ``tipo``; the AREA, ENVELOPE and VERTEX caps are per-``tipo``
+    (see ``area_cap_ha``, ``envelope_cap_ha`` and ``vertices_cap``).
     """
     if buffer_m is not None and buffer_m > settings.ficha_max_buffer_m:
         raise ficha_errors.cap_excedido("buffer_m", settings.ficha_max_buffer_m, buffer_m)
@@ -183,8 +203,9 @@ def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -
         raise ficha_errors.geometria_invalida(f"geometria vacia para tipo={tipo}")
 
     area_ha = geom.area / M2_POR_HA
-    if area_ha > settings.ficha_max_area_ha:
-        raise ficha_errors.cap_excedido("area_ha", settings.ficha_max_area_ha, area_ha)
+    cap_area = area_cap_ha(tipo)
+    if area_ha > cap_area:
+        raise ficha_errors.cap_excedido("area_ha", cap_area, area_ha)
 
     minx, miny, maxx, maxy = geom.bounds
     envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_POR_HA
@@ -564,7 +585,7 @@ def _resolver_canal_cuenca(db: Session, canal_ref: str, variante: str) -> tuple[
 
     Returns ``(geojson_4326, geojson_32720, area_m2)``, same contract as the other
     resolvers so the compute tail is shared. The stored catchment is already
-    dissolved and within ``ficha_max_area_ha`` by construction (the batch drops the
+    dissolved and within ``area_cap_ha('canal_cuenca')`` by construction (the batch drops the
     geometry of anything larger and flags it ``oversized``), so this only reads it
     back — the caps still re-run in ``assert_within_caps`` for symmetry.
     """
