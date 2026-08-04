@@ -203,14 +203,17 @@ class Settings(BaseSettings):
     # basins: their perimeter, not their size, is what drives the vertex count,
     # so simplifying harder would start eating real basin shape.
     #
-    # 2 000 is the measured maximum (1 883) plus a minimal margin — enough to
-    # rescue the 7 without opening the door to arbitrary payloads. Safe here and
+    # 2 200 is the measured maximum plus a minimal margin. History: 2 000
+    # covered the 7 vertices-blocked basins (max 1 883) — but once the area cap
+    # opened the collector giants, Monte Castillo Oeste measured 2 062 vertices
+    # at the 20 m tolerance and missed by 62. Bumped once, with the measurement.
+    # Safe here and
     # NOT for the other tipos because a catchment is PRECOMPUTED server-side by
     # ``etl/generate_canal_catchments.py``, never attacker-controlled: at ~2 000
     # vertices the response carries ~100-150 KB of GeoJSON, a fixed cost over a
     # fixed set of basins. ``ficha_service.vertices_cap`` is the single source of
     # truth and the ETL mirrors it, so "stored implies servable" holds.
-    ficha_max_vertices_cuenca: int = 2_000
+    ficha_max_vertices_cuenca: int = 2_200
     # 2 km each side of a canal is already a generous influence zone. Without
     # this cap ``buffer_m`` is an unbounded amplification knob (JDB-006); the
     # area cap remains the backstop.
