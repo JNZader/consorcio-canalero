@@ -695,6 +695,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
 
   return (
     <MapPanelShell
+      initialStage="medio"
       sheet={sheet}
       floatingClassName={
         compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel

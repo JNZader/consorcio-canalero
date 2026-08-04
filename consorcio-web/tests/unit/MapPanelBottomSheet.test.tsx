@@ -23,6 +23,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InfoPanel } from "../../src/components/map2d/InfoPanel";
+import { MapPanelShell } from "../../src/components/map2d/MapPanelShell";
 import {
 	MapUiPanels,
 	type MapUiPanelsProps,
@@ -344,5 +345,43 @@ describe("map panels — mobile bottom sheet", () => {
 		const panel = screen.getByTestId("map-2d-info-panel");
 		expect(panel).toHaveAttribute("data-sheet", "true");
 		expect(panel.className).toContain("panelSheet");
+	});
+});
+
+// La ficha abre en "medio" (initialStage): un peek de una fila tras pedir la
+// ficha explicitamente fue el reclamo #1 en dispositivo real. El reset por
+// nueva seleccion vuelve al MISMO initialStage, no a "peek". El shell se monta
+// directo (modo sheet): el consumidor que pasa "medio" es la ficha.
+describe("initialStage", () => {
+	const shell = (extra: { initialStage?: "peek" | "medio" | "alto"; resetKey?: string }) => (
+		<MantineProvider env="test">
+			<MapPanelShell
+				sheet
+				floatingClassName=""
+				testId="shell-under-test"
+				sheetLabel="Panel de prueba"
+				{...extra}
+			>
+				<div>contenido</div>
+			</MapPanelShell>
+		</MantineProvider>
+	);
+
+	it('opens the sheet at the stage the consumer asks for', () => {
+		render(shell({ initialStage: "medio" }));
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "medio");
+	});
+
+	it('defaults to peek when the consumer says nothing (InfoPanel contract)', () => {
+		render(shell({}));
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "peek");
+	});
+
+	it('resets to the SAME initialStage on a new selection, not to peek', () => {
+		const { rerender } = render(shell({ initialStage: "medio", resetKey: "a" }));
+		fireEvent.click(screen.getByTestId("shell-under-test-sheet-handle"));
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "alto");
+		rerender(shell({ initialStage: "medio", resetKey: "b" }));
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "medio");
 	});
 });
