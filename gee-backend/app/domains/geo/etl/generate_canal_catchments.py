@@ -28,12 +28,14 @@ per canal mirrors the pour-points build in
 4. Simplify the dissolved basin (topology-preserving, at
    :data:`CATCHMENT_SIMPLIFY_TOLERANCE_M` in EPSG:32720) so the
    raw pixel-boundary staircase — whose vertex count scales with basin perimeter
-   and routinely blows past ``settings.ficha_max_vertices`` — collapses to a
+   and routinely blows past the vertex cap — collapses to a
    low-vertex outline; then gate the SIMPLIFIED geometry against EVERY read-path
    cap ``ficha_service.assert_within_caps(tipo='canal_cuenca')`` enforces:
    ``ficha_max_area_ha`` AND the per-``tipo`` envelope cap
    (``ficha_service.envelope_cap_ha('canal_cuenca')`` →
-   ``ficha_max_envelope_ha_cuenca``) AND ``ficha_max_vertices``.
+   ``ficha_max_envelope_ha_cuenca``) AND the per-``tipo`` vertex cap
+   (``ficha_service.vertices_cap('canal_cuenca')`` →
+   ``ficha_max_vertices_cuenca``).
    If the simplified basin exceeds ANY of those it is ``oversized``: the row is
    stored WITHOUT its geometry (``geometria`` NULL, ``area_ha`` kept for audit).
    A stored (non-oversized) catchment is therefore GUARANTEED to pass
@@ -140,8 +142,8 @@ M2_PER_HA = 10_000.0
 #: Topology-preserving simplify tolerance (metres, EPSG:32720) applied to the
 #: dissolved catchment BEFORE it is measured, cap-gated and stored. The raw basin
 #: is a pixel-boundary staircase whose vertex count scales with basin perimeter —
-#: so any real basin exceeds ``settings.ficha_max_vertices`` (1000), and the
-#: staircase has to be collapsed before the read-path caps are measured.
+#: so any real basin exceeds the vertex cap, and the staircase has to be
+#: collapsed before the read-path caps are measured.
 #:
 #: WHY 20 m AND NOT THE 8 m THIS STARTED AT (batch 4d). The per-motivo breakdown
 #: `_read_path_cap_report` added turned "35 oversized" into a measurement:
@@ -156,12 +158,24 @@ M2_PER_HA = 10_000.0
 #: displacement is well under one screen pixel — visually invisible, and still
 #: below the flow_dir grid's own cell size (the DEM is COPERNICUS/DEM/GLO30, so
 #: the staircase steps are ~30 m), meaning we are shaving rasterization noise,
-#: not real basin shape. Raising the tolerance is the cheap lever precisely because it does
-#: NOT touch any cap: ``ficha_max_vertices`` and the area/envelope caps stay
-#: exactly where they are, so the "stored ⟹ servable" invariant enforced by the
-#: cap mirror in `_read_path_cap_report` is untouched. The lesson from the
+#: not real basin shape. Raising the tolerance was the cheap lever precisely
+#: because it touched NO cap, so the "stored ⟹ servable" invariant enforced by
+#: the cap mirror in `_read_path_cap_report` stayed intact. The lesson from the
 #: breakdown: relaxing the envelope cap (the intuitive first guess) would have
 #: rescued zero canals.
+#:
+#: WHAT 20 m ACTUALLY RESCUED, AND WHAT IT DID NOT. The re-run at this tolerance
+#: recovered 12 of the 19: 7 catchments stayed blocked by the vertex cap ALONE,
+#: at 1 008-1 883 vertices against the 1 000 cap (Candil 1 860, La Sara 1 766,
+#: N8 1 766, S4 1 206, +3), every one of them well under the area cap
+#: (11.4k-19.2k ha). Those 7 are dendritic: their perimeter, not their size,
+#: drives the vertex count, so shaving harder would have started eating real
+#: basin shape. They were rescued instead by the per-``tipo`` vertex cap
+#: (``ficha_max_vertices_cuenca`` = 2 000, read through
+#: ``ficha_service.vertices_cap``) — the same per-``tipo`` move as the envelope,
+#: and safe for the same reason: a catchment is precomputed server-side, never
+#: caller-supplied. The 16 over the area cap remain oversized BY DESIGN; the
+#: area cap is still untouched.
 CATCHMENT_SIMPLIFY_TOLERANCE_M = 20.0
 
 #: Log a heartbeat every this many canals.
@@ -431,6 +445,7 @@ def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _Cap
     from app.domains.geo.ficha_service import (  # noqa: PLC0415
         _contar_vertices_shapely,
         envelope_cap_ha,
+        vertices_cap,
     )
 
     minx, miny, maxx, maxy = geom.bounds
@@ -439,7 +454,10 @@ def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _Cap
     # wider catchment envelope can never drift from what the ficha enforces.
     max_envelope_ha = envelope_cap_ha("canal_cuenca")
     vertices = _contar_vertices_shapely(geom)
-    max_vertices = settings.ficha_max_vertices
+    # Per-``tipo`` vertex cap, read through the same read-path helper for the
+    # same reason as the envelope: the wider catchment cap cannot drift from
+    # what the ficha enforces.
+    max_vertices = vertices_cap("canal_cuenca")
 
     motivos: list[str] = []
     if area_ha > max_area_ha:
