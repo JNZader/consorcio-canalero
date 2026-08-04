@@ -42,9 +42,7 @@ def _without_comments(workflow: str) -> str:
     the raw file fails on the prose that explains the very contract being
     asserted. Only the executable YAML is checked.
     """
-    return "\n".join(
-        line for line in workflow.splitlines() if not line.lstrip().startswith("#")
-    )
+    return "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
 
 
 def _job_block(workflow: str, job: str) -> str:
@@ -846,7 +844,12 @@ def test_e2e_canary_stays_read_only_against_production() -> None:
     assert "playwright test" not in canary
 
     # (b) no backend and no credentials reach the run.
-    for forbidden in ("E2E_API_BASE", "E2E_ADMIN_EMAIL", "E2E_ADMIN_PASSWORD", "PLAYWRIGHT_BASE_URL"):
+    for forbidden in (
+        "E2E_API_BASE",
+        "E2E_ADMIN_EMAIL",
+        "E2E_ADMIN_PASSWORD",
+        "PLAYWRIGHT_BASE_URL",
+    ):
         assert forbidden not in canary, forbidden
 
     # (c) the script itself is the allowlist.
