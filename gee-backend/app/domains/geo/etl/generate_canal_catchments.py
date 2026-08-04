@@ -30,10 +30,12 @@ per canal mirrors the pour-points build in
    raw pixel-boundary staircase — whose vertex count scales with basin perimeter
    and routinely blows past the vertex cap — collapses to a
    low-vertex outline; then gate the SIMPLIFIED geometry against EVERY read-path
-   cap ``ficha_service.assert_within_caps(tipo='canal_cuenca')`` enforces:
-   ``ficha_max_area_ha`` AND the per-``tipo`` envelope cap
+   cap ``ficha_service.assert_within_caps(tipo='canal_cuenca')`` enforces, all
+   three of them read through the per-``tipo`` helpers so producer and consumer
+   cannot drift: the area cap (``ficha_service.area_cap_ha('canal_cuenca')`` →
+   ``ficha_max_area_ha_cuenca``) AND the envelope cap
    (``ficha_service.envelope_cap_ha('canal_cuenca')`` →
-   ``ficha_max_envelope_ha_cuenca``) AND the per-``tipo`` vertex cap
+   ``ficha_max_envelope_ha_cuenca``) AND the vertex cap
    (``ficha_service.vertices_cap('canal_cuenca')`` →
    ``ficha_max_vertices_cuenca``).
    If the simplified basin exceeds ANY of those it is ``oversized``: the row is
@@ -107,7 +109,6 @@ import structlog
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.domains.geo.models import TipoGeoLayer
 from app.domains.geo.repository import GeoRepository
 
@@ -149,7 +150,8 @@ M2_PER_HA = 10_000.0
 #: `_read_path_cap_report` added turned "35 oversized" into a measurement:
 #: ``{area: 16, envelope: 0, vertices: 35}``. Read it carefully — envelope is
 #: ZERO, so the envelope cap rejects NOTHING; all 35 fail the vertex cap, and 19
-#: of them have a perfectly sane area (only 16 are genuinely too big by area).
+#: of them have a perfectly sane area (the other 16 also broke the area cap AS IT
+#: THEN STOOD — see "the full arc" below for what that turned out to mean).
 #: Those 19 are rescuable, and the ONE thing standing between them and a servable
 #: geometry is vertex count post-simplify. 8 m was inherited from the soils
 #: on-map overlay (``ficha_service._SUELOS_OVERLAY_SQL``), where the polygons are
@@ -174,8 +176,22 @@ M2_PER_HA = 10_000.0
 #: (``ficha_max_vertices_cuenca`` = 2 000, read through
 #: ``ficha_service.vertices_cap``) — the same per-``tipo`` move as the envelope,
 #: and safe for the same reason: a catchment is precomputed server-side, never
-#: caller-supplied. The 16 over the area cap remain oversized BY DESIGN; the
-#: area cap is still untouched.
+#: caller-supplied.
+#:
+#: THE FULL ARC, AND WHY 60/60 IS SERVABLE TODAY. Three levers, each measured
+#: against the per-motivo breakdown rather than guessed:
+#:   * 20 m simplify (this constant) rescued 12 — the vertex-capped basins whose
+#:     staircase was pure rasterization noise;
+#:   * ``ficha_max_vertices_cuenca`` = 2 000 rescued the remaining 7 dendritic
+#:     ones the tolerance could not reach without eating real shape;
+#:   * ``ficha_max_area_ha_cuenca`` = 35 000 rescued the last 16 — which were
+#:     NOT "too big by design" after all: they are the linea colectora, whose
+#:     catchments measure 30.6k-34.6k ha and sit 99.99 % inside the consorcio
+#:     (measured by clipping one against ``zona.geojson``: 1 ha of 32 471 fell
+#:     outside). The collector really does drain about a third of the consorcio,
+#:     so the earlier note calling those 16 "oversized BY DESIGN" was reading a
+#:     wrong cap as a design decision. The owner's call is to serve them.
+#: Net: 60/60 catchments servable, no cap left rejecting real hydrology.
 CATCHMENT_SIMPLIFY_TOLERANCE_M = 20.0
 
 #: Log a heartbeat every this many canals.
@@ -427,13 +443,16 @@ def _simplify_catchment(dissolved: Any) -> tuple[Any, float]:
     return simplified, simplified.area / M2_PER_HA
 
 
-def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _CapReport:
+def _read_path_cap_report(geom: Any, area_ha: float) -> _CapReport:
     """Measure ``geom`` against EVERY read-path cap and name the ones it fails.
 
     Mirrors what ``ficha_service.assert_within_caps`` enforces for
-    ``tipo=canal_cuenca`` — area, envelope AND vertices — reusing the SAME
-    ``settings`` thresholds and the SAME vertex counter
-    (``_contar_vertices_shapely``) so producer and consumer can never drift.
+    ``tipo=canal_cuenca`` — area, envelope AND vertices — reading all three
+    thresholds through the SAME per-``tipo`` helpers the ficha reads and reusing
+    the SAME vertex counter (``_contar_vertices_shapely``), so producer and
+    consumer can never drift. No cap is taken as an argument ON PURPOSE: a caller
+    able to pass its own threshold is a caller able to store a geometry the read
+    path would reject (a test that wants a different cap patches ``settings``).
 
     NO SHORT-CIRCUIT, on purpose (batch 4 / T6): the boolean gate this replaced
     returned at the first failing rule, so a re-run that reported "35 oversized"
@@ -444,10 +463,14 @@ def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _Cap
     """
     from app.domains.geo.ficha_service import (  # noqa: PLC0415
         _contar_vertices_shapely,
+        area_cap_ha,
         envelope_cap_ha,
         vertices_cap,
     )
 
+    # Per-``tipo`` area cap, read through the read-path helper: the linea
+    # colectora basins (30.6k-34.6k ha) are servable and must not be dropped here.
+    max_area_ha = area_cap_ha("canal_cuenca")
     minx, miny, maxx, maxy = geom.bounds
     envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_PER_HA
     # Per-``tipo`` envelope cap, read through the read-path helper so the
@@ -478,13 +501,13 @@ def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _Cap
     )
 
 
-def _exceeds_read_path_caps(geom: Any, area_ha: float, max_area_ha: float) -> bool:
+def _exceeds_read_path_caps(geom: Any, area_ha: float) -> bool:
     """True when ``geom`` would fail ``ficha_service.assert_within_caps``.
 
     Thin boolean view of :func:`_read_path_cap_report` — kept because "does this
     pass?" is the question most callers (and tests) ask.
     """
-    return _read_path_cap_report(geom, area_ha, max_area_ha).oversized
+    return _read_path_cap_report(geom, area_ha).oversized
 
 
 def _upsert_catchment(
@@ -578,7 +601,6 @@ def generate_catchments(
     limit: int | None = None,
     canal_ref: str | None = None,
     force: bool = False,
-    max_area_ha: float | None = None,
     rasterio_module: Any = None,
     rasterize_fn: Callable[..., Any] | None = None,
     shapes_fn: Callable[..., Any] | None = None,
@@ -602,7 +624,6 @@ def generate_catchments(
         raise ValueError(f"unknown estado {estado!r}; expected one of {CANAL_ESTADOS}")
 
     variante = V1_VARIANTE
-    max_area_ha = settings.ficha_max_area_ha if max_area_ha is None else max_area_ha
     rasterio_module, rasterize_fn, shapes_fn, get_wbt = _resolve_io(
         rasterio_module, rasterize_fn, shapes_fn, get_wbt
     )
@@ -657,7 +678,6 @@ def generate_catchments(
                 grid=grid,
                 version=version,
                 flow_dir_layer_id=flow_dir_layer.id,
-                max_area_ha=max_area_ha,
                 result=result,
                 rasterio_module=rasterio_module,
                 rasterize_fn=rasterize_fn,
@@ -695,7 +715,6 @@ def _compute_one(
     grid: _FlowDirGrid,
     version: str,
     flow_dir_layer_id: uuid.UUID,
-    max_area_ha: float,
     result: BatchResult,
     rasterio_module: Any,
     rasterize_fn: Callable[..., Any],
@@ -768,7 +787,7 @@ def _compute_one(
     # area, envelope AND vertices — so a stored (non-oversized) catchment is
     # guaranteed to pass at read time. area_ha is reported off the simplified geom.
     dissolved, area_ha = _simplify_catchment(dissolved)
-    report = _read_path_cap_report(dissolved, area_ha, max_area_ha)
+    report = _read_path_cap_report(dissolved, area_ha)
     oversized = report.oversized
     metric_geojson = None if oversized else json.dumps(mapping(dissolved))
     _upsert_catchment(

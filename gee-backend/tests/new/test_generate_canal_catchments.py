@@ -12,8 +12,10 @@ fixed:
 * v1 computes every catchment against the natural ``natural_flow_dir_{area}`` raster
   and stamps ``variante = 'natural'``;
 * a normal canal yields a MultiPolygon catchment with the right ``area_ha``;
-* an oversized basin (> ``ficha_max_area_ha``) is stored ``oversized`` with a NULL
-  geometry — the multi-MB polygon is dropped;
+* an oversized basin (> ``area_cap_ha('canal_cuenca')``) is stored ``oversized``
+  with a NULL geometry — the multi-MB polygon is dropped — while a
+  linea-colectora-sized 30 000 ha basin (over the CALLER cap, under the catchment
+  one) is stored servable;
 * re-running with the same ``flow_dir`` version SKIPS done canals (idempotent /
   resumable) and RECOMPUTES when the pointer version changes;
 * ``--estado`` scopes which canals are processed without changing the raster.
@@ -45,9 +47,17 @@ _GRID = (100, 100)  # (height, width)
 
 # A 300 m × 400 m rectangle in EPSG:32720 (UTM 20S) → 120 000 m² → exactly 12 ha.
 _NORMAL_POLY = Polygon([(500000, 6000000), (500300, 6000000), (500300, 6000400), (500000, 6000400)])
-# A 30 km × 10 km rectangle → 3e8 m² → 30 000 ha, over the 20 000 ha cap.
-_OVERSIZED_POLY = Polygon(
+# A 30 km × 10 km rectangle → 3e8 m² → 30 000 ha. A linea-colectora-sized basin:
+# over the 20 000 ha CALLER cap and UNDER the 35 000 ha ``canal_cuenca`` one, so
+# it is stored servable. Sized off the real measurements (30.6k-34.6k ha).
+_COLECTORA_POLY = Polygon(
     [(500000, 6000000), (530000, 6000000), (530000, 6010000), (500000, 6010000)]
+)
+# A 40 km × 10 km rectangle → 4e8 m² → 40 000 ha, over the 35 000 ha catchment
+# area cap (its envelope, 40 000 ha, is still far under the envelope cap, so the
+# AREA rule is the only one that can fire).
+_OVERSIZED_POLY = Polygon(
+    [(500000, 6000000), (540000, 6000000), (540000, 6010000), (500000, 6010000)]
 )
 # A 400 m-radius disc approximated with 2400 segments (2401 raw vertices) →
 # ~50 ha, area/envelope-valid but WAY over the ``canal_cuenca`` vertices cap as
@@ -328,12 +338,40 @@ def test_oversized_basin_stored_without_geometry(catchment_db: Session) -> None:
 
     assert result.computed == 1
     assert result.oversized == 1
+    assert result.oversized_por_motivo[gcc.CAP_MOTIVO_AREA] == 1
 
     row = _row(catchment_db, "canal-a")
     assert row is not None
-    assert row.area_ha == pytest.approx(30000.0)
+    assert row.area_ha == pytest.approx(40000.0)
     assert row.oversized is True
     assert row.geom_null is True  # multi-MB geometry dropped
+
+
+def test_linea_colectora_sized_basin_is_stored_servable(catchment_db: Session) -> None:
+    """The 16 the area cap used to drop. A 30 000 ha basin is over the CALLER area
+    cap and under the ``canal_cuenca`` one, so the batch must store it WITH its
+    geometry — the mirror has to read ``area_cap_ha('canal_cuenca')``, not the
+    general setting."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import area_cap_ha
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-colectora")
+
+    area_ha = _COLECTORA_POLY.area / gcc.M2_PER_HA
+    assert settings.ficha_max_area_ha < area_ha < area_cap_ha("canal_cuenca")
+
+    result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_COLECTORA_POLY))
+
+    assert result.computed == 1
+    assert result.oversized == 0
+    assert sum(result.oversized_por_motivo.values()) == 0
+
+    row = _row(catchment_db, "canal-colectora")
+    assert row is not None
+    assert row.oversized is False
+    assert row.geom_null is False  # servable: the geometry is kept
+    assert row.area_ha == pytest.approx(30000.0)
 
 
 def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
@@ -529,13 +567,18 @@ def test_rerun_same_version_skips_done_canal(catchment_db: Session) -> None:
     assert count == 1  # still one current row, not duplicated
 
 
-def test_force_recomputes_even_when_the_version_is_unchanged(catchment_db: Session) -> None:
+def test_force_recomputes_even_when_the_version_is_unchanged(
+    catchment_db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Caps live outside the version key.
 
     The resume key is the flow_dir POINTER, so after a cap change (batch 4 widened
-    the catchment envelope cap) a plain re-run skips every stored row and keeps the
-    old ``oversized`` verdicts. ``--force`` is what makes a re-gate possible.
+    the catchment envelope cap; the last batch widened the area cap) a plain re-run
+    skips every stored row and keeps the old ``oversized`` verdicts. ``--force`` is
+    what makes a re-gate possible.
     """
+    from app.config import settings
+
     _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-a")
 
@@ -544,13 +587,13 @@ def test_force_recomputes_even_when_the_version_is_unchanged(catchment_db: Sessi
     assert _row(catchment_db, "canal-a").oversized is True
 
     # Same pointer, wider cap: without --force this is a no-op.
+    monkeypatch.setattr(settings, "ficha_max_area_ha_cuenca", 1_000_000.0)
     forced_wbt = _RecordingWbt()
     forced = _run(
         catchment_db,
         forced_wbt,
         _shapes_returning(_OVERSIZED_POLY),
         force=True,
-        max_area_ha=1_000_000.0,
     )
 
     assert forced.skipped == 0
@@ -783,7 +826,7 @@ def test_exceeds_read_path_caps_uses_the_catchment_envelope_cap() -> None:
     area_ha = geom.area / gcc.M2_PER_HA
 
     assert envelope_cap_ha("canal_cuenca") > settings.ficha_max_envelope_ha
-    assert not gcc._exceeds_read_path_caps(geom, area_ha, settings.ficha_max_area_ha)
+    assert not gcc._exceeds_read_path_caps(geom, area_ha)
 
 
 def test_exceeds_read_path_caps_still_rejects_a_huge_envelope() -> None:
@@ -797,7 +840,7 @@ def test_exceeds_read_path_caps_still_rejects_a_huge_envelope() -> None:
     diagonal = LineString([(500_000, 6_000_000), (500_000 + lado, 6_000_000 + lado)])
     geom = diagonal.buffer((5_000.0 * gcc.M2_PER_HA) / (2.0 * diagonal.length), cap_style=2)
 
-    assert gcc._exceeds_read_path_caps(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    assert gcc._exceeds_read_path_caps(geom, geom.area / gcc.M2_PER_HA)
 
 
 # ── T6: WHY a catchment was rejected, per canal ───────────────────────────────
@@ -828,10 +871,9 @@ def _envelope_only_basin():
 
 
 def test_cap_report_names_the_envelope_when_the_area_is_fine() -> None:
-    from app.config import settings
 
     geom = _envelope_only_basin()
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.oversized is True
     assert report.motivos == (gcc.CAP_MOTIVO_ENVELOPE,)
@@ -854,7 +896,7 @@ def test_cap_report_names_the_vertices_when_area_and_envelope_are_fine(
     # ``vertices_cap('canal_cuenca')``.
     monkeypatch.setattr(settings, "ficha_max_vertices_cuenca", 4)
 
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.motivos == (gcc.CAP_MOTIVO_VERTICES,)
     assert report.area_ha < report.max_area_ha
@@ -862,15 +904,19 @@ def test_cap_report_names_the_vertices_when_area_and_envelope_are_fine(
     assert report.vertices > 4
 
 
-def test_cap_report_lists_EVERY_failing_cap_not_just_the_first() -> None:
+def test_cap_report_lists_EVERY_failing_cap_not_just_the_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """No short-circuit: a basin that is both too big and too wide must say so,
     otherwise "relax the vertex cap" reads as a fix for a canal the area cap
     would still reject."""
     from app.config import settings
 
     geom = _envelope_only_basin()
-    # Same geometry, but now the area cap is below its 5 000 ha.
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, 100.0)
+    # Same geometry, but now the CATCHMENT area cap is below its 5 000 ha (the
+    # ETL mirrors ``area_cap_ha('canal_cuenca')``, not the caller-polygon cap).
+    monkeypatch.setattr(settings, "ficha_max_area_ha_cuenca", 100.0)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.motivos == (gcc.CAP_MOTIVO_AREA, gcc.CAP_MOTIVO_ENVELOPE)
     assert report.motivo == gcc.CAP_MOTIVO_AREA
@@ -878,10 +924,9 @@ def test_cap_report_lists_EVERY_failing_cap_not_just_the_first() -> None:
 
 
 def test_cap_report_is_empty_for_a_servable_catchment() -> None:
-    from app.config import settings
 
     geom = Point(500_000, 6_000_000).buffer(300.0)
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.motivos == ()
     assert report.motivo is None
@@ -993,14 +1038,43 @@ def test_read_path_cap_report_uses_the_catchment_vertex_cap() -> None:
     vertices = _contar_vertices_shapely(geom)
     assert settings.ficha_max_vertices < vertices <= settings.ficha_max_vertices_cuenca
 
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.max_vertices == vertices_cap("canal_cuenca")
     assert report.motivos == ()
     assert report.oversized is False
-    assert not gcc._exceeds_read_path_caps(
-        geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha
-    )
+    assert not gcc._exceeds_read_path_caps(geom, geom.area / gcc.M2_PER_HA)
+
+
+def test_read_path_cap_report_uses_the_catchment_area_cap() -> None:
+    """ "stored ⟹ servable", area edition: the batch gate must read the SAME area
+    cap the ficha applies to ``tipo=canal_cuenca``. Reading the narrower
+    caller-polygon cap would mark the 16 linea-colectora basins oversized and drop
+    geometries the read path would happily serve."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import area_cap_ha
+
+    area_ha = _COLECTORA_POLY.area / gcc.M2_PER_HA
+    assert settings.ficha_max_area_ha < area_ha <= settings.ficha_max_area_ha_cuenca
+
+    report = gcc._read_path_cap_report(_COLECTORA_POLY, area_ha)
+
+    assert report.max_area_ha == area_cap_ha("canal_cuenca")
+    assert report.motivos == ()
+    assert report.oversized is False
+    assert not gcc._exceeds_read_path_caps(_COLECTORA_POLY, area_ha)
+
+
+def test_read_path_cap_report_still_rejects_over_the_catchment_area_cap() -> None:
+    from app.config import settings
+
+    area_ha = _OVERSIZED_POLY.area / gcc.M2_PER_HA
+    assert area_ha > settings.ficha_max_area_ha_cuenca
+
+    report = gcc._read_path_cap_report(_OVERSIZED_POLY, area_ha)
+
+    assert report.motivos == (gcc.CAP_MOTIVO_AREA,)
+    assert report.area_ha > report.max_area_ha
 
 
 def test_read_path_cap_report_still_rejects_over_the_catchment_vertex_cap() -> None:
@@ -1010,7 +1084,7 @@ def test_read_path_cap_report_still_rejects_over_the_catchment_vertex_cap() -> N
         300.0,
         quad_segs=settings.ficha_max_vertices_cuenca,  # ≫ the cap
     )
-    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA)
 
     assert report.motivos == (gcc.CAP_MOTIVO_VERTICES,)
     assert report.vertices > report.max_vertices
