@@ -28,7 +28,7 @@ import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
-import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
@@ -261,6 +261,7 @@ export default function TerrainViewer3D({
   // `TerrainLayerTogglesPanel` consumes these props only when the propuestos
   // master is ON (the `<PropuestasEtapasFilter>` UNMOUNTS otherwise, per spec).
   const etapasVisibility = useMapLayerSyncStore((state) => state.propuestasEtapasVisibility);
+  const etapaGate = useMapLayerSyncStore(selectEtapaGate);
   const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
   // 3D terrain smoothing toggle — persisted in the same store as every other
   // map preference. Switching it on/off updates the `terrain-rgb` source's
@@ -922,6 +923,10 @@ export default function TerrainViewer3D({
         selectedImage={selectedImage}
         etapasVisibility={etapasVisibility}
         onSetEtapaVisible={setEtapaVisible}
+        // B4c/T3 — the badge has to see the etapas filter too, not just the
+        // filter UI: an unchecked etapa stops the 3D viewer from drawing those
+        // propuestos (`isCanalVisible`), so counting them was the same lie.
+        etapaGate={etapaGate}
         // Phase 4 (Batch E) — derive the 7 legend-visibility flags from the
         // local `vectorLayerVisibility` record (mirrored from the store via
         // `sharedVisibleVectors`). Each legend block in `<TerrainLegendsPanel>`

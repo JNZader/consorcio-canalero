@@ -4,12 +4,19 @@ const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:8000';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+// NO DEFAULTS (B4c fix round, RISK-001): the committed `e2e@test.com` /
+// `e2etest123` pair is gone. A default turns "the environment is not configured"
+// into "we tried a well-known password against your backend" — and it made the
+// no-hardcoded-credentials rule of `helpers/auth.ts` decorative.
+// Callers already treat `null` as "no admin data available" and skip, so a
+// missing pair short-circuits to that same path instead of guessing a password.
 async function getToken(ctx: Awaited<ReturnType<typeof request.newContext>>) {
+  const username = process.env.E2E_ADMIN_EMAIL;
+  const password = process.env.E2E_ADMIN_PASSWORD;
+  if (!username || !password) return null;
+
   const res = await ctx.post('/api/v2/auth/jwt/login', {
-    form: {
-      username: process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com',
-      password: process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123',
-    },
+    form: { username, password },
   });
   if (!res.ok()) return null;
   const data = await res.json() as { access_token: string };

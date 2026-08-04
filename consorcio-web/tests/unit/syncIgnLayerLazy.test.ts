@@ -14,13 +14,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
-import { syncIgnLayer } from '../../src/components/map2d/mapRasterOverlayHelpers';
+import { reloadIgnSource, syncIgnLayer } from '../../src/components/map2d/mapRasterOverlayHelpers';
 
 interface FakeMap {
   readonly sources: Set<string>;
   readonly layers: Set<string>;
   readonly addSource: ReturnType<typeof vi.fn>;
   readonly addLayer: ReturnType<typeof vi.fn>;
+  readonly removeSource: ReturnType<typeof vi.fn>;
+  readonly removeLayer: ReturnType<typeof vi.fn>;
   readonly setLayoutProperty: ReturnType<typeof vi.fn>;
   getSource(id: string): unknown;
   getLayer(id: string): unknown;
@@ -37,6 +39,12 @@ function makeMap(): FakeMap {
     }),
     addLayer: vi.fn((layer: { id: string }) => {
       layers.add(layer.id);
+    }),
+    removeSource: vi.fn((id: string) => {
+      sources.delete(id);
+    }),
+    removeLayer: vi.fn((id: string) => {
+      layers.delete(id);
     }),
     setLayoutProperty: vi.fn(),
     getSource: (id: string) => (sources.has(id) ? {} : undefined),
@@ -94,5 +102,85 @@ describe('syncIgnLayer — lazy mount', () => {
     expect(map.addSource).toHaveBeenCalledTimes(1);
     expect(map.addLayer).toHaveBeenCalledTimes(1);
     expect(map.setLayoutProperty).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * B4c fix round (REL-001/RES-001) — the retry behind the health entry.
+ *
+ * A MapLibre `ImageSource` issues its ONE request from `onAdd` (→ `load()`);
+ * nothing in the tile lifecycle repeats it, so a 404 leaves the layer blank
+ * forever and `syncIgnLayer` (a visibility flip once mounted) cannot fix it.
+ * Removing source + layer and adding them back runs `onAdd` again, which is the
+ * only thing that re-downloads the WebP.
+ */
+describe('reloadIgnSource — the only real retry', () => {
+  it('removes the layer AND the source, then re-adds both (re-running onAdd → load)', () => {
+    const map = makeMap();
+    syncIgnLayer(asMap(map), true);
+
+    reloadIgnSource(asMap(map), true);
+
+    expect(map.removeLayer).toHaveBeenCalledWith(`${SOURCE_IDS.IGN}-layer`);
+    expect(map.removeSource).toHaveBeenCalledWith(SOURCE_IDS.IGN);
+    // A SECOND addSource is the whole point — that is the new download.
+    expect(map.addSource).toHaveBeenCalledTimes(2);
+    expect(map.addLayer).toHaveBeenCalledTimes(2);
+    expect(map.sources.has(SOURCE_IDS.IGN)).toBe(true);
+    expect(map.layers.has(`${SOURCE_IDS.IGN}-layer`)).toBe(true);
+  });
+
+  it('removes the LAYER before the SOURCE (MapLibre refuses a source still in use)', () => {
+    const map = makeMap();
+    syncIgnLayer(asMap(map), true);
+
+    reloadIgnSource(asMap(map), true);
+
+    const layerOrder = map.removeLayer.mock.invocationCallOrder[0];
+    const sourceOrder = map.removeSource.mock.invocationCallOrder[0];
+    expect(layerOrder).toBeLessThan(sourceOrder);
+  });
+
+  it('rebuilds the SAME source spec — the image url is not lost on retry', () => {
+    const map = makeMap();
+    syncIgnLayer(asMap(map), true);
+    const [, first] = map.addSource.mock.calls[0] as [string, Record<string, unknown>];
+
+    reloadIgnSource(asMap(map), true);
+    const [, second] = map.addSource.mock.calls[1] as [string, Record<string, unknown>];
+
+    expect(second).toEqual(first);
+  });
+
+  it('recovers a half-mounted state (source present, layer gone)', () => {
+    const map = makeMap();
+    syncIgnLayer(asMap(map), true);
+    map.layers.delete(`${SOURCE_IDS.IGN}-layer`);
+
+    reloadIgnSource(asMap(map), true);
+
+    expect(map.layers.has(`${SOURCE_IDS.IGN}-layer`)).toBe(true);
+    expect(map.sources.has(SOURCE_IDS.IGN)).toBe(true);
+  });
+
+  it('does not re-download while the overlay is OFF (stays lazy)', () => {
+    const map = makeMap();
+    syncIgnLayer(asMap(map), true);
+
+    reloadIgnSource(asMap(map), false);
+
+    // The old source is gone and nothing was fetched again: with the layer off
+    // there is nothing to show and no reason to pay for the WebP.
+    expect(map.addSource).toHaveBeenCalledTimes(1);
+    expect(map.sources.has(SOURCE_IDS.IGN)).toBe(false);
+  });
+
+  it('is safe when nothing was ever mounted', () => {
+    const map = makeMap();
+
+    expect(() => reloadIgnSource(asMap(map), false)).not.toThrow();
+    expect(map.removeLayer).not.toHaveBeenCalled();
+    expect(map.removeSource).not.toHaveBeenCalled();
+    expect(map.addSource).not.toHaveBeenCalled();
   });
 });

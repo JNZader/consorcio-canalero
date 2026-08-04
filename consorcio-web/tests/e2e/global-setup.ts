@@ -6,13 +6,25 @@
 
 import { chromium, type FullConfig } from '@playwright/test';
 
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123';
+// NO DEFAULTS (B4c fix round, RISK-001). The pair that used to live here
+// (`e2e@test.com` / `e2etest123`) was a committed credential AND a trap: with a
+// default, a run against a real environment silently attempts a login with a
+// well-known password instead of telling you the env is not configured. This
+// setup is the LOCAL harness, so a missing pair is a hard, immediate failure.
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 const API_BASE = 'http://localhost:8000/api/v2';
 const TOKEN_KEY = 'consorcio_auth_token';
 const USER_KEY = 'consorcio_auth_user';
 
 export default async function globalSetup(_config: FullConfig) {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error(
+      'global-setup necesita E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD (ver consorcio-web/.env.example). ' +
+        'No hay credenciales por defecto: son las del seed de TU entorno.'
+    );
+  }
+
   const browser = await chromium.launch();
   const page = await browser.newPage();
 

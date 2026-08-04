@@ -16,6 +16,7 @@ import {
   buildLayerHealth,
   rasterTilesMessage,
 } from '../../src/components/map2d/layerHealth';
+import { LAYER_CATEGORY } from '../../src/components/map2d/map2dDerived';
 
 describe('buildLayerHealth · aggregation', () => {
   it('returns an empty registry for empty inputs', () => {
@@ -254,5 +255,105 @@ describe('buildHealthBannerText', () => {
     });
 
     expect(buildHealthBannerText(health.failed)).toBe(`1 capa no cargó · ${rasterTilesMessage(2)}`);
+  });
+});
+
+/**
+ * B4c fix round (REL-001/RES-001) — the IGN altimetry overlay gets its OWN
+ * entry instead of a number inside the anonymous `raster_tiles` aggregate.
+ *
+ * The aggregate is a transport counter with `reload: null` ("tiles retry
+ * themselves on the next pan/zoom") — true for mosaics, false for an
+ * `ImageSource`, which fetches once and never again. Folding IGN in there gave
+ * the user a count they could not act on for the ONE failure that is actually
+ * fixable.
+ */
+describe('buildLayerHealth · IGN overlay entry', () => {
+  const IGN_SOURCE = 'map2d-ign-overlay';
+
+  it('reports the IGN overlay as its own named entry, with a real reload', () => {
+    const reload = vi.fn();
+    const health = buildLayerHealth({
+      ign_overlay: { error: 'ign image source failed', reload },
+      raster_tiles: { degradedSourceIds: [IGN_SOURCE] },
+      gates: { ignOverlay: true },
+    });
+
+    const entry = health.entries.find((item) => item.key === 'ign_overlay');
+    expect(entry).toBeDefined();
+    expect(entry?.label).toBe('Altimetría IGN');
+    expect(entry?.status).toBe('error');
+    expect(entry?.message).toBe('No se pudo cargar la altimetría IGN');
+    expect(entry?.reload).toBe(reload);
+
+    health.retryAll();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT count the IGN source twice in the raster aggregate', () => {
+    const health = buildLayerHealth({
+      ign_overlay: { error: 'boom', reload: () => {} },
+      raster_tiles: { degradedSourceIds: [IGN_SOURCE] },
+      gates: { ignOverlay: true },
+    });
+
+    // The aggregate entry disappears entirely — IGN was its only member.
+    expect(health.entries.some((item) => item.key === 'raster_tiles')).toBe(false);
+    expect(health.failed).toHaveLength(1);
+  });
+
+  it('keeps counting the OTHER degraded sources in the aggregate', () => {
+    const health = buildLayerHealth({
+      ign_overlay: { error: 'boom', reload: () => {} },
+      raster_tiles: { degradedSourceIds: [IGN_SOURCE, 'map2d-dem-raster'] },
+      gates: { ignOverlay: true },
+    });
+
+    const aggregate = health.entries.find((item) => item.key === 'raster_tiles');
+    // 2 degraded sources, 1 promoted out → the aggregate says ONE, not two.
+    expect(aggregate?.message).toBe('Los mosaicos de 1 capa están fallando');
+    expect(health.failed).toHaveLength(2);
+  });
+
+  it('does not swallow the IGN signal when the caller wires no dedicated slot', () => {
+    // Back-compat: without the slot there is no dedicated entry, so the id must
+    // still reach the aggregate rather than vanish.
+    const health = buildLayerHealth({ raster_tiles: { degradedSourceIds: [IGN_SOURCE] } });
+
+    const aggregate = health.entries.find((item) => item.key === 'raster_tiles');
+    expect(aggregate?.message).toBe('Los mosaicos de 1 capa están fallando');
+  });
+
+  it('produces NO entry while the overlay is switched off (lazy, never mounted)', () => {
+    const health = buildLayerHealth({
+      ign_overlay: { error: 'boom', reload: () => {} },
+      raster_tiles: { degradedSourceIds: [IGN_SOURCE] },
+      gates: { ignOverlay: false },
+    });
+
+    expect(health.entries.some((item) => item.key === 'ign_overlay')).toBe(false);
+    // …and with the dedicated entry gone the id falls back to the aggregate,
+    // so the signal is never lost.
+    expect(health.entries.some((item) => item.key === 'raster_tiles')).toBe(true);
+  });
+
+  it('is healthy (and never in `failed`) when the overlay is on and fine', () => {
+    const health = buildLayerHealth({
+      ign_overlay: { error: null, reload: () => {} },
+      gates: { ignOverlay: true },
+    });
+
+    const entry = health.entries.find((item) => item.key === 'ign_overlay');
+    expect(entry?.status).toBe('ok');
+    expect(health.failed).toEqual([]);
+  });
+
+  it('lands in the Base accordion family', () => {
+    const health = buildLayerHealth({
+      ign_overlay: { error: 'boom', reload: () => {} },
+      gates: { ignOverlay: true },
+    });
+
+    expect(health.byCategory[LAYER_CATEGORY.BASE]?.key).toBe('ign_overlay');
   });
 });

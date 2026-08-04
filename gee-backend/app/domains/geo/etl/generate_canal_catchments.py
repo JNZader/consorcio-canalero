@@ -38,6 +38,11 @@ per canal mirrors the pour-points build in
    A stored (non-oversized) catchment is therefore GUARANTEED to pass
    ``assert_within_caps`` at read time — producer and consumer read the SAME
    settings, so the "stored ⟹ servable" invariant can never drift.
+   Every rejection emits ONE ``canal_catchment.oversized`` log event naming the
+   canal, the measured ``area_ha`` / ``envelope_ha`` / ``vertices`` (each beside
+   its cap) and the ``motivo``(s) that fired — a bare total cannot tell "too big
+   by design" apart from "blocked by the envelope or the vertex cap", which is
+   exactly the question a re-run has to answer.
 5. UPSERT onto ``(canal_ref, variante)``.
 
 **V1 flow_dir policy — one base raster for all 60 canals.** The consorcio manages
@@ -136,6 +141,14 @@ CATCHMENT_SIMPLIFY_TOLERANCE_M = 8.0
 #: Log a heartbeat every this many canals.
 LOG_EVERY = 50
 
+#: Read-path cap names, as they appear in the ``canal_catchment.oversized`` log
+#: event and in the per-motivo breakdown of the run summary.
+CAP_MOTIVO_AREA = "area"
+CAP_MOTIVO_ENVELOPE = "envelope"
+CAP_MOTIVO_VERTICES = "vertices"
+#: Evaluation order — also the order ``motivos`` lists them in.
+CAP_MOTIVOS = (CAP_MOTIVO_AREA, CAP_MOTIVO_ENVELOPE, CAP_MOTIVO_VERTICES)
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -152,6 +165,39 @@ class BatchResult:
     empty: int = 0
     failed: int = 0
     failed_canal_refs: list[str] = field(default_factory=list)
+    #: How many oversized catchments each cap rejected (T6). A catchment that
+    #: breaks two caps counts under BOTH, so the values sum to >= ``oversized``.
+    oversized_por_motivo: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(CAP_MOTIVOS, 0)
+    )
+
+
+@dataclass(frozen=True)
+class _CapReport:
+    """What every read-path cap measured for one catchment, and which ones failed.
+
+    Exists because "35 oversized" is not an actionable number: the operator needs
+    to know whether to relax the vertex cap, simplify harder, or accept the
+    result — and that depends on WHICH cap rejected each canal.
+    """
+
+    area_ha: float
+    envelope_ha: float
+    vertices: int
+    max_area_ha: float
+    max_envelope_ha: float
+    max_vertices: int
+    #: Every failing cap, in :data:`CAP_MOTIVOS` order. Empty ⇒ servable.
+    motivos: tuple[str, ...]
+
+    @property
+    def oversized(self) -> bool:
+        return bool(self.motivos)
+
+    @property
+    def motivo(self) -> str | None:
+        """The FIRST failing cap — the single-value field for grouping/filters."""
+        return self.motivos[0] if self.motivos else None
 
 
 @dataclass
@@ -339,31 +385,60 @@ def _simplify_catchment(dissolved: Any) -> tuple[Any, float]:
     return simplified, simplified.area / M2_PER_HA
 
 
-def _exceeds_read_path_caps(geom: Any, area_ha: float, max_area_ha: float) -> bool:
-    """True when ``geom`` would fail ``ficha_service.assert_within_caps``.
+def _read_path_cap_report(geom: Any, area_ha: float, max_area_ha: float) -> _CapReport:
+    """Measure ``geom`` against EVERY read-path cap and name the ones it fails.
 
-    Mirrors EVERY cap the read path (``canal_cuenca`` ficha) enforces — area,
-    envelope AND vertices — reusing the SAME ``settings`` thresholds and the SAME
-    vertex counter (``_contar_vertices_shapely``) as ``assert_within_caps`` so the
-    numbers are directly comparable and producer/consumer can never drift. Anything
-    stored as non-oversized is therefore guaranteed servable at read time.
+    Mirrors what ``ficha_service.assert_within_caps`` enforces for
+    ``tipo=canal_cuenca`` — area, envelope AND vertices — reusing the SAME
+    ``settings`` thresholds and the SAME vertex counter
+    (``_contar_vertices_shapely``) so producer and consumer can never drift.
+
+    NO SHORT-CIRCUIT, on purpose (batch 4 / T6): the boolean gate this replaced
+    returned at the first failing rule, so a re-run that reported "35 oversized"
+    could not say WHICH cap rejected which canal — 19 of those 35 were under the
+    area cap and nobody could tell whether the envelope or the vertex count had
+    blocked them. Every rule is evaluated and every failure is named; the caller
+    logs the report per canal.
     """
     from app.domains.geo.ficha_service import (  # noqa: PLC0415
         _contar_vertices_shapely,
         envelope_cap_ha,
     )
 
-    if area_ha > max_area_ha:
-        return True
     minx, miny, maxx, maxy = geom.bounds
     envelope_ha = abs((maxx - minx) * (maxy - miny)) / M2_PER_HA
     # Per-``tipo`` envelope cap, read through the read-path helper so the
     # wider catchment envelope can never drift from what the ficha enforces.
-    if envelope_ha > envelope_cap_ha("canal_cuenca"):
-        return True
-    if _contar_vertices_shapely(geom) > settings.ficha_max_vertices:
-        return True
-    return False
+    max_envelope_ha = envelope_cap_ha("canal_cuenca")
+    vertices = _contar_vertices_shapely(geom)
+    max_vertices = settings.ficha_max_vertices
+
+    motivos: list[str] = []
+    if area_ha > max_area_ha:
+        motivos.append(CAP_MOTIVO_AREA)
+    if envelope_ha > max_envelope_ha:
+        motivos.append(CAP_MOTIVO_ENVELOPE)
+    if vertices > max_vertices:
+        motivos.append(CAP_MOTIVO_VERTICES)
+
+    return _CapReport(
+        area_ha=area_ha,
+        envelope_ha=envelope_ha,
+        vertices=vertices,
+        max_area_ha=max_area_ha,
+        max_envelope_ha=max_envelope_ha,
+        max_vertices=max_vertices,
+        motivos=tuple(motivos),
+    )
+
+
+def _exceeds_read_path_caps(geom: Any, area_ha: float, max_area_ha: float) -> bool:
+    """True when ``geom`` would fail ``ficha_service.assert_within_caps``.
+
+    Thin boolean view of :func:`_read_path_cap_report` — kept because "does this
+    pass?" is the question most callers (and tests) ask.
+    """
+    return _read_path_cap_report(geom, area_ha, max_area_ha).oversized
 
 
 def _upsert_catchment(
@@ -556,6 +631,8 @@ def generate_catchments(
         computed=result.computed,
         skipped=result.skipped,
         oversized=result.oversized,
+        # Per-cap breakdown (T6) — a catchment failing two caps counts in both.
+        oversized_por_motivo=dict(result.oversized_por_motivo),
         empty=result.empty,
         failed=result.failed,
     )
@@ -643,7 +720,8 @@ def _compute_one(
     # area, envelope AND vertices — so a stored (non-oversized) catchment is
     # guaranteed to pass at read time. area_ha is reported off the simplified geom.
     dissolved, area_ha = _simplify_catchment(dissolved)
-    oversized = _exceeds_read_path_caps(dissolved, area_ha, max_area_ha)
+    report = _read_path_cap_report(dissolved, area_ha, max_area_ha)
+    oversized = report.oversized
     metric_geojson = None if oversized else json.dumps(mapping(dissolved))
     _upsert_catchment(
         db,
@@ -658,6 +736,26 @@ def _compute_one(
     )
     if oversized:
         result.oversized += 1
+        for motivo in report.motivos:
+            result.oversized_por_motivo[motivo] = result.oversized_por_motivo.get(motivo, 0) + 1
+        # ONE structured event per rejected canal (T6). Without it a run could
+        # only report a total, and 19 of the 35 rejections in prod were under the
+        # area cap with nobody able to say which of the other two caps fired.
+        # The measured value AND its cap travel together so the log is readable
+        # without going to look up the settings.
+        logger.warning(
+            "canal_catchment.oversized",
+            canal_ref=canal_ref,
+            variante=variante,
+            motivo=report.motivo,
+            motivos=list(report.motivos),
+            area_ha=round(report.area_ha, 2),
+            max_area_ha=round(report.max_area_ha, 2),
+            envelope_ha=round(report.envelope_ha, 2),
+            max_envelope_ha=round(report.max_envelope_ha, 2),
+            vertices=report.vertices,
+            max_vertices=report.max_vertices,
+        )
     result.computed += 1
 
 
@@ -738,9 +836,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"FALLO EN LA GENERACION: {type(exc).__name__}: {exc}", file=sys.stderr)
             return EXIT_FAILED
 
+    # Per-motivo breakdown so the operator can decide (relax vertices / simplify
+    # harder / accept) straight off the run summary instead of grepping the logs.
+    desglose = ", ".join(
+        f"{motivo}={result.oversized_por_motivo.get(motivo, 0)}" for motivo in CAP_MOTIVOS
+    )
+    # El desglose puede sumar MAS que el total y eso no es un bug: una cuenca que
+    # rompe dos caps se cuenta en los dos. Se dice en la misma linea porque el
+    # operador la lee sola, sin este archivo al lado.
     print(
         f"canal_catchment area_id={args.area_id!r} variante={V1_VARIANTE!r}: "
-        f"{result.computed} calculadas ({result.oversized} oversized, {result.empty} vacias), "
+        f"{result.computed} calculadas ({result.oversized} oversized "
+        f"[{desglose} — la suma puede superar el total: una cuenca puede fallar "
+        f"varios caps], {result.empty} vacias), "
         f"{result.skipped} omitidas, {result.failed} fallidas de {result.total} canales."
     )
     return EXIT_FAILED if result.failed else EXIT_OK

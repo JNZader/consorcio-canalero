@@ -50,7 +50,11 @@ import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { useConfigStore } from '../stores/configStore';
-import { PILAR_VERDE_LAYER_IDS, useMapLayerSyncStore } from '../stores/mapLayerSyncStore';
+import {
+  PILAR_VERDE_LAYER_IDS,
+  selectEtapaGate,
+  useMapLayerSyncStore,
+} from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
 import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { RasterLegend } from './RasterLegend';
@@ -69,7 +73,7 @@ import {
   type ComparisonOverlaySyncInputs,
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
-import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES } from './map2d/map2dConfig';
+import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
 import {
   buildFamilyActiveCounts,
   shouldLatchBpaJoin,
@@ -88,6 +92,7 @@ import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
 import { useMapEscapeExit } from './map2d/useMapEscapeExit';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
+import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
@@ -166,6 +171,10 @@ export default function MapaMapLibre() {
     (state) => state.propuestasEtapasVisibility
   );
   const setEtapaVisible = useMapLayerSyncStore((state) => state.setEtapaVisible);
+  // B4c/T3: the etapas filter also decides what the map DRAWS, so it has to
+  // reach every active-layer count. Threaded to `LayerControlsPanel` (family
+  // badge) and used below for the workspace badge.
+  const etapaGate = useMapLayerSyncStore(selectEtapaGate);
 
   // ── Per-layer fine controls (Fase 3 — Tanda B) ────────────────────────────
   // Opacity/order slots + setters for the map2d view. Assembled into a single
@@ -371,7 +380,20 @@ export default function MapaMapLibre() {
   // that firehose into a per-source "degradado" flag and only re-renders on a
   // transition. `onMapError` enters `useMapInitialization` through a REF — it
   // must never join that hook's dependency array (it would remount the map).
-  const { degradedSourceIds, onMapError } = useRasterTileHealth();
+  const { degradedSourceIds, onMapError, clearSource } = useRasterTileHealth();
+
+  // The IGN overlay is the ONE degraded source with a real retry: an
+  // `ImageSource` fetches once from `onAdd` and never again, so the only way
+  // back is rebuilding it. Clearing the health flag FIRST is deliberate — the
+  // re-download is optimistic, and a second failure re-degrades it on its first
+  // error (one-shot sources bypass the threshold).
+  const reloadIgnOverlay = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    clearSource(SOURCE_IDS.IGN);
+    reloadIgnSource(map, showIGNOverlay);
+  };
+  const ignOverlayDegraded = degradedSourceIds.includes(SOURCE_IDS.IGN);
 
   const layerHealth = useLayerHealth({
     caminos: { error: caminosError, reload: reloadCaminos },
@@ -387,6 +409,11 @@ export default function MapaMapLibre() {
       loading: pilarVerdeLayersLoading,
       reload: reloadPilarVerdeLayers,
     },
+    ign_overlay: {
+      // Curated copy comes from the registry; this only says "it failed".
+      error: ignOverlayDegraded ? 'ign image source failed' : null,
+      reload: reloadIgnOverlay,
+    },
     raster_tiles: { degradedSourceIds },
     // Lazy families: a CLOSED gate produces no entry, so an anonymous visitor
     // never reads a failure for a fetch that never ran, and "Reintentar" can
@@ -396,6 +423,7 @@ export default function MapaMapLibre() {
       soil: soilEnabled,
       catastro: exportIntent,
       pilarVerde: pilarVerdeLayersNeeded,
+      ignOverlay: showIGNOverlay,
     },
   });
 
@@ -835,7 +863,8 @@ export default function MapaMapLibre() {
   const canalChildIds = collectCanalChildIds(
     canalesRelevadosItems,
     canalesPropuestosItems,
-    vectorVisibility
+    vectorVisibility,
+    etapaGate
   );
   const activeLayerCount = sumFamilyActiveCounts(
     buildFamilyActiveCounts({
@@ -986,6 +1015,7 @@ export default function MapaMapLibre() {
               demOptions={demLayerOptions}
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
+              etapaGate={etapaGate}
               layerFineControl={layerFineControl}
               hasApprovedZones={hasApprovedZones}
               onOpenExportPng={() => setExportPngModalOpen(true)}
@@ -1094,6 +1124,7 @@ export default function MapaMapLibre() {
               demOptions={demLayerOptions}
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
+              etapaGate={etapaGate}
               layerFineControl={layerFineControl}
               pilarVerdeLayersLoading={pilarVerdeLayersLoading}
               pilarVerdeLayersError={pilarVerdeLayersError}
