@@ -2,8 +2,12 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 
 const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:8000';
 const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e@test.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'e2etest123';
+// NO DEFAULTS (B4c fix round, RISK-001): the committed `e2e@test.com` /
+// `e2etest123` pair is gone. A default turns "the environment is not configured"
+// into "we tried a well-known password against your backend" — and it made the
+// no-hardcoded-credentials rule of `helpers/auth.ts` decorative.
+const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 
 const apiUrl = (path: string) => `${API_BASE}${path}`;
 const appUrl = (path = '') => `${APP_URL}${path}`;
@@ -13,8 +17,15 @@ const withOrigin = (token?: string) => ({
 });
 
 async function loginAsAdmin(request: APIRequestContext) {
+  // Credentials are ALWAYS a soft gate (same rule as `helpers/auth.ts`): with no
+  // seed configured there is nothing to prove, and this suite WRITES, so it must
+  // never run half-authenticated.
+  test.skip(
+    !ADMIN_EMAIL || !ADMIN_PASSWORD,
+    '[datos/credenciales] set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD'
+  );
   const res = await request.post(apiUrl('/api/v2/auth/jwt/login'), {
-    form: { username: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    form: { username: ADMIN_EMAIL!, password: ADMIN_PASSWORD! },
   });
   expect(res.ok()).toBeTruthy();
   return (await res.json()).access_token as string;

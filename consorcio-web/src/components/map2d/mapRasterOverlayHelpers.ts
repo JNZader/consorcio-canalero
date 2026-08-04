@@ -195,6 +195,12 @@ export function getVisibleRasterLayersForDem(
  *
  * The effect in `useMapLayerEffects` already re-runs on `showIGNOverlay`, so the
  * first "on" reaches this function and does the real work.
+ *
+ * TOGGLING DOES NOT RETRY A FAILED DOWNLOAD (B4c fix round): once the source
+ * exists this is a pure `visibility` flip, and `ImageSource` fetches exactly ONCE
+ * (`onAdd` → `load`; `loadTile` only marks the tile errored — maplibre-gl
+ * `ImageSource`). So a 404 leaves the layer permanently blank and turning it off
+ * and on again changes nothing. {@link reloadIgnSource} is the ONLY recovery.
  */
 export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
   // Never mounted and not wanted → do not touch the map at all.
@@ -221,6 +227,29 @@ export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
   }
 
   setLayerVisibility(map, `${SOURCE_IDS.IGN}-layer`, showIGNOverlay);
+}
+
+/**
+ * Re-download the IGN altimetry image — the REAL retry behind the health entry.
+ *
+ * Why a rebuild and not a flag: a MapLibre `ImageSource` issues its single
+ * request from `onAdd` (`ImageSource.onAdd` → `load()`), and nothing in the tile
+ * lifecycle ever repeats it — `loadTile` just marks the tile errored. Removing
+ * the layer + source and adding them back therefore runs `onAdd` again, which is
+ * what actually re-fetches the WebP.
+ *
+ * `updateImage({url})` would also re-`load()` with one less removal, but it only
+ * works when the source is already mounted; the rebuild ALSO recovers a
+ * half-mounted state (source present, layer gone) and reuses `syncIgnLayer` as
+ * the single place that knows how the layer is built (paint, insertion point,
+ * visibility). One construction site, not two that can drift.
+ *
+ * Safe to call when nothing is mounted: `removeRasterOverlay` is guarded and
+ * `syncIgnLayer(map, false)` is a no-op.
+ */
+export function reloadIgnSource(map: maplibregl.Map, showIGNOverlay: boolean) {
+  removeRasterOverlay(map, SOURCE_IDS.IGN);
+  syncIgnLayer(map, showIGNOverlay);
 }
 
 export function syncImageOverlays(

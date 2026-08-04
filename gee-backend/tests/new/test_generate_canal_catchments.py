@@ -656,3 +656,177 @@ def test_exceeds_read_path_caps_still_rejects_a_huge_envelope() -> None:
     geom = diagonal.buffer((5_000.0 * gcc.M2_PER_HA) / (2.0 * diagonal.length), cap_style=2)
 
     assert gcc._exceeds_read_path_caps(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+
+# ── T6: WHY a catchment was rejected, per canal ───────────────────────────────
+#
+# The prod re-run reported "35 oversized" and nothing else: 16 were over the
+# area cap (by design) and 19 were UNDER it, rejected by the envelope or the
+# vertex cap with no way to tell which. `_read_path_cap_report` measures every
+# cap and names every failure, and `_compute_one` logs one
+# `canal_catchment.oversized` event per rejected canal.
+
+
+def _envelope_only_basin():
+    """Area well under the cap, envelope over the ``canal_cuenca`` cap.
+
+    A long thin diagonal strip: 5 000 ha of surface stretched across a bounding
+    box twice the envelope cap. This is the shape the read path rejects for a
+    reason a bare "oversized" flag can never explain.
+    """
+    import math
+
+    from shapely.geometry import LineString
+
+    from app.config import settings
+
+    lado = math.sqrt(settings.ficha_max_envelope_ha_cuenca * 2.0 * gcc.M2_PER_HA)
+    diagonal = LineString([(500_000, 6_000_000), (500_000 + lado, 6_000_000 + lado)])
+    return diagonal.buffer((5_000.0 * gcc.M2_PER_HA) / (2.0 * diagonal.length), cap_style=2)
+
+
+def test_cap_report_names_the_envelope_when_the_area_is_fine() -> None:
+    from app.config import settings
+
+    geom = _envelope_only_basin()
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+    assert report.oversized is True
+    assert report.motivos == (gcc.CAP_MOTIVO_ENVELOPE,)
+    assert report.motivo == gcc.CAP_MOTIVO_ENVELOPE
+    # The area really is fine — this is the "19 under the cap" case.
+    assert report.area_ha < report.max_area_ha
+    assert report.envelope_ha > report.max_envelope_ha
+    assert report.vertices <= report.max_vertices
+
+
+def test_cap_report_names_the_vertices_when_area_and_envelope_are_fine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config import settings
+
+    # A compact basin: small area, small envelope, a handful of vertices. Only
+    # the vertex cap is moved, so `vertices` is the ONLY thing that can fail.
+    geom = Point(500_000, 6_000_000).buffer(300.0)
+    monkeypatch.setattr(settings, "ficha_max_vertices", 4)
+
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+    assert report.motivos == (gcc.CAP_MOTIVO_VERTICES,)
+    assert report.area_ha < report.max_area_ha
+    assert report.envelope_ha < report.max_envelope_ha
+    assert report.vertices > 4
+
+
+def test_cap_report_lists_EVERY_failing_cap_not_just_the_first() -> None:
+    """No short-circuit: a basin that is both too big and too wide must say so,
+    otherwise "relax the vertex cap" reads as a fix for a canal the area cap
+    would still reject."""
+    from app.config import settings
+
+    geom = _envelope_only_basin()
+    # Same geometry, but now the area cap is below its 5 000 ha.
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, 100.0)
+
+    assert report.motivos == (gcc.CAP_MOTIVO_AREA, gcc.CAP_MOTIVO_ENVELOPE)
+    assert report.motivo == gcc.CAP_MOTIVO_AREA
+    assert report.max_vertices == settings.ficha_max_vertices
+
+
+def test_cap_report_is_empty_for_a_servable_catchment() -> None:
+    from app.config import settings
+
+    geom = Point(500_000, 6_000_000).buffer(300.0)
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+    assert report.motivos == ()
+    assert report.motivo is None
+    assert report.oversized is False
+
+
+def test_oversized_by_envelope_logs_the_reason_per_canal(catchment_db: Session) -> None:
+    """The event the operator greps for: one line per rejected canal, carrying
+    the measured area/envelope/vertices AND the cap that rejected it."""
+    from structlog.testing import capture_logs
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-envelope")
+
+    with capture_logs() as logs:
+        result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_envelope_only_basin()))
+
+    assert result.oversized == 1
+    assert result.oversized_por_motivo[gcc.CAP_MOTIVO_ENVELOPE] == 1
+    assert result.oversized_por_motivo[gcc.CAP_MOTIVO_AREA] == 0
+
+    eventos = [entry for entry in logs if entry["event"] == "canal_catchment.oversized"]
+    assert len(eventos) == 1
+    evento = eventos[0]
+    assert evento["canal_ref"] == "canal-envelope"
+    assert evento["motivo"] == gcc.CAP_MOTIVO_ENVELOPE
+    assert evento["motivos"] == [gcc.CAP_MOTIVO_ENVELOPE]
+    # Area is REPORTED even though it passed — that is the whole point: the
+    # operator needs to see that these 19 were nowhere near the area cap.
+    assert evento["area_ha"] < evento["max_area_ha"]
+    assert evento["envelope_ha"] > evento["max_envelope_ha"]
+    assert evento["vertices"] <= evento["max_vertices"]
+
+
+def test_oversized_by_vertices_logs_the_vertex_reason(
+    catchment_db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same event, other cap: a compact basin whose only sin is its vertex count
+    (area and envelope both fine)."""
+    from structlog.testing import capture_logs
+
+    from app.config import settings
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-vertices")
+
+    # The simplified basin keeps ~a dozen vertices; the cap moves below that so
+    # the geometry stays realistic and only ONE rule can fire.
+    monkeypatch.setattr(settings, "ficha_max_vertices", 4)
+
+    with capture_logs() as logs:
+        result = _run(
+            catchment_db,
+            _RecordingWbt(),
+            _shapes_returning(Point(500_000, 6_000_000).buffer(300.0)),
+        )
+
+    assert result.oversized == 1
+    assert result.oversized_por_motivo[gcc.CAP_MOTIVO_VERTICES] == 1
+    assert result.oversized_por_motivo[gcc.CAP_MOTIVO_ENVELOPE] == 0
+
+    evento = next(entry for entry in logs if entry["event"] == "canal_catchment.oversized")
+    assert evento["canal_ref"] == "canal-vertices"
+    assert evento["motivo"] == gcc.CAP_MOTIVO_VERTICES
+    assert evento["vertices"] > evento["max_vertices"]
+    assert evento["area_ha"] < evento["max_area_ha"]
+
+    # And the row is still stored WITHOUT geometry, exactly as before.
+    row = _row(catchment_db, "canal-vertices")
+    assert row is not None
+    assert row.oversized is True
+    assert row.geom_null is True
+
+
+def test_a_servable_catchment_logs_no_oversized_event(catchment_db: Session) -> None:
+    from structlog.testing import capture_logs
+
+    _register_flow_dir(catchment_db)
+    _seed_canal(catchment_db, "canal-ok")
+
+    with capture_logs() as logs:
+        result = _run(
+            catchment_db,
+            _RecordingWbt(),
+            _shapes_returning(Point(500_000, 6_000_000).buffer(300.0)),
+        )
+
+    assert result.oversized == 0
+    assert [entry for entry in logs if entry["event"] == "canal_catchment.oversized"] == []
+    # The run summary still carries the (all-zero) breakdown.
+    assert set(result.oversized_por_motivo) == set(gcc.CAP_MOTIVOS)
+    assert sum(result.oversized_por_motivo.values()) == 0

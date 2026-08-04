@@ -9,6 +9,7 @@ import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import type { FichaApiError } from '../../lib/api/ficha';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
+import type { EtapaGate } from '../shared/canalesGrouping';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import { FichaTerritorialPanel, type FichaPanelTab } from './FichaTerritorialPanel';
 import { InfoPanel } from './InfoPanel';
@@ -63,6 +64,8 @@ export interface MapUiPanelsProps {
   readonly demOptions: DemOption[];
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
+  /** Etapas filter for the Canales badge (B4c/T3) — see `LayerControlsPanel`. */
+  readonly etapaGate?: EtapaGate | null;
   /** Per-layer opacity + render-order controls (Fase 3 — Tanda B). */
   readonly layerFineControl?: LayerFineControl;
   /** Per-family load status + "Datos al …" lines (Batch 1 — "datos honestos"). */
@@ -246,6 +249,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   demOptions,
   canalesRelevadosItems,
   canalesPropuestosItems,
+  etapaGate = null,
   layerFineControl,
   layerHealth,
   layerProvenance,
@@ -454,6 +458,7 @@ export const MapUiPanels = memo(function MapUiPanels({
             demOptions={demOptions}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
+            etapaGate={etapaGate}
             layerFineControl={layerFineControl}
             layerHealth={layerHealth}
             layerProvenance={layerProvenance}

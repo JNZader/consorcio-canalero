@@ -22,6 +22,19 @@ export interface ClassifiedMapError {
   readonly kind: 'tile' | 'other';
   /** MapLibre source id that failed, when the event carries one. */
   readonly sourceId: string | null;
+  /**
+   * MapLibre source TYPE (`raster`, `vector`, `image`, …) when the event
+   * carries the serialized source, `null` otherwise.
+   *
+   * `Style.addSource` attaches `{ sourceId, source: sourceCache.serialize() }`
+   * to every event a source fires, so a failing source names its own type. That
+   * distinction is load-bearing (B4c/T4, RES-003): a `raster`/`vector` source
+   * fails one MOSAIC at a time and needs a threshold to separate "this layer is
+   * broken" from "we panned off its coverage", while an `image` source is ONE
+   * request — one failure is the whole verdict, and waiting for 8 of them means
+   * waiting forever.
+   */
+  readonly sourceType: string | null;
   /** HTTP status from an `AJAXError`, when present. */
   readonly status: number | null;
   /** Request URL from an `AJAXError`, when present. */
@@ -59,14 +72,30 @@ export function classifyMapError(event: unknown): ClassifiedMapError {
     /AJAXError/i.test(errorName) ||
     /earthengine\.googleapis\.com/i.test(message);
 
+  // `event.source` is the SERIALIZED source spec (`{ type, url, … }`) that
+  // `Style.addSource` merges into every event the source fires — the only place
+  // the source TYPE is available, and a second chance at the id.
+  const sourceRecord = eventRecord ? asRecord(eventRecord.source) : null;
+
   const sourceId =
-    eventRecord && typeof eventRecord.sourceId === 'string' ? eventRecord.sourceId : null;
+    eventRecord && typeof eventRecord.sourceId === 'string'
+      ? eventRecord.sourceId
+      : sourceRecord && typeof sourceRecord.id === 'string'
+        ? sourceRecord.id
+        : null;
+  const sourceType =
+    sourceRecord && typeof sourceRecord.type === 'string'
+      ? sourceRecord.type
+      : eventRecord && typeof eventRecord.sourceType === 'string'
+        ? eventRecord.sourceType
+        : null;
   const status = errorRecord && typeof errorRecord.status === 'number' ? errorRecord.status : null;
   const url = errorRecord && typeof errorRecord.url === 'string' ? errorRecord.url : null;
 
   return {
     kind: isTile ? 'tile' : 'other',
     sourceId,
+    sourceType,
     status,
     url,
     message,

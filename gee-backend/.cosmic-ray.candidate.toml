@@ -1,0 +1,75 @@
+# CANDIDATE mutation config — MEASUREMENT ONLY, NOT WIRED TO CI (B4c/T5).
+#
+# The active gate (`.cosmic-ray.toml`, run by `scripts/cosmic_gate.py` in the
+# `mutation` job of `.github/workflows/backend.yml`) deliberately EXCLUDES the
+# three highest-risk domains, with a TODO explaining why: their only tests live
+# in `tests/new/` and need PostGIS via testcontainers, and the harness runs the
+# whole test-command ONCE PER MUTANT.
+#
+# This file puts NUMBERS on that trade-off instead of an opinion. It is the
+# active config plus the three candidate modules.
+#
+# ── WHAT WAS MEASURED (local, `cosmic-ray init` + one real `exec`) ───────────
+#
+#   mutants        active config            276  (monitoring 192 · denuncias 65 ·
+#                                                 tramites 19)
+#                  this candidate           841  (+565: refresh_tokens 300 ·
+#                                                 padron 191 · finanzas 74)
+#
+#   cost           1.72 s per test-command invocation (3 samples)
+#                  2.03 s per mutant end-to-end, from a REAL run of the 74
+#                  finanzas mutants (150 s wall clock)
+#
+#   kill rate      finanzas, executed for real: 74/74 SURVIVED — 0.00%.
+#                  The current test-command (`test_tramites_schema.py` +
+#                  `test_mutation_targets.py`) never imports finanzas, padron or
+#                  refresh_tokens, so every mutant of those modules is unreachable
+#                  by construction. Adding them does not measure them; it just
+#                  adds survivors.
+#
+# ── WHAT WOULD HAPPEN IF THIS FILE WERE WIRED TO CI TODAY ───────────────────
+#
+#   kill rate      killed stays 175 → 175/841 = 20.8%, under the 0.30 floor
+#                  `cosmic_gate.py --min-kill-rate 0.30` enforces → RED.
+#   runtime        841 × 2.03 s ≈ 28.5 min locally; a GH runner is 1.5-2× slower
+#                  → 43-57 min against `timeout-minutes: 35` → the job also times
+#                  out before it can fail.
+#
+#   Per domain, added ALONE (resulting kill rate / extra CI minutes):
+#     finanzas  +74   → 175/350 = 50.0%  / +4-5 min
+#     padron    +191  → 175/467 = 37.5%  / +10-13 min
+#     auth      +300  → 175/576 = 30.4%  / +15-20 min  ← right ON the floor
+#
+# ── THE STAGED PLAN (the owner decides; nothing here is enabled) ─────────────
+#
+#   1. Write the LIGHTWEIGHT, no-DB unit tests the active config's TODO already
+#      names (`validar_cuit` mod-11, the `rubro` field_validator — pure logic).
+#   2. Add them to `test-command`.
+#   3. Enable finanzas FIRST (cheapest at 74 mutants, +4-5 min) and re-measure.
+#   4. Then padron, same loop.
+#   5. `app/auth/refresh_tokens.py` is the highest-value target (300 mutants,
+#      security-critical) but also the biggest runtime hit and the deepest
+#      pure-unit-test work: give it its OWN job/config with its own floor rather
+#      than pushing the shared gate past 35 minutes.
+#
+# DO NOT point CI at this file.
+[cosmic-ray]
+module-path = [
+  # ── currently gated (276 mutants, 63.41% kill rate at the last measurement) ──
+  "app/domains/denuncias/service.py",
+  "app/domains/monitoring/service.py",
+  "app/domains/tramites/schemas.py",
+  # ── candidates: 0% kill rate until the lightweight tests above exist ──
+  "app/domains/finanzas/service.py",  # 74 mutants
+  "app/auth/refresh_tokens.py",       # 300 mutants
+  "app/domains/padron/service.py",    # 191 mutants
+]
+timeout = 120.0
+excluded-modules = []
+# UNCHANGED from the active config on purpose: this is what makes the candidate
+# mutants survive, and measuring that was the point. Pointing it at `tests/new/`
+# would multiply a PostGIS-container suite by 841.
+test-command = "python3 -m pytest tests/test_tramites_schema.py tests/test_mutation_targets.py -q"
+
+[cosmic-ray.distributor]
+name = "local"

@@ -14,7 +14,11 @@ import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
-import { type CanalToggleEntry, collectCanalChildIds } from '../shared/canalesGrouping';
+import {
+  type CanalToggleEntry,
+  collectCanalChildIds,
+  type EtapaGate,
+} from '../shared/canalesGrouping';
 
 import { InfoPanel } from '../map2d/InfoPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
@@ -75,6 +79,20 @@ interface TerrainViewer3DChromeProps {
   etapasVisibility?: Readonly<Record<Etapa, boolean>>;
   /** Parent-owned setter for a single etapa (delegates to the store). */
   onSetEtapaVisible?: (etapa: Etapa, visible: boolean) => void;
+  /**
+   * The etapas filter as ONE value for the active-layer BADGE (B4c/T3).
+   *
+   * `etapasVisibility` above only feeds the filter UI; the count needs the
+   * prioridad index too, because the 3D viewer stops drawing a propuesto whose
+   * etapa is unchecked exactly like 2D does (`isCanalVisible`).
+   *
+   * EVERY PRODUCTION CALLER MUST PASS IT — build it with `selectEtapaGate`
+   * (`TerrainViewer3D` does). The `null` default is for fixtures/tests that
+   * render this chrome with no store behind it, and mirrors the optional
+   * `etapasVisibility` right above; the gate that a new call site CANNOT bypass
+   * is the required 4th argument of `collectCanalChildIds`, one level down.
+   */
+  etapaGate?: EtapaGate | null;
   /**
    * Phase 4 (Batch E) — visibility flags forwarded to
    * `<TerrainLegendsPanel>` so each of the 7 conditional Pilar Verde +
@@ -138,6 +156,7 @@ export function TerrainViewer3DChrome({
   selectedImage,
   etapasVisibility,
   onSetEtapaVisible,
+  etapaGate = null,
   bpaHistoricoVisible,
   agroAceptadaVisible,
   agroPresentadaVisible,
@@ -219,7 +238,8 @@ export function TerrainViewer3DChrome({
             canalChildIds: collectCanalChildIds(
               canalesRelevadosItems,
               canalesPropuestosItems,
-              vectorLayerVisibility
+              vectorLayerVisibility,
+              etapaGate
             ),
           })
         )}

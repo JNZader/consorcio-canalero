@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { type EtapaGate, passesEtapaFilter } from '../components/shared/canalesGrouping';
 import { ALL_ETAPAS, type Etapa, type IndexFile } from '../types/canales';
 
 export interface SharedMapLayerState {
@@ -508,13 +509,10 @@ export const useMapLayerSyncStore = create<
           );
           const passesIndividual = anyOn ? vv[id] === true : true;
           if (!passesIndividual) return false;
-          // Etapa gate — decode slug → prioridad via the cached index.
-          const slug = id.replace(/^canal_propuesto_/, '').replace(/_/g, '-');
-          const prioridad = state.canalesPropuestasPrioridad[slug] ?? null;
-          if (prioridad !== null && state.propuestasEtapasVisibility[prioridad] === false) {
-            return false;
-          }
-          return true;
+          // Etapa gate — ONE predicate, shared with the badge count
+          // (`collectCanalChildIds`). Inlining it here is what let the two
+          // disagree: see `passesEtapaFilter` (B4c/T3, REL-002).
+          return passesEtapaFilter(id, selectEtapaGate(state));
         }
         return !!vv[id];
       },
@@ -582,3 +580,32 @@ export const useMapLayerSyncStore = create<
 // store if they don't want a second import from `types/canales`.
 export { ALL_ETAPAS };
 export type { Etapa };
+
+/**
+ * The etapas filter as ONE value, for `passesEtapaFilter` / `collectCanalChildIds`.
+ *
+ * Cached on the identity of the two slots it wraps, so it is safe to use
+ * directly as a zustand selector (`useMapLayerSyncStore(selectEtapaGate)`):
+ * building a fresh object per call would hand `useSyncExternalStore` a new
+ * reference on every store notification and re-render the map chrome forever.
+ */
+let etapaGateCache: {
+  prioridad: MapLayerSyncStoreState['canalesPropuestasPrioridad'];
+  etapas: MapLayerSyncStoreState['propuestasEtapasVisibility'];
+  gate: EtapaGate;
+} | null = null;
+
+export function selectEtapaGate(state: MapLayerSyncStoreState): EtapaGate {
+  const prioridad = state.canalesPropuestasPrioridad;
+  const etapas = state.propuestasEtapasVisibility;
+  if (
+    etapaGateCache &&
+    etapaGateCache.prioridad === prioridad &&
+    etapaGateCache.etapas === etapas
+  ) {
+    return etapaGateCache.gate;
+  }
+  const gate: EtapaGate = { prioridadBySlug: prioridad, etapasVisibility: etapas };
+  etapaGateCache = { prioridad, etapas, gate };
+  return gate;
+}

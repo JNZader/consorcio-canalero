@@ -25,6 +25,7 @@
  *      defer.
  */
 
+import { SOURCE_IDS } from './map2dConfig';
 import type { LayerCategory } from './map2dDerived';
 import { LAYER_CATEGORY } from './map2dDerived';
 
@@ -40,6 +41,7 @@ export type LayerHealthKey =
   | 'canales'
   | 'escuelas'
   | 'pilar_verde'
+  | 'ign_overlay'
   | 'raster_tiles';
 
 export interface LayerHealthEntry {
@@ -82,6 +84,10 @@ export interface LayerHealthSlot {
 /**
  * Raster tiles are NOT a query: there is no error string and no refetch, only
  * a rolling count of failing tile sources produced by `useRasterTileHealth`.
+ *
+ * Pass the WHOLE list; ids that have a dedicated entry (see
+ * `DEDICATED_SOURCE_ENTRIES`) are subtracted here, so the container never has to
+ * know which sources got promoted out of the aggregate.
  */
 export interface RasterTilesHealthSlot {
   readonly degradedSourceIds?: readonly string[];
@@ -106,6 +112,13 @@ export interface LayerHealthGates {
    * "Reintentar" re-downloaded ~1 MB for a family nobody is looking at.
    */
   readonly pilarVerde?: boolean;
+  /**
+   * The IGN altimetry overlay is only MOUNTED once the user turns it on
+   * (`syncIgnLayer` is lazy by contract — the ~1.5 MB WebP is not downloaded
+   * before that), so with the layer off there is nothing to report and nothing
+   * to retry.
+   */
+  readonly ignOverlay?: boolean;
 }
 
 export interface LayerHealthInputs {
@@ -118,6 +131,13 @@ export interface LayerHealthInputs {
   readonly canales?: LayerHealthSlot;
   readonly escuelas?: LayerHealthSlot;
   readonly pilar_verde?: LayerHealthSlot;
+  /**
+   * The IGN altimetry image source. `error` is set from
+   * `degradedSourceIds.includes(SOURCE_IDS.IGN)`, and `reload` MUST be the real
+   * re-download (`reloadIgnSource` + `clearSource`) — this is the one degraded
+   * source in the app that can actually be retried.
+   */
+  readonly ign_overlay?: LayerHealthSlot;
   readonly raster_tiles?: RasterTilesHealthSlot;
   readonly gates?: LayerHealthGates;
 }
@@ -201,7 +221,34 @@ const LAYER_HEALTH_DEFS: readonly LayerHealthDef[] = [
     gate: 'pilarVerde',
     errorMessage: 'No se pudieron cargar las capas de Pilar Verde',
   },
+  {
+    // Its OWN entry, not a number inside `raster_tiles` (B4c fix round). The
+    // aggregate is an anonymous transport counter with no retry ("los mosaicos
+    // de N capas están fallando"); this is ONE nameable layer the user just
+    // switched on, and it has a REAL retry (`reloadIgnSource` re-runs the single
+    // request an `ImageSource` never repeats on its own). Folding it into the
+    // aggregate would have offered the user a count they cannot act on and no
+    // button, for the one failure here that is actually fixable.
+    key: 'ign_overlay',
+    label: 'Altimetría IGN',
+    category: LAYER_CATEGORY.BASE,
+    gate: 'ignOverlay',
+    errorMessage: 'No se pudo cargar la altimetría IGN',
+  },
 ];
+
+/**
+ * Degraded source ids that already have a DEDICATED entry, so the anonymous
+ * `raster_tiles` aggregate must not count them twice.
+ *
+ * Applied only when that entry was actually produced (slot present + gate open)
+ * — otherwise a caller that does not wire the slot would lose the signal
+ * altogether, which is the failure mode this whole registry exists against.
+ */
+const DEDICATED_SOURCE_ENTRIES: Readonly<Record<string, Exclude<LayerHealthKey, 'raster_tiles'>>> =
+  {
+    [SOURCE_IDS.IGN]: 'ign_overlay',
+  };
 
 /** Copy for the raster-tile entry — singular/plural on the source count. */
 export function rasterTilesMessage(count: number): string {
@@ -260,7 +307,14 @@ export function buildLayerHealth(inputs: LayerHealthInputs = {}): LayerHealth {
     });
   }
 
-  const degradedSourceIds = inputs.raster_tiles?.degradedSourceIds ?? [];
+  // Sources with a dedicated entry above are NOT counted again in the anonymous
+  // aggregate. Only for entries that were actually emitted — see
+  // `DEDICATED_SOURCE_ENTRIES`.
+  const emittedKeys = new Set(entries.map((entry) => entry.key));
+  const degradedSourceIds = (inputs.raster_tiles?.degradedSourceIds ?? []).filter((sourceId) => {
+    const dedicated = DEDICATED_SOURCE_ENTRIES[sourceId];
+    return !(dedicated && emittedKeys.has(dedicated));
+  });
   if (degradedSourceIds.length > 0) {
     entries.push({
       key: 'raster_tiles',
@@ -269,7 +323,10 @@ export function buildLayerHealth(inputs: LayerHealthInputs = {}): LayerHealth {
       category: null,
       status: 'degradado',
       message: rasterTilesMessage(degradedSourceIds.length),
-      // Tiles retry themselves on the next pan/zoom — there is nothing to refetch.
+      // MOSAIC sources only, and those DO retry themselves on the next
+      // pan/zoom — there is nothing to refetch here. (A source that fails as a
+      // whole and never retries — the IGN image — is deliberately not in this
+      // bucket: it gets its own entry with a real `reload`.)
       reload: null,
     });
   }

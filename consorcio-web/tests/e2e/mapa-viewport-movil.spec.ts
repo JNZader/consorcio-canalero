@@ -12,10 +12,11 @@
 
 import { expect, test } from '@playwright/test';
 
+import { clickFixtureParcela, probeFichaAvailability } from './helpers/catastroFixture';
 import { gotoMapWorkspace } from './helpers/mapWorkspace';
 // El patrón nació acá y ahora vive en `helpers/strictGate.ts`, compartido con
 // `mapa-maplibre.spec.ts` y `ficha-territorial.spec.ts`.
-import { requireCondition } from './helpers/strictGate';
+import { requireCondition, skipForMissingData } from './helpers/strictGate';
 
 /** Objetivo WCAG 2.5.5 — el mismo número que fija el test unitario del CSS. */
 const TOUCH = 44;
@@ -31,10 +32,7 @@ const PORTRAIT = { width: 360, height: 800 };
  * El invariante de los pasos 2.1 / 2.2: el canvas y los controles flotantes
  * entran ENTEROS en el viewport y la página no scrollea.
  */
-async function expectFitsViewport(
-  page: import('@playwright/test').Page,
-  viewportHeight: number
-) {
+async function expectFitsViewport(page: import('@playwright/test').Page, viewportHeight: number) {
   const canvas = page.getByTestId('map-workspace-canvas');
   const box = await canvas.boundingBox();
   expect(box, 'el canvas tiene que tener caja').not.toBeNull();
@@ -91,10 +89,7 @@ test.describe('Mapa en teléfono acostado (844×390)', () => {
       // sería 'true', y la top bar flotante taparía la cabecera del sidebar (con
       // el panel colapsado, el botón de expandir queda cubierto y el panel es
       // irrecuperable).
-      await expect(page.getByTestId('map-workspace-root')).toHaveAttribute(
-        'data-desktop',
-        'false'
-      );
+      await expect(page.getByTestId('map-workspace-root')).toHaveAttribute('data-desktop', 'false');
       await expect(page.getByTestId('map-workspace-burger')).toBeVisible();
     }
   );
@@ -146,9 +141,7 @@ test.describe('Mapa en teléfono acostado (844×390)', () => {
       await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
 
       await page.getByTestId('map-workspace-burger').click();
-      await expect(
-        page.getByLabel('Seleccionar capa base')
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByLabel('Seleccionar capa base')).toBeVisible({ timeout: 10000 });
     }
   );
 });
@@ -229,9 +222,7 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
 
       await page.getByTestId('map-workspace-burger').click();
-      await expect(
-        page.getByLabel('Seleccionar capa base')
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByLabel('Seleccionar capa base')).toBeVisible({ timeout: 10000 });
     }
   );
 
@@ -247,13 +238,19 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       if (await burger.isVisible().catch(() => false)) await burger.click();
 
       const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
-      const visible = await controls.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+      const visible = await controls.waitFor({ state: 'visible', timeout: 10000 }).then(
+        () => true,
+        () => false
+      );
       requireCondition(visible, 'El panel de capas no está disponible (sin datos de capas)');
 
       // Se mide la ETIQUETA, no el input: el input es la casilla de 28px, y lo
       // que el dedo toca (y lo que el paso 2.3 lleva a 44) es el label.
       const checkbox = controls.getByRole('checkbox').first();
-      const hasCheckbox = await checkbox.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+      const hasCheckbox = await checkbox.waitFor({ state: 'visible', timeout: 10000 }).then(
+        () => true,
+        () => false
+      );
       requireCondition(hasCheckbox, 'Sin filas de capas en este entorno');
 
       const inputId = await checkbox.getAttribute('id');
@@ -271,8 +268,14 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       const renderable = controls
         .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
         .first();
-      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
-      requireCondition(hasRenderable, 'Sin capa vectorial renderizable (el slider solo existe con una)');
+      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(
+        () => true,
+        () => false
+      );
+      requireCondition(
+        hasRenderable,
+        'Sin capa vectorial renderizable (el slider solo existe con una)'
+      );
       await renderable.check();
 
       const thumb = controls.getByRole('slider').first();
@@ -287,29 +290,57 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
   );
 
   /**
-   * FIXME a propósito, NO skip.
+   * B4c/T2 — el `fixme` se levanta con un fixture determinístico.
    *
-   * Abrir la ficha necesita tres cosas que este spec no puede garantizar: el
-   * flag `ficha_enabled` del backend, `parcelas_catastro` cargado, y que un
-   * click al centro del canvas caiga sobre una parcela (ver
-   * `ficha-territorial.spec.ts`, que por eso mismo skipea en tres puntos). Un
-   * `skip` encadenado a esos tres condicionales sería exactamente el "verde
-   * vacío" que este archivo trata de evitar: un fixme se ve en el reporte y
-   * pide un fixture determinístico de catastro antes de poder afirmar nada.
+   * De los tres condicionales que lo bloqueaban, DOS eran ambientales de
+   * verdad (el flag `ficha_enabled` y `parcelas_catastro` cargado) y siguen
+   * siendo un skip honesto vía `probeFichaAvailability`. El tercero —"que el
+   * click caiga sobre una parcela"— era el frágil, y es el que
+   * `helpers/catastroFixture` elimina: `/mapa?lat=&lng=&zoom=` (feature real,
+   * `useReportHighlight`) centra el mapa sobre una parcela concreta del
+   * dataset del repo, a 1.6 km de su borde más cercano. El porqué de esa
+   * coordenada y de las alternativas descartadas está en ese archivo.
    *
-   * Lo que quedaría por medir: la pill `position: fixed` sigue en pantalla con
-   * la página scrolleada, el cerrar del sheet llega a 44px, y restaurar trae el
-   * canvas a cuadro (`scrollIntoView` en `MapPanelShell`, cubierto hoy por
-   * `tests/unit/MapPanelMinimizePill.test.tsx`).
+   * Lo que mide: la pill `position: fixed` sigue en pantalla, el cerrar del
+   * sheet llega a 44px, y la pill entra en el viewport (`scrollIntoView` en
+   * `MapPanelShell`, cubierto además por `tests/unit/MapPanelMinimizePill.test.tsx`).
    */
-  test.fixme(
-    'la píldora sigue visible tras minimizar la ficha (necesita fixture de catastro)',
+  test(
+    'la píldora sigue visible tras minimizar la ficha',
     { tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'] },
     async ({ page }) => {
-      const ready = await gotoMapWorkspace(page);
-      requireCondition(ready, 'El shell del mapa no montó');
+      // 150s, not 90: the fixture's internal waits (goto 30 + shell 30 + canvas 15 +
+		// networkidle 20 + tile poll 20 + click poll 20) can legitimately sum past 90
+		// on a cold environment, and a generic timeout eats the skip/fail reason the
+		// helper exists to produce.
+		test.setTimeout(150_000);
 
+      const ficha = await probeFichaAvailability();
+      skipForMissingData(
+        ficha === 'off',
+        'Ficha territorial deshabilitada o catastro vacío en el entorno'
+      );
+      skipForMissingData(
+        ficha === 'unknown',
+        'Backend no disponible para la ficha territorial (E2E_API_BASE)'
+      );
+
+      const fixture = await clickFixtureParcela(page);
+      // Estructural: si en un entorno declarado no monta el shell/canvas, falla.
+      requireCondition(fixture.ready, 'El shell/canvas del mapa no montó');
+      // Ambiental y la red REAL (el probe de arriba mira otro backend posible):
+      // sin tiles de catastro no hay parcela que clickear.
+      skipForMissingData(
+        !fixture.catastroTilesAvailable,
+        'tiles de catastro no disponibles (Martin no sirvió parcelas en esta vista)'
+      );
+
+      // Con tiles servidos, que la ficha NO abra sí es una regresión.
       const panel = page.getByTestId('ficha-territorial-panel');
+      expect(
+        fixture.fichaOpened,
+        'los tiles de catastro llegaron pero el click sobre la parcela no abrió la ficha'
+      ).toBe(true);
       await expect(panel).toBeVisible();
 
       const close = page.getByTestId('ficha-territorial-panel-sheet-close');

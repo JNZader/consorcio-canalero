@@ -9,6 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 
+import { loginAsAdmin, NO_ADMIN_CREDENTIALS_REASON } from './helpers/auth';
 import { APP_URL, gotoMapWorkspace } from './helpers/mapWorkspace';
 // T6 — with `E2E_APP_URL` declared, a shell/canvas that does not come up is a
 // FAILURE, not a skip. Data-dependent gates stay soft. See `helpers/strictGate`.
@@ -29,7 +30,9 @@ test.describe('MapaMapLibre — /mapa route', () => {
     expect(body!.length).toBeGreaterThan(10);
   });
 
-  test('MapLibre map module is wired — lazy import resolves or ErrorBoundary is shown', async ({ page }) => {
+  test('MapLibre map module is wired — lazy import resolves or ErrorBoundary is shown', async ({
+    page,
+  }) => {
     await page.goto(`${APP_URL}/mapa`);
 
     // Either the map container renders (success) OR the ErrorBoundary fallback appears.
@@ -68,12 +71,19 @@ test.describe('MapaMapLibre — /mapa route', () => {
  *     `.maplibregl-cooperative-gesture-screen` into the map container.
  *
  * These need the app served with auth (the mapa project uses a storageState) and
- * ideally the backend for layer data. Each test guards on the workspace mounting
- * and skips (does NOT fail) when the shell/canvas is absent, so the suite is safe
- * to run without the full stack — a real run needs the dev server + backend +
+ * ideally the backend for layer data. A real run needs the dev server + backend +
  * E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD (see tests/e2e/playwright.local.config.ts).
+ *
+ * TWO GATES, NOT ONE (corrected — this header used to claim everything "skips,
+ * does NOT fail", which stopped being true when `helpers/strictGate` landed):
+ *   - STRUCTURAL (`requireCondition`): shell mounted, WebGL canvas alive. It
+ *     skips only when running BLIND; with `E2E_APP_URL` declared — someone
+ *     asserting an environment is up — it FAILS. That is the whole point of the
+ *     strict gate: an all-skipped run used to report green while proving nothing.
+ *   - DATA / CREDENTIALS (`skipForMissingData`): seeded layers, admin login.
+ *     These skip in BOTH modes, naming what was missing, because their absence
+ *     is an environment fact and not a regression.
  */
-
 
 test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
   test(
@@ -128,7 +138,10 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
       const renderable = controls
         .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
         .first();
-      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(
+        () => true,
+        () => false
+      );
       skipForMissingData(!hasRenderable, 'No renderable vector layer available (no layer data)');
 
       await renderable.check();
@@ -179,7 +192,10 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
         .waitFor({ state: 'attached', timeout: 15000 })
         .then(() => true)
         .catch(() => false);
-      requireCondition(mounted, 'MapLibre canvas did not initialize (no WebGL in this environment)');
+      requireCondition(
+        mounted,
+        'MapLibre canvas did not initialize (no WebGL in this environment)'
+      );
 
       expect(await gestureScreen.count()).toBeGreaterThan(0);
     }
@@ -231,39 +247,42 @@ test.describe('MapaMapLibre — admin map features', () => {
     expect(body).not.toBeNull();
   });
 
-  // fixme, not skip: this test navigates to /admin WITHOUT authenticating —
-  // there is no login step in this spec — so an anonymous run always sees the
-  // login screen and the admin UI it asserts can never exist. It needs a
-  // loginAsAdmin helper + E2E_ADMIN_* credentials to be meaningful. Kept red
-  // -visible instead of green-silent until someone builds that.
-  test.fixme('layer toggle controls are accessible on map page', async ({ page }) => {
-    await page.goto(`${APP_URL}/admin`);
-    await page.waitForTimeout(3000);
+  // B4c/T1 — these two were `fixme` because they navigated to /admin WITHOUT
+  // authenticating: an anonymous run always saw the login screen, so the admin
+  // UI they assert could never exist and a `skip` would have been green-silent.
+  // `helpers/auth.loginAsAdmin` now drives the real /login form first. Absent
+  // credentials remain a SOFT gate (`skipForMissingData`) — the production
+  // canary is contractually forbidden from carrying `E2E_ADMIN_*`
+  // (`test_e2e_canary_stays_read_only_against_production`), so skipping there is
+  // the designed behaviour, not a hole.
+  test('layer toggle controls are accessible on map page', async ({ page }) => {
+    test.setTimeout(60_000);
+    const login = await loginAsAdmin(page);
+    // Sin credenciales O con la app caída: skip blando con el motivo real.
+    skipForMissingData(!login.ok, login.skipReason ?? NO_ADMIN_CREDENTIALS_REASON);
 
-    // 2D/3D segmented control should be visible
+    await page.goto(`${APP_URL}/admin`);
+
+    // 2D/3D segmented control (Mantine SegmentedControl → radio group).
     const segmentedControl = page
-      .getByText('2D')
-      .or(page.locator('[data-active]'))
+      .getByText('2D', { exact: true })
+      .or(page.getByRole('radio', { name: /2D/i }))
       .first();
-    const visible = await segmentedControl.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
-    expect(visible).toBeTruthy();
+    await expect(segmentedControl).toBeVisible({ timeout: 20_000 });
   });
 
-  // fixme, not skip: this test navigates to /admin WITHOUT authenticating —
-  // there is no login step in this spec — so an anonymous run always sees the
-  // login screen and the admin UI it asserts can never exist. It needs a
-  // loginAsAdmin helper + E2E_ADMIN_* credentials to be meaningful. Kept red
-  // -visible instead of green-silent until someone builds that.
-  test.fixme('satellite imagery toggle is visible for admin', async ({ page }) => {
-    await page.goto(`${APP_URL}/admin`);
-    await page.waitForTimeout(3000);
+  test('satellite imagery toggle is visible for admin', async ({ page }) => {
+    test.setTimeout(60_000);
+    const login = await loginAsAdmin(page);
+    // Sin credenciales O con la app caída: skip blando con el motivo real.
+    skipForMissingData(!login.ok, login.skipReason ?? NO_ADMIN_CREDENTIALS_REASON);
 
-    // Look for satellite-related UI elements (icon or text)
+    await page.goto(`${APP_URL}/admin`);
+
     const satelliteEl = page
       .getByText(/imagen satelital|satelital|satellite/i)
       .or(page.locator('[aria-label*="satelit"], [title*="satelit"]'))
       .first();
-    const found = await satelliteEl.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
-    expect(found).toBeTruthy();
+    await expect(satelliteEl).toBeVisible({ timeout: 20_000 });
   });
 });

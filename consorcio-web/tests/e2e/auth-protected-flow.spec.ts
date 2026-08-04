@@ -23,6 +23,8 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
+import { loginAsAdmin } from './helpers/auth';
+
 const APP_URL = 'https://consorcio-canalero.pages.dev';
 
 // E2E admin credentials come from the environment — NEVER hardcode
@@ -54,35 +56,16 @@ async function loginViaForm(page: Page): Promise<void> {
     if (msg.type() === 'error') console.log('[browser-console-error]', msg.text());
   });
 
-  await page.goto(`${APP_URL}/login`);
-
-  const emailInput = page
-    .locator(
-      'input[type="email"], input[name="email"], input[placeholder*="mail"], input[placeholder*="correo"]'
-    )
-    .first();
-  const passwordInput = page.locator('input[type="password"]').first();
-  await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
-  await emailInput.fill(ADMIN_EMAIL!);
-  await passwordInput.fill(ADMIN_PASSWORD!);
-
-  const submitBtn = page.locator('button[type="submit"]').first();
-  await submitBtn.click();
-
-  // Wait for the login to settle. Two valid completion signals:
-  //   (a) URL navigated away from /login (the SPA pushes /admin)
-  //   (b) sessionStorage has the auth token
-  // Whichever lands first is enough. Race them with ``Promise.any``
-  // so we don't depend on a single timing assumption — a future
-  // change to either the route target or the storage key only
-  // breaks ONE branch, not the whole spec.
-  await Promise.any([
-    page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 20_000 }),
-    page.waitForFunction(
-      () => !!window.sessionStorage.getItem('consorcio_auth_token'),
-      { timeout: 20_000 }
-    ),
-  ]);
+  // B4c/T1: the form-filling + settle-wait it used to open-code now lives in
+  // ``helpers/auth`` (shared with ``login-flow.spec.ts`` and the /mapa admin
+  // tests). ``requireAdminCreds`` already skipped when the vars are missing, so
+  // a ``false`` here would mean the two gates disagree.
+  const login = await loginAsAdmin(page, { baseUrl: APP_URL });
+  // This spec's SUBJECT is the session lifecycle, so an environment that cannot
+  // log in is a failure here (unlike the /mapa admin tests, which skip): the
+  // reason string names it — missing creds, unreachable app — and a rejected
+  // password throws from the helper with the on-screen error.
+  expect(login.ok, login.skipReason ?? '').toBe(true);
 }
 
 test.describe('E2E auth flow — login → protected → logout', () => {
@@ -235,17 +218,14 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     // ``production.spec.ts`` uses the same domain for registration.
     const uniqueEmail = `f5c-citizen-${Date.now()}@playwright.com`;
     const password = 'TestCitizen123';
-    const reg = await request.post(
-      'https://cc10demayo-api.javierzader.com/api/v2/auth/register',
-      {
-        data: {
-          email: uniqueEmail,
-          password,
-          nombre: 'F5C',
-          apellido: 'Citizen',
-        },
-      }
-    );
+    const reg = await request.post('https://cc10demayo-api.javierzader.com/api/v2/auth/register', {
+      data: {
+        email: uniqueEmail,
+        password,
+        nombre: 'F5C',
+        apellido: 'Citizen',
+      },
+    });
     expect(reg.status()).toBe(201);
 
     // Log in through the form (not the API) so the frontend session
@@ -264,10 +244,9 @@ test.describe('E2E auth flow — login → protected → logout', () => {
     await page.locator('button[type="submit"]').first().click();
 
     // Wait for the token to land (same trick as ``loginViaForm``).
-    await page.waitForFunction(
-      () => !!window.sessionStorage.getItem('consorcio_auth_token'),
-      { timeout: 20_000 }
-    );
+    await page.waitForFunction(() => !!window.sessionStorage.getItem('consorcio_auth_token'), {
+      timeout: 20_000,
+    });
 
     await page.goto(`${APP_URL}/admin`);
 
@@ -339,16 +318,12 @@ test.describe('F5-E reset-password code exchange', () => {
     // pre-F5-E. We use a junk JWT here; the API will reject it as
     // ``RESET_PASSWORD_BAD_TOKEN``, but only AFTER the password form
     // is rendered (proving the SPA didn't try to exchange).
-    await page.goto(
-      `${APP_URL}/reset-password?token=ey-invalid-but-renders-form`
-    );
+    await page.goto(`${APP_URL}/reset-password?token=ey-invalid-but-renders-form`);
     await page.waitForLoadState('networkidle', { timeout: 15_000 });
     // The password input renders because the SPA treats ``?token=``
     // as already-valid for rendering purposes — actual validation
     // happens on submit.
-    await expect(
-      page.locator('input[type="password"]').first()
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('input[type="password"]').first()).toBeVisible({ timeout: 10_000 });
   });
 });
 

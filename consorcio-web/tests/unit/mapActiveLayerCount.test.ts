@@ -22,6 +22,7 @@ import {
 import {
   type CanalToggleEntry,
   collectCanalChildIds,
+  type EtapaGate,
 } from '../../src/components/shared/canalesGrouping';
 import { PILAR_VERDE_LAYER_IDS } from '../../src/stores/mapLayerSyncStore';
 
@@ -188,22 +189,32 @@ describe('collectCanalChildIds — master gate (B2-2.6)', () => {
   ];
 
   it('drops the children of a side whose master is off', () => {
-    const ids = collectCanalChildIds(relevados, propuestos, {
-      canales_relevados: true,
-      canales_propuestos: false,
-      canal_relevado_uno: true,
-      canal_relevado_dos: true,
-      canal_propuesto_tres: true,
-    });
+    const ids = collectCanalChildIds(
+      relevados,
+      propuestos,
+      {
+        canales_relevados: true,
+        canales_propuestos: false,
+        canal_relevado_uno: true,
+        canal_relevado_dos: true,
+        canal_propuesto_tres: true,
+      },
+      null
+    );
 
     expect(ids).toEqual(['canal_relevado_uno', 'canal_relevado_dos']);
   });
 
   it('keeps both sides when both masters are on', () => {
-    const ids = collectCanalChildIds(relevados, propuestos, {
-      canales_relevados: true,
-      canales_propuestos: true,
-    });
+    const ids = collectCanalChildIds(
+      relevados,
+      propuestos,
+      {
+        canales_relevados: true,
+        canales_propuestos: true,
+      },
+      null
+    );
 
     expect(ids).toEqual([
       'canal_relevado_uno',
@@ -213,7 +224,7 @@ describe('collectCanalChildIds — master gate (B2-2.6)', () => {
   });
 
   it('returns nothing when both masters are off', () => {
-    expect(collectCanalChildIds(relevados, propuestos, {})).toEqual([]);
+    expect(collectCanalChildIds(relevados, propuestos, {}, null)).toEqual([]);
   });
 
   it('makes the family badge match what the map renders', () => {
@@ -230,9 +241,129 @@ describe('collectCanalChildIds — master gate (B2-2.6)', () => {
     const counts = buildFamilyActiveCounts({
       layerItems,
       vectorVisibility: visibility,
-      canalChildIds: collectCanalChildIds(relevados, propuestos, visibility),
+      canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, null),
     });
 
     expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
+  });
+});
+
+/**
+ * B4c/T3 (REL-002 del 4R del B2) — the OTHER door to the same lie.
+ *
+ * `isCanalVisible` refuses to draw a propuesto whose prioridad is unchecked in
+ * `PropuestasEtapasFilter` (reachable from the legend), but the count only
+ * looked at `vectorVisibility`: unchecking "Alta" removed those canales from the
+ * map and left them in the badge. Both sides now run `passesEtapaFilter`.
+ */
+describe('collectCanalChildIds — etapas filter (B4c/T3)', () => {
+  const relevados: CanalToggleEntry[] = [
+    { kind: 'leaf', id: 'canal_relevado_uno', label: 'Uno' },
+  ];
+  const propuestos: CanalToggleEntry[] = [
+    { kind: 'leaf', id: 'canal_propuesto_alta_uno', label: 'Alta uno' },
+    { kind: 'leaf', id: 'canal_propuesto_media_dos', label: 'Media dos' },
+    { kind: 'leaf', id: 'canal_propuesto_sin_etapa', label: 'Sin etapa' },
+  ];
+
+  const visibility: Record<string, boolean> = {
+    canales_relevados: true,
+    canales_propuestos: true,
+    canal_relevado_uno: true,
+    canal_propuesto_alta_uno: true,
+    canal_propuesto_media_dos: true,
+    canal_propuesto_sin_etapa: true,
+  };
+
+  // Keys are the index SLUGS (hyphens), not the `canal_propuesto_*` key form.
+  const gate = (etapasVisibility: EtapaGate['etapasVisibility']): EtapaGate => ({
+    prioridadBySlug: {
+      'alta-uno': 'Alta',
+      'media-dos': 'Media',
+      'sin-etapa': null,
+    },
+    etapasVisibility,
+  });
+
+  it('drops the propuestos of an etapa that is turned OFF', () => {
+    const ids = collectCanalChildIds(relevados, propuestos, visibility, gate({ Alta: false }));
+
+    expect(ids).toEqual([
+      'canal_relevado_uno',
+      'canal_propuesto_media_dos',
+      'canal_propuesto_sin_etapa',
+    ]);
+  });
+
+  it('keeps a propuesto whose prioridad is null (v1 policy: always visible)', () => {
+    const ids = collectCanalChildIds(
+      relevados,
+      propuestos,
+      visibility,
+      gate({ Alta: false, Media: false })
+    );
+
+    expect(ids).toEqual(['canal_relevado_uno', 'canal_propuesto_sin_etapa']);
+  });
+
+  it('never touches the relevados side', () => {
+    const ids = collectCanalChildIds(
+      relevados,
+      propuestos,
+      visibility,
+      gate({ Alta: false, Media: false, Opcional: false, 'Media-Alta': false, 'Largo plazo': false })
+    );
+
+    expect(ids).toContain('canal_relevado_uno');
+  });
+
+  it('makes the 2D family badge match what the map renders with an etapa off', () => {
+    // 1 relevado + 3 propuestos on; "Alta" unchecked → the map draws 3, and the
+    // badge has to say 3, not 4.
+    const counts = buildFamilyActiveCounts({
+      layerItems,
+      vectorVisibility: visibility,
+      canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, gate({ Alta: false })),
+    });
+
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(3);
+  });
+
+  it('makes the 3D workspace badge match too (same derivation)', () => {
+    const items3d = buildTerrain3DLayerItems({ intersectionsLength: 0 });
+    const only3dCanales = { ...visibility };
+
+    const before = sumFamilyActiveCounts(
+      buildFamilyActiveCounts({
+        layerItems: items3d,
+        vectorVisibility: only3dCanales,
+        canalChildIds: collectCanalChildIds(relevados, propuestos, only3dCanales, gate({})),
+      })
+    );
+    const after = sumFamilyActiveCounts(
+      buildFamilyActiveCounts({
+        layerItems: items3d,
+        vectorVisibility: only3dCanales,
+        canalChildIds: collectCanalChildIds(
+          relevados,
+          propuestos,
+          only3dCanales,
+          gate({ Alta: false })
+        ),
+      })
+    );
+
+    expect(before).toBe(4);
+    expect(after).toBe(3);
+  });
+
+  it('counts everything when there is no gate (null) — the pre-T3 behaviour', () => {
+    const counts = buildFamilyActiveCounts({
+      layerItems,
+      vectorVisibility: visibility,
+      canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, null),
+    });
+
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(4);
   });
 });

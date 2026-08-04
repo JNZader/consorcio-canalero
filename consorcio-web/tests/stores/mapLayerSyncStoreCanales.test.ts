@@ -34,9 +34,15 @@ import {
   type IndexFile,
 } from '../../src/types/canales';
 import {
+  collectChildIds,
+  collectCanalChildIds,
+  groupCanalesByFolder,
+} from '../../src/components/shared/canalesGrouping';
+import {
   PILAR_AZUL_LAYER_IDS,
   PILAR_AZUL_DEFAULT_VISIBILITY,
   PROPUESTAS_ETAPAS_DEFAULTS,
+  selectEtapaGate,
   useMapLayerSyncStore,
 } from '../../src/stores/mapLayerSyncStore';
 
@@ -319,5 +325,71 @@ describe('mapLayerSyncStore · selectors', () => {
       .getState()
       .isCanalVisible('map2d', 'canal_propuesto_n3_tramo_faltante_de_interconexion');
     expect(afterFlip).toBe(true);
+  });
+});
+
+/**
+ * B4c/T3 (REL-002) — ONE predicate for render and for the badge.
+ *
+ * The etapa gate used to be inlined inside `isCanalVisible` while the badge
+ * counted straight off `vectorVisibility`, so unchecking an etapa hid canales on
+ * the map and left them in the count. This suite drives BOTH sides from the same
+ * store state and asserts they agree — in 2D and in 3D.
+ */
+describe('mapLayerSyncStore · etapa filter parity render vs badge (B4c/T3)', () => {
+  beforeEach(resetToDefaults);
+
+  const propuestosEntries = () => groupCanalesByFolder(SAMPLE_INDEX.propuestas, 'propuesto');
+  const relevadosEntries = () => groupCanalesByFolder(SAMPLE_INDEX.relevados, 'relevado');
+
+  function countedIds(view: 'map2d' | 'map3d'): string[] {
+    const state = useMapLayerSyncStore.getState();
+    return collectCanalChildIds(
+      relevadosEntries(),
+      propuestosEntries(),
+      state[view].visibleVectors,
+      selectEtapaGate(state)
+    );
+  }
+
+  function renderedIds(view: 'map2d' | 'map3d'): string[] {
+    const state = useMapLayerSyncStore.getState();
+    const all = collectChildIds([...relevadosEntries(), ...propuestosEntries()]);
+    return all.filter((id) => state.isCanalVisible(view, id));
+  }
+
+  for (const view of ['map2d', 'map3d'] as const) {
+    it(`${view}: turning an etapa OFF removes the same canales from both sides`, () => {
+      const { registerPilarAzul, setVectorVisibility, setEtapaVisible } =
+        useMapLayerSyncStore.getState();
+      registerPilarAzul(SAMPLE_INDEX);
+      setVectorVisibility(view, 'canales_propuestos', true);
+
+      const altaKey = 'canal_propuesto_n3_tramo_faltante_de_interconexion';
+
+      // Baseline: the "Alta" propuesto is both drawn and counted.
+      expect(renderedIds(view)).toContain(altaKey);
+      expect(countedIds(view)).toContain(altaKey);
+
+      setEtapaVisible('Alta', false);
+
+      // After: gone from BOTH. Before this fix it disappeared from the map and
+      // stayed in the badge.
+      expect(renderedIds(view)).not.toContain(altaKey);
+      expect(countedIds(view)).not.toContain(altaKey);
+      expect(countedIds(view).sort()).toEqual(renderedIds(view).sort());
+    });
+  }
+
+  it('a propuesto with prioridad null survives every etapa being off', () => {
+    const { registerPilarAzul, setVectorVisibility, setEtapaVisible } =
+      useMapLayerSyncStore.getState();
+    registerPilarAzul(SAMPLE_INDEX);
+    setVectorVisibility('map2d', 'canales_propuestos', true);
+    for (const etapa of ALL_ETAPAS) setEtapaVisible(etapa, false);
+
+    const sinPrioridad = 'canal_propuesto_s2_complemento_opcional_p12_sujeto_a_presupuesto';
+    expect(renderedIds('map2d')).toContain(sinPrioridad);
+    expect(countedIds('map2d')).toContain(sinPrioridad);
   });
 });
