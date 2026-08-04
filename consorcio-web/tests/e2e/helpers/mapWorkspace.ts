@@ -17,8 +17,14 @@ export async function gotoMapWorkspace(page: Page): Promise<boolean> {
   // into an error instead of the skip that `requireCondition` promises.
   try {
     await page.goto(`${APP_URL}/mapa`);
-    const root = page.getByTestId('map-workspace-root');
-    return await root.isVisible({ timeout: 15000 });
+    // waitFor, NOT isVisible: `isVisible()` returns IMMEDIATELY and ignores
+    // its timeout option (Playwright API contract). With the old call the
+    // helper asked "is it visible right now?" one tick after goto — against
+    // production-sized chunks the answer was always "no", so every spec that
+    // gated on this helper skipped forever and nobody noticed until the
+    // strict gate turned those skips into failures.
+    await page.getByTestId('map-workspace-root').waitFor({ state: 'visible', timeout: 30000 });
+    return true;
   } catch {
     return false;
   }
