@@ -83,3 +83,8 @@ sentry-sdk[fastapi,celery,sqlalchemy]>=2.0.0
 # Centralised log shipping — opt-in. Active only when BETTERSTACK_TOKEN
 # is set (see app/core/logging.py). Free tier ships 1 GB/mes.
 logtail-python>=0.3.0
+
+# Transitive pin: pip-audit gate. CVE-2026-69247 in cryptography 49.x,
+# fixed in 50.0.0. Not a direct dependency — pinned here so the lock
+# resolver picks the patched version.
+cryptography>=50.0.0

@@ -11,9 +11,12 @@
  * DERIVES the single `MapInteractionMode` value threaded to
  * `useMapInteractionEffects`:
  *
- *   interactionMode = drawing   ? 'ficha-dibujo'
+ *   interactionMode = tracing   ? 'ficha-dibujo'
  *                   : canalMode ? 'ficha-canal'
  *                   : measurementMode
+ *
+ * `tracing` — not `drawing` — because MapboxDraw returns to `simple_select` by
+ * itself on `draw.create`: see {@link FichaInteractionState.tracing}.
  *
  * Mutual exclusion is enforced at the transitions, and the winner is named
  * explicitly:
@@ -97,6 +100,21 @@ export interface CanalSeleccionado {
 export interface FichaInteractionState {
   /** True while the free-draw polygon mode is active (`DrawControl` mounted). */
   readonly drawing: boolean;
+  /**
+   * True only while MapboxDraw is actually TRACING (`draw_polygon`), i.e. while
+   * it owns every map click.
+   *
+   * `drawing` and `tracing` are NOT the same thing and conflating them was a bug
+   * (T4): MapboxDraw drops back to `simple_select` by itself the instant
+   * `draw.create` fires, but React kept `drawing` true, so `interactionMode`
+   * stayed `'ficha-dibujo'` and `buildClickableLayers` kept returning an EMPTY
+   * whitelist. The user finished their polygon and the map went dead — every
+   * click a no-op until they happened to press Escape. `tracing` mirrors
+   * MapboxDraw's real mode, so click ownership is released exactly when
+   * MapboxDraw releases it, while `drawing` keeps the control mounted (the
+   * polygon stays on screen) and the toolbar lit (Otro / Borrar stay reachable).
+   */
+  readonly tracing: boolean;
   /** True while canal-selection mode is active (curated canal layers clickable). */
   readonly canalMode: boolean;
   /**
@@ -178,6 +196,13 @@ export interface UseFichaInteractionResult {
   readonly completePolygon: (geometry: DrawnPolygon) => void;
   /** The drawing was deleted → clear the polygon ficha. */
   readonly deletePolygon: () => void;
+  /**
+   * "Otro" — trace a replacement polygon without leaving the draw session.
+   *
+   * Keeps the current polygon (and its ficha) on screen until the new
+   * `draw.create` replaces it, and hands click ownership back to MapboxDraw.
+   */
+  readonly redrawPolygon: () => void;
   /** Enter canal-selection mode; discards the previous ficha and cancels measurement. */
   readonly startCanal: () => void;
   /** Leave canal mode and clear the canal ficha. */
@@ -233,6 +258,7 @@ export const FICHA_PARCELAS_SETTLE_MS = 600;
 
 const IDLE: FichaInteractionState = {
   drawing: false,
+  tracing: false,
   canalMode: false,
   parcela: null,
   parcelas: [],
@@ -310,7 +336,7 @@ export function useFichaInteraction(
     // whatever the panel was showing (spec: switching modes discards the result)
     // and leaves canal mode.
     onEnterDrawMode();
-    setState({ ...IDLE, drawing: true });
+    setState({ ...IDLE, drawing: true, tracing: true });
   }, [onEnterDrawMode]);
 
   const stopDraw = useCallback(() => setState(IDLE), []);
@@ -319,8 +345,13 @@ export function useFichaInteraction(
   const completePolygon = useCallback((geometry: DrawnPolygon) => {
     // Stay in draw mode so the drawn shape remains visible while its ficha shows;
     // a fresh drawing supersedes any lingering parcel/canal selection.
+    //
+    // But STOP TRACING (T4): MapboxDraw already went back to `simple_select` on
+    // its own, so holding the click whitelist hostage past this point is what
+    // left the map dead after a finished polygon.
     setState((prev) => ({
       ...prev,
+      tracing: false,
       parcela: null,
       parcelas: [],
       parcelasResueltas: {},
@@ -330,7 +361,19 @@ export function useFichaInteraction(
   }, []);
 
   const deletePolygon = useCallback(() => {
+    // `clearDrawing` only calls `deleteAll()`, which does NOT change MapboxDraw's
+    // mode — it stays in `simple_select`, so tracing stays off too.
     setState((prev) => ({ ...prev, poligono: null }));
+  }, []);
+
+  const redrawPolygon = useCallback(() => {
+    // "Otro" — re-enter `draw_polygon` with REPLACE semantics. The polygon (and
+    // therefore the ficha on screen) is KEPT until the new `draw.create`
+    // supersedes it, exactly as `DrawControl.startDrawing`'s silent `deleteAll()`
+    // intends; only click ownership goes back to MapboxDraw. Without flipping
+    // `tracing` here the whitelist would stay populated during the new trace and
+    // a click meant for a vertex would resolve a parcel instead.
+    setState((prev) => (prev.drawing ? { ...prev, tracing: true } : prev));
   }, []);
 
   const startCanal = useCallback(() => {
@@ -377,9 +420,12 @@ export function useFichaInteraction(
 
   const resolveParcela = useCallback((parcela: ParcelaResuelta | null, additive = false) => {
     setState((prev) => {
-      // While drawing OR in canal mode, another control owns clicks — ignore
+      // While TRACING or in canal mode, another control owns clicks — ignore
       // parcel resolution so a stray click cannot wipe the active selection.
-      if (prev.drawing || prev.canalMode) return prev;
+      // Once the polygon is finished (T4) clicks belong to the map again: the
+      // parcel ficha then supersedes the polygon ficha, which also ends the draw
+      // session (`IDLE.drawing === false` unmounts `DrawControl`).
+      if (prev.tracing || prev.canalMode) return prev;
 
       // The ctrl/⌘ modifier and the sticky mobile toggle mean the same thing.
       // OR-ing them HERE (instead of in the click handler) keeps the map's click
@@ -421,6 +467,14 @@ export function useFichaInteraction(
       );
       return {
         ...prev,
+        // Closing the draw SESSION is part of superseding the polygon, exactly
+        // as in the plain-click branch above. Dropping `poligono` while leaving
+        // `drawing: true` kept `DrawControl` mounted, so MapboxDraw went on
+        // rendering a shape that no React state backed any more — an orphan the
+        // user could only clear by re-entering draw mode. Unmounting the control
+        // wipes its artifacts (`removeMapboxDrawArtifacts`).
+        drawing: false,
+        tracing: false,
         poligono: null,
         canal: null,
         parcelas,
@@ -504,7 +558,10 @@ export function useFichaInteraction(
   const parcelasAnalizadas =
     parcelasSeleccionadas.length >= FICHA_PARCELAS_MIN ? parcelasEstables : parcelasSeleccionadas;
 
-  const interactionMode: MapInteractionMode = state.drawing
+  // Keyed on `tracing`, NOT on `drawing`: see the field docs. A finished polygon
+  // leaves the draw SESSION open (control mounted, toolbar lit) while the map
+  // goes back to answering clicks.
+  const interactionMode: MapInteractionMode = state.tracing
     ? 'ficha-dibujo'
     : state.canalMode
       ? 'ficha-canal'
@@ -572,6 +629,7 @@ export function useFichaInteraction(
     stopDraw,
     completePolygon,
     deletePolygon,
+    redrawPolygon,
     startCanal,
     stopCanal,
     resolveCanal,

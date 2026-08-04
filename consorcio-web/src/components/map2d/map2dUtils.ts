@@ -69,7 +69,23 @@ export const IGN_MAPLIBRE_COORDS: [
   [-62.750969, -32.665914],
 ];
 
-export const IGN_IMAGE_URL = '/overlays/ign/altimetria_ign_consorcio.webp';
+/**
+ * Historic IGN altimetry raster, IMPORTED (not referenced from `public/`).
+ *
+ * Two reasons this is an import (PERF-005 follow-up):
+ *  1. Vite emits it as `/assets/altimetria_ign_consorcio-<hash>.webp`, which is
+ *     covered by the `immutable, max-age=31536000` rule for `/assets/*` in
+ *     `public/_headers`. As a `public/` file it was served under the default
+ *     policy and re-validated on every visit, for an image that only ever
+ *     changes with a new file name.
+ *  2. A content hash makes the swap safe: the 6318px original exceeded
+ *     `MAX_TEXTURE_SIZE = 4096` on mobile GPUs (MapLibre had to rescale it, and
+ *     some drivers simply dropped it). The asset is now 4000px wide.
+ *
+ * The source raster + its provenance sidecar live next to each other in
+ * `src/assets/overlays/`.
+ */
+export { default as IGN_IMAGE_URL } from '../../assets/overlays/altimetria_ign_consorcio.webp';
 
 /**
  * Fallback bounds for the consorcio area, derived from `MAP_BOUNDS`.

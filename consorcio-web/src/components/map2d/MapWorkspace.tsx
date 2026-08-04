@@ -3,6 +3,7 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
+import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import styles from '../../styles/components/map.module.css';
 import { IconArrowLeft, IconArrowRight, IconLayers } from '../ui/icons';
@@ -72,6 +73,16 @@ export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspac
       drawer.close();
     }
   }, [isDesktop, drawer]);
+
+  // AUD-005: on mobile, Back is "dismiss". Without this, Back with the layers
+  // Drawer open navigated away from the map — the user lost the page to close
+  // a panel. Disabled on desktop, where there IS no Drawer to dismiss and the
+  // history stack must stay untouched.
+  useDrawerHistoryClose({
+    opened: drawerOpened,
+    onClose: drawer.close,
+    enabled: !isDesktop,
+  });
 
   const countBadge =
     activeLayerCount !== undefined ? (

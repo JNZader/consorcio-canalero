@@ -10,6 +10,9 @@
 import { test, expect } from '@playwright/test';
 
 import { APP_URL, gotoMapWorkspace } from './helpers/mapWorkspace';
+// T6 — with `E2E_APP_URL` declared, a shell/canvas that does not come up is a
+// FAILURE, not a skip. Data-dependent gates stay soft. See `helpers/strictGate`.
+import { requireCondition, skipForMissingData } from './helpers/strictGate';
 
 test.describe('MapaMapLibre — /mapa route', () => {
   test('/mapa route responds with 200', async ({ request }) => {
@@ -78,7 +81,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
     { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-010'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
-      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+      requireCondition(ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
 
       const root = page.getByTestId('map-workspace-root');
       await expect(root).toHaveAttribute('data-desktop', 'true');
@@ -115,7 +118,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
     { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-011'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
-      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+      requireCondition(ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
 
       const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
       await expect(controls).toBeVisible();
@@ -126,7 +129,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
         .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
         .first();
       const hasRenderable = await renderable.isVisible({ timeout: 10000 }).catch(() => false);
-      test.skip(!hasRenderable, 'No renderable vector layer available (no layer data)');
+      skipForMissingData(!hasRenderable, 'No renderable vector layer available (no layer data)');
 
       await renderable.check();
 
@@ -141,7 +144,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
     { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-012'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
-      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+      requireCondition(ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
 
       const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
       await expect(controls).toBeVisible();
@@ -164,7 +167,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
     { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-013'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
-      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+      requireCondition(ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
 
       // MapLibre with `cooperativeGestures: true` injects the gesture-hint
       // overlay into the map container. Its presence is the robust, WebGL-init
@@ -176,7 +179,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
         .waitFor({ state: 'attached', timeout: 15000 })
         .then(() => true)
         .catch(() => false);
-      test.skip(!mounted, 'MapLibre canvas did not initialize (no WebGL in this environment)');
+      requireCondition(mounted, 'MapLibre canvas did not initialize (no WebGL in this environment)');
 
       expect(await gestureScreen.count()).toBeGreaterThan(0);
     }
@@ -193,7 +196,7 @@ test.describe('MapaMapLibre — rediseño UX (mobile shell)', () => {
     { tag: ['@e2e', '@medium', '@mapa', '@rediseno-ux-mapa', '@MAPA-E2E-014'] },
     async ({ page }) => {
       const ready = await gotoMapWorkspace(page);
-      test.skip(!ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
+      requireCondition(ready, 'Map workspace shell did not mount (dev server/auth unavailable)');
 
       const root = page.getByTestId('map-workspace-root');
       await expect(root).toHaveAttribute('data-desktop', 'false');
