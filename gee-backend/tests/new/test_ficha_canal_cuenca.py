@@ -45,7 +45,7 @@ NODATA = -9999.0
 
 # The stored catchment sits INSIDE the parcel/soils/raster extent so the shared
 # tail reports real soils + raster coverage. A ~0.006° × 0.01° patch (UTM 20S ≈
-# 565 m × 1105 m ≈ 62 ha), well under the 20 000 ha area cap.
+# 565 m × 1105 m ≈ 62 ha), well under every area cap.
 _CATCHMENT_WKT = (
     f"MULTIPOLYGON((("
     f"{LON0} {LAT0}, {LON0 + 0.006} {LAT0}, {LON0 + 0.006} {LAT0 + D}, "
@@ -573,8 +573,8 @@ def test_overlay_canal_cuenca_no_computada_es_503(ficha_db, monkeypatch):
 #
 # Pure shapely + settings — no DB, no fixture. A dendritic catchment has a bbox
 # several times its own area; the 60 000 ha envelope cap was rejecting most of
-# the precomputed basins even though the AREA cap (20 000 ha, unchanged) is
-# what actually bounds the raster work.
+# the precomputed basins even though the AREA cap is what actually bounds the
+# raster work.
 
 
 def _rect_32720(ancho_m: float, alto_m: float):
@@ -657,17 +657,88 @@ def test_catchment_over_the_new_envelope_cap_is_still_rejected() -> None:
 
 
 def test_area_cap_is_untouched_by_the_envelope_relaxation() -> None:
-    """>20 000 ha catchments stay excluded BY DESIGN."""
+    """A catchment over the CATCHMENT area cap is still rejected on ``area_ha``."""
     from app.config import settings
     from app.domains.geo.ficha_errors import FichaError
     from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
 
-    lado = ((settings.ficha_max_area_ha * 1.2) * M2_POR_HA) ** 0.5
+    lado = ((settings.ficha_max_area_ha_cuenca * 1.2) * M2_POR_HA) ** 0.5
     geom = _rect_32720(lado, lado)
 
     with pytest.raises(FichaError) as exc:
         assert_within_caps(geom, tipo="canal_cuenca")
     assert exc.value.extra["cap"] == "area_ha"
+
+
+# ── per-``tipo`` AREA cap: the 16 linea-colectora mega-basins ────────────────
+#
+# The last cap standing. With the envelope and the vertex caps already relaxed,
+# the prod re-run left exactly 16 catchments oversized, ALL by area alone: the
+# canals of the linea colectora, draining 30.6k-34.6k ha each. Clipping them to
+# the consorcio was measured and rejected (1 ha of 32 471 fell outside — they are
+# 99.99 % inside), so the cap moves to 35 000 ha for ``canal_cuenca`` ONLY.
+
+
+def test_area_cap_is_wider_for_canal_cuenca_only() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_service import area_cap_ha
+
+    assert area_cap_ha("canal_cuenca") == settings.ficha_max_area_ha_cuenca
+    for tipo in ("poligono", "parcela", "parcelas", "canal_buffer"):
+        assert area_cap_ha(tipo) == settings.ficha_max_area_ha
+    assert settings.ficha_max_area_ha_cuenca > settings.ficha_max_area_ha
+
+
+def test_area_cap_falls_back_to_the_strict_cap_for_an_unknown_tipo() -> None:
+    """Fail closed: only the exact ``canal_cuenca`` string buys the wider cap."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import area_cap_ha
+
+    for tipo in ("", "cuenca", "CANAL_CUENCA", "canal_cuenca ", "desconocido"):
+        assert area_cap_ha(tipo) == settings.ficha_max_area_ha
+
+
+def test_catchment_over_the_old_area_cap_is_now_accepted() -> None:
+    """The 16 linea-colectora basins: 30 000 ha used to be a 422 on area alone."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
+
+    lado = (30_000.0 * M2_POR_HA) ** 0.5
+    geom = _rect_32720(lado, lado)
+    area_ha = geom.area / M2_POR_HA
+    assert settings.ficha_max_area_ha < area_ha <= settings.ficha_max_area_ha_cuenca
+
+    assert_within_caps(geom, tipo="canal_cuenca")  # no raise
+
+
+def test_caller_supplied_polygon_keeps_the_original_area_cap() -> None:
+    """The relaxation must NOT widen the attacker-controlled surface."""
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
+
+    lado = (30_000.0 * M2_POR_HA) ** 0.5
+    geom = _rect_32720(lado, lado)
+
+    for tipo in ("poligono", "parcela"):
+        with pytest.raises(FichaError) as exc:
+            assert_within_caps(geom, tipo=tipo)
+        assert exc.value.extra["cap"] == "area_ha"
+        assert exc.value.extra["limite"] == settings.ficha_max_area_ha
+
+
+def test_catchment_over_the_new_area_cap_is_still_rejected() -> None:
+    from app.config import settings
+    from app.domains.geo.ficha_errors import FichaError
+    from app.domains.geo.ficha_service import M2_POR_HA, assert_within_caps
+
+    lado = ((settings.ficha_max_area_ha_cuenca * 1.2) * M2_POR_HA) ** 0.5
+    geom = _rect_32720(lado, lado)
+
+    with pytest.raises(FichaError) as exc:
+        assert_within_caps(geom, tipo="canal_cuenca")
+    assert exc.value.extra["cap"] == "area_ha"
+    assert exc.value.extra["limite"] == settings.ficha_max_area_ha_cuenca
 
 
 # ── per-``tipo`` VERTEX cap: the 7 dendritic catchments the 20 m simplify left ─

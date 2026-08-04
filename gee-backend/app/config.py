@@ -133,7 +133,39 @@ class Settings(BaseSettings):
     ficha_rate_limit_window: int = 60
     # 20 000 ha ≈ 23 % of the ~88 000 ha consorcio — a legitimate sub-basin and
     # ~100x the median parcel; at 30 m that is ~222 k px/raster (< 2 MB float64).
+    # Applies to every CALLER-SUPPLIED or caller-selected shape (poligono,
+    # parcela, parcelas, canal_buffer) and stays at its original value.
     ficha_max_area_ha: float = 20_000.0
+    # Area cap for ``tipo=canal_cuenca`` ONLY. Third and last of the per-``tipo``
+    # relaxations (after the envelope and the vertex caps), and the one that
+    # closes the batch: with the two above in place the prod re-run left exactly
+    # 16 catchments oversized, ALL of them by area alone. They are not an
+    # accident — they are the 16 canals of the linea colectora, and the measured
+    # catchments run 30.6k to 34.6k ha (max 34 591 ha, canal-viejo). The
+    # hydrological truth is that this collector drains roughly a third of the
+    # consorcio, so "too big" was the cap being wrong about the terrain, not the
+    # terrain being wrong.
+    #
+    # CLIPPING WAS MEASURED AND REJECTED. The obvious alternative — clip the
+    # catchment to the consorcio boundary — was tried first with a one-off
+    # recompute against ``zona.geojson``: of 32 471 ha of catchment, 1 ha fell
+    # outside. These basins are 99.99 % INSIDE the consorcio, so the clip removes
+    # nothing and only adds a per-request intersection. Raising the cap is the
+    # honest move.
+    #
+    # 35 000 ha is the measured maximum (34 591) plus a minimal margin — enough
+    # to serve the 16 without turning the cap into a blank cheque. Safe here and
+    # NOT for the other tipos for the same reason as the envelope and the vertex
+    # caps: a catchment is PRECOMPUTED server-side by
+    # ``etl/generate_canal_catchments.py`` over a fixed set of 60 basins, never
+    # attacker-controlled. The real cost this buys is the ficha's zonal stats:
+    # 1.75x the general cap (35 000 ha = 3.5e8 m2 / 900 m2 per 30 m pixel =
+    # 389 k px, ~3 MB as float64 per raster read), transient and serialized
+    # behind ``ficha_max_concurrency`` (4 per worker, 2 workers). Well under the
+    # envelope cap's own worst case, which is the ceiling that actually binds.
+    # ``ficha_service.area_cap_ha`` is the single source of truth and the ETL
+    # mirrors it, so "stored implies servable" holds.
+    ficha_max_area_ha_cuenca: float = 35_000.0
     # Envelope cap: blocks a thin diagonal sliver whose bbox window would blow
     # up ``rasterio_mask(crop=True)`` even though its own area is small. Applies
     # to every CALLER-SUPPLIED or caller-selected shape (poligono, parcela,
@@ -146,16 +178,17 @@ class Settings(BaseSettings):
     # At 60 000 ha the envelope cap — not the area cap — was rejecting most of
     # the precomputed catchments (25 of 60 servible), which is a false positive:
     # the shape is NOT caller-supplied. It is one of a fixed set of basins the
-    # ETL generates server-side, and it is already gated by
-    # ``ficha_max_area_ha`` (20 000 ha), which is the cap that actually bounds
-    # the masked pixel count.
+    # ETL generates server-side, and it is already gated by the per-``tipo`` area
+    # cap (``ficha_max_area_ha_cuenca``, read through
+    # ``ficha_service.area_cap_ha``), which is the cap that actually bounds the
+    # masked pixel count.
     #
-    # 150 000 ha admits an envelope/area ratio of 7.5 at the area cap. Worst
-    # case window: 150 000 ha = 1.5e9 m2 / 900 m2 per 30 m pixel = 1.67 Mpx,
+    # 150 000 ha admits an envelope/area ratio of 4.3 at the catchment area cap.
+    # Worst case window: 150 000 ha = 1.5e9 m2 / 900 m2 per 30 m pixel = 1.67 Mpx,
     # 13 MB as float64 per raster read, transient and serialized behind
-    # ``ficha_max_concurrency`` (4 per worker, 2 workers -> ~107 MB ceiling).
-    # The area cap is UNCHANGED: catchments over 20 000 ha stay oversized by
-    # design. ``etl/generate_canal_catchments.py`` mirrors this exact value via
+    # ``ficha_max_concurrency`` (4 per worker, 2 workers -> ~107 MB ceiling) —
+    # this, not the area cap, is the ceiling that binds the raster work.
+    # ``etl/generate_canal_catchments.py`` mirrors this exact value via
     # ``ficha_service.envelope_cap_ha`` so "stored implies servable" holds.
     ficha_max_envelope_ha_cuenca: float = 150_000.0
     # Hand-drawn DrawControl polygons are < 100 vertices; 1 000 admits a pasted
