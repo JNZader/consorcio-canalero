@@ -49,11 +49,14 @@ _NORMAL_POLY = Polygon([(500000, 6000000), (500300, 6000000), (500300, 6000400),
 _OVERSIZED_POLY = Polygon(
     [(500000, 6000000), (530000, 6000000), (530000, 6010000), (500000, 6010000)]
 )
-# A 400 m-radius disc approximated with 1200 segments (>1000 raw vertices) →
-# ~50 ha, area/envelope-valid but WAY over the vertices cap as raw pixel geometry.
-# After the batch's topology-preserving simplify it collapses to a handful of
-# vertices, so it is stored servably (the "stored ⟹ under read caps" invariant).
-_HIGH_VERTEX_POLY = Point(500000, 6000000).buffer(400.0, quad_segs=300)
+# A 400 m-radius disc approximated with 2400 segments (2401 raw vertices) →
+# ~50 ha, area/envelope-valid but WAY over the ``canal_cuenca`` vertices cap as
+# raw pixel geometry. After the batch's topology-preserving simplify it collapses
+# to a handful of vertices, so it is stored servably (the "stored ⟹ under read
+# caps" invariant). The segment count is sized against
+# ``vertices_cap('canal_cuenca')``, not the caller-polygon cap: gating on the
+# narrower 1 000 would let the batch store a geometry the read path rejects.
+_HIGH_VERTEX_POLY = Point(500000, 6000000).buffer(400.0, quad_segs=600)
 
 
 # ── injected raster/WBT fakes ────────────────────────────────────────────────
@@ -337,18 +340,17 @@ def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
     catchment_db: Session,
 ) -> None:
     """A realistic high-vertex basin (raw pixel staircase) must be simplified so the
-    STORED catchment stays under ``ficha_max_vertices`` — the core producer/consumer
-    invariant: a non-oversized stored catchment is guaranteed servable by the
-    ``canal_cuenca`` ficha (``assert_within_caps``). Without the batch simplify this
-    stores a >1000-vertex geometry the read path would 422 on."""
-    from app.config import settings
-    from app.domains.geo.ficha_service import _contar_vertices_shapely
+    STORED catchment stays under the ``canal_cuenca`` vertex cap — the core
+    producer/consumer invariant: a non-oversized stored catchment is guaranteed
+    servable by the ``canal_cuenca`` ficha (``assert_within_caps``). Without the
+    batch simplify this stores a geometry the read path would 422 on."""
+    from app.domains.geo.ficha_service import _contar_vertices_shapely, vertices_cap
 
     _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-a")
 
     # Sanity: the raw basin really is over the read-path vertices cap.
-    assert _contar_vertices_shapely(_HIGH_VERTEX_POLY) > settings.ficha_max_vertices
+    assert _contar_vertices_shapely(_HIGH_VERTEX_POLY) > vertices_cap("canal_cuenca")
 
     result = _run(catchment_db, _RecordingWbt(), _shapes_returning(_HIGH_VERTEX_POLY))
     assert result.computed == 1
@@ -364,7 +366,7 @@ def test_high_vertex_basin_is_simplified_and_stored_under_read_caps(
     assert row.oversized is False
     assert row.geom_null is False  # simplified → servable, geometry kept
     # The stored geometry passes the read-path vertices cap (stored ⟹ servable).
-    assert row.npoints <= settings.ficha_max_vertices
+    assert row.npoints <= vertices_cap("canal_cuenca")
 
 
 # ── B4d: the simplify tolerance is the lever that rescues the vertex-capped ──
@@ -422,10 +424,16 @@ def test_catchment_simplify_tolerance_is_20m_and_is_catchment_only() -> None:
 
 
 def test_simplify_clears_a_staircase_the_old_8m_left_over_the_vertex_cap() -> None:
-    """The measured "vertices: 35" case, reproduced: at 8 m the staircase stays
-    over ``ficha_max_vertices`` (⇒ oversized, geometry dropped); at the current
-    tolerance it drops under the cap and the basin becomes servable — with the
-    cap untouched and the area preserved."""
+    """The measured "vertices: 35" case, reproduced as it stood at B4d: at 8 m the
+    staircase stays over the 1 000-vertex cap that then applied to EVERY ``tipo``
+    (⇒ oversized, geometry dropped); at the current tolerance it drops under it and
+    the basin becomes servable — with no cap moved and the area preserved.
+
+    ``ficha_max_vertices`` is the right reference even though ``canal_cuenca`` has
+    since been given its own wider cap: this pins what the TOLERANCE buys on its
+    own, and 20 m must keep an ordinary basin far below even the narrow cap. The
+    7 catchments the widened cap rescued are the ones this lever could not reach.
+    """
     from app.config import settings
     from app.domains.geo.ficha_service import _contar_vertices_shapely
 
@@ -475,7 +483,7 @@ def test_staircase_basin_is_stored_servable_and_reported_with_no_motivo(
     """End to end: one of the rescued 19. It is computed, NOT oversized, keeps its
     geometry under the read-path caps, and the per-motivo breakdown stays all-zero
     (the reporting added in T6 keeps working with the new tolerance)."""
-    from app.config import settings
+    from app.domains.geo.ficha_service import vertices_cap
 
     _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-staircase")
@@ -497,7 +505,7 @@ def test_staircase_basin_is_stored_servable_and_reported_with_no_motivo(
     ).one()
     assert row.oversized is False
     assert row.geom_null is False
-    assert row.npoints <= settings.ficha_max_vertices
+    assert row.npoints <= vertices_cap("canal_cuenca")
     assert float(row.area_ha) == pytest.approx(basin.area / gcc.M2_PER_HA, rel=0.01)
 
 
@@ -842,7 +850,9 @@ def test_cap_report_names_the_vertices_when_area_and_envelope_are_fine(
     # A compact basin: small area, small envelope, a handful of vertices. Only
     # the vertex cap is moved, so `vertices` is the ONLY thing that can fail.
     geom = Point(500_000, 6_000_000).buffer(300.0)
-    monkeypatch.setattr(settings, "ficha_max_vertices", 4)
+    # The catchment cap, NOT the caller-polygon one: the ETL mirrors
+    # ``vertices_cap('canal_cuenca')``.
+    monkeypatch.setattr(settings, "ficha_max_vertices_cuenca", 4)
 
     report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
 
@@ -864,7 +874,7 @@ def test_cap_report_lists_EVERY_failing_cap_not_just_the_first() -> None:
 
     assert report.motivos == (gcc.CAP_MOTIVO_AREA, gcc.CAP_MOTIVO_ENVELOPE)
     assert report.motivo == gcc.CAP_MOTIVO_AREA
-    assert report.max_vertices == settings.ficha_max_vertices
+    assert report.max_vertices == settings.ficha_max_vertices_cuenca
 
 
 def test_cap_report_is_empty_for_a_servable_catchment() -> None:
@@ -918,9 +928,9 @@ def test_oversized_by_vertices_logs_the_vertex_reason(
     _register_flow_dir(catchment_db)
     _seed_canal(catchment_db, "canal-vertices")
 
-    # The simplified basin keeps ~a dozen vertices; the cap moves below that so
-    # the geometry stays realistic and only ONE rule can fire.
-    monkeypatch.setattr(settings, "ficha_max_vertices", 4)
+    # The simplified basin keeps ~a dozen vertices; the CATCHMENT cap moves
+    # below that so the geometry stays realistic and only ONE rule can fire.
+    monkeypatch.setattr(settings, "ficha_max_vertices_cuenca", 4)
 
     with capture_logs() as logs:
         result = _run(
@@ -964,3 +974,43 @@ def test_a_servable_catchment_logs_no_oversized_event(catchment_db: Session) -> 
     # The run summary still carries the (all-zero) breakdown.
     assert set(result.oversized_por_motivo) == set(gcc.CAP_MOTIVOS)
     assert sum(result.oversized_por_motivo.values()) == 0
+
+
+# ── read-path cap mirror: per-``tipo`` VERTEX cap ────────────────────────────
+
+
+def test_read_path_cap_report_uses_the_catchment_vertex_cap() -> None:
+    """ "stored ⟹ servable", vertex edition: the batch gate must read the SAME
+    vertex cap the ficha applies to ``tipo=canal_cuenca``. Reading the narrower
+    caller-polygon cap would mark the 7 rescued dendritic basins oversized and
+    drop geometries the read path would happily serve."""
+    from app.config import settings
+    from app.domains.geo.ficha_service import _contar_vertices_shapely, vertices_cap
+
+    # A compact 1 500-vertex basin: area and envelope are trivially fine, so the
+    # vertex rule is the only one that can fire.
+    geom = Point(500_000, 6_000_000).buffer(300.0, quad_segs=375)
+    vertices = _contar_vertices_shapely(geom)
+    assert settings.ficha_max_vertices < vertices <= settings.ficha_max_vertices_cuenca
+
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+    assert report.max_vertices == vertices_cap("canal_cuenca")
+    assert report.motivos == ()
+    assert report.oversized is False
+    assert not gcc._exceeds_read_path_caps(
+        geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha
+    )
+
+
+def test_read_path_cap_report_still_rejects_over_the_catchment_vertex_cap() -> None:
+    from app.config import settings
+
+    geom = Point(500_000, 6_000_000).buffer(
+        300.0,
+        quad_segs=settings.ficha_max_vertices_cuenca,  # ≫ the cap
+    )
+    report = gcc._read_path_cap_report(geom, geom.area / gcc.M2_PER_HA, settings.ficha_max_area_ha)
+
+    assert report.motivos == (gcc.CAP_MOTIVO_VERTICES,)
+    assert report.vertices > report.max_vertices

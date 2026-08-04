@@ -159,8 +159,25 @@ class Settings(BaseSettings):
     # ``ficha_service.envelope_cap_ha`` so "stored implies servable" holds.
     ficha_max_envelope_ha_cuenca: float = 150_000.0
     # Hand-drawn DrawControl polygons are < 100 vertices; 1 000 admits a pasted
-    # parcel outline while bounding the ``ST_Intersection`` cost.
+    # parcel outline while bounding the ``ST_Intersection`` cost. Applies to
+    # every CALLER-SUPPLIED or caller-selected shape (poligono, parcela,
+    # parcelas, canal_buffer) and stays at its original value.
     ficha_max_vertices: int = 1_000
+    # Vertex cap for ``tipo=canal_cuenca`` ONLY. After the simplify tolerance
+    # went to 20 m the prod re-run left 7 catchments blocked by the vertex cap
+    # ALONE — 1 008 to 1 883 vertices against the 1 000 cap, all of them (11.4k
+    # to 19.2k ha) comfortably under ``ficha_max_area_ha``. They are dendritic
+    # basins: their perimeter, not their size, is what drives the vertex count,
+    # so simplifying harder would start eating real basin shape.
+    #
+    # 2 000 is the measured maximum (1 883) plus a minimal margin — enough to
+    # rescue the 7 without opening the door to arbitrary payloads. Safe here and
+    # NOT for the other tipos because a catchment is PRECOMPUTED server-side by
+    # ``etl/generate_canal_catchments.py``, never attacker-controlled: at ~2 000
+    # vertices the response carries ~100-150 KB of GeoJSON, a fixed cost over a
+    # fixed set of basins. ``ficha_service.vertices_cap`` is the single source of
+    # truth and the ETL mirrors it, so "stored implies servable" holds.
+    ficha_max_vertices_cuenca: int = 2_000
     # 2 km each side of a canal is already a generous influence zone. Without
     # this cap ``buffer_m`` is an unbounded amplification knob (JDB-006); the
     # area cap remains the backstop.
