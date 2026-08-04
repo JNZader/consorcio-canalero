@@ -59,13 +59,13 @@ test.describe('Ficha territorial — click parcel', () => {
 
       await page.goto(`${APP_URL}/mapa`);
       const root = page.getByTestId('map-workspace-root');
-      const ready = await root.isVisible({ timeout: 15000 }).catch(() => false);
+      const ready = await root.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false);
       requireCondition(ready, 'Map workspace shell no montó (dev server/auth no disponible)');
 
       // Enable the catastro layer so parcels are clickable.
       const controls = page.getByRole('region', { name: 'Controles de capas del mapa' });
       const catastro = controls.getByRole('checkbox', { name: /Catastro/i }).first();
-      const hasCatastro = await catastro.isVisible({ timeout: 10000 }).catch(() => false);
+      const hasCatastro = await catastro.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
       skipForMissingData(!hasCatastro, 'Capa catastro no disponible (sin datos de capas)');
       await catastro.check();
 
@@ -82,7 +82,7 @@ test.describe('Ficha territorial — click parcel', () => {
       await canvas.click({ position: { x: 200, y: 200 } });
 
       const panel = page.getByTestId('ficha-territorial-panel');
-      const opened = await panel.isVisible({ timeout: 10000 }).catch(() => false);
+      const opened = await panel.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
       skipForMissingData(!opened, 'El click no cayó sobre una parcela del catastro en esta vista');
 
       // When it opens it must reach a terminal state (result or an honest error),

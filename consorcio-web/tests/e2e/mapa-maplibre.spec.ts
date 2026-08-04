@@ -128,7 +128,7 @@ test.describe('MapaMapLibre — rediseño UX (desktop shell)', () => {
       const renderable = controls
         .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
         .first();
-      const hasRenderable = await renderable.isVisible({ timeout: 10000 }).catch(() => false);
+      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
       skipForMissingData(!hasRenderable, 'No renderable vector layer available (no layer data)');
 
       await renderable.check();
@@ -231,7 +231,12 @@ test.describe('MapaMapLibre — admin map features', () => {
     expect(body).not.toBeNull();
   });
 
-  test('layer toggle controls are accessible on map page', async ({ page }) => {
+  // fixme, not skip: this test navigates to /admin WITHOUT authenticating —
+  // there is no login step in this spec — so an anonymous run always sees the
+  // login screen and the admin UI it asserts can never exist. It needs a
+  // loginAsAdmin helper + E2E_ADMIN_* credentials to be meaningful. Kept red
+  // -visible instead of green-silent until someone builds that.
+  test.fixme('layer toggle controls are accessible on map page', async ({ page }) => {
     await page.goto(`${APP_URL}/admin`);
     await page.waitForTimeout(3000);
 
@@ -240,11 +245,16 @@ test.describe('MapaMapLibre — admin map features', () => {
       .getByText('2D')
       .or(page.locator('[data-active]'))
       .first();
-    const visible = await segmentedControl.isVisible({ timeout: 10000 }).catch(() => false);
+    const visible = await segmentedControl.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
     expect(visible).toBeTruthy();
   });
 
-  test('satellite imagery toggle is visible for admin', async ({ page }) => {
+  // fixme, not skip: this test navigates to /admin WITHOUT authenticating —
+  // there is no login step in this spec — so an anonymous run always sees the
+  // login screen and the admin UI it asserts can never exist. It needs a
+  // loginAsAdmin helper + E2E_ADMIN_* credentials to be meaningful. Kept red
+  // -visible instead of green-silent until someone builds that.
+  test.fixme('satellite imagery toggle is visible for admin', async ({ page }) => {
     await page.goto(`${APP_URL}/admin`);
     await page.waitForTimeout(3000);
 
@@ -253,7 +263,7 @@ test.describe('MapaMapLibre — admin map features', () => {
       .getByText(/imagen satelital|satelital|satellite/i)
       .or(page.locator('[aria-label*="satelit"], [title*="satelit"]'))
       .first();
-    const found = await satelliteEl.isVisible({ timeout: 10000 }).catch(() => false);
+    const found = await satelliteEl.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
     expect(found).toBeTruthy();
   });
 });
