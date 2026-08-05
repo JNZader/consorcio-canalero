@@ -22,8 +22,15 @@ export const mantineTheme = createTheme({
   // Usar paleta institucional como primaria
   primaryColor: 'institucional',
 
-  // Tipografia
-  fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  // Tipografia.
+  //
+  // ``Inter Fallback`` / ``DM Serif Display Fallback`` son las caras locales
+  // con metricas corregidas que define ``src/styles/global.css`` (size-adjust +
+  // ascent/descent/line-gap-override). Van SIEMPRE inmediatamente despues de la
+  // webfont real: mientras el woff2 baja, el texto se pinta con la cara local
+  // ya ajustada, asi el ``font-display: swap`` no mueve el layout.
+  fontFamily:
+    'Inter, "Inter Fallback", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   fontSizes: {
     xs: '0.75rem',
     sm: '0.875rem',
@@ -39,7 +46,8 @@ export const mantineTheme = createTheme({
     xl: '1.65',
   },
   headings: {
-    fontFamily: '"DM Serif Display", Georgia, "Times New Roman", serif',
+    fontFamily:
+      '"DM Serif Display", "DM Serif Display Fallback", Georgia, "Times New Roman", serif',
     fontWeight: '400',
     sizes: {
       h1: { fontSize: '2.25rem', lineHeight: '1.2' },
