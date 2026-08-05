@@ -29,7 +29,9 @@
  *
  * Monthly normals are mean millimetres, not a class partition — so this was
  * never a `RiesgoBins`-style clase/ha/% table to begin with. Values come
- * straight from the server; only the display is ours.
+ * straight from the server; only the display is ours. That now includes the
+ * provenance footer: `dataset.fuente` / `dataset.periodo` are served, and this
+ * component prints them (see {@link PRECIP_FUENTE_LEGACY} for the fallback).
  *
  * `cobertura === 'sin_cobertura'` renders an explicit "sin datos de precipitación"
  * state — never an empty/broken chart and never fabricated `0 mm` bars (spec
@@ -61,25 +63,38 @@ const MESES = [
 ] as const;
 
 /**
- * Provenance of the numbers, spelled out for the reader.
+ * Legacy provenance label — the FALLBACK, not the contract.
  *
- * NOT invented: the pipeline that produces them is
- * `gee-backend/app/domains/geo/etl/generate_chirps_normals.py`, driven by
- * `gee_service_analytics_support.py`, which pins
- * `CHIRPS_NORMAL_START_YEAR = 1991` / `CHIRPS_NORMAL_END_YEAR = 2020` over the
- * `UCSB-CHG/CHIRPS/DAILY` collection. Verified against those constants
- * 2026-08-04.
+ * The contract is server-driven: the payload carries `fuente` (product) and
+ * `periodo` (normals period), read backend-side off the `metadata_extra` of the
+ * rasters that actually answered, and {@link procedencia} prints whatever
+ * arrives. Regenerating the normals over a different period therefore changes
+ * this line by itself — no frontend release, nothing left asserting a period the
+ * data no longer has.
  *
- * FOLLOW-UP (accepted debt, RISK-001): this string is HARDCODED CLIENT-SIDE and
- * the wire carries no provenance — `FichaPrecipitacion` has `unidad` but no
- * `fuente` / `periodo`. If the pipeline is ever re-run over a different normal
- * period, the backend changes and this label keeps asserting 1991-2020, i.e. the
- * UI starts lying about the age of its own numbers with nothing to catch it. The
- * real fix is to serve `fuente` + `periodo` in the `precipitacion_mensual`
- * payload (`schemas_ficha.py`) and render whatever arrives; it is a backend
- * change and deliberately out of scope for this frontend-only branch.
+ * This string survives for ONE case: a payload with no provenance, i.e. a
+ * browser talking to a backend older than that change. It states the period the
+ * pipeline was pinned to at the time (`CHIRPS_NORMAL_START_YEAR = 1991` /
+ * `CHIRPS_NORMAL_END_YEAR = 2020` over `UCSB-CHG/CHIRPS/DAILY`), which is what
+ * such a backend is serving. Do not read it as the current period, and do not
+ * reintroduce it as the primary source: that is exactly the defect (RISK-001)
+ * the served fields closed.
  */
-const PRECIP_FUENTE = 'Normales CHIRPS 1991-2020';
+const PRECIP_FUENTE_LEGACY = 'Normales CHIRPS 1991-2020';
+
+/**
+ * The provenance line, server-driven with a legacy fallback.
+ *
+ * BOTH fields or neither: a half-populated payload would render "Normales
+ * CHIRPS " or "Normales  1991-2020", which reads as a rendering bug rather than
+ * as the missing datum it is. Whitespace-only counts as absent for the same
+ * reason.
+ */
+function procedencia(dataset: FichaPrecipitacion): string {
+  const fuente = dataset.fuente?.trim();
+  const periodo = dataset.periodo?.trim();
+  return fuente && periodo ? `Normales ${fuente} ${periodo}` : PRECIP_FUENTE_LEGACY;
+}
 
 function mesLabel(mes: number): string {
   return MESES[mes - 1] ?? String(mes);
@@ -191,7 +206,7 @@ export const PrecipChart = memo(function PrecipChart({
           </Box>
 
           <Text size="xs" c="dimmed" data-testid="precip-fuente">
-            {PRECIP_FUENTE}
+            {procedencia(dataset)}
           </Text>
         </>
       )}

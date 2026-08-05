@@ -10,7 +10,9 @@
  *   - those labels are whole millimetres (126.7 → "127"), while the annual
  *     headline keeps the decimal;
  *   - the annual total renders as a headline stat ABOVE the chart;
- *   - the provenance line renders under it;
+ *   - the provenance line renders under it, printing the SERVED `fuente` /
+ *     `periodo` (RISK-001) and falling back to the legacy label only for a
+ *     payload that carries neither;
  *   - `sin_cobertura` renders the no-data state with NO chart, NO bars and no
  *     fabricated zeros anywhere in the rendered output;
  *   - the low-confidence badge appears only when the dataset flags it (it never
@@ -82,6 +84,10 @@ function precip(overrides: Partial<FichaPrecipitacion> = {}): FichaPrecipitacion
     pixel_count: 12,
     cobertura_ratio: 1,
     unidad: 'mm',
+    // What the current backend serves, so the DEFAULT case exercises the
+    // server-driven path and only the compat tests reach the legacy fallback.
+    fuente: 'CHIRPS',
+    periodo: '1991-2020',
     serie: MM.map((mm, i) => ({ mes: i + 1, mm })),
     anual_mm: 1013.8,
     ...overrides,
@@ -164,16 +170,56 @@ describe('PrecipChart', () => {
     expect(anual.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('states the provenance of the numbers under the chart', () => {
+  it('states the provenance of the numbers under the chart, from the payload', () => {
     renderWithMantine(<PrecipChart dataset={precip()} />);
 
     const fuente = screen.getByTestId('precip-fuente');
-    // Period and collection both come from the backend pipeline constants
-    // (`CHIRPS_NORMAL_START_YEAR` / `..._END_YEAR`), not from a guess.
+    // SERVED, not hardcoded: the backend reads product and period off the
+    // `metadata_extra` of the rasters that answered.
     expect(fuente).toHaveTextContent('Normales CHIRPS 1991-2020');
 
     const chart = screen.getByTestId('precip-chart');
     expect(chart.compareDocumentPosition(fuente) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('RISK-001: the provenance line follows the payload, whatever it says', () => {
+    // THE regression this contract exists for. The label used to be a constant
+    // in this file, so regenerating the normals over another period left the UI
+    // asserting 1991-2020 with nothing able to catch it. A payload from a
+    // different run must read as that run — no frontend edit involved.
+    renderWithMantine(
+      <PrecipChart dataset={precip({ fuente: 'CHIRPS v3', periodo: '2001-2030' })} />
+    );
+
+    expect(screen.getByTestId('precip-fuente')).toHaveTextContent('Normales CHIRPS v3 2001-2030');
+    expect(screen.getByTestId('precip-fuente')).not.toHaveTextContent('1991-2020');
+  });
+
+  it('falls back to the legacy label when the payload carries no provenance', () => {
+    // Compat, not decoration: a browser can be talking to a backend older than
+    // the served fields. Better the period that backend is pinned to than an
+    // empty footer or a half-rendered "Normales  ".
+    renderWithMantine(
+      <PrecipChart dataset={precip({ fuente: undefined, periodo: undefined })} />
+    );
+
+    expect(screen.getByTestId('precip-fuente')).toHaveTextContent('Normales CHIRPS 1991-2020');
+  });
+
+  it('treats a half-populated or blank provenance as absent, never rendering a gap', () => {
+    // "Normales CHIRPS " / "Normales  1991-2020" read as a rendering bug rather
+    // than as the missing datum they are.
+    const { rerender } = renderWithMantine(
+      <PrecipChart dataset={precip({ fuente: 'CHIRPS', periodo: undefined })} />
+    );
+    expect(screen.getByTestId('precip-fuente')).toHaveTextContent('Normales CHIRPS 1991-2020');
+
+    rerender(
+      <MantineProvider env="test">
+        <PrecipChart dataset={precip({ fuente: '   ', periodo: '2001-2030' })} />
+      </MantineProvider>
+    );
+    expect(screen.getByTestId('precip-fuente')).toHaveTextContent('Normales CHIRPS 1991-2020');
   });
 
   it('no longer renders the 13-row mes/mm table (it doubled the block height)', () => {

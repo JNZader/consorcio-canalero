@@ -168,6 +168,7 @@ def _run(
     export_fn=_fake_export,
     now: datetime,
     recorder: dict | None = None,
+    **anios: int,
 ) -> tuple[list[Any], _FakeRequests, dict]:
     recorder = recorder if recorder is not None else _make_recorder()
     requests = _FakeRequests()
@@ -176,6 +177,7 @@ def _run(
         region=REGION,
         area_id=area_id,
         export_fn=export_fn,
+        **anios,
         requests_module=requests,
         rasterio_module=_FakeRasterio(recorder),
         calculate_default_transform_fn=_fake_calc_factory(recorder),
@@ -216,12 +218,39 @@ def test_registers_thirteen_layers_one_per_month_plus_annual(chirps_db: Session)
 
     for row in rows:
         meta = row.metadata_extra
-        assert meta["normal_period"] == "1991-2020"
-        assert meta["fuente"] == "CHIRPS"
+        # DERIVED from the pipeline constants, not re-typed: the ficha serves this
+        # very value as ``precipitacion_mensual.periodo`` (RISK-001), so a test
+        # that hardcodes the years would stay green while the shipped label drifts.
+        assert meta["normal_period"] == gcn.chirps_normal_period(
+            gcn.DEFAULT_START_YEAR, gcn.DEFAULT_END_YEAR
+        )
+        assert meta["fuente"] == gcn.FUENTE_LABEL
         assert meta["resolucion_m"] == 5000
         assert meta["version"] == now.isoformat()
         assert row.srid == 32720
         assert row.tipo == TipoGeoLayer.PRECIP_NORMAL.value
+
+
+def test_normal_period_records_the_years_this_run_used(chirps_db: Session) -> None:
+    """``--start-year/--end-year`` travels with the rasters it produced (RISK-001).
+
+    The stamp must come from the run's arguments, NOT from the module default:
+    the ficha serves it verbatim, so a regeneration over a different period is
+    exactly how the UI learns to say something else. If this ever falls back to
+    the configured period, the browser starts lying about the age of the data
+    again — the same defect, one layer down.
+    """
+    _run(
+        chirps_db,
+        area_id="area_periodo",
+        now=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        start_year=2001,
+        end_year=2030,
+    )
+
+    periodos = {r.metadata_extra["normal_period"] for r in _precip_rows(chirps_db, "area_periodo")}
+    assert periodos == {"2001-2030"}
+    assert "2001-2030" != gcn.chirps_normal_period(gcn.DEFAULT_START_YEAR, gcn.DEFAULT_END_YEAR)
 
 
 def test_output_filenames_are_zero_padded_months_plus_anual(chirps_db: Session) -> None:

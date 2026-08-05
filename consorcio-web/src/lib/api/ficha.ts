@@ -81,6 +81,20 @@ export interface FichaPrecipitacion {
   pixel_count: number;
   cobertura_ratio: number;
   unidad: 'mm';
+  /**
+   * Provenance of the numbers, as served (RISK-001). `fuente` is the product
+   * label ("CHIRPS") and `periodo` the normals period ("1991-2020"); the backend
+   * reads both off the `metadata_extra` of the rasters that actually answered,
+   * so a regeneration over another period changes what the UI says with no
+   * frontend edit.
+   *
+   * OPTIONAL on purpose, and the optionality is the compat contract: the fields
+   * are non-optional on the current backend, but a browser can be talking to an
+   * older one. {@link FichaPrecipitacion} consumers must keep a fallback for as
+   * long as this is `?` — see `PrecipChart`.
+   */
+  fuente?: string;
+  periodo?: string;
   serie: FichaPrecipMes[];
   anual_mm: number | null;
 }
