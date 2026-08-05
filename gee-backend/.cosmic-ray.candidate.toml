@@ -33,6 +33,35 @@
 #   rama. Las etapas 2 (padron) y 3 (refresh_tokens) siguen pendientes y se
 #   escriben con esa misma receta, no con testcontainers.
 #
+# ── UPDATE 2026-08-04 (etapa 2): PADRON TAMBIEN PASO AL GATE ────────────────
+#
+#   Misma receta, mismo resultado. `tests/test_mutation_targets_padron.py` paso
+#   de 29 casos (solo schemas) a 121 (schemas + `PadronService` completo, con
+#   repositorio y Session falsos y el pipeline de import CSV/XLSX/XLS).
+#
+#     padron       191 mutantes (eran 0.00 % de kill rate, inalcanzables).
+#                    Python 3.11 (EL DE CI): 182/191 = 95.29 %, 2 min 33 s.
+#                    Python 3.14 (venv local): 171/191 = 89.53 %, 5 min 32 s.
+#     diferencia   los 11 mutantes del `|` de `PadronRepository | None`, otra
+#                  vez PEP 649. El local vuelve a ser el pesimista.
+#     sobreviven   9 en 3.11, TODOS equivalentes (detalle linea por linea en
+#                  `.cosmic-ray.toml`). Ninguno de comportamiento.
+#     gate         `.cosmic-ray.toml` pasa a 541 mutantes (350 + 191); el piso
+#                  de 0.30 de `cosmic_gate.py` no se toca — y ademas esta
+#                  clavado por `tests/test_ci_workflow_contracts.py`, que
+#                  exige el literal `--min-kill-rate 0.30` en backend.yml y en
+#                  deploy.yml. Moverlo es un cambio aparte.
+#     gate medido  el gate completo con padron adentro, corrido de punta a
+#                  punta con `scripts/cosmic_gate.py`: 407/541 = 75.23 % en
+#                  19 min 33 s (venv local 3.14, el interprete pesimista).
+#                  Verde contra el piso de 0.30.
+#     costo        3.11 corre la misma carga ~2x mas rapido y un runner de GH
+#                  es 1.5-2x mas lento que este desktop -> ~15-22 min contra
+#                  `timeout-minutes: 35`. La etapa 3 NO entra: +300 mutantes
+#                  se irian contra el timeout.
+#
+#   Queda solo la etapa 3, `app/auth/refresh_tokens.py`, y necesita job propio.
+#
 # The active gate (`.cosmic-ray.toml`, run by `scripts/cosmic_gate.py` in the
 # `mutation` job of `.github/workflows/backend.yml`) deliberately EXCLUDES the
 # three highest-risk domains, with a TODO explaining why: their only tests live
@@ -96,9 +125,12 @@ module-path = [
   # kill rate (ver el bloque UPDATE arriba). Queda listado aca solo para que la
   # comparacion de costos de este archivo siga cerrando.
   "app/domains/finanzas/service.py",  # 74 mutants — ACTIVO en .cosmic-ray.toml
-  # ── candidatos de verdad: 0 % de kill rate hasta que existan sus unit tests ──
+  # padron TAMPOCO es candidato ya: paso al gate real el 2026-08-04 con 95.29 %
+  # de kill rate (ver el bloque UPDATE de la etapa 2 arriba). Queda listado aca
+  # solo para que la comparacion de costos de este archivo siga cerrando.
+  "app/domains/padron/service.py",    # 191 mutants — ACTIVO en .cosmic-ray.toml
+  # ── unico candidato de verdad: 0 % de kill rate hasta que existan sus tests ──
   "app/auth/refresh_tokens.py",       # 300 mutants
-  "app/domains/padron/service.py",    # 191 mutants
 ]
 timeout = 120.0
 excluded-modules = []
