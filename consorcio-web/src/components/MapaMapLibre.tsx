@@ -88,6 +88,7 @@ import { useComparisonSlider } from './map2d/useComparisonSlider';
 import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapInitialization } from './map2d/useMapInitialization';
+import { useAnalysisToolsGate } from './map2d/useAnalysisToolsGate';
 import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
 import { useMapEscapeExit } from './map2d/useMapEscapeExit';
@@ -706,6 +707,27 @@ export default function MapaMapLibre() {
     fichaInteraction.setMultiSelect(!fichaInteraction.state.multiSelect);
   }, [fichaInteraction]);
 
+  // Login gate for the ANALYSIS tools (draw / canal / sticky multi-select). The
+  // hook returns the toolbar callbacks only for a CONFIRMED session, and the
+  // toolbar renders each button only when its callback is present — so anonymous
+  // visitors get no button in the DOM at all, while MEDIR, DESCARGAR, CAPAS and
+  // the ficha-on-click (including the ctrl+clic gesture) stay public. It is a
+  // render gate, NOT an authz boundary: the ficha endpoints remain public behind
+  // their own caps. See `useAnalysisToolsGate` for the full rationale.
+  const analysisToolProps = useAnalysisToolsGate({
+    drawing: fichaInteraction.state.drawing,
+    canalMode: fichaInteraction.state.canalMode,
+    multiSelect: fichaInteraction.state.multiSelect,
+    stopDraw: fichaInteraction.stopDraw,
+    stopCanal: fichaInteraction.stopCanal,
+    setMultiSelect: fichaInteraction.setMultiSelect,
+    onToggleFichaDraw: handleToggleFichaDraw,
+    onRedrawPolygon: handleRedrawPolygon,
+    onDeletePolygon: handleDeleteDrawnPolygon,
+    onToggleFichaCanal: handleToggleFichaCanal,
+    onToggleFichaMultiSelect: handleToggleFichaMultiSelect,
+  });
+
   // Escape is the universal exit from ANY active interaction mode. Until this
   // was wired, `useMeasurement.cancel()` had no caller at all and a user who
   // started measuring had no way back to idle (map-fluidity T1).
@@ -993,13 +1015,11 @@ export default function MapaMapLibre() {
               onClear={clearMeasurements}
               onCancel={cancelMeasurement}
               fichaDrawActive={isFichaDrawSession}
-              onToggleFichaDraw={handleToggleFichaDraw}
-              onRedrawPolygon={handleRedrawPolygon}
-              onDeletePolygon={handleDeleteDrawnPolygon}
               fichaCanalActive={isFichaCanal}
-              onToggleFichaCanal={handleToggleFichaCanal}
               fichaMultiSelectActive={fichaInteraction.state.multiSelect}
-              onToggleFichaMultiSelect={handleToggleFichaMultiSelect}
+              /* Draw / canal / multi-select callbacks are login-gated: absent for
+                 anonymous visitors, so those buttons are not rendered at all. */
+              {...analysisToolProps}
             />
 
             {/* Canal analysis (A6 + A7): the influence-strip vs catchment control
