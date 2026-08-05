@@ -192,7 +192,11 @@ export default function TerrainViewer3D({
   // the 3D viewer no longer renders a Zona Consorcio outline (the 3D mesh
   // IS the consorcio area, so the outline was redundant). Only the 4 GEE
   // sub-cuencas (Candil / ML / Noroeste / Norte) feed the cuencas build.
-  const { layers: geeLayers, unavailableLayers: unavailableGeeLayers } = useGEELayers({
+  // The public 3D view intentionally does NOT surface which GEE sub-basins
+  // were filtered out: the old Alert ("Subcuencas GEE no disponibles...")
+  // leaked internal jargon to anonymous visitors (owner request 2026-08-04).
+  // The hook still filters; the list just is not displayed.
+  const { layers: geeLayers } = useGEELayers({
     layerNames: TERRAIN_GEE_LAYER_NAMES,
   });
   const { basins } = useBasins();
@@ -877,16 +881,6 @@ export default function TerrainViewer3D({
 
   return (
     <Stack gap="sm">
-      {unavailableGeeLayers.length > 0 && (
-        <Alert
-          icon={<IconAlertTriangle size={16} />}
-          title="Subcuencas GEE no disponibles en el mapa publico"
-          color="yellow"
-        >
-          Esta vista omite {unavailableGeeLayers.join(', ')} porque no forman parte de la superficie
-          publica permitida.
-        </Alert>
-      )}
       {errorMessage && (
         <Alert icon={<IconAlertTriangle size={16} />} title="Error cargando terreno 3D" color="red">
           {errorMessage}

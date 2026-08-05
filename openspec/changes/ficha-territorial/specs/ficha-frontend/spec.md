@@ -100,12 +100,42 @@ recalculated client-side from hectares.
 > 12-bar chart **and** a mes/mm table plus `anual_mm`, because its payload is a typed mm series, not
 > clase/ha/pct rows.
 
+> **Delta (2026-08-04) — the PRECIPITATION block drops its table. SUPERSEDES the JD-A-012 clause
+> above for `precipitacion_mensual` only.** Owner decision, with an INTA reference screenshot: the
+> chart plus a 13-row mes/mm table made the block 535px tall inside a floating panel that also has to
+> show the map, and every number was printed twice. The precipitation block MUST now render:
+>
+> - the 12-bar chart in calendar order, with each month's value printed **as a label on its own bar**
+>   (whole millimetres — `126.7` renders as `127`; the decimal is noise in a 30-year mean and does not
+>   fit 12 bars at panel width);
+> - `anual_mm` as a **highlighted stat above the chart**, at full precision;
+> - a **provenance line** naming the source and normal period.
+>
+> It MUST NOT render a mes/mm table. The JD-A-012 concern — *no number may be lost to a chart* — is
+> preserved by the on-bar labels, not by a table: all twelve values stay readable as text. JD-A-012
+> remains binding for the clase/ha/% datasets (soils, flood risk, drainage), which are unaffected.
+>
+> A month served as `0 mm` MUST still draw a bar and print `0`. (recharts skips zero-height
+> rectangles, and labels attach to rectangles, so a naive implementation silently drops the column —
+> indistinguishable from missing data. `minPointSize` on the `Bar` is what enforces this.)
+
 #### Scenario: Full ficha rendered
 
 - GIVEN a successful response with all datasets covered
 - WHEN the card renders
 - THEN one table per dataset is shown with clase / ha / % rows and the total hectares
 - AND a 12-bar monthly precipitation chart is shown in calendar order
+- AND each of the 12 bars carries its own value label in whole millimetres
+- AND no mes/mm table is rendered for precipitation
+- AND the annual normal is shown as a highlighted stat above the chart
+- AND the source and normal period are stated under the chart
+
+#### Scenario: A covered month with zero rainfall
+
+- GIVEN a covered precipitation dataset in which one month is `0 mm`
+- WHEN the chart renders
+- THEN that month still draws a bar and prints the label `0`
+- AND the remaining eleven months are unaffected
 
 ### Requirement: Loading, error and no-coverage states
 

@@ -411,6 +411,19 @@ their immediate parent PR branch.
       datos de precipitación para esta zona." (no chart, no `0 mm` rows). Rendered in
       `FichaTerritorialPanel` next to the other dataset blocks; low-confidence badge
       reused from `fichaShared`.
+- [x] **B2.2-bis (2026-08-04) — compact INTA-style redesign; SUPERSEDES the table half of B2.2.**
+      Owner decision with an INTA reference screenshot. AC: `ficha-frontend` ›
+      "Full ficha rendered" (2026-08-04 delta) + "A covered month with zero rainfall".
+      The mes/mm table and its `[data-testid=precip-table]` are GONE, along with the
+      `YAxis` and `CartesianGrid`; each bar now carries its own whole-millimetre
+      label (recharts `LabelList`), `anual_mm` is a highlighted stat above the chart
+      (`[data-testid=precip-anual]`, full precision), and a provenance line
+      `[data-testid=precip-fuente]` states "Normales CHIRPS 1991-2020". Block height
+      measured 535px → 233px (43.6%). `minPointSize={2}` on the `Bar` is
+      LOAD-BEARING: without it a served `0 mm` month renders no rectangle and hence
+      no label, silently dropping the column. JD-A-012 still binds the clase/ha/%
+      datasets; only precipitation is exempt, because the on-bar labels preserve
+      every number the table carried.
 - [x] B2.3 Tests: `serie` always 12 entries in calendar order when covered; no fabricated zeros outside coverage; `low_confidence` false for a sub-pixel parcel (K=0 override — the JDB-017 regression); vitest renders both chart and table. (~80)
       Backend `tests/new/test_ficha_precip.py` (6, real-PG savepoint, rasters mocked):
       12-in-calendar-order + anual; disjoint rasters → sin_cobertura/no zeros;
@@ -421,6 +434,17 @@ their immediate parent PR branch.
       `tests/unit/PrecipChart.test.tsx` (3): chart + 12-row table in calendar order +
       annual; sin_cobertura state renders without crashing and with no chart/0 mm;
       low-confidence badge gated on the flag.
+      **Rewritten 2026-08-04 with B2.2-bis (3 → 9).** The table assertions are
+      replaced by RENDERED-DOM ones: recharts' `ResponsiveContainer` is swapped for a
+      fixed 600×300 pass-through via `vi.mock`, because happy-dom reports a 0×0 box
+      and the chart would otherwise render nothing at all — making every bar/label
+      assertion pass vacuously. With that in place the suite asserts the 12 bars, the
+      12 on-bar labels as visible text in calendar order, the rounding (`126.7` →
+      `127`), the annual stat and its position above the chart, the provenance line,
+      the absence of any table, the `0 mm` regression guard, and a `sin_cobertura`
+      state proven numeral-free from the rendered DOM. Text queries are scoped to the
+      chart subtree: recharts leaves a `#recharts_measurement_span` on `document.body`
+      that otherwise double-matches.
 
 ---
 

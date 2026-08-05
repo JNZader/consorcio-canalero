@@ -10,7 +10,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  PARCELA_HIGHLIGHT_COLOR,
   PARCELA_HIGHLIGHT_FILL_LAYER,
+  PARCELA_HIGHLIGHT_FILL_OPACITY,
   PARCELA_HIGHLIGHT_LINE_LAYER,
   buildParcelaHighlightFilter,
   clearParcelaHighlightLayers,
@@ -60,9 +62,7 @@ describe('syncParcelaHighlightLayers', () => {
     expect(line).toBeDefined();
     expect(fill?.source).toBe(SOURCE_IDS.CATASTRO);
     expect(fill?.['source-layer']).toBe('parcelas_catastro');
-    expect(fill?.filter).toEqual(
-      buildParcelaHighlightFilter(['13-06-01-0201', '13-06-01-0202'])
-    );
+    expect(fill?.filter).toEqual(buildParcelaHighlightFilter(['13-06-01-0201', '13-06-01-0202']));
   });
 
   it('a SINGLE parcel is highlighted too (the user is about to add a second)', () => {
@@ -122,6 +122,82 @@ describe('syncParcelaHighlightLayers', () => {
 
     expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(false);
     expect(map.layers.has(PARCELA_HIGHLIGHT_LINE_LAYER)).toBe(false);
+  });
+
+  /**
+   * The highlight's amber fill over the ficha overlay (owner report: multi-parcel
+   * selection near the consortium boundary).
+   *
+   * This effect runs AFTER the overlay's, so the fill sits ON TOP of it: over a
+   * no-coverage area `#f59f00` @ 0.35 reads as `#fc8d59`, the legend's "Alto"
+   * class — a fabricated data reading — and over a covered area it washes every
+   * real class orange. While the overlay paints, the outline alone carries the
+   * selection.
+   */
+  describe('with the ficha overlay painting', () => {
+    it('paints the OUTLINE only — the fill would fake an "Alto" reading', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, true);
+
+      expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(false);
+      // The selection is still identified, so nothing is lost but the lie.
+      expect(map.layers.has(PARCELA_HIGHLIGHT_LINE_LAYER)).toBe(true);
+    });
+
+    it('REMOVES a fill that was already painted when the overlay comes up', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, false);
+      expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(true);
+
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, true);
+
+      // Removed outright, not left as a transparent layer: a `fill-opacity: 0`
+      // layer is still a hit-target and still needs its filter kept in sync.
+      expect(map.removeLayer).toHaveBeenCalledWith(PARCELA_HIGHLIGHT_FILL_LAYER);
+      expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(false);
+      expect(map.layers.has(PARCELA_HIGHLIGHT_LINE_LAYER)).toBe(true);
+    });
+
+    it('RESTORES the fill when the overlay is turned off again', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, true);
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, false);
+
+      const fill = map.layers.get(PARCELA_HIGHLIGHT_FILL_LAYER);
+      expect(fill).toBeDefined();
+      // With no overlay there is nothing to lie about and nothing to tint, and a
+      // filled parcel is much easier to spot at low zoom — so it comes back
+      // exactly as it was.
+      expect(fill?.paint).toEqual({
+        'fill-color': PARCELA_HIGHLIGHT_COLOR,
+        'fill-opacity': PARCELA_HIGHLIGHT_FILL_OPACITY,
+      });
+      expect(fill?.filter).toEqual(buildParcelaHighlightFilter(['13-06-01-0201']));
+    });
+
+    it('keeps the line filter in sync while the fill is suppressed', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, true);
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201', '13-06-01-0202'], true, true);
+
+      expect(map.layers.get(PARCELA_HIGHLIGHT_LINE_LAYER)?.filter).toEqual(
+        buildParcelaHighlightFilter(['13-06-01-0201', '13-06-01-0202'])
+      );
+      expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(false);
+    });
+
+    it('defaults to OFF, so every existing caller keeps the fill', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true);
+      expect(map.layers.has(PARCELA_HIGHLIGHT_FILL_LAYER)).toBe(true);
+    });
+
+    it('an empty selection still clears BOTH layers', () => {
+      const map = createMapMock();
+      syncParcelaHighlightLayers(map as never, ['13-06-01-0201'], true, true);
+      syncParcelaHighlightLayers(map as never, [], true, true);
+      expect(map.layers.size).toBe(0);
+    });
   });
 
   it('is a NO-OP (never throws) before the style has added the catastro source', () => {
