@@ -40,6 +40,74 @@
     format('woff2');
 }
 
+/* ================================
+   METRIC-MATCHED FALLBACK FACES (anti-CLS)
+   ================================
+   ``font-display: swap`` above keeps text visible during the font download,
+   but the swap itself is what MOVES the layout: the local fallback and the
+   webfont disagree on advance width, ascent and descent, so every line box
+   resizes the moment the webfont arrives (~0.07 of residual CLS measured on
+   the landing page).
+
+   These two faces re-render the LOCAL font with the webfont's own metrics, so
+   the pre-swap and post-swap layouts occupy the same box and the swap becomes
+   a repaint instead of a reflow. They are chained right after the real family
+   in every stack below, ahead of the generic fallbacks.
+
+   Percentages follow the fontaine / capsize formula:
+     size-adjust       = (web.xWidthAvg / web.upm) / (local.xWidthAvg / local.upm)
+     ascent-override   =  web.ascent          / (web.upm * size-adjust)
+     descent-override  = |web.descent|        / (web.upm * size-adjust)
+     line-gap-override =  web.lineGap         / (web.upm * size-adjust)
+
+   Source metrics: @capsizecss/metrics v4.2.0 (`inter`, `dMSerifDisplay`,
+   `arial`, `georgia`). The two webfont entries were checked against the exact
+   woff2 files this repo ships (@fontsource/inter, @fontsource/dm-serif-display
+   — head/hhea/OS-2 parsed directly) and match field for field:
+     Inter             upm 2048, ascent 1984, descent -494, lineGap 0, xWidthAvg 978
+     DM Serif Display  upm 1000, ascent 1036, descent -335, lineGap 0, xWidthAvg 446
+     Arial             upm 2048, xWidthAvg 913
+     Georgia           upm 2048, xWidthAvg 913
+   Recompute these if either @fontsource package ships a new font version. */
+
+@font-face {
+  font-family: 'Inter Fallback';
+  font-style: normal;
+  /* Single-weight 400 face, NO ``400 700`` range — the range would DISABLE
+     synthetic bold (R3-001). Engines refuse to synthesize bold when the
+     matched face's declared weight maximum reaches 600 (they take the range
+     as "this family HAS a real bold"), and ``local('Arial')`` is one static
+     regular face — so during the swap window every fw>=600 run (Mantine
+     buttons, table headers, ~108 usages) would paint REGULAR Arial. With a
+     400-only face, a 600/700 request still matches it (closest-weight) and
+     the engine bolds it synthetically. capsize's ``createFontStack`` emits no
+     weight descriptor on fallback faces for exactly this reason. */
+  font-weight: 400;
+  /* Arial only: the overrides are calibrated against Arial's metrics, so
+     listing further locals would apply the wrong correction. Where Arial is
+     absent (most Linux desktops resolve it to the metric-compatible Liberation
+     Sans via fontconfig) this face simply never matches and the stack falls
+     through to system-ui. */
+  src: local('Arial');
+  size-adjust: 107.12%;
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
+  /* Explicit 0% — Arial carries a 67/2048 line gap of its own that would add
+     line spacing the webfont does not have. */
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'DM Serif Display Fallback';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Georgia');
+  size-adjust: 100.04%;
+  ascent-override: 103.55%;
+  descent-override: 33.49%;
+  line-gap-override: 0%;
+}
+
 /* Estilos base */
 html {
   scroll-behavior: smooth;
@@ -73,7 +141,9 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    'Inter', 'Inter Fallback', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

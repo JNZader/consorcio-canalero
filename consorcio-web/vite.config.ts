@@ -1,7 +1,81 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+
+// ---------------------------------------------------------------------------
+// FOUT / CLS: build-time <link rel="preload"> for the above-the-fold webfonts.
+//
+// The five @font-face rules live in ``src/styles/global.css``, so the browser
+// only DISCOVERS them once ``index.css`` has landed and parsed, and only
+// REQUESTS them once the text they style reaches layout. Measured on the
+// landing page: stylesheet at ~2.1 s, font request at ~3.0 s — a late ``swap``
+// with a visible reflow, ~0.07 of residual CLS.
+//
+// A preload link moves the request into the document's preload-scanner pass,
+// so the woff2 bytes are already in flight while the CSS is still downloading.
+// The hrefs cannot be hardcoded in ``index.html``: Vite content-hashes the
+// font assets (``inter-latin-400-normal-C38fXH4l.woff2``), so this plugin
+// reads the final emitted names straight out of the Rollup bundle.
+//
+// Only the two faces the first paint actually needs are preloaded — the hero
+// ``h1`` serif and the body sans. The other three Inter weights (500/600/700)
+// are deliberately left out: every extra preload competes with the critical JS
+// chunks for the same bandwidth, and none of them is on the shell's paint path.
+const CRITICAL_FONT_STEMS = ['dm-serif-display-latin-400-normal', 'inter-latin-400-normal'];
+
+function preloadCriticalFonts(): Plugin {
+  let base = '/';
+  return {
+    name: 'consorcio:preload-critical-fonts',
+    apply: 'build',
+    configResolved(config) {
+      // Vite always normalises the resolved base to a trailing slash.
+      base = config.base;
+    },
+    transformIndexHtml: {
+      // ``post`` so the Rollup bundle is fully populated: the woff2 assets are
+      // emitted while the CSS that references them is processed.
+      order: 'post',
+      handler(html, ctx) {
+        const emitted = Object.keys(ctx.bundle ?? {});
+        const tags = CRITICAL_FONT_STEMS.map((stem) => {
+          const fileName = emitted.find((name) => {
+            const assetName = name.split('/').pop() ?? '';
+            return assetName.startsWith(`${stem}-`) && assetName.endsWith('.woff2');
+          });
+          if (!fileName) {
+            // Fail the build instead of silently shipping no preload. A silent
+            // miss reintroduces exactly the regression this plugin exists to
+            // prevent, and nothing downstream would catch it.
+            throw new Error(
+              `[preload-critical-fonts] no emitted .woff2 matched "${stem}-*.woff2". Check the @font-face src URLs in src/styles/global.css.`
+            );
+          }
+          return {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              as: 'font',
+              type: 'font/woff2',
+              href: `${base}${fileName}`,
+              // Fonts are always fetched in anonymous CORS mode. Without the
+              // (empty == anonymous) crossorigin attribute the preload lands in
+              // a different cache partition than the CSS-driven request and the
+              // file is downloaded twice.
+              crossorigin: '',
+            },
+            // Earliest possible discovery. This pushes <meta charset> down by
+            // ~260 bytes, still far inside the 1024-byte window browsers scan
+            // for the declaration.
+            injectTo: 'head-prepend' as const,
+          };
+        });
+        return { html, tags };
+      },
+    },
+  };
+}
 
 // Proxy de dev OPCIONAL (demo local contra un API remoto sin pelearse con
 // CORS): con `DEV_PROXY_TARGET=https://api.ejemplo.com npm run dev` el dev
@@ -27,6 +101,9 @@ const devProxy = devProxyTarget
 export default defineConfig({
   server: { proxy: devProxy },
   plugins: [
+    // Injects the two critical-font preloads at build time — see the plugin
+    // definition above. Build-only; the dev server serves fonts unhashed.
+    preloadCriticalFonts(),
     // Phase 3 / F3-E: React Compiler — auto-memoises components and
     // hooks the way ``useMemo`` + ``useCallback`` would, except the
     // compiler is conservative and only inserts memos where it can

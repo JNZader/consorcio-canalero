@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!--
+      Font preloads are NOT written here: the woff2 assets are content-hashed
+      at build time, so `<link rel="preload">` for the two above-the-fold faces
+      (dm-serif-display 400 + inter 400) is injected into <head> by the
+      `consorcio:preload-critical-fonts` plugin in vite.config.ts, which reads
+      the final hashed filenames out of the bundle. Nothing to keep in sync by
+      hand — the build fails loudly if either asset stops being emitted.
+    -->
+
     <!-- Favicon and App Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
