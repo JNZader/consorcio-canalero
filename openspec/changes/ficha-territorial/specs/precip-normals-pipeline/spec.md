@@ -38,7 +38,8 @@ regenerations are distinguishable.
 > **Delta (post-JD)** — concrete registration and lookup contract (JD-A-008, JDB-011, JDB-018):
 > all 13 rasters share `tipo = precip_normal`; `metadata_extra` is
 > `{"mes": 1..12 | "anual", "normal_period": "1991-2020", "fuente": "CHIRPS", "version": <UTC
-> ISO8601 of the export run>, "resolucion_m": 5000}`. Rasters MUST be warped to EPSG:32720 at
+> ISO8601 of the export run>, "resolucion_m": 5000}`, where `normal_period` is the period THIS
+> run used (`--start-year`-`--end-year`), not the module default. Rasters MUST be warped to EPSG:32720 at
 > **5 000 m** with nearest-neighbour resampling — CHIRPS native resolution is 0.05° (~5.5 km) and
 > upsampling to the 30 m composite grid would fabricate detail the ficha then reports as measured.
 > Nodata MUST be `-9999.0` to match the composites convention.
@@ -59,6 +60,13 @@ regenerations are distinguishable.
 - GIVEN normals were generated previously
 - WHEN they are regenerated
 - THEN `metadata_extra` carries a new version identifier and the normals period
+
+#### Scenario: A regeneration over another period changes what the ficha states
+
+- GIVEN the normals are regenerated with `--start-year`/`--end-year` outside the configured period
+- WHEN a ficha is requested for a covered zone
+- THEN `precipitacion_mensual.periodo` reports the regenerated period, not the configured one
+- AND no frontend or backend code change is required for the UI to say so
 
 ### Requirement: Read through the shared zonal-stats path
 

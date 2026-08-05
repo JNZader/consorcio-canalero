@@ -1,7 +1,10 @@
 """Compatibility barrel for GEE service support helpers."""
 
 from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_FUENTE_LABEL,
+    CHIRPS_NORMAL_END_YEAR,
     CHIRPS_NORMAL_PERIOD,
+    CHIRPS_NORMAL_START_YEAR,
     CHIRPS_NATIVE_SCALE_M,
     build_colored_roads,
     build_consorcio_stats,
@@ -31,7 +34,10 @@ from app.domains.geo.gee_service_imagery_support import (
 )
 
 __all__ = [
+    "CHIRPS_FUENTE_LABEL",
+    "CHIRPS_NORMAL_END_YEAR",
     "CHIRPS_NORMAL_PERIOD",
+    "CHIRPS_NORMAL_START_YEAR",
     "CHIRPS_NATIVE_SCALE_M",
     "VIS_PRESETS",
     "available_visualizations_payload",

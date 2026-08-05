@@ -92,6 +92,19 @@ Datasets: `suelos` (vector), `flood_risk`, `drainage_need`, `precipitacion_mensu
 > with `serie` in calendar order. Every other dataset keeps `{clase, ha, pct}`. Rationale: design
 > §4 (JD-A-007, JDB-011).
 >
+> **Delta (RISK-001) — `precipitacion_mensual` MUST carry its own provenance.** The dataset also
+> serves `fuente` (product label, e.g. `"CHIRPS"`) and `periodo` (normals period, e.g.
+> `"1991-2020"`), both non-optional strings. Both MUST be read from the `metadata_extra` of the
+> `precip_normal` rasters that actually answered the request (`fuente` / `normal_period`), NOT from
+> the pipeline's configured constants: `generate_chirps_normals` takes `--start-year/--end-year`,
+> so the normals on disk can be regenerated over another period without any constant changing, and
+> a payload asserting the configured period would be stating the wrong age for its own numbers. The
+> constants are the fallback per key for rows registered before the ETL stamped provenance. When the
+> twelve months resolve to different values (the lookup is `DISTINCT ON (mes)`), every distinct
+> value MUST be reported (sorted, `" / "`-joined) rather than one being chosen. Rationale: the label
+> used to be hardcoded client-side in `PrecipChart.tsx`, so a regeneration silently turned the UI
+> into a liar about the age of its data with nothing in the system able to detect it.
+>
 > **Delta (post-JD) — `low_confidence` is per-raster and relative.** The threshold is not a global
 > `pixel_count < 10`; it is `(geometry_area_m2 / pixel_area_m2) < K` evaluated per raster
 > (`ficha_low_confidence_pixel_ratio`, default 10), because CHIRPS pixels are ~5.5 km and 30 m

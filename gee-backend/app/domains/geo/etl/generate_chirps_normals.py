@@ -36,11 +36,19 @@ unchanged.
 
     metadata_extra = {
         "mes": 1..12 | "anual",
-        "normal_period": "1991-2020",
+        "normal_period": "<start>-<end> of THIS run",   # e.g. "1991-2020"
         "fuente": "CHIRPS",
         "version": "<UTC ISO8601 of THIS export run>",
         "resolucion_m": 5000,
     }
+
+``normal_period`` / ``fuente`` are not decoration: they are the PROVENANCE the
+ficha serves. ``ficha_service._precipitacion_dataset`` reads them off the rows
+that actually answered and publishes them as
+``precipitacion_mensual.periodo`` / ``.fuente``, so the browser states the age
+of the rasters ON DISK rather than the period this module is configured for
+(RISK-001). Re-running with ``--start-year/--end-year`` therefore changes what
+the UI says, with no frontend or backend edit.
 
 ``version`` is the single timestamp of the run, shared by all 13 rows.
 Regeneration therefore appends a fresh set of rows carrying a NEW ``version`` and
@@ -78,6 +86,12 @@ from typing import Any, Callable, Sequence
 from sqlalchemy.orm import Session
 
 from app.domains.geo.gee_service import export_chirps_monthly_normals
+from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_FUENTE_LABEL,
+    CHIRPS_NORMAL_END_YEAR,
+    CHIRPS_NORMAL_START_YEAR,
+    chirps_normal_period,
+)
 from app.domains.geo.models import FormatoGeoLayer, FuenteGeoLayer, TipoGeoLayer
 from app.domains.geo.repository import GeoRepository
 
@@ -100,12 +114,14 @@ TARGET_RESOLUTION_M = 5000
 NODATA = -9999.0
 
 #: CHIRPS normals period. Distinct year args are surfaced as CLI flags so a period
-#: extension is a documented, deliberate re-run.
-DEFAULT_START_YEAR = 1991
-DEFAULT_END_YEAR = 2020
-NORMAL_PERIOD_FMT = "{start}-{end}"
+#: extension is a documented, deliberate re-run. The DEFAULTS are re-exported from
+#: the pipeline constants rather than re-typed: the years live in exactly one place
+#: (``gee_service_analytics_support``) so the CLI help, the GEE export window and
+#: the ``normal_period`` stamped on every row can never disagree.
+DEFAULT_START_YEAR = CHIRPS_NORMAL_START_YEAR
+DEFAULT_END_YEAR = CHIRPS_NORMAL_END_YEAR
 
-FUENTE_LABEL = "CHIRPS"
+FUENTE_LABEL = CHIRPS_FUENTE_LABEL
 
 #: Default processing-area identifier. Overridable with ``--area-id`` when a
 #: deployment partitions its geo data differently.
@@ -279,7 +295,11 @@ def generate_normals(
     )
 
     version = now_fn().isoformat()
-    normal_period = NORMAL_PERIOD_FMT.format(start=start_year, end=end_year)
+    # Stamped from the years THIS run actually used — not from the module
+    # default. A ``--start-year/--end-year`` override therefore travels with the
+    # rasters it produced, and the ficha serves that instead of assuming the
+    # configured period (RISK-001).
+    normal_period = chirps_normal_period(start_year, end_year)
     output_dir = Path(GEO_DATA_ROOT) / area_id / "output"
     repo = GeoRepository()
 

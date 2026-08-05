@@ -200,7 +200,28 @@ def compute_ndwi_baselines_payload(
 CHIRPS_COLLECTION_ID = "UCSB-CHG/CHIRPS/DAILY"
 CHIRPS_NORMAL_START_YEAR = 1991
 CHIRPS_NORMAL_END_YEAR = 2020
-CHIRPS_NORMAL_PERIOD = "1991-2020"
+
+#: Human-readable product label. Travels to the browser: the ficha serves it as
+#: ``precipitacion_mensual.fuente`` and the UI prints it verbatim.
+CHIRPS_FUENTE_LABEL = "CHIRPS"
+
+
+def chirps_normal_period(start_year: int, end_year: int) -> str:
+    """``(1991, 2020) -> "1991-2020"`` — the ONE way a normals period is spelled.
+
+    Everything that has to name a period goes through here: the ETL stamps it
+    into each raster's ``metadata_extra['normal_period']``, the ficha serves it
+    as ``precipitacion_mensual.periodo``, and the UI prints whatever arrives.
+    A shared formatter is what keeps a re-run over a different period from
+    producing two spellings of the same fact.
+    """
+    return f"{start_year}-{end_year}"
+
+
+#: The period THIS pipeline is configured for. DERIVED, never re-typed: the two
+#: year constants above are the only place the years exist, so moving the period
+#: cannot leave a stale string behind (RISK-001).
+CHIRPS_NORMAL_PERIOD = chirps_normal_period(CHIRPS_NORMAL_START_YEAR, CHIRPS_NORMAL_END_YEAR)
 # CHIRPS native resolution is 0.05° (~5.5 km). The raw GEE download stays at
 # native scale; the warp to EPSG:32720 at 5 000 m happens in the ETL runner
 # (etl/generate_chirps_normals.py), never here.
