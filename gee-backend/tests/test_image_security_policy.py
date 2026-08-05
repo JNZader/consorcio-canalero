@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -746,11 +747,32 @@ def test_exact_counter_rejects_new_decreased_changed_and_duplicate_counts(
     _assert_rejected(_run(tmp_path / "duplicate", policy=duplicate), "duplicate")
 
 
+def test_deadline_ceilings_are_the_documented_dates() -> None:
+    """Pin the hard-coded ceilings so extending them cannot ride along silently.
+
+    The ceiling check compares the policy JSON against ``DEADLINE_CEILINGS`` —
+    nothing compares the constant against anything, so editing it is a one-line
+    change CI would otherwise never notice (both past extensions proved it).
+    This pin turns any future extension into a code-AND-test change in one
+    reviewed commit, which is the actual contract the security README states.
+    """
+    spec = importlib.util.spec_from_file_location("image_policy_pin", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.DEADLINE_CEILINGS == {
+        "CRITICAL": "2026-08-21T00:00:00Z",
+        "HIGH": "2026-08-21T00:00:00Z",
+        "absolute_sunset": "2026-08-21T00:00:00Z",
+    }
+
+
 @pytest.mark.parametrize(
     ("mutate_policy", "now", "message"),
     [
         (
-            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-08-06T00:00:00Z"),
+            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-08-22T00:00:00Z"),
             "2026-07-23T00:00:00Z",
             "ceiling",
         ),

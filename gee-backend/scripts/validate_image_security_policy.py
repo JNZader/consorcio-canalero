@@ -21,16 +21,60 @@ SOURCE_REPOSITORY = "https://github.com/JNZader/consorcio-canalero"
 TRIVY_VERSION = "0.70.0"
 TRIVY_REPORT_SCHEMA = 2
 PLATFORM = "linux/amd64"
-# Prorroga CRITICAL 2026-07-30: los 2 CRITICAL congelados son CVE-2026-13221 y
-# CVE-2026-42496 (perl-base de la imagen base Debian trixie). El tracker de
-# seguridad de Debian confirma que NO existe version arreglada en trixie y el
-# propio security team postergo el segundo ("minor issue; wait for regressions
-# upstream"). Sin accion posible de nuestro lado (la app no usa perl; perl-base
-# es dependencia esencial de dpkg), el techo CRITICAL se corre al sunset
-# absoluto YA existente — ese dia la politica fuerza revisar de nuevo.
+# Prorrogas al sunset absoluto — registro consolidado.
+#
+# Prorroga CRITICAL 2026-07-30 y prorroga HIGH 2026-08-04. El registro
+# anterior nombraba solo 2 CVE CRITICAL; la deuda congelada real son 24
+# filas (19 HIGH + 5 CRITICAL) sobre 13 CVE distintos, y AMBOS techos se
+# corren al mismo sunset absoluto ya existente. Re-evaluacion completa
+# 2026-08-04 (build fresco --no-cache + Trivy 0.70.0 + Docker Hub API +
+# tracker de seguridad de Debian): las 24 filas persisten identicas, NINGUNA
+# tiene FixedVersion, el digest pineado de python:3.11.15-slim-trixie sigue
+# siendo el corriente (no existe 3.11.16+) y el apt de la base no ofrece
+# candidatos nuevos.
+#
+# Evidencia del tracker de Debian — los 13 CVE estan "vulnerable" en trixie
+# sin version arreglada disponible:
+#   HIGH
+#     CVE-2026-53615  util-linux (9 filas)  unstable unfixed, bug #1140197
+#     CVE-2025-69720  ncurses (4 filas)     [trixie] no-dsa (minor issue)
+#     CVE-2026-48962  perl                  fixed solo en unstable 5.40.1-8
+#     CVE-2026-57432  perl                  fixed solo en unstable 5.40.1-8
+#     CVE-2026-42497  perl                  [trixie] postponed (minor issue)
+#     CVE-2026-9538   perl                  [trixie] postponed (minor issue)
+#     CVE-2026-41992  gzip                  [trixie] no-dsa (minor issue)
+#     CVE-2026-54369  acl                   [trixie] no-dsa (llega por point
+#                                           release, no backport individual)
+#   CRITICAL
+#     CVE-2026-13221  perl                  unstable unfixed, bug #1142037
+#     CVE-2026-42496  perl                  [trixie] postponed (minor issue)
+#     CVE-2026-57433  perl                  fixed solo en unstable 5.40.1-8
+#     CVE-2026-8376   perl                  [trixie] no-dsa (point release)
+#     CVE-2026-6653   libxml2               [trixie] no-dsa (minor issue).
+#                                           libxml2 NO viene de la imagen base:
+#                                           entra por libosmesa6 -> libllvm19,
+#                                           que instala nuestro Dockerfile para
+#                                           el render headless VTK/PyVista.
+#
+# Concentracion: util-linux 37% + perl 33% + ncurses 17% = 87% de la deuda.
+# perl-base es dependencia esencial de dpkg y util-linux/ncurses son sistema
+# base: nada de eso es removible, y la app no usa perl. La unica palanca
+# externa es un point release de Debian (13.7) que podria bajar hasta 3 HIGH
+# y 2 CRITICAL (perl 5.40.1-8 + acl); hay que vigilarlo antes del sunset.
+#
+# El sunset absoluto 2026-08-21 fuerza la re-revision total: ``_enforce_time``
+# evalua el sunset ANTES que los deadlines por severidad, asi que ese dia la
+# politica falla aunque los techos por severidad sigan vigentes; y el chequeo
+# de techos rechaza cualquier deadline del JSON mayor al sunset hard-codeado.
+# HONESTIDAD (R1-001): ese sunset es una CONSTANTE de este archivo, no un
+# mecanismo — moverla es una edicion de una linea, como lo fueron las dos
+# prorrogas registradas arriba. Lo que la vuelve costosa es el test que la
+# PINEA (``test_deadline_ceilings_are_the_documented_dates``): extenderla exige
+# tocar codigo Y test en un commit revisado, con una justificacion nueva en
+# este bloque. Ese es el contrato real; "imposible de extender" no existe.
 DEADLINE_CEILINGS = {
     "CRITICAL": "2026-08-21T00:00:00Z",
-    "HIGH": "2026-08-05T00:00:00Z",
+    "HIGH": "2026-08-21T00:00:00Z",
     "absolute_sunset": "2026-08-21T00:00:00Z",
 }
 ROLE_BINDINGS = {
