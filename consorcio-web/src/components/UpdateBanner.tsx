@@ -22,17 +22,19 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
  *     ``needRefresh`` (when the precache manifest changes) OR our
  *     external version-check.
  *
- * Rendered once at the app root (next to ``<Notifications>``).
+ * Rendered once at the app root (next to ``<Notifications>``), but NOT on the
+ * first React commit — see ``UpdateBanner`` at the bottom of this file.
  */
 import { ActionIcon, Button, Group, Paper, Portal, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
 
+import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useVersionCheck } from '../hooks/useVersionCheck';
 import { logger } from '../lib/logger';
 
 const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute
 
-export function UpdateBanner() {
+function UpdateBannerInner() {
   const { updateAvailable, latestSha } = useVersionCheck();
   // Tracks the click → reload window. Without this the button has no
   // affordance during the ~1–3 s SKIP_WAITING + controllerchange dance
@@ -60,7 +62,11 @@ export function UpdateBanner() {
       }
     },
     onRegisterError(error) {
-      logger.warn('[update-banner] service worker register error', error);
+      // `error`, not `warn`: the production logger's minLevel is 'error', so a
+      // warn here is a no-op exactly where it matters. A registration failure
+      // silently costs the user PWA offline AND the update banner — it must
+      // reach telemetry. (R4-001)
+      logger.error('[update-banner] service worker register error', error);
     },
   });
 
@@ -145,4 +151,25 @@ export function UpdateBanner() {
       </Paper>
     </Portal>
   );
+}
+
+/**
+ * PERF — the banner is deliberately NOT mounted on the first React commit.
+ *
+ * ``UpdateBannerInner`` calls ``useRegisterSW``, and that call is what
+ * registers the service worker. Mounted eagerly from ``main.tsx``, the
+ * registration fired on the very first commit and the SW immediately started
+ * precaching the whole manifest — megabytes of it — saturating a mobile link
+ * right inside the LCP window. The route chunk and the fonts then queued
+ * behind it, which is most of the measured FCP→LCP gap.
+ *
+ * Nothing is lost by waiting: this banner's entire purpose is to tell a tab
+ * that has been open for a while that a new deploy landed. It has no job in
+ * the first seconds of a page load. So we hold the mount until ``load`` has
+ * fired and the main thread is idle, and only then let the SW register.
+ */
+export function UpdateBanner() {
+  const ready = useDeferredIdleMount();
+  if (!ready) return null;
+  return <UpdateBannerInner />;
 }

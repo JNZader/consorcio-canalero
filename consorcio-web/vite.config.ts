@@ -41,7 +41,25 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt', 'capas/*.geojson'],
+      // PERF — keep this list MINIMAL. ``includeAssets`` bypasses
+      // ``workbox.globIgnores`` entirely: whatever is listed here lands in
+      // the precache manifest even when the ignore list right below claims
+      // to exclude it. ``capas/*.geojson`` (~340 KB) used to be here and
+      // silently re-added the very files ``**/*.geojson`` was ignoring.
+      // ``favicon.ico`` (~76 KB) is also gone: the browser fetches it lazily
+      // for the tab, and the PWA install flow reads icons from the manifest,
+      // not from the precache.
+      includeAssets: ['robots.txt'],
+      // PERF — vite-plugin-pwa defaults this to ``true``, which force-adds
+      // EVERY file referenced by ``manifest.icons`` to the precache, behind
+      // the back of both ``globPatterns`` and ``globIgnores``. That is a third
+      // way into the manifest, and it was quietly re-adding ``favicon.ico``
+      // plus both 512 px icons (~430 KB) after they had been removed from the
+      // other two. The install flow reads icons from the webmanifest itself,
+      // so precaching them buys nothing. ``icon-192.png`` (48 KB) still gets
+      // in via ``globPatterns`` — it is the one the browser shows in the
+      // install prompt, and it is small enough not to matter.
+      includeManifestIcons: false,
       manifest: {
         name: 'Consorcio Canalero 10 de Mayo',
         short_name: 'CC10M',
@@ -115,9 +133,26 @@ export default defineConfig({
         // map. PWA precache used to bloat every install by ~7 MB on
         // first visit, including users who only use the form / admin
         // routes and never touch the map.
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        //
+        // ``ico`` removed from the pattern too — ``favicon.ico`` was the only
+        // match and it does not belong in the install-time critical path.
+        globPatterns: ['**/*.{js,css,html,png,svg,json}'],
         globIgnores: [
-          // Belt-and-braces — any new ``.geojson`` that lands in the
+          // PERF — the service worker registers during the LCP window on a
+          // cold mobile visit, and every byte listed here competes with the
+          // route chunk and the fonts for the same link. The three groups
+          // below are the ones that were pure dead weight.
+          //
+          // 1. Static data payloads: ``data/pilar-verde/bpa_enriched.json``
+          //    alone is ~490 KB and is only read by the Pilar Verde panel.
+          //    Fetched on demand at runtime.
+          'data/**/*.json',
+          // 2. The large PWA icons (~355 KB for the two 512s). The OS reads
+          //    them from ``manifest.webmanifest`` when the user installs the
+          //    app — the precache never serves that request. ``icon-192``
+          //    stays (48 KB, used as the in-browser install prompt icon).
+          '**/icon-512*.png',
+          // 3. Belt-and-braces — any new ``.geojson`` that lands in the
           // build directory also stays out of precache. Runtime loads
           // them on demand via the public viewer hooks.
           '**/*.geojson',
@@ -126,11 +161,19 @@ export default defineConfig({
           // otherwise the SW happily serves the build's own SHA forever
           // and the in-app "Reload to update" banner never fires.
           'version.json',
-          // ``vendor-maplibre`` was intentionally precached (~500 kb) so the
+          // ``vendor-maplibre`` was intentionally precached (~780 kb) so the
           // 3D viewer doesn't pay a cold network fetch the first time the
           // user opens it — the entire app is map-centric, the trade-off
           // pays back immediately. The remaining heavy vendor chunks stay
           // in runtime CacheFirst because they're only used on niche pages.
+          //
+          // TODO(perf): ``vendor-maplibre`` (~780 KB) + ``MapaMapLibre``
+          // (~320 KB) are now BY FAR the largest slice of what the SW pulls
+          // at install time, and a visitor who never opens ``/mapa`` pays
+          // all of it. Dropping them would be the single biggest remaining
+          // win — but it also kills ``/mapa`` offline, and that is a PRODUCT
+          // decision nobody has taken yet. Do not remove them here without
+          // an explicit call on whether offline map support still matters.
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
           '**/vendor-charts-*.js',
