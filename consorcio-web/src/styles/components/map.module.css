@@ -299,20 +299,42 @@
    `.infoPanel` y `.fichaPanel` arriba (0.96), o el borde del degradado se veria
    como una banda distinta al panel.
 
-   `margin-top: -24px` deja el pseudo-elemento con ALTURA CERO en el flujo (se
-   superpone a los ultimos 24px de contenido) y el `padding-bottom` de abajo
-   agrega justo esos 24px de blanco al final: cuando el panel esta scrolleado
-   hasta el fondo, el degradado cae sobre el padding y no vela ni una linea.
+   SIN `margin-top` NEGATIVO, Y EL SCROLLER SIN `padding-bottom`. Las dos cosas
+   van juntas y son la CURA de un bug real: el ultimo renglon de la ficha se veia
+   "cortado a la mitad" en las cuatro solapas. No habia recorte — el degradado se
+   lo comia.
 
-   `bottom: 0`, no un valor negativo: el rectangulo de anclaje de `sticky` es el
-   scrollport, o sea la CAJA DE PADDING. Un `bottom` negativo lo agranda hacia
-   abajo y empujaria el degradado fuera de la parte visible. En 0 queda al ras
-   del borde inferior, que es donde el contenido pasa por debajo.
+   La restriccion que manda es la del bloque contenedor: una caja `sticky` NUNCA
+   sale de su bloque contenedor, y el de este pseudo-elemento es la CAJA DE
+   CONTENIDO del scroller, no su caja de padding. O sea que, scrolleado hasta el
+   fondo, el degradado queda apoyado en el borde inferior de la caja de
+   CONTENIDO. Un `padding-bottom` en el scroller no compra despeje: sube ese
+   borde exactamente los mismos pixeles que agrega abajo, asi que el degradado
+   sigue cayendo sobre el ultimo renglon y ademas deja una franja opaca por
+   debajo donde el contenido pasa SIN velo. Medido con este mismo CSS en
+   Chromium y en Firefox, tarjeta y sheet: con `margin-top: -24px` +
+   `padding-bottom: 24px` el degradado se apoyaba en [contentBoxBottom - 24,
+   contentBoxBottom] y el renglon final entraba entero adentro (solape ≈17.6px,
+   el alto completo de la linea). Sin margen negativo y sin padding: solape 0.
+
+   Por eso el pseudo-elemento es un ESPACIADOR DE VERDAD de 24px al final del
+   flujo. El contenido termina 24px antes del borde del scrollport, el degradado
+   ocupa justo esos 24px vacios y queda al ras del borde visible — que es donde
+   el contenido se recorta y donde la afordancia tiene que estar. La canaleta
+   debajo del ultimo renglon no cambia: son los mismos 24px de antes.
+
+   `bottom: 0`, no un valor negativo, por la MISMA restriccion: un `bottom`
+   negativo se vuelve a recortar contra el bloque contenedor, asi que no sirve
+   para empujar el degradado por debajo del ultimo renglon.
 
    `margin-inline` negativo lo sangra a traves del padding lateral (16px de cada
    lado) para que el degradado llegue a los dos bordes; la caja resultante mide
    exactamente el ancho de la caja de padding, asi que no genera scroll
-   horizontal (`overflow-y: auto` obliga a `overflow-x: auto`). */
+   horizontal (`overflow-y: auto` obliga a `overflow-x: auto`).
+
+   Fijado por `tests/unit/mapPanelFadeClearance.test.ts` (el CSS como texto) y
+   por `tests/accessibility/mapPanelFade.spec.ts`, que mide la geometria en
+   motores de verdad — un test en happy-dom no maqueta nada. */
 .infoPanel::after,
 .fichaPanel::after {
   content: '';
@@ -320,7 +342,6 @@
   position: sticky;
   bottom: 0;
   height: 24px;
-  margin-top: -24px;
   margin-inline: calc(-1 * var(--mantine-spacing-md));
   background: linear-gradient(
     to top,
@@ -330,16 +351,21 @@
   pointer-events: none;
 }
 
-/* `!important` A PROPOSITO y NO decorativo: `MapPanelShell` monta las dos
-   tarjetas como `<Paper p="md">`, y en Mantine 8 una style prop no responsiva se
-   emite como estilo INLINE (`parseStyleProps` → `inlineStyles`), o sea un
-   `padding` shorthand inline. Ninguna regla de hoja de estilos le gana sin
-   `!important`, y sin este padding el degradado de arriba se comeria los ultimos
-   24px de contenido en el fondo del scroll — el remedio seria peor que la
-   guillotina. Mismo criterio que `--slider-size` mas abajo. */
+/* CERO padding inferior, y el `!important` es A PROPOSITO y NO decorativo:
+   `MapPanelShell` monta las dos tarjetas como `<Paper p="md">`, y en Mantine 8
+   una style prop no responsiva se emite como estilo INLINE (`parseStyleProps` →
+   `inlineStyles`), o sea un `padding` shorthand inline de 16px. Ninguna regla de
+   hoja de estilos le gana sin `!important`. Mismo criterio que `--slider-size`
+   mas abajo.
+
+   Cero, no un valor: el despeje del ultimo renglon ya lo da el espaciador de
+   24px del `::after` de arriba. Cualquier `padding-bottom` aca ADEMAS de eso
+   levantaria el degradado del borde visible (el `sticky` se apoya en la caja de
+   contenido) y dejaria una franja de contenido sin velo justo abajo — que es
+   exactamente el bug que se arreglo. */
 .infoPanel,
 .fichaPanel {
-  padding-bottom: calc(var(--mantine-spacing-md) + 8px) !important;
+  padding-bottom: 0 !important;
 }
 
 @media (max-width: 62em) {
@@ -508,25 +534,28 @@
        padding vive en el `Paper` que lo envuelve), asi que su caja de contenido
        ya es su caja de padding: sangrarlo 16px generaria overflow horizontal de
        verdad, no un sangrado.
-   El `padding-bottom` no necesita `!important` por lo mismo — no hay estilo
-   inline de Mantine sobre este div. */
+
+   Igual que arriba: SIN `margin-top` negativo y sin `padding-bottom` propio. El
+   `sticky` se apoya en la caja de CONTENIDO de este div, asi que un padding aca
+   subiria el degradado en vez de despejarlo (el bug del renglon "cortado" era
+   este mismo, medido en las tres etapas del sheet). El pseudo-elemento es el
+   espaciador: 24px vacios al final del flujo. La canaleta debajo del ultimo
+   renglon no cambia — esos 24px mas los 16px del `Paper` que envuelve.
+
+   Fijado por `tests/unit/mapPanelFadeClearance.test.ts` y medido en las tres
+   etapas por `tests/accessibility/mapPanelFade.spec.ts`. */
 .panelSheetBody::after {
   content: '';
   display: block;
   position: sticky;
   bottom: 0;
   height: 24px;
-  margin-top: -24px;
   background: linear-gradient(
     to top,
     light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97)),
     transparent
   );
   pointer-events: none;
-}
-
-.panelSheetBody {
-  padding-bottom: 24px;
 }
 
 /* Pinned header strip: the expand/collapse handle PLUS the close control
