@@ -303,6 +303,12 @@ export function useMapInteractionEffects({
       // T4 — ctrl (Windows/Linux) or ⌘ (macOS) means ACCUMULATE. `originalEvent`
       // is optional in the MapLibre typings and absent in synthesized events, so
       // a missing modifier reads as a plain click — the pre-T4 behaviour.
+      //
+      // DELIBERATELY PUBLIC. The "Selección múltiple" toolbar button is hidden
+      // from anonymous visitors (`useAnalysisToolsGate`), but that button is only
+      // a discoverable shortcut for THIS gesture — the owner's rule is "se
+      // esconde el botón, NO la capacidad". The modifier is read straight off the
+      // DOM event and never consults the auth store; keep it that way.
       const original = event.originalEvent as MouseEvent | undefined;
       const additive = !!original && (original.ctrlKey || original.metaKey);
       onParcelaResolved?.(parcela, additive);
