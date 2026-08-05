@@ -63,6 +63,7 @@ import {
   IconTrash,
   IconVectorTriangle,
 } from '../../ui/icons';
+import { MAP_CTRL_GLYPH_SIZE } from '../map2dConfig';
 import type { MeasurementMode } from './useMeasurement';
 
 export interface MeasurementToolbarProps {
@@ -170,7 +171,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           color: isMeasuring ? '#fff' : '#333',
         }}
       >
-        <IconRuler size={16} />
+        <IconRuler size={MAP_CTRL_GLYPH_SIZE} />
         {/* Coarse-pointer only (CSS): tooltips never fire on touch. */}
         <span className={styles.mapCtrlButtonLabel}>Medir</span>
       </UnstyledButton>
@@ -212,7 +213,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
                 color: fichaDrawActive ? '#fff' : '#333',
               }}
             >
-              <IconVectorTriangle size={16} />
+              <IconVectorTriangle size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Dibujar</span>
             </UnstyledButton>
           </Tooltip>
@@ -228,7 +229,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               data-testid="ficha-draw-new-polygon"
               style={{ color: '#333' }}
             >
-              <IconPolygon size={16} />
+              <IconPolygon size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Otro</span>
             </UnstyledButton>
           </Tooltip>
@@ -244,7 +245,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               data-testid="ficha-draw-delete-polygon"
               style={{ color: '#dc2626' }}
             >
-              <IconTrash size={16} />
+              <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Borrar</span>
             </UnstyledButton>
           </Tooltip>
@@ -263,7 +264,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
                 color: fichaCanalActive ? '#fff' : '#333',
               }}
             >
-              <IconRoute size={16} />
+              <IconRoute size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Canal</span>
             </UnstyledButton>
           </Tooltip>
@@ -283,7 +284,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               }}
               data-testid="ficha-multi-select-toggle"
             >
-              <IconLayers size={16} />
+              <IconLayers size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Varias</span>
             </UnstyledButton>
           </Tooltip>
@@ -298,7 +299,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               className={styles.mapCtrlButton}
               style={{ color: '#dc2626' }}
             >
-              <IconTrash size={16} />
+              <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
               {/* The exit button shares the coarse-pointer label treatment: a
                   44px trash glyph with no text reads as ambiguous on touch. */}
               <span className={styles.mapCtrlButtonLabel}>

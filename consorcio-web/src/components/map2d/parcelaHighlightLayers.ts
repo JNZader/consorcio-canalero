@@ -79,11 +79,14 @@ function removeParcelaHighlight(map: maplibregl.Map) {
  * - If the catastro source is not on the map at all (the style has not finished
  *   loading), this is a NO-OP rather than an error — the caller re-runs on every
  *   selection change, so the highlight appears as soon as the source is there.
+ * - `overlayActive: true` drops the FILL and keeps only the outline. See
+ *   `THE FILL LIES OVER THE FICHA OVERLAY` below — do NOT "simplify" this away.
  */
 export function syncParcelaHighlightLayers(
   map: maplibregl.Map,
   nomenclaturas: readonly string[],
-  catastroVisible = true
+  catastroVisible = true,
+  overlayActive = false
 ) {
   if (nomenclaturas.length === 0 || !catastroVisible || !map.getSource(CATASTRO_SOURCE)) {
     removeParcelaHighlight(map);
@@ -92,7 +95,40 @@ export function syncParcelaHighlightLayers(
 
   const filter = buildParcelaHighlightFilter(nomenclaturas);
 
-  if (map.getLayer(PARCELA_HIGHLIGHT_FILL_LAYER)) {
+  /* ── THE FILL LIES OVER THE FICHA OVERLAY ───────────────────────────────────
+     Reported on a multi-parcel selection near the consortium boundary, root
+     cause confirmed empirically (the backend is NOT at fault: the raster simply
+     has no coverage out there, and the overlay correctly paints nothing).
+
+     Two independent failures, both caused by this fill and both only while the
+     ficha overlay is on:
+
+     1. IT INVENTS DATA. The highlight fills the parcel's WHOLE geometry,
+        including the part the raster does not cover, and it is added AFTER the
+        overlay (`MapaMapLibre.tsx`: the overlay effect runs before this one, so
+        this layer sits on top). `#f59f00` at 0.35 over a satellite basemap lands
+        within a few points of `#fc8d59`, the "Alto" class in `rasterLegend.ts` —
+        so a no-coverage area reads as a solid high-risk zone. That is a
+        fabricated reading of a legend, which is the one thing this map must
+        never do.
+     2. IT TINTS THE REAL CLASSES. Where the raster DOES have coverage, a 0.35
+        amber wash sits over every class and pulls all of them towards orange, so
+        even the honest part of the overlay is mis-read.
+
+     The MINIMAL fix: while the overlay is active, paint the OUTLINE only. The
+     line already answers the question the fill was there for ("which parcels are
+     in this selection?") without asserting anything about the interior — and the
+     interior is exactly what the overlay owns. With the overlay OFF the fill
+     comes back untouched: there is nothing to lie about and nothing to tint, and
+     a filled parcel is far easier to spot at low zoom.
+
+     Removed, not made transparent: an `fill-opacity: 0` layer would still be a
+     hit-target and would still have to be kept in sync. */
+  if (overlayActive) {
+    if (map.getLayer(PARCELA_HIGHLIGHT_FILL_LAYER)) {
+      map.removeLayer(PARCELA_HIGHLIGHT_FILL_LAYER);
+    }
+  } else if (map.getLayer(PARCELA_HIGHLIGHT_FILL_LAYER)) {
     map.setFilter?.(PARCELA_HIGHLIGHT_FILL_LAYER, filter);
   } else {
     map.addLayer({

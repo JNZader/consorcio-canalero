@@ -2,6 +2,7 @@ import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 import styles from '../../styles/components/map.module.css';
 import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
+import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
 
 interface MapActionsPanelProps {
   /** Gates the "Exportar PDF" entry. PDF needs an approved zoning to render. */
@@ -68,7 +69,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               className={styles.mapCtrlButton}
               style={{ color: '#333' }}
             >
-              <IconDownload size={16} />
+              <IconDownload size={MAP_CTRL_GLYPH_SIZE} />
               {/* The shared coarse-pointer caption slot. It is deliberately
                   HIDDEN for this button (`.mapActionsDock .mapCtrlButtonLabel`
                   in `map.module.css`): a labeled, wider box in the right-hand

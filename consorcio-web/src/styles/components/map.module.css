@@ -705,6 +705,174 @@
   white-space: nowrap;
 }
 
+/* Glyph contract for the whole floating-control column, native and custom
+   alike. `--map-ctrl-glyph-size` is mirrored by `MAP_CTRL_GLYPH_SIZE` in
+   `map2dConfig.ts`, which feeds the `size` prop of every Tabler icon rendered
+   inside a `.mapCtrlButton` — the two MUST stay equal or the column goes ragged
+   again, and `MapCtrlTouchTargets` pins them together. 18px inside a 29px button
+   leaves ~5.5px of optical padding, and still reads at the 44px touch size. */
+.mapCanvasWrapper,
+.workspaceCanvas {
+  --map-ctrl-glyph-size: 18px;
+  --map-ctrl-icon-color: #333;
+}
+
+/* ── ONE ICON FAMILY IN THE CONTROL COLUMN ────────────────────────────────────
+   The column mixed three drawing languages: MapLibre's factory sprites (solid
+   filled shapes at wildly different optical weights — the compass in particular
+   is two stacked triangles, one of them a hard-coded `#ccc`, which reads as a
+   broken glyph rather than a needle), our Tabler outline icons in the Exportar
+   dock, and the same Tabler set again in the measurement toolbar. The owner's
+   screenshot is exactly that mismatch.
+
+   We do NOT reimplement `NavigationControl` / `FullscreenControl`: the touch
+   target contract (`MapCtrlTouchTargets`) and the coarse-pointer layout budget
+   are both written against the library's own buttons. Only the GLYPH is
+   replaced, via the same `background-image`-on-`.maplibregl-ctrl-icon` hook
+   MapLibre itself uses.
+
+   ── PROVENANCE OF THE FIVE SPRITES, AND HOW TO REGENERATE ONE ───────────────
+   Each is the path data of a `@tabler/icons` glyph, so the column matches the
+   `<Icon* />` components rendered beside it:
+     zoom-in    → IconPlus        · zoom-out → IconMinus
+     compass    → IconNavigation  · fullscreen → IconMaximize
+     shrink     → IconMinimize
+   To change one: open `node_modules/@tabler/icons-react/dist/esm/icons/<Name>.mjs`,
+   take the `<path d="…">` entries, drop Tabler's `path-0 / M0 0h24v24H0z` guard
+   rect, and URL-encode `#` → `%23`, `<` → `%3C`, `>` → `%3E`, `/` → `/` (safe).
+
+   NON-OBVIOUS CONSTRAINT — the stroke colour must be written LITERALLY. An SVG
+   loaded through `mask-image` is an independent document: it does NOT inherit
+   `currentColor` (or any custom property) from the host element. Pasting Tabler
+   markup verbatim, which uses `stroke="currentColor"`, resolves to the SVG's own
+   initial colour and yields a glyph the mask sees as fully transparent — i.e.
+   an invisible button, with no error anywhere. Hence `stroke='%23000'` in every
+   sprite below: for a mask only the ALPHA channel matters, so any opaque colour
+   works and black is the conventional choice. The visible ink comes from
+   `background-color` on the host, which is where `currentColor` DOES apply.
+
+   MASK, NOT BACKGROUND-IMAGE. MapLibre ships each sprite with the fill baked
+   into the data-URI (`fill='%23333'`), so a background-image override would
+   hard-code the colour too. Painting the data-URI as a MASK over
+   `background-color: currentColor` makes the glyph inherit the button's `color`
+   instead, which is the single knob for any future theming — the sprite itself
+   stays colour-agnostic. `background-image: none` is load-bearing: without it
+   MapLibre's own sprite keeps painting UNDER our mask.
+
+   NO DARK VARIANT, DELIBERATELY. Verified: nothing in this repo overrides
+   `.maplibregl-ctrl-group`'s background, so the chrome is MapLibre's `#fff` in
+   BOTH colour schemes (the `%23fff` sprites upstream ship are gated behind
+   `@media (forced-colors: active)`, not behind `prefers-color-scheme`). A light
+   glyph under `[data-mantine-color-scheme='dark']` would therefore be white on
+   white. `currentColor` means the day the chrome goes dark this is one `color`
+   declaration, not five re-encoded data-URIs.
+
+   The per-button selectors are spelled out rather than collapsed onto
+   `.maplibregl-ctrl-icon` on purpose: MapLibre's rule is
+   `.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon`
+   (0,3,1). A generic override would only TIE on specificity and win or lose on
+   stylesheet injection order; naming the modifier class makes it (0,4,1).
+
+   COMPASS ROTATION SURVIVES. `NavigationControl` writes `transform: rotate(…)`
+   onto `this._compassIcon`, i.e. onto the very `<span class="maplibregl-ctrl-icon">`
+   these rules target. A transform on the element transforms its mask with it, so
+   the needle still tracks bearing. */
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon),
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon),
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon),
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon),
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon) {
+  background-image: none;
+  background-color: currentColor;
+  color: var(--map-ctrl-icon-color);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: var(--map-ctrl-glyph-size) var(--map-ctrl-glyph-size);
+  mask-size: var(--map-ctrl-glyph-size) var(--map-ctrl-glyph-size);
+}
+
+/* ── WINDOWS HIGH CONTRAST / forced-colors ──────────────────────────────────
+   REGRESSION THE MASK INTRODUCED, and the reason this branch is not optional.
+
+   Upstream MapLibre ships a `@media (forced-colors: active)` variant of every
+   sprite plus `.maplibregl-ctrl-icon { background-color: transparent }`. Both of
+   those lose to the rules above: a media query adds NO specificity, so our
+   (0,4,1) selectors beat upstream's (0,3,1) inside the forced-colors block too.
+
+   That would be harmless for a background-image, but our glyph is painted by
+   `background-color` — and `background-color` is precisely the property the
+   forced-colors mode overrides, replacing author colours with the user's system
+   palette (it resolves to `Canvas`, the page BACKGROUND colour). Net effect: the
+   mask keeps its shape, gets filled with the background colour, and every button
+   in the column goes blank for exactly the users who need contrast most.
+
+   Fix: repaint with `CanvasText`, the system colour forced-colors reserves for
+   foreground content and the one keyword it will not substitute. The mask still
+   does the cutting; only the ink changes. `forced-color-adjust: none` is NOT
+   used — we WANT the system palette here, we just have to name a foreground
+   colour from it. */
+@media (forced-colors: active) {
+  .mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon),
+  .mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon),
+  .mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon),
+  .mapCanvasWrapper
+    :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon),
+  .mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon),
+  .workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon),
+  .workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon),
+  .workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon),
+  .workspaceCanvas
+    :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon),
+  .workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon) {
+    background-color: CanvasText;
+    color: CanvasText;
+  }
+}
+
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon) {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14'/%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14'/%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+}
+
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon) {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+}
+
+/* Tabler `IconNavigation` — a north needle, the honest reading of "reset
+   bearing". It replaces the factory two-triangle mark whose lower half is a
+   hard-coded `#ccc` (invisible against light chrome, which is why the owner
+   read it as broken). */
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon) {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 18.5l-7 3l7 -18l7 18z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 18.5l-7 3l7 -18l7 18z'/%3E%3C/svg%3E");
+}
+
+/* Tabler `IconMaximize`. */
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-fullscreen .maplibregl-ctrl-icon) {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8V6a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M4 16v2a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M16 20h2a2 2 0 0 0 2-2v-2'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8V6a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M4 16v2a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M16 20h2a2 2 0 0 0 2-2v-2'/%3E%3C/svg%3E");
+}
+
+/* Tabler `IconMinimize` — the `-shrink` class MapLibre swaps in while the map
+   is actually fullscreen. */
+.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon),
+.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-shrink .maplibregl-ctrl-icon) {
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 19v-2a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M15 5v2a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M5 15h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M5 9h2a2 2 0 0 0 2-2v-2'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 19v-2a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M15 5v2a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M5 15h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M5 9h2a2 2 0 0 0 2-2v-2'/%3E%3C/svg%3E");
+}
+
 /* The measurement toolbar's inner stack. This used to be an inline
    `flexDirection: 'column'`, which a media query cannot reach — it has to be a
    class so the coarse breakpoint below can flip the toolbar to a horizontal
@@ -1182,4 +1350,14 @@
   right: 0;
   bottom: 0;
   pointer-events: none;
+}
+
+/* Bar labels of the ficha's precipitation chart. A CLASS, not a `fill` prop:
+   recharts emits `fill` as an SVG presentation attribute, where `var()` is
+   never substituted (the declaration is dropped -> black text, invisible on
+   the dark panel). Only a stylesheet declaration resolves the custom property
+   — the same way @mantine/charts colours its chart text. */
+.precipBarLabels text,
+text.precipBarLabels {
+  fill: var(--mantine-color-text);
 }
