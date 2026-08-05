@@ -21,12 +21,45 @@ module-path = [
   #
   # O sea: el numero local de 3.14 es el PESIMISTA. En CI el gate ve 97 %.
   "app/domains/finanzas/service.py",
-  # TODO(mutation-coverage): faltan las etapas 2 y 3 -- padron/service.py (191
-  # mutantes) y auth/refresh_tokens.py (300, el de mayor valor y el mas caro).
-  # La receta ya esta probada por finanzas y NO es "correr los tests con DB mas
-  # rapido": el service no toca la base, delega todo en el repository, asi que
-  # se testea con un repositorio y una Session falsos (MagicMock). Ver
-  # tests/test_mutation_targets_finanzas.py. refresh_tokens merece su propio
+  # ── etapa 2 del plan escalonado, MEDIDA y habilitada (2026-08-04) ──
+  # 191 mutantes. Medido en LOS DOS interpretes, igual que finanzas, porque el
+  # numero depende del interprete y el que manda es el de CI:
+  #
+  #   Python 3.11 (EL DE CI, `python-version: '3.11'` en backend.yml):
+  #     182/191 = 95.29 % — 2 min 33 s, 0.80 s por mutante con el test-command
+  #     reducido al archivo de padron.
+  #
+  #   Python 3.14 (el venv local): 171/191 = 89.53 % — 5 min 32 s.
+  #
+  # La diferencia son EXACTAMENTE los 11 mutantes del `|` de la anotacion
+  # `PadronRepository | None`, el mismo caso que finanzas: con PEP 649 (3.14) la
+  # anotacion se evalua diferida y la version mutada nunca corre; en 3.11 se
+  # evalua eager, `PadronRepository + None` explota al importar y los 11 mueren.
+  # O sea: el numero local de 3.14 vuelve a ser el PESIMISTA, y aun asi queda
+  # 59 pp por encima del piso de 0.30 que pide `cosmic_gate.py`.
+  #
+  # Los 9 sobrevivientes de 3.11 son equivalentes, no huecos de test:
+  #   linea 125  `exclude_unset=True` -> `False`. El unico consumidor del dump es
+  #              `"cuit" in update_fields and update_fields["cuit"] is not None`,
+  #              y el guard `is not None` hace que las dos variantes se comporten
+  #              igual.
+  #   linea 245  `created > 0` -> `created != 0`. `created` es un contador que
+  #              arranca en 0 y solo sube: nunca es negativo.
+  #   linea 324  `idx < len(values)` -> `<=`, `!=`, `is not`. openpyxl rellena
+  #              cada fila hasta el ancho de la hoja, asi que `idx` nunca llega a
+  #              `len(values)` y la rama `else None` es inalcanzable.
+  #   linea 338  `sheet.nrows == 0` -> `== 1`, `== -1`, `< 0`, `<= 0`. Con
+  #              `nrows` no negativo las cuatro coinciden con el original de los
+  #              dos lados del guard.
+  #
+  # El gate pasa de 350 a 541 mutantes (350 + 191).
+  "app/domains/padron/service.py",
+  # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
+  # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
+  # veces y NO es "correr los tests con DB mas rapido": el service no toca la
+  # base, delega todo en el repository, asi que se testea con un repositorio y
+  # una Session falsos (MagicMock). Ver tests/test_mutation_targets_finanzas.py
+  # y tests/test_mutation_targets_padron.py. refresh_tokens merece su propio
   # job/config con su propio piso antes que empujar este gate contra los 35
   # minutos de timeout-minutes. Medicion y plan completos en
   # .cosmic-ray.candidate.toml.
