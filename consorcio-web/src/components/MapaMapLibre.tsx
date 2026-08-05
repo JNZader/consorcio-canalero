@@ -103,6 +103,25 @@ import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
 const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
 
+/**
+ * Is the ficha overlay ACTUALLY painting? (Enabled is not enough: the fetch may
+ * still be in flight, and an enabled-but-empty overlay paints nothing.)
+ *
+ * ONE definition, TWO consumers — the overlay effect's `visible`, and the parcel
+ * highlight's `overlayActive`. They must never disagree: the highlight
+ * suppresses its amber fill precisely while these classes are on screen, so a
+ * duplicated literal that drifted would put the wash back over the legend.
+ *
+ * A module-level helper rather than an inline expression because `MapaMapLibre`
+ * sits exactly ON biome's `noExcessiveCognitiveComplexity` ceiling
+ * (`maxAllowedComplexity: 30`, `biome.json`) — measured: inlining this one `&&`
+ * anywhere inside the component takes it to 31 and trips the rule. The predicate
+ * belongs outside the component anyway, since it is pure.
+ */
+function isFichaOverlayPainting(enabled: boolean, data: unknown): boolean {
+  return enabled && data != null;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Main component                                                             */
 /* -------------------------------------------------------------------------- */
@@ -572,6 +591,8 @@ export default function MapaMapLibre() {
     fichaOverlayEnabled
   );
 
+  const fichaOverlayPainting = isFichaOverlayPainting(fichaOverlayEnabled, fichaOverlay.data);
+
   // Auto-minimize signal (T3a, fix 2): one bump per map DRAG gesture, so open
   // panels collapse to their pills the moment the user starts panning. Zoom and
   // click are deliberately NOT subscribed — see `useMapDragSignal`.
@@ -587,7 +608,7 @@ export default function MapaMapLibre() {
     syncFichaOverlayLayers(map, {
       featureCollection: (fichaOverlay.data as unknown as FeatureCollection | undefined) ?? null,
       dataset: fichaTabs.overlayDataset,
-      visible: fichaOverlayEnabled && !!fichaOverlay.data,
+      visible: fichaOverlayPainting,
       // Same call, same effect: the sync re-creates the layers whenever they
       // were removed, and a fresh layer carries no filter — reapplying it in a
       // second effect would leave one frame painting the hidden classes.
@@ -595,7 +616,7 @@ export default function MapaMapLibre() {
     });
   }, [
     mapReady,
-    fichaOverlayEnabled,
+    fichaOverlayPainting,
     fichaOverlay.data,
     fichaTabs.overlayDataset,
     fichaTabs.visibleClases,
@@ -610,13 +631,21 @@ export default function MapaMapLibre() {
   // The catastro VISIBILITY is a real input: the source stays on the map when
   // the layer is turned off (only the layers' visibility flips), so without this
   // the highlight painted parcels the user had just hidden.
+  //
+  // So is whether the ficha OVERLAY is painting. This effect runs AFTER the
+  // overlay effect above, so the highlight's amber fill lands on top of it: over
+  // a no-coverage area it reads as the legend's "Alto" class, and over a covered
+  // one it tints every real class orange. `overlayActive` drops the fill (the
+  // outline still identifies the selection) exactly while the overlay is up —
+  // see the long note in `parcelaHighlightLayers.ts`. It mirrors the SAME
+  // expression fed to the overlay's `visible`, so the two can never disagree.
   const parcelasSeleccionadas = fichaInteraction.state.parcelas;
   const catastroVisible = vectorVisibility.catastro !== false;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible);
-  }, [mapReady, parcelasSeleccionadas, catastroVisible]);
+    syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting);
+  }, [mapReady, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting]);
 
   // Free-draw session wiring (T4). Lives in its own hook so the escape-mode
   // synthesis and the "Otro" path are unit-testable — see `useFichaDrawWiring`.

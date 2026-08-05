@@ -29,6 +29,26 @@ export const DEFAULT_BASE_LAYER: 'osm' | 'satellite' = 'satellite';
  */
 export const CATASTRO_FILL_OPACITY = 0.12;
 
+/**
+ * Glyph edge, in px, of EVERY icon in the floating map-control column —
+ * SINGLE SOURCE OF TRUTH for the custom (Tabler) half of it.
+ *
+ * The column mixes controls we render (`MapActionsPanel`, `MeasurementToolbar`)
+ * with the ones MapLibre renders itself (zoom, compass, fullscreen). MapLibre's
+ * are sprites on a `<span>`, so they cannot take a React prop: their size comes
+ * from `--map-ctrl-glyph-size` in `map.module.css`, and this constant is the
+ * mirror image of that variable for the icons that DO take a prop.
+ *
+ * NOT for `CanalBufferControl`: its `IconRoute` is a heading icon inside the
+ * ficha PANEL, not a button in the floating column, so it correctly stays at the
+ * panel's own 16px. Do not "fix" it to match this constant.
+ *
+ * The two used to disagree by accident (custom glyphs at 16px next to the
+ * library's chunkier ~14–20px filled sprites), which is the ragged column the
+ * owner reported. `tests/unit/MapCtrlTouchTargets.test.tsx` asserts the mirror.
+ */
+export const MAP_CTRL_GLYPH_SIZE = 18;
+
 export const SOURCE_IDS = {
   WATERWAYS: 'map2d-waterways',
   SOIL: 'map2d-soil',

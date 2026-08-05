@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
+import { MAP_CTRL_GLYPH_SIZE } from "../../src/components/map2d/map2dConfig";
 import { MapActionsPanel } from "../../src/components/map2d/MapActionsPanel";
 import { MeasurementToolbar } from "../../src/components/map2d/measurement/MeasurementToolbar";
 
@@ -372,6 +373,190 @@ describe("coarse-pointer bottom toolbar clears the scale bar", () => {
 		expect(rule).toMatch(/border-radius:\s*4px/);
 		expect(rule).toMatch(/overflow:\s*hidden/);
 		expect(rule).toMatch(/box-shadow:\s*0 0 0 2px rgba\(0, 0, 0, 0\.1\)/);
+	});
+});
+
+/**
+ * OWNER POLISH #2 (desktop screenshot) — the control column mixed THREE icon
+ * languages: MapLibre's factory sprites (solid fills, the compass in particular
+ * a two-triangle mark with a hard-coded `#ccc` half that reads as broken), our
+ * Tabler outline glyphs in the Exportar dock, and the same Tabler set again in
+ * the measurement toolbar, all at different optical weights.
+ *
+ * The fix is a GLYPH swap only — the library's own buttons stay, because the
+ * touch-target and layout contracts above are written against them.
+ */
+describe("the control column is one icon family", () => {
+	/** The five sprites MapLibre paints in that column. */
+	const NATIVE_CTRLS = [
+		"zoom-in",
+		"zoom-out",
+		"compass",
+		"fullscreen",
+		"shrink",
+	] as const;
+
+	/**
+	 * The rule body carrying the MASK for one native control.
+	 *
+	 * The selector appears TWICE: once in the grouped rule that sets the shared
+	 * geometry/colour, and once in its own rule that sets the sprite. Only the
+	 * latter is wanted here, so the search skips bodies without a `mask-image`.
+	 */
+	function iconRule(ctrl: string): string {
+		const selector = `.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon)`;
+		let from = 0;
+		for (;;) {
+			const at = MAP_CSS.indexOf(selector, from);
+			expect(at, `${ctrl} mask override`).toBeGreaterThan(-1);
+			const open = MAP_CSS.indexOf("{", at);
+			const close = MAP_CSS.indexOf("}", open);
+			const body = MAP_CSS.slice(open, close);
+			if (body.includes("mask-image:")) return body;
+			from = at + selector.length;
+		}
+	}
+
+	it.each(NATIVE_CTRLS)(
+		"replaces the %s sprite with an inline Tabler data-URI",
+		(ctrl) => {
+			const rule = iconRule(ctrl);
+			// Standard AND the -webkit- alias: Safari still needs the prefix.
+			expect(rule).toContain("mask-image: url(\"data:image/svg+xml");
+			expect(rule).toContain("-webkit-mask-image: url(\"data:image/svg+xml");
+			// Tabler's drawing contract: 24px box, stroke 2, round caps/joins.
+			expect(rule).toContain("viewBox='0 0 24 24'");
+			expect(rule).toContain("stroke-width='2'");
+			expect(rule).toContain("stroke-linecap='round'");
+			expect(rule).toContain("stroke-linejoin='round'");
+		},
+	);
+
+	it("covers BOTH map surfaces, not just the standalone page", () => {
+		for (const ctrl of NATIVE_CTRLS) {
+			expect(MAP_CSS).toContain(
+				`.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon)`,
+			);
+		}
+	});
+
+	it("names the modifier class so it OUTSPECIFIES MapLibre's own rule", () => {
+		// Upstream is `.maplibregl-ctrl button.maplibregl-ctrl-zoom-in
+		// .maplibregl-ctrl-icon` = (0,3,1). Overriding the bare `.maplibregl-ctrl-icon`
+		// would only tie, and the winner would depend on injection order.
+		expect(MAP_CSS).not.toMatch(
+			/\.mapCanvasWrapper :global\(\.maplibregl-ctrl-icon\)/,
+		);
+		for (const ctrl of NATIVE_CTRLS) {
+			expect(MAP_CSS).toContain(`button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon`);
+		}
+	});
+
+	it("paints the mask with currentColor and kills the sprite underneath", () => {
+		const shared = /background-image: none;([^}]*)\}/.exec(MAP_CSS)?.[1] ?? "";
+		// Without `background-image: none` MapLibre's own sprite keeps painting
+		// UNDER the mask and the two glyphs overlap.
+		expect(shared).toContain("background-color: currentColor");
+		// One colour knob for the whole family — the sprites carry no fill.
+		expect(shared).toContain("color: var(--map-ctrl-icon-color)");
+		expect(shared).toContain("mask-size: var(--map-ctrl-glyph-size)");
+
+		// No sprite bakes a fill colour the way MapLibre's do (`fill='%23333'`),
+		// which is what would defeat the single `color` knob. Asserted against the
+		// extracted RULES, never against the whole stylesheet: the prose above
+		// quotes `fill='%23333'` when explaining why the mask exists, and a
+		// file-wide regex happily matched that comment instead.
+		for (const ctrl of NATIVE_CTRLS) {
+			const rule = iconRule(ctrl);
+			expect(rule, `${ctrl} sprite`).toContain("fill='none'");
+			expect(rule, `${ctrl} sprite`).not.toMatch(/fill='%23/);
+		}
+	});
+
+	it("does not touch the compass transform, so the needle still tracks bearing", () => {
+		// NavigationControl writes `transform: rotate(…)` onto the very
+		// `.maplibregl-ctrl-icon` span these rules target. Declaring a transform
+		// (or a `background-position` animation) here would fight it.
+		const rule = iconRule("compass");
+		expect(rule).not.toMatch(/(^|[\s;])transform:/);
+		expect(rule).not.toMatch(/rotate\(/);
+	});
+
+	/**
+	 * Windows High Contrast regression the mask introduced (RES-001).
+	 *
+	 * Upstream ships forced-colors sprites AND
+	 * `.maplibregl-ctrl-icon { background-color: transparent }`, but a media
+	 * query adds no specificity, so our (0,4,1) rules win there too — and our
+	 * glyph hangs off `background-color`, the exact property forced-colors
+	 * rewrites to the system palette. Without this branch every button in the
+	 * column goes blank for high-contrast users.
+	 */
+	it("repaints the glyph with CanvasText under forced-colors", () => {
+		const at = MAP_CSS.indexOf("@media (forced-colors: active) {");
+		expect(at, "forced-colors branch").toBeGreaterThan(-1);
+
+		let depth = 0;
+		let block = "";
+		for (let i = MAP_CSS.indexOf("{", at); i < MAP_CSS.length; i += 1) {
+			if (MAP_CSS[i] === "{") depth += 1;
+			if (MAP_CSS[i] === "}") {
+				depth -= 1;
+				if (depth === 0) {
+					block = MAP_CSS.slice(at, i + 1);
+					break;
+				}
+			}
+		}
+
+		// `CanvasText` is the system FOREGROUND keyword — the one colour
+		// forced-colors will not substitute. `Canvas` would repeat the bug.
+		expect(block).toMatch(/background-color:\s*CanvasText/);
+		expect(block).not.toMatch(/background-color:\s*Canvas\s*;/);
+		// All five controls covered, on both map surfaces.
+		for (const ctrl of NATIVE_CTRLS) {
+			expect(block).toContain(`button.maplibregl-ctrl-${ctrl}`);
+		}
+		expect(block).toContain(".mapCanvasWrapper");
+		expect(block).toContain(".workspaceCanvas");
+	});
+
+	it("documents each sprite's Tabler origin and the literal-stroke trap", () => {
+		// An SVG in `mask-image` is its own document: it does NOT inherit
+		// `currentColor`, so pasting Tabler markup verbatim gives an invisible
+		// glyph with no error. The comment is the only place that warns a future
+		// editor before they hit it.
+		expect(MAP_CSS).toContain("IconNavigation");
+		expect(MAP_CSS).toContain("IconMaximize");
+		expect(MAP_CSS).toContain("IconMinimize");
+		expect(MAP_CSS).toMatch(/does NOT inherit[\s\S]{0,80}currentColor/);
+		// …and the sprites really do carry a literal stroke, not `currentColor`.
+		expect(MAP_CSS).not.toMatch(/mask-image[^;]*stroke='currentColor'/);
+	});
+
+	it("mirrors the CSS glyph size in the constant the Tabler icons read", () => {
+		const declared = /--map-ctrl-glyph-size:\s*(\d+)px/.exec(MAP_CSS)?.[1];
+		expect(Number(declared)).toBe(MAP_CTRL_GLYPH_SIZE);
+	});
+
+	it("sizes EVERY custom glyph from that constant, so nothing drifts back to 16px", () => {
+		const sources = [
+			"src/components/map2d/MapActionsPanel.tsx",
+			"src/components/map2d/measurement/MeasurementToolbar.tsx",
+		].map((p) => readFileSync(resolve(process.cwd(), p), "utf-8"));
+
+		for (const src of sources) {
+			// Icons on their own line inside a `.mapCtrlButton` are the column; the
+			// `leftSection={<Icon… size={14} />}` ones are dropdown-menu entries
+			// (rendered in a popover, not in the column) and are left alone.
+			const inButton = (src.match(/(^|\n)\s*<Icon\w+ size=\{[^}]+\}[^/]*\/>/g) ?? []).map(
+				(m) => m.trim(),
+			);
+			expect(inButton.length).toBeGreaterThan(0);
+			for (const usage of inButton) {
+				expect(usage).toContain("size={MAP_CTRL_GLYPH_SIZE}");
+			}
+		}
 	});
 });
 
