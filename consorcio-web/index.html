@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!--
+      Font preloads are NOT written here: the woff2 assets are content-hashed
+      at build time, so `<link rel="preload">` for the two above-the-fold faces
+      (dm-serif-display 400 + inter 400) is injected into <head> by the
+      `consorcio:preload-critical-fonts` plugin in vite.config.ts, which reads
+      the final hashed filenames out of the bundle. Nothing to keep in sync by
+      hand — the build fails loudly if either asset stops being emitted.
+    -->
+
     <!-- Favicon and App Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -42,10 +51,35 @@
     <meta name="geo.region" content="AR-X" />
     <meta name="geo.placename" content="Cordoba, Argentina" />
 
-    <!-- Preconnect hints for map tile servers -->
-    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
-    <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin />
+    <!--
+      PERF — preconnect to the API origin, and ONLY to the API origin.
+
+      The app contacts the API during boot (``configStore.fetchConfig`` runs at
+      module scope, ``authStore.initialize`` right after mount) and that origin
+      costs ~620 ms of DNS + TLS handshake from a mobile link. Warming it here
+      takes that handshake off the critical path.
+
+      The map tile hosts (tile.openstemap / arcgisonline, below) used to be
+      preconnected instead. That was the wrong call: ``/`` never touches them,
+      and the first tile request only happens ~2 s after a user navigates to
+      ``/mapa``. A preconnect that nobody redeems inside ~10 s is dropped by
+      the browser anyway, and each one competes for the same handful of early
+      connection slots the API and the fonts need. They keep ``dns-prefetch``
+      (R4-003): it costs no connection slot, and an installed-PWA user tapping
+      the "Ver Mapa" manifest shortcut lands on ``/mapa`` directly — the DNS
+      leg is the one part of that cold start this page can still pay forward.
+
+      NOTE: the host is hardcoded because ``index.html`` is static and there is
+      exactly one deployment (see ``docker-compose.deploy.yml`` / ``RUNBOOK``).
+      In local dev this preconnect goes unredeemed — one dropped connection
+      attempt, no correctness impact. If a second deployment ever appears, wire
+      it through ``transformIndexHtml`` reading ``VITE_API_URL`` rather than
+      adding a second literal here.
+    -->
+    <link rel="preconnect" href="https://cc10demayo-api.javierzader.com" crossorigin />
     <link rel="dns-prefetch" href="https://earthengine.googleapis.com" />
+    <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+    <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
 
     <!--
       F5-I: schema.org LocalBusiness for local SEO. Helps Google

@@ -23,6 +23,8 @@ from app.domains.geo.gee_service_layers_support import (
     update_breakdown,
 )
 from app.domains.geo.gee_service_support import (
+    CHIRPS_NORMAL_END_YEAR,
+    CHIRPS_NORMAL_START_YEAR,
     VIS_PRESETS,
     available_visualizations_payload,
     build_available_dates_payload,
@@ -559,8 +561,8 @@ def compute_ndwi_baselines_gee(
 def export_chirps_monthly_normals(
     region: dict,
     *,
-    start_year: int = 1991,
-    end_year: int = 2020,
+    start_year: int = CHIRPS_NORMAL_START_YEAR,
+    end_year: int = CHIRPS_NORMAL_END_YEAR,
 ) -> list[dict]:
     """Resolve GEE download URLs for the CHIRPS monthly precipitation normals.
 

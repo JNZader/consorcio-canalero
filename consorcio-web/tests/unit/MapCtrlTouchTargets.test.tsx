@@ -8,6 +8,25 @@
  * and their only label was a hover-only tooltip. Sizing, the dock offsets and
  * the coarse-pointer label now live in `map.module.css`, so these assertions are
  * class-level (happy-dom does not evaluate `@media (pointer: coarse)`).
+ *
+ * ── WHAT THIS FILE STRUCTURALLY CANNOT SEE ─────────────────────────────────
+ * Every stylesheet assertion below is a REGEX OVER CSS TEXT. Text has no
+ * cascade: a declaration that is present and a declaration that WINS look
+ * identical to a regex. That is not a theoretical gap — it is the exact
+ * mechanism by which a dead `display: flex` on `.mapCtrlButton` shipped and left
+ * every glyph in the control column off-centre (5.5px horizontally, 3.4px
+ * vertically) while this suite stayed green: our buttons render inside
+ * MapLibre's `.maplibregl-ctrl-group`, whose `button` rule is (0,1,1) and beats
+ * a bare class at (0,1,0).
+ *
+ * Two rules follow from that, and both are enforced here:
+ *   1. NEVER assert a declaration this file cannot prove applies. Where a rule
+ *      is half live (see the coarse `.mapCtrlButton` block), pin only the live
+ *      half and say why.
+ *   2. Anything about the RESULTING BOX belongs in a browser.
+ *      `tests/e2e/mapa-ctrl-glyph-centering.spec.ts` opens /mapa and measures
+ *      real computed geometry — glyph centre vs button centre, every control,
+ *      both viewports. This file pins intent; that one pins outcome.
  */
 
 import { MantineProvider } from "@mantine/core";
@@ -288,20 +307,35 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 		expect(/\.panelSheet\s*\{[^}]*z-index:\s*1000/.test(MAP_CSS)).toBe(true);
 	});
 
-	it("MapLibre's 44px square rule EXCLUDES our labeled custom buttons", () => {
+	it("scopes MapLibre's fixed 44px square to MapLibre's OWN buttons", () => {
 		const coarse = coarseBlock();
-		// The `:global(...) button` selector outspecifies `.mapCtrlButton`, so
-		// without `:not(.mapCtrlButton)` it pinned width:44px and the visible
-		// touch labels ("Exportar", "Cancelar"…) overflowed a fixed box.
 		expect(coarse).toContain(
 			":global(.maplibregl-ctrl-group) button:not(.mapCtrlButton)",
 		);
 		// The old, over-broad selector is gone.
 		expect(coarse).not.toContain(":global(.maplibregl-ctrl-group button)");
-		// …and our own buttons keep their content-driven width.
-		expect(coarse).toMatch(
-			/\.mapCtrlButton\s*\{[^}]*width:\s*auto[^}]*min-width:\s*44px/,
-		);
+	});
+
+	it("reaches the 44px target through min-width/min-height, NOT width/height", () => {
+		const coarse = coarseBlock();
+		const rule = /\.mapCtrlButton\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? "";
+
+		// This assertion used to read `width: auto … min-width: 44px`, i.e. it
+		// certified a declaration the browser throws away: `width`, `height` and
+		// `padding` in this bare (0,1,0) rule all LOSE to
+		// `.maplibregl-ctrl-group button` (0,1,1), which declares every one of
+		// them (measured on the measurement toolbar: 44px / 44px / 0px — the
+		// rule below asks for auto / 44px / `0 4px`). A media query adds no
+		// specificity, so the query does not change that.
+		//
+		// What survives is the three properties MapLibre does NOT declare, and
+		// they are what actually delivers WCAG 2.5.5 here: the used box is
+		// max(29px, 44px) on both axes. Pin those, and nothing else — the dead
+		// half stays in the stylesheet as documented intent (see its comment)
+		// and must never be asserted as behaviour again.
+		expect(rule).toMatch(/min-width:\s*44px/);
+		expect(rule).toMatch(/min-height:\s*44px/);
+		expect(rule).toMatch(/gap:\s*1px/);
 	});
 });
 

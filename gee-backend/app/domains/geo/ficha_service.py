@@ -55,6 +55,10 @@ from app.core.logging import get_logger
 from app.domains.geo import ficha_errors
 from app.domains.geo.class_breaks import RANGE_CONFIGS
 from app.domains.geo.composites import extract_zonal_profile, vectorize_zonal_classes
+from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_FUENTE_LABEL,
+    CHIRPS_NORMAL_PERIOD,
+)
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas_ficha import (
@@ -869,6 +873,11 @@ def _precipitacion_dataset(
 
     ``K = 0`` per call (``_PRECIP_K``) so a sub-pixel parcel is NEVER flagged
     low-confidence against the ~5 km CHIRPS pixel (JDB-017).
+
+    A covered dataset also carries its PROVENANCE (``fuente`` / ``periodo``),
+    read off the rasters that answered — see :func:`_precip_procedencia`. The
+    no-coverage returns keep the schema defaults: there are no numbers to
+    attribute, and the UI does not render the provenance line without a chart.
     """
     with _traducir_fallas_db():
         layers = _repo.get_latest_precip_normals_by_month(db, settings.ficha_precip_area_id)
@@ -927,13 +936,58 @@ def _precipitacion_dataset(
 
     anual_mm = _anual_mm(layers.get("anual"), geom4326, area_m2)
     cobertura = "total" if all(c == "full" for c in coberturas) else "parcial"
+    fuente, periodo = _precip_procedencia(meses)  # type: ignore[arg-type]  # no None left
     return PrecipitacionFicha(
         cobertura=cobertura,
         low_confidence=low_confidence,
         pixel_count=pixel_count,
         cobertura_ratio=round(min(ratios), 4) if ratios else 0.0,
+        fuente=fuente,
+        periodo=periodo,
         serie=serie,
         anual_mm=anual_mm,
+    )
+
+
+def _precip_procedencia(meses: list[GeoLayer]) -> tuple[str, str]:
+    """Provenance of the rasters that ANSWERED — product label and normals period.
+
+    Read off ``metadata_extra`` (``fuente`` / ``normal_period``, stamped by
+    ``etl/generate_chirps_normals.py``), NOT off ``CHIRPS_NORMAL_PERIOD``. That
+    distinction is the whole point of RISK-001: the ETL takes
+    ``--start-year/--end-year``, so an operator can regenerate the normals over a
+    different period WITHOUT touching a single constant. Serving the module
+    constant would just move the old hardcoded-in-the-browser lie one layer down
+    — the API would assert 1991-2020 while the rasters on disk were something
+    else. What is stored is what is served.
+
+    The constants are the FALLBACK, per key, for rows registered before the ETL
+    stamped provenance (a blank label is worse than a documented assumption).
+
+    Months are read INDEPENDENTLY of each other because the lookup is
+    ``DISTINCT ON (mes)``: each month resolves to the newest row for that month,
+    so in principle they can come from different runs. If they disagree, every
+    distinct value is reported (sorted, ``" / "``-joined) rather than one being
+    picked as the winner — a mixed product should read as mixed, not as whichever
+    month happened to sort first.
+
+    Only the TWELVE MONTHLY layers are consulted. The annual raster is a
+    convenience total that may legitimately be absent (:func:`_anual_mm` returns
+    ``None`` for it without erroring), so it cannot be allowed to widen — or, when
+    missing, to narrow — the provenance of the series itself.
+    """
+
+    def _distinto(clave: str, defecto: str) -> str:
+        valores: set[str] = set()
+        for layer in meses:
+            crudo = (layer.metadata_extra or {}).get(clave)
+            texto = "" if crudo is None else str(crudo).strip()
+            if texto:
+                valores.add(texto)
+        return " / ".join(sorted(valores)) if valores else defecto
+
+    return _distinto("fuente", CHIRPS_FUENTE_LABEL), _distinto(
+        "normal_period", CHIRPS_NORMAL_PERIOD
     )
 
 

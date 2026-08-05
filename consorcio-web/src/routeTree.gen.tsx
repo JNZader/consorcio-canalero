@@ -27,8 +27,17 @@ import { authAdapter } from './lib/auth/index';
 import { clearLocalLogoutTombstone, persistAuthSession } from './lib/auth/storage';
 import { logger } from './lib/logger';
 
-// Lazy load all page components for better performance
-const HomePage = lazy(() => import('./components/HomePage'));
+// PERF — ``HomePage`` is the ONLY page loaded eagerly. It is the landing
+// route: lazy-loading it bought ~1.4 KB (brotli) of deferred bytes and cost a
+// full extra round trip that could not even START until the entry bundle had
+// finished parsing and executing — squarely inside the LCP window. Every other
+// page stays lazy, because none of them is what a cold visitor lands on.
+//
+// NOTE: despite the ``.gen`` suffix this file is hand-maintained (no TanStack
+// Router codegen plugin is configured), so this edit survives a build.
+import HomePage from './components/HomePage';
+
+// Lazy load the remaining page components for better performance
 const LoginForm = lazy(() => import('./components/LoginForm'));
 const MapaPage = lazy(() => import('./components/MapaPage'));
 const ParticipacionPage = lazy(() => import('./components/ParticipacionPage'));

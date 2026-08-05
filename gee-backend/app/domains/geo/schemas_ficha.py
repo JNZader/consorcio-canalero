@@ -27,6 +27,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import settings
 from app.domains.geo import ficha_errors
+from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_FUENTE_LABEL,
+    CHIRPS_NORMAL_PERIOD,
+)
 
 TipoFicha = Literal["parcela", "parcelas", "poligono", "canal_buffer", "canal_cuenca"]
 Cobertura = Literal["total", "parcial", "sin_cobertura"]
@@ -243,6 +247,21 @@ class PrecipitacionFicha(BaseModel):
     Monthly normals are mean millimetres, not a class partition of the area:
     there is no ``ha`` per class and ``pct`` cannot sum to 100 (spec delta,
     JDB-011).
+
+    ``fuente`` / ``periodo`` carry the PROVENANCE of the numbers on the wire
+    (RISK-001). They used to be a string hardcoded in the browser
+    (``PrecipChart.tsx``), which meant re-running the CHIRPS ETL over a
+    different normals period silently turned the UI into a liar about the age
+    of its own data — nothing in the system could catch it. They are populated
+    from ``metadata_extra`` of the rasters that ACTUALLY answered (see
+    ``ficha_service._precipitacion_dataset``), not from these defaults;
+    the defaults describe the pipeline as configured and only apply to
+    ``sin_cobertura`` payloads and to rows registered before the ETL stamped
+    provenance.
+
+    NOT optional, for the same reason the dataset key itself is not (R3-007):
+    a consumer must never have to branch on absence to know where a number
+    came from.
     """
 
     cobertura: Cobertura = "sin_cobertura"
@@ -250,6 +269,8 @@ class PrecipitacionFicha(BaseModel):
     pixel_count: int = 0
     cobertura_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
     unidad: Literal["mm"] = "mm"
+    fuente: str = CHIRPS_FUENTE_LABEL
+    periodo: str = CHIRPS_NORMAL_PERIOD
     serie: list[PrecipMes] = Field(default_factory=list)
     anual_mm: float | None = None
 

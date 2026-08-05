@@ -1,7 +1,81 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+
+// ---------------------------------------------------------------------------
+// FOUT / CLS: build-time <link rel="preload"> for the above-the-fold webfonts.
+//
+// The five @font-face rules live in ``src/styles/global.css``, so the browser
+// only DISCOVERS them once ``index.css`` has landed and parsed, and only
+// REQUESTS them once the text they style reaches layout. Measured on the
+// landing page: stylesheet at ~2.1 s, font request at ~3.0 s — a late ``swap``
+// with a visible reflow, ~0.07 of residual CLS.
+//
+// A preload link moves the request into the document's preload-scanner pass,
+// so the woff2 bytes are already in flight while the CSS is still downloading.
+// The hrefs cannot be hardcoded in ``index.html``: Vite content-hashes the
+// font assets (``inter-latin-400-normal-C38fXH4l.woff2``), so this plugin
+// reads the final emitted names straight out of the Rollup bundle.
+//
+// Only the two faces the first paint actually needs are preloaded — the hero
+// ``h1`` serif and the body sans. The other three Inter weights (500/600/700)
+// are deliberately left out: every extra preload competes with the critical JS
+// chunks for the same bandwidth, and none of them is on the shell's paint path.
+const CRITICAL_FONT_STEMS = ['dm-serif-display-latin-400-normal', 'inter-latin-400-normal'];
+
+function preloadCriticalFonts(): Plugin {
+  let base = '/';
+  return {
+    name: 'consorcio:preload-critical-fonts',
+    apply: 'build',
+    configResolved(config) {
+      // Vite always normalises the resolved base to a trailing slash.
+      base = config.base;
+    },
+    transformIndexHtml: {
+      // ``post`` so the Rollup bundle is fully populated: the woff2 assets are
+      // emitted while the CSS that references them is processed.
+      order: 'post',
+      handler(html, ctx) {
+        const emitted = Object.keys(ctx.bundle ?? {});
+        const tags = CRITICAL_FONT_STEMS.map((stem) => {
+          const fileName = emitted.find((name) => {
+            const assetName = name.split('/').pop() ?? '';
+            return assetName.startsWith(`${stem}-`) && assetName.endsWith('.woff2');
+          });
+          if (!fileName) {
+            // Fail the build instead of silently shipping no preload. A silent
+            // miss reintroduces exactly the regression this plugin exists to
+            // prevent, and nothing downstream would catch it.
+            throw new Error(
+              `[preload-critical-fonts] no emitted .woff2 matched "${stem}-*.woff2". Check the @font-face src URLs in src/styles/global.css.`
+            );
+          }
+          return {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              as: 'font',
+              type: 'font/woff2',
+              href: `${base}${fileName}`,
+              // Fonts are always fetched in anonymous CORS mode. Without the
+              // (empty == anonymous) crossorigin attribute the preload lands in
+              // a different cache partition than the CSS-driven request and the
+              // file is downloaded twice.
+              crossorigin: '',
+            },
+            // Earliest possible discovery. This pushes <meta charset> down by
+            // ~260 bytes, still far inside the 1024-byte window browsers scan
+            // for the declaration.
+            injectTo: 'head-prepend' as const,
+          };
+        });
+        return { html, tags };
+      },
+    },
+  };
+}
 
 // Proxy de dev OPCIONAL (demo local contra un API remoto sin pelearse con
 // CORS): con `DEV_PROXY_TARGET=https://api.ejemplo.com npm run dev` el dev
@@ -27,6 +101,9 @@ const devProxy = devProxyTarget
 export default defineConfig({
   server: { proxy: devProxy },
   plugins: [
+    // Injects the two critical-font preloads at build time — see the plugin
+    // definition above. Build-only; the dev server serves fonts unhashed.
+    preloadCriticalFonts(),
     // Phase 3 / F3-E: React Compiler — auto-memoises components and
     // hooks the way ``useMemo`` + ``useCallback`` would, except the
     // compiler is conservative and only inserts memos where it can
@@ -41,7 +118,25 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt', 'capas/*.geojson'],
+      // PERF — keep this list MINIMAL. ``includeAssets`` bypasses
+      // ``workbox.globIgnores`` entirely: whatever is listed here lands in
+      // the precache manifest even when the ignore list right below claims
+      // to exclude it. ``capas/*.geojson`` (~340 KB) used to be here and
+      // silently re-added the very files ``**/*.geojson`` was ignoring.
+      // ``favicon.ico`` (~76 KB) is also gone: the browser fetches it lazily
+      // for the tab, and the PWA install flow reads icons from the manifest,
+      // not from the precache.
+      includeAssets: ['robots.txt'],
+      // PERF — vite-plugin-pwa defaults this to ``true``, which force-adds
+      // EVERY file referenced by ``manifest.icons`` to the precache, behind
+      // the back of both ``globPatterns`` and ``globIgnores``. That is a third
+      // way into the manifest, and it was quietly re-adding ``favicon.ico``
+      // plus both 512 px icons (~430 KB) after they had been removed from the
+      // other two. The install flow reads icons from the webmanifest itself,
+      // so precaching them buys nothing. ``icon-192.png`` (48 KB) still gets
+      // in via ``globPatterns`` — it is the one the browser shows in the
+      // install prompt, and it is small enough not to matter.
+      includeManifestIcons: false,
       manifest: {
         name: 'Consorcio Canalero 10 de Mayo',
         short_name: 'CC10M',
@@ -115,9 +210,26 @@ export default defineConfig({
         // map. PWA precache used to bloat every install by ~7 MB on
         // first visit, including users who only use the form / admin
         // routes and never touch the map.
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        //
+        // ``ico`` removed from the pattern too — ``favicon.ico`` was the only
+        // match and it does not belong in the install-time critical path.
+        globPatterns: ['**/*.{js,css,html,png,svg,json}'],
         globIgnores: [
-          // Belt-and-braces — any new ``.geojson`` that lands in the
+          // PERF — the service worker registers during the LCP window on a
+          // cold mobile visit, and every byte listed here competes with the
+          // route chunk and the fonts for the same link. The three groups
+          // below are the ones that were pure dead weight.
+          //
+          // 1. Static data payloads: ``data/pilar-verde/bpa_enriched.json``
+          //    alone is ~490 KB and is only read by the Pilar Verde panel.
+          //    Fetched on demand at runtime.
+          'data/**/*.json',
+          // 2. The large PWA icons (~355 KB for the two 512s). The OS reads
+          //    them from ``manifest.webmanifest`` when the user installs the
+          //    app — the precache never serves that request. ``icon-192``
+          //    stays (48 KB, used as the in-browser install prompt icon).
+          '**/icon-512*.png',
+          // 3. Belt-and-braces — any new ``.geojson`` that lands in the
           // build directory also stays out of precache. Runtime loads
           // them on demand via the public viewer hooks.
           '**/*.geojson',
@@ -126,11 +238,19 @@ export default defineConfig({
           // otherwise the SW happily serves the build's own SHA forever
           // and the in-app "Reload to update" banner never fires.
           'version.json',
-          // ``vendor-maplibre`` was intentionally precached (~500 kb) so the
+          // ``vendor-maplibre`` was intentionally precached (~780 kb) so the
           // 3D viewer doesn't pay a cold network fetch the first time the
           // user opens it — the entire app is map-centric, the trade-off
           // pays back immediately. The remaining heavy vendor chunks stay
           // in runtime CacheFirst because they're only used on niche pages.
+          //
+          // TODO(perf): ``vendor-maplibre`` (~780 KB) + ``MapaMapLibre``
+          // (~320 KB) are now BY FAR the largest slice of what the SW pulls
+          // at install time, and a visitor who never opens ``/mapa`` pays
+          // all of it. Dropping them would be the single biggest remaining
+          // win — but it also kills ``/mapa`` offline, and that is a PRODUCT
+          // decision nobody has taken yet. Do not remove them here without
+          // an explicit call on whether offline map support still matters.
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
           '**/vendor-charts-*.js',

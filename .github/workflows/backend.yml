@@ -157,10 +157,25 @@ jobs:
       # for natural drift while still catching the kind of regression
       # the gate exists to prevent.
       #
-      # Wallclock budget: ~10 min on the desktop benchmark (276 mutations
-      # × ~1.8s per pytest invocation + ~30-60s cosmic-ray init overhead).
-      # On a GH Actions runner expect 1.5-2x slower → realistically
-      # 15-22 min, comfortably inside the 35-min timeout below.
+      # The module list has grown twice since that baseline, each time with
+      # its own measurement recorded in ``.cosmic-ray.toml``: finanzas
+      # (+74 mutations, 97.30% on this interpreter) and padron (+191,
+      # 95.29%). Both land far above the floor, so 0.30 keeps widening its
+      # cushion instead of narrowing it. Full gate at 541 mutations,
+      # measured end to end: 75.23% (407/541) on the local 3.14 venv, which
+      # the two stage write-ups show is the PESSIMISTIC interpreter — this
+      # job's 3.11 kills 22 more annotation mutants on top (11 finanzas +
+      # 11 padron, each measured per stage), so expect ~79% here; that half
+      # is DERIVED, not measured end to end. Raising the floor is a separate
+      # change anyway: the literal `--min-kill-rate 0.30` is asserted by
+      # tests/test_ci_workflow_contracts.py here AND in deploy.yml.
+      #
+      # Wallclock budget: 19m33s measured for the 541 mutations on the
+      # desktop 3.14 venv; 3.11 runs the same workload ~2x faster, and a GH
+      # runner is 1.5-2x slower than the desktop → ~15-22 min expected.
+      # Inside the 35-min timeout below, but the margin is now ~13 min and
+      # not the ~20 it used to be: stage 3 (refresh_tokens, +300 mutations)
+      # does NOT fit here and needs its own job.
       - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.30
 
   security:

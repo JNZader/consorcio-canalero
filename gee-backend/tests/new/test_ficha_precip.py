@@ -27,12 +27,25 @@ from rasterio.transform import from_origin
 from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
+from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_FUENTE_LABEL,
+    CHIRPS_NORMAL_END_YEAR,
+    CHIRPS_NORMAL_START_YEAR,
+    chirps_normal_period,
+)
+
 # ``parcelas_catastro`` lives in the intelligence models module (same conftest
 # trap documented in ``test_ficha_compute``): import it so ``create_all`` builds it.
 from app.domains.geo.intelligence import models as _intelligence_models  # noqa: F401
 from app.domains.geo.models import FormatoGeoLayer, FuenteGeoLayer, GeoLayer, TipoGeoLayer
 
 FICHA_PATH = "/api/v2/geo/analisis-zona"
+
+#: The period the pipeline is configured for, DERIVED from the same two constants
+#: the ETL and the schema read. Never the literal "1991-2020": a test that
+#: re-types the years passes happily while the shipped label drifts, which is the
+#: exact failure RISK-001 describes.
+PERIODO_PIPELINE = chirps_normal_period(CHIRPS_NORMAL_START_YEAR, CHIRPS_NORMAL_END_YEAR)
 
 # ── the parcel and its world, in EPSG:4326 (mirror test_ficha_compute) ───────
 LON0, LAT0, D = -62.0, -32.0, 0.01  # ~105 ha near the consorcio (UTM 20S)
@@ -194,8 +207,30 @@ def _raster_grueso(tmp_path: Any, name: str, value: float) -> str:
 
 
 def _registrar_precip(
-    db: Session, mes: Any, path: str, *, version: str = VERSION, area_id: str = AREA_ID
+    db: Session,
+    mes: Any,
+    path: str,
+    *,
+    version: str = VERSION,
+    area_id: str = AREA_ID,
+    normal_period: str | None = PERIODO_PIPELINE,
+    fuente_label: str | None = CHIRPS_FUENTE_LABEL,
 ) -> None:
+    """Register one raster the way the ETL does.
+
+    ``normal_period`` / ``fuente_label`` default to what a pipeline-configured run
+    stamps; pass ``None`` to simulate a row registered BEFORE the ETL carried
+    provenance, or a different string to simulate a re-run over another period.
+    """
+    metadata_extra: dict[str, Any] = {
+        "mes": mes,
+        "version": version,
+        "resolucion_m": 5000,
+    }
+    if normal_period is not None:
+        metadata_extra["normal_period"] = normal_period
+    if fuente_label is not None:
+        metadata_extra["fuente"] = fuente_label
     db.add(
         GeoLayer(
             nombre=f"precip_normal_{mes}_{version}",
@@ -204,13 +239,7 @@ def _registrar_precip(
             archivo_path=path,
             formato=FormatoGeoLayer.GEOTIFF,
             srid=4326,
-            metadata_extra={
-                "mes": mes,
-                "version": version,
-                "normal_period": "1991-2020",
-                "fuente": "CHIRPS",
-                "resolucion_m": 5000,
-            },
+            metadata_extra=metadata_extra,
             area_id=area_id,
         )
     )
@@ -251,6 +280,114 @@ def test_precip_serie_12_meses_en_orden_calendario(ficha_db, monkeypatch, tmp_pa
     for e in precip["serie"]:
         assert e["mm"] == pytest.approx(e["mes"] * 10.0, abs=0.5)
     assert precip["anual_mm"] == pytest.approx(1234.0, abs=0.5)
+
+
+# ── RISK-001 — the wire carries the provenance of the rasters that answered ──
+
+
+def _sembrar_doce_meses(db: Session, tmp_path: Any, **registro: Any) -> None:
+    """12 fine monthly normals covering the parcel, plus the annual total."""
+    for mes in range(1, 13):
+        _registrar_precip(
+            db, mes, _raster_fino(tmp_path, f"precip_{mes:02d}.tif", float(mes * 10)), **registro
+        )
+    _registrar_precip(db, "anual", _raster_fino(tmp_path, "precip_anual.tif", 1234.0), **registro)
+
+
+def _preparar(db: Session, monkeypatch: Any) -> None:
+    _enable(monkeypatch)
+    _crear_tabla_suelos(db)
+    _seed_parcela(db)
+    _seed_suelos(db)
+
+
+def test_precip_sirve_fuente_y_periodo_de_las_capas(ficha_db, monkeypatch, tmp_path):
+    """A covered dataset states WHERE its numbers came from, on the wire.
+
+    Before this, the provenance line was a string hardcoded in the browser
+    (``PrecipChart.tsx``) and the payload carried none — the UI asserted
+    1991-2020 no matter what was on disk (RISK-001). Both values are asserted
+    against the pipeline constants, DERIVED not re-typed, so moving the normals
+    period moves the expectation with it instead of leaving this test green over
+    a stale label.
+    """
+    _preparar(ficha_db, monkeypatch)
+    _sembrar_doce_meses(ficha_db, tmp_path)
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["cobertura"] == "total"
+    assert precip["fuente"] == CHIRPS_FUENTE_LABEL
+    assert precip["periodo"] == PERIODO_PIPELINE
+    # …and the period really is derived from the two year constants, so a change
+    # to either one is a change to what the browser prints.
+    assert precip["periodo"] == f"{CHIRPS_NORMAL_START_YEAR}-{CHIRPS_NORMAL_END_YEAR}"
+
+
+def test_precip_periodo_sigue_a_los_rasters_no_a_la_constante(ficha_db, monkeypatch, tmp_path):
+    """THE RISK-001 regression: rasters from another period are reported as such.
+
+    ``generate_chirps_normals`` takes ``--start-year/--end-year``, so an operator
+    can regenerate the normals over a different period WITHOUT touching a single
+    constant. Serving ``CHIRPS_NORMAL_PERIOD`` would move the old browser-side
+    lie one layer down; the payload must state what the rasters on disk actually
+    are.
+    """
+    _preparar(ficha_db, monkeypatch)
+    otro_periodo = chirps_normal_period(CHIRPS_NORMAL_START_YEAR + 10, CHIRPS_NORMAL_END_YEAR + 10)
+    assert otro_periodo != PERIODO_PIPELINE  # the premise of the test
+    _sembrar_doce_meses(ficha_db, tmp_path, normal_period=otro_periodo, fuente_label="CHIRPS v3")
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["periodo"] == otro_periodo
+    assert precip["fuente"] == "CHIRPS v3"
+
+
+def test_precip_procedencia_cae_a_las_constantes_sin_metadata(ficha_db, monkeypatch, tmp_path):
+    """Rows registered before the ETL stamped provenance fall back to the constants.
+
+    A blank label is worse than a documented assumption: the reader would be left
+    with numbers and no attribution at all.
+    """
+    _preparar(ficha_db, monkeypatch)
+    _sembrar_doce_meses(ficha_db, tmp_path, normal_period=None, fuente_label=None)
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["fuente"] == CHIRPS_FUENTE_LABEL
+    assert precip["periodo"] == PERIODO_PIPELINE
+
+
+def test_precip_meses_de_periodos_distintos_se_reportan_mezclados(ficha_db, monkeypatch, tmp_path):
+    """Months from different runs read as MIXED, never as whichever one sorts first.
+
+    The lookup is ``DISTINCT ON (mes)`` — each month resolves to its own newest
+    row — so a heterogeneous product is representable. Picking one period as the
+    winner would publish a confident single answer over data that has two.
+    """
+    _preparar(ficha_db, monkeypatch)
+    otro_periodo = chirps_normal_period(CHIRPS_NORMAL_START_YEAR + 10, CHIRPS_NORMAL_END_YEAR + 10)
+    for mes in range(1, 13):
+        _registrar_precip(
+            ficha_db,
+            mes,
+            _raster_fino(tmp_path, f"precip_{mes:02d}.tif", float(mes * 10)),
+            normal_period=otro_periodo if mes == 6 else PERIODO_PIPELINE,
+        )
+    _registrar_precip(ficha_db, "anual", _raster_fino(tmp_path, "precip_anual.tif", 1234.0))
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["periodo"] == " / ".join(sorted({PERIODO_PIPELINE, otro_periodo}))
 
 
 # ── B2.3 — no fabricated zeros outside coverage ──────────────────────────────
