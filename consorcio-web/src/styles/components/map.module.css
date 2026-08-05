@@ -686,15 +686,86 @@
    under the 44px WCAG 2.5.5 target. `global.css` deliberately excludes them from
    its blanket 44px rule, so they get an explicit opt-in here: on coarse pointers
    the button grows to 44px and reveals a compact text label under the icon
-   (tooltips are hover-only, so a touch user otherwise gets an unlabeled glyph). */
-.mapCtrlButton {
-  width: 29px;
-  height: 29px;
+   (tooltips are hover-only, so a touch user otherwise gets an unlabeled glyph).
+
+   THERE IS NO BARE `.mapCtrlButton` RULE HERE, AND THAT IS DELIBERATE. One used
+   to sit at this spot carrying `width: 29px; height: 29px; cursor: pointer` —
+   all three DEAD ON ARRIVAL. A bare class is (0,1,0); every one of these buttons
+   renders inside MapLibre's `.maplibregl-ctrl-group`, whose own
+   `.maplibregl-ctrl-group button` rule is (0,1,1) and declares those exact three
+   values itself. They read as the source of the 29×29 box and were nothing of
+   the sort: editing the 29 there moved no button, and nobody would have found
+   out until they tried. The fine-pointer box IS MapLibre's, by design — our
+   controls join its group precisely to inherit its chrome — so anything that has
+   to DIFFER from the library must be written at a selector that beats (0,1,1).
+   The two rules below and the coarse block do exactly that; a bare class cannot,
+   and `MapCtrlTouchTargets` + `mapa-ctrl-glyph-centering.spec.ts` now assert the
+   difference between the two. */
+
+/* ── THE CENTRING RULE, AND WHY IT NEEDS THIS SELECTOR ──────────────────────
+   These four declarations used to live in that bare `.mapCtrlButton`, where they
+   were INERT for the same reason: `display` never applied, so
+   `align-items`/`justify-content` had no formatting context to act on and the
+   glyph was laid out as inline content instead.
+
+   Our controls sit inside MapLibre's own `.maplibregl-ctrl-group` on purpose
+   (see `MapActionsPanel` / `MeasurementToolbar`), to inherit the library's
+   exact chrome. That also puts them under
+   `.maplibregl-ctrl-group button { display: block }` — (0,1,1), which BEATS a
+   bare `.mapCtrlButton` (0,1,0). Measured computed value was `display: block`.
+
+   With block layout the icon fell back to inline flow, and two unrelated
+   inherited values decided its position:
+     · horizontally — Mantine's `UnstyledButton` sets `text-align: left`
+       (`.m_87cf2631`), which overrides the UA's `button { text-align: center }`.
+       The 18px glyph parked against the left edge: (29 − 18) / 2 = 5.5px off
+       centre on fine pointers, (44 − 18) / 2 = 13px on coarse.
+     · vertically — the `<svg>` sat on the text baseline of a 24.8px line box
+       (Mantine body 16px × 1.55), so the 6.8px of leftover leading went ENTIRELY
+       below it as descender space and the glyph rode 3.4px high.
+   Both numbers were confirmed in a real DOM, in Chromium and Firefox.
+
+   So the fix is not a nudge: it is making the flex container exist. The
+   selector is spelled out to (0,3,1) for the same reason the sprite overrides
+   further down are — a tie would leave the outcome to stylesheet injection
+   order. Once flex applies, `text-align` and `line-height` stop being able to
+   move the glyph at all, and the `gap` in the coarse block below finally has an
+   effect. */
+.mapCanvasWrapper :global(.maplibregl-ctrl-group) button.mapCtrlButton,
+.workspaceCanvas :global(.maplibregl-ctrl-group) button.mapCtrlButton {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+}
+
+/* ── THE GROUP DIVIDER EATS 1px OFF THE TOP OF THE CONTENT BOX ──────────────
+   MapLibre separates stacked controls with
+   `.maplibregl-ctrl-group button + button { border-top: 1px solid #ddd }`, and
+   its buttons are `box-sizing: border-box` with a fixed `height`. The divider
+   is therefore carved out of the CONTENT box, not added around it: the second
+   and later buttons in a group get a 29×28 content area that starts 1px down,
+   whose centre sits 0.5px below the centre of the 29×29 border box. Everything
+   centred inside — our flex glyph, and MapLibre's own `.maplibregl-ctrl-icon`
+   (`height: 100%`, mask centred) — inherits that half-pixel.
+
+   That is the whole of the "the + looks too high" report: `+` and Fullscreen
+   are first in their groups and were always exact; `−` and the compass are
+   `button + button` and sat 0.5px low, so the column read as ragged.
+
+   Fix: give back at the bottom exactly what the border takes at the top, so the
+   content box is concentric with the border box again (1px border + 1px padding
+   ⇒ 27px of content, centred). It is deliberately NOT `border-top: 0` plus a
+   redrawn divider: we do not reimplement MapLibre's chrome, we only stop it
+   from biasing our layout. The border box stays 29px, so the column does not
+   move.
+
+   COUPLED TO THE BORDER: if a future rule removes that `border-top` for some
+   subset of buttons, this compensation has to go with it in the same subset, or
+   the offset simply flips sign. */
+.mapCanvasWrapper :global(.maplibregl-ctrl-group) button + button,
+.workspaceCanvas :global(.maplibregl-ctrl-group) button + button {
+  padding-bottom: 1px;
 }
 
 .mapCtrlButtonLabel {
@@ -901,6 +972,34 @@
 }
 
 @media (pointer: coarse) {
+  /* ── HALF OF THIS RULE IS INERT, AND WHICH HALF DEPENDS ON THE DOCK ─────────
+     Same (0,1,0)-vs-(0,1,1) story as the base rule at the top of this section: a
+     media query adds NO specificity, so `.maplibregl-ctrl-group button` still
+     wins every property it declares — `width`, `height` and `padding` among
+     them. On the path where this bare class is the only thing we write, the
+     MEASUREMENT toolbar, that means:
+       · `min-width` / `min-height` / `gap`  → LIVE (MapLibre declares neither)
+       · `width` / `height` / `padding`      → DEAD (measured: 44px, 44px, 0px)
+     The WCAG 44px target is still met, but by the two `min-*` alone: the used
+     box is max(29, 44) on both axes. The consequence to know is that the box
+     CANNOT grow past 44 here — `width` is a definite 29px that `min-width` only
+     clamps upward — so a caption has to FIT inside 44, it will not widen the
+     button. They do today ("Medir" measures 25px at 9px/600); a longer one would
+     overflow rather than push, and the fix would be a `width` at (0,2,0) or
+     better, not an edit to the dead one below.
+
+     On the ACTIONS dock only PART of the rule is rescued: `.mapActionsDock
+     .mapCtrlButton` (0,2,0) beats (0,1,1) and re-states `width` and `padding`
+     for real, so those two go from dead to redundant. `height` stays dead there
+     too — nothing re-states it above (0,1,1) — and `min-height` / `gap` are
+     still supplied from right here.
+
+     Left as written rather than pruned to the live ones: they spell out
+     the intended box, and what they intend agrees with what the live three
+     produce. What is NOT acceptable is a guard that ASSERTS them as if they
+     applied — that is how the dead `display: flex` shipped. `MapCtrlTouchTargets`
+     pins only the live three; `mapa-ctrl-glyph-centering.spec.ts` measures the
+     box a browser actually computes. */
   .mapCtrlButton {
     width: auto;
     min-width: 44px;
@@ -915,15 +1014,22 @@
   }
 
   /* MapLibre's own ctrl buttons (zoom in/out, compass, fullscreen) are rendered
-     by the library, so they need a `:global` override rather than a prop.
-     `:not(.mapCtrlButton)` is LOAD-BEARING: our custom controls live inside the
-     same `.maplibregl-ctrl-group` wrapper (they reuse it on purpose, to inherit
-     MapLibre's exact chrome), and this selector's specificity beats
-     `.mapCtrlButton` — so without the exclusion it pinned them to a square 44px
-     box and the `width: auto; min-width: 44px` above never applied, clipping the
-     visible touch labels ("Exportar", "Cancelar"…). Note the `:not()` argument
-     sits OUTSIDE `:global`, so CSS Modules hashes it and it really matches our
-     buttons. */
+     by the library, so they need a `:global` override rather than a prop. The
+     `:not()` argument sits OUTSIDE `:global`, so CSS Modules hashes it and it
+     really matches our buttons.
+
+     `:not(.mapCtrlButton)` IS A SCOPING SEAM, NOT A LIVE GUARD — the comment
+     that used to sit here claimed otherwise ("without the exclusion it pinned
+     them to a square 44px box … clipping the visible touch labels"), and that
+     was measured false: dropping the `:not()` leaves "Medir" and "Exportar" at
+     exactly 44×44 in the same place. The reason is the rule above — `width: auto`
+     never applied in the first place, so our buttons are already 44 wide by
+     `min-width`, which is the same number this rule would force. Keep the
+     exclusion anyway: it is what keeps the library's fixed square out of our
+     buttons' cascade, so the day a caption legitimately needs a wider box the
+     fix is one `width` at (0,2,0)+ instead of an argument with a (0,2,1)
+     selector. Do not upgrade it to "load-bearing" in a comment again without
+     re-measuring. */
   .mapCanvasWrapper :global(.maplibregl-ctrl-group) button:not(.mapCtrlButton),
   .workspaceCanvas :global(.maplibregl-ctrl-group) button:not(.mapCtrlButton) {
     width: 44px;
