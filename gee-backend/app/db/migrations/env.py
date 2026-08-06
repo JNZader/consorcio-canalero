@@ -17,6 +17,7 @@ from app.domains.tramites.models import Tramite, TramiteSeguimiento  # noqa: F40
 from app.domains.capas.models import Capa  # noqa: F401
 from app.domains.monitoring.models import Sugerencia, AnalisisGee  # noqa: F401
 from app.domains.geo.models import GeoLayer, GeoJob, AnalisisGeo, GeoApprovedZoning  # noqa: F401
+from app.domains.geo.rainfall import models as rainfall_models  # noqa: F401
 from app.domains.geo.intelligence.models import (  # noqa: F401
     ZonaOperativa,
     IndiceHidrico,
