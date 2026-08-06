@@ -130,3 +130,15 @@
 - General refuter verdict: PUSH-RISK-001 through PUSH-RISK-004 **stand** (4 surviving, 0 refuted).
 - PUSH-RISK-005 and PUSH-RISK-006 remain WARNING/info.
 - **fix round 1 required for PUSH-RISK-001..003; maintainer decision required for PUSH-RISK-004 (split vs size:exception); pre-push blocked**
+
+## PR1 pre-push resilience incident
+
+**Issue:** #164
+
+| id | lens | severity | status | evidence |
+|---|---|---|---|---|
+| RES-001 | resilience | CRITICAL | open | javi-forge Node runner lacks Docker/Make/Python, so required checks cannot execute. |
+| RES-002 | resilience | CRITICAL | open | Compile stage masks build exit 127 via `|| true`. |
+| RES-003 | resilience | WARNING | info | Hook suggests no-verify without proving equivalent checks. |
+
+- Current push blocked. `--no-verify` is allowed only after equivalent full checks pass on exact HEAD, with no later code commit.

@@ -65,3 +65,6 @@
 - Migration harness initially failed because REVOKE preceded function creation; removed only premature REVOKE. Disposable pgrouting/PostGIS upgrade-head/downgrade-0020 then passed.
 - PUSH-RISK-002 Round 2 removed authoritative defaults; exact manifest identity is mandatory. Focused suite: 19 passed.
 - Pre-push scoped re-reviews verified PUSH-RISK-001..003; PUSH-RISK-004 remains resolved under maintainer code-only budget convention; pre-push review-risk passed.
+
+## Pre-push harness incident
+- Linked permanent bug #164. Push blocked: Node runner lacks Docker/Make/Python and compile masks exit 127; no-verify only after equivalent full checks pass on exact HEAD without later code commits.
