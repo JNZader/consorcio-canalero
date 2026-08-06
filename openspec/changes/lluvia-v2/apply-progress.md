@@ -68,3 +68,10 @@
 
 ## Pre-push harness incident
 - Linked permanent bug #164. Push blocked: Node runner lacks Docker/Make/Python and compile masks exit 127; no-verify only after equivalent full checks pass on exact HEAD without later code commits.
+
+## Backend gate invocation reliability incident
+- REL-001 (WARNING/info): the subprocess contract test is cwd-sensitive; a repository-root invocation causes `ModuleNotFoundError`, while running from `gee-backend/` passes.
+- REL-002 (WARNING/info): local `Makefile` / `scripts/test-local.sh` impose 70% coverage, which drifts from the authoritative CI/package 60% threshold.
+- The earlier repository-root result is invalid full-gate evidence. Authoritative command, from `gee-backend/`:
+  `./venv/bin/python -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short`.
+- Linked #164 for the permanent pre-push harness and compile-wrapper correction.

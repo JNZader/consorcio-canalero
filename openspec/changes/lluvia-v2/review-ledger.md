@@ -142,3 +142,16 @@
 | RES-003 | resilience | WARNING | info | Hook suggests no-verify without proving equivalent checks. |
 
 - Current push blocked. `--no-verify` is allowed only after equivalent full checks pass on exact HEAD, with no later code commit.
+
+## PR1 backend gate invocation reliability incident
+
+**Issue:** #164
+
+| id | lens | severity | status | evidence |
+|---|---|---|---|---|
+| REL-001 | reliability | WARNING | info | The full-suite subprocess test is cwd-sensitive: repository-root invocation causes `ModuleNotFoundError`, while backend-cwd invocation passes. |
+| REL-002 | reliability | WARNING | info | Local `Makefile` / `scripts/test-local.sh` use a 70% coverage floor that drifts from the authoritative CI/package 60% threshold. |
+
+- The previous repository-root command is invalid full-gate evidence. The authoritative backend command must run from `gee-backend/`:
+  `./venv/bin/python -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short`.
+- #164 remains the permanent correction vehicle for the pre-push harness and compile-wrapper failure masking.
