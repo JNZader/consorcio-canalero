@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import isfinite
 from typing import Literal, Protocol
 
 
@@ -14,6 +15,8 @@ class SourceInterval:
     provider_revision: str
 
     def __post_init__(self) -> None:
+        if not isfinite(self.value):
+            raise ValueError("source interval value must be finite")
         if self.interval_start.tzinfo is None or self.interval_end.tzinfo is None:
             raise ValueError("source intervals must be timezone-aware UTC")
         if (
@@ -56,7 +59,12 @@ class SourceBatch:
             raise ValueError("source batch scope kind is not supported")
         if self.cadence <= timedelta():
             raise ValueError("source batch cadence must be positive")
-        if not 0 <= self.coverage <= 1 or not 0 <= self.completeness <= 1:
+        if (
+            not isfinite(self.coverage)
+            or not isfinite(self.completeness)
+            or not 0 <= self.coverage <= 1
+            or not 0 <= self.completeness <= 1
+        ):
             raise ValueError("source batch coverage and completeness must be between zero and one")
         for interval in self.intervals:
             if interval.interval_end - interval.interval_start != self.cadence:

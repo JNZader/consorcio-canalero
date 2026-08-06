@@ -70,8 +70,12 @@ def test_selection_requires_enabled_manifest_and_matching_role_without_blending(
     result = select_source(
         policy,
         {
-            preferred.source_id: EligibilityRecord(preferred.source_id, "intensity", "e1", True),
-            wrong_role.source_id: EligibilityRecord(wrong_role.source_id, "daily", "e1", True),
+            preferred.source_id: EligibilityRecord(
+                preferred.source_id, "intensity", "e1", True, 1, "v07", "fixture-checksum"
+            ),
+            wrong_role.source_id: EligibilityRecord(
+                wrong_role.source_id, "daily", "e1", True, 1, "v07", "fixture-checksum"
+            ),
         },
         {preferred.source_id: preferred, wrong_role.source_id: wrong_role},
     )
@@ -241,9 +245,15 @@ def test_selection_binds_eligibility_to_source_role_and_evidence_revision():
 
     candidate = _candidate(source_id="imerg-v07", role="intensity", enabled=True)
     policy = SourceRolePolicy("intensity", 1, "e2", (candidate.source_id,))
-    stale = EligibilityRecord(candidate.source_id, "intensity", "e1", True)
-    mismatch = EligibilityRecord(candidate.source_id, "daily", "e2", True)
-    valid = EligibilityRecord(candidate.source_id, "intensity", "e2", True)
+    stale = EligibilityRecord(
+        candidate.source_id, "intensity", "e1", True, 1, "v07", "fixture-checksum"
+    )
+    mismatch = EligibilityRecord(
+        candidate.source_id, "daily", "e2", True, 1, "v07", "fixture-checksum"
+    )
+    valid = EligibilityRecord(
+        candidate.source_id, "intensity", "e2", True, 1, "v07", "fixture-checksum"
+    )
     assert (
         select_source(
             policy, {candidate.source_id: stale}, {candidate.source_id: candidate}
@@ -327,3 +337,10 @@ def test_source_batch_and_adapter_include_stable_scope_identity():
     assert "scope_kind" in RainfallSourceAdapter.fetch.__annotations__
     with pytest.raises(ValueError, match="scope"):
         SourceBatch("s", "", "zone-1", "", timedelta(minutes=30), (interval,), 1, 1, {}, (), "sum")
+
+
+def test_eligibility_record_requires_manifest_identity():
+    from app.domains.geo.rainfall.policy import EligibilityRecord
+
+    with pytest.raises(TypeError):
+        EligibilityRecord("source", "daily", "e1", True)

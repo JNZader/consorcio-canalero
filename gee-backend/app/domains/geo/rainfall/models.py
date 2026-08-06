@@ -33,6 +33,9 @@ class RainfallSourceEligibility(UUIDMixin, Base):
     eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     criteria: Mapped[dict] = mapped_column(JSON, nullable=False)
     failed_criteria: Mapped[list] = mapped_column(JSON, nullable=False)
+    manifest_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    checksum: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

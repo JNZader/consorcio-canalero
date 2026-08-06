@@ -44,6 +44,9 @@ class EligibilityRecord:
     role: str
     evidence_revision: str
     eligible: bool
+    manifest_version: int
+    provider_revision: str
+    checksum: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +92,9 @@ def select_source(
             and evidence.source_id == source_id
             and evidence.role == policy.role
             and evidence.evidence_revision == policy.evidence_revision
+            and evidence.manifest_version == manifest.manifest_version
+            and evidence.provider_revision == manifest.provider_revision
+            and evidence.checksum == manifest.checksum
         )
         if selectable:
             return SourceSelection(source_id, position > 0, tuple(rejected))

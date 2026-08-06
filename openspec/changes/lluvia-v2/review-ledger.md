@@ -102,3 +102,31 @@
 - General refuter verdict: RISK-001 through RISK-005 stood; scoped re-review PASS verified all five with no new fix-line BLOCKER/CRITICAL findings.
 - RISK-006 through RISK-008 remain WARNING/info and do not enter the fix loop.
 - **pre-commit review-risk: PASSED**
+
+
+## PR1 pre-push review-risk
+
+**Target:** `feat/lluvia-v2-01-evidence-foundation`
+**Review:** fresh pre-push review-risk sweep
+**Status:** **pre-push review-risk: PASSED**
+
+| Bucket | Count |
+|---|---:|
+| BLOCKER/open | 1 |
+| CRITICAL/open | 3 |
+| WARNING/info | 2 |
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|
+| PUSH-RISK-001 | risk | `gee-backend/app/db/migrations/versions/lluvia_v2_001_evidence_foundation.py:117-148` | CRITICAL | verified | scoped re-review PASS | The controlled purge relies on a transaction-local GUC which any DELETE-capable role can set; the purge function has unrestricted default EXECUTE, so direct deletion protection can be bypassed. |
+| PUSH-RISK-002 | risk | `gee-backend/app/domains/geo/rainfall/policy.py`; `adapters/manifests.py` | CRITICAL | verified | scoped re-review PASS | Typed eligibility binds source, role, and evidence revision but not manifest version, provider revision, or checksum, permitting stale manifest evidence. |
+| PUSH-RISK-003 | risk | `gee-backend/app/domains/geo/rainfall/schemas.py:21-52`; `ports.py:8-29` | CRITICAL | verified | scoped re-review PASS | Metric and source interval floats accept NaN/non-finite values, which serialize as JSON null and break audit consistency. |
+| PUSH-RISK-004 | risk | commits `b001b0d`, `b71b8ee`; `openspec/changes/lluvia-v2/tasks.md:7-17` | BLOCKER | wont-fix | maintainer convention; no size exception | Maintainer convention: 400 behavioral production lines plus 2 package docstrings; tests 330; migrations 167; OpenSpec 666; config 1. No size exception required. |
+| PUSH-RISK-005 | risk | `openspec/changes/lluvia-v2/{apply-progress,review-ledger,tasks}.md` | WARNING | info | not applicable | SDD evidence/test counts and the retained old RISK-008 chain metadata are inconsistent. |
+| PUSH-RISK-006 | risk | `gee-backend/app/domains/geo/rainfall/models.py:16,34-35,92`; migration index declarations | WARNING | info | not applicable | ORM JSON versus migration JSONB and index metadata remain divergent. |
+
+### Round state
+- Fresh review found one BLOCKER, three CRITICAL candidates, and two WARNING informational findings.
+- General refuter verdict: PUSH-RISK-001 through PUSH-RISK-004 **stand** (4 surviving, 0 refuted).
+- PUSH-RISK-005 and PUSH-RISK-006 remain WARNING/info.
+- **fix round 1 required for PUSH-RISK-001..003; maintainer decision required for PUSH-RISK-004 (split vs size:exception); pre-push blocked**

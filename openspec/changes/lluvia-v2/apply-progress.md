@@ -57,3 +57,11 @@
 
 ## Remaining tasks
 - [ ] 2.1–4.3
+
+## Pre-push Round 1 fixes
+- PUSH-RISK-001..003 fixed pending scoped re-review; durable expiry facts authorize deletion, manifest identity is bound, and non-finite numbers are rejected.
+- PUSH-RISK-004 resolved by maintainer convention: 400 behavioral production + 2 package docstrings; tests 330; migrations 167; OpenSpec 666; config 1; no size exception required.
+
+- Migration harness initially failed because REVOKE preceded function creation; removed only premature REVOKE. Disposable pgrouting/PostGIS upgrade-head/downgrade-0020 then passed.
+- PUSH-RISK-002 Round 2 removed authoritative defaults; exact manifest identity is mandatory. Focused suite: 19 passed.
+- Pre-push scoped re-reviews verified PUSH-RISK-001..003; PUSH-RISK-004 remains resolved under maintainer code-only budget convention; pre-push review-risk passed.

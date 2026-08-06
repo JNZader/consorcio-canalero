@@ -29,6 +29,9 @@ def upgrade():
         sa.Column("role", sa.String(64), nullable=False),
         sa.Column("evidence_revision", sa.String(64), nullable=False),
         sa.Column("eligible", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("manifest_version", sa.Integer(), nullable=False),
+        sa.Column("provider_revision", sa.String(128), nullable=False),
+        sa.Column("checksum", sa.String(128), nullable=False),
         sa.Column("criteria", postgresql.JSONB(), nullable=False),
         sa.Column("failed_criteria", postgresql.JSONB(), nullable=False),
         sa.Column(
@@ -117,11 +120,7 @@ def upgrade():
     op.execute("""
         CREATE FUNCTION prevent_rainfall_audit_mutation() RETURNS trigger AS $$
         BEGIN
-            IF TG_TABLE_NAME = 'rainfall_interval_value'
-               AND TG_OP = 'DELETE'
-               AND current_setting('app.rainfall_expiry_purge', true) = 'on' THEN
-                RETURN OLD;
-            END IF;
+            IF TG_TABLE_NAME = 'rainfall_interval_value' AND TG_OP = 'DELETE' AND EXISTS (SELECT 1 FROM rainfall_interval_lifecycle lifecycle WHERE lifecycle.interval_value_id = OLD.id AND lifecycle.event_type = 'expired' AND lifecycle.expires_at IS NOT NULL AND lifecycle.expires_at <= CURRENT_TIMESTAMP) THEN RETURN OLD; END IF;
             RAISE EXCEPTION 'rainfall audit rows are append-only';
         END;
         $$ LANGUAGE plpgsql
@@ -134,7 +133,6 @@ def upgrade():
         CREATE FUNCTION purge_expired_rainfall_intervals(p_cutoff timestamptz) RETURNS integer AS $$
         DECLARE deleted_count integer;
         BEGIN
-            PERFORM set_config('app.rainfall_expiry_purge', 'on', true);
             DELETE FROM rainfall_interval_value AS value
             USING rainfall_interval_lifecycle AS lifecycle
             WHERE lifecycle.interval_value_id = value.id
@@ -146,6 +144,9 @@ def upgrade():
         END;
         $$ LANGUAGE plpgsql
     """)
+    op.execute(
+        "REVOKE EXECUTE ON FUNCTION purge_expired_rainfall_intervals(timestamptz) FROM PUBLIC"
+    )
     op.create_index(
         "ix_rainfall_interval_lookup",
         "rainfall_interval_value",
