@@ -71,6 +71,7 @@ celery_app = Celery(
         "app.domains.geo.gee_tasks",
         "app.domains.geo.gee_tasks_warming",
         "app.domains.geo.intelligence.tasks",
+        "app.domains.geo.rainfall.tasks",
     ],
 )
 
@@ -148,6 +149,11 @@ celery_app.conf.update(
         "reconcile-stale-geo-jobs": {
             "task": "geo.reconcile_stale_jobs",
             "schedule": crontab(minute="*/15"),
+            "options": {"queue": "celery"},
+        },
+        "rainfall-process-outbox": {
+            "task": "rainfall.process_outbox",
+            "schedule": crontab(minute="*"),
             "options": {"queue": "celery"},
         },
     },
