@@ -134,6 +134,66 @@ class ApprovedZonesMapPdfRequest(BaseModel):
     )
 
 
+async def cache_bounded_request_body(
+    request: Request,
+    *,
+    maximum: int,
+    too_large_detail: str,
+    invalid_length_detail: str,
+    disconnected_detail: str,
+) -> bytes:
+    """Cache a request stream while enforcing its byte bound before parsing."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            length = int(declared)
+            if length < 0:
+                raise ValueError
+            if length > maximum:
+                raise HTTPException(status_code=413, detail=too_large_detail)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=invalid_length_detail) from None
+    if not hasattr(request, "_body"):
+        chunks: list[bytes] = []
+        read = 0
+        try:
+            async for chunk in request.stream():
+                read += len(chunk)
+                if read > maximum:
+                    raise HTTPException(status_code=413, detail=too_large_detail)
+                chunks.append(chunk)
+        except ClientDisconnect:
+            raise HTTPException(status_code=400, detail=disconnected_detail) from None
+        request._body = b"".join(chunks)
+    return await request.body()
+
+
+async def parse_bounded_json_object(
+    request: Request,
+    *,
+    maximum: int,
+    detail_prefix: str,
+) -> dict:
+    """Read one bounded JSON object without letting FastAPI pre-buffer a typed body."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(status_code=415, detail=f"{detail_prefix} requires application/json")
+    raw = await cache_bounded_request_body(
+        request,
+        maximum=maximum,
+        too_large_detail=f"{detail_prefix} body exceeds limit",
+        invalid_length_detail=f"{detail_prefix} has invalid content-length",
+        disconnected_detail=f"{detail_prefix} body disconnected",
+    )
+    try:
+        payload = json.loads(raw or b"null")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail=f"{detail_prefix} body must be valid JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail=f"{detail_prefix} body must be a JSON object")
+    return payload
+
+
 async def enforce_map_pdf_body_limit(request: Request) -> None:
     """413 BEFORE parsing the public map-PDF body.
 
@@ -159,32 +219,14 @@ async def enforce_map_pdf_body_limit(request: Request) -> None:
     arrives through ``parse_map_pdf_body`` instead, exactly like the ficha's
     ``payload: Any = Depends(parse_ficha_body)``.
     """
-    maximo = settings.geo_map_pdf_max_body_bytes
-    declarado = request.headers.get("content-length")
-    if declarado is not None:
-        try:
-            if int(declarado) > maximo:
-                raise HTTPException(status_code=413, detail=f"Cuerpo mayor a {maximo} bytes")
-        except ValueError:
-            raise HTTPException(status_code=422, detail="content-length invalido")
-
-    if hasattr(request, "_body"):
-        return
-
-    trozos: list[bytes] = []
-    leido = 0
-    try:
-        async for trozo in request.stream():
-            leido += len(trozo)
-            if leido > maximo:
-                raise HTTPException(status_code=413, detail=f"Cuerpo mayor a {maximo} bytes")
-            trozos.append(trozo)
-    except ClientDisconnect:
-        # Never let a peer that hangs up mid-body reach the generic 500 handler:
-        # that logs with ``logger.exception`` and ships a Sentry event, which
-        # turns a dropped socket into a free way to burn the error budget.
-        raise HTTPException(status_code=400, detail="Cliente desconectado") from None
-    request._body = b"".join(trozos)
+    maximum = settings.geo_map_pdf_max_body_bytes
+    await cache_bounded_request_body(
+        request,
+        maximum=maximum,
+        too_large_detail=f"Cuerpo mayor a {maximum} bytes",
+        invalid_length_detail="content-length invalido",
+        disconnected_detail="Cliente desconectado",
+    )
 
 
 # Hand-written request schema for the map-PDF route. Because the body is parsed

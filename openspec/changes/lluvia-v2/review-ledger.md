@@ -321,3 +321,130 @@
 - Scope repository suite: 36 passed. Focused Rainfall suite: 66 passed. Ruff and `git diff --check`: passed.
 - Exact six-file production range remains 400 additions and 0 deletions.
 - Scoped fix re-review: PASS. RELIABILITY-005 and RELIABILITY-006 are verified; 11 targeted regressions, 36 scope tests, and 66 focused Rainfall tests passed; Ruff and diff checks passed; no new BLOCKER/CRITICAL was found on fix-touched lines.
+
+## PR2B apply Judgment Day — round 1
+
+**Target:** uncommitted `feat/lluvia-v2-02b-api-policy-contract` diff against `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a`
+**Judges:** two blind model-diverse reviews
+**State:** APPROVED after fix round 2
+
+| id | lens | location | severity | status | convergence | evidence |
+|---|---|---|---|---|---|---|
+| PR2B-JD-001 | judgment-day | `gee-backend/app/domains/geo/rainfall/router.py:79-94`; `gee-backend/app/domains/geo/rainfall/service.py`; `gee-backend/app/domains/geo/rainfall/policy.py` | CRITICAL | verified | final fix round 2 GREEN; dual scoped re-judgment PASS | JSON and CSV derive from the same fail-closed normalized metric representation; malformed metric-like mappings, invalid threshold domains, and below-duration-threshold values cannot disclose numeric values. |
+| PR2B-JD-002 | judgment-day | `gee-backend/app/domains/geo/rainfall/router.py:29-41,65-80` | CRITICAL | info | suspect; Judge A only | FastAPI buffers the typed body before route dependencies, so the route-level 16 KiB check does not prevent allocation for chunked bodies without Content-Length. |
+| PR2B-JD-003 | judgment-day | `gee-backend/app/domains/geo/rainfall/router.py:58-86` | CRITICAL | info | suspect; Judge A only | The POST body currently exposes internal snapshot lookup keys rather than the specified public `{scope, year, event_window?}` analysis request contract. |
+| PR2B-JD-004 | judgment-day | `consorcio-web/public/version.json` | WARNING | info | Judge A only; known unrelated dirt | Generated local version drift must remain excluded from PR2B. |
+
+### Evidence
+
+- Apply RED: 4 focused contract failures; GREEN: API 15 passed, Rainfall 70 passed, auth HTTP 2 passed.
+- Production diff: 66 additions and 7 deletions, within the 400-line budget.
+- Confirmed fix round 1 requires explicit user approval before implementation.
+
+### PR2B Judgment Day fix round 1 re-judgment
+
+**Result:** ESCALATED; PR2B-JD-001 remains open.
+
+- Judge A: malformed metric dictionaries missing the `metric` key bypass normalization, retain numeric JSON values, and diverge from empty CSV output.
+- Judge B: negative coverage/quality thresholds are accepted and `duration_threshold` is present but not evaluated, allowing below-threshold numeric values.
+- Both judges classified these as residual paths of PR2B-JD-001, with no separate new BLOCKER/CRITICAL findings.
+- Positive evidence: JSON and CSV both invoke `normalize_snapshot`; targeted API 17 passed; focused Rainfall 72 passed; auth checks passed; Ruff lint and diff checks passed.
+- Ruff format remains failing for `service.py` and `test_backend_api.py` and must be corrected in fix round 2.
+- Fix round 2 is the final allowed convergence round.
+
+
+### PR2B Judgment Day fix round 2 evidence
+
+- `PR2B-JD-001` is **fixed** after the final authorized convergence round: mappings with a metric-like numeric `value` but no `metric` normalize to an unavailable `unknown` metric, so JSON and CSV consume the same fail-closed representation.
+- Coverage and quality thresholds must be finite fractions in `[0, 1]`; duration thresholds must be finite and nonnegative. Any invalid threshold configuration suppresses disclosure.
+- `duration_threshold` is applied only to the `duration` metric: below suppresses with `duration_below_threshold`; equal and above disclose when all other gates pass. Existing valid complete metric disclosure and per-metric isolation remain covered.
+- TDD evidence: RED 5 targeted regressions failed before implementation; GREEN targeted API 24 passed, full Rainfall 79 passed, auth/API 53 passed.
+- Verification: `./venv/bin/python -m ruff check --config ruff.toml ...` passed; required Ruff format applied to `service.py` and `test_backend_api.py`, then `ruff format --check` passed; `git diff --check` passed.
+- PR2B production raw diff relative to `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a`: 198 additions, 10 deletions across `policy.py`, `router.py`, and `service.py` (under the 400-addition cap).
+- `PR2B-JD-002` and `PR2B-JD-003` remain suspect/info; `PR2B-JD-004` remains WARNING/info. No other ledger status changed.
+
+
+### PR2B Judgment Day fix round 2 re-judgment
+
+- Both blind model-diverse judges verified PR2B-JD-001.
+- Missing-metric numeric mappings fail closed; JSON and CSV share normalized output; invalid threshold domains suppress; duration boundaries are enforced; valid complete metrics remain available.
+- Targeted API: 24 passed. Focused Rainfall: 79 passed. Auth/API: 53 passed. Ruff check/format and diff check passed.
+- Production diff: 198 additions and 10 deletions, within the 400-addition cap.
+- No new BLOCKER/CRITICAL finding was found on round-2 fix-touched lines.
+- PR2B-JD-002, PR2B-JD-003 and PR2B-JD-004 remain informational.
+
+**JUDGMENT: APPROVED**
+
+## PR2B pre-commit review-reliability — RELIABILITY-PR2B-001
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-PR2B-001 | reliability | `gee-backend/app/domains/geo/rainfall/service.py:_normalize_metric` | CRITICAL | verified | candidate; general refuter: stands; GREEN; scoped re-review PASS | Raw validation precedes Pydantic: boolean, string, and non-finite values fail closed; finite integers/floats and null semantics are preserved across aligned JSON/CSV output. |
+
+### Fix state
+
+- RED: focused persisted-value contract failed for `true`, `false`, and numeric string values because Pydantic coerced them to floats.
+- GREEN: focused parametrized contract passed for booleans, numeric string, finite integer, finite float, and null/unavailable value.
+- Scoped re-review PASS: focused 6, API 30, Rainfall 85, auth/API 59, Ruff check/format, and `git diff --check` passed; no new BLOCKER/CRITICAL finding was found on fix-touched lines.
+- `RELIABILITY-PR2B-002` and `PR2B-JD-002` through `PR2B-JD-004` remain unchanged.
+
+## PR2B pre-push review-reliability — RELIABILITY-001
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-001 | reliability | `gee-backend/app/domains/geo/rainfall/service.py:_normalize_metric` | CRITICAL | verified | general refuter: stands; GREEN; scoped re-review PASS | The 2-addition raw guard runs before Pydantic coercion: boolean, numeric-string and non-finite `coverage`/`completeness` fail closed as `metric_contract_invalid`; finite `0.0`/`1.0` boundaries and null/unavailable semantics are preserved; JSON and CSV remain aligned. Targeted 18, Ruff check/format and `git diff --check` passed, with no new BLOCKER/CRITICAL on fix-touched lines. |
+
+### Fix state
+
+- Safety net: targeted Rainfall API suite passed before edits (30 passed).
+- RED: focused raw-evidence regression produced 4 expected failures for boolean/numeric-string coverage/completeness; six non-finite cases already failed closed.
+- GREEN/TRIANGULATE: 18 focused cases passed across both fields, malformed types, finite boundaries, null values, and JSON/CSV parity.
+- Verification evidence: targeted API 48 passed; full focused Rainfall 103 passed; bounded auth/API 77 passed; Ruff check/format and `git diff --check` passed.
+- Production delta for this fix: 2 additions and 0 deletions. PR2B production range: 207 additions and 10 deletions, below the 400-addition cap.
+- Scoped re-review PASS: `RELIABILITY-001` is verified; the 2-addition guard runs before Pydantic, targeted 18 and Ruff/format/diff checks passed, and no new BLOCKER/CRITICAL was found on fix-touched lines.
+- Existing WARNING/info entries remain unchanged.
+
+## PR2B PRE-PR full-4R — fix round 1
+
+**Target:** `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a..87fdc3d659b060a506dfea14dc465756dd45e1fa`
+**Vote rule:** each CRITICAL survives unless at least two of three independent refuters reject it.
+**State:** all ten candidates survived 2-of-3; fix round 1 verified by scoped reliability re-review.
+
+| id | lens | severity | correctness | impact | reproducibility | status | consolidated fix |
+|---|---|---|---|---|---|---|---|
+| READABILITY-003 | readability | CRITICAL | stands | stands | stands | verified | A — typed-body pre-buffering removed; shared streamed bounded JSON runs first. |
+| RISK-001 | risk | CRITICAL | stands | stands | stands | verified | A — chunked bodies abort at 16 KiB before parsing or snapshot lookup. |
+| RESILIENCE-001 | resilience | CRITICAL | stands | stands | stands | verified | A — malformed, oversized and disconnected streams map deterministically to 422/413/400. |
+| READABILITY-002 | readability | CRITICAL | stands | stands | stands | verified | B — public request is `{scope,year,event_window?}`; fingerprint/revisions are server-owned. |
+| RISK-002 | risk | CRITICAL | stands | refuted | stands | verified | B — newest immutable snapshot resolves by server-derived fingerprint and persisted creation time; historical CSV remains revision-addressed. |
+| READABILITY-001 | readability | CRITICAL | stands | stands | stands | verified | C — rainfall wet cutoff is no longer compared with duration hours; unset cutoff suppresses peak and duration. |
+| RELIABILITY-001 | reliability | CRITICAL | stands | stands | stands | verified | D — canonical root/direct metric-group nesting is validated before normalization. |
+| RESILIENCE-002 | resilience | CRITICAL | stands | stands | stands | verified | D — JSON and CSV consume the same accepted direct metric traversal; invalid envelopes fail closed. |
+| RELIABILITY-002 | reliability | CRITICAL | stands | stands | stands | verified | E — mixed naive/aware metric bounds become `metric_contract_invalid`, not an uncaught TypeError. |
+| RELIABILITY-003 | reliability | CRITICAL | stands | stands | stands | verified | F — raw quality score must be finite numeric, non-boolean, and within `[0,1]`. |
+
+### Fix evidence
+
+- Safety net: existing Rainfall API suite passed before edits (48 passed).
+- RED: 20 focused cases produced 13 expected failures and 7 already-passing boundary cases (the 20th case is the final OpenAPI publication TDD addition).
+- GREEN/TRIANGULATE: focused 20 passed; combined prior/new API regressions 68 passed.
+- Production range: 382 additions / 48 deletions relative to PR2A, excluding tests/docs/migrations/generated files; below the 400-addition cap.
+- Warning/info entries are unchanged. Fresh scoped re-review and terminal verification are still required before any candidate becomes verified.
+
+### Scoped re-review (reliability lens) — fix round 1 verdicts
+
+- `READABILITY-003` — **verified**: `router.py` replaces typed bodies with `Depends(parse_scope_request)`/`Depends(parse_analysis_request)` and `openapi_extra` schemas, so FastAPI no longer pre-buffers the typed body.
+- `RISK-001` — **verified**: `cache_bounded_request_body` enforces Content-Length first and aborts the stream at 16 KiB with 413 before JSON parsing or snapshot lookup; chunked-no-length regression proves rejection pre-parse.
+- `RESILIENCE-001` — **verified**: oversized/invalid Content-Length, malformed JSON, non-object payload and client disconnect map deterministically to 413/422/422/400 via shared `parse_bounded_json_object`.
+- `READABILITY-002` — **verified**: `AnalysisRequest` is `{scope, year, event_window?}` with `extra=forbid`; internal fingerprint/revision keys are rejected and absent from the published OpenAPI body.
+- `RISK-002` — **verified**: server derives the sha256 fingerprint; `get_snapshot` orders by `created_at DESC, id DESC`; untracked migration `lluvia_v2_002_analysis_created_at.py` adds the column and index; CSV remains addressed by revision UUID.
+- `READABILITY-001` — **verified**: `apply_metric_policy` never compares duration hours with the cutoff; unset `duration_threshold` suppresses `duration`/`peak` via `policy_threshold_unset`; boundary test shows 0.9/1.0/1.1 all available.
+- `RELIABILITY-001` — **verified**: `normalize_snapshot` validates root keys against `SNAPSHOT_ROOT_KEYS` and requires metric-like dict members per group before any normalization; invalid envelopes raise `SnapshotContractError`.
+- `RESILIENCE-002` — **verified**: JSON and CSV routes both call `normalize_snapshot` and `metric_rows` traverses only `METRIC_GROUPS`, so both representations consume the identical accepted traversal and fail closed as 503.
+- `RELIABILITY-002` — **verified**: `MetricResult` rejects mixed naive/aware interval bounds before the ordering comparison and `_normalize_metric` catches `(TypeError, ValidationError)` as `metric_contract_invalid` in both JSON and CSV.
+- `RELIABILITY-003` — **verified**: raw quality score must be non-boolean `int/float`, finite, and within `[0,1]`; violations become `metric_quality_invalid` and valid 0.0/1.0 boundaries remain available.
+- Spot-check evidence: focused contract file `test_prepr_contract_fixes.py` re-run — 20 passed; `ScopeRef` fields exactly match `ScopeRequest`, so the parcel path cannot raise an uncaught `TypeError`.
+- Info-level signals (no new round): the `duration_below_threshold` reason no longer exists — deliberate contract change of fix C superseding PR2B-JD round-2 semantics; a pre-cached `request._body` skips the streaming bound, unreachable in this router because the parse dependency is the first body consumer.
+- No new BLOCKER/CRITICAL finding was found on fix-touched lines.
+
+**PR2B PRE-PR full-4R fix round 1 scoped re-review:** PASS — all ten candidates verified.

@@ -103,3 +103,44 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 - Verification: 55 focused Rainfall tests passed; focused Ruff checks and the diff consistency check passed.
 - The model-diverse critical review/fix cycle approved the PR 2A boundary.
 - Only tasks 2.1–2.2 are complete; tasks 2.3–2.5 remain unchecked.
+
+
+## PR 2B API policy contract progress
+- Branch: `feat/lluvia-v2-02b-api-policy-contract`, based exactly on PR2A `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a`.
+- [x] 2.3: Added the versioned `MetricThresholdPolicy` evaluator with per-metric coverage, completeness, quality, and duration gates. Missing policy thresholds fail closed; `None` remains unavailable while a numeric `0.0` remains available; a failed metric does not affect independent metrics.
+- [x] 2.4: Hardened authenticated snapshot routes with bounded JSON content, explicit request field limits, existing admin/operator authorization, existing CSRF middleware, global rate limiting, and the existing shared metric-row JSON/CSV provenance/state contract. Authorization denial continues to return no snapshot or CSV values.
+
+### TDD evidence
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 2.3–2.4 | Four focused tests failed: missing threshold-policy symbols, absent body limit, and empty policy revision accepted. | 15 API-contract tests passed after implementation; complete rainfall suite passed (70). | Ruff format/check passed for modified policy, router, and tests. |
+
+### Verification
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/geo/rainfall -q --no-header --tb=short` → 70 passed.
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/test_auth_refresh_http.py -q --no-header --tb=short` → 2 passed.
+- `cd gee-backend && ./venv/bin/python -m ruff check app/domains/geo/rainfall/policy.py app/domains/geo/rainfall/router.py tests/new/geo/rainfall/test_backend_api.py` → passed.
+- `git diff --check d6d6b2914a95b0360b4004c1cc2745e6f0d3965a` → passed.
+- PR2B production raw numstat relative to the PR2A base: `66 additions / 7 deletions` across `policy.py` and `router.py`; tests and OpenSpec artifacts excluded from the production budget.
+
+## Remaining tasks
+- [ ] 2.5–4.3
+
+## PR 2B PRE-PR full-4R fix round 1
+
+- Tasks 2.3–2.4 are reopened pending fresh scoped verification; tasks 2.5–4.3 remain untouched.
+- Public POST contract is `{scope, year, event_window?}`; the server derives the fingerprint and chooses the newest immutable snapshot using persisted `created_at`. Historical CSV revision retrieval remains explicit.
+- Rainfall POST bodies now use the shared streamed bounded-JSON helper before Pydantic parsing, including chunked overflow and disconnect handling.
+- Duration policy treats `duration_threshold` only as the per-interval rainfall wet cutoff and requires it for paired peak/duration disclosure; it is never compared with duration hours.
+- Snapshot root/group nesting, mixed timezone bounds, and raw quality scores outside finite non-boolean `[0,1]` fail closed through the shared JSON/CSV representation.
+
+### TDD cycle evidence
+
+| Root defects | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|
+| A–F | API 48 passed before edits | 20 focused cases: 13 expected failures, 7 existing boundary passes | Focused 20 passed; combined API 68 passed | malformed/oversized/chunked/disconnect, public/internal request fields, duration/peak, invalid/valid envelopes, mixed timestamps, invalid/valid quality boundaries | Shared router helper extracted; Ruff formatting applied |
+
+### Current verification and budget
+
+- Production range relative to PR2A base: 382 additions / 48 deletions, excluding tests, docs, migrations, and generated files; within the 400-addition cap.
+- Fresh full Rainfall, auth/API, Ruff check/format, migration head, and diff checks remain pending.
+- No staging, commit, push, or PR action has occurred in this fix round.
