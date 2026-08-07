@@ -42,10 +42,10 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Authenticated ficha and export
 
-- [ ] 3.1 **RED**: Add Vitest tests for access, resolve/switch, metric states/badges/reasons, live announcements and textual charts.
-- [ ] 3.2 **GREEN**: Create `consorcio-web/src/lib/api/rainfall.ts`, `hooks/useRainfallAnalysis.ts`, and `components/map2d/rainfall/`; use strict flat contracts, labelled controls and TanStack Query.
-- [ ] 3.3 Mount `RainfallDetailPanel` conditionally in `FichaTerritorialPanel.tsx`; preserve public `PrecipChart.tsx`, regional-estimate labels and authorized CSV download.
-- [ ] 3.4 **REFACTOR**: Share displayed/exported state formatting without manual memoization; add mutation targets for policy, suppression, temporal windows and CSV parity.
+- [x] 3.1 **RED**: Add Vitest tests for access, resolve/switch, metric states/badges/reasons, live announcements and textual charts.
+- [x] 3.2 **GREEN**: Create `consorcio-web/src/lib/api/rainfall.ts`, `hooks/useRainfallAnalysis.ts`, and `components/map2d/rainfall/`; use strict flat contracts, labelled controls and TanStack Query.
+- [x] 3.3 Mount `RainfallDetailPanel` conditionally in `FichaTerritorialPanel.tsx`; preserve public `PrecipChart.tsx`, regional-estimate labels and authorized CSV download.
+- [ ] 3.4 **REFACTOR**: Share displayed/exported state formatting without manual memoization; add mutation targets for policy, suppression, temporal windows and CSV parity. PARTIALLY DONE in PR 3B: shared formatting landed as `rainfallFormat.ts` (single formatter for display/export semantics, no manual memoization — React 19). DEFERRED: Stryker mutation-target registration for the rainfall UI slice (backend policy/suppression/temporal/CSV-parity mutation targets already exist per 2.4); deferred because 3.1–3.3 alone exceeded the 400-line production budget (650 raw lines).
 
 ## Phase 4: Verification and controlled rollout
 
