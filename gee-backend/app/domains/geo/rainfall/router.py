@@ -1,15 +1,23 @@
 """Authenticated snapshot-only Rainfall v2 API."""
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
-from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+from app.domains.geo.rainfall.service import (
+    SnapshotContractError,
+    analysis_request_fingerprint,
+    metric_rows,
+    metric_rows_csv,
+    normalize_snapshot,
+)
 from app.domains.geo.rainfall.scope import (
     NoScopeMatch,
     ScopeRef,
@@ -26,21 +34,6 @@ def _require_operator():
     return require_admin_or_operator
 
 
-async def enforce_rainfall_request_contract(request: Request) -> None:
-    """Bound JSON snapshots before parsing and never expose a partial request."""
-    if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
-        raise HTTPException(415, detail="rainfall requests require application/json")
-    declared_length = request.headers.get("content-length")
-    if declared_length is not None:
-        try:
-            if int(declared_length) > MAX_RAINFALL_REQUEST_BYTES:
-                raise HTTPException(413, detail="rainfall request body exceeds limit")
-        except ValueError as exc:
-            raise HTTPException(400, detail="invalid content-length") from exc
-    if len(await request.body()) > MAX_RAINFALL_REQUEST_BYTES:
-        raise HTTPException(413, detail="rainfall request body exceeds limit")
-
-
 router = APIRouter(
     prefix="/rainfall", tags=["Rainfall v2"], dependencies=[Depends(_require_operator())]
 )
@@ -55,15 +48,56 @@ class ScopeRequest(BaseModel):
     geometry: dict | None = None
 
 
+class EventWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start: datetime
+    end: datetime
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "EventWindow":
+        if self.start.utcoffset() is None or self.end.utcoffset() is None or self.end <= self.start:
+            raise ValueError("event window must be aware and half-open")
+        return self
+
+
 class AnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    request_fingerprint: str = Field(min_length=1, max_length=128)
-    policy_revision: str = Field(min_length=1, max_length=64)
-    data_revision: str = Field(min_length=1, max_length=128)
+    scope: ScopeRequest
+    year: int = Field(ge=1991, le=9999)
+    event_window: EventWindow | None = None
 
 
-@router.post("/scopes:resolve", dependencies=[Depends(enforce_rainfall_request_contract)])
-def resolve_scope(payload: ScopeRequest, db: Session = Depends(get_db)):
+async def _parse_request(request: Request, model: type[BaseModel]):
+    payload = await parse_bounded_json_object(
+        request, maximum=MAX_RAINFALL_REQUEST_BYTES, detail_prefix="rainfall request"
+    )
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="rainfall request body is invalid") from exc
+
+
+async def parse_scope_request(request: Request) -> ScopeRequest:
+    return await _parse_request(request, ScopeRequest)
+
+
+async def parse_analysis_request(request: Request) -> AnalysisRequest:
+    return await _parse_request(request, AnalysisRequest)
+
+
+def _request_body(model: type[BaseModel]) -> dict:
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": model.model_json_schema()}},
+        }
+    }
+
+
+@router.post("/scopes:resolve", openapi_extra=_request_body(ScopeRequest))
+def resolve_scope(
+    payload: ScopeRequest = Depends(parse_scope_request), db: Session = Depends(get_db)
+):
     try:
         if payload.kind == "parcel":
             if not payload.nomenclature:
@@ -76,14 +110,29 @@ def resolve_scope(payload: ScopeRequest, db: Session = Depends(get_db)):
     return {"scope": scope, "regional_estimate": scope.regional_estimate}
 
 
-@router.post("/analyses", dependencies=[Depends(enforce_rainfall_request_contract)])
-def read_analysis(payload: AnalysisRequest, db: Session = Depends(get_db)):
-    revision = RainfallRepository().get_snapshot(
-        db, payload.request_fingerprint, payload.policy_revision, payload.data_revision
-    )
+@router.post("/analyses", openapi_extra=_request_body(AnalysisRequest))
+def read_analysis(
+    payload: AnalysisRequest = Depends(parse_analysis_request), db: Session = Depends(get_db)
+):
+    try:
+        scope = executable_scope(ScopeRef(**payload.scope.model_dump()))
+    except (UnsupportedDirectScope, NoScopeMatch, ValueError) as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
+    request = {
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": payload.year,
+    }
+    if payload.event_window is not None:
+        request["event_window"] = payload.event_window.model_dump(mode="json")
+    revision = RainfallRepository().get_snapshot(db, analysis_request_fingerprint(request))
     if revision is None:
         raise HTTPException(404, detail="rainfall analysis is unavailable")
-    return normalize_snapshot(revision.snapshot, expected_policy_revision=payload.policy_revision)
+    try:
+        return normalize_snapshot(
+            revision.snapshot, expected_policy_revision=revision.policy_revision
+        )
+    except SnapshotContractError as exc:
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
 
 
 @router.get("/analyses/{revision}.csv")
@@ -91,7 +140,10 @@ def export_analysis(revision: UUID, db: Session = Depends(get_db)) -> Response:
     snapshot = RainfallRepository().get_revision(db, revision)
     if snapshot is None:
         raise HTTPException(404, detail="rainfall analysis is unavailable")
-    normalized = normalize_snapshot(
-        snapshot.snapshot, expected_policy_revision=snapshot.policy_revision
-    )
+    try:
+        normalized = normalize_snapshot(
+            snapshot.snapshot, expected_policy_revision=snapshot.policy_revision
+        )
+    except SnapshotContractError as exc:
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
     return Response(metric_rows_csv(metric_rows(normalized)), media_type="text/csv")

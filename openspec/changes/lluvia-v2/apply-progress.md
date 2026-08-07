@@ -124,3 +124,23 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 
 ## Remaining tasks
 - [ ] 2.5–4.3
+
+## PR 2B PRE-PR full-4R fix round 1
+
+- Tasks 2.3–2.4 are reopened pending fresh scoped verification; tasks 2.5–4.3 remain untouched.
+- Public POST contract is `{scope, year, event_window?}`; the server derives the fingerprint and chooses the newest immutable snapshot using persisted `created_at`. Historical CSV revision retrieval remains explicit.
+- Rainfall POST bodies now use the shared streamed bounded-JSON helper before Pydantic parsing, including chunked overflow and disconnect handling.
+- Duration policy treats `duration_threshold` only as the per-interval rainfall wet cutoff and requires it for paired peak/duration disclosure; it is never compared with duration hours.
+- Snapshot root/group nesting, mixed timezone bounds, and raw quality scores outside finite non-boolean `[0,1]` fail closed through the shared JSON/CSV representation.
+
+### TDD cycle evidence
+
+| Root defects | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|
+| A–F | API 48 passed before edits | 20 focused cases: 13 expected failures, 7 existing boundary passes | Focused 20 passed; combined API 68 passed | malformed/oversized/chunked/disconnect, public/internal request fields, duration/peak, invalid/valid envelopes, mixed timestamps, invalid/valid quality boundaries | Shared router helper extracted; Ruff formatting applied |
+
+### Current verification and budget
+
+- Production range relative to PR2A base: 382 additions / 48 deletions, excluding tests, docs, migrations, and generated files; within the 400-addition cap.
+- Fresh full Rainfall, auth/API, Ruff check/format, migration head, and diff checks remain pending.
+- No staging, commit, push, or PR action has occurred in this fix round.

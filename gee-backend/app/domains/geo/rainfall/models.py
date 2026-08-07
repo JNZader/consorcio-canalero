@@ -93,6 +93,9 @@ class RainfallAnalysisRevision(UUIDMixin, Base):
     policy_revision: Mapped[str] = mapped_column(String(64), nullable=False)
     data_revision: Mapped[str] = mapped_column(String(128), nullable=False)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class RainfallBackfillCheckpoint(UUIDMixin, Base):

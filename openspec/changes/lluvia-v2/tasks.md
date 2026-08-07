@@ -36,8 +36,8 @@ Chain strategy: feature-branch-chain
 
 - [x] 2.1 **RED**: Test `scope.py` for stable zone/basin identities, parcel intersection choices/regional labels, ambiguity/no-match, and parcel/geometry direct-compute rejection.
 - [x] 2.2 **GREEN**: Implement `scope.py`, `repository.py`, `temporal.py` and `service.py`: Buenos Aires local dates, leap-day rule, same-date baseline, cross-year antecedents, cadence-aligned rolling P30/P60/P3h/P24h and deterministic event suppression/peak/duration.
-- [x] 2.3 **REFACTOR**: Centralize versioned coverage/quality/duration thresholds; make null distinct from zero and isolate failed metrics.
-- [x] 2.4 **RED/GREEN**: Add `router.py` and shared snapshot metric-row serializer with tests for admin/operator auth, CSRF/content-type/body limits/rate limit, JSON/CSV parity, revisions, states, provenance and denied disclosure.
+- [x] 2.3 **REFACTOR**: Centralize versioned coverage/quality/duration thresholds; make null distinct from zero and isolate failed metrics. Implementation corrected in PRE-PR full-4R fix round 1; verified by scoped reliability re-review (all ten candidates verified).
+- [x] 2.4 **RED/GREEN**: Add `router.py` and shared snapshot metric-row serializer with tests for admin/operator auth, CSRF/content-type/body limits/rate limit, JSON/CSV parity, revisions, states, provenance and denied disclosure. Implementation corrected in PRE-PR full-4R fix round 1; verified by scoped reliability re-review (all ten candidates verified).
 - [ ] 2.5 Add `tasks.py`, adapter timeout/quota/retry/circuit/cache behavior and Celery Beat/outbox ingest/revisit/backfill; requests read DB/Redis and queue labelled missing work.
 
 ## Phase 3: Authenticated ficha and export

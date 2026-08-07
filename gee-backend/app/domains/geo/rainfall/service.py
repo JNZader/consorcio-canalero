@@ -1,6 +1,7 @@
 """Snapshot serialization keeps JSON and CSV state/provenance semantics identical."""
 
 import csv
+import hashlib
 import json
 from io import StringIO
 from math import isfinite
@@ -10,6 +11,34 @@ from pydantic import ValidationError
 
 from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
 from app.domains.geo.rainfall.schemas import MetricResult
+
+METRIC_GROUPS = ("annual", "antecedents", "intensity")
+SNAPSHOT_ROOT_KEYS = {
+    "analysis_revision_id",
+    "scope",
+    "regional_estimate",
+    "year",
+    "comparison_end",
+    "baseline",
+    "annual",
+    "antecedents",
+    "intensity",
+    "summary",
+    "source_health",
+    "metric_policy",
+}
+
+
+class SnapshotContractError(ValueError):
+    """Persisted snapshot does not match the canonical disclosure envelope."""
+
+
+def analysis_request_fingerprint(request: Any) -> str:
+    """Build the server-owned immutable lookup key from the public request."""
+    if hasattr(request, "model_dump"):
+        request = request.model_dump(mode="json", exclude_none=True)
+    canonical = json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _metric_policy(
@@ -66,7 +95,7 @@ def _normalize_metric(
         return _unavailable(raw, "metric_contract_invalid")
     try:
         metric = MetricResult.model_validate(raw)
-    except ValidationError:
+    except (TypeError, ValidationError):
         return _unavailable(raw, "metric_contract_invalid")
     if metric.revision != expected_revision:
         return _unavailable(raw, "policy_revision_mismatch")
@@ -75,7 +104,12 @@ def _normalize_metric(
     if policy is None:
         return _unavailable(raw, "policy_unavailable")
     score = metric.quality.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)) or not isfinite(score):
+    if (
+        isinstance(score, bool)
+        or not isinstance(score, (int, float))
+        or not isfinite(score)
+        or not 0 <= score <= 1
+    ):
         return _unavailable(raw, "metric_quality_invalid")
     applied = apply_metric_policy(
         policy,
@@ -93,30 +127,34 @@ def _normalize_metric(
     return {**raw, "value": applied.value, "state": state, "reason": applied.reason}
 
 
-def normalize_snapshot(
-    snapshot: dict[str, Any], *, expected_policy_revision: str
-) -> dict[str, Any]:
+def normalize_snapshot(snapshot: object, *, expected_policy_revision: str) -> dict[str, Any]:
     """Validate and apply one approved policy before JSON or CSV disclosure."""
+    if not isinstance(snapshot, dict) or not set(snapshot) <= SNAPSHOT_ROOT_KEYS:
+        raise SnapshotContractError("snapshot envelope is invalid")
     policy = _metric_policy(snapshot, expected_policy_revision)
-
-    def normalize(value: Any) -> Any:
-        if isinstance(value, dict):
-            if "metric" in value or "value" in value:
-                return _normalize_metric(value, policy, expected_policy_revision)
-            return {key: normalize(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [normalize(item) for item in value]
-        return value
-
-    return normalize(snapshot)
+    normalized = dict(snapshot)
+    for group_name in METRIC_GROUPS:
+        group = snapshot.get(group_name)
+        if group is None:
+            continue
+        if not isinstance(group, dict) or any(
+            not isinstance(metric, dict) or not ({"metric", "value"} & set(metric))
+            for metric in group.values()
+        ):
+            raise SnapshotContractError("snapshot envelope is invalid")
+        normalized[group_name] = {
+            name: _normalize_metric(metric, policy, expected_policy_revision)
+            for name, metric in group.items()
+        }
+    return normalized
 
 
 def metric_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten nested metric groups without coercing a missing value to zero."""
     return [
         dict(metric)
-        for group in snapshot.values()
-        if isinstance(group, dict)
+        for group_name in METRIC_GROUPS
+        if isinstance((group := snapshot.get(group_name)), dict)
         for metric in group.values()
         if isinstance(metric, dict) and "metric" in metric
     ]

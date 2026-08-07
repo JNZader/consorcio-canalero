@@ -21,12 +21,14 @@ class RainfallRepository:
         return db.get(RainfallAnalysisRevision, revision_id)
 
     def get_snapshot(
-        self, db: Session, request_fingerprint: str, policy_revision: str, data_revision: str
+        self, db: Session, request_fingerprint: str
     ) -> RainfallAnalysisRevision | None:
-        query = select(RainfallAnalysisRevision).where(
-            RainfallAnalysisRevision.request_fingerprint == request_fingerprint,
-            RainfallAnalysisRevision.policy_revision == policy_revision,
-            RainfallAnalysisRevision.data_revision == data_revision,
+        query = (
+            select(RainfallAnalysisRevision)
+            .where(RainfallAnalysisRevision.request_fingerprint == request_fingerprint)
+            .order_by(
+                RainfallAnalysisRevision.created_at.desc(), RainfallAnalysisRevision.id.desc()
+            )
         )
         return db.scalar(query)
 

@@ -161,7 +161,7 @@ def apply_metric_policy(
     minimum_quality = policy.minimum_quality_by_metric.get(metric)
     if minimum_coverage is None or minimum_quality is None:
         return PolicyMetricResult(None, "suppressed", "policy_threshold_unset")
-    if metric == "duration" and policy.duration_threshold is None:
+    if metric in {"duration", "peak"} and policy.duration_threshold is None:
         return PolicyMetricResult(None, "suppressed", "policy_threshold_unset")
     if coverage < minimum_coverage or completeness < minimum_coverage:
         return PolicyMetricResult(None, "suppressed", "coverage_below_threshold")
@@ -169,6 +169,4 @@ def apply_metric_policy(
         return PolicyMetricResult(None, "suppressed", "quality_below_threshold")
     if value is None:
         return PolicyMetricResult(None, "unavailable", "metric_value_unavailable")
-    if metric == "duration" and value < policy.duration_threshold:
-        return PolicyMetricResult(None, "suppressed", "duration_below_threshold")
     return PolicyMetricResult(value, "available", None)

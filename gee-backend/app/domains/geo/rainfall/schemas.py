@@ -45,6 +45,8 @@ class MetricResult(BaseModel):
             raise ValueError("metric value must be finite")
         if not isfinite(self.coverage) or not isfinite(self.completeness):
             raise ValueError("metric coverage and completeness must be finite")
+        if (self.interval_start.utcoffset() is None) != (self.interval_end.utcoffset() is None):
+            raise ValueError("metric interval bounds must use matching timezone awareness")
         if self.interval_end <= self.interval_start:
             raise ValueError("interval_end must be after interval_start")
         if self.state == "available" and self.value is None:

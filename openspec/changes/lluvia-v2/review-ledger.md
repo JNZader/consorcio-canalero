@@ -403,3 +403,48 @@
 - Production delta for this fix: 2 additions and 0 deletions. PR2B production range: 207 additions and 10 deletions, below the 400-addition cap.
 - Scoped re-review PASS: `RELIABILITY-001` is verified; the 2-addition guard runs before Pydantic, targeted 18 and Ruff/format/diff checks passed, and no new BLOCKER/CRITICAL was found on fix-touched lines.
 - Existing WARNING/info entries remain unchanged.
+
+## PR2B PRE-PR full-4R — fix round 1
+
+**Target:** `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a..87fdc3d659b060a506dfea14dc465756dd45e1fa`
+**Vote rule:** each CRITICAL survives unless at least two of three independent refuters reject it.
+**State:** all ten candidates survived 2-of-3; fix round 1 verified by scoped reliability re-review.
+
+| id | lens | severity | correctness | impact | reproducibility | status | consolidated fix |
+|---|---|---|---|---|---|---|---|
+| READABILITY-003 | readability | CRITICAL | stands | stands | stands | verified | A — typed-body pre-buffering removed; shared streamed bounded JSON runs first. |
+| RISK-001 | risk | CRITICAL | stands | stands | stands | verified | A — chunked bodies abort at 16 KiB before parsing or snapshot lookup. |
+| RESILIENCE-001 | resilience | CRITICAL | stands | stands | stands | verified | A — malformed, oversized and disconnected streams map deterministically to 422/413/400. |
+| READABILITY-002 | readability | CRITICAL | stands | stands | stands | verified | B — public request is `{scope,year,event_window?}`; fingerprint/revisions are server-owned. |
+| RISK-002 | risk | CRITICAL | stands | refuted | stands | verified | B — newest immutable snapshot resolves by server-derived fingerprint and persisted creation time; historical CSV remains revision-addressed. |
+| READABILITY-001 | readability | CRITICAL | stands | stands | stands | verified | C — rainfall wet cutoff is no longer compared with duration hours; unset cutoff suppresses peak and duration. |
+| RELIABILITY-001 | reliability | CRITICAL | stands | stands | stands | verified | D — canonical root/direct metric-group nesting is validated before normalization. |
+| RESILIENCE-002 | resilience | CRITICAL | stands | stands | stands | verified | D — JSON and CSV consume the same accepted direct metric traversal; invalid envelopes fail closed. |
+| RELIABILITY-002 | reliability | CRITICAL | stands | stands | stands | verified | E — mixed naive/aware metric bounds become `metric_contract_invalid`, not an uncaught TypeError. |
+| RELIABILITY-003 | reliability | CRITICAL | stands | stands | stands | verified | F — raw quality score must be finite numeric, non-boolean, and within `[0,1]`. |
+
+### Fix evidence
+
+- Safety net: existing Rainfall API suite passed before edits (48 passed).
+- RED: 20 focused cases produced 13 expected failures and 7 already-passing boundary cases (the 20th case is the final OpenAPI publication TDD addition).
+- GREEN/TRIANGULATE: focused 20 passed; combined prior/new API regressions 68 passed.
+- Production range: 382 additions / 48 deletions relative to PR2A, excluding tests/docs/migrations/generated files; below the 400-addition cap.
+- Warning/info entries are unchanged. Fresh scoped re-review and terminal verification are still required before any candidate becomes verified.
+
+### Scoped re-review (reliability lens) — fix round 1 verdicts
+
+- `READABILITY-003` — **verified**: `router.py` replaces typed bodies with `Depends(parse_scope_request)`/`Depends(parse_analysis_request)` and `openapi_extra` schemas, so FastAPI no longer pre-buffers the typed body.
+- `RISK-001` — **verified**: `cache_bounded_request_body` enforces Content-Length first and aborts the stream at 16 KiB with 413 before JSON parsing or snapshot lookup; chunked-no-length regression proves rejection pre-parse.
+- `RESILIENCE-001` — **verified**: oversized/invalid Content-Length, malformed JSON, non-object payload and client disconnect map deterministically to 413/422/422/400 via shared `parse_bounded_json_object`.
+- `READABILITY-002` — **verified**: `AnalysisRequest` is `{scope, year, event_window?}` with `extra=forbid`; internal fingerprint/revision keys are rejected and absent from the published OpenAPI body.
+- `RISK-002` — **verified**: server derives the sha256 fingerprint; `get_snapshot` orders by `created_at DESC, id DESC`; untracked migration `lluvia_v2_002_analysis_created_at.py` adds the column and index; CSV remains addressed by revision UUID.
+- `READABILITY-001` — **verified**: `apply_metric_policy` never compares duration hours with the cutoff; unset `duration_threshold` suppresses `duration`/`peak` via `policy_threshold_unset`; boundary test shows 0.9/1.0/1.1 all available.
+- `RELIABILITY-001` — **verified**: `normalize_snapshot` validates root keys against `SNAPSHOT_ROOT_KEYS` and requires metric-like dict members per group before any normalization; invalid envelopes raise `SnapshotContractError`.
+- `RESILIENCE-002` — **verified**: JSON and CSV routes both call `normalize_snapshot` and `metric_rows` traverses only `METRIC_GROUPS`, so both representations consume the identical accepted traversal and fail closed as 503.
+- `RELIABILITY-002` — **verified**: `MetricResult` rejects mixed naive/aware interval bounds before the ordering comparison and `_normalize_metric` catches `(TypeError, ValidationError)` as `metric_contract_invalid` in both JSON and CSV.
+- `RELIABILITY-003` — **verified**: raw quality score must be non-boolean `int/float`, finite, and within `[0,1]`; violations become `metric_quality_invalid` and valid 0.0/1.0 boundaries remain available.
+- Spot-check evidence: focused contract file `test_prepr_contract_fixes.py` re-run — 20 passed; `ScopeRef` fields exactly match `ScopeRequest`, so the parcel path cannot raise an uncaught `TypeError`.
+- Info-level signals (no new round): the `duration_below_threshold` reason no longer exists — deliberate contract change of fix C superseding PR2B-JD round-2 semantics; a pre-cached `request._body` skips the streaming bound, unreachable in this router because the parse dependency is the first body consumer.
+- No new BLOCKER/CRITICAL finding was found on fix-touched lines.
+
+**PR2B PRE-PR full-4R fix round 1 scoped re-review:** PASS — all ten candidates verified.

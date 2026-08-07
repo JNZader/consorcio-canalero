@@ -288,12 +288,12 @@ def test_metric_policy_rejects_out_of_domain_thresholds(coverage, quality, durat
 @pytest.mark.parametrize(
     ("value", "state", "reason"),
     [
-        (0.9, "suppressed", "duration_below_threshold"),
+        (0.9, "available", None),
         (1.0, "available", None),
         (1.1, "available", None),
     ],
 )
-def test_metric_policy_applies_duration_threshold_at_the_boundary(value, state, reason):
+def test_metric_policy_does_not_compare_duration_hours_to_rainfall_cutoff(value, state, reason):
     from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
 
     policy = MetricThresholdPolicy(
@@ -335,7 +335,7 @@ def test_analysis_request_rejects_oversized_body_before_snapshot_lookup():
     assert response.json()["detail"] == "rainfall request body exceeds limit"
 
 
-def test_analysis_request_requires_a_versioned_policy_and_complete_request_contract():
+def test_analysis_request_rejects_internal_revision_lookup_keys():
     from pydantic import ValidationError
 
     from app.domains.geo.rainfall.router import AnalysisRequest
@@ -344,7 +344,11 @@ def test_analysis_request_requires_a_versioned_policy_and_complete_request_contr
         AnalysisRequest(request_fingerprint="request", policy_revision="", data_revision="data")
     with pytest.raises(ValidationError):
         AnalysisRequest(
-            request_fingerprint="request", policy_revision="policy", data_revision="data", extra="x"
+            scope={"kind": "zone", "id": "z1", "version": "1"},
+            year=2026,
+            request_fingerprint="request",
+            policy_revision="policy",
+            data_revision="data",
         )
 
 
