@@ -145,6 +145,38 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 - Fresh full Rainfall, auth/API, Ruff check/format, migration head, and diff checks remain pending.
 - No staging, commit, push, or PR action has occurred in this fix round.
 
+## PR 3A ingest operations round 1-B fixes
+
+- Branch: `feat/lluvia-v2-03a-ingest-ops`
+- Commit: `f657a47`
+- Findings fixed: D, E
+
+### TDD cycle evidence
+
+| Finding | Test file | Layer | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| D | `test_resilience.py` | Unit | 28 passed | timeout test failed (missing `MemoryCircuitStore`, etc.) | passed with `_run_with_timeout` | slow vs. fast inner fetch | extracted `_run_with_timeout`, func_timeout/SIGALRM fallback |
+| E | `test_resilience.py` | Unit | 28 passed | shared-state tests failed (missing store) | passed with `CircuitStore` + `MemoryCircuitStore` + `RedisCircuitStore` | shared state, half-open success/reset, half-open failure/reopen | `ResilientAdapterState` serialization, `tasks.py` wiring |
+
+### Verification
+
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/geo/rainfall tests/new/test_auth_refresh_http.py -q --no-header --tb=short` → 157 passed.
+- `cd gee-backend && ./venv/bin/ruff check app/domains/geo/rainfall/adapters/resilience.py app/domains/geo/rainfall/tasks.py tests/new/geo/rainfall/test_resilience.py && ./venv/bin/ruff format --check ...` → passed.
+- `cd gee-backend && ./venv/bin/python -m compileall -q app/domains/geo/rainfall/adapters/resilience.py app/domains/geo/rainfall/tasks.py tests/new/geo/rainfall/test_resilience.py` → passed.
+- `cd gee-backend && ./venv/bin/python -m alembic heads` → `lluvia_v2_004 (head)` single head.
+- `git diff --stat 9d3b745` → 3 files changed, 390 insertions(+), 7 deletions(-).
+- Production behavioral code (excluding tests): ~166 additions / ~7 deletions.
+- No push/PR.
+
+### Deviations from design
+
+None — the store abstraction and timeout wrapper match the resilience design goals; Redis key namespace uses `rainfall:circuit:<role>` as requested.
+
+### Issues found
+
+- `func-timeout` is not installed in `gee-backend/venv`, so the production path uses the SIGALRM fallback. This works on Linux/Celery prefork workers and degrades safely on non-main threads or Windows.
+- The pre-commit/build hook touched `consorcio-web/public/version.json`; it was reverted and not committed.
+
 ## PR 3A ingest operations round 1-A fixes
 
 - Branch: `feat/lluvia-v2-03a-ingest-ops`
