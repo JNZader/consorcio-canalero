@@ -5,9 +5,12 @@
  * tab under the public PrecipChart (untouched). RENDER GATE only — the backend
  * is the authorization boundary; anonymous visitors and non-staff never see
  * the control (anti-flash criterion as `useAnalysisToolsGate`). A queued (202)
- * answer is a LABELLED pending state that polls; all state changes go through
- * an aria-live region; parcel-originated results keep the "Estimación
- * regional" label (spec "Supported Analysis Scope and Parcel Semantics").
+ * answer is a LABELLED pending state that polls with a bounded budget; once
+ * the budget is exhausted the panel shows an honest terminal "no disponible
+ * aún" state with a manual retry — never an auto-update promise that cannot be
+ * kept (RESILIENCE-001/002). All state changes go through an aria-live region;
+ * parcel-originated results keep the "Estimación regional" label (spec
+ * "Supported Analysis Scope and Parcel Semantics").
  */
 
 import {
@@ -53,7 +56,17 @@ function LoadingRow({ label }: { readonly label: string }) {
   );
 }
 
-export function RainfallDetailPanel({ nomenclatura }: { readonly nomenclatura: string }) {
+export function RainfallDetailPanel({
+  nomenclatura,
+  pollIntervalMs,
+  maxQueuedPolls,
+}: {
+  readonly nomenclatura: string;
+  /** Test seam: forwarded to `useRainfallAnalysis` (see the hook options). */
+  readonly pollIntervalMs?: number;
+  /** Test seam: forwarded to `useRainfallAnalysis` (see the hook options). */
+  readonly maxQueuedPolls?: number;
+}) {
   const canAccess = useCanAccess(['admin', 'operador']);
   const scopes = useRainfallScopes(canAccess ? nomenclatura : null);
   const choices =
@@ -68,13 +81,20 @@ export function RainfallDetailPanel({ nomenclatura }: { readonly nomenclatura: s
   const [year, setYear] = useState(CURRENT_YEAR);
   const selected = choices.find((c) => scopeKey(c) === selectedKey) ?? choices[0] ?? null;
 
-  const analysis = useRainfallAnalysis(canAccess ? selected : null, year);
+  const analysis = useRainfallAnalysis(canAccess ? selected : null, year, {
+    pollIntervalMs,
+    maxQueuedPolls,
+  });
   const snapshot = analysis.data?.type === 'ready' ? analysis.data.snapshot : null;
 
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
     if (analysis.data?.type === 'queued') {
-      setAnnouncement(`Análisis en preparación: ${analysis.data.queued.labels.join(', ')}`);
+      if (analysis.gaveUp) {
+        setAnnouncement('Análisis no disponible aún. Puede reintentar manualmente.');
+      } else {
+        setAnnouncement(`Análisis en preparación: ${analysis.data.queued.labels.join(', ')}`);
+      }
     } else if (snapshot) {
       setAnnouncement(
         `Análisis de lluvia disponible para ${SCOPE_LABELS[snapshot.scope.kind]} ${year}`
@@ -82,7 +102,7 @@ export function RainfallDetailPanel({ nomenclatura }: { readonly nomenclatura: s
     } else if (analysis.isError) {
       setAnnouncement('No se pudo obtener el análisis de lluvia.');
     }
-  }, [analysis.data, snapshot, analysis.isError, year]);
+  }, [analysis.data, analysis.gaveUp, analysis.isError, snapshot, year]);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -154,14 +174,26 @@ export function RainfallDetailPanel({ nomenclatura }: { readonly nomenclatura: s
 
       {analysis.isLoading && <LoadingRow label="Consultando análisis…" />}
       {analysis.isError && (
-        <Text size="xs" c="red">
-          {analysis.error?.message ?? 'No se pudo obtener el análisis de lluvia.'}
-        </Text>
+        <Stack gap="xs">
+          <Text size="xs" c="red">
+            {analysis.error?.message ?? 'No se pudo obtener el análisis de lluvia.'}
+          </Text>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => analysis.retry()}
+            data-testid="rainfall-retry"
+          >
+            Reintentar
+          </Button>
+        </Stack>
       )}
 
-      {/* Queued (202): LABELLED pending state with its reason; the query keeps
-          polling and this block resolves itself. Never a bare spinner. */}
-      {analysis.data?.type === 'queued' && (
+      {/* Queued (202): LABELLED pending state with its reason; the query polls
+          with a bounded budget and this block resolves itself. Never a bare
+          spinner. Once the budget is exhausted the terminal state below takes
+          over — no auto-update promise after polling has stopped. */}
+      {analysis.data?.type === 'queued' && !analysis.gaveUp && !analysis.isError && (
         <Alert color="blue" variant="light" data-testid="rainfall-queued">
           <Text size="xs">
             Análisis en preparación
@@ -170,6 +202,26 @@ export function RainfallDetailPanel({ nomenclatura }: { readonly nomenclatura: s
               : ''}
             . Se actualiza automáticamente.
           </Text>
+        </Alert>
+      )}
+
+      {/* Terminal: polling gave up without a ready snapshot. Honest labelled
+          failure with a manual retry that re-runs the fetch with a fresh
+          budget — auto-refresh is over and the UI never promises it. */}
+      {analysis.gaveUp && (
+        <Alert color="yellow" variant="light" data-testid="rainfall-unavailable">
+          <Text size="xs">
+            Análisis no disponible aún. Se agotó el tiempo de espera automático.
+          </Text>
+          <Button
+            size="xs"
+            variant="light"
+            mt="xs"
+            onClick={() => analysis.retry()}
+            data-testid="rainfall-retry"
+          >
+            Reintentar
+          </Button>
         </Alert>
       )}
 

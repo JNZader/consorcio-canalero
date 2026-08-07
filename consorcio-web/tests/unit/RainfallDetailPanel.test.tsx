@@ -18,6 +18,9 @@
  *     nominal resolution is never presented as parcel-level accuracy.
  *   - LIVE ANNOUNCEMENTS: state changes go through an aria-live region.
  *   - QUEUED: a 202 answer is a LABELLED pending state, never a bare spinner.
+ *   - TERMINAL: when the bounded queued polling gives up, an honest labelled
+ *     "no disponible aún" state with a manual retry replaces the pending
+ *     block; the auto-update promise is gone once polling has stopped.
  *   - EXPORT: the CSV button only exists for a ready snapshot and downloads
  *     the revision CSV.
  */
@@ -116,12 +119,14 @@ function setAuth(rol: 'admin' | 'operador' | 'ciudadano' | null) {
   });
 }
 
-function renderPanel() {
+function renderPanel(
+  options: { pollIntervalMs?: number; maxQueuedPolls?: number } = {}
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = (
     <QueryClientProvider client={client}>
       <MantineProvider env="test">
-        <RainfallDetailPanel nomenclatura="13-06-01" />
+        <RainfallDetailPanel nomenclatura="13-06-01" {...options} />
       </MantineProvider>
     </QueryClientProvider>
   );
@@ -354,5 +359,64 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
 
     await screen.findByTestId('rainfall-queued');
     expect(screen.queryByTestId('rainfall-export-csv')).toBeNull();
+  });
+
+  it('shows a labelled terminal state with a manual retry once polling gives up', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'queued',
+      queued: { status: 'queued', outbox_id: 'ob-1', scope: ZONE, year: 2025, labels: [] },
+    });
+    renderPanel({ pollIntervalMs: 5, maxQueuedPolls: 3 });
+
+    const terminal = await screen.findByTestId('rainfall-unavailable');
+    expect(terminal.textContent).toMatch(/no disponible aún/i);
+    // No auto-update promise once auto-refresh has stopped.
+    expect(screen.queryByTestId('rainfall-queued')).toBeNull();
+    expect(terminal.textContent).not.toMatch(/se actualiza automáticamente/i);
+    expect(within(terminal).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+  });
+
+  it('reintentar re-runs the fetch and resets the queued budget', async () => {
+    const queued = {
+      type: 'queued' as const,
+      queued: { status: 'queued' as const, outbox_id: 'ob-1', scope: ZONE, year: 2025, labels: [] },
+    };
+    let release: (value: Awaited<ReturnType<typeof fetchRainfallAnalysis>>) => void = () => {};
+    vi.mocked(fetchRainfallAnalysis)
+      .mockResolvedValueOnce(queued)
+      .mockResolvedValueOnce(queued)
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockResolvedValue(queued);
+
+    renderPanel({ pollIntervalMs: 5, maxQueuedPolls: 2 });
+
+    await screen.findByTestId('rainfall-unavailable');
+    expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByTestId('rainfall-retry'));
+
+    // The retry re-runs the fetch; while in flight the terminal state is gone
+    // (budget reset) and the labelled pending state is back.
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(3));
+    expect(screen.queryByTestId('rainfall-unavailable')).toBeNull();
+    expect(screen.getByTestId('rainfall-queued')).toBeInTheDocument();
+
+    release(queued);
+
+    // Fresh budget: it polls again and eventually gives up once more.
+    await waitFor(() => expect(screen.getByTestId('rainfall-unavailable')).toBeInTheDocument());
+    expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(4);
+  });
+
+  it('announces the terminal state through the live region', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'queued',
+      queued: { status: 'queued', outbox_id: 'ob-1', scope: ZONE, year: 2025, labels: [] },
+    });
+    renderPanel({ pollIntervalMs: 5, maxQueuedPolls: 2 });
+
+    await screen.findByTestId('rainfall-unavailable');
+    const live = screen.getByTestId('rainfall-live');
+    await waitFor(() => expect(live.textContent).toMatch(/no disponible aún/i));
   });
 });
