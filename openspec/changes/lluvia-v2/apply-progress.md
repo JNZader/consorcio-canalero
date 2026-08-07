@@ -103,3 +103,24 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 - Verification: 55 focused Rainfall tests passed; focused Ruff checks and the diff consistency check passed.
 - The model-diverse critical review/fix cycle approved the PR 2A boundary.
 - Only tasks 2.1–2.2 are complete; tasks 2.3–2.5 remain unchecked.
+
+
+## PR 2B API policy contract progress
+- Branch: `feat/lluvia-v2-02b-api-policy-contract`, based exactly on PR2A `d6d6b2914a95b0360b4004c1cc2745e6f0d3965a`.
+- [x] 2.3: Added the versioned `MetricThresholdPolicy` evaluator with per-metric coverage, completeness, quality, and duration gates. Missing policy thresholds fail closed; `None` remains unavailable while a numeric `0.0` remains available; a failed metric does not affect independent metrics.
+- [x] 2.4: Hardened authenticated snapshot routes with bounded JSON content, explicit request field limits, existing admin/operator authorization, existing CSRF middleware, global rate limiting, and the existing shared metric-row JSON/CSV provenance/state contract. Authorization denial continues to return no snapshot or CSV values.
+
+### TDD evidence
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 2.3–2.4 | Four focused tests failed: missing threshold-policy symbols, absent body limit, and empty policy revision accepted. | 15 API-contract tests passed after implementation; complete rainfall suite passed (70). | Ruff format/check passed for modified policy, router, and tests. |
+
+### Verification
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/geo/rainfall -q --no-header --tb=short` → 70 passed.
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/test_auth_refresh_http.py -q --no-header --tb=short` → 2 passed.
+- `cd gee-backend && ./venv/bin/python -m ruff check app/domains/geo/rainfall/policy.py app/domains/geo/rainfall/router.py tests/new/geo/rainfall/test_backend_api.py` → passed.
+- `git diff --check d6d6b2914a95b0360b4004c1cc2745e6f0d3965a` → passed.
+- PR2B production raw numstat relative to the PR2A base: `66 additions / 7 deletions` across `policy.py` and `router.py`; tests and OpenSpec artifacts excluded from the production budget.
+
+## Remaining tasks
+- [ ] 2.5–4.3

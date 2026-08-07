@@ -216,3 +216,337 @@ def test_temporal_conversion_and_baseline_keep_buenos_aires_same_date_and_leap_r
     assert baseline_dates(date(2024, 2, 29)) == tuple(
         date(year, 2, 29) for year in range(1992, 2021, 4)
     )
+
+
+def test_metric_policy_is_versioned_and_keeps_failed_metrics_isolated():
+    from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
+
+    policy = MetricThresholdPolicy(
+        revision="coverage-quality-v1",
+        minimum_coverage_by_metric={"annual": 0.8, "peak": 1.0},
+        minimum_quality_by_metric={"annual": 0.7, "peak": 0.9},
+        duration_threshold=1.0,
+    )
+    annual = apply_metric_policy(
+        policy, "annual", value=0.0, coverage=0.8, quality_score=0.7, completeness=0.8
+    )
+    peak = apply_metric_policy(
+        policy, "peak", value=12.0, coverage=0.9, quality_score=0.95, completeness=0.9
+    )
+
+    assert annual.state == "available"
+    assert annual.value == 0.0
+    assert peak.state == "suppressed"
+    assert peak.value is None
+    assert peak.reason == "coverage_below_threshold"
+
+
+def test_metric_policy_fails_closed_when_a_metric_threshold_is_missing():
+    from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
+
+    policy = MetricThresholdPolicy(
+        revision="coverage-quality-v1",
+        minimum_coverage_by_metric={},
+        minimum_quality_by_metric={},
+        duration_threshold=None,
+    )
+
+    result = apply_metric_policy(
+        policy, "duration", value=3.0, coverage=1.0, quality_score=1.0, completeness=1.0
+    )
+
+    assert result.state == "suppressed"
+    assert result.value is None
+    assert result.reason == "policy_threshold_unset"
+
+
+@pytest.mark.parametrize(
+    ("coverage", "quality", "duration"),
+    [(-0.1, 0.7, 1.0), (0.8, 1.1, 1.0), (0.8, 0.7, -1.0)],
+)
+def test_metric_policy_rejects_out_of_domain_thresholds(coverage, quality, duration):
+    from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
+
+    policy = MetricThresholdPolicy(
+        revision="coverage-quality-v1",
+        minimum_coverage_by_metric={"duration": coverage},
+        minimum_quality_by_metric={"duration": quality},
+        duration_threshold=duration,
+    )
+
+    result = apply_metric_policy(
+        policy, "duration", value=3.0, coverage=1.0, quality_score=1.0, completeness=1.0
+    )
+
+    assert (result.state, result.value, result.reason) == (
+        "suppressed",
+        None,
+        "policy_threshold_invalid",
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "state", "reason"),
+    [
+        (0.9, "suppressed", "duration_below_threshold"),
+        (1.0, "available", None),
+        (1.1, "available", None),
+    ],
+)
+def test_metric_policy_applies_duration_threshold_at_the_boundary(value, state, reason):
+    from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
+
+    policy = MetricThresholdPolicy(
+        revision="coverage-quality-v1",
+        minimum_coverage_by_metric={"duration": 0.8},
+        minimum_quality_by_metric={"duration": 0.7},
+        duration_threshold=1.0,
+    )
+
+    result = apply_metric_policy(
+        policy, "duration", value=value, coverage=1.0, quality_score=1.0, completeness=1.0
+    )
+
+    assert (result.state, result.value, result.reason) == (
+        state,
+        value if state == "available" else None,
+        reason,
+    )
+
+
+def test_analysis_request_rejects_oversized_body_before_snapshot_lookup():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.domains.geo.rainfall.router import router
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.include_router(router)
+    client = TestClient(app)
+    response = client.post(
+        "/rainfall/analyses",
+        content='"' + "x" * 16_385 + '"',
+        headers={"content-type": "application/json", "content-length": "16385"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "rainfall request body exceeds limit"
+
+
+def test_analysis_request_requires_a_versioned_policy_and_complete_request_contract():
+    from pydantic import ValidationError
+
+    from app.domains.geo.rainfall.router import AnalysisRequest
+
+    with pytest.raises(ValidationError):
+        AnalysisRequest(request_fingerprint="request", policy_revision="", data_revision="data")
+    with pytest.raises(ValidationError):
+        AnalysisRequest(
+            request_fingerprint="request", policy_revision="policy", data_revision="data", extra="x"
+        )
+
+
+def test_snapshot_normalization_applies_policy_and_fails_closed_for_invalid_provenance():
+    from app.domains.geo.rainfall.service import metric_rows, normalize_snapshot
+
+    snapshot = {
+        "metric_policy": {
+            "revision": "coverage-quality-v1",
+            "minimum_coverage_by_metric": {"annual": 0.8},
+            "minimum_quality_by_metric": {"annual": 0.7},
+            "duration_threshold": 1.0,
+        },
+        "annual": {
+            "selected": {
+                "metric": "annual",
+                "value": 18.0,
+                "unit": "mm",
+                "state": "available",
+                "interval_start": "2026-01-01T00:00:00Z",
+                "interval_end": "2026-01-02T00:00:00Z",
+                "coverage": 0.7,
+                "completeness": 1.0,
+                "quality": {"score": 0.9},
+                "discrepancies": [],
+                "temporal_state": "final",
+                "revision": "coverage-quality-v1",
+                "provenance": {
+                    "source_id": "radar",
+                    "source_class": "estimated_radar",
+                    "method": "sum",
+                    "nominal_resolution": "1km",
+                    "aggregation": "daily",
+                    "spatial_scope": "zone",
+                    "freshness": "2026-01-02T00:00:00Z",
+                    "available_through": "2026-01-02T00:00:00Z",
+                },
+                "fallback_used": False,
+            },
+            "normal": {
+                "metric": "normal",
+                "value": 20.0,
+                "unit": "mm",
+                "state": "available",
+                "interval_start": "2026-01-01T00:00:00Z",
+                "interval_end": "2026-01-02T00:00:00Z",
+                "coverage": 1.0,
+                "completeness": 1.0,
+                "quality": {"score": 0.9},
+                "discrepancies": [],
+                "temporal_state": "final",
+                "revision": "coverage-quality-v1",
+                "provenance": {"source_id": "radar"},
+                "fallback_used": False,
+            },
+        },
+    }
+
+    normalized = normalize_snapshot(snapshot, expected_policy_revision="coverage-quality-v1")
+    rows = metric_rows(normalized)
+
+    assert rows[0]["value"] is None
+    assert rows[0]["state"] == "suppressed"
+    assert rows[0]["reason"] == "coverage_below_threshold"
+    assert rows[1]["value"] is None
+    assert rows[1]["state"] == "unavailable"
+    assert rows[1]["reason"] == "metric_contract_invalid"
+
+
+def test_snapshot_normalization_denies_invalid_quality_and_missing_thresholds_in_csv_rows():
+    from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+
+    def metric(name, value, score):
+        return {
+            "metric": name,
+            "value": value,
+            "unit": "mm",
+            "state": "available",
+            "interval_start": "2026-01-01T00:00:00Z",
+            "interval_end": "2026-01-02T00:00:00Z",
+            "coverage": 1.0,
+            "completeness": 1.0,
+            "quality": {"score": score},
+            "discrepancies": [],
+            "temporal_state": "final",
+            "revision": "v1",
+            "provenance": {
+                "source_id": "radar",
+                "source_class": "estimated_radar",
+                "method": "sum",
+                "nominal_resolution": "1km",
+                "aggregation": "daily",
+                "spatial_scope": "zone",
+                "freshness": "2026-01-02T00:00:00Z",
+                "available_through": "2026-01-02T00:00:00Z",
+            },
+            "fallback_used": False,
+        }
+
+    normalized = normalize_snapshot(
+        {
+            "metric_policy": {
+                "revision": "v1",
+                "minimum_coverage_by_metric": {"annual": 0.8},
+                "minimum_quality_by_metric": {"annual": 0.7},
+                "duration_threshold": 1.0,
+            },
+            "annual": {
+                "annual": metric("annual", 21.0, True),
+                "normal": metric("normal", 20.0, 0.9),
+            },
+        },
+        expected_policy_revision="v1",
+    )
+    rows = metric_rows(normalized)
+
+    assert [(row["state"], row["value"]) for row in rows] == [
+        ("unavailable", None),
+        ("suppressed", None),
+    ]
+    assert "21.0" not in metric_rows_csv(rows)
+    assert "20.0" not in metric_rows_csv(rows)
+
+
+def test_snapshot_normalization_suppresses_metric_like_dicts_missing_the_metric_name():
+    from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+
+    normalized = normalize_snapshot(
+        {"annual": {"selected": {"value": 21.0, "state": "available", "unit": "mm"}}},
+        expected_policy_revision="v1",
+    )
+    rows = metric_rows(normalized)
+
+    assert normalized["annual"]["selected"] == {
+        "metric": "unknown",
+        "value": None,
+        "state": "unavailable",
+        "reason": "metric_contract_invalid",
+    }
+    assert rows == [normalized["annual"]["selected"]]
+    assert "21.0" not in metric_rows_csv(rows)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_value", "expected_state", "expected_reason", "csv_value"),
+    [
+        (True, None, "unavailable", "metric_contract_invalid", "1.0"),
+        (False, None, "unavailable", "metric_contract_invalid", "0.0"),
+        ("21.0", None, "unavailable", "metric_contract_invalid", "21.0"),
+        (21, 21.0, "available", None, "21.0"),
+        (21.5, 21.5, "available", None, "21.5"),
+        (None, None, "unavailable", "metric_value_unavailable", None),
+    ],
+)
+def test_snapshot_normalization_never_coerces_non_numeric_metric_values(
+    value, expected_value, expected_state, expected_reason, csv_value
+):
+    from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+
+    metric = {
+        "metric": "annual",
+        "value": value,
+        "unit": "mm",
+        "state": "available" if value is not None else "partial",
+        "interval_start": "2026-01-01T00:00:00Z",
+        "interval_end": "2026-01-02T00:00:00Z",
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {"score": 0.9},
+        "discrepancies": [],
+        "temporal_state": "final",
+        "revision": "v1",
+        "provenance": {
+            "source_id": "radar",
+            "source_class": "estimated_radar",
+            "method": "sum",
+            "nominal_resolution": "1km",
+            "aggregation": "daily",
+            "spatial_scope": "zone",
+            "freshness": "2026-01-02T00:00:00Z",
+            "available_through": "2026-01-02T00:00:00Z",
+        },
+        "fallback_used": False,
+    }
+    normalized = normalize_snapshot(
+        {
+            "metric_policy": {
+                "revision": "v1",
+                "minimum_coverage_by_metric": {"annual": 0.8},
+                "minimum_quality_by_metric": {"annual": 0.7},
+                "duration_threshold": 1.0,
+            },
+            "annual": {"selected": metric},
+        },
+        expected_policy_revision="v1",
+    )
+    row = metric_rows(normalized)[0]
+
+    assert (row["value"], row["state"], row["reason"]) == (
+        expected_value,
+        expected_state,
+        expected_reason,
+    )
+    if csv_value is not None:
+        assert (csv_value in metric_rows_csv([row])) is (expected_value is not None)

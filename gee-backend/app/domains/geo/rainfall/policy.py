@@ -1,6 +1,7 @@
 """Pure evidence and no-blending selection policy."""
 
 from dataclasses import dataclass
+from math import isfinite
 
 from app.domains.geo.rainfall.adapters.manifests import CandidateManifest
 
@@ -100,3 +101,74 @@ def select_source(
             return SourceSelection(source_id, position > 0, tuple(rejected))
         rejected.append(source_id)
     return SourceSelection(None, False, tuple(rejected))
+
+
+@dataclass(frozen=True, slots=True)
+class MetricThresholdPolicy:
+    """Versioned display thresholds; absent thresholds suppress rather than permit."""
+
+    revision: str
+    minimum_coverage_by_metric: dict[str, float]
+    minimum_quality_by_metric: dict[str, float]
+    duration_threshold: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyMetricResult:
+    value: float | None
+    state: str
+    reason: str | None
+
+
+def _is_fraction(value: object) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and isfinite(value)
+        and 0 <= value <= 1
+    )
+
+
+def _valid_threshold_policy(policy: MetricThresholdPolicy) -> bool:
+    return (
+        all(_is_fraction(value) for value in policy.minimum_coverage_by_metric.values())
+        and all(_is_fraction(value) for value in policy.minimum_quality_by_metric.values())
+        and (
+            policy.duration_threshold is None
+            or (
+                not isinstance(policy.duration_threshold, bool)
+                and isinstance(policy.duration_threshold, (int, float))
+                and isfinite(policy.duration_threshold)
+                and policy.duration_threshold >= 0
+            )
+        )
+    )
+
+
+def apply_metric_policy(
+    policy: MetricThresholdPolicy,
+    metric: str,
+    *,
+    value: float | None,
+    coverage: float,
+    quality_score: float,
+    completeness: float,
+) -> PolicyMetricResult:
+    """Evaluate one metric without allowing an unrelated failure to suppress it."""
+    if not _valid_threshold_policy(policy):
+        return PolicyMetricResult(None, "suppressed", "policy_threshold_invalid")
+    minimum_coverage = policy.minimum_coverage_by_metric.get(metric)
+    minimum_quality = policy.minimum_quality_by_metric.get(metric)
+    if minimum_coverage is None or minimum_quality is None:
+        return PolicyMetricResult(None, "suppressed", "policy_threshold_unset")
+    if metric == "duration" and policy.duration_threshold is None:
+        return PolicyMetricResult(None, "suppressed", "policy_threshold_unset")
+    if coverage < minimum_coverage or completeness < minimum_coverage:
+        return PolicyMetricResult(None, "suppressed", "coverage_below_threshold")
+    if quality_score < minimum_quality:
+        return PolicyMetricResult(None, "suppressed", "quality_below_threshold")
+    if value is None:
+        return PolicyMetricResult(None, "unavailable", "metric_value_unavailable")
+    if metric == "duration" and value < policy.duration_threshold:
+        return PolicyMetricResult(None, "suppressed", "duration_below_threshold")
+    return PolicyMetricResult(value, "available", None)
