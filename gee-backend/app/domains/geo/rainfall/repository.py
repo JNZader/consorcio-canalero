@@ -43,9 +43,9 @@ class RainfallRepository:
             if not isinstance(feature_collection, dict):
                 raise ScopeConfigurationError("approved zoning features are invalid")
             features = feature_collection.get("features")
-            if feature_collection.get("type") != "FeatureCollection" or not isinstance(
-                features, list
-            ):
+            if feature_collection.get("type") != "FeatureCollection":
+                raise ScopeConfigurationError("approved zoning features are invalid")
+            if not isinstance(features, list):
                 raise ScopeConfigurationError("approved zoning features are invalid")
             for feature in features:
                 if not isinstance(feature, dict) or feature.get("type") != "Feature":
@@ -53,11 +53,11 @@ class RainfallRepository:
                 properties = feature.get("properties")
                 if properties is not None and not isinstance(properties, dict):
                     raise ScopeConfigurationError("properties must be an object")
-                zone_id = (properties or {}).get("zone_id") or feature.get("id")
+                raw_zone_id = properties.get("zone_id") if properties else None
+                zone_id = feature.get("id") if raw_zone_id is None else raw_zone_id
                 if not isinstance(zone_id, str) or not zone_id:
                     raise ScopeConfigurationError("approved zoning feature has no stable id")
-                identity = (zone_id, str(version))
-                if identity in identities:
+                if (identity := (zone_id, str(version))) in identities:
                     raise ScopeConfigurationError("approved zoning has duplicate stable ids")
                 identities.add(identity)
                 geometry = feature.get("geometry")
@@ -68,7 +68,7 @@ class RainfallRepository:
                     valid = db.scalar(
                         text(
                             "SELECT COALESCE(ST_IsValid(geometry), false) "
-                            "AND NOT COALESCE(ST_IsEmpty(geometry), true) "
+                            "AND NOT COALESCE(ST_IsEmpty(geometry), true) AND ST_Envelope(geometry) @ ST_MakeEnvelope(-180, -90, 180, 90, 4326) "
                             "FROM (SELECT ST_SetSRID(ST_GeomFromGeoJSON("
                             "CAST(:geometry AS text)), 4326) AS geometry) AS parsed"
                         ),

@@ -289,3 +289,35 @@
 - Exact production range: 400 additions and 0 deletions across six production files.
 - Focused Rainfall suite: 55 passed; Ruff and diff checks passed.
 - RELIABILITY-001 through RELIABILITY-004 remain verified.
+
+## PR2A pre-PR full 4R review — fix round 1
+
+**Target:** `277c7cc2588c40b60dd8e0ac46ecef67ea47a218..ad2468986784f274468924817e29f16a6d9c1d42`
+
+### Merged lens ledger
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| RELIABILITY-005 | reliability | `gee-backend/app/domains/geo/rainfall/repository.py:_validate_active_zoning,resolve_parcel_scopes` | CRITICAL | verified | Validation previously fell back on falsey non-null `zone_id`, while SQL used null-only fallback, allowing validated and emitted identities to disagree. |
+| RELIABILITY-006 | reliability | `gee-backend/app/domains/geo/rainfall/repository.py:_validate_active_zoning` | CRITICAL | verified | Topology and SRID tagging previously accepted out-of-range WGS84 coordinates, allowing malformed active zoning to degrade to basin-only choices. |
+
+- `review-risk`: empty ledger.
+- `review-resilience`: empty ledger.
+- `review-readability`: empty ledger.
+- `review-reliability`: RELIABILITY-005 and RELIABILITY-006.
+
+### Full-4R adversarial verification
+
+| id | correctness | exploitability/impact | reproducibility | vote |
+|---|---|---|---|---|
+| RELIABILITY-005 | stands | refuted | stands | stands (2 of 3) |
+| RELIABILITY-006 | stands | refuted | stands | stands (2 of 3) |
+
+### Fix round 1 state
+
+- RELIABILITY-005 now falls back to `feature.id` only when `zone_id` is missing or null; every present value must be a non-empty string, aligning validation with SQL identity emission.
+- RELIABILITY-006 now requires the parsed Polygon/MultiPolygon envelope to be contained by the WGS84 bounds before scope resolution.
+- RED/GREEN regressions cover falsey non-null zone IDs, missing/null fallback, valid boundary coordinates, and out-of-range longitude/latitude.
+- Scope repository suite: 36 passed. Focused Rainfall suite: 66 passed. Ruff and `git diff --check`: passed.
+- Exact six-file production range remains 400 additions and 0 deletions.
+- Scoped fix re-review: PASS. RELIABILITY-005 and RELIABILITY-006 are verified; 11 targeted regressions, 36 scope tests, and 66 focused Rainfall tests passed; Ruff and diff checks passed; no new BLOCKER/CRITICAL was found on fix-touched lines.

@@ -136,6 +136,26 @@ def test_resolve_parcel_uses_feature_id_when_properties_are_missing_or_empty(db,
     ]
 
 
+@pytest.mark.parametrize("zone_id", [0, False, [], {}, ""])
+def test_resolve_parcel_rejects_falsey_zone_ids_without_feature_id_fallback(db, zone_id):
+    coordinates = [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]
+    features = [_feature(zone_id, coordinates), _feature(zone_id, coordinates)]
+    features[0]["id"], features[1]["id"] = "feature-a", "feature-b"
+    _seed(db, features=features)
+
+    with pytest.raises(ScopeConfigurationError, match="stable id"):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize("properties", [{}, {"zone_id": None}])
+def test_resolve_parcel_uses_feature_id_when_zone_id_is_missing_or_null(db, properties):
+    feature = _feature("ignored-zone-id", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])
+    feature["id"], feature["properties"] = "zone-id-2", properties
+    _seed(db, features=[feature])
+
+    assert RainfallRepository().resolve_parcel_scopes(db, "parcel-1")[0].id == "zone-id-2"
+
+
 def test_resolve_parcel_rejects_non_array_features_and_duplicate_active_identity(db):
     _seed(db, features=[_feature("zone-a", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])])
     db.add(GeoApprovedZoning(version=8, is_active=True, feature_collection={"features": {}}))
@@ -228,6 +248,44 @@ def test_resolve_parcel_rejects_non_area_active_zoning_geometry(db, geometry):
     )
 
     with pytest.raises(ScopeConfigurationError):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {
+            "type": "Polygon",
+            "coordinates": [[[179, 89], [180, 89], [180, 90], [179, 90], [179, 89]]],
+        },
+        {
+            "type": "MultiPolygon",
+            "coordinates": [[[[179, 89], [180, 89], [180, 90], [179, 90], [179, 89]]]],
+        },
+    ],
+)
+def test_resolve_parcel_accepts_wgs84_boundary_geometry(db, geometry):
+    _seed(
+        db,
+        basin=False,
+        features=[{"type": "Feature", "properties": {"zone_id": "edge"}, "geometry": geometry}],
+    )
+
+    with pytest.raises(NoScopeMatch, match="no matching"):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        [[180, 0], [181, 0], [181, 1], [180, 1], [180, 0]],
+        [[0, 90], [1, 90], [1, 91], [0, 91], [0, 90]],
+    ],
+)
+def test_resolve_parcel_rejects_out_of_range_wgs84_geometry(db, coordinates):
+    _seed(db, features=[_feature("out-of-range", coordinates)])
+
+    with pytest.raises(ScopeConfigurationError, match="geometry is invalid"):
         RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
 
 
