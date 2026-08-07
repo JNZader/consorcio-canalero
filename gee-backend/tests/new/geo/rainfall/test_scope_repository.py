@@ -97,9 +97,20 @@ def test_resolve_parcel_rejects_malformed_active_zoning_even_with_intersecting_b
         RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
 
 
-@pytest.mark.parametrize("properties", ["invalid-properties", ["invalid-properties"]])
+@pytest.mark.parametrize(
+    "properties",
+    [
+        pytest.param("invalid-properties", id="string"),
+        pytest.param(["invalid-properties"], id="non-empty-list"),
+        pytest.param([], id="empty-list"),
+        pytest.param("", id="empty-string"),
+        pytest.param(0, id="zero"),
+        pytest.param(False, id="false"),
+    ],
+)
 def test_resolve_parcel_rejects_non_object_properties_even_with_intersecting_basin(db, properties):
     feature = _feature("zone-a", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])
+    feature["id"] = "feature-id-fallback-must-not-apply"
     feature["properties"] = properties
     _seed(db, features=[feature])
 

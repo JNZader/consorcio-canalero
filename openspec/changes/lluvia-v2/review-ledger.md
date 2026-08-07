@@ -249,3 +249,15 @@
 - Production behavioral diff: 399 lines.
 
 **PR2A pre-commit review-reliability:** PASSED
+
+## PR2A pre-push review-reliability — RELIABILITY-003
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-003 | reliability | `gee-backend/app/domains/geo/rainfall/repository.py:_validate_active_zoning` | CRITICAL | verified | pre-push candidate; general refuter: stands; GREEN; scoped re-review PASS | The validation now rejects every non-object `properties` value whenever the key is present and non-null, including falsey `[]`, `""`, `0`, and `false`; only missing, null, and `{}` retain feature-ID fallback. |
+
+### Round state
+
+- RED: the four falsey invalid-properties cases failed before the validation change.
+- GREEN: targeted repository regressions passed (9 passed), covering falsey invalid values and missing/null/empty-object feature-ID fallback.
+- Scoped verification: PASS; targeted regressions 9 passed, focused Rainfall suite 48 passed, Ruff and restricted diff checks passed, and the PR2A production behavioral range remains 399 lines.

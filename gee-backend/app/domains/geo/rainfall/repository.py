@@ -49,7 +49,7 @@ class RainfallRepository:
                 if not isinstance(feature, dict):
                     raise ScopeConfigurationError("approved zoning feature is invalid")
                 properties = feature.get("properties")
-                if properties and not isinstance(properties, dict):
+                if properties is not None and not isinstance(properties, dict):
                     raise ScopeConfigurationError(
                         "approved zoning feature properties must be an object"
                     )
