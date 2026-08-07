@@ -7,22 +7,23 @@
 | Estimated changed lines | 2,000–3,200 |
 | 400-line budget risk | High |
 | Chained PRs recommended | Yes |
-| Suggested split | validation foundation → core API/storage → UI/export/operations |
+| Approved split | evidence → deterministic core → API policy contract → UI/export/operations |
 | Delivery strategy | ask-on-risk |
 | Chain strategy | feature-branch-chain |
 
-Decision needed before apply: Yes
+Delivery-boundary decision: Resolved — four slices approved
 Chained PRs recommended: Yes
 Chain strategy: feature-branch-chain
 400-line budget risk: High
 
-### Suggested Work Units
+### Approved Work Units
 
 | Unit | Goal | Likely PR | Notes |
 |---|---|---|---|
-| 1 | Evidence gate, contracts, migration | PR 1 | auditable; providers disabled |
-| 2 | Storage, policy, ingestion, API | PR 2 | depends on PR 1 |
-| 3 | Ficha UI, CSV, rollout and E2E | PR 3 | depends on PR 2 |
+| 1 | Evidence gate, contracts, migration | PR 1 | Complete; providers disabled |
+| 2A | Deterministic scope, PostGIS, temporal rules and API groundwork | PR 2A | Current; exactly 400 raw production lines |
+| 2B | API policy contract | PR 2B | Planned; completes unchecked 2.3–2.4 |
+| 3 | Ficha UI, export and operations | PR 3 | Planned; includes 2.5 and phases 3–4 |
 
 ## Phase 1: Evidence and foundation
 
@@ -33,8 +34,8 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Deterministic backend
 
-- [ ] 2.1 **RED**: Test `scope.py` for stable zone/basin identities, parcel intersection choices/regional labels, ambiguity/no-match, and parcel/geometry direct-compute rejection.
-- [ ] 2.2 **GREEN**: Implement `scope.py`, `repository.py`, `temporal.py` and `service.py`: Buenos Aires local dates, leap-day rule, same-date baseline, cross-year antecedents, cadence-aligned rolling P30/P60/P3h/P24h and deterministic event suppression/peak/duration.
+- [x] 2.1 **RED**: Test `scope.py` for stable zone/basin identities, parcel intersection choices/regional labels, ambiguity/no-match, and parcel/geometry direct-compute rejection.
+- [x] 2.2 **GREEN**: Implement `scope.py`, `repository.py`, `temporal.py` and `service.py`: Buenos Aires local dates, leap-day rule, same-date baseline, cross-year antecedents, cadence-aligned rolling P30/P60/P3h/P24h and deterministic event suppression/peak/duration.
 - [ ] 2.3 **REFACTOR**: Centralize versioned coverage/quality/duration thresholds; make null distinct from zero and isolate failed metrics.
 - [ ] 2.4 **RED/GREEN**: Add `router.py` and shared snapshot metric-row serializer with tests for admin/operator auth, CSRF/content-type/body limits/rate limit, JSON/CSV parity, revisions, states, provenance and denied disclosure.
 - [ ] 2.5 Add `tasks.py`, adapter timeout/quota/retry/circuit/cache behavior and Celery Beat/outbox ingest/revisit/backfill; requests read DB/Redis and queue labelled missing work.
