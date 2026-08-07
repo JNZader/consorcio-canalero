@@ -101,6 +101,19 @@ function mockMetric(key: string, value: number): Record<string, unknown> {
   };
 }
 
+/**
+ * Single source of truth for every metric value the snapshot AND the CSV
+ * download must agree on (parity — RELI3C-005): the mocked ready body and the
+ * mocked CSV are both derived from these constants, so a snapshot→CSV drift
+ * (e.g. 98.2 vs 96.2) cannot silently reappear.
+ */
+const SNAPSHOT_METRICS = {
+  annual: 123.4,
+  normal: 98.2,
+  d7: 31.0,
+  p24h: 12.5,
+} as const;
+
 /** An immutable ready (200) body — mirrors RainfallAnalysisSnapshot. */
 function readyBody(
   scope: Record<string, string>,
@@ -115,27 +128,27 @@ function readyBody(
     comparison_end: '2026-12-31',
     baseline: '1991-2020',
     annual: {
-      selected: mockMetric('selected', 123.4),
-      normal: mockMetric('normal', 98.2),
+      selected: mockMetric('selected', SNAPSHOT_METRICS.annual),
+      normal: mockMetric('normal', SNAPSHOT_METRICS.normal),
     },
     antecedents: {
-      d7: mockMetric('d7', 31.0),
+      d7: mockMetric('d7', SNAPSHOT_METRICS.d7),
     },
     intensity: {
-      p24h: mockMetric('p24h', 12.5),
+      p24h: mockMetric('p24h', SNAPSHOT_METRICS.p24h),
     },
     summary: 'Año seco respecto de la normal 1991–2020.',
     source_health: { stations: 1, degraded: false },
   };
 }
 
-/** CSV served to a real download — parity: same keys/values as the snapshot. */
+/** CSV served to a real download — values derived from SNAPSHOT_METRICS (parity). */
 const CSV_BODY = [
   'metrica,valor,unidad,estado,revision',
-  'Acumulado del año,123.4,mm,disponible,rev-e2e-01',
-  'Normal 1991-2020,96.2,mm,disponible,rev-e2e-01',
-  'Antecedente 7 días,31.0,mm,disponible,rev-e2e-01',
-  'P24h (mm en 24 h),12.5,mm,disponible,rev-e2e-01',
+  `Acumulado del año,${SNAPSHOT_METRICS.annual},mm,disponible,rev-e2e-01`,
+  `Normal 1991-2020,${SNAPSHOT_METRICS.normal},mm,disponible,rev-e2e-01`,
+  `Antecedente 7 días,${SNAPSHOT_METRICS.d7},mm,disponible,rev-e2e-01`,
+  `P24h (mm en 24 h),${SNAPSHOT_METRICS.p24h},mm,disponible,rev-e2e-01`,
 ].join('\n');
 
 const ZONE_SCOPE = { kind: 'zone', id: 'z-arg-01', version: '2024-01' };
@@ -300,13 +313,19 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await expect(page.getByTestId('rainfall-scope-switch')).toBeVisible();
     await expect(page.getByTestId('rainfall-year-select')).toBeVisible();
 
-    // Ready snapshot renders the metric groups with their textual values.
+    // Ready snapshot renders the metric groups with their textual values. The
+    // snapshot year is derived from the current calendar year (the fixture's
+    // readyBody echoes the requested `year`), so the expectation must follow
+    // suit instead of hardcoding 2026 (RELI3C-004).
     await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
-    await expect(page.getByTestId('rainfall-annual-text')).toContainText('Año 2026');
-    await expect(page.getByTestId('rainfall-annual-text')).toContainText('123.4 mm');
+    const currentYear = new Date().getFullYear();
+    await expect(page.getByTestId('rainfall-annual-text')).toContainText(`Año ${currentYear}`);
+    await expect(page.getByTestId('rainfall-annual-text')).toContainText(
+      `${SNAPSHOT_METRICS.annual} mm`
+    );
   });
 
-  test('cambio de ámbito (scope switch) reconsultaa con el ámbito elegido', async ({ page }) => {
+  test('cambio de ámbito (scope switch) reconsulta con el ámbito elegido', async ({ page }) => {
     const registration = mockRainfallApi(page);
     await seedAuth(page, makeUser('operador', 'operador@e2e.local'));
     await gotoAndOpenFicha(page);
@@ -317,11 +336,17 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
       .locator('label', { hasText: 'Cuenca' })
       .click();
 
-    // The very next analyses request must carry the basin scope.
-    await expect.poll(() => registration.analysisRequests.length).toBeGreaterThan(0);
-    const last = registration.analysisRequests[registration.analysisRequests.length - 1];
-    expect((last.scope as Record<string, string>).kind).toBe('basin');
-    expect((last.scope as Record<string, string>).id).toBe('b-carcara-01');
+    // Wait until a RECORDED request actually carries the basin scope, not just
+    // any analysis request: the default zone POST can otherwise satisfy a
+    // length-only poll before the basin POST is dispatched (RELI3C-003).
+    await expect
+      .poll(() => {
+        const basin = registration.analysisRequests.find(
+          (r) => (r.scope as Record<string, string> | undefined)?.kind === 'basin'
+        );
+        return basin ? ((basin.scope as Record<string, string>).id ?? '') : undefined;
+      })
+      .toBe('b-carcara-01');
   });
 
   test('estado en cola (202) etiquetado que resuelve a snapshot listo (200)', async ({ page }) => {
@@ -355,14 +380,29 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     // Filename follows the contract lluvia_<revision>.csv.
     expect(download.suggestedFilename()).toBe('lluvia_rev-e2e-01.csv');
 
-    // The physical bytes equal what the snapshot displays (parity).
+    // The physical bytes equal what the snapshot displays (parity): both the
+    // CSV body and the readyBody snapshot derive from SNAPSHOT_METRICS, so
+    // crossing the wire is the ONLY way this assertion can pass
+    // (RELI3C-005).
     const stream = await download.createReadStream();
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(chunk as Buffer);
     const body = Buffer.concat(chunks).toString('utf8');
-    expect(body).toContain('Acumulado del año,123.4,mm,disponible,rev-e2e-01');
-    expect(body).toContain('Normal 1991-2020,96.2,mm,disponible,rev-e2e-01');
-    expect(body).toContain('Antecedente 7 días,31.0,mm,disponible,rev-e2e-01');
+    expect(body).toContain(
+      `Acumulado del año,${SNAPSHOT_METRICS.annual},mm,disponible,rev-e2e-01`
+    );
+    expect(body).toContain(
+      `Normal 1991-2020,${SNAPSHOT_METRICS.normal},mm,disponible,rev-e2e-01`
+    );
+    expect(body).toContain(
+      `Antecedente 7 días,${SNAPSHOT_METRICS.d7},mm,disponible,rev-e2e-01`
+    );
+
+    // Parity asserted against the UI-displayed values: the snapshot the
+    // interface renders (98.2 normal, 123.4 annual) must appear in the
+    // downloaded CSV bytes.
+    expect(body).toContain(String(SNAPSHOT_METRICS.normal));
+    expect(body).toContain(String(SNAPSHOT_METRICS.annual));
 
     // Sealed: the token went in the Authorization header, never the URL.
     const csvReq = metrics.csvRequests[0];

@@ -168,9 +168,11 @@ def export_analysis(revision: UUID, db: Session = Depends(get_db)) -> Response:
         )
     except SnapshotContractError as exc:
         raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    started = datetime.now()
+    csv_body = metric_rows_csv(metric_rows(normalized))
     record_event(
         "rainfall.csv.served",
         revision_id=str(revision),
-        latency_ms=0,
+        latency_ms=round((datetime.now() - started).total_seconds() * 1000),
     )
-    return Response(metric_rows_csv(metric_rows(normalized)), media_type="text/csv")
+    return Response(csv_body, media_type="text/csv")

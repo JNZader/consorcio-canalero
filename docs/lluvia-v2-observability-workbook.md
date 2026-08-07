@@ -67,21 +67,26 @@ Setting key (system settings, category `analisis`, value is an object):
 ```
 analisis/rainfall_feature_flags = {
   "historical": true,
-  "data":      true,
-  "intensity":  false,
+  "daily":      true,
+  "intensity":  true,
   "validation": false
 }
 ```
 
-Semantics (`feature_flags.py`, `tasks.py::_role_enabled`):
+The blob must always list ALL four roles explicitly — the role set is fixed at
+`historical`, `daily`, `intensity`, `validation` (the four `RAINFALL_SOURCE_ROLES`).
 
-- Roles: `historical`, `daily`, `intensity`, `validation` (the four `RAINFALL_SOURCE_ROLES`).
-- A role with an explicit `true` is ingestable.
-- An **unconfigured setting** (never set) is treated as `OPEN` — a stack that
-  ran before the gate exists keeps working. This is intentional for sequential
-  rollout.
-- An explicit `false` (or an omitted role under a configured blob) is the
-  **rollback signal**: that role is gated off.
+Semantics (`feature_flags.py`, `tasks.py::_role_enabled`) — the three explicit states:
+
+- **Absent setting = OPEN**: if `analisis/rainfall_feature_flags` is never set,
+  every role runs (`_role_enabled` returns `True` for an unconfigured system).
+  This is intentional: a stack that ran before the gate existed keeps working
+  for sequential rollout.
+- **Configured blob**: only roles listed with an explicit `true` run.
+- **Omitted role in a configured blob = false**: the missing role is gated off.
+  A partially written blob therefore DISABLES the omitted role; it does not
+  open it. Expected `false` in a configured blob is the explicit **rollback
+  signal**.
 
 Enforcement points:
 
@@ -92,11 +97,26 @@ Enforcement points:
 
 ## 4. Rollback procedure (Task 4.2)
 
-Rollback must DISABLE, never DELETE.
+Rollback must DISABLE, never DELETE — and never by REMOVING the key.
 
-1. Flip the flag: set every role under `analisis/rainfall_feature_flags` to
-   `false` (or remove the key — the strict default is `false` for a configured
-   blob with no role).
+1. Flip the flag: write the COMPLETE blob under
+   `analisis/rainfall_feature_flags` with EVERY role explicitly `false`:
+
+   ```
+   analisis/rainfall_feature_flags = {
+     "historical": false,
+     "daily":      false,
+     "intensity":  false,
+     "validation": false
+   }
+   ```
+
+   Omit nothing. NEVER remove the key to disable: an absent setting is the
+   unconfigured OPEN default (`_role_enabled` returns `True`), so removing the
+   key RE-ENABLES every role — the opposite of a rollback. Remember the
+   unset/configured semantics: absent setting = OPEN (all roles run);
+   configured blob = only the roles listed `true` run; omitted role in a
+   configured blob = false (rollback signal).
 2. Disable the Celery Beat jobs that schedule ingest/revisit/backfill (the
    outbox consumer keeps draining nothing queued).
 3. Keep all rows: `rainfall_outbox`, `rainfall_source_eligibility`,
