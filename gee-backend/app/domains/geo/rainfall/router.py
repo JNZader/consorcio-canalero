@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
+from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.service import (
     SnapshotContractError,
     analysis_request_fingerprint,
@@ -115,6 +116,7 @@ def resolve_scope(
 def read_analysis(
     payload: AnalysisRequest = Depends(parse_analysis_request), db: Session = Depends(get_db)
 ):
+    started = datetime.now()
     try:
         scope = executable_scope(ScopeRef(**payload.scope.model_dump()))
     except (UnsupportedDirectScope, NoScopeMatch, ValueError) as exc:
@@ -138,9 +140,19 @@ def read_analysis(
         )
         return JSONResponse(queued, status_code=202)
     try:
-        return normalize_snapshot(
+        normalized = normalize_snapshot(
             revision.snapshot, expected_policy_revision=revision.policy_revision
         )
+        record_event(
+            "rainfall.analysis.served",
+            revision_id=str(getattr(revision, "id", "")),
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=payload.year,
+            latency_ms=round((datetime.now() - started).total_seconds() * 1000),
+        )
+        return normalized
     except SnapshotContractError as exc:
         raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
 
@@ -156,4 +168,9 @@ def export_analysis(revision: UUID, db: Session = Depends(get_db)) -> Response:
         )
     except SnapshotContractError as exc:
         raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    record_event(
+        "rainfall.csv.served",
+        revision_id=str(revision),
+        latency_ms=0,
+    )
     return Response(metric_rows_csv(metric_rows(normalized)), media_type="text/csv")

@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallOutbox
 from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
 from app.domains.geo.rainfall.schemas import MetricResult
@@ -130,6 +131,16 @@ def queue_missing_analysis(
         .first()
     )
     if existing is not None:
+        record_event(
+            "rainfall.outbox.reused",
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
+            labels=existing.work_labels,
+        )
         return {
             "status": "queued",
             "outbox_id": str(existing.id),
@@ -153,6 +164,16 @@ def queue_missing_analysis(
     db.add(outbox)
     db.flush()
     db.commit()
+    record_event(
+        "rainfall.outbox.queued",
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        labels=list(labels_with_role),
+    )
     return {
         "status": "queued",
         "outbox_id": str(outbox.id),

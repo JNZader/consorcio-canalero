@@ -8,10 +8,43 @@ from sqlalchemy.orm import Session
 
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
+from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallBackfillCheckpoint, RainfallOutbox
 
 MAX_OUTBOX_BATCH = 50
 MAX_RETRIES = 5
+
+RAINFALL_FEATURE_FLAGS_SETTING = "analisis/rainfall_feature_flags"
+
+
+class RainfallRoleDisabled(ValueError):
+    """The metric-role's source-role activation flag (feature flag) is OFF.
+
+    Raised by ``ingest_source_scope`` before any provider contact and used by
+    the outbox consumer to skip (never delete) rows whose role is gated.
+    """
+
+
+def _role_enabled(role: str, db: Session | None = None) -> bool:
+    """A role is ingestable only when the deployment's feature flag says so.
+
+    An absent setting (never configured) is treated as OPEN so a stack that
+    ran before the rollout gate exists keeps working; an explicit
+    ``false``/omitted role under ``analisis/rainfall_feature_flags`` is the
+    rollback signal that gates the role off.
+    """
+    from app.domains.settings.service import SettingsService
+    from app.domains.geo.rainfall.feature_flags import get_rainfall_feature_flags
+
+    if db is None:
+        with SessionLocal() as local:
+            raw = SettingsService().get_setting(local, RAINFALL_FEATURE_FLAGS_SETTING, default=None)
+    else:
+        raw = SettingsService().get_setting(db, RAINFALL_FEATURE_FLAGS_SETTING, default=None)
+    if raw is None or not isinstance(raw, dict):
+        # Unconfigured deployment: no explicit gate was ever set.
+        return True
+    return get_rainfall_feature_flags({"rainfall_feature_flags": raw}).is_enabled(role)
 
 
 @celery_app.task(name="rainfall.ingest_source_scope", bind=True, max_retries=3)
@@ -35,6 +68,9 @@ def ingest_source_scope(
 
     if role not in RAINFALL_SOURCE_ROLES:
         raise ValueError(f"unsupported rainfall role: {role}")
+
+    if not _role_enabled(role):
+        raise RainfallRoleDisabled(f"rainfall role {role!r} is disabled by feature flag")
 
     adapter = ResilientAdapter(
         lambda **_kwargs: (_ for _ in ()).throw(NotImplementedError("provider adapter not wired")),
@@ -122,7 +158,12 @@ def _process_outbox_row(row: RainfallOutbox, db: Session) -> str:
 
 
 def _process_outbox_batch(db: Session) -> dict[str, int]:
-    """Drain a bounded batch of pending rainfall outbox rows."""
+    """Drain a bounded batch of pending rainfall outbox rows.
+
+    Rows whose metric-role is gated off by the feature flag are SKIPPED — not
+    counted as processed or failed, never retried — because a rollback must
+    keep the audit trail of queued work intact until the role is re-enabled.
+    """
     rows = (
         db.execute(
             select(RainfallOutbox)
@@ -139,13 +180,51 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
     succeeded = 0
     failed = 0
     delayed = 0
+    skipped = 0
     for row in rows:
+        if not _role_enabled(row.role, db):
+            record_event(
+                "rainfall.outbox.gated",
+                source_id=row.source_id,
+                role=row.role,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                year=row.year,
+            )
+            skipped += 1
+            continue
         status = _process_outbox_row(row, db)
         if status == "done":
+            record_event(
+                "rainfall.outbox.done",
+                source_id=row.source_id,
+                role=row.role,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                year=row.year,
+            )
             succeeded += 1
         elif status == "failed":
+            record_event(
+                "rainfall.outbox.failed",
+                source_id=row.source_id,
+                role=row.role,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                year=row.year,
+                retry_count=row.retry_count,
+            )
             failed += 1
         else:
+            record_event(
+                "rainfall.outbox.delayed",
+                source_id=row.source_id,
+                role=row.role,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                year=row.year,
+                retry_count=row.retry_count,
+            )
             delayed += 1
     db.commit()
 
@@ -154,6 +233,7 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
         "succeeded": succeeded,
         "failed": failed,
         "delayed": delayed,
+        "skipped": skipped,
     }
 
 
