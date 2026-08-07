@@ -38,7 +38,7 @@ Chain strategy: feature-branch-chain
 - [x] 2.2 **GREEN**: Implement `scope.py`, `repository.py`, `temporal.py` and `service.py`: Buenos Aires local dates, leap-day rule, same-date baseline, cross-year antecedents, cadence-aligned rolling P30/P60/P3h/P24h and deterministic event suppression/peak/duration.
 - [x] 2.3 **REFACTOR**: Centralize versioned coverage/quality/duration thresholds; make null distinct from zero and isolate failed metrics. Implementation corrected in PRE-PR full-4R fix round 1; verified by scoped reliability re-review (all ten candidates verified).
 - [x] 2.4 **RED/GREEN**: Add `router.py` and shared snapshot metric-row serializer with tests for admin/operator auth, CSRF/content-type/body limits/rate limit, JSON/CSV parity, revisions, states, provenance and denied disclosure. Implementation corrected in PRE-PR full-4R fix round 1; verified by scoped reliability re-review (all ten candidates verified).
-- [x] 2.5 Add `tasks.py`, adapter timeout/quota/retry/circuit/cache behavior and Celery Beat/outbox ingest/revisit/backfill; requests read DB/Redis and queue labelled missing work.
+- [x] 2.5 Add `tasks.py`, adapter timeout/quota/retry/circuit/cache behavior and Celery Beat/outbox ingest/revisit/backfill; requests read DB/Redis and queue labelled missing work. Fixed in PR 3A round 1-A: durable outbox commit, idempotent enqueue, partial unique index, `process_outbox` consumer with SKIP LOCKED/backoff/max retries, and source-role resolution.
 
 ## Phase 3: Authenticated ficha and export
 

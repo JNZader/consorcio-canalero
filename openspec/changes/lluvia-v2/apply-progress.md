@@ -144,3 +144,38 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 - Production range relative to PR2A base: 382 additions / 48 deletions, excluding tests, docs, migrations, and generated files; within the 400-addition cap.
 - Fresh full Rainfall, auth/API, Ruff check/format, migration head, and diff checks remain pending.
 - No staging, commit, push, or PR action has occurred in this fix round.
+
+## PR 3A ingest operations round 1-A fixes
+
+- Branch: `feat/lluvia-v2-03a-ingest-ops`
+- Commit: `9d3b745`
+- Findings fixed: A, B, C, F, G
+
+### TDD cycle evidence
+
+| Finding | Test file | Layer | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| A | `test_ingest_ops.py` | Integration | 15 passed | durable-commit test failed | passed with `db.commit()` | N/A (single behavior) | used `SessionLocal()` to verify cross-session durability |
+| B | `test_ingest_ops.py` | Unit/Integration | 15 passed | task/registration tests failed | passed with `process_outbox` | success, max-retry failure, recoverable delay, batch limit | extracted `_process_outbox_batch` for testability |
+| C | `test_ingest_ops.py` | Integration | 15 passed | duplicate-row tests failed | passed with partial unique index + idempotent enqueue | idempotent pending + re-enqueue after done | moved Index out of `__table_args__` |
+| F | `test_ingest_ops.py` | Unit | 15 passed | backfill role test failed | passed with role in filters | N/A (single behavior) | added `role` column to checkpoint model/migration |
+| G | `test_ingest_ops.py` | Unit | 15 passed | source-resolution tests failed | passed with `resolve_missing_work_source` | intensity/current-year/historical/validation cases | constants extracted, router forwards event_window |
+
+### Verification
+
+- `cd gee-backend && ./venv/bin/python -m pytest tests/new/geo/rainfall tests/new/test_auth_refresh_http.py -q --no-header --tb=short` → 153 passed.
+- `cd gee-backend && ./venv/bin/ruff check ... && ./venv/bin/ruff format --check ...` → passed.
+- `cd gee-backend && ./venv/bin/python -m compileall -q ...` → passed.
+- `cd gee-backend && DATABASE_URL=postgresql://test:test@localhost:5434/test_consorcio ./venv/bin/python -m alembic upgrade head && downgrade lluvia_v2_003 && upgrade head` → passed.
+- `git diff --stat` → 8 files changed, 585 insertions(+), 10 deletions(-).
+- Production behavioral code (excluding tests, migration, conftest): ~216 additions / ~9 deletions.
+- No push/PR.
+
+### Deviations from design
+
+None — implementation matches the source-role mapping described in the task and the spec's evidence-gated roles.
+
+### Issues found
+
+- The per-test `db` fixture wraps work in a savepoint, so `db.commit()` inside a function only commits the savepoint and the fixture rollback undoes it. Cross-session durability tests must use `SessionLocal()` directly.
+- `tests/new/conftest.py` did not import rainfall models, so isolated rainfall test runs failed to create rainfall tables. Added the import so `Base.metadata.create_all` knows about them.
