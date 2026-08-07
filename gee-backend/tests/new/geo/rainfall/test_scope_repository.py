@@ -149,10 +149,108 @@ def test_resolve_parcel_rejects_non_array_features_and_duplicate_active_identity
             version=7,
             is_active=True,
             feature_collection={
-                "features": [_feature("zone-a", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])]
+                "type": "FeatureCollection",
+                "features": [_feature("zone-a", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]])],
             },
         )
     )
     db.flush()
     with pytest.raises(ScopeConfigurationError, match="duplicate"):
         RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize(
+    "feature_collection",
+    [
+        pytest.param({"features": []}, id="missing-type"),
+        pytest.param({"type": "Collection", "features": []}, id="wrong-type"),
+    ],
+)
+def test_resolve_parcel_rejects_non_feature_collection_active_zoning(db, feature_collection):
+    _seed(db, active=False, basin=False, features=[])
+    db.add(GeoApprovedZoning(version=7, is_active=True, feature_collection=feature_collection))
+    db.flush()
+
+    with pytest.raises(ScopeConfigurationError):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize(
+    "feature",
+    [
+        pytest.param(
+            {
+                "properties": {"zone_id": "zone-a"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+                },
+            },
+            id="missing-type",
+        ),
+        pytest.param(
+            {
+                "type": "Geometry",
+                "properties": {"zone_id": "zone-a"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+                },
+            },
+            id="wrong-type",
+        ),
+    ],
+)
+def test_resolve_parcel_rejects_non_feature_active_zoning_member(db, feature):
+    _seed(db, features=[feature])
+
+    with pytest.raises(ScopeConfigurationError):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {"type": "Point", "coordinates": [0, 0]},
+        {"type": "LineString", "coordinates": [[0, 0], [2, 2]]},
+    ],
+)
+def test_resolve_parcel_rejects_non_area_active_zoning_geometry(db, geometry):
+    _seed(
+        db,
+        features=[
+            {
+                "type": "Feature",
+                "properties": {"zone_id": "zone-a"},
+                "geometry": geometry,
+            }
+        ],
+    )
+
+    with pytest.raises(ScopeConfigurationError):
+        RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+
+def test_resolve_parcel_accepts_polygon_and_multi_polygon_active_zoning(db):
+    _seed(
+        db,
+        features=[
+            _feature("polygon", [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]),
+            {
+                "type": "Feature",
+                "properties": {"zone_id": "multi-polygon"},
+                "geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [[[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]],
+                },
+            },
+        ],
+        basin=False,
+    )
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    assert [(item.kind, item.id) for item in choices] == [
+        ("zone", "multi-polygon"),
+        ("zone", "polygon"),
+    ]

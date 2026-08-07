@@ -92,14 +92,14 @@ The earlier PR 2 progress above remains historical evidence. The approved featur
 | Slice | Boundary | Status |
 |---|---|---|
 | PR 1 | Evidence gate, contracts and migration | Complete |
-| PR 2A | Deterministic scope, PostGIS resolution, temporal rules and API groundwork | Current; tasks 2.1–2.2 complete at 399 production lines |
+| PR 2A | Deterministic scope, PostGIS resolution, temporal rules and API groundwork | Current; tasks 2.1–2.2 complete at 400 production lines |
 | PR 2B | API policy contract | Planned; tasks 2.3–2.4 remain unchecked |
 | PR 3 | UI, export and operations | Planned; task 2.5 and phases 3–4 remain unchecked |
 
 ### PR 2A boundary evidence
 
 - The user-approved convention counts production behavioral code only and caps each slice at 400 lines; tests, fixtures, migrations, documentation, generated files, package docstrings and operational configuration are excluded.
-- PR 2A is frozen at 399 production lines.
-- Verification: 44 focused Rainfall tests passed; focused Ruff checks and the diff consistency check passed.
+- PR 2A is frozen at exactly 400 raw production lines.
+- Verification: 55 focused Rainfall tests passed; focused Ruff checks and the diff consistency check passed.
 - The model-diverse critical review/fix cycle approved the PR 2A boundary.
 - Only tasks 2.1–2.2 are complete; tasks 2.3–2.5 remain unchecked.

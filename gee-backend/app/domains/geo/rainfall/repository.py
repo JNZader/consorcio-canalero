@@ -43,16 +43,16 @@ class RainfallRepository:
             if not isinstance(feature_collection, dict):
                 raise ScopeConfigurationError("approved zoning features are invalid")
             features = feature_collection.get("features")
-            if not isinstance(features, list):
+            if feature_collection.get("type") != "FeatureCollection" or not isinstance(
+                features, list
+            ):
                 raise ScopeConfigurationError("approved zoning features are invalid")
             for feature in features:
-                if not isinstance(feature, dict):
+                if not isinstance(feature, dict) or feature.get("type") != "Feature":
                     raise ScopeConfigurationError("approved zoning feature is invalid")
                 properties = feature.get("properties")
                 if properties is not None and not isinstance(properties, dict):
-                    raise ScopeConfigurationError(
-                        "approved zoning feature properties must be an object"
-                    )
+                    raise ScopeConfigurationError("properties must be an object")
                 zone_id = (properties or {}).get("zone_id") or feature.get("id")
                 if not isinstance(zone_id, str) or not zone_id:
                     raise ScopeConfigurationError("approved zoning feature has no stable id")
@@ -61,7 +61,8 @@ class RainfallRepository:
                     raise ScopeConfigurationError("approved zoning has duplicate stable ids")
                 identities.add(identity)
                 geometry = feature.get("geometry")
-                if not isinstance(geometry, dict) or not geometry:
+                geometry_type = geometry.get("type") if isinstance(geometry, dict) else None
+                if geometry_type not in {"Polygon", "MultiPolygon"}:
                     raise ScopeConfigurationError("approved zoning geometry is invalid")
                 try:
                     valid = db.scalar(

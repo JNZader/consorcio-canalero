@@ -261,3 +261,18 @@
 - RED: the four falsey invalid-properties cases failed before the validation change.
 - GREEN: targeted repository regressions passed (9 passed), covering falsey invalid values and missing/null/empty-object feature-ID fallback.
 - Scoped verification: PASS; targeted regressions 9 passed, focused Rainfall suite 48 passed, Ruff and restricted diff checks passed, and the PR2A production behavioral range remains 399 lines.
+
+
+## PR2A pre-push review-reliability — RELIABILITY-004
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-004 | reliability | gee-backend/app/domains/geo/rainfall/repository.py:_validate_active_zoning | CRITICAL | verified | candidate; general refuter: stands; GREEN; scoped re-review PASS | Fail closed unless the active zoning is a FeatureCollection, every member is a Feature, and each geometry is a Polygon or MultiPolygon; existing PostGIS validity and emptiness checks remain required. |
+
+### Round state
+
+- RED: top-level missing/wrong type and Point geometry regressions failed before the validation change; malformed member type cases were already rejected through a later geometry guard.
+- GREEN: targeted new regressions passed (6 passed); complete scope repository suite passed (25 passed), including valid Polygon/MultiPolygon coverage.
+- Focused Rainfall suite: 55 passed. Ruff format/check and git diff --check passed.
+- Production behavioral range: exactly 400 raw added lines and 0 deletions across the six production files, within the PR2A cap without exclusions.
+- RELIABILITY-004 is verified; targeted structural/property tests passed (16), the focused Rainfall suite passed (55), Ruff and diff checks passed, and no new BLOCKER/CRITICAL was found on fix-touched lines.

@@ -21,7 +21,7 @@ Chain strategy: feature-branch-chain
 | Unit | Goal | Likely PR | Notes |
 |---|---|---|---|
 | 1 | Evidence gate, contracts, migration | PR 1 | Complete; providers disabled |
-| 2A | Deterministic scope, PostGIS, temporal rules and API groundwork | PR 2A | Current; 399 production lines |
+| 2A | Deterministic scope, PostGIS, temporal rules and API groundwork | PR 2A | Current; exactly 400 raw production lines |
 | 2B | API policy contract | PR 2B | Planned; completes unchecked 2.3–2.4 |
 | 3 | Ficha UI, export and operations | PR 3 | Planned; includes 2.5 and phases 3–4 |
 
