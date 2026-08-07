@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.domains.geo.rainfall.models import RainfallOutbox
 from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_policy
 from app.domains.geo.rainfall.schemas import MetricResult
 
@@ -39,6 +40,29 @@ def analysis_request_fingerprint(request: Any) -> str:
         request = request.model_dump(mode="json", exclude_none=True)
     canonical = json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def queue_missing_analysis(
+    db: Any, *, scope: Any, year: int, labels: tuple[str, ...] = ("analysis_missing",)
+) -> dict[str, Any]:
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        work_labels=list(labels),
+    )
+    db.add(outbox)
+    db.flush()
+    return {
+        "status": "queued",
+        "outbox_id": str(outbox.id),
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": year,
+        "labels": list(labels),
+    }
 
 
 def _metric_policy(

@@ -71,6 +71,7 @@ celery_app = Celery(
         "app.domains.geo.gee_tasks",
         "app.domains.geo.gee_tasks_warming",
         "app.domains.geo.intelligence.tasks",
+        "app.domains.geo.rainfall.tasks",
     ],
 )
 

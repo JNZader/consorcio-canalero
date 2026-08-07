@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.domains.geo.rainfall.service import (
     metric_rows,
     metric_rows_csv,
     normalize_snapshot,
+    queue_missing_analysis,
 )
 from app.domains.geo.rainfall.scope import (
     NoScopeMatch,
@@ -126,7 +127,13 @@ def read_analysis(
         request["event_window"] = payload.event_window.model_dump(mode="json")
     revision = RainfallRepository().get_snapshot(db, analysis_request_fingerprint(request))
     if revision is None:
-        raise HTTPException(404, detail="rainfall analysis is unavailable")
+        queued = queue_missing_analysis(
+            db,
+            scope=scope,
+            year=payload.year,
+            labels=("analysis_missing",),
+        )
+        return JSONResponse(queued, status_code=202)
     try:
         return normalize_snapshot(
             revision.snapshot, expected_policy_revision=revision.policy_revision
