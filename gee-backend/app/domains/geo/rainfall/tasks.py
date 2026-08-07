@@ -25,7 +25,12 @@ def ingest_source_scope(
     scope_version: str,
     year: int,
 ) -> dict[str, Any]:
-    from app.domains.geo.rainfall.adapters.resilience import AdapterError, ResilientAdapter
+    from app.config import settings
+    from app.domains.geo.rainfall.adapters.resilience import (
+        AdapterError,
+        RedisCircuitStore,
+        ResilientAdapter,
+    )
     from app.domains.geo.rainfall.feature_flags import RAINFALL_SOURCE_ROLES
 
     if role not in RAINFALL_SOURCE_ROLES:
@@ -33,8 +38,10 @@ def ingest_source_scope(
 
     adapter = ResilientAdapter(
         lambda **_kwargs: (_ for _ in ()).throw(NotImplementedError("provider adapter not wired")),
+        store=RedisCircuitStore(settings.redis_url),
         timeout_seconds=60,
         max_retries=2,
+        failure_threshold=3,
     )
     start = datetime(year, 1, 1, tzinfo=UTC)
     end = datetime(year + 1, 1, 1, tzinfo=UTC)
