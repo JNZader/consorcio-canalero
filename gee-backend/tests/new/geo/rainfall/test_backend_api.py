@@ -550,3 +550,143 @@ def test_snapshot_normalization_never_coerces_non_numeric_metric_values(
     )
     if csv_value is not None:
         assert (csv_value in metric_rows_csv([row])) is (expected_value is not None)
+
+
+@pytest.mark.parametrize("field", ["coverage", "completeness"])
+@pytest.mark.parametrize(
+    "raw_evidence",
+    [
+        pytest.param(True, id="bool"),
+        pytest.param("1.0", id="numeric-string"),
+        pytest.param(float("nan"), id="nan"),
+        pytest.param(float("inf"), id="positive-infinity"),
+        pytest.param(float("-inf"), id="negative-infinity"),
+    ],
+)
+def test_snapshot_normalization_rejects_raw_coverage_or_completeness_coercion(field, raw_evidence):
+    from csv import DictReader
+    from io import StringIO
+
+    from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+
+    metric = {
+        "metric": "annual",
+        "value": 21.0,
+        "unit": "mm",
+        "state": "available",
+        "interval_start": "2026-01-01T00:00:00Z",
+        "interval_end": "2026-01-02T00:00:00Z",
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {"score": 0.9},
+        "discrepancies": [],
+        "temporal_state": "final",
+        "revision": "v1",
+        "provenance": {
+            "source_id": "radar",
+            "source_class": "estimated_radar",
+            "method": "sum",
+            "nominal_resolution": "1km",
+            "aggregation": "daily",
+            "spatial_scope": "zone",
+            "freshness": "2026-01-02T00:00:00Z",
+            "available_through": "2026-01-02T00:00:00Z",
+        },
+        "fallback_used": False,
+    }
+    metric[field] = raw_evidence
+    normalized = normalize_snapshot(
+        {
+            "metric_policy": {
+                "revision": "v1",
+                "minimum_coverage_by_metric": {"annual": 0.8},
+                "minimum_quality_by_metric": {"annual": 0.7},
+                "duration_threshold": 1.0,
+            },
+            "annual": {"selected": metric},
+        },
+        expected_policy_revision="v1",
+    )
+    row = metric_rows(normalized)[0]
+    csv_row = next(DictReader(StringIO(metric_rows_csv([row]))))
+
+    assert (row["value"], row["state"], row["reason"]) == (
+        None,
+        "unavailable",
+        "metric_contract_invalid",
+    )
+    assert (csv_row["value"], csv_row["state"], csv_row["reason"]) == (
+        "",
+        "unavailable",
+        "metric_contract_invalid",
+    )
+
+
+@pytest.mark.parametrize("field", ["coverage", "completeness"])
+@pytest.mark.parametrize("boundary", [0.0, 1.0])
+@pytest.mark.parametrize(
+    ("value", "input_state", "expected_value", "expected_state", "expected_reason"),
+    [
+        (21.0, "available", 21.0, "available", None),
+        (None, "partial", None, "unavailable", "metric_value_unavailable"),
+    ],
+)
+def test_snapshot_normalization_preserves_finite_evidence_boundaries_and_null_values(
+    field, boundary, value, input_state, expected_value, expected_state, expected_reason
+):
+    from csv import DictReader
+    from io import StringIO
+
+    from app.domains.geo.rainfall.service import metric_rows, metric_rows_csv, normalize_snapshot
+
+    metric = {
+        "metric": "annual",
+        "value": value,
+        "unit": "mm",
+        "state": input_state,
+        "interval_start": "2026-01-01T00:00:00Z",
+        "interval_end": "2026-01-02T00:00:00Z",
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {"score": 0.9},
+        "discrepancies": [],
+        "temporal_state": "final",
+        "revision": "v1",
+        "provenance": {
+            "source_id": "radar",
+            "source_class": "estimated_radar",
+            "method": "sum",
+            "nominal_resolution": "1km",
+            "aggregation": "daily",
+            "spatial_scope": "zone",
+            "freshness": "2026-01-02T00:00:00Z",
+            "available_through": "2026-01-02T00:00:00Z",
+        },
+        "fallback_used": False,
+    }
+    metric[field] = boundary
+    normalized = normalize_snapshot(
+        {
+            "metric_policy": {
+                "revision": "v1",
+                "minimum_coverage_by_metric": {"annual": boundary},
+                "minimum_quality_by_metric": {"annual": 0.7},
+                "duration_threshold": 1.0,
+            },
+            "annual": {"selected": metric},
+        },
+        expected_policy_revision="v1",
+    )
+    row = metric_rows(normalized)[0]
+    csv_row = next(DictReader(StringIO(metric_rows_csv([row]))))
+
+    assert (row["value"], row["state"], row["reason"]) == (
+        expected_value,
+        expected_state,
+        expected_reason,
+    )
+    assert (csv_row["value"], csv_row["state"], csv_row["reason"]) == (
+        "" if expected_value is None else str(expected_value),
+        expected_state,
+        "" if expected_reason is None else expected_reason,
+    )

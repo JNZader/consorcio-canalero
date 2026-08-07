@@ -62,6 +62,8 @@ def _normalize_metric(
     raw_value = raw.get("value")
     if raw_value is not None and not _is_finite_metric_value(raw_value):
         return _unavailable(raw, "metric_contract_invalid")
+    if any(not _is_finite_metric_value(raw.get(field)) for field in ("coverage", "completeness")):
+        return _unavailable(raw, "metric_contract_invalid")
     try:
         metric = MetricResult.model_validate(raw)
     except ValidationError:

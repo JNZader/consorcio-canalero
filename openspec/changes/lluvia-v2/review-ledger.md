@@ -387,3 +387,19 @@
 - GREEN: focused parametrized contract passed for booleans, numeric string, finite integer, finite float, and null/unavailable value.
 - Scoped re-review PASS: focused 6, API 30, Rainfall 85, auth/API 59, Ruff check/format, and `git diff --check` passed; no new BLOCKER/CRITICAL finding was found on fix-touched lines.
 - `RELIABILITY-PR2B-002` and `PR2B-JD-002` through `PR2B-JD-004` remain unchanged.
+
+## PR2B pre-push review-reliability — RELIABILITY-001
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-001 | reliability | `gee-backend/app/domains/geo/rainfall/service.py:_normalize_metric` | CRITICAL | verified | general refuter: stands; GREEN; scoped re-review PASS | The 2-addition raw guard runs before Pydantic coercion: boolean, numeric-string and non-finite `coverage`/`completeness` fail closed as `metric_contract_invalid`; finite `0.0`/`1.0` boundaries and null/unavailable semantics are preserved; JSON and CSV remain aligned. Targeted 18, Ruff check/format and `git diff --check` passed, with no new BLOCKER/CRITICAL on fix-touched lines. |
+
+### Fix state
+
+- Safety net: targeted Rainfall API suite passed before edits (30 passed).
+- RED: focused raw-evidence regression produced 4 expected failures for boolean/numeric-string coverage/completeness; six non-finite cases already failed closed.
+- GREEN/TRIANGULATE: 18 focused cases passed across both fields, malformed types, finite boundaries, null values, and JSON/CSV parity.
+- Verification evidence: targeted API 48 passed; full focused Rainfall 103 passed; bounded auth/API 77 passed; Ruff check/format and `git diff --check` passed.
+- Production delta for this fix: 2 additions and 0 deletions. PR2B production range: 207 additions and 10 deletions, below the 400-addition cap.
+- Scoped re-review PASS: `RELIABILITY-001` is verified; the 2-addition guard runs before Pydantic, targeted 18 and Ruff/format/diff checks passed, and no new BLOCKER/CRITICAL was found on fix-touched lines.
+- Existing WARNING/info entries remain unchanged.
