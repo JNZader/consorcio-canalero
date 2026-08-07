@@ -75,3 +75,31 @@
 - The earlier repository-root result is invalid full-gate evidence. Authoritative command, from `gee-backend/`:
   `./venv/bin/python -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short`.
 - Linked #164 for the permanent pre-push harness and compile-wrapper correction.
+
+
+## PR 2 deterministic scope and temporal progress (partial)
+- Branch: `feat/lluvia-v2-02-backend-api`, based exactly on PR1 `277c7cc2588c40b60dd8e0ac46ecef67ea47a218`.
+- [x] 2.1 RED: focused unit and real PostGIS tests cover stable identities, parcel zone/basin choices, regional labels, ambiguity/no-match, full-tuple selection, direct parcel/geometry rejection, boundary-only exclusion, inactive-zoning exclusion, missing stable IDs, malformed configuration fail-closed behavior.
+- [x] 2.2 GREEN: `scope.py`, PostGIS JSON-lateral `repository.py`, and pure temporal helpers implement Buenos Aires conversion, leap-only Feb-29 baseline dates, same-date calendar comparison, cross-year antecedents, cadence-complete rolling totals, and deterministic event peak/duration suppression.
+- TDD evidence: RED missing modules, kind-only selection, missing cadence coverage, missing provenance serialization, an ambiguous production SQL column, and missing local-date helpers; GREEN 30 non-DB focused rainfall tests plus 3 real-PostgreSQL resolver tests pass.
+- API groundwork is uncommitted: authenticated router, snapshot reads, JSON/CSV parity serializer, and unauthenticated/CSRF/content-type focused contract tests. Task 2.4 remains unchecked pending revision, disclosure, and rate-limit coverage; 2.3 and 2.5 remain pending.
+- Production behavior: 340 lines (338 new rainfall modules plus 2 Geo-router registration lines); tests/docs excluded.
+
+## Approved delivery boundary after PR 2A critical cycle
+
+The earlier PR 2 progress above remains historical evidence. The approved feature-branch chain now has four slices:
+
+| Slice | Boundary | Status |
+|---|---|---|
+| PR 1 | Evidence gate, contracts and migration | Complete |
+| PR 2A | Deterministic scope, PostGIS resolution, temporal rules and API groundwork | Current; tasks 2.1–2.2 complete at 399 production lines |
+| PR 2B | API policy contract | Planned; tasks 2.3–2.4 remain unchecked |
+| PR 3 | UI, export and operations | Planned; task 2.5 and phases 3–4 remain unchecked |
+
+### PR 2A boundary evidence
+
+- The user-approved convention counts production behavioral code only and caps each slice at 400 lines; tests, fixtures, migrations, documentation, generated files, package docstrings and operational configuration are excluded.
+- PR 2A is frozen at 399 production lines.
+- Verification: 44 focused Rainfall tests passed; focused Ruff checks and the diff consistency check passed.
+- The model-diverse critical review/fix cycle approved the PR 2A boundary.
+- Only tasks 2.1–2.2 are complete; tasks 2.3–2.5 remain unchecked.

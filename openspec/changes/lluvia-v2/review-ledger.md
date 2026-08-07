@@ -155,3 +155,97 @@
 - The previous repository-root command is invalid full-gate evidence. The authoritative backend command must run from `gee-backend/`:
   `./venv/bin/python -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-fail-under=60 -q --no-header --tb=short`.
 - #164 remains the permanent correction vehicle for the pre-push harness and compile-wrapper failure masking.
+
+## Apply PR 2 — Judgment Day first pass
+
+**Target:** `feat/lluvia-v2-02-backend-api` uncommitted diff
+**Review:** Judgment Day — first pass
+**Artifact store:** hybrid
+
+### Summary
+
+| Bucket | Count |
+|---|---:|
+| Confirmed CRITICAL/open | 1 |
+| Suspect CRITICAL/info | 4 |
+| Contradictions | 0 |
+| WARNING/info | 1 |
+
+### Findings
+
+| id | lens | location | severity | status | convergence | evidence |
+|---|---|---|---|---|---|---|
+| PR2-JD-001 | judgment-day | `gee-backend/app/domains/geo/rainfall/repository.py:RainfallRepository._validate_active_zoning` | CRITICAL | verified | model-diverse scoped re-judge approved | Active zoning validation now rejects malformed collections, missing/duplicate identities, invalid/empty geometries, and truthy non-object `feature.properties` with controlled `ScopeConfigurationError`; missing/null/empty properties preserve feature-ID fallback. |
+| PR2-JD-002 | judgment-day | `gee-backend/app/domains/geo/rainfall/temporal.py:41-62` | CRITICAL | info | suspect; single judge | Event peak/duration truncates `rolling_window / cadence` without requiring exact divisibility, so unsupported cadence can silently change scientific window semantics. |
+| PR2-JD-003 | judgment-day | `gee-backend/app/domains/geo/rainfall/router.py:32-38`; `gee-backend/app/domains/geo/router.py:243` | CRITICAL | info | suspect; single judge | The production-registered scope body accepts an unbounded geometry object; authorization, CSRF and generic rate limiting do not impose a pre-parse byte limit. |
+| PR2-JD-004 | judgment-day | `gee-backend/app/domains/geo/rainfall/repository.py:43-49` | CRITICAL | info | suspect; single judge | Zone identity uses `zone_id + zoning.version`, while zoning versions may be per-cuenca and generic IDs may repeat across active cuencas, potentially producing indistinguishable scope choices. |
+| PR2-JD-005 | judgment-day | `gee-backend/app/domains/geo/rainfall/temporal.py:75-80` | CRITICAL | info | suspect; single judge | Rolling totals build a dictionary before completeness validation, so duplicate timestamps can collapse last-write-wins and pass cadence checks with an incorrect total. |
+| PR2-JD-006 | judgment-day | `gee-backend/app/domains/geo/rainfall/temporal.py:10-11` | WARNING | info | single judge; partial-stage assessment | `comparison_end` does not itself clamp current or historical comparisons to a source `available_through`; an upstream caller can compensate while task 2.4 remains incomplete. |
+
+### Round state
+
+- `PR2-JD-001` is the only confirmed fix-loop input and requires Round 1 correction plus scoped dual re-judgment.
+- `PR2-JD-002` through `PR2-JD-005` are suspect informational findings and are not automatic fix inputs.
+- `PR2-JD-006` is WARNING/info and never enters the fix loop.
+- Focused evidence before Judgment Day: 30 non-DB rainfall tests plus 3 real PostgreSQL resolver tests passed; focused Ruff check/format passed.
+- Production behavioral scope is 340 lines under the maintainer's 400-line convention.
+
+**Judgment for Apply PR2:** ESCALATED — Round 1 fix approval required
+
+### Apply PR 2 — Judgment Day Round 2 scoped re-judge
+
+| Judge | Model | Verdict for PR2-JD-001 | Evidence |
+|---|---|---|---|
+| A | `gpt-5.6-sol` | verified | Confirmed active FeatureCollection, identity, PostGIS validity/non-empty checks and basin-masking regressions close the original malformed-zoning path. |
+| B | `gpt-5.6-terra` | open | Found a residual fix-line path: truthy non-object `feature.properties` reaches `.get("zone_id")` and raises uncontrolled `AttributeError` rather than `ScopeConfigurationError`. |
+
+- Round 1 verification exposed empty geometries accepted by `ST_IsValid`; Round 2 added explicit `ST_IsEmpty` rejection.
+- Round 2 focused evidence: 39 Rainfall tests passed; focused Ruff check/format passed; production behavioral diff is 387 lines.
+- The model-diverse judges contradicted on the remaining fix-line behavior.
+- The two-fix-round convergence budget is exhausted. No further automatic fix is permitted in this Judgment Day run.
+- `PR2-JD-001` remains open pending manual decision or a new explicitly authorized review cycle.
+
+**Judgment for Apply PR2:** ESCALATED — contradictory Round 2 verdicts
+
+### Apply PR 2 — New authorized critical cycle terminal re-judge
+
+| Judge | Model | Verdict for PR2-JD-001 |
+|---|---|---|
+| A | `gpt-5.6-sol` | verified |
+| B | `gpt-5.6-terra` | verified |
+
+- The residual truthy non-object `feature.properties` path now raises controlled `ScopeConfigurationError` before mapping access.
+- Missing, null, and empty-object properties retain the intended feature-level ID fallback.
+- Regression evidence: resolver suite 14 passed; full focused Rainfall suite 44 passed; focused Ruff check/format and `git diff --check` passed.
+- Both model-diverse scoped judges found no new BLOCKER/CRITICAL on fix-touched lines.
+- `PR2-JD-001` is verified. Suspect/info findings `PR2-JD-002` through `PR2-JD-006` retain their original non-blocking statuses.
+
+**Judgment for Apply PR2 critical cycle:** APPROVED
+
+## PR2A pre-commit review-reliability
+
+**Target:** `feat/lluvia-v2-02-backend-api` uncommitted deterministic-core diff
+**Review:** fresh pre-commit review-reliability — Round 1
+**Status:** **PASSED**
+
+| id | lens | location | severity | status | convergence/refutation | evidence |
+|---|---|---|---|---|---|---|
+| RELIABILITY-001 | reliability | `gee-backend/app/domains/geo/rainfall/temporal.py:event_peak_and_duration` | CRITICAL | verified | general refuter: stands; GREEN | A positive rolling window must divide exactly by the source cadence; non-divisible windows now suppress via the existing `EventSuppressed` path instead of flooring to a shorter scientific window. |
+| RELIABILITY-002 | reliability | `gee-backend/app/domains/geo/rainfall/temporal.py:rolling_total` | CRITICAL | verified | general refuter: stands; GREEN | Duplicate interval starts are rejected before construction of the timestamp-to-value mapping, preventing last-write-wins totals from passing coverage validation. |
+
+### Round state
+
+- Focused temporal regressions: 2 passed.
+- Focused Rainfall suite: 44 passed.
+- Focused Ruff check/format and `git diff --check`: passed.
+- Production behavioral scope: 399 lines, within the 400-line PR2A cap.
+
+### PR2A pre-commit reliability scoped re-review
+
+- `RELIABILITY-001`: verified; non-divisible event windows suppress before integer width calculation, and divisible-window semantics remain covered.
+- `RELIABILITY-002`: verified; duplicate starts are rejected before dictionary construction, while unique cadence and null-versus-zero behavior remain covered.
+- No new BLOCKER/CRITICAL finding was found on fix-touched lines.
+- Evidence: 2 targeted regressions passed; 44 focused Rainfall tests passed; Ruff check/format and diff check passed.
+- Production behavioral diff: 399 lines.
+
+**PR2A pre-commit review-reliability:** PASSED
