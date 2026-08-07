@@ -132,6 +132,9 @@ def read_analysis(
             scope=scope,
             year=payload.year,
             labels=("analysis_missing",),
+            event_window=(
+                payload.event_window.model_dump(mode="json") if payload.event_window else None
+            ),
         )
         return JSONResponse(queued, status_code=202)
     try:

@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -18,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, Session, mapped_column, validates
 
-from app.db.base import Base, UUIDMixin
+from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class RainfallSourceEligibility(UUIDMixin, Base):
@@ -104,6 +105,7 @@ class RainfallBackfillCheckpoint(UUIDMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "source_id",
+            "role",
             "scope_kind",
             "scope_id",
             "scope_version",
@@ -112,6 +114,7 @@ class RainfallBackfillCheckpoint(UUIDMixin, Base):
         ),
     )
     source_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False, server_default="historical")
     scope_kind: Mapped[str] = mapped_column(String(16), nullable=False)
     scope_id: Mapped[str] = mapped_column(String(128), nullable=False)
     scope_version: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -120,7 +123,7 @@ class RainfallBackfillCheckpoint(UUIDMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class RainfallOutbox(UUIDMixin, Base):
+class RainfallOutbox(UUIDMixin, TimestampMixin, Base):
     """Durable, labelled missing-work queue for Rainfall v2 analysis requests."""
 
     __tablename__ = "rainfall_outbox"
@@ -158,6 +161,19 @@ class RainfallOutbox(UUIDMixin, Base):
         if value not in {"pending", "done", "failed"}:
             raise ValueError(f"invalid rainfall outbox status: {value}")
         return value
+
+
+Index(
+    "ix_rainfall_outbox_pending_unique",
+    RainfallOutbox.source_id,
+    RainfallOutbox.role,
+    RainfallOutbox.scope_kind,
+    RainfallOutbox.scope_id,
+    RainfallOutbox.scope_version,
+    RainfallOutbox.year,
+    unique=True,
+    postgresql_where=(RainfallOutbox.status == "pending"),
+)
 
 
 _IMMUTABLE_TYPES = (

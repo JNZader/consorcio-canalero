@@ -3,6 +3,7 @@
 import csv
 import hashlib
 import json
+from datetime import UTC, datetime
 from io import StringIO
 from math import isfinite
 from typing import Any
@@ -14,6 +15,69 @@ from app.domains.geo.rainfall.policy import MetricThresholdPolicy, apply_metric_
 from app.domains.geo.rainfall.schemas import MetricResult
 
 METRIC_GROUPS = ("annual", "antecedents", "intensity")
+
+RAINFALL_HISTORICAL_SOURCE = "chirps-v3-final"
+RAINFALL_DAILY_SOURCE = "sqpe-obs"
+RAINFALL_INTENSITY_SOURCE = "sinarame-rqpe"
+RAINFALL_VALIDATION_SOURCE = "smn-gauges"
+
+
+def _parse_event_window(event_window: dict[str, Any] | None) -> tuple[datetime, datetime] | None:
+    if event_window is None:
+        return None
+    start = event_window.get("start")
+    end = event_window.get("end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        return None
+    try:
+        parsed_start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        parsed_end = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if (
+        parsed_start.utcoffset() is None
+        or parsed_end.utcoffset() is None
+        or parsed_end <= parsed_start
+    ):
+        return None
+    return parsed_start, parsed_end
+
+
+def resolve_missing_work_source(
+    event_window: dict[str, Any] | None,
+    year: int,
+    *,
+    requested_role: str | None = None,
+) -> dict[str, Any]:
+    """Map a public analysis request to the configured source, role and interval bounds."""
+    if requested_role == "validation":
+        source_id = RAINFALL_VALIDATION_SOURCE
+        role = "validation"
+    elif event_window is not None:
+        source_id = RAINFALL_INTENSITY_SOURCE
+        role = "intensity"
+    elif year == datetime.now(UTC).year:
+        source_id = RAINFALL_DAILY_SOURCE
+        role = "daily"
+    else:
+        source_id = RAINFALL_HISTORICAL_SOURCE
+        role = "historical"
+
+    window = _parse_event_window(event_window)
+    if window is not None:
+        interval_start, interval_end = window
+    else:
+        interval_start = datetime(year, 1, 1, tzinfo=UTC)
+        interval_end = datetime(year + 1, 1, 1, tzinfo=UTC)
+
+    return {
+        "source_id": source_id,
+        "role": role,
+        "interval_start": interval_start,
+        "interval_end": interval_end,
+    }
+
+
 SNAPSHOT_ROOT_KEYS = {
     "analysis_revision_id",
     "scope",
@@ -43,25 +107,58 @@ def analysis_request_fingerprint(request: Any) -> str:
 
 
 def queue_missing_analysis(
-    db: Any, *, scope: Any, year: int, labels: tuple[str, ...] = ("analysis_missing",)
+    db: Any,
+    *,
+    scope: Any,
+    year: int,
+    labels: tuple[str, ...] = ("analysis_missing",),
+    event_window: dict[str, Any] | None = None,
+    requested_role: str | None = None,
 ) -> dict[str, Any]:
+    source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
+    existing = (
+        db.query(RainfallOutbox)
+        .filter_by(
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
+            status="pending",
+        )
+        .first()
+    )
+    if existing is not None:
+        return {
+            "status": "queued",
+            "outbox_id": str(existing.id),
+            "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+            "year": year,
+            "labels": existing.work_labels,
+        }
+
+    labels_with_role = tuple({*labels, f"role:{source['role']}"})
     outbox = RainfallOutbox(
-        source_id="chirps-v3-final",
-        role="historical",
+        source_id=source["source_id"],
+        role=source["role"],
         scope_kind=scope.kind,
         scope_id=scope.id,
         scope_version=scope.version,
         year=year,
-        work_labels=list(labels),
+        work_labels=list(labels_with_role),
+        interval_start=source["interval_start"],
+        interval_end=source["interval_end"],
     )
     db.add(outbox)
     db.flush()
+    db.commit()
     return {
         "status": "queued",
         "outbox_id": str(outbox.id),
         "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
         "year": year,
-        "labels": list(labels),
+        "labels": list(labels_with_role),
     }
 
 

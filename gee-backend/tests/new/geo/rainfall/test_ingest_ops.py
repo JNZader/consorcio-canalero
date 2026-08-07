@@ -250,7 +250,8 @@ def test_analysis_request_queues_missing_work_when_no_snapshot_exists(db):
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "queued"
-    assert body["labels"] == ["analysis_missing"]
+    assert "analysis_missing" in body["labels"]
+    assert "role:historical" in body["labels"]
 
 
 def test_analysis_request_returns_snapshot_when_available(db, monkeypatch):
@@ -318,3 +319,309 @@ def test_analysis_request_returns_snapshot_when_available(db, monkeypatch):
     response = TestClient(app).post("/rainfall/analyses", json=payload)
     assert response.status_code == 200
     assert response.json()["annual"]["selected"]["value"] == 21.0
+
+
+# -----------------------------------------------------------------------------
+# Finding A: outbox insert must be committed durably
+# -----------------------------------------------------------------------------
+
+
+def test_queue_missing_analysis_commits_outbox_row():
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-1", version="v1", regional_estimate=False)
+    with SessionLocal() as db:
+        result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    with SessionLocal() as fresh:
+        row = fresh.get(RainfallOutbox, result["outbox_id"])
+        assert row is not None
+        assert row.status == "pending"
+        assert row.source_id == "chirps-v3-final"
+        fresh.delete(row)
+        fresh.commit()
+
+
+# -----------------------------------------------------------------------------
+# Finding C: duplicate outbox rows must be prevented / idempotent enqueue
+# -----------------------------------------------------------------------------
+
+
+def test_queue_missing_analysis_is_idempotent_for_pending_row(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-1", version="v1", regional_estimate=False)
+    first = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+    db.commit()
+    second = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    assert first["outbox_id"] == second["outbox_id"]
+    assert db.query(RainfallOutbox).filter_by(status="pending").count() == 1
+
+
+def test_pending_unique_constraint_allows_reenqueue_after_done(db):
+    from uuid import uuid4
+
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-1", version="v1", regional_estimate=False)
+    done_row = RainfallOutbox(
+        id=uuid4(),
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=2024,
+        status="done",
+        completed_at=datetime.now(UTC),
+    )
+    db.add(done_row)
+    db.commit()
+
+    queued = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+    assert queued["outbox_id"] != str(done_row.id)
+    assert db.query(RainfallOutbox).filter_by(status="pending").count() == 1
+
+
+# -----------------------------------------------------------------------------
+# Finding G: source/role resolution from request and year
+# -----------------------------------------------------------------------------
+
+
+def test_resolve_missing_work_source_uses_intensity_for_event_window():
+    from app.domains.geo.rainfall.service import resolve_missing_work_source
+
+    event_window = {
+        "start": "2024-03-01T00:00:00Z",
+        "end": "2024-03-02T00:00:00Z",
+    }
+    resolved = resolve_missing_work_source(event_window, year=2024)
+
+    assert resolved["role"] == "intensity"
+    assert resolved["source_id"] == "sinarame-rqpe"
+    assert resolved["interval_start"] == datetime(2024, 3, 1, 0, 0, tzinfo=UTC)
+    assert resolved["interval_end"] == datetime(2024, 3, 2, 0, 0, tzinfo=UTC)
+
+
+def test_resolve_missing_work_source_uses_daily_for_current_year():
+    from app.domains.geo.rainfall.service import resolve_missing_work_source
+
+    current_year = datetime.now(UTC).year
+    resolved = resolve_missing_work_source(None, year=current_year)
+
+    assert resolved["role"] == "daily"
+    assert resolved["source_id"] == "sqpe-obs"
+    assert resolved["interval_start"] == datetime(current_year, 1, 1, 0, 0, tzinfo=UTC)
+    assert resolved["interval_end"] == datetime(current_year + 1, 1, 1, 0, 0, tzinfo=UTC)
+
+
+def test_resolve_missing_work_source_uses_historical_for_past_year():
+    from app.domains.geo.rainfall.service import resolve_missing_work_source
+
+    resolved = resolve_missing_work_source(None, year=2022)
+
+    assert resolved["role"] == "historical"
+    assert resolved["source_id"] == "chirps-v3-final"
+    assert resolved["interval_start"] == datetime(2022, 1, 1, 0, 0, tzinfo=UTC)
+    assert resolved["interval_end"] == datetime(2023, 1, 1, 0, 0, tzinfo=UTC)
+
+
+def test_resolve_missing_work_source_uses_validation_when_explicitly_requested():
+    from app.domains.geo.rainfall.service import resolve_missing_work_source
+
+    resolved = resolve_missing_work_source(None, year=2024, requested_role="validation")
+
+    assert resolved["role"] == "validation"
+    assert resolved["source_id"] == "smn-gauges"
+
+
+# -----------------------------------------------------------------------------
+# Finding B: outbox consumer task transitions rows correctly
+# -----------------------------------------------------------------------------
+
+
+def test_process_outbox_task_is_registered():
+    from app.domains.geo.rainfall import tasks
+
+    assert tasks.process_outbox.name == "rainfall.process_outbox"
+
+
+def test_process_outbox_transitions_pending_rows_to_done(db, monkeypatch):
+    from uuid import uuid4
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    row = RainfallOutbox(
+        id=uuid4(),
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-1",
+        scope_version="v1",
+        year=2024,
+        status="pending",
+        next_attempt_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    calls = []
+
+    def fake_ingest(**kwargs):
+        calls.append(kwargs)
+        return {"intervals": 3}
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", fake_ingest)
+    result = tasks.process_outbox(db=db)
+
+    assert result["processed"] == 1
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+    db.refresh(row)
+    assert row.status == "done"
+    assert row.completed_at is not None
+    assert calls[0]["source_id"] == "chirps-v3-final"
+    assert calls[0]["role"] == "historical"
+
+
+def test_process_outbox_marks_failed_after_max_retries(db, monkeypatch):
+    from uuid import uuid4
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    row = RainfallOutbox(
+        id=uuid4(),
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-1",
+        scope_version="v1",
+        year=2024,
+        status="pending",
+        retry_count=4,
+        next_attempt_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError("boom")),
+    )
+    result = tasks.process_outbox(db=db)
+
+    assert result["processed"] == 1
+    assert result["succeeded"] == 0
+    assert result["failed"] == 1
+    db.refresh(row)
+    assert row.status == "failed"
+    assert row.retry_count == 5
+    assert row.next_attempt_at > datetime.now(UTC)
+    assert "boom" in (row.last_error or "")
+
+
+def test_process_outbox_delays_pending_row_after_recoverable_error(db, monkeypatch):
+    from uuid import uuid4
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    row = RainfallOutbox(
+        id=uuid4(),
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-1",
+        scope_version="v1",
+        year=2024,
+        status="pending",
+        retry_count=1,
+        next_attempt_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError("boom")),
+    )
+    result = tasks.process_outbox(db=db)
+
+    assert result["processed"] == 1
+    assert result["succeeded"] == 0
+    assert result["failed"] == 0
+    db.refresh(row)
+    assert row.status == "pending"
+    assert row.retry_count == 2
+    assert row.next_attempt_at > datetime.now(UTC)
+    assert "boom" in (row.last_error or "")
+
+
+def test_process_outbox_respects_batch_limit(db, monkeypatch):
+    from uuid import uuid4
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    for i in range(55):
+        db.add(
+            RainfallOutbox(
+                id=uuid4(),
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id=f"zone-{i}",
+                scope_version="v1",
+                year=2024,
+                status="pending",
+                next_attempt_at=datetime.now(UTC),
+            )
+        )
+    db.flush()
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", lambda **_kwargs: {"intervals": 1})
+    result = tasks.process_outbox(db=db)
+
+    assert result["processed"] <= 50
+    assert db.query(RainfallOutbox).filter_by(status="done").count() == result["processed"]
+
+
+# -----------------------------------------------------------------------------
+# Finding F: backfill_missing must pass role to ingest_source_scope
+# -----------------------------------------------------------------------------
+
+
+def test_backfill_missing_passes_role_to_ingest_source_scope(db, monkeypatch):
+    from app.domains.geo.rainfall import tasks
+
+    calls = []
+
+    def fake_ingest(**kwargs):
+        calls.append(kwargs)
+        return {"intervals": 5}
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", fake_ingest)
+    result = tasks.backfill_missing(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-1",
+        scope_version="v1",
+        year=2024,
+    )
+
+    assert result["status"] == "completed"
+    assert len(calls) == 1
+    assert calls[0]["role"] == "historical"

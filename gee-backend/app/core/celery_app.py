@@ -151,6 +151,11 @@ celery_app.conf.update(
             "schedule": crontab(minute="*/15"),
             "options": {"queue": "celery"},
         },
+        "rainfall-process-outbox": {
+            "task": "rainfall.process_outbox",
+            "schedule": 60.0,
+            "options": {"queue": "celery"},
+        },
     },
 )
 
