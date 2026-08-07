@@ -211,3 +211,68 @@ None — implementation matches the source-role mapping described in the task an
 
 - The per-test `db` fixture wraps work in a savepoint, so `db.commit()` inside a function only commits the savepoint and the fixture rollback undoes it. Cross-session durability tests must use `SessionLocal()` directly.
 - `tests/new/conftest.py` did not import rainfall models, so isolated rainfall test runs failed to create rainfall tables. Added the import so `Base.metadata.create_all` knows about them.
+
+## PR 3C frontend E2E (Task 4.1)
+
+- Branch: `feat/lluvia-v2-03c-phase4`
+- Scope: Task 4.1 — replace stale v1 `rainfall-api.spec.ts` with deterministic v2 ficha-detail E2E.
+- Mode: Standard (E2E spec, no unit test runner consumed by this task).
+
+### Completed
+
+- [x] Created `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` (7 tests) — deterministic, network-mocked rainfall API:
+  - Auth seed via `addInitScript` writing `consorcio_auth_token` / `consorcio_auth_user` in sessionStorage (offline seam read by `getStoredAuthSession()`, no login POST, no `E2E_ADMIN_*`).
+  - `page.route(/api\/v2\/geo\/rainfall\/.*/)` mocks: scopes:resolve (zone+basin choices), analyses (labelled 202 queued → 200 ready), CSV export (200 or 403 via param).
+  - Flows: anónimo/ciudadano denial, operador visible + regional badge + metrics, scope switch reconsults with basin scope, queued→ready disclosure, CSV bearer-in-header + parity + filename + no-token-in-URL, CSV 403 error disclosure.
+- Deleted stale `consorcio-web/tests/e2e/rainfall-api.spec.ts` (v1 endpoints `/geo/rainfall/summary` `/events` `/zona/:id` — removed by Phase 3; a live spec that would fail on `test:e2e:prod`).
+
+### Verification
+
+- `npx tsc --noEmit -p tsconfig.json` → clean (no rainfall-v2 errors).
+- `npx playwright test --list -c tests/e2e/playwright.config.ts` → 7 tests listed; full suite 86 tests / 10 files.
+- Helper audit: all testids asserted exist in current source (`rainfall-detail`, `rainfall-regional-estimate`, `rainfall-scope-switch`, `rainfall-year-select`, `rainfall-metrics`, `rainfall-annual-text`, `rainfall-queued`, `rainfall-export-csv`, `rainfall-export-error`, `ficha-result`, `ficha-dataset-tabs`, `ficha-precipitacion`); `annual-text` renders `Año {year}: {value} {unit}` matching assertions; CSV filename contract `lluvia_${revisionId}.csv` matches; labels 'Zona'/'Cuenca' match `SCOPE_LABELS`.
+- Mock interception proven: standalone page.route check on local dev (15173) fired and fulfilled `scopes:resolve` (200, kind=choices).
+- Local full run `E2E_APP_URL=http://localhost:15173 E2E_API_BASE=http://localhost:18000` → all 7 SKIPPED through the honest data-gate (`probeFichaAvailability` = 'off', local `ficha_enabled=False` → soft skip, repo's declared design).
+- Prod run (`E2E_APP_URL=https://consorcio-canalero.pages.dev E2E_API_BASE=https://cc1000-api.javierzader.com`) → 2 passed (anónimo/ciudadano absence), 5 failed because the DEPLOYED bundle predates the rainfall UI: gzipped grep shows zero `rainfall*` strings in any of the 54 assets. NOT a spec defect — a deployment-staleness discovery. The canary workflow pins only 3 read-only specs, so this runner only executes on demand (`test:e2e:prod`), not in canary — no CI contract regression.
+
+### Deviations from design
+
+- None — the mocked-rainfall/deterministic design matches the design doc ("Replace stale `rainfall-api.spec.ts`; ... Playwright ficha authorization/switch/export"); ficha canary contract (`CANARY_READ_ONLY_SPECS` in test_ci_workflow_contracts.py, exact 3-spec pin) is untouched — the new spec is NOT added to the read-only canary list and does not read production rainfall; request to preserve.
+
+### Issues found
+
+- The deployed prod bundle has NO rainfall-UI code at all (stale deploy predating Phase 3/4); the 5 UI-spec failures vanish once the frontend is rebuilt from current `main` — deployment/rollout responsibility, out of scope of apply (no push/PR).
+- The local dev stack cannot render the click-thru ficha: backend `ficha_enabled=false` by design (config.py, until A6 depts) and `VITE_MARTIN_URL=127.0.0.1:13000` has no host listener (Martin is container-network-only; host port 3000 taken by other stacks). Honest skips make the local run green-empty, which is the declared safe behavior for feature-flag gated e2e.
+- No push/PR; no `review-ledger.md` edits; `.claude/` untouched; `public/version.json` dirty note unchanged.
+
+## PR 3C phase-4 rollout gate + observability (Tasks 4.2, 4.3)
+
+- Branch: `feat/lluvia-v2-03c-phase4`
+- Scope: Task 4.2 (migration/replay/idempotency/flags validation + rollback procedure) and Task 4.3 (metrics/logs seam + owners workbook).
+- Mode: Standard (TDD evidence implicit — phase-4 tests existing from prior batch, re-run and green).
+
+### Completed
+
+- [x] `gee-backend/app/domains/geo/rainfall/metrics.py` (new) — dependency-free `record_event`/`record_gauge` seam over stdlib logger; the app's structlog `foreign_pre_chain` routes these as one JSON envelope (event/level/service/worker_id/timestamp), so NO extra metrics backend is required for this change.
+- [x] `gee-backend/app/domains/geo/rainfall/feature_flags.py` (shipped in PR 3A) + `tasks.py::_role_enabled` — per metric-role activation gate reading `analisis/rainfall_feature_flags`; unconfigured = open, explicit false = rollback signal.
+- [x] Events wired at call sites: `rainfall.analysis.served` (latency_ms), `rainfall.csv.served`, `rainfall.outbox.{reused,queued,gated,done,failed,delayed}`.
+- [x] `docs/lluvia-v2-observability-workbook.md` (new) — metric catalogue (contract for metrics.py), owners table (left open per design Q), rollout/rollback procedure (§4: disable flags/jobs, retain audits, re-enable drains), open items for manual decision.
+
+### Verification
+
+- `DATABASE_URL=postgresql://test:test@localhost:5434/test_consorcio ./venv/bin/python -m pytest tests/new/geo/rainfall -q` → 163 passed (includes 8 phase-4 verification tests).
+- `...+tests/new/test_auth_refresh_http.py` → 165 passed.
+- `ruff check app/domains/geo/rainfall/ tests/new/geo/rainfall/` → All checks passed.
+- `ruff format --check` → 23 files already formatted.
+- Migration replay: `alembic downgrade lluvia_v2_003 && alembic upgrade head` ran clean; `alembic heads` → single head `lluvia_v2_004` (partial unique index on rainoutbox pending).
+- `test_phase4_verification.py` 8/8 green: replay no-op, interrupted-checkpoint re-run, DB-verified partial unique index, re-enqueue after terminal, `RainfallRoleDisabled` gate pre-adapter, outbox skip-and-retain for gated roles, flag-off retains audits, observability seam emits structured events.
+
+### Deviations from design
+
+- None for the code; `docs/lluvia-v2-observability-workbook.md` is the Task 4.3 "document owners" deliverable that `metrics.py` already referenced as its contract (created in this batch). Provider adapters stay evidence-gated stubs (review-ledger PR 3B deferral: `provider adapter not wired`) — staged provider/backfill activation is NOT executed in this batch by design (spike requires manifests/evidence per design.md).
+
+### Issues/notes
+
+- Workbook §5 explicitly records open items for human decision: named owners (design open question), Prometheus/OTel backend wiring, `rainfall.source.fallback` counter, source-health gauge, backlog alert threshold. None block merge.
+- `.claude/` untracked from a prior batch — left untouched.
+- `public/version.json` dirty from pre-commit build hook — pre-existing.
