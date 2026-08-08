@@ -1,14 +1,17 @@
-"""Rainfall snapshot reads and PostGIS-only parcel scope resolution."""
+"""Rainfall snapshot reads/writes and PostGIS-only parcel scope resolution."""
 
 import json
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.domains.geo.models import GeoApprovedZoning
-from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallIntervalValue
+from app.domains.geo.rainfall.ports import SourceInterval
 from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
 
 
@@ -121,3 +124,52 @@ class RainfallRepository:
         if not choices:
             raise NoScopeMatch("parcel has no matching regional scope")
         return tuple(choices)
+
+
+# ---------------------------------------------------------------------------
+# Write paths (design.md "NRT Correction Supersession" + decisions 2/3/3c)
+# ---------------------------------------------------------------------------
+
+
+def persist_intervals(
+    db: Session,
+    *,
+    source_id: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    rows: Sequence[SourceInterval],
+) -> dict[str, int]:
+    """Write fetched intervals append-only.
+
+    ``ON CONFLICT DO NOTHING`` keyed on ``uq_rainfall_interval_revision``
+    (decision 3): a re-ingest carrying the same provider revision and the
+    same interval bounds always collides with the row already on disk, so
+    re-running an identical ingest never raises and never duplicates a row.
+    """
+    if not rows:
+        return {"inserted": 0, "unchanged": 0, "superseded": 0}
+
+    stmt = (
+        pg_insert(RainfallIntervalValue)
+        .values(
+            [
+                {
+                    "source_id": source_id,
+                    "scope_kind": scope_kind,
+                    "scope_id": scope_id,
+                    "scope_version": scope_version,
+                    "interval_start": row.interval_start,
+                    "interval_end": row.interval_end,
+                    "provider_revision": row.provider_revision,
+                    "value": row.value,
+                    "unit": row.unit,
+                }
+                for row in rows
+            ]
+        )
+        .on_conflict_do_nothing(constraint="uq_rainfall_interval_revision")
+        .returning(RainfallIntervalValue.id)
+    )
+    landed = db.execute(stmt).all()
+    return {"inserted": len(landed), "unchanged": 0, "superseded": 0}
