@@ -15,11 +15,12 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
+from app.db.session import SessionLocal
 from app.domains.geo.rainfall.models import (
     RainfallIntervalLifecycle,
     RainfallIntervalValue,
 )
-from app.domains.geo.rainfall.ports import SourceInterval
+from app.domains.geo.rainfall.ports import SourceBatch, SourceInterval
 
 ZONE_KWARGS = {"scope_kind": "zone", "scope_id": "z1", "scope_version": "v1"}
 
@@ -249,3 +250,78 @@ def test_intervals_in_window_excludes_superseded_rows(db):
     # The superseded original day-1 row is excluded even though the table
     # still holds it (append-only evidence): 3 rows on disk, 2 served.
     assert _count_interval_rows(db, source_id="chirps-v3-sat") == 3
+
+
+# ---------------------------------------------------------------------------
+# Task 1.8 — ingest_source_scope threads an optional db without committing
+# ---------------------------------------------------------------------------
+
+
+def _fixture_batch() -> SourceBatch:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    return SourceBatch(
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="z1",
+        scope_version="v1",
+        cadence=timedelta(days=1),
+        intervals=(SourceInterval(start, start + timedelta(days=1), 3.0, "mm", "v3-final"),),
+        coverage=1.0,
+        completeness=1.0,
+        quality={"provider_revision": "v3-final"},
+        discrepancies=(),
+        checksum="sha256:fixture",
+    )
+
+
+def test_ingest_source_scope_writes_without_commit_when_given_db(db, monkeypatch):
+    from app.domains.geo.rainfall import tasks
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: (lambda **_kwargs: batch))
+
+    result = tasks.ingest_source_scope(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="z1",
+        scope_version="v1",
+        year=2024,
+        db=db,
+    )
+
+    assert result["persisted"] == 1
+    assert result["superseded"] == 0
+    assert result["intervals"] == 1
+    # Written on the given session but NOT committed — a fresh connection
+    # must not see it yet (decision 2: given a db, write, never commit).
+    assert _count_interval_rows(db, source_id="chirps-v3-final") == 1
+    with SessionLocal() as fresh:
+        assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 0
+
+
+def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(monkeypatch):
+    from app.domains.geo.rainfall import tasks
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: (lambda **_kwargs: batch))
+
+    result = tasks.ingest_source_scope(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="z1",
+        scope_version="v1",
+        year=2024,
+    )
+
+    assert result["persisted"] == 1
+    try:
+        with SessionLocal() as fresh:
+            assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 1
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallIntervalValue).filter_by(source_id="chirps-v3-final").delete()
+            cleanup.commit()

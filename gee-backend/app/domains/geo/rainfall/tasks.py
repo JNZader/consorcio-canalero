@@ -10,6 +10,7 @@ from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallBackfillCheckpoint, RainfallOutbox
+from app.domains.geo.rainfall.repository import persist_intervals
 
 MAX_OUTBOX_BATCH = 50
 MAX_RETRIES = 5
@@ -77,6 +78,28 @@ def _concrete_fetch(source_id: str) -> Any:
     )
 
 
+def _batch_result(batch: Any, *, year: int, persisted: dict[str, int]) -> dict[str, Any]:
+    """Build the JSON-safe evidence dict PR2's ``build_analysis`` will read
+    alongside the persisted rows (design.md Interfaces: ``ingest_source_scope``)."""
+    return {
+        "source_id": batch.source_id,
+        "scope_kind": batch.scope_kind,
+        "scope_id": batch.scope_id,
+        "year": year,
+        "intervals": len(batch.intervals),
+        "persisted": persisted["inserted"],
+        "superseded": persisted["superseded"],
+        "provider_revision": batch.quality.get("provider_revision"),
+        "unit": batch.intervals[0].unit if batch.intervals else None,
+        "cadence_seconds": batch.cadence.total_seconds(),
+        "coverage": batch.coverage,
+        "completeness": batch.completeness,
+        "quality": batch.quality,
+        "discrepancies": list(batch.discrepancies),
+        "checksum": batch.checksum,
+    }
+
+
 @celery_app.task(name="rainfall.ingest_source_scope", bind=True, max_retries=3)
 def ingest_source_scope(
     self,
@@ -87,7 +110,17 @@ def ingest_source_scope(
     scope_id: str,
     scope_version: str,
     year: int,
+    db: Session | None = None,
 ) -> dict[str, Any]:
+    """Fetch and persist one source/scope/year.
+
+    Session boundary (decision 2): given a ``db``, write through it and
+    never commit — the caller (the outbox consumer, decision 2c) owns the
+    per-row transaction. Given ``None``, open and commit an isolated
+    ``SessionLocal()`` — this keeps the direct-call contract
+    (``test_provider_adapters.py:436-456``) working unmodified and is what
+    ``backfill_missing`` relies on for a scope it does not itself open.
+    """
     from app.config import settings
     from app.domains.geo.rainfall.adapters.resilience import (
         AdapterError,
@@ -123,13 +156,29 @@ def ingest_source_scope(
         )
     except AdapterError as exc:
         raise self.retry(exc=exc, countdown=300) from exc
-    return {
-        "source_id": batch.source_id,
-        "scope_kind": batch.scope_kind,
-        "scope_id": batch.scope_id,
-        "year": year,
-        "intervals": len(batch.intervals),
-    }
+
+    if db is not None:
+        persisted = persist_intervals(
+            db,
+            source_id=source_id,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            scope_version=scope_version,
+            rows=batch.intervals,
+        )
+        return _batch_result(batch, year=year, persisted=persisted)
+
+    with SessionLocal() as local_db:
+        persisted = persist_intervals(
+            local_db,
+            source_id=source_id,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            scope_version=scope_version,
+            rows=batch.intervals,
+        )
+        local_db.commit()
+        return _batch_result(batch, year=year, persisted=persisted)
 
 
 @celery_app.task(name="rainfall.revisit_stale", bind=True, max_retries=2)
