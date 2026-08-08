@@ -210,3 +210,42 @@ def test_second_correction_chains_off_first(db):
     )
     assert r1_row is not None
     assert superseded_by_map[r1_row.id] == current[0].id
+
+
+# ---------------------------------------------------------------------------
+# Task 1.7 — intervals_in_window anti-joins superseded rows, ordered by
+# interval_start, at most one row per slot
+# ---------------------------------------------------------------------------
+
+
+def test_intervals_in_window_excludes_superseded_rows(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    # Two slots: day 1 gets corrected, day 2 stays untouched.
+    original = _daily_intervals(start_day=1, values=[1.0, 5.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated_day1 = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=restated_day1, **ZONE_KWARGS)
+    db.flush()
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=datetime(2024, 1, 1, tzinfo=UTC),
+        end=datetime(2024, 1, 3, tzinfo=UTC),
+        **ZONE_KWARGS,
+    )
+
+    # At most one non-superseded row per slot, ordered by interval_start —
+    # the corrected day 1 row, then the untouched day 2 row.
+    assert [row.interval_start for row in current] == [
+        datetime(2024, 1, 1, tzinfo=UTC),
+        datetime(2024, 1, 2, tzinfo=UTC),
+    ]
+    assert [row.value for row in current] == [1.8, 5.0]
+    assert [row.provider_revision for row in current] == ["v3-nrt+r1", "v3-nrt"]
+    # The superseded original day-1 row is excluded even though the table
+    # still holds it (append-only evidence): 3 rows on disk, 2 served.
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 3
