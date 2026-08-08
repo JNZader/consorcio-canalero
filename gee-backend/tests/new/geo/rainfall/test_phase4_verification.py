@@ -23,6 +23,41 @@ from datetime import UTC, datetime
 import pytest
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _rainfall_cleanup():
+    """Re-runnability on a shared TEST_DATABASE_URL.
+
+    ``backfill_missing`` in tasks.py commits through its own ``SessionLocal()``
+    (checkpoint + outbox rows) and never sees the per-test ``db`` transaction
+    rollback, so a second run of this module against the same shared database
+    collides with the previous run's persisted rows (``already_complete``
+    unexpected and partial-unique-index ``UniqueViolation``). This module-scoped
+    autouse fixture removes only the rainfall rows this module creates, before
+    and after the module, so the suite is re-runnable in-place without touching
+    the shared ``tests/new/conftest.py`` drop_all path (which stays for CI).
+    """
+
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import models as rainfall_models
+
+    tables = (
+        rainfall_models.RainfallBackfillCheckpoint,
+        rainfall_models.RainfallOutbox,
+        rainfall_models.RainfallSourceEligibility,
+        rainfall_models.RainfallIntervalValue,
+    )
+
+    def _delete():
+        with SessionLocal() as session:
+            for table in tables:
+                session.query(table).delete(synchronize_session=False)
+            session.commit()
+
+    _delete()
+    yield
+    _delete()
+
+
 def test_backfill_double_run_replays_without_duplicate_ingest(db, monkeypatch):
     """Replay: a second backfill for the same source/scope/version/year is a
     no-op that keeps the existing checkpoint (``already_complete``)."""
