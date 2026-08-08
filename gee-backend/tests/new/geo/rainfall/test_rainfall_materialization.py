@@ -114,3 +114,51 @@ def test_persist_intervals_unchanged_slot_writes_nothing(db):
     assert _count_interval_rows(db) == 1
     lifecycle_count = db.scalar(select(func.count()).select_from(RainfallIntervalLifecycle))
     assert lifecycle_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 1.5 — a changed slot appends a correction row + lifecycle evidence
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_changed_slot_appends_correction_and_lifecycle_row(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    # CHIRPS pins one revision string per source_id and restates values
+    # behind it (chirps.py:26-29) — both fetches carry the same family.
+    original = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["superseded"] == 1
+    # The original row is retained unchanged — this is append-only evidence.
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 2
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].value == 1.8
+    assert current[0].provider_revision == "v3-nrt+r1"
+
+    lifecycle_rows = list(db.scalars(select(RainfallIntervalLifecycle)))
+    assert len(lifecycle_rows) == 1
+    lifecycle = lifecycle_rows[0]
+    assert lifecycle.event_type == "superseded"
+    assert lifecycle.superseded_by_id == current[0].id
+
+    original_row = db.scalar(
+        select(RainfallIntervalValue).where(RainfallIntervalValue.provider_revision == "v3-nrt")
+    )
+    assert original_row is not None
+    assert original_row.value == 1.0
+    assert lifecycle.interval_value_id == original_row.id

@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.domains.geo.models import GeoApprovedZoning
+from app.domains.geo.rainfall.compute import correction_revision, revision_family
 from app.domains.geo.rainfall.models import (
     RainfallAnalysisRevision,
     RainfallIntervalLifecycle,
@@ -147,6 +148,33 @@ def _values_equal_at_6dp(new: float, current: float) -> bool:
     return round(new, 6) == round(current, 6)
 
 
+def _next_correction_ordinal(current_provider_revision: str, family: str) -> int:
+    """Ordinal for a slot's next correction: 1 for the first, chained off the
+    current row's own ordinal for later ones (design.md "NRT Correction
+    Supersession" step 2, "changed" branch)."""
+    if current_provider_revision == family:
+        return 1
+    suffix = current_provider_revision[len(family) :]
+    if not suffix.startswith("+r"):
+        raise ValueError(f"unrecognized provider revision shape: {current_provider_revision!r}")
+    return int(suffix[2:]) + 1
+
+
+def record_supersession(db: Session, *, interval_value_id: UUID, superseded_by_id: UUID) -> None:
+    """Append-only lifecycle link. ``event_type='superseded'`` — deliberately
+    not ``'expired'``: only an expired row with a due ``expires_at`` is ever
+    deletable by ``purge_expired_rainfall_intervals``, so a supersession can
+    never turn into a delete."""
+    db.add(
+        RainfallIntervalLifecycle(
+            interval_value_id=interval_value_id,
+            superseded_by_id=superseded_by_id,
+            event_type="superseded",
+            expires_at=None,
+        )
+    )
+
+
 def intervals_in_window(
     db: Session,
     *,
@@ -199,10 +227,13 @@ def persist_intervals(
        get-before-insert — a lost race just degrades to a skipped write).
     2. Classify each fetched interval: **absent** -> INSERT with the row's
        own (family) revision; **equal** at 6 decimal places
-       (:func:`_values_equal_at_6dp`) -> no-op; **changed** -> correction
-       chaining lands in the next commit.
+       (:func:`_values_equal_at_6dp`) -> no-op; **changed** -> INSERT a
+       ``family+rN`` correction row.
     3. ``ON CONFLICT DO NOTHING`` keyed on ``uq_rainfall_interval_revision``
-       (decision 3), so a re-ingest of an unchanged slot never raises.
+       (decision 3), so a re-ingest of an unchanged slot never raises. Only
+       for the ids ``RETURNING`` reports as actually landed, record the
+       supersession link — a lost race degrades to a skipped write, never a
+       lifecycle row claiming a correction that never landed.
     """
     if not rows:
         return {"inserted": 0, "unchanged": 0, "superseded": 0}
@@ -220,18 +251,21 @@ def persist_intervals(
     )
     current_by_slot = {(row.interval_start, row.interval_end): row for row in current}
 
-    to_insert: list[SourceInterval] = []
+    # (row, provider_revision to write, id of the row it supersedes or None)
+    candidates: list[tuple[SourceInterval, str, UUID | None]] = []
     unchanged = 0
     for row in rows:
         existing = current_by_slot.get((row.interval_start, row.interval_end))
         if existing is None:
-            to_insert.append(row)
+            candidates.append((row, row.provider_revision, None))
         elif _values_equal_at_6dp(row.value, existing.value):
             unchanged += 1
         else:
-            # Changed slot: correction-revision chaining lands in the next commit.
-            unchanged += 1
-    if not to_insert:
+            family = revision_family(existing.provider_revision)
+            ordinal = _next_correction_ordinal(existing.provider_revision, family)
+            candidates.append((row, correction_revision(family, ordinal), existing.id))
+
+    if not candidates:
         return {"inserted": 0, "unchanged": unchanged, "superseded": 0}
 
     stmt = (
@@ -245,15 +279,35 @@ def persist_intervals(
                     "scope_version": scope_version,
                     "interval_start": row.interval_start,
                     "interval_end": row.interval_end,
-                    "provider_revision": row.provider_revision,
+                    "provider_revision": revision,
                     "value": row.value,
                     "unit": row.unit,
                 }
-                for row in to_insert
+                for row, revision, _superseded_id in candidates
             ]
         )
         .on_conflict_do_nothing(constraint="uq_rainfall_interval_revision")
-        .returning(RainfallIntervalValue.id)
+        .returning(
+            RainfallIntervalValue.id,
+            RainfallIntervalValue.interval_start,
+            RainfallIntervalValue.interval_end,
+            RainfallIntervalValue.provider_revision,
+        )
     )
-    landed = db.execute(stmt).all()
-    return {"inserted": len(landed), "unchanged": unchanged, "superseded": 0}
+    landed_ids = {
+        (landed_start, landed_end, landed_revision): landed_id
+        for landed_id, landed_start, landed_end, landed_revision in db.execute(stmt).all()
+    }
+
+    inserted = 0
+    superseded = 0
+    for row, revision, superseded_id in candidates:
+        landed_id = landed_ids.get((row.interval_start, row.interval_end, revision))
+        if landed_id is None:
+            continue
+        inserted += 1
+        if superseded_id is not None:
+            record_supersession(db, interval_value_id=superseded_id, superseded_by_id=landed_id)
+            superseded += 1
+
+    return {"inserted": inserted, "unchanged": unchanged, "superseded": superseded}
