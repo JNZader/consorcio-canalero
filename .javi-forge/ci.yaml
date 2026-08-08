@@ -1,0 +1,18 @@
+version: 1
+runners:
+  - name: frontend
+    stack: node
+    directory: consorcio-web
+    lint:
+      - npm run lint
+    build:
+      - rm -rf dist/ && npm run build && { chown -R "$(stat -c %u:%g .)" dist/ 2>/dev/null || true; } && mkdir -p node_modules/.vite-temp node_modules/.vite && chmod -R a+w node_modules/.vite-temp node_modules/.vite
+    test:
+      - npm run test:run
+  - name: backend
+    stack: python
+    directory: gee-backend
+    lint:
+      - export RUFF_NO_CACHE=true && ruff check app/ && ruff format app/ --check
+    test:
+      - echo 'backend pytest gated in GitHub Actions (needs live PostgreSQL); skipped in pre-push container'
