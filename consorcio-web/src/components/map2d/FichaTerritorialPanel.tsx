@@ -52,6 +52,7 @@ import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
 import { PrecipChart } from './PrecipChart';
+import { RainfallDetailPanel } from './rainfall/RainfallDetailPanel';
 import { RiesgoBins } from './RiesgoBins';
 import { SuelosBreakdown } from './SuelosBreakdown';
 
@@ -495,6 +496,7 @@ function ParcelaIdentityHeader({ props }: { readonly props: ParcelaDisplayProps 
 function PanelBody({
   tipo,
   nroCuenta,
+  parcelaProps,
   bpaEnriched,
   bpaLoading,
   bpaError,
@@ -510,7 +512,7 @@ function PanelBody({
   hiddenClases,
   onToggleClase,
   overlayControls,
-}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose' | 'parcelaProps'> & {
+}: Omit<FichaTerritorialPanelProps, 'active' | 'onClose'> & {
   /**
    * Overlay switch + feedback, built by the panel and injected here so it sits
    * directly under the selector that drives it instead of at the bottom of the
@@ -594,8 +596,21 @@ function PanelBody({
         />
       )}
       {/* Rainfall is a 12-month series, not a class partition: nothing to
-			    toggle and nothing to clip on the map. */}
-      {tab === FICHA_PRECIP_TAB && <PrecipChart dataset={data.precipitacion_mensual} />}
+			    toggle and nothing to clip on the map. The Rainfall v2 detail
+			    mounts ONLY on a parcel ficha with nomenclatura — the one ficha
+			    context with a resolvable regional scope this release; the
+			    staff gate lives inside the detail panel. */}
+      {tab === FICHA_PRECIP_TAB && (
+        <>
+          <PrecipChart dataset={data.precipitacion_mensual} />
+          {tipo === 'parcela' && parcelaProps?.nomenclatura && (
+            <>
+              <Divider />
+              <RainfallDetailPanel nomenclatura={parcelaProps.nomenclatura} />
+            </>
+          )}
+        </>
+      )}
     </Stack>
   );
 }
@@ -766,6 +781,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
         tipo={tipo}
         onRemoveParcelas={onRemoveParcelas}
         nroCuenta={nroCuenta}
+        parcelaProps={parcelaProps}
         bpaEnriched={bpaEnriched}
         bpaLoading={bpaLoading}
         bpaError={bpaError}
