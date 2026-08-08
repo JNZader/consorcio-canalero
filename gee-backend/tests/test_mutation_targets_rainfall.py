@@ -898,3 +898,48 @@ class TestMetricRowsCsv:
         assert lines[0].startswith("completeness,coverage,")
         assert "fallback_used" in lines[0]
         assert len(lines) == 3  # header + two rows
+
+
+# ===========================================================================
+# compute.py — pure NRT-correction revision helpers (rainfall-materialization PR1)
+# ===========================================================================
+
+
+class TestRevisionFamilyAndCorrectionRevision:
+    """PR1 task 1.2: ``revision_family``/``correction_revision`` round-trip.
+
+    Pure, no I/O — the compute.py boundary rule (design.md "Technical
+    Approach"). CHIRPS pins one revision string per source_id and restates
+    values behind it (chirps.py:26-29); these two helpers are what lets a
+    restated value become a *new* row instead of silently colliding on
+    ``uq_rainfall_interval_revision``.
+    """
+
+    def test_revision_family_and_correction_revision_roundtrip(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision, revision_family
+
+        assert revision_family("v3-nrt+r2") == "v3-nrt"
+        assert correction_revision("v3-nrt", 2) == "v3-nrt+r2"
+        assert revision_family(correction_revision("v3-nrt", 2)) == "v3-nrt"
+
+    def test_revision_family_of_a_bare_family_revision_is_itself(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_family
+
+        # No adapter has ever emitted a corrected slot yet — the family IS
+        # the whole provider_revision string (chirps.py:26-29 live values).
+        assert revision_family("v3-final") == "v3-final"
+        assert revision_family("v3-nrt") == "v3-nrt"
+
+    def test_correction_revision_first_and_second_ordinal(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision
+
+        assert correction_revision("v3-nrt", 1) == "v3-nrt+r1"
+        assert correction_revision("v3-nrt", 2) == "v3-nrt+r2"
+
+    def test_correction_revision_rejects_non_positive_ordinal(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision
+
+        with pytest.raises(ValueError, match="ordinal"):
+            correction_revision("v3-nrt", 0)
+        with pytest.raises(ValueError, match="ordinal"):
+            correction_revision("v3-nrt", -1)
