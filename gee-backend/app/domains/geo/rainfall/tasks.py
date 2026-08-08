@@ -47,6 +47,36 @@ def _role_enabled(role: str, db: Session | None = None) -> bool:
     return get_rainfall_feature_flags({"rainfall_feature_flags": raw}).is_enabled(role)
 
 
+SQPE_NOT_AVAILABLE_MSG = (
+    "sqpe-obs provider not available in GEE (SMN NetCDF); spec permits CHIRPS v3 daily fallback"
+)
+
+
+def _concrete_fetch(source_id: str) -> Any:
+    """Return the wired provider fetch for *source_id*.
+
+    Only evidence-validated providers are wired here (CHIRPS v3 RNN/SAT and
+    IMERG V07; GEE spike PASS, 2026-08-07). Every other candidate keeps
+    raising ``NotImplementedError`` until its own validation evidence passes,
+    and SQPE-OBS stays explicitly unwired because GEE does not host it.
+    """
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.adapters.imerg import ImergV07Adapter
+
+    if source_id == "sqpe-obs":
+        # TODO(smn-path): fetch SQPE-OBS from SMN's NetCDF product once an SMN
+        # adapter exists (no SQPE product in the GEE catalog — SMN NetCDF
+        # distribution). The daily role falls back to validated CHIRPS v3.
+        raise NotImplementedError(SQPE_NOT_AVAILABLE_MSG)
+    if source_id in {"chirps-v3-final", "chirps-v3-sat"}:
+        return ChirpsV3Adapter().fetch
+    if source_id == "imerg-v07":
+        return ImergV07Adapter().fetch
+    raise NotImplementedError(
+        f"no wired provider adapter for {source_id!r} (evidence-gated candidate)"
+    )
+
+
 @celery_app.task(name="rainfall.ingest_source_scope", bind=True, max_retries=3)
 def ingest_source_scope(
     self,
@@ -73,7 +103,7 @@ def ingest_source_scope(
         raise RainfallRoleDisabled(f"rainfall role {role!r} is disabled by feature flag")
 
     adapter = ResilientAdapter(
-        lambda **_kwargs: (_ for _ in ()).throw(NotImplementedError("provider adapter not wired")),
+        _concrete_fetch(source_id),
         store=RedisCircuitStore(settings.redis_url),
         timeout_seconds=60,
         max_retries=2,

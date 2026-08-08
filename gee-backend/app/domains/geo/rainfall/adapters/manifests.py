@@ -27,6 +27,15 @@ CANDIDATE_MANIFESTS = (
         "pending-spike",
     ),
     CandidateManifest(
+        "chirps-v3-sat",
+        "estimated_satellite",
+        "daily",
+        1440,
+        "api",
+        "v3-nrt",
+        "pending-spike",
+    ),
+    CandidateManifest(
         "sqpe-obs", "estimated_radar", "daily", 1440, "api", "pending", "pending-spike"
     ),
     CandidateManifest(
