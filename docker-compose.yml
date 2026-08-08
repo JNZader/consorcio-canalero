@@ -255,6 +255,46 @@ services:
     command: celery -A app.core.celery_app worker --loglevel=info -Q celery
 
   # ============================================
+  # CELERY BEAT - cron scheduler (Phase 3 / F3-L)
+  # ============================================
+  # Mirror of the prod compose's celery-beat using the local build. Without
+  # this service the beat_schedule entries in app/core/celery_app.py never
+  # fire: outbox publishing, geo job reconciliation, and rainfall outbox
+  # processing (rainfall.process_outbox, every minute) all stay dormant.
+  #
+  # The development stage runs as root, so `/var/run/celery` is writable
+  # with the named volume out of the box — the prod-only celery-beat-init
+  # chown step is not needed here.
+  #
+  # DO NOT scale this service: a second beat process would write the same
+  # sqlite-style schedule and corrupt it (see prod compose comment).
+  celery-beat:
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: consorcio-celery-beat
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
+    env_file:
+      - ./gee-backend/.env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
+      - USE_ONE_TIME_CODES=${USE_ONE_TIME_CODES:-false}
+    volumes:
+      - celery-beat-schedule:/var/run/celery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - consorcio-network
+
+  # ============================================
   # GEO WORKER - GDAL-based terrain analysis
   # ============================================
   geo-worker:
@@ -425,3 +465,5 @@ volumes:
     name: consorcio-geo-data
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  celery-beat-schedule:
+    name: consorcio-celery-beat-schedule
