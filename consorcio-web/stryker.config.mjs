@@ -55,6 +55,18 @@ export default {
     // `formatLongitud` + `formatLongitudMeters` drive the longitud row of
     // `<CanalCard>` — tests pin all 4 branches (null/equal/different/default).
     'src/components/map2d/canalesFormat.ts',
+    // Rainfall v2 (archived lluvia-v2 change, follow-up registered 2026-08-07):
+    // the authenticated ficha analysis slice. Registered AFTER the archive, when
+    // task 3.4's mutation-target deferral was closed. Covered by
+    // tests/unit/rainfallApi.test.ts, tests/unit/RainfallDetailPanel.test.tsx,
+    // tests/unit/rainfallFormat.test.ts, tests/hooks/useRainfallAnalysis.test.tsx
+    // and tests/e2e/rainfall-v2-detail.spec.ts. `rainfallFormat.ts` is the
+    // shared display/export formatter and the highest-value pure target.
+    'src/lib/api/rainfall.ts',
+    'src/hooks/useRainfallAnalysis.ts',
+    'src/components/map2d/rainfall/RainfallDetailPanel.tsx',
+    'src/components/map2d/rainfall/rainfallFormat.ts',
+    'src/components/map2d/rainfall/RainfallMetricList.tsx',
   ],
   thresholds: {
     high: 85,

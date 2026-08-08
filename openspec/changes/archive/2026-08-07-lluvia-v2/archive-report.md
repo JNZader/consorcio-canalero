@@ -95,7 +95,7 @@ Implementation history: PR #165 (evidence foundation; absorbed the original 2A/2
 ## Follow-ups
 
 - Rollout to `main`/`develop` per release procedure (protected; deployed separately after approval).
-- Re-run mutation config registration: add rainfall mutation targets to `.cosmic-ray.toml` / `.candidate.toml` / `stryker.config.mjs` (canonical target configs, see W1 correction).
+- ~~Re-run mutation config registration~~ **DONE (post-archive 2026-08-07)**: Stryker rainfall entries added (`consorcio-web/stryker.config.mjs`); backend target tests `gee-backend/tests/test_mutation_targets_rainfall.py` (71 cases green, 0.50s); `.cosmic-ray.toml` entry present but `# issue: measure` (local 3.14 cosmic-ray crash + 1015-mutant budget; measurement command recorded for CI 3.11). Phase-4 tests made re-runnable on a shared `TEST_DATABASE_URL` (module-scoped rainfall cleanup fixture; verified second run passes).
 - Wire provider adapters when spike/manifest evidence passes, then staged backfill/provider/API/UI activation.
 - Resolve workbook §5 human items (owners, Prometheus/OTel, fallback counter, source-health gauge, alert threshold).
 - Re-run the 5 prod E2E UI specs after a fresh frontend deployment.

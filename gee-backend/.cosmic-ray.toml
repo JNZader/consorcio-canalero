@@ -54,6 +54,30 @@ module-path = [
   #
   # El gate pasa de 350 a 541 mutantes (350 + 191).
   "app/domains/padron/service.py",
+  # ── etapa 4 (follow-up post-archive lluvia-v2): rainfall, PENDIENTE de medir ──
+  # El cambio archivado difirio el registro de targets (task 3.4). Los tests ya
+  # existen y pasan (tests/test_mutation_targets_rainfall.py, 71 casos, sin DB:
+  # politica pura + service con sesion falsa + temporal puro), PERO estos tres
+  # modulos NO estan medidos, y la regla del repo es no cablear lo no medido.
+  # Medicion local bloqueada por DOS motivos, verificados en 2026-08-07:
+  #   1. El unico interprete local es Python 3.14 (venv), y cosmic-ray 8.4.6
+  #      revienta EN EL PROPIO WORKER al serializar el resultado de un solo
+  #      mutante ("TypeError: asdict() should be called on dataclass
+  #      instances") — no hay forma honesta de correr 1015 mutantes aca.
+  #   2. Aun en el interprete de CI (Python 3.11, el canonico), 1015 mutantes
+  #      (policy 195 + service 358 + temporal 462) a ~0.5-1.0 s c/u exceden el
+  #      presupuesto de 10 min; el gate completo actual (541 mutantes) ya tarda
+  #      19-22 min de punta a punta.
+  # Comando de medicion (cuando haya un 3.11 con cosmic-ray):
+  #   cosmic-ray init .cosmic-ray.rainfall.toml /tmp/cr.sqlite
+  #     (con test-command "python3.11 -m pytest tests/test_mutation_targets_rainfall.py -q")
+  #   cosmic-ray exec /tmp/cr.sqlite  &&  scripts/cosmic_gate.py
+  # y ahi decidir si entran al gate (el gate real suma timeout a la cola) o en
+  # un job propio con su propio piso, como la etapa 3 (refresh_tokens).
+  # issue: measure
+  # "app/domains/geo/rainfall/policy.py",
+  # "app/domains/geo/rainfall/service.py",
+  # "app/domains/geo/rainfall/temporal.py",
   # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
   # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
   # veces y NO es "correr los tests con DB mas rapido": el service no toca la
