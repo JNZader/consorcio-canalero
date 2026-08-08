@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.session import SessionLocal
 from app.domains.geo.rainfall.models import (
+    RainfallBackfillCheckpoint,
     RainfallIntervalLifecycle,
     RainfallIntervalValue,
 )
@@ -205,9 +207,7 @@ def test_second_correction_chains_off_first(db):
 
     superseded_by_map = {row.interval_value_id: row.superseded_by_id for row in lifecycle_rows}
     r1_row = db.scalar(
-        select(RainfallIntervalValue).where(
-            RainfallIntervalValue.provider_revision == "v3-nrt+r1"
-        )
+        select(RainfallIntervalValue).where(RainfallIntervalValue.provider_revision == "v3-nrt+r1")
     )
     assert r1_row is not None
     assert superseded_by_map[r1_row.id] == current[0].id
@@ -279,7 +279,7 @@ def test_ingest_source_scope_writes_without_commit_when_given_db(db, monkeypatch
 
     batch = _fixture_batch()
     monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
-    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: (lambda **_kwargs: batch))
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
 
     result = tasks.ingest_source_scope(
         source_id="chirps-v3-final",
@@ -301,12 +301,15 @@ def test_ingest_source_scope_writes_without_commit_when_given_db(db, monkeypatch
         assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 0
 
 
-def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(monkeypatch):
+def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(db, monkeypatch):
+    # `db` is unused directly here (this test asserts on a fresh SessionLocal
+    # connection on purpose) but requesting it guarantees test_engine's
+    # create_all() has run — see the note on the transaction-sharing test below.
     from app.domains.geo.rainfall import tasks
 
     batch = _fixture_batch()
     monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
-    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: (lambda **_kwargs: batch))
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
 
     result = tasks.ingest_source_scope(
         source_id="chirps-v3-final",
@@ -325,3 +328,64 @@ def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(monke
         with SessionLocal() as cleanup:
             cleanup.query(RainfallIntervalValue).filter_by(source_id="chirps-v3-final").delete()
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 1.9 — backfill_missing shares one transaction with ingest
+# ---------------------------------------------------------------------------
+
+
+def test_backfill_missing_shares_transaction_with_ingest(db, monkeypatch):
+    # `db` is unused directly — backfill_missing opens its own SessionLocal()
+    # — but requesting the fixture guarantees test_engine's create_all() has
+    # run, matching the existing test_ingest_ops.py pattern for SessionLocal-
+    # only tests (e.g. test_backfill_missing_passes_role_to_ingest_source_scope).
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    filters = {
+        "source_id": "chirps-v3-final",
+        "role": "historical",
+        "scope_kind": "zone",
+        "scope_id": "zone-txn-share",
+        "scope_version": "v1",
+        "year": 2024,
+    }
+
+    def failing_ingest(*, db, **_kwargs):
+        # Write through the SAME session backfill_missing opened, then fail
+        # before backfill_missing gets a chance to commit anything.
+        row = _daily_intervals(start_day=1, values=[9.9])[0]
+        persist_intervals(
+            db,
+            source_id="chirps-v3-final",
+            scope_kind="zone",
+            scope_id="zone-txn-share",
+            scope_version="v1",
+            rows=[row],
+        )
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", failing_ingest)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        tasks.backfill_missing(**filters)
+
+    # Neither the checkpoint nor the interval survive — proving both writes
+    # were on the SAME uncommitted transaction (all-or-nothing), not two
+    # independently committed sessions.
+    with SessionLocal() as fresh:
+        assert (
+            fresh.query(RainfallBackfillCheckpoint)
+            .filter_by(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-txn-share",
+                scope_version="v1",
+                year=2024,
+            )
+            .first()
+            is None
+        )
+        assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 0

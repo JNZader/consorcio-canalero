@@ -344,7 +344,11 @@ def backfill_missing(
             db.add(checkpoint)
         if checkpoint.completed_at is not None:
             return {"status": "already_complete", "intervals": 0}
-        result = ingest_source_scope(**filters)
+        # Pass this session down (decision 2) so the checkpoint write and the
+        # interval persistence share one transaction: a failure inside ingest
+        # leaves the whole `with` block uncommitted, not a partially-written
+        # checkpoint next to intervals that never actually landed.
+        result = ingest_source_scope(**filters, db=db)
         checkpoint.completed_at = datetime.now(UTC)
         db.commit()
         return {"status": "completed", **result}
