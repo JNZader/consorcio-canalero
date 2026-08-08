@@ -69,6 +69,41 @@ describe('resolveRainfallScopes', () => {
 
     expect(result).toEqual({ kind: 'scope', scope: ZONE, regional_estimate: false });
   });
+
+  it('strips the server-embedded regional_estimate flag from a single scope', async () => {
+    // Same leak as the choices branch: the backend serializes the full
+    // AnalysisScope dataclass for a direct zone/basin request too, so the
+    // resolved scope carries a nested `regional_estimate` flag that /analyses
+    // rejects (extra="forbid"). The client must normalize before re-sending.
+    const serverScope = { ...ZONE, regional_estimate: true };
+    vi.mocked(apiFetch).mockResolvedValue({ scope: serverScope, regional_estimate: true });
+
+    const result = await resolveRainfallScopes({ kind: 'zone', id: 'zona-ne', version: '3' });
+
+    expect(result).toEqual({ kind: 'scope', scope: ZONE, regional_estimate: true });
+    if (result.kind === 'scope') {
+      expect(result.scope).not.toHaveProperty('regional_estimate');
+    }
+  });
+
+  it('strips the server-embedded regional_estimate flag from each choice', async () => {
+    // The backend serializes the full AnalysisScope dataclass, so each choice
+    // carries a nested `regional_estimate` flag. The wire contract for a scope
+    // reference is flat {kind,id,version} and /analyses forbids extra fields
+    // (extra="forbid"), so the client must normalize before re-sending.
+    const serverChoices = [
+      { ...ZONE, regional_estimate: true },
+      { ...BASIN, regional_estimate: true },
+    ];
+    vi.mocked(apiFetch).mockResolvedValue({ choices: serverChoices, regional_estimate: true });
+
+    const result = await resolveRainfallScopes({ kind: 'parcel', nomenclature: '13-06-01' });
+
+    expect(result).toEqual({ kind: 'choices', choices: [ZONE, BASIN], regional_estimate: true });
+    for (const choice of result.kind === 'choices' ? result.choices : []) {
+      expect(choice).not.toHaveProperty('regional_estimate');
+    }
+  });
 });
 
 describe('fetchRainfallAnalysis', () => {
