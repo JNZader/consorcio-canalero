@@ -90,3 +90,27 @@ def test_persist_intervals_inserts_absent_slot(db):
     assert len(current) == 1
     assert current[0].provider_revision == "v3-final"
     assert current[0].value == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4 — a value equal at 6 decimal places is a no-op
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_unchanged_slot_writes_nothing(db):
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    first = _daily_intervals(start_day=1, values=[1.5])
+    persist_intervals(db, source_id="chirps-v3-final", rows=first, **ZONE_KWARGS)
+    db.flush()
+
+    # Re-fetched value differs only past the 6th decimal place.
+    restated = _daily_intervals(start_day=1, values=[1.5000001])
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 0
+    assert result["unchanged"] == 1
+    assert _count_interval_rows(db) == 1
+    lifecycle_count = db.scalar(select(func.count()).select_from(RainfallIntervalLifecycle))
+    assert lifecycle_count == 0

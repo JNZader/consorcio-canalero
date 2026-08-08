@@ -136,6 +136,17 @@ class RainfallRepository:
 # ---------------------------------------------------------------------------
 
 
+def _values_equal_at_6dp(new: float, current: float) -> bool:
+    """A restated value is a no-op iff it rounds to the same 6-dp value.
+
+    The *same* rounding ``data_revision_for`` will hash over resolved
+    intervals (decision 3b), so a difference too small to move the content
+    address never creates an interval row — and never creates a lifecycle
+    row claiming a correction the disclosure cannot show.
+    """
+    return round(new, 6) == round(current, 6)
+
+
 def intervals_in_window(
     db: Session,
     *,
@@ -187,8 +198,9 @@ def persist_intervals(
        :func:`intervals_in_window` (a classification read, not a
        get-before-insert — a lost race just degrades to a skipped write).
     2. Classify each fetched interval: **absent** -> INSERT with the row's
-       own (family) revision; **present** -> a no-op for now (value equality
-       and correction-revision chaining land in later commits).
+       own (family) revision; **equal** at 6 decimal places
+       (:func:`_values_equal_at_6dp`) -> no-op; **changed** -> correction
+       chaining lands in the next commit.
     3. ``ON CONFLICT DO NOTHING`` keyed on ``uq_rainfall_interval_revision``
        (decision 3), so a re-ingest of an unchanged slot never raises.
     """
@@ -208,10 +220,17 @@ def persist_intervals(
     )
     current_by_slot = {(row.interval_start, row.interval_end): row for row in current}
 
-    to_insert = [
-        row for row in rows if (row.interval_start, row.interval_end) not in current_by_slot
-    ]
-    unchanged = len(rows) - len(to_insert)
+    to_insert: list[SourceInterval] = []
+    unchanged = 0
+    for row in rows:
+        existing = current_by_slot.get((row.interval_start, row.interval_end))
+        if existing is None:
+            to_insert.append(row)
+        elif _values_equal_at_6dp(row.value, existing.value):
+            unchanged += 1
+        else:
+            # Changed slot: correction-revision chaining lands in the next commit.
+            unchanged += 1
     if not to_insert:
         return {"inserted": 0, "unchanged": unchanged, "superseded": 0}
 

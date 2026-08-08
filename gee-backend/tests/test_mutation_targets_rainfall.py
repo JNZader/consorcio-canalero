@@ -943,3 +943,25 @@ class TestRevisionFamilyAndCorrectionRevision:
             correction_revision("v3-nrt", 0)
         with pytest.raises(ValueError, match="ordinal"):
             correction_revision("v3-nrt", -1)
+
+
+class TestSixDecimalEqualityBoundary:
+    """PR1 task 1.4: the *same* rounding ``data_revision_for`` will hash
+    (decision 3b) decides whether a restated value is a no-op or a
+    correction — a difference too small to move the 6th decimal must never
+    mint a ``rainfall_interval_lifecycle`` row claiming a correction the
+    disclosure cannot show."""
+
+    def test_six_decimal_equality_boundary(self) -> None:
+        from app.domains.geo.rainfall.repository import _values_equal_at_6dp
+
+        # Equal at 6 decimal places despite not being bit-identical.
+        assert _values_equal_at_6dp(1.5000001, 1.5) is True
+        # A restatement large enough to move the 6th decimal is NOT equal.
+        assert _values_equal_at_6dp(1.500002, 1.5) is False
+
+    def test_six_decimal_equality_is_symmetric(self) -> None:
+        from app.domains.geo.rainfall.repository import _values_equal_at_6dp
+
+        assert _values_equal_at_6dp(0.0, 0.0000001) is True
+        assert _values_equal_at_6dp(0.0000001, 0.0) is True
