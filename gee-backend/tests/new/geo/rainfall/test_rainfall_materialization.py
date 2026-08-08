@@ -162,3 +162,51 @@ def test_persist_intervals_changed_slot_appends_correction_and_lifecycle_row(db)
     assert original_row is not None
     assert original_row.value == 1.0
     assert lifecycle.interval_value_id == original_row.id
+
+
+# ---------------------------------------------------------------------------
+# Task 1.6 — a second correction chains off the first
+# ---------------------------------------------------------------------------
+
+
+def test_second_correction_chains_off_first(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    first = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=first, **ZONE_KWARGS)
+    db.flush()
+
+    second = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=second, **ZONE_KWARGS)
+    db.flush()
+
+    third = _daily_intervals(start_day=1, values=[2.4], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=third, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["superseded"] == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=third[0].interval_start,
+        end=third[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].provider_revision == "v3-nrt+r2"
+    assert current[0].value == 2.4
+
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 3
+    lifecycle_rows = list(db.scalars(select(RainfallIntervalLifecycle)))
+    assert len(lifecycle_rows) == 2
+
+    superseded_by_map = {row.interval_value_id: row.superseded_by_id for row in lifecycle_rows}
+    r1_row = db.scalar(
+        select(RainfallIntervalValue).where(
+            RainfallIntervalValue.provider_revision == "v3-nrt+r1"
+        )
+    )
+    assert r1_row is not None
+    assert superseded_by_map[r1_row.id] == current[0].id
