@@ -27,7 +27,7 @@ docker compose logs --tail 200 backend | jq -c 'select(.level=="error")'
 docker compose restart backend
 
 # Full redeploy from main (build local)
-git pull origin main && docker compose up -d --build backend worker geo-worker
+git pull origin main && docker compose up -d --build backend worker celery-beat geo-worker
 ```
 
 ---
@@ -486,7 +486,7 @@ pull). The simpler flow:
 ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238
 cd /home/javier/stacks/consorcio
 git pull origin main
-docker compose up -d --build backend worker geo-worker
+docker compose up -d --build backend worker celery-beat geo-worker
 ```
 
 This rebuilds the affected containers in place and rolling-restarts
