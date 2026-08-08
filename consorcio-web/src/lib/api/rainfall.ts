@@ -119,16 +119,25 @@ export async function resolveRainfallScopes(
     body: JSON.stringify(request),
     signal,
   });
+  // The server serializes the full AnalysisScope dataclass, which carries a
+  // `regional_estimate` flag inside each choice. The wire contract for a scope
+  // reference is flat {kind,id,version} and the backend forbids extra fields
+  // (extra="forbid"), so strip the flag before it is re-sent in /analyses.
+  const normalize = (choice: RainfallScopeChoice): RainfallScopeChoice => ({
+    kind: choice.kind,
+    id: choice.id,
+    version: choice.version,
+  });
   if (Array.isArray(body.choices)) {
     return {
       kind: 'choices',
-      choices: body.choices as RainfallScopeChoice[],
+      choices: (body.choices as RainfallScopeChoice[]).map(normalize),
       regional_estimate: body.regional_estimate === true,
     };
   }
   return {
     kind: 'scope',
-    scope: body.scope as RainfallScopeChoice,
+    scope: normalize(body.scope as RainfallScopeChoice),
     regional_estimate: body.regional_estimate === true,
   };
 }
