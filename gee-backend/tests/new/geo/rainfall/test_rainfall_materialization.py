@@ -64,3 +64,29 @@ def test_reingest_is_idempotent(db):
     db.flush()
 
     assert _count_interval_rows(db) == len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 — absent slot classifies as an INSERT
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_inserts_absent_slot(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[2.0])
+
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        start=rows[0].interval_start,
+        end=rows[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].provider_revision == "v3-final"
+    assert current[0].value == 2.0

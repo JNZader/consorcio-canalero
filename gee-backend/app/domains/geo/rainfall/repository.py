@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -10,7 +11,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.domains.geo.models import GeoApprovedZoning
-from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallIntervalValue
+from app.domains.geo.rainfall.models import (
+    RainfallAnalysisRevision,
+    RainfallIntervalLifecycle,
+    RainfallIntervalValue,
+)
 from app.domains.geo.rainfall.ports import SourceInterval
 from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
 
@@ -131,6 +136,42 @@ class RainfallRepository:
 # ---------------------------------------------------------------------------
 
 
+def intervals_in_window(
+    db: Session,
+    *,
+    source_id: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    start: datetime,
+    end: datetime,
+) -> list[RainfallIntervalValue]:
+    """Non-superseded rows for this source/scope with ``interval_start`` in ``[start, end)``.
+
+    Anti-joins ``rainfall_interval_lifecycle`` (``event_type='superseded'``).
+    Supersession is per slot and append-only (design.md "NRT Correction
+    Supersession"), so the result holds at most one row per slot. No
+    ``provider_revision`` filter, by design (decision 7): one ``source_id``
+    can own several revision *families* plus their corrections.
+    """
+    superseded = select(RainfallIntervalLifecycle.interval_value_id).where(
+        RainfallIntervalLifecycle.event_type == "superseded",
+        RainfallIntervalLifecycle.interval_value_id == RainfallIntervalValue.id,
+    )
+    query = (
+        select(RainfallIntervalValue)
+        .where(RainfallIntervalValue.source_id == source_id)
+        .where(RainfallIntervalValue.scope_kind == scope_kind)
+        .where(RainfallIntervalValue.scope_id == scope_id)
+        .where(RainfallIntervalValue.scope_version == scope_version)
+        .where(RainfallIntervalValue.interval_start >= start)
+        .where(RainfallIntervalValue.interval_start < end)
+        .where(~superseded.exists())
+        .order_by(RainfallIntervalValue.interval_start)
+    )
+    return list(db.scalars(query).all())
+
+
 def persist_intervals(
     db: Session,
     *,
@@ -140,15 +181,39 @@ def persist_intervals(
     scope_version: str,
     rows: Sequence[SourceInterval],
 ) -> dict[str, int]:
-    """Write fetched intervals append-only.
+    """Classify-then-append write path (design.md "NRT Correction Supersession").
 
-    ``ON CONFLICT DO NOTHING`` keyed on ``uq_rainfall_interval_revision``
-    (decision 3): a re-ingest carrying the same provider revision and the
-    same interval bounds always collides with the row already on disk, so
-    re-running an identical ingest never raises and never duplicates a row.
+    1. Read the slots already current for this window via
+       :func:`intervals_in_window` (a classification read, not a
+       get-before-insert — a lost race just degrades to a skipped write).
+    2. Classify each fetched interval: **absent** -> INSERT with the row's
+       own (family) revision; **present** -> a no-op for now (value equality
+       and correction-revision chaining land in later commits).
+    3. ``ON CONFLICT DO NOTHING`` keyed on ``uq_rainfall_interval_revision``
+       (decision 3), so a re-ingest of an unchanged slot never raises.
     """
     if not rows:
         return {"inserted": 0, "unchanged": 0, "superseded": 0}
+
+    window_start = min(row.interval_start for row in rows)
+    window_end = max(row.interval_end for row in rows)
+    current = intervals_in_window(
+        db,
+        source_id=source_id,
+        scope_kind=scope_kind,
+        scope_id=scope_id,
+        scope_version=scope_version,
+        start=window_start,
+        end=window_end,
+    )
+    current_by_slot = {(row.interval_start, row.interval_end): row for row in current}
+
+    to_insert = [
+        row for row in rows if (row.interval_start, row.interval_end) not in current_by_slot
+    ]
+    unchanged = len(rows) - len(to_insert)
+    if not to_insert:
+        return {"inserted": 0, "unchanged": unchanged, "superseded": 0}
 
     stmt = (
         pg_insert(RainfallIntervalValue)
@@ -165,11 +230,11 @@ def persist_intervals(
                     "value": row.value,
                     "unit": row.unit,
                 }
-                for row in rows
+                for row in to_insert
             ]
         )
         .on_conflict_do_nothing(constraint="uq_rainfall_interval_revision")
         .returning(RainfallIntervalValue.id)
     )
     landed = db.execute(stmt).all()
-    return {"inserted": len(landed), "unchanged": 0, "superseded": 0}
+    return {"inserted": len(landed), "unchanged": unchanged, "superseded": 0}
