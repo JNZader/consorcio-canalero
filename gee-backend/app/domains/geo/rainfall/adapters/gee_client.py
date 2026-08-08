@@ -19,6 +19,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.domains.geo.rainfall.adapters.resilience import AdapterError
+
 DEFAULT_ZONE_ASSET = "zona_cc_ampliada"
 BASIN_ASSET_NAMES = frozenset({"candil", "ml", "noroeste", "norte"})
 ZONAL_SCALE_METERS = 1000  # reduction scale used by the validation spike
@@ -73,12 +75,21 @@ class GeeZonalClient:
         _ensure_initialized()
 
     def geometry(self, *, scope_kind: str, scope_id: str) -> Any:
-        """Return the ee geometry for the scope's mapped asset."""
-        self._ensure_initialized()
+        """Return the ee geometry for the scope's mapped asset.
+
+        GEE outages (missing/invalid asset, quota, auth, ``getInfo()`` server
+        errors) surface as ``ee.EEException``, which is not a ``RuntimeError``
+        and would never match the resilience retry tuple — so it is wrapped
+        into :class:`AdapterError` here at the seam.
+        """
         import ee  # local import keeps adapter imports ee-free for tests
 
-        asset = self._asset_path(asset_name_for(scope_kind, scope_id))
-        return ee.FeatureCollection(asset).geometry()
+        try:
+            self._ensure_initialized()
+            asset = self._asset_path(asset_name_for(scope_kind, scope_id))
+            return ee.FeatureCollection(asset).geometry()
+        except ee.EEException as exc:
+            raise AdapterError(f"GEE geometry failed for {scope_kind}/{scope_id}: {exc}") from exc
 
     def zonal_series(
         self,
@@ -93,30 +104,35 @@ class GeeZonalClient:
 
         ``interval_start`` is the image's ``system:time_start`` (UTC). The
         reducer matches the validation spike: ``mean`` over the scope geometry
-        at the client's scale with ``bestEffort=True``.
+        at the client's scale with ``bestEffort=True``. GEE service failures
+        (missing/invalid collection, quota, ``getInfo()`` server errors) are
+        wrapped into :class:`AdapterError` so the resilience layer retries them.
         """
-        self._ensure_initialized()
-        import ee
+        import ee  # local import so adapter imports stay ee-free for tests
 
-        series = (
-            ee.ImageCollection(collection_id)
-            .filterDate(start, end)
-            .map(
-                lambda image: ee.Feature(
-                    None,
-                    {
-                        "t": image.date().millis(),
-                        "v": image.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=geometry,
-                            scale=self.scale_meters,
-                            bestEffort=True,
-                        ).get(band),
-                    },
+        try:
+            self._ensure_initialized()
+            series = (
+                ee.ImageCollection(collection_id)
+                .filterDate(start, end)
+                .map(
+                    lambda image: ee.Feature(
+                        None,
+                        {
+                            "t": image.date().millis(),
+                            "v": image.reduceRegion(
+                                reducer=ee.Reducer.mean(),
+                                geometry=geometry,
+                                scale=self.scale_meters,
+                                bestEffort=True,
+                            ).get(band),
+                        },
+                    )
                 )
             )
-        )
-        features = series.getInfo().get("features", [])
+            features = series.getInfo().get("features", [])
+        except ee.EEException as exc:
+            raise AdapterError(f"GEE zonal series failed for {collection_id}: {exc}") from exc
         rows: list[tuple[datetime, float | None]] = []
         for feature in features:
             props = feature.get("properties") or {}

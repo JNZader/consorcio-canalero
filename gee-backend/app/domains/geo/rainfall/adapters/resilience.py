@@ -148,13 +148,23 @@ class RedisCircuitStore(CircuitStore):
     def read(
         self, role: str, default: ResilientAdapterState | None = None
     ) -> ResilientAdapterState:
-        raw = self._client.get(self._key(role))
+        try:
+            raw = self._client.get(self._key(role))
+        except Exception:
+            # Redis down → degrade to in-memory state for this worker; do not
+            # fail the fetch.
+            return default if default is not None else ResilientAdapterState()
         if raw is None:
             return default if default is not None else ResilientAdapterState()
         return ResilientAdapterState.from_store_dict(json.loads(raw))
 
     def write(self, role: str, state: ResilientAdapterState) -> None:
-        self._client.set(self._key(role), json.dumps(state.to_store_dict()))
+        try:
+            self._client.set(self._key(role), json.dumps(state.to_store_dict()))
+        except Exception:
+            # Redis down → degrade to in-memory state for this worker; do not
+            # fail the fetch.
+            pass
 
 
 def _alarm_handler(_signum: int, _frame: Any) -> None:

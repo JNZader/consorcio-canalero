@@ -16,6 +16,7 @@ from app.domains.geo.rainfall.adapters.chirps import (
     ChirpsV3Adapter,
 )
 from app.domains.geo.rainfall.adapters.gee_client import (
+    GeeZonalClient,
     UnknownProviderScope,
     asset_name_for,
 )
@@ -345,6 +346,86 @@ def test_provider_success_after_failure_resets_the_circuit(monkeypatch):
     batch = second.fetch(**kwargs)
     assert len(batch.intervals) == 1
     assert second.state.consecutive_failures == 0
+
+
+def test_ee_exception_is_retried_then_surfaces_as_adapter_error(monkeypatch):
+    """Real GEE failures must retry and end as AdapterError, not raw EEException.
+
+    ``ee.ee_exception.EEException`` (invalid/missing collection, quota, auth,
+    ``getInfo()`` server errors) inherits from ``Exception``, not
+    ``RuntimeError``, so the resilience retry tuple never matches it. The real
+    :class:`GeeZonalClient` wraps it into ``AdapterError`` at the seam; the
+    failure is injected through the replaceable ``asset_path``/``ensure_initialized``
+    hooks so CI never touches the GEE network.
+    """
+    from ee.ee_exception import EEException
+
+    from app.domains.geo.rainfall.adapters.resilience import (
+        AdapterError,
+        MemoryCircuitStore,
+        ResilientAdapter,
+    )
+
+    monkeypatch.setattr(
+        "app.domains.geo.rainfall.adapters.resilience.time.sleep", lambda _seconds: None
+    )
+
+    def failing_asset_path(asset_name: str) -> str:
+        raise EEException(f"Earth Engine capacity exceeded: {asset_name}")
+
+    adapter = ChirpsV3Adapter(
+        gee=GeeZonalClient(
+            asset_path=failing_asset_path,
+            ensure_initialized=lambda: None,
+        )
+    )
+    resilient = ResilientAdapter(
+        adapter.fetch,
+        store=MemoryCircuitStore(),
+        timeout_seconds=5,
+        max_retries=1,
+        failure_threshold=2,
+        recovery_seconds=3600,
+    )
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    kwargs = {
+        "source_id": "chirps-v3-final",
+        "role": "historical",
+        "scope_kind": "zone",
+        "scope_id": "z1",
+        "scope_version": "v1",
+        "start": start,
+        "end": datetime(2024, 1, 2, tzinfo=UTC),
+    }
+
+    with pytest.raises(AdapterError, match="GEE geometry failed"):
+        resilient.fetch(**kwargs)
+    assert resilient.state.consecutive_failures == 2  # initial attempt + retry
+
+
+def test_ee_exception_from_zonal_series_wraps_to_adapter_error():
+    """``zonal_series``'s GEE body (ImageCollection + getInfo) wraps EEException too."""
+    from ee.ee_exception import EEException
+
+    from app.domains.geo.rainfall.adapters.resilience import AdapterError
+
+    def failing_ensure() -> None:
+        raise EEException("Earth Engine capacity exceeded")
+
+    client = GeeZonalClient(
+        asset_path=lambda asset_name: f"projects/p/assets/{asset_name}",
+        ensure_initialized=failing_ensure,
+    )
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+
+    with pytest.raises(AdapterError, match="GEE zonal series failed"):
+        client.zonal_series(
+            collection_id=CHIRPS_V3_RNN_COLLECTION,
+            start=start,
+            end=datetime(2024, 1, 2, tzinfo=UTC),
+            geometry=("asset", "zone", "z1"),
+            band="precipitation",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,9 @@ from app.domains.geo.rainfall.adapters.resilience import (
     AdapterError,
     CircuitOpen,
     MemoryCircuitStore,
+    RedisCircuitStore,
     ResilientAdapter,
+    ResilientAdapterState,
 )
 from app.domains.geo.rainfall.ports import SourceBatch, SourceInterval
 
@@ -222,3 +224,33 @@ def test_half_open_success_closes_circuit_and_failure_reopens():
             start=datetime(2024, 1, 1, tzinfo=UTC),
             end=datetime(2024, 1, 2, tzinfo=UTC),
         )
+
+
+def test_redis_circuit_store_degrades_when_redis_is_down():
+    """A broken Redis must degrade to in-memory state, never fail the fetch.
+
+    The store is persistence infrastructure; the fetch is the provider, so a
+    ``redis.exceptions.ConnectionError`` (``RedisError`` — not the builtin
+    ``ConnectionError``) inside ``read``/``write`` must not propagate.
+    """
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    class BrokenRedisClient:
+        def get(self, _key: str) -> None:
+            raise RedisConnectionError("redis connection refused")
+
+        def set(self, _key: str, _value: str) -> None:
+            raise RedisConnectionError("redis connection refused")
+
+    store = object.__new__(RedisCircuitStore)
+    store._client = BrokenRedisClient()
+
+    default = ResilientAdapterState(failure_threshold=3, recovery_seconds=120)
+    # read on a dead Redis returns the caller's default without raising…
+    assert store.read("historical", default=default) is default
+    # …and with no default it synthesizes a fresh state, never None.
+    degraded = store.read("historical")
+    assert isinstance(degraded, ResilientAdapterState)
+    assert degraded.consecutive_failures == 0
+    # write is a no-op, never raising.
+    store.write("historical", default)
