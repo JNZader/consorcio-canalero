@@ -2950,3 +2950,155 @@ def test_revisit_stage2_reresolves_source_and_terminates_on_final(db):
             synchronize_session=False
         )
         db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.15 — self-extinguishing regression (JDB-101, the test that must
+# not be dropped)
+# ---------------------------------------------------------------------------
+
+
+def test_finalization_is_retried_not_abandoned_then_terminates(db, monkeypatch):
+    """A refused finalization attempt is retried on every sweep, not
+    abandoned after one try; once an adequate final revision is written
+    and served, the sweep stops enqueueing for that key.
+
+    Real `SessionLocal()` connections throughout (never the shared `db`
+    fixture, never `db=` on a task call) for the same reason as task
+    3.12's fix: multiple real builds sharing one fingerprint need
+    genuinely distinct `created_at` for `get_snapshot`'s ordering to be
+    meaningful, and the shared fixture's single transaction would freeze
+    it.
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+
+    _ = db  # guarantees test_engine's create_all() has run; see 3.12's docstring for why
+    # the actual work below uses fresh SessionLocal() connections instead.
+
+    year = 2023
+    scope_id = "zone-self-extinguish"
+    fingerprint = _hex_fingerprint("fp-self-extinguish")
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    # ---- Setup: an already-served PROVISIONAL incumbent for a completed
+    # year, exactly the "materialized while the year was still running"
+    # shape (built directly, matching the 3.7 sequential-case pattern). ----
+    with SessionLocal() as setup:
+        persist_intervals(
+            setup,
+            source_id="chirps-v3-sat",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            rows=_full_year_rows(year=year, provider_revision="v3-nrt"),
+        )
+        daily_outbox = RainfallOutbox(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+            work_labels=["analysis_missing", "role:daily"],
+            interval_start=year_start,
+            interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+            status="done",
+            completed_at=datetime(year, 12, 31, tzinfo=UTC),
+            request_fingerprint=fingerprint,
+        )
+        setup.add(daily_outbox)
+        setup.commit()
+
+        tasks.build_analysis(
+            outbox_id=str(daily_outbox.id),
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                scope_id=scope_id,
+                year=year,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+            db=setup,
+            now=datetime(year + 1, 6, 1, tzinfo=UTC),
+        )
+        setup.commit()
+
+    # An inadequate final series (every 10th day, ~10% complete) -- kept
+    # mutable so a later cycle can swap in an adequate one.
+    fake_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(0, 365, 10)]
+    )
+
+    def fake_concrete_fetch(source_id):
+        if source_id == "chirps-v3-final":
+            return ChirpsV3Adapter(gee=fake_client).fetch
+        raise NotImplementedError(f"unexpected source_id in this regression test: {source_id!r}")
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    def _served_source_and_state() -> tuple[str, str]:
+        with SessionLocal() as check:
+            revision = RainfallRepository().get_snapshot(check, fingerprint)
+            selected = revision.snapshot["annual"]["selected"]
+            return selected["provenance"]["source_id"], selected["temporal_state"]
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+        assert _revision_count() == 1
+
+        # Attempt 1: inadequate final series -> refused, provisional stays served.
+        now1 = datetime(year + 1, 1, 15, 12, tzinfo=UTC)
+        revisit1 = tasks.revisit_stale(now=now1)
+        assert revisit1["finalization_enqueued"] == 1
+        process1 = tasks.process_outbox(now=now1)
+        assert process1["succeeded"] == 1
+        assert _revision_count() == 1  # 0 new -- gate_refused
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+
+        # Attempt 2: NOT a one-shot retry -- the sweep enqueues again.
+        now2 = datetime(year + 1, 1, 16, 12, tzinfo=UTC)
+        revisit2 = tasks.revisit_stale(now=now2)
+        assert revisit2["finalization_enqueued"] == 1
+        process2 = tasks.process_outbox(now=now2)
+        assert process2["succeeded"] == 1
+        assert _revision_count() == 1
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+
+        # Supply an adequate final series.
+        fake_client.series = [
+            (year_start + timedelta(days=offset), 1.0) for offset in range(365)
+        ]
+
+        now3 = datetime(year + 1, 1, 17, 12, tzinfo=UTC)
+        revisit3 = tasks.revisit_stale(now=now3)
+        assert revisit3["finalization_enqueued"] == 1
+        process3 = tasks.process_outbox(now=now3)
+        assert process3["succeeded"] == 1
+        assert _revision_count() == 2  # the final revision is written
+        assert _served_source_and_state() == ("chirps-v3-final", "final")
+
+        # Termination: the next sweep enqueues zero for this key.
+        now4 = datetime(year + 1, 1, 18, 12, tzinfo=UTC)
+        revisit4 = tasks.revisit_stale(now=now4)
+        assert revisit4["finalization_enqueued"] == 0
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
