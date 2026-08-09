@@ -212,7 +212,26 @@ Part 1 final counts: `tests/new/geo/rainfall/` 212 passed (195 + 17 new... — s
 | `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified (batch 1: `TestRevisionFamilyAndCorrectionRevision`, `TestSixDecimalEqualityBoundary`; Part 1: `TestRainfallMetricPolicyConstants`, `TestBuildSnapshotEnvelope`, `TestBuildSnapshotCoverageWindow`, `TestDataRevisionFor`) | 1, Part 1 |
 | `openspec/changes/rainfall-materialization/apply-progress.md` | This file — created batch 1, merged/rewritten Part 0 + Part 1 | 1, Part 0, Part 1 |
 | `openspec/changes/rainfall-materialization/tasks.md` | Tasks 1.1-1.9 marked `[x]` (batch 1); tasks 2.1-2.14 marked `[x]` (Part 1) | 1, Part 1 |
-| `openspec/changes/rainfall-materialization/review-ledger.md` | R3-001..004 rows annotated `**Addressed** in 7f892fc` (Part 0) | Part 0 |
+| `openspec/changes/rainfall-materialization/review-ledger.md` | R3-001..004 rows annotated `**Addressed** in 7f892fc` (Part 0); R4-001 row set to `fixed` + resolution note, R4-002/R4-003 rows annotated `**Addressed (bounded)**`/`**Addressed**` (PR2 review fix round 1) | Part 0, PR2 fix round 1 |
+
+## PR2 Review Fix Round 1 (pre-PR review-resilience findings R4-001..R4-003)
+
+Fix agent applied the confirmed/approved findings from the pre-PR review-resilience pass (see
+`review-ledger.md` "Pre-PR review — PR2 compute" section) on branch
+`feat/rainfall-materialization-02-compute`. Round 1 of a max-2-round convergence budget.
+
+| Finding | Severity | Fix | RED | GREEN | Commit |
+|---|---|---|---|---|---|
+| R4-001 | BLOCKER | `record_supersession` + `persist_intervals`' supersession loop switched from ORM `db.add` to a Core `pg_insert`/`db.execute` write (batched into one multi-row insert), matching the existing `persist_intervals`/`persist_revision` Core-write pattern. Rows now land at execute time, independent of any flush — `db.begin_nested()`/`SessionLocal` autoflush behavior is no longer load-bearing for the anti-join's correctness. | ✅ New regression test `test_restated_slot_survives_chained_compute_without_explicit_flush` uses a dedicated `db_autoflush_off` fixture (production-shape `Session(bind=connection, autoflush=False)`, built from the same `test_engine` connection infra as the shared `db` fixture — NOT the shared fixture itself, since its default `autoflush=True` would hide the bug). Confirmed failing pre-fix via `git stash` on `repository.py` alone: `ValueError: build_snapshot received a duplicated interval_start slot`, raised out of `tasks._process_outbox_row` (traceback: `build_analysis` → `_persist_analysis_revision` → `build_snapshot`). | ✅ Same test passes post-fix: `result == "done"`, exactly one `RainfallAnalysisRevision` row for the fingerprint, exactly one non-superseded `RainfallIntervalValue` row for the slot with the restated value. | `da761d9` |
+| R4-002 | WARNING (info) | Bounded per refuter/orchestrator direction: the shared conftest `db` fixture stays `autoflush=True` this pass (blast radius: 1970 tests). The new `db_autoflush_off` fixture (local to `test_rainfall_materialization.py`) is the accepted alternative coverage, with the divergence documented in its own docstring at the point of use. | N/A (bounded scope decision, not a code defect) | N/A | `da761d9` |
+| R4-003 | WARNING (info) | `rainfall.outbox.failed`/`rainfall.outbox.delayed` `record_event` payloads gained `error_type` (`type(exc).__name__`, captured inside the `except` block since `except ... as exc` unbinds `exc` on exit) and a 200-char-truncated `error_message`. `_persist_analysis_revision` emits a new `rainfall.build.revision_written` event with `{data_revision, created}`, `created` derived from a pre-write existence check against `RainfallAnalysisRevision` (since `persist_revision`'s own `ON CONFLICT DO NOTHING` branch doesn't surface new-vs-idempotent-noop to its caller, and changing its return contract would touch two passing tests outside this fix's scope). | N/A — additive observability, not a behavior-changing bugfix; no pre-existing test exercised these payload fields to regress | ✅ 3 new tests (`test_outbox_delayed_event_carries_error_type_and_truncated_message`, `test_outbox_failed_event_carries_error_type_and_truncated_message`, `test_build_analysis_emits_revision_written_event_distinguishing_created_from_noop`) assert the decoded JSON payload via the `caplog`/`metrics.record_event` seam (same `"%s %s"` format `test_rainfall_observability_seam_emits_structured_events` in `test_phase4_verification.py` already exercises, here parsed with `json.loads` instead of substring-matched) | `a08fb94` |
+
+Verification: `tests/new/geo/rainfall/` 217 passed, 1 warning (pre-existing, unrelated —
+`SAWarning: transaction already deassociated from connection` in
+`test_phase4_verification.py::test_partial_unique_index_rejects_duplicate_pending_outbox_row`), 4
+new tests this round (1 R4-001 regression + 3 R4-003 observability). Full `tests/new/` suite: 1890
+passed, 5 skipped (pre-existing live-backend/Martin skips, unrelated), exit 0. `ruff check` clean
+on all three touched files.
 
 ## Next Recommended
 
