@@ -548,8 +548,7 @@ def test_backfill_missing_shares_transaction_with_ingest(db, monkeypatch):
         # source_id-only count would also see the row task 1.8's
         # own-session test commits under a different, unrelated scope.
         assert (
-            _count_interval_rows(fresh, source_id="chirps-v3-final", scope_id="zone-txn-share")
-            == 0
+            _count_interval_rows(fresh, source_id="chirps-v3-final", scope_id="zone-txn-share") == 0
         )
 
 
@@ -640,7 +639,10 @@ def test_queue_missing_analysis_recomputes_fingerprint_when_not_passed(db):
     present-but-null key differently from an absent one."""
     from app.domains.geo.rainfall.models import RainfallOutbox
     from app.domains.geo.rainfall.scope import AnalysisScope
-    from app.domains.geo.rainfall.service import analysis_request_fingerprint, queue_missing_analysis
+    from app.domains.geo.rainfall.service import (
+        analysis_request_fingerprint,
+        queue_missing_analysis,
+    )
 
     scope = AnalysisScope(kind="zone", id="zone-fp-fallback", version="v1", regional_estimate=False)
     expected = analysis_request_fingerprint(
@@ -727,3 +729,120 @@ def test_persist_revision_writes_a_new_row_on_changed_data_revision(db):
         .where(RainfallAnalysisRevision.request_fingerprint == "fp-persist-revision-2")
     )
     assert count == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 2.10 — build_analysis writes one revision that passes normalize_snapshot
+# ---------------------------------------------------------------------------
+
+
+def _fixture_batch_evidence(**overrides) -> dict:
+    payload = {
+        "source_id": "chirps-v3-final",
+        "scope_kind": "zone",
+        "scope_id": "zone-build-analysis",
+        "year": 2024,
+        "intervals": 3,
+        "persisted": 3,
+        "superseded": 0,
+        "provider_revision": "v3-final",
+        "unit": "mm",
+        "cadence_seconds": 86400.0,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {
+            "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_RNL",
+            "band": "precipitation",
+            "reduction": "mean",
+            "scale_m": 5500,
+            "provider_revision": "v3-final",
+        },
+        "discrepancies": [],
+        "checksum": "sha256:fixture",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_build_analysis_writes_one_revision_and_passes_normalize_snapshot(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+    from app.domains.geo.rainfall.service import normalize_snapshot
+
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="zone-build-analysis",
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-build-analysis",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint="fp-build-analysis",
+    )
+    db.add(outbox)
+    db.flush()
+
+    result = tasks.build_analysis(
+        outbox_id=str(outbox.id),
+        batch=_fixture_batch_evidence(),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    assert result["revision_id"]
+
+    revision = RainfallRepository().get_snapshot(db, "fp-build-analysis")
+    assert revision is not None
+    normalized = normalize_snapshot(
+        revision.snapshot, expected_policy_revision=revision.policy_revision
+    )
+    assert normalized["annual"]["selected"]["state"] in {"available", "unavailable"}
+    assert normalized["scope"] == {"kind": "zone", "id": "zone-build-analysis", "version": "v1"}
+
+
+def test_build_analysis_raises_when_outbox_row_has_no_fingerprint(db):
+    """decision 4b: a legacy null-fingerprint row is the CALLER's
+    (_process_outbox_row, task 2.11) responsibility to derive or skip
+    before ever calling build_analysis; a direct call with none set is a
+    programming error and must be loud, not silently compute nothing."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-no-fingerprint",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(outbox)
+    db.flush()
+
+    with pytest.raises(ValueError, match="request_fingerprint"):
+        tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=_fixture_batch_evidence(),
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )

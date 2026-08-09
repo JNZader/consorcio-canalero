@@ -1,6 +1,6 @@
 """Celery tasks for Rainfall v2 ingest, revisit and backfill."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -179,6 +179,115 @@ def ingest_source_scope(
         )
         local_db.commit()
         return _batch_result(batch, year=year, persisted=persisted)
+
+
+def _persist_analysis_revision(
+    db: Session, *, outbox_id: str, batch: dict[str, Any], now: datetime
+) -> dict[str, Any]:
+    from app.domains.geo.rainfall.compute import build_snapshot, data_revision_for, revision_family
+    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_revision
+    from app.domains.geo.rainfall.scope import AnalysisScope
+
+    row = db.get(RainfallOutbox, outbox_id)
+    if row is None:
+        raise ValueError(f"rainfall_outbox row {outbox_id!r} not found for build_analysis")
+    if row.request_fingerprint is None:
+        # decision 4b: deriving or skipping a null-fingerprint row is
+        # _process_outbox_row's job (task 2.11), not build_analysis's — a
+        # direct call with none set is a caller bug and must be loud.
+        raise ValueError(
+            f"rainfall_outbox row {outbox_id!r} has no request_fingerprint; the caller "
+            "must derive or skip it before calling build_analysis (decision 4b)"
+        )
+
+    year_start = datetime(row.year, 1, 1, tzinfo=UTC)
+    year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
+    persisted = intervals_in_window(
+        db,
+        source_id=row.source_id,
+        scope_kind=row.scope_kind,
+        scope_id=row.scope_id,
+        scope_version=row.scope_version,
+        start=year_start,
+        end=year_end,
+    )
+    resolved = [
+        (interval.interval_start, interval.interval_end, interval.value) for interval in persisted
+    ]
+
+    # `regional_estimate` is a property of the ORIGINAL public request (was
+    # this scope reached via a parcel search?), not of the outbox key or the
+    # computation itself: it is not part of the fingerprint's hashed input
+    # (router.py builds the fingerprint dict from scope/year/event_window
+    # only) and never feeds temporal/compute logic — disclosure metadata
+    # only. The outbox row carries no such flag, so it defaults to False.
+    scope = AnalysisScope(
+        kind=row.scope_kind, id=row.scope_id, version=row.scope_version, regional_estimate=False
+    )
+
+    snapshot = build_snapshot(
+        scope=scope,
+        year=row.year,
+        role=row.role,
+        source_id=row.source_id,
+        intervals=resolved,
+        batch=batch,
+        now=now,
+    )
+
+    family = revision_family(batch["provider_revision"])
+    comparison_end_date = date.fromisoformat(snapshot["comparison_end"])
+    data_revision = data_revision_for(
+        row.source_id,
+        family,
+        scope,
+        row.year,
+        comparison_end_date,
+        [(interval_start, value) for interval_start, _end, value in resolved],
+    )
+
+    revision_id = persist_revision(
+        db,
+        request_fingerprint=row.request_fingerprint,
+        policy_revision=RAINFALL_METRIC_POLICY_REVISION,
+        data_revision=data_revision,
+        snapshot=snapshot,
+    )
+
+    return {"revision_id": str(revision_id), "data_revision": data_revision}
+
+
+@celery_app.task(name="rainfall.build_analysis")
+def build_analysis(
+    *,
+    outbox_id: str,
+    batch: dict[str, Any],
+    db: Session | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Compute and persist the analysis revision for one outbox row's key,
+    from the intervals ``persist_intervals`` just wrote (decision 1:
+    chained in-process, same cycle as ingest, before ``status="done"``).
+
+    Session boundary matches ``ingest_source_scope`` (decision 2): given a
+    ``db``, write through it and never commit; given ``None``, open and
+    commit an isolated ``SessionLocal()``.
+
+    ``now`` is the disclosure-date seam (design.md Interfaces): defaults to
+    ``datetime.now(UTC)`` and feeds ``temporal.comparison_end`` /
+    ``buenos_aires_date`` inside ``build_snapshot`` and nothing else.
+    """
+    build_now = now or datetime.now(UTC)
+    if db is not None:
+        return _persist_analysis_revision(db, outbox_id=outbox_id, batch=batch, now=build_now)
+
+    with SessionLocal() as local_db:
+        result = _persist_analysis_revision(
+            local_db, outbox_id=outbox_id, batch=batch, now=build_now
+        )
+        local_db.commit()
+        return result
 
 
 @celery_app.task(name="rainfall.revisit_stale", bind=True, max_retries=2)
