@@ -3,7 +3,7 @@
 import csv
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from math import isfinite
 from typing import Any
@@ -20,7 +20,15 @@ METRIC_GROUPS = ("annual", "antecedents", "intensity")
 RAINFALL_HISTORICAL_SOURCE = "chirps-v3-final"
 RAINFALL_DAILY_SOURCE = "sqpe-obs"
 RAINFALL_INTENSITY_SOURCE = "sinarame-rqpe"
-RAINFALL_VALIDATION_SOURCE = "smn-gauges"
+# Task 3.18: matches adapters/manifests.py's validation-role candidate
+# (`smn-gauge`, singular) -- was `smn-gauges`, a typo that never matched.
+RAINFALL_VALIDATION_SOURCE = "smn-gauge"
+
+# decision 6: skip request-path re-enqueue when a `done` row for the same
+# key completed within this window, regardless of whether a revision
+# exists -- see queue_missing_analysis. Engineering guess tuned to the 5s
+# frontend poll; confirm against real GEE quota headroom (Open Questions).
+RAINFALL_RECOMPUTE_COOLDOWN = timedelta(minutes=10)
 
 
 def _parse_event_window(event_window: dict[str, Any] | None) -> tuple[datetime, datetime] | None:
@@ -49,15 +57,27 @@ def resolve_missing_work_source(
     year: int,
     *,
     requested_role: str | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Map a public analysis request to the configured source, role and interval bounds."""
+    """Map a public analysis request to the configured source, role and
+    interval bounds.
+
+    ``now`` is the sweep-stage-2 re-resolution seam (design.md Interfaces):
+    it feeds EXACTLY the ``year == now.year`` routing test below and nothing
+    else -- ``requested_role``/``event_window`` are tested first and the
+    interval bounds derive from ``year`` alone. Threaded IN from
+    ``revisit_stale``'s stage 2 (Year-Rollover Finalization step 6);
+    deliberately NOT threaded from the request path -- ``read_analysis`` ->
+    ``queue_missing_analysis`` leaves it unset, so a live request always
+    routes on the real clock. Defaults to ``datetime.now(UTC)``.
+    """
     if requested_role == "validation":
         source_id = RAINFALL_VALIDATION_SOURCE
         role = "validation"
     elif event_window is not None:
         source_id = RAINFALL_INTENSITY_SOURCE
         role = "intensity"
-    elif year == datetime.now(UTC).year:
+    elif year == (now or datetime.now(UTC)).year:
         source_id = RAINFALL_DAILY_SOURCE
         role = "daily"
     else:

@@ -16,7 +16,12 @@ from typing import Any
 
 from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
-from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY, RAINFALL_METRIC_POLICY_REVISION
+from app.domains.geo.rainfall.policy import (
+    RAINFALL_METRIC_POLICY,
+    RAINFALL_METRIC_POLICY_REVISION,
+    MetricThresholdPolicy,
+    apply_metric_policy,
+)
 from app.domains.geo.rainfall.scope import AnalysisScope
 
 _CORRECTION_SEPARATOR = "+r"
@@ -215,3 +220,96 @@ def data_revision_for(
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Year-rollover finalization: served_state, revision_write_decision, the
+# per-fingerprint advisory lock key (design.md "Year-Rollover Finalization",
+# "Serializing siblings — the per-fingerprint advisory lock")
+# ---------------------------------------------------------------------------
+
+
+def fingerprint_lock_key(request_fingerprint: str) -> int:
+    """Deterministic signed 64-bit advisory-lock key derived from a request
+    fingerprint (a lowercase sha256 hex digest, service.py:102-107). No new
+    column: take the first 16 hex chars (the first 8 bytes) as an unsigned
+    big-endian integer and reinterpret that as PostgreSQL's signed
+    ``bigint`` -- process-stable (no ``hash()`` randomization). A collision
+    between two unrelated fingerprints costs one shared queue slot, never a
+    wrong answer.
+    """
+    unsigned = int(request_fingerprint[:16], 16)
+    return unsigned - (1 << 64) if unsigned >= (1 << 63) else unsigned
+
+
+def served_state(snapshot: dict[str, Any]) -> tuple[str, str] | None:
+    """``(annual.selected.provenance.source_id, annual.selected.temporal_state)``
+    from a complete envelope, or ``None`` when either is missing (a corrupt
+    or pre-contract row) -- treated as *unknown*, never as *finalized*. The
+    ONE reader of the served envelope, shared by the stage-2 selection and
+    :func:`revision_write_decision`.
+    """
+    annual = snapshot.get("annual")
+    if not isinstance(annual, dict):
+        return None
+    selected = annual.get("selected")
+    if not isinstance(selected, dict):
+        return None
+    provenance = selected.get("provenance")
+    if not isinstance(provenance, dict):
+        return None
+    source_id = provenance.get("source_id")
+    temporal_state = selected.get("temporal_state")
+    if not isinstance(source_id, str) or not isinstance(temporal_state, str):
+        return None
+    return source_id, temporal_state
+
+
+def revision_write_decision(
+    incumbent: dict[str, Any] | None,
+    candidate: dict[str, Any],
+    policy: MetricThresholdPolicy,
+) -> str:
+    """``"write"`` | ``"latched"`` | ``"gate_refused"`` (design.md
+    "Write gate — no-regression semantics"):
+
+    - No incumbent, or the incumbent's ``served_state`` is ``None`` (an
+      envelope the router would 503 on anyway), or incumbent and candidate
+      name the same ``source_id`` -> ``"write"``. Stage 1's daily rebuild
+      and the first-materialization case; decision 3b's content address
+      already makes a no-information rebuild a silent no-op.
+    - Cross-source, candidate ``provisional``, incumbent ``final`` ->
+      ``"latched"``. Never write -- see "The latch" in design.md.
+    - Cross-source otherwise (the finalization case) -> ``"write"`` iff
+      ``apply_metric_policy`` -- the SAME function the disclosure path
+      already runs -- reports ``state == "available"``; otherwise
+      ``"gate_refused"``.
+    """
+    incumbent_state = served_state(incumbent) if incumbent is not None else None
+    if incumbent_state is None:
+        return "write"
+
+    incumbent_source_id, incumbent_temporal_state = incumbent_state
+    candidate_state = served_state(candidate)
+    if candidate_state is None:
+        # A candidate this module built itself is always well-formed; an
+        # unreadable candidate would be a compute bug, not a policy branch.
+        raise ValueError("revision_write_decision received a candidate with no served_state")
+    candidate_source_id, candidate_temporal_state = candidate_state
+
+    if incumbent_source_id == candidate_source_id:
+        return "write"
+
+    if candidate_temporal_state == "provisional" and incumbent_temporal_state == "final":
+        return "latched"
+
+    metric = candidate["annual"]["selected"]
+    applied = apply_metric_policy(
+        policy,
+        metric["metric"],
+        value=metric["value"],
+        coverage=metric["coverage"],
+        quality_score=metric["quality"]["score"],
+        completeness=metric["completeness"],
+    )
+    return "write" if applied.state == "available" else "gate_refused"
