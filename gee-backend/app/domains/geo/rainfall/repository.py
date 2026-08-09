@@ -165,9 +165,20 @@ def record_supersession(db: Session, *, interval_value_id: UUID, superseded_by_i
     """Append-only lifecycle link. ``event_type='superseded'`` — deliberately
     not ``'expired'``: only an expired row with a due ``expires_at`` is ever
     deletable by ``purge_expired_rainfall_intervals``, so a supersession can
-    never turn into a delete."""
-    db.add(
-        RainfallIntervalLifecycle(
+    never turn into a delete.
+
+    Core ``INSERT`` (R4-001), not an ORM ``db.add`` — matching
+    ``persist_intervals``/``persist_revision``. An ORM add stays pending in
+    ``session.new`` until the session flushes, and production's
+    ``SessionLocal`` is ``autoflush=False`` (``app/db/session.py``): the very
+    next read in the same transaction — ``intervals_in_window``'s anti-join
+    against this table, called from the chained ``build_analysis`` right
+    after ``persist_intervals`` — would miss an unflushed row and see the
+    slot's old and new revisions as two "current" rows at once. A Core
+    ``INSERT`` lands at execute time, independent of any flush.
+    """
+    db.execute(
+        pg_insert(RainfallIntervalLifecycle).values(
             interval_value_id=interval_value_id,
             superseded_by_id=superseded_by_id,
             event_type="superseded",
@@ -314,17 +325,38 @@ def persist_intervals(
     }
 
     inserted = 0
-    superseded = 0
+    superseded_pairs: list[tuple[UUID, UUID]] = []
     for row, revision, superseded_id in candidates:
         landed_id = landed_ids.get((row.interval_start, row.interval_end, revision))
         if landed_id is None:
             continue
         inserted += 1
         if superseded_id is not None:
-            record_supersession(db, interval_value_id=superseded_id, superseded_by_id=landed_id)
-            superseded += 1
+            superseded_pairs.append((superseded_id, landed_id))
 
-    return {"inserted": inserted, "unchanged": unchanged, "superseded": superseded}
+    if superseded_pairs:
+        # One multi-row Core INSERT for every lifecycle link this batch
+        # produced (R4-001) — same flush-independence rationale as
+        # record_supersession, batched instead of N single-row executes.
+        db.execute(
+            pg_insert(RainfallIntervalLifecycle).values(
+                [
+                    {
+                        "interval_value_id": superseded_id,
+                        "superseded_by_id": landed_id,
+                        "event_type": "superseded",
+                        "expires_at": None,
+                    }
+                    for superseded_id, landed_id in superseded_pairs
+                ]
+            )
+        )
+
+    return {
+        "inserted": inserted,
+        "unchanged": unchanged,
+        "superseded": len(superseded_pairs),
+    }
 
 
 def persist_revision(

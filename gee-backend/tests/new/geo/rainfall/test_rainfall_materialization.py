@@ -20,6 +20,7 @@ persistence write path and the compute layer all run for real.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -1385,3 +1386,142 @@ def test_e2e_post_202_then_200_without_monkeypatching_ingest(db, monkeypatch):
     assert metric["value"] is not None
     assert metric["provenance"]["source_id"] == "chirps-v3-final"
     assert metric["temporal_state"] == "final"
+
+
+# ---------------------------------------------------------------------------
+# R4-001 regression — flush-independent lifecycle writes under production
+# autoflush=False
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def db_autoflush_off(test_engine):
+    """Production-shape session built from the SAME connection
+    infrastructure as the shared ``db`` fixture (``test_engine``), but with
+    ``autoflush=False`` like the real ``SessionLocal`` (``app/db/session.py``
+    ``sessionmaker(bind=engine, autocommit=False, autoflush=False)``).
+
+    Deliberately NOT the shared ``db`` fixture: ``db``'s
+    ``Session(bind=connection)`` defaults to ``autoflush=True``, which
+    silently flushes a pending ORM ``db.add`` before the next read and would
+    hide the exact R4-001 bug class this module regression-tests — a Core
+    write is required precisely because production never flushes for you.
+    """
+    from sqlalchemy.orm import Session
+
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, autoflush=False)
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+def test_restated_slot_survives_chained_compute_without_explicit_flush(
+    db_autoflush_off, monkeypatch
+):
+    """Regression for R4-001: a restated (corrected) slot re-ingested
+    through ``_process_outbox_row`` — ingest and build_analysis chained in
+    ONE transaction, exactly as ``_process_outbox_batch`` runs it in
+    production — must not duplicate the slot just because the session never
+    autoflushes.
+
+    Before the fix, ``record_supersession`` wrote the lifecycle row via ORM
+    ``db.add``, which stays pending in ``session.new`` under
+    ``autoflush=False``. The chained ``build_analysis`` call's
+    ``intervals_in_window`` anti-join then ran against the DB before that
+    pending row ever landed, so it saw BOTH the old and the new revision of
+    the slot as "current" and ``build_snapshot`` raised on the duplicate
+    ``interval_start`` — see ``review-ledger.md`` R4-001.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    db = db_autoflush_off
+    scope_id = "zone-r4-001-regression"
+    slot_start = datetime(2024, 1, 1, tzinfo=UTC)
+    slot_end = datetime(2024, 1, 2, tzinfo=UTC)
+
+    # Leg 1 — baseline ingest (persist_intervals + queue: the accepted
+    # alternative to the outbox path for the FIRST pass). persist_intervals'
+    # own interval write is already a Core INSERT, so this slot is "current"
+    # the instant the call returns — no flush needed to set up the baseline.
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=[SourceInterval(slot_start, slot_end, 1.0, "mm", "v3-final")],
+    )
+
+    fingerprint = "fp-r4-001-regression"
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(outbox)
+    db.flush()  # setup only, to assign outbox.id so build_analysis's
+    # db.get() can find it -- not part of the ingest+build chain the
+    # R4-001 bug lives in.
+
+    # Leg 2 — re-ingest the SAME slot with a restated value, through the
+    # real chained path (``_process_outbox_row``): ingest_source_scope's
+    # persist_intervals (changed branch -> a correction row plus a
+    # record_supersession lifecycle link) runs immediately followed, in the
+    # SAME transaction and with NO intervening flush, by build_analysis's
+    # intervals_in_window anti-join read.
+    restated_batch = SourceBatch(
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        cadence=timedelta(days=1),
+        intervals=(SourceInterval(slot_start, slot_end, 2.0, "mm", "v3-final"),),
+        coverage=1.0,
+        completeness=1.0,
+        quality={"provider_revision": "v3-final"},
+        discrepancies=(),
+        checksum="sha256:restated",
+    )
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: restated_batch
+    )
+
+    result = tasks._process_outbox_row(outbox, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert outbox.status == "done"
+
+    revision_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+    )
+    assert revision_count == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        start=slot_start,
+        end=slot_end,
+    )
+    assert len(current) == 1
+    assert current[0].value == 2.0
