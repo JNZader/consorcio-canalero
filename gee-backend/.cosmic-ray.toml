@@ -78,6 +78,16 @@ module-path = [
   # "app/domains/geo/rainfall/policy.py",
   # "app/domains/geo/rainfall/service.py",
   # "app/domains/geo/rainfall/temporal.py",
+  # Task 3.19 (rainfall-materialization): compute.py joins this same
+  # commented/unmeasured block for the same reason -- blocked on the
+  # Python-3.11 cosmic-ray availability gap above, not on a lack of tests
+  # (tests/test_mutation_targets_rainfall.py already covers revision
+  # family/ordinal parsing, 6-dp equality, disclosure-window hashing,
+  # duplicate-slot raise, served_state, every revision_write_decision
+  # branch, and fingerprint_lock_key's wraparound). No new numeric
+  # threshold is invented here; it enters the gate only alongside the
+  # other three once a measured run exists.
+  # "app/domains/geo/rainfall/compute.py",
   # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
   # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
   # veces y NO es "correr los tests con DB mas rapido": el service no toca la
