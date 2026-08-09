@@ -379,11 +379,117 @@ review items in order, strict TDD throughout.
   unrelated), 14 warnings (pre-existing, unrelated), exit 0.
 - `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0.
 
+## PR3 review fix round 1 (2026-08-09)
+
+Fix agent applied the two CONFIRMED CRITICALs (C1 stage-2 starvation, C2 stage-1 starvation —
+review-ledger.md "Pre-PR review — PR3", 2-of-3 refuter panel) plus the approved info fixes from
+the same review round, on branch `feat/rainfall-materialization-03-revisit`. Strict TDD
+throughout; RED verified for C1, C2, R2-005 and R4-204 by temporarily reverting each production
+fix (a `pass` stub or a disabled branch) and re-running the affected test to confirm it failed
+for the expected reason, then restoring the fix. R1-001's bounded-wait behavior was verified
+GREEN only (a genuine RED would require an unbounded real wait — see the finding's own commit
+note); this is disclosed, not silently skipped.
+
+### TDD Cycle Evidence — C1 + C2 (confirmed criticals)
+
+| Finding | Fix | RED | GREEN | Commit |
+|---|---|---|---|---|
+| C1 (stage 2 starvation) | `repository.completed_year_daily_done_keys`: SQL-side exclusion (correlated scalar subquery reading each candidate's own newest revision, `IS NOT TRUE` for NULL-safety) + rotation (DISTINCT ON wrapped in a subquery, outer `ORDER BY completed_at ASC`) | ✅ `test_finalization_sql_exclusion_frees_rotation_slot_for_a_stalled_key` confirmed failing pre-fix: `assert 50 == 1` (`finalization_scanned`) — the 50 already-final keys sorted ahead of the one stalled key and were scanned every time; the stalled key was never reached | ✅ post-fix: `finalization_scanned == 1`, `finalization_enqueued == 1`, `finalization_terminated == 0` | `d9d050c` (prod), `4844c9f` (test) |
+| C2 (stage 1 starvation) | `repository.current_year_done_keys`: same rotation shape | ✅ `test_revisit_stage1_rotation_reaches_a_lexicographically_last_key_within_two_sweeps` confirmed failing pre-fix: `zone-zzz-frozen` never appeared as a pending row after either of two sweeps (same top-50-by-lexicographic-key returned both times) | ✅ post-fix: day 1 refreshes the 50 oldest (`truncated: true`); day 2, after those are processed and rotate to the back, reaches `zone-zzz-frozen` | `d9d050c` (prod), `4844c9f` (test) |
+
+### TDD Cycle Evidence — approved info fixes (this round)
+
+| Finding | Fix | RED | GREEN | Commit |
+|---|---|---|---|---|
+| R4-203 + R2-004 (merged into C1/C2 per the fix design) | Per-stage `rainfall.revisit.completed`/`.failed`/`rainfall.finalization.completed` events with full counters + `truncated`; stage 1 in its own try/except so a failure there does not block stage 2; `bind=True`/`max_retries=2` restored on `revisit_stale`; `finalization_terminated` closes the accounting | ✅ covered by the C1/C2 boundary tests (`truncated` assertions) plus existing sweep tests | ✅ | `d9d050c` |
+| R1-001 | `SET LOCAL lock_timeout` before `pg_advisory_xact_lock` in `acquire_fingerprint_lock` (module constant `_FINGERPRINT_LOCK_TIMEOUT_MS = 5000`, mirrors `app/auth/refresh_tokens.py`'s convention) | ⚠️ GREEN-only, disclosed: a real RED (removing the `SET LOCAL` and re-running) would hang the test indefinitely (the second connection would block forever, not raise) — unsafe to run deliberately. Verified by inspection instead: `pg_advisory_xact_lock` without a `lock_timeout` set blocks with no bound by Postgres design, a textbook guaranteed hang | ✅ `test_acquire_fingerprint_lock_bounds_the_wait` (constant monkeypatched to 250ms) passes in 0.75s | `d9d050c` (prod), `4844c9f` (test) |
+| R2-002 | Latch branch reads `incumbent_source_id` via `served_state()` instead of a raw subscript; docstring lists all three call sites | N/A — refactor of an existing, already-tested path (no behavior change: `served_state` on a well-formed incumbent returns the identical value the raw subscript did) | ✅ `test_latch_sequential_and_concurrent_two_connections` (sequential case) asserts the payload | `d9d050c` (prod), `4844c9f` (test) |
+| R2-003 | `repository.pending_row_for_key` single implementation; `service._reused_outbox_response` dedup | N/A — refactor; caught a real regression in the process (see Issues below) | ✅ full suite green after fixing the fake-session regression | `d9d050c` |
+| R2-005 | `revision_write_decision -> Literal[...]`; explicit `elif`/`else raise` in the consumer | ✅ `test_persist_analysis_revision_raises_on_unrecognized_write_decision` confirmed failing pre-fix (`raise` branch replaced with `pass`): `Failed: DID NOT RAISE ValueError` — the bogus decision silently fell through and wrote a real revision | ✅ passes after restoring the `raise` | `d9d050c` (prod), `4844c9f` (test) |
+| R2-006 | `revisit_stale` docstring states the session-boundary exception | N/A — doc-only | N/A | `d9d050c` |
+| R2-007 | `_revisit_stage2` derives `current_year` from `now.year` internally | N/A — refactor, no caller outside `_revisit_stale` (verified: no test calls `_revisit_stage2` directly) | ✅ full suite green | `d9d050c` |
+| R2-008 | `finalization.gate_refused` flattened; `finalization.skipped` gains `scope_version` | N/A — payload shape change, no prior test asserted the old shape | ✅ `test_finalization_is_retried_not_abandoned_then_terminates` + `test_revisit_stage2_reresolves_source_and_terminates_on_final` assert the new flat fields | `d9d050c` (prod), `4844c9f` (test) |
+| R4-204 | `PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS = 420` wall-clock check between rows in `_process_outbox_batch`, `rainfall.outbox.batch_truncated` event | ✅ `test_process_outbox_batch_stops_cleanly_when_wall_clock_budget_exceeded` confirmed failing pre-fix (check disabled): all 3 fixture rows were processed (`processed == 3`, expected 0) | ✅ passes after restoring the check | `d9d050c` (prod), `4844c9f` (test) |
+| R3-102 | Scoped the three `db=None` E2E tests' global count assertions (`>= 1` or direct scope-filtered queries) | N/A — test-only hardening against order-dependence, not a production behavior change | ✅ full suite green | `4844c9f` |
+| R3-103 | Payload-level assertions for the five named events in tests that already traverse those paths | N/A — additive assertions on existing passing tests | ✅ all five assertions pass against the (already-correct) production payloads | `4844c9f` |
+
+### Issues Found (root-caused and fixed within this round)
+
+1. **`test_existing_pending_row_is_reused_not_recreated` (test_mutation_targets_rainfall.py)
+   regressed when R2-003 moved `queue_missing_analysis`'s "existing pending row" check off
+   `db.query(...).filter_by(...).first()` (the legacy ORM surface `_FakeSession.query()` faked)
+   onto `repository.pending_row_for_key`'s `db.scalar(select(...))` (the SAME surface
+   `recent_done`'s cooldown lookup already used).** `_FakeSession.scalar()` was hardcoded to
+   always return `self._recent_done`, so the pending-row lookup silently got `None` instead of
+   the fixture's `existing` row (`result["outbox_id"] == 'None'`, expected the real UUID). Fixed
+   by making `_FakeSession.scalar()` positional — 1st call answers `recent_done`, 2nd+ answers
+   `existing` — matching `queue_missing_analysis`'s own fixed call order. Caught by running the
+   full `tests/test_mutation_targets_rainfall.py` suite (not just the touched test) before
+   committing; see `4844c9f`.
+2. **`test_latch_sequential_and_concurrent_two_connections`'s existing probe conflicted with
+   R1-001.** The probe manually set `SET LOCAL lock_timeout = '250ms'` then called
+   `acquire_fingerprint_lock`, expecting a fast `OperationalError`; once that function started
+   issuing its OWN `SET LOCAL lock_timeout = '5000'` first, the override made the probe wait 5s
+   instead of 250ms — and, worse, pushed session A's total hold time (the probe runs on the
+   critical path before `session_a.commit()`) past session B's own 5s default, making B ALSO time
+   out with `LockNotAvailable` (`KeyError: 'result'` when the test tried to read B's never-set
+   result). Root-caused via the full traceback (`LockNotAvailable: canceling statement due to
+   lock timeout` inside `run_second`'s `build_analysis` call, not inside the probe). Fixed by
+   having the probe issue its own raw `SELECT pg_advisory_xact_lock(...)` instead of calling
+   through the wrapper, restoring both the probe's short window and B's real 5s default. See
+   `4844c9f`.
+
+### Deviations / Clarifications (this round)
+
+- R1-001 has no genuine RED (see the TDD Cycle Evidence table) — disclosed rather than silently
+  skipped, per the strict-TDD "no silent fallback" rule; the fix itself is a one-statement,
+  low-risk addition mirroring an existing, already-shipped pattern (`app/auth/refresh_tokens.py`).
+- The design.md "Termination, stated as a proof obligation" paragraph's OWN proof was never wrong
+  — only where it was enforced was wrong (a Python `continue` past an unrotated `LIMIT`, not the
+  SQL pre-filter the design previously implied). The fix moves the enforcement to match the
+  paragraph's own proof, rather than restating a new proof; documented as a correction, not a
+  redesign, in `48dcdb6`.
+- No changes outside `gee-backend/app/domains/geo/rainfall/`, `gee-backend/tests/`,
+  `docs/lluvia-v2-observability-workbook.md` and this change's own `openspec/` artifacts.
+
+### Author Counterexample Self-Check (this round)
+
+| Category | Evidence | Result |
+|----------|----------|--------|
+| Null / absence | `completed_year_daily_done_keys`'s `IS NOT TRUE` NULL-safety explicitly tested via the JDA-002 healing case staying reachable (a `done` row with no revision is never excluded by the new SQL filter — `test_revisit_stage2_reresolves_source_and_terminates_on_final`'s `zone-stage2-legacy-null` case, pre-existing, still passes unmodified) | Pass |
+| Boundaries | Both rotation tests exercise the exact `MAX_OUTBOX_BATCH` (50) boundary: 50 vs 51 candidates, `truncated` flag asserted `true`/`false` on both sides | Pass |
+| Concurrency / idempotency | R1-001's lock-timeout test is itself a two-connection concurrency probe; the pre-existing `test_latch_sequential_and_concurrent_two_connections` (two real connections + a worker thread) re-verified green after the probe fix, including the reversed-claim-order round | Pass |
+| Malicious input / security | N/A — this round adds no new external input surface (no new endpoint/schema); all changes are Celery-task/repository-internal or a Session-level lock timeout | N/A — no new input surface |
+| Partial failure / recovery | R4-203's stage-1-try/except-then-stage-2-still-runs behavior; R4-204's clean-early-return-instead-of-SIGKILL behavior; both are new partial-failure paths and both have dedicated tests | Pass |
+| State / tenancy / time | C1/C2's rotation is inherently a state-over-time property (which keys get picked THIS sweep depends on the outcome of the LAST sweep); both boundary tests drive two real sweep cycles to prove it; no tenancy dimension in rainfall intervals | Pass |
+
+### Files Changed (this round)
+
+| File | Action | Finding(s) |
+|------|--------|------------|
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified: `pending_row_for_key` (new), `current_year_done_keys` (rotated), `completed_year_daily_done_keys` (SQL exclusion + rotated), `acquire_fingerprint_lock` (`SET LOCAL lock_timeout`) | C1, C2, R1-001, R2-003 |
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified: `_revisit_stage1`/`_revisit_stage2`/`_revisit_stale`/`revisit_stale` (rotation-aware, `now`-only stage 2, per-stage try/except, sweep events, `bind=True`/`max_retries=2`), `_persist_analysis_revision` (latch payload via `served_state`, gate_refused flattened, explicit decision branches), `_process_outbox_batch` (wall-clock budget) | C1, C2, R2-002, R2-004, R2-005, R2-006, R2-007, R2-008, R4-203, R4-204 |
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified: `revision_write_decision` return type (`Literal`), `served_state` docstring | R2-002, R2-005 |
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified: `queue_missing_analysis` uses `pending_row_for_key`; new `_reused_outbox_response` helper | R2-003 |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_materialization.py` | Modified: 2 new boundary tests (C1, C2), 2 new focused tests (R2-005, R4-204), 1 new test (R1-001), 2 pinned assertions updated, payload assertions added to 5 existing tests (R3-103), 3 E2E tests' global counts scoped (R3-102), existing latch test's probe fixed (R1-001 conflict) | all |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified: `_FakeSession.scalar()` fixed (R2-003 regression) | R2-003 |
+| `docs/lluvia-v2-observability-workbook.md` | Modified: corrected the false "SQL pre-filter already terminates" claim; catalogued the 4 new events; R2-008 payload shape updates | C1, R2-008, R4-203, R2-004, R4-204 |
+| `openspec/changes/rainfall-materialization/design.md` | Modified: "Current-Year Revisit Cycle" (rotation), "Year-Rollover Finalization" (SQL-first termination, rotation, observability), Interfaces block | C1, C2, R1-001, R2-002, R2-005, R4-203 |
+| `openspec/changes/rainfall-materialization/review-ledger.md` | C1/C2 rows set to `fixed` with resolution notes; all approved info-fix rows annotated `**Addressed**` | all |
+| `openspec/changes/rainfall-materialization/apply-progress.md` | This file — merged with this round's section | — |
+
+### Final Verification (this round)
+
+- `pytest tests/new/ -v` → **1912 passed, 5 skipped** (1907 prior baseline + 5 new tests: 2
+  boundary, R2-005, R4-204, R1-001), exit 0.
+- `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0 (unchanged count —
+  the `_FakeSession` fix has no new test, it repairs an existing one).
+
 ## Next Recommended
 
-`judgment-day` (post-sdd-phase trigger rule) on the PR3 diff
-(`feat/rainfall-materialization-02-compute...feat/rainfall-materialization-03-revisit`), then
-`sdd-apply` for Phase 4 (PR 4 — Daily-Source Flip: tasks 4.1-4.2), base branch
+`judgment-day` (post-sdd-phase trigger rule) on the PR3 review fix round 1 diff
+(scoped re-review: the persisted ledger + this round's fix diff, not the full PR3 diff again),
+then `sdd-apply` for Phase 4 (PR 4 — Daily-Source Flip: tasks 4.1-4.2), base branch
 `feat/rainfall-materialization-03-revisit`, per the feature-branch-chain strategy. PR 4 is the
 single step that opens current-year traffic (`RAINFALL_DAILY_SOURCE` "sqpe-obs" →
 "chirps-v3-sat"); PR3's entire sweep/finalization/guard machinery ships dark until then (no
