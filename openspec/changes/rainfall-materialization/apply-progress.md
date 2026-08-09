@@ -8,6 +8,11 @@
 - Batch 2, Part 1: Phase 2 (PR 2) — Compute. Tasks 2.1-2.14. Strict TDD mode,
   on branch `feat/rainfall-materialization-02-compute` (base: PR1 branch
   after Part 0's hardening commits).
+- Batch 3: Phase 3 (PR 3) — Revisit, Finalization, Guards. Tasks 3.1-3.19 +
+  folded review items R4-101..104. Strict TDD mode, on branch
+  `feat/rainfall-materialization-03-revisit` (base: PR2 branch). Executed
+  across two agent runs (a resume after a mid-batch crash) — see "Batch 3 /
+  PR3" below.
 
 ## Git
 
@@ -17,6 +22,12 @@
   - Batch 2 Part 0 (R3 hardening): `7f892fc` (test+impl), `70bd040` (ledger annotation)
 - PR2 branch: `feat/rainfall-materialization-02-compute` (checked out from PR1 branch, after `70bd040`)
   - Batch 2 Part 1 (compute): `0fb88fd` .. `3a8e0d2` (tasks 2.1-2.14, see table below)
+  - PR2 review fix round 1: `da761d9`, `a08fb94` (R4-001..003, see table below)
+- PR3 branch: `feat/rainfall-materialization-03-revisit` (checked out from PR2 branch, after `a08fb94`)
+  - Pre-crash (prior agent run): `025ed53`, `b412dc5`, `81470b0` (tasks 3.1-3.6, 3.8 + repository
+    halves of 3.2/3.9/3.13; see "Batch 3 / PR3" below)
+  - Resume run (this run): `8709bce` .. `04b6538` (ledger reconciliation, task 3.7 completion,
+    tasks 3.9-3.19, folded review items R4-101..104; see table below)
 - No push, no PR created — local branches only, per protocol.
 
 ## Baseline (before any code change, batch 1)
@@ -194,6 +205,8 @@ Part 1 final counts: `tests/new/geo/rainfall/` 212 passed (195 + 17 new... — s
 - Batch 2 Part 0 (R3-001..004 hardening) — complete, committed on the same PR1 branch.
 - [x] 2.1 through [x] 2.14 — Phase 2 (PR 2), all complete, all committed individually on
   `feat/rainfall-materialization-02-compute`.
+- [x] 3.1 through [x] 3.19 — Phase 3 (PR 3), all complete, all committed individually on
+  `feat/rainfall-materialization-03-revisit`. See "Batch 3 / PR3" section below.
 
 ## Files Changed (cumulative, PR1 + PR2 branches)
 
@@ -233,12 +246,146 @@ new tests this round (1 R4-001 regression + 3 R4-003 observability). Full `tests
 passed, 5 skipped (pre-existing live-backend/Martin skips, unrelated), exit 0. `ruff check` clean
 on all three touched files.
 
+## Batch 3 / PR3 (Phase 3 — Revisit, Finalization, Guards: tasks 3.1-3.19)
+
+Branch `feat/rainfall-materialization-03-revisit` (base: PR2 branch). This batch was executed
+across TWO agent runs: a prior agent crashed mid-batch on an API error after landing 3 commits
+(`025ed53`, `b412dc5`, `81470b0` — covering the advisory lock, `served_state`/
+`revision_write_decision`/`fingerprint_lock_key`, cooldown, the sweep repository queries, and
+the lock/gate wiring into `build_analysis`) plus an in-flight, uncommitted, partially-written
+task 3.7 (the two-connection concurrent latch test). This resumed run reconciled that state
+first (see "PR3 Resume Reconciliation" below), then completed tasks 3.9-3.19 and the folded
+review items in order, strict TDD throughout.
+
+### PR3 Resume Reconciliation
+
+1. Committed the ledger doc (`openspec/changes/rainfall-materialization/review-ledger.md`,
+   containing the orchestrator's PR2 re-review verdict) first, as instructed — `8709bce`.
+2. Diffed the two uncommitted code files. `tasks.py`'s only change was
+   `acquire_fingerprint_lock(...)` temporarily replaced with `pass  # TEMP: lock disabled for
+   counterexample check` — the dead agent's own note confirmed this was mid-flight RED
+   verification for task 3.7 (disable the lock, confirm the NEW concurrent-latch test and the
+   EXISTING task-3.3 lock-ordering test both fail in the expected way without it, then restore).
+   Ran both tests with the lock disabled first: both failed exactly as designed (`test_
+   build_analysis_locks_before_incumbent_read`: `['get_snapshot'] != ['lock', 'get_snapshot']`;
+   `test_latch_sequential_and_concurrent_two_connections`: the blocking assertion on the second
+   sibling's thread). Restored the real `acquire_fingerprint_lock(...)` call — file became
+   byte-identical to HEAD, confirming the crashed agent's committed work was already correct and
+   only the counterexample check itself was left mid-flight.
+3. The test file's uncommitted content (the full 3.7 test, already including the try/finally
+   around `session_a` the dead agent's note asked for) was coherent and complete; finished 3.7
+   by confirming GREEN (40/40 in `test_rainfall_materialization.py`) and committing — `f288169`.
+4. Verified tasks 3.1-3.8 were ACTUALLY complete (not just committed) by running each task's
+   own named test individually before marking `[x]`: all passed on the first run (3.1, 3.3, 3.6,
+   3.7 direct; 3.2, 3.4, 3.5, 3.8 via their `test_mutation_targets_rainfall.py` classes). None
+   needed rework.
+
+### TDD Cycle Evidence — PR3 (tasks 3.9-3.19 + folded review items)
+
+| Task/Item | Test(s) | RED | GREEN | Commit |
+|---|---|---|---|---|
+| 3.9, 3.13 | `test_current_year_done_keys_distinct_on_key`, `test_completed_year_daily_done_keys_is_a_superset` | Repository query functions were already implemented (prior-agent commit `b412dc5`) without direct tests. Counterexample check: temporarily stripped the `.distinct(...)` clause / the `role`+`year` filters, confirmed both new tests fail in the expected way (`3 == 2`; wrong scope_ids set) | Restored, both pass; 42/42 in the file | `4272aa6` |
+| 3.10, 3.11 | `test_revisit_stage1_enqueues_fresh_pending_row_per_current_year_key`, `test_revisit_stage1_dedups_and_exempts_past_years` | `revisit_stale`'s old per-key signature — `TypeError: got an unexpected keyword argument 'db'` | New two-stage `revisit_stale(db=None, now=None)` implemented (stage 1 + stage 2 together, since the task returns one unified dict); 226/226 in `tests/new/geo/rainfall/` | `08175bd` |
+| 3.12 | `test_e2e_same_key_later_date_and_corrected_revision_becomes_visible` | N/A — pure integration-wiring verification (tasks.md's own Files: none) | Passed in isolation first try; **failed when run inside the full suite** — root-caused to a real test-infrastructure bug (see Issues below) and fixed by switching to independent `SessionLocal()` connections. Stable across 5 repeated runs + 2 full-directory runs (227/227 both) | `fe1501c` |
+| 3.14 | `test_revisit_stage2_reresolves_source_and_terminates_on_final` | Stage 2 logic already implemented in the 3.10-3.11 commit without its own test. Counterexample check: disabled the termination branch (RED: `2 == 1` enqueued) and separately the re-resolution call (RED: `'chirps-v3-sat' != 'chirps-v3-final'`) | Both restored; 228/228 | `0dfc838` |
+| 3.15 | `test_finalization_is_retried_not_abandoned_then_terminates` | New scenario, first pass on already-implemented machinery. Counterexample check: forced `revision_write_decision` to always return `"write"` (RED: `2 == 1` revisions after a gate-refused attempt) | Restored; 229/229, stable across 2 full-directory runs | `4b31d8b` |
+| 3.16 | `test_e2e_year_rollover_transitions_to_final` | N/A — pure integration-wiring verification (Files: none) | Passed first try; stable across 3 repeated + 2 full-directory runs (230/230) using the real-`SessionLocal()` pattern from 3.12/3.15 | `bde05ac` |
+| 3.17 | `test_revisit_stale_beat_entry_is_registered` | ✅ `entry is None` confirmed (no beat schedule row) | ✅ 1/1 after adding the `rainfall-revisit-stale` entry; 231/231, celery-registration tests elsewhere unaffected | `26b63a1` |
+| 3.18 | `test_validation_source_matches_manifest`, `test_concurrent_identical_post_does_not_surface_500` | First test passed immediately (smn-gauge fixed in prior-agent commit `025ed53`). Second: ✅ raw `IntegrityError` then `PendingRollbackError` confirmed pre-fix | Added the `try/except IntegrityError: db.rollback(); re-SELECT` recovery to `queue_missing_analysis`; 233/233. Test itself needed a redesign mid-flight (see Issues below) | `8b42ff4` |
+| 3.19 | N/A (doc-only: `.cosmic-ray.toml` comment registration) | N/A | TOML re-parsed clean after the edit | `fc359f4` |
+| R4-101, R4-102 | N/A (doc-only: `docs/lluvia-v2-observability-workbook.md` catalogue update) | N/A | N/A | `25a3769` |
+| R4-103 | `test_record_supersession_batches_more_than_one_pair_correctly` | Counterexample check: deliberately cross-wired every `(superseded_id, landed_id)` pair to the last landed row, confirmed the test fails on the exact per-slot pairing assertion | Restored the real per-row pairing; 234/234 | `25a3769` |
+| R4-104 | (no new test — already fixed) | — | — | `81470b0` (pre-dates this resumed run; ledger annotated in `04b6538`) |
+
+### Issues Found (root-caused and fixed within this batch)
+
+1. **`test_e2e_same_key_later_date_and_corrected_revision_becomes_visible` (task 3.12) passed
+   in isolation but failed inside the full `tests/new/geo/rainfall/` run.** Root cause:
+   `RainfallAnalysisRevision.created_at` is `server_default=func.now()`, which PostgreSQL
+   freezes to *transaction start*. The first draft ran all three sequential builds through the
+   shared `db` fixture's single savepoint-scoped transaction, so all three revisions for one
+   fingerprint landed the identical `created_at`, and `get_snapshot`'s `id DESC` tiebreak served
+   an arbitrary one of the three (a random UUID ordering) instead of the newest — passing or
+   failing depending on unrelated UUID values generated elsewhere in the same test run. Fixed by
+   using real, independent `SessionLocal()` connections throughout (real `get_db` override,
+   `db=None` on every task call), matching the existing Durability testing-strategy precedent.
+   Logged to engram (`Test bug-class: shared db fixture freezes created_at across multi-build
+   tests`) since this applies to any future test needing multiple real builds under one
+   fingerprint.
+2. **`test_concurrent_identical_post_does_not_surface_500` (task 3.18) could not exercise its
+   own recovery path on the shared `db` fixture.** The first design called `queue_missing_
+   analysis` twice on the same fixture session, expecting the second call's own `db.rollback()`
+   (inside the new `except IntegrityError` handler) to undo only the failed second INSERT while
+   leaving the first call's committed row intact. Empirically, `db.rollback()` wiped BOTH rows —
+   confirmed via a temporary debug print showing `db.query(RainfallOutbox).all() == []`
+   immediately after the rollback. Root cause: the fixture's Session is bound directly to an
+   already-`begin()`-ed Connection with no SAVEPOINT layering, so `rollback()` undoes the whole
+   test's prior commits, not just the failed statement — a distinct failure mode from Issue 1's
+   `created_at` freeze, same underlying fixture. Fixed by using two independent `SessionLocal()`
+   connections (one per "concurrent" caller), which is also a more faithful simulation of a real
+   race. Logged to engram (`db fixture rollback() undoes whole-test prior commits, not just
+   failed statement`).
+3. **Arithmetic slip in the first draft of the 3.12 E2E test**, caught by the test itself before
+   commit: expected `31.0` for "30 days@1.0 + 1 day@2.0" (actually `32.0`). Fixed before the
+   first GREEN run — not a production bug, a test-authoring mistake.
+
+### Deviations / Clarifications (PR3)
+
+- **Stage 1 and stage 2 of `revisit_stale` were implemented together in the SAME commit
+  (`08175bd`, tasks 3.10-3.11's commit)**, even though tasks.md lists stage 2's own dedicated
+  test under task 3.14. This follows necessarily from the design's own Interfaces section:
+  `revisit_stale(db=None, now=None)` is ONE Celery task returning ONE unified dict
+  (`scanned`/`enqueued`/`skipped` + `finalization_scanned`/`finalization_enqueued`/
+  `finalization_skipped`) — there is no way to make the function callable at all with only
+  stage 1's half of the return shape. Task 3.14's own dedicated RED/GREEN cycle (counterexample
+  check against the already-written stage 2 logic) still ran in full before that logic was
+  marked complete; see the TDD Cycle Evidence row above. Not a deviation from the design, but
+  flagged here because "the code preceded its own numbered task's test" is a real ordering
+  quirk worth disclosing per the self-check rules.
+- No other deviations from design.md this batch — the two-stage sweep, the write gate, the
+  latch, the advisory lock, the Beat entry and the `IntegrityError` recovery all match the
+  design's Interfaces/decision sections exactly as specified.
+
+### Author Counterexample Self-Check (PR3)
+
+| Category | Evidence | Result |
+|----------|----------|--------|
+| Null / absence | `rainfall.revisit.skipped{reason:"fingerprint_unavailable"}` (NULL `request_fingerprint`, tested via 3.9/3.10's fixtures); `served_state` returning `None` for a corrupt/pre-contract snapshot (3.14's `provenance_unavailable` case); R4-103's N>1 supersession test | Pass |
+| Boundaries | Coverage-equals-threshold boundary for `revision_write_decision` (already covered, task 3.5, re-verified via 3.14/3.15's integration path); year-boundary `now` seam for stage 2 re-resolution (3.14, 3.16); `event_window_key`'s structurally-unreachable assertion (3.14) | Pass |
+| Concurrency / idempotency | `test_latch_sequential_and_concurrent_two_connections` (3.7, real two-connection block/latch, both claim orders); `test_concurrent_identical_post_does_not_surface_500` (3.18, real IntegrityError race recovery); stage 1/2 dedup via repeated sweep runs (3.11, 3.14) | Pass |
+| Malicious input / security | N/A — PR3 adds no new external input surface (no new endpoint/schema); all new code is Celery-task/repository-internal | N/A — no new input surface in this batch |
+| Partial failure / recovery | The self-extinguishing regression (3.15: a gate-refused attempt is retried, not abandoned, across 2 full cycles before succeeding); the `IntegrityError` recovery path (3.18); the advisory lock's savepoint-rollback-drops-the-lock-early case (already covered by 3.7's design, re-verified live) | Pass |
+| State / tenancy / time | Year-rollover state transition (provisional→final) tested at both the integration layer (3.14) and the E2E/API-boundary layer (3.16); the `now` seam threading through `revisit_stale`→`resolve_missing_work_source` (3.8, re-exercised by 3.14/3.15/3.16); no tenancy dimension in rainfall intervals | Pass |
+
+### Files Changed (PR3, cumulative with PR1+PR2 table above)
+
+| File | Action | Task(s) |
+|------|--------|---------|
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified: `_persist_analysis_revision` (advisory lock, write gate); `_pending_row_for_key`, `_revisit_stage1`, `_revisit_stage2`, `_revisit_stale`, `revisit_stale(db=None, now=None)` (replaces the old per-key signature) | 3.3, 3.6, 3.10, 3.11, 3.14 |
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified: `record_supersession(pairs=...)` (batched, R4-001/R4-104), `recent_done`, `current_year_done_keys`, `completed_year_daily_done_keys`, `acquire_fingerprint_lock`, `claim_outbox_row(now=...)` | 3.1, 3.2, 3.9, 3.13 |
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified: `fingerprint_lock_key`, `served_state`, `revision_write_decision` | 3.2, 3.4, 3.5 |
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified: cooldown in `queue_missing_analysis`, `resolve_missing_work_source(now=...)`, `RAINFALL_VALIDATION_SOURCE="smn-gauge"`, `IntegrityError` recovery in `queue_missing_analysis` | 3.1, 3.8, 3.18 |
+| `gee-backend/app/core/celery_app.py` | Modified: `rainfall-revisit-stale` Beat entry | 3.17 |
+| `gee-backend/.cosmic-ray.toml` | Modified: `compute.py` added to the commented rainfall block | 3.19 |
+| `docs/lluvia-v2-observability-workbook.md` | Modified: new §2.3/§2.4, `error_type`/`error_message` fields, all PR3 events catalogued | R4-101, R4-102 |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_materialization.py` | Modified: ~20 new test functions across 3.7, 3.9-3.18, R4-103 | all PR3 tasks |
+| `openspec/changes/rainfall-materialization/tasks.md` | Tasks 3.1-3.19 marked `[x]` | all |
+| `openspec/changes/rainfall-materialization/review-ledger.md` | R4-101..104 annotated `**Addressed** in <sha>` | R4-101..104 |
+| `openspec/changes/rainfall-materialization/apply-progress.md` | This file — merged with the PR3 section | — |
+
+### Final Verification (PR3 close-out)
+
+- `pytest tests/new/ -v` → **1907 passed, 5 skipped** (pre-existing live-backend/Martin gates,
+  unrelated), 14 warnings (pre-existing, unrelated), exit 0.
+- `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0.
+
 ## Next Recommended
 
-`judgment-day` (post-sdd-phase trigger rule) on the PR2 diff
-(`feat/rainfall-materialization-01-persistence...feat/rainfall-materialization-02-compute`), then
-`sdd-apply` again for Phase 3 (PR 3 — Revisit, Finalization, Guards: tasks 3.1-3.19), base branch
-`feat/rainfall-materialization-02-compute`, per the feature-branch-chain strategy. PR 3 is where
-the advisory lock (`fingerprint_lock_key`/`acquire_fingerprint_lock`), the write gate
-(`revision_write_decision`), and the latch land in `build_analysis` — PR2 deliberately does not
-include them (see Deviations/Clarifications above).
+`judgment-day` (post-sdd-phase trigger rule) on the PR3 diff
+(`feat/rainfall-materialization-02-compute...feat/rainfall-materialization-03-revisit`), then
+`sdd-apply` for Phase 4 (PR 4 — Daily-Source Flip: tasks 4.1-4.2), base branch
+`feat/rainfall-materialization-03-revisit`, per the feature-branch-chain strategy. PR 4 is the
+single step that opens current-year traffic (`RAINFALL_DAILY_SOURCE` "sqpe-obs" →
+"chirps-v3-sat"); PR3's entire sweep/finalization/guard machinery ships dark until then (no
+`role='daily'` `done` row with a non-`NULL` fingerprint can exist before the flip). Phase 5
+(ops/rollout, non-code: tasks 5.1-5.3) follows PR4.
