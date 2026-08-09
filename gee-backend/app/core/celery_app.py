@@ -156,6 +156,18 @@ celery_app.conf.update(
             "schedule": crontab(minute="*"),
             "options": {"queue": "celery"},
         },
+        # design.md "Current-Year Revisit Cycle" + "Year-Rollover Finalization":
+        # the daily two-stage sweep. 03:30 local (conf.timezone above) is
+        # off-peak and clear of the 04:15/04:30/04:45 cluster above. Kill
+        # switch: removing this entry stops BOTH sweep stages while the
+        # build_analysis latch (per-fingerprint advisory lock) stays active --
+        # pausing the sweep must not re-open the path that lets a provisional
+        # build shadow a finalized year.
+        "rainfall-revisit-stale": {
+            "task": "rainfall.revisit_stale",
+            "schedule": crontab(minute="30", hour="3"),
+            "options": {"queue": "celery"},
+        },
     },
 )
 

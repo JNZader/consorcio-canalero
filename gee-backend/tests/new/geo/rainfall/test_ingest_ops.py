@@ -381,7 +381,14 @@ def test_pending_unique_constraint_allows_reenqueue_after_done(db):
         scope_version=scope.version,
         year=2024,
         status="done",
-        completed_at=datetime.now(UTC),
+        # rainfall-materialization PR3 decision 6: a `done` row within
+        # RAINFALL_RECOMPUTE_COOLDOWN (10 min) now skips re-enqueue on
+        # purpose (see test_rainfall_materialization.py's
+        # test_repeated_post_skips_reenqueue_after_recent_done). Backdating
+        # past the cooldown keeps THIS test's own point intact: the
+        # pending-only partial unique index still allows a fresh pending
+        # row once the previous attempt is done.
+        completed_at=datetime.now(UTC) - timedelta(minutes=20),
     )
     db.add(done_row)
     db.commit()
@@ -412,13 +419,21 @@ def test_resolve_missing_work_source_uses_intensity_for_event_window():
 
 
 def test_resolve_missing_work_source_uses_daily_for_current_year():
+    """rainfall-materialization PR4 task 4.1: RAINFALL_DAILY_SOURCE flips
+    "sqpe-obs" -> "chirps-v3-sat" (an interim default under the daily MAY
+    fallback clause, delta spec "Evidence-Gated Source Roles" MODIFIED
+    requirement; TODO(smn) marks it tracked technical debt, not a
+    completed validation). Before the flip this pinned "sqpe-obs" -- the
+    unimplemented provider that made the daily role permanently
+    unreachable; PR 3's sweep stayed inert until this assertion (and the
+    constant) changed."""
     from app.domains.geo.rainfall.service import resolve_missing_work_source
 
     current_year = datetime.now(UTC).year
     resolved = resolve_missing_work_source(None, year=current_year)
 
     assert resolved["role"] == "daily"
-    assert resolved["source_id"] == "sqpe-obs"
+    assert resolved["source_id"] == "chirps-v3-sat"
     assert resolved["interval_start"] == datetime(current_year, 1, 1, 0, 0, tzinfo=UTC)
     assert resolved["interval_end"] == datetime(current_year + 1, 1, 1, 0, 0, tzinfo=UTC)
 
@@ -440,7 +455,9 @@ def test_resolve_missing_work_source_uses_validation_when_explicitly_requested()
     resolved = resolve_missing_work_source(None, year=2024, requested_role="validation")
 
     assert resolved["role"] == "validation"
-    assert resolved["source_id"] == "smn-gauges"
+    # rainfall-materialization PR3 task 3.18: fixed the "smn-gauges" typo to
+    # match adapters/manifests.py's validation-role candidate ("smn-gauge").
+    assert resolved["source_id"] == "smn-gauge"
 
 
 # -----------------------------------------------------------------------------

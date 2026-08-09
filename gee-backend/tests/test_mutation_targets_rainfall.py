@@ -672,16 +672,38 @@ class _FakeQuery:
 
 class _FakeSession:
     """Session double exposing exactly the surface ``queue_missing_analysis``
-    uses: ``query``, ``add``, ``flush``, ``commit``. No real DB."""
+    uses: ``query``, ``add``, ``flush``, ``commit``, ``scalar``. No real DB.
 
-    def __init__(self, existing: Any | None = None) -> None:
+    ``scalar`` backs TWO distinct ``select(...)``-based repository reads,
+    called in this fixed order by ``queue_missing_analysis``: task 3.1's
+    ``recent_done`` cooldown lookup first, then R2-003's
+    ``repository.pending_row_for_key`` (the single "is there already a
+    pending row for this key" check, replacing what used to be a
+    ``db.query(...).filter_by(...).first()`` this fake answered via
+    ``query`` below). Positional, not query-inspecting -- good enough for
+    this fake's one caller and its fixed call order; the default
+    ``recent_done=None``/``existing=None`` keeps every pre-existing test's
+    behavior unchanged (no cooldown row, no reusable pending row -> the
+    enqueue path runs as before).
+    """
+
+    def __init__(self, existing: Any | None = None, recent_done: Any | None = None) -> None:
         self._existing = existing
+        self._recent_done = recent_done
+        self._scalar_calls = 0
         self.added: list[Any] = []
         self.flushed = 0
         self.committed = 0
 
     def query(self, _model: Any) -> _FakeQuery:
         return _FakeQuery([self._existing] if self._existing is not None else [])
+
+    def scalar(self, _query: Any) -> Any | None:
+        self._scalar_calls += 1
+        # 1st call: recent_done's cooldown lookup. 2nd+: pending_row_for_key
+        # (queue_missing_analysis's pre-check, and again after a simulated
+        # IntegrityError re-read -- neither existing test drives that far).
+        return self._recent_done if self._scalar_calls == 1 else self._existing
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -898,3 +920,626 @@ class TestMetricRowsCsv:
         assert lines[0].startswith("completeness,coverage,")
         assert "fallback_used" in lines[0]
         assert len(lines) == 3  # header + two rows
+
+
+# ===========================================================================
+# compute.py — pure NRT-correction revision helpers (rainfall-materialization PR1)
+# ===========================================================================
+
+
+class TestRevisionFamilyAndCorrectionRevision:
+    """PR1 task 1.2: ``revision_family``/``correction_revision`` round-trip.
+
+    Pure, no I/O — the compute.py boundary rule (design.md "Technical
+    Approach"). CHIRPS pins one revision string per source_id and restates
+    values behind it (chirps.py:26-29); these two helpers are what lets a
+    restated value become a *new* row instead of silently colliding on
+    ``uq_rainfall_interval_revision``.
+    """
+
+    def test_revision_family_and_correction_revision_roundtrip(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision, revision_family
+
+        assert revision_family("v3-nrt+r2") == "v3-nrt"
+        assert correction_revision("v3-nrt", 2) == "v3-nrt+r2"
+        assert revision_family(correction_revision("v3-nrt", 2)) == "v3-nrt"
+
+    def test_revision_family_of_a_bare_family_revision_is_itself(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_family
+
+        # No adapter has ever emitted a corrected slot yet — the family IS
+        # the whole provider_revision string (chirps.py:26-29 live values).
+        assert revision_family("v3-final") == "v3-final"
+        assert revision_family("v3-nrt") == "v3-nrt"
+
+    def test_correction_revision_first_and_second_ordinal(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision
+
+        assert correction_revision("v3-nrt", 1) == "v3-nrt+r1"
+        assert correction_revision("v3-nrt", 2) == "v3-nrt+r2"
+
+    def test_correction_revision_rejects_non_positive_ordinal(self) -> None:
+        from app.domains.geo.rainfall.compute import correction_revision
+
+        with pytest.raises(ValueError, match="ordinal"):
+            correction_revision("v3-nrt", 0)
+        with pytest.raises(ValueError, match="ordinal"):
+            correction_revision("v3-nrt", -1)
+
+
+class TestSixDecimalEqualityBoundary:
+    """PR1 task 1.4: the *same* rounding ``data_revision_for`` will hash
+    (decision 3b) decides whether a restated value is a no-op or a
+    correction — a difference too small to move the 6th decimal must never
+    mint a ``rainfall_interval_lifecycle`` row claiming a correction the
+    disclosure cannot show."""
+
+    def test_six_decimal_equality_boundary(self) -> None:
+        from app.domains.geo.rainfall.repository import _values_equal_at_6dp
+
+        # Equal at 6 decimal places despite not being bit-identical.
+        assert _values_equal_at_6dp(1.5000001, 1.5) is True
+        # A restatement large enough to move the 6th decimal is NOT equal.
+        assert _values_equal_at_6dp(1.500002, 1.5) is False
+
+    def test_six_decimal_equality_is_symmetric(self) -> None:
+        from app.domains.geo.rainfall.repository import _values_equal_at_6dp
+
+        assert _values_equal_at_6dp(0.0, 0.0000001) is True
+        assert _values_equal_at_6dp(0.0000001, 0.0) is True
+
+
+# ===========================================================================
+# policy.py — RAINFALL_METRIC_POLICY constants (rainfall-materialization PR2, task 2.8)
+# ===========================================================================
+
+
+class TestRainfallMetricPolicyConstants:
+    """decision 5d: a frozen module constant, not a settings-driven read —
+    the display path (service.py's ``_metric_policy``) rejects a revision
+    mismatch, so the policy MUST be embedded in every snapshot rather than
+    looked up live."""
+
+    def test_rainfall_metric_policy_constants_shape(self) -> None:
+        from app.domains.geo.rainfall.policy import (
+            RAINFALL_METRIC_POLICY,
+            RAINFALL_METRIC_POLICY_REVISION,
+            MetricThresholdPolicy,
+        )
+
+        assert isinstance(RAINFALL_METRIC_POLICY_REVISION, str)
+        assert RAINFALL_METRIC_POLICY_REVISION
+        assert isinstance(RAINFALL_METRIC_POLICY, MetricThresholdPolicy)
+        assert RAINFALL_METRIC_POLICY.revision == RAINFALL_METRIC_POLICY_REVISION
+        assert RAINFALL_METRIC_POLICY.minimum_coverage_by_metric["annual"] == 0.8
+        assert RAINFALL_METRIC_POLICY.minimum_quality_by_metric["annual"] == 0.8
+        # A well-formed threshold policy the shared apply_metric_policy state
+        # machine can actually evaluate (guards against a policy so broken
+        # every snapshot's annual metric silently comes back suppressed).
+        applied = apply_metric_policy(
+            RAINFALL_METRIC_POLICY,
+            "annual",
+            value=10.0,
+            coverage=0.9,
+            quality_score=0.9,
+            completeness=0.9,
+        )
+        assert applied.state == "available"
+        assert applied.value == 10.0
+
+
+# ===========================================================================
+# compute.py — build_snapshot + data_revision_for (rainfall-materialization
+# PR2, tasks 2.4-2.7)
+# ===========================================================================
+
+
+def _fixture_batch_evidence(**overrides: Any) -> dict[str, Any]:
+    """Matches the JSON-safe shape tasks.py's ``_batch_result`` returns."""
+    payload: dict[str, Any] = {
+        "source_id": "chirps-v3-final",
+        "scope_kind": "zone",
+        "scope_id": "z1",
+        "year": 2024,
+        "intervals": 3,
+        "persisted": 3,
+        "superseded": 0,
+        "provider_revision": "v3-final",
+        "unit": "mm",
+        "cadence_seconds": 86400.0,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {
+            "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_RNL",
+            "band": "precipitation",
+            "reduction": "mean",
+            "scale_m": 5500,
+            "provider_revision": "v3-final",
+        },
+        "discrepancies": [],
+        "checksum": "sha256:fixture",
+    }
+    payload.update(overrides)
+    return payload
+
+
+_ZONE_SCOPE = AnalysisScope(kind="zone", id="z1", version="v1", regional_estimate=False)
+
+
+def _daily_intervals(*, start: date, values: list[float]) -> list[tuple[datetime, datetime, float]]:
+    rows = []
+    for offset, value in enumerate(values):
+        day_start = datetime(start.year, start.month, start.day, tzinfo=UTC) + timedelta(
+            days=offset
+        )
+        rows.append((day_start, day_start + timedelta(days=1), value))
+    return rows
+
+
+class TestBuildSnapshotEnvelope:
+    """Task 2.4: root keys are a subset of SNAPSHOT_ROOT_KEYS, v1 ships only
+    annual.selected, and the metric carries the full extra="forbid" field
+    set with quality["score"] in [0, 1] (decision 5b)."""
+
+    def test_build_snapshot_envelope_contract(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+        from app.domains.geo.rainfall.service import SNAPSHOT_ROOT_KEYS
+
+        now = datetime(2024, 6, 15, tzinfo=UTC)
+        intervals = _daily_intervals(start=date(2024, 1, 1), values=[1.0, 2.0, 3.0])
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="historical",
+            source_id="chirps-v3-final",
+            intervals=intervals,
+            batch=_fixture_batch_evidence(),
+            now=now,
+        )
+
+        assert set(snapshot) <= SNAPSHOT_ROOT_KEYS
+        assert set(snapshot["annual"]) == {"selected"}
+
+        metric = snapshot["annual"]["selected"]
+        expected_fields = {
+            "metric",
+            "value",
+            "unit",
+            "state",
+            "reason",
+            "interval_start",
+            "interval_end",
+            "coverage",
+            "completeness",
+            "quality",
+            "discrepancies",
+            "temporal_state",
+            "revision",
+            "provenance",
+            "fallback_used",
+        }
+        assert set(metric) == expected_fields
+        assert 0 <= metric["quality"]["score"] <= 1
+        assert metric["value"] == 6.0
+        assert metric["state"] == "available"
+
+        provenance = metric["provenance"]
+        assert provenance["source_id"] == "chirps-v3-final"
+        assert provenance["spatial_scope"] == "zone"
+
+    def test_build_snapshot_raises_on_duplicate_interval_start(self) -> None:
+        """Task 2.7: a duplicated slot is a broken invariant, not a sum —
+        intervals_in_window's anti-join is supposed to guarantee at most one
+        row per slot; a violation must be loud."""
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        duplicated = [
+            (start, start + timedelta(days=1), 1.0),
+            (start, start + timedelta(days=1), 5.0),
+        ]
+        with pytest.raises(ValueError, match="duplicat"):
+            build_snapshot(
+                scope=_ZONE_SCOPE,
+                year=2024,
+                role="historical",
+                source_id="chirps-v3-final",
+                intervals=duplicated,
+                batch=_fixture_batch_evidence(),
+                now=datetime(2024, 6, 15, tzinfo=UTC),
+            )
+
+
+class TestBuildSnapshotCoverageWindow:
+    """Task 2.5: coverage/completeness/quality are recomputed over
+    [year_start, min(comparison_end, last_interval_end)), not the raw fetch
+    window — otherwise a current year in progress would report the
+    completeness of a FULL year against a handful of published days."""
+
+    def test_build_snapshot_bounds_coverage_window_to_available_through(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        # 5 days published in a year that (per `now`) has run for far longer
+        # than 5 days — completeness must be measured against the DISCLOSED
+        # window, not the full year, or it would read near zero forever.
+        now = datetime.now(UTC)
+        current_year = now.year
+        intervals = _daily_intervals(
+            start=date(current_year, 1, 1), values=[1.0, 1.0, 1.0, 1.0, 1.0]
+        )
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=current_year,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=intervals,
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                provider_revision="v3-nrt",
+                quality={
+                    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                    "band": "precipitation",
+                    "reduction": "mean",
+                    "scale_m": 5500,
+                    "provider_revision": "v3-nrt",
+                },
+            ),
+            now=now,
+        )
+        metric = snapshot["annual"]["selected"]
+        # available_through tracks the last PUBLISHED day, not the calendar
+        # comparison_end (the provider is lagging behind `now` by design).
+        assert metric["provenance"]["available_through"] == (
+            datetime(current_year, 1, 6, tzinfo=UTC).isoformat()
+        )
+        assert metric["completeness"] == 1.0
+        assert metric["coverage"] == 1.0
+        assert metric["value"] == 5.0
+
+    def test_build_snapshot_with_no_data_in_window_is_unavailable(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        now = datetime(2024, 3, 1, tzinfo=UTC)
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=[],
+            batch=_fixture_batch_evidence(intervals=0, persisted=0),
+            now=now,
+        )
+        metric = snapshot["annual"]["selected"]
+        assert metric["state"] == "unavailable"
+        assert metric["value"] is None
+        assert metric["reason"]
+        assert metric["completeness"] == 0.0
+
+
+class TestDataRevisionFor:
+    """Task 2.6: content address stable across an unchanged (intervals,
+    comparison_end) pair, and changes when comparison_end alone advances
+    (decision 3b — this is what makes the daily revisit sweep mint a new
+    revision even when the provider republished nothing new)."""
+
+    def test_data_revision_for_stability_and_advance(self) -> None:
+        from app.domains.geo.rainfall.compute import data_revision_for
+
+        rows = [
+            (datetime(2024, 1, 1, tzinfo=UTC), 1.5),
+            (datetime(2024, 1, 2, tzinfo=UTC), 2.5),
+        ]
+        first = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), rows
+        )
+        same_again = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), list(rows)
+        )
+        assert first == same_again
+
+        advanced = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 3), rows
+        )
+        assert advanced != first
+
+        changed_value = data_revision_for(
+            "chirps-v3-final",
+            "v3-final",
+            _ZONE_SCOPE,
+            2024,
+            date(2024, 1, 2),
+            [(datetime(2024, 1, 1, tzinfo=UTC), 9.9), rows[1]],
+        )
+        assert changed_value != first
+
+    def test_data_revision_for_is_order_independent(self) -> None:
+        from app.domains.geo.rainfall.compute import data_revision_for
+
+        rows = [
+            (datetime(2024, 1, 1, tzinfo=UTC), 1.5),
+            (datetime(2024, 1, 2, tzinfo=UTC), 2.5),
+        ]
+        forward = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), rows
+        )
+        reversed_order = data_revision_for(
+            "chirps-v3-final",
+            "v3-final",
+            _ZONE_SCOPE,
+            2024,
+            date(2024, 1, 2),
+            list(reversed(rows)),
+        )
+        assert forward == reversed_order
+
+
+# ===========================================================================
+# compute.py — fingerprint_lock_key + served_state + revision_write_decision
+# (rainfall-materialization PR3, tasks 3.2/3.4/3.5)
+# ===========================================================================
+
+
+class TestFingerprintLockKey:
+    """Task 3.2: the per-fingerprint advisory lock key (design.md
+    "Serializing siblings"). No new column -- the fingerprint the outbox row
+    already carries IS a lowercase sha256 hex digest (service.py:102-107);
+    the key is the first 16 hex chars (8 bytes) read as an unsigned
+    big-endian int, reinterpreted as PostgreSQL's signed bigint."""
+
+    def test_fingerprint_lock_key_is_deterministic(self) -> None:
+        from app.domains.geo.rainfall.compute import fingerprint_lock_key
+
+        fp = "deadbeef" * 8
+        assert fingerprint_lock_key(fp) == fingerprint_lock_key(fp)
+
+    def test_fingerprint_lock_key_stays_inside_postgres_bigint_range(self) -> None:
+        from app.domains.geo.rainfall.compute import fingerprint_lock_key
+
+        for prefix in ("00" * 8, "ff" * 8, "7f" + "ff" * 7, "80" + "00" * 7):
+            key = fingerprint_lock_key(prefix + "00" * 24)
+            assert -(1 << 63) <= key < (1 << 63)
+
+    def test_fingerprint_lock_key_wraps_a_high_first_bit_to_negative(self) -> None:
+        """The wraparound branch: a digest whose first byte is >= 0x80 has
+        its top bit set as an unsigned int -- reinterpreted as bigint, that
+        maps to a NEGATIVE key."""
+        from app.domains.geo.rainfall.compute import fingerprint_lock_key
+
+        assert fingerprint_lock_key("8" + "0" * 63) < 0
+        assert fingerprint_lock_key("7" + "0" * 63) >= 0
+
+    def test_fingerprint_lock_key_matches_hand_computed_values(self) -> None:
+        from app.domains.geo.rainfall.compute import fingerprint_lock_key
+
+        # First 16 hex chars "0000000000000001" -> unsigned 1 -> signed 1.
+        assert fingerprint_lock_key("0" * 15 + "1" + "0" * 48) == 1
+        # First bit set: 0x8000000000000000 unsigned -> -2**63 signed (the
+        # exact wraparound boundary).
+        assert fingerprint_lock_key("8" + "0" * 63) == -(1 << 63)
+        # All-ones prefix: 0xFFFFFFFFFFFFFFFF unsigned -> -1 signed.
+        assert fingerprint_lock_key("f" * 16 + "0" * 48) == -1
+
+
+def _snapshot_with(
+    *, source_id: str, temporal_state: str, **metric_overrides: Any
+) -> dict[str, Any]:
+    """Minimal well-formed snapshot for served_state/revision_write_decision
+    unit tests -- only the fields those two pure readers touch."""
+    metric: dict[str, Any] = {
+        "metric": "annual",
+        "value": 500.0,
+        "coverage": 0.95,
+        "completeness": 0.95,
+        "quality": {"score": 0.95},
+        "temporal_state": temporal_state,
+        "provenance": {"source_id": source_id},
+    }
+    metric.update(metric_overrides)
+    return {"annual": {"selected": metric}}
+
+
+class TestServedState:
+    """Task 3.4: reads (annual.selected.provenance.source_id,
+    annual.selected.temporal_state) from a complete envelope, None when
+    either is missing -- the ONE reader shared by stage-2 selection and the
+    write gate (design.md "What served state means, and where it is read
+    from")."""
+
+    def test_served_state_reads_the_disclosed_pair(self) -> None:
+        from app.domains.geo.rainfall.compute import served_state
+
+        snapshot = _snapshot_with(source_id="chirps-v3-final", temporal_state="final")
+        assert served_state(snapshot) == ("chirps-v3-final", "final")
+
+    def test_served_state_is_none_when_provenance_is_missing(self) -> None:
+        from app.domains.geo.rainfall.compute import served_state
+
+        snapshot = {"annual": {"selected": {"temporal_state": "final"}}}
+        assert served_state(snapshot) is None
+
+    def test_served_state_is_none_when_temporal_state_is_missing(self) -> None:
+        from app.domains.geo.rainfall.compute import served_state
+
+        snapshot = {"annual": {"selected": {"provenance": {"source_id": "chirps-v3-final"}}}}
+        assert served_state(snapshot) is None
+
+    def test_served_state_is_none_when_annual_group_is_absent(self) -> None:
+        from app.domains.geo.rainfall.compute import served_state
+
+        assert served_state({}) is None
+
+
+class TestRevisionWriteDecision:
+    """Task 3.5: every branch of decision 9b's write gate."""
+
+    def test_no_incumbent_writes(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        candidate = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        assert revision_write_decision(None, candidate, RAINFALL_METRIC_POLICY) == "write"
+
+    def test_incumbent_with_unreadable_served_state_writes(self) -> None:
+        """A corrupt/pre-contract incumbent row -- unreadable, not final --
+        must stay replaceable."""
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        candidate = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        assert revision_write_decision({}, candidate, RAINFALL_METRIC_POLICY) == "write"
+
+    def test_same_source_id_writes(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        assert revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "write"
+
+    def test_provisional_candidate_over_final_incumbent_is_latched(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-final", temporal_state="final")
+        candidate = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        assert revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "latched"
+
+    def test_cross_source_available_writes(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.9,
+            completeness=0.9,
+            quality={"score": 0.9},
+        )
+        assert revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "write"
+
+    def test_cross_source_below_coverage_is_gate_refused(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.5,
+            completeness=0.9,
+            quality={"score": 0.9},
+        )
+        assert (
+            revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "gate_refused"
+        )
+
+    def test_cross_source_below_completeness_is_gate_refused(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.9,
+            completeness=0.5,
+            quality={"score": 0.9},
+        )
+        assert (
+            revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "gate_refused"
+        )
+
+    def test_cross_source_below_quality_is_gate_refused(self) -> None:
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.9,
+            completeness=0.9,
+            quality={"score": 0.5},
+        )
+        assert (
+            revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "gate_refused"
+        )
+
+    def test_cross_source_null_value_is_gate_refused(self) -> None:
+        """Adequate coverage/completeness/quality but a null value ->
+        apply_metric_policy returns "unavailable", never "available" -> the
+        gate refuses (design.md: "all three are refusals here")."""
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.9,
+            completeness=0.9,
+            quality={"score": 0.9},
+            value=None,
+        )
+        assert (
+            revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "gate_refused"
+        )
+
+    def test_cross_source_coverage_equal_to_threshold_boundary_writes(self) -> None:
+        """policy.py:166 is `<`, so equality PASSES -- the exact boundary
+        task 3.5 must pin."""
+        from app.domains.geo.rainfall.compute import revision_write_decision
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        incumbent = _snapshot_with(source_id="chirps-v3-sat", temporal_state="provisional")
+        candidate = _snapshot_with(
+            source_id="chirps-v3-final",
+            temporal_state="final",
+            coverage=0.8,
+            completeness=0.8,
+            quality={"score": 0.8},
+        )
+        assert revision_write_decision(incumbent, candidate, RAINFALL_METRIC_POLICY) == "write"
+
+
+# ===========================================================================
+# service.py — resolve_missing_work_source `now` seam (rainfall-materialization
+# PR3, task 3.8)
+# ===========================================================================
+
+
+class TestResolveMissingWorkSourceNowSeam:
+    """Task 3.8: `now` feeds EXACTLY the `year == now.year` routing test and
+    nothing else -- threaded IN from sweep stage 2's re-resolution; the
+    request path (`queue_missing_analysis`) leaves it unset so a live
+    request always routes on the real clock."""
+
+    def test_now_seam_routes_current_year_to_daily(self) -> None:
+        resolved = resolve_missing_work_source(None, 2024, now=datetime(2024, 6, 15, tzinfo=UTC))
+        assert resolved["role"] == "daily"
+        assert resolved["source_id"] == RAINFALL_DAILY_SOURCE
+
+    def test_now_seam_routes_completed_year_to_historical(self) -> None:
+        resolved = resolve_missing_work_source(None, 2024, now=datetime(2025, 1, 2, tzinfo=UTC))
+        assert resolved["role"] == "historical"
+        assert resolved["source_id"] == RAINFALL_HISTORICAL_SOURCE
+
+    def test_now_none_falls_back_to_the_real_clock(self) -> None:
+        current = datetime.now(UTC).year
+        resolved = resolve_missing_work_source(None, current, now=None)
+        assert resolved["role"] == "daily"
+
+
+# ===========================================================================
+# service.py — RAINFALL_VALIDATION_SOURCE matches the manifest
+# (rainfall-materialization PR3, task 3.18)
+# ===========================================================================
+
+
+class TestValidationSourceMatchesManifest:
+    def test_validation_identifier_matches_manifest(self) -> None:
+        from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
+
+        manifest = next(m for m in CANDIDATE_MANIFESTS if m.role == "validation")
+        assert RAINFALL_VALIDATION_SOURCE == manifest.source_id == "smn-gauge"

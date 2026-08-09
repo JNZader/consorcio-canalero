@@ -3,12 +3,13 @@
 import csv
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from math import isfinite
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallOutbox
@@ -18,9 +19,56 @@ from app.domains.geo.rainfall.schemas import MetricResult
 METRIC_GROUPS = ("annual", "antecedents", "intensity")
 
 RAINFALL_HISTORICAL_SOURCE = "chirps-v3-final"
-RAINFALL_DAILY_SOURCE = "sqpe-obs"
+# TODO(smn): SQPE-OBS has no GEE catalog entry (SMN NetCDF distribution,
+# tasks._concrete_fetch) and no per-role eligibility outcome has been
+# recorded for the daily role under "Source Eligibility Validation Gate".
+# Task 4.1 (rainfall-materialization PR 4, design.md decision 7): interim
+# default under the daily role's MAY-fallback clause (delta spec
+# "Evidence-Gated Source Roles" MODIFIED requirement) -- a deliberate,
+# tracked deviation, not a completed validation. Swap back to "sqpe-obs"
+# once an SMN adapter exists.
+RAINFALL_DAILY_SOURCE = "chirps-v3-sat"
 RAINFALL_INTENSITY_SOURCE = "sinarame-rqpe"
-RAINFALL_VALIDATION_SOURCE = "smn-gauges"
+# Task 3.18: matches adapters/manifests.py's validation-role candidate
+# (`smn-gauge`, singular) -- was `smn-gauges`, a typo that never matched.
+RAINFALL_VALIDATION_SOURCE = "smn-gauge"
+
+# Task 4.1: spec.md's NAMED spec-primary candidate per role -- distinct
+# from the constants above, which are what the system actually resolves to
+# right now. For every role except "daily" the two agree today. "daily"
+# is the one deliberate divergence (RAINFALL_DAILY_SOURCE's TODO(smn)
+# above): spec.md:206 names SQPE-OBS as the daily candidate, but the
+# system serves chirps-v3-sat under the daily MAY-fallback clause until an
+# SMN adapter exists. `fallback_used_for` is the single place this table
+# is read, so a future eligibility change updates exactly one dict entry.
+RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE: dict[str, str] = {
+    "historical": RAINFALL_HISTORICAL_SOURCE,
+    "daily": "sqpe-obs",
+    "intensity": RAINFALL_INTENSITY_SOURCE,
+    "validation": RAINFALL_VALIDATION_SOURCE,
+}
+
+
+def fallback_used_for(role: str, source_id: str) -> bool:
+    """True when *source_id* -- the source actually resolved and used for
+    *role* -- diverges from spec.md's named spec-primary candidate for
+    that role (delta spec "Evidence-Gated Source Roles" MODIFIED
+    requirement). Feeds `provenance.fallback_used` on every persisted
+    snapshot: `compute.build_snapshot`'s `fallback_used` parameter, threaded
+    in from `tasks._persist_analysis_revision`. An unmapped role reports no
+    divergence rather than raising -- `resolve_missing_work_source` is the
+    sole source of truth for which roles exist; this function only compares,
+    it never routes.
+    """
+    primary = RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE.get(role)
+    return primary is not None and primary != source_id
+
+
+# decision 6: skip request-path re-enqueue when a `done` row for the same
+# key completed within this window, regardless of whether a revision
+# exists -- see queue_missing_analysis. Engineering guess tuned to the 5s
+# frontend poll; confirm against real GEE quota headroom (Open Questions).
+RAINFALL_RECOMPUTE_COOLDOWN = timedelta(minutes=10)
 
 
 def _parse_event_window(event_window: dict[str, Any] | None) -> tuple[datetime, datetime] | None:
@@ -49,15 +97,27 @@ def resolve_missing_work_source(
     year: int,
     *,
     requested_role: str | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Map a public analysis request to the configured source, role and interval bounds."""
+    """Map a public analysis request to the configured source, role and
+    interval bounds.
+
+    ``now`` is the sweep-stage-2 re-resolution seam (design.md Interfaces):
+    it feeds EXACTLY the ``year == now.year`` routing test below and nothing
+    else -- ``requested_role``/``event_window`` are tested first and the
+    interval bounds derive from ``year`` alone. Threaded IN from
+    ``revisit_stale``'s stage 2 (Year-Rollover Finalization step 6);
+    deliberately NOT threaded from the request path -- ``read_analysis`` ->
+    ``queue_missing_analysis`` leaves it unset, so a live request always
+    routes on the real clock. Defaults to ``datetime.now(UTC)``.
+    """
     if requested_role == "validation":
         source_id = RAINFALL_VALIDATION_SOURCE
         role = "validation"
     elif event_window is not None:
         source_id = RAINFALL_INTENSITY_SOURCE
         role = "intensity"
-    elif year == datetime.now(UTC).year:
+    elif year == (now or datetime.now(UTC)).year:
         source_id = RAINFALL_DAILY_SOURCE
         role = "daily"
     else:
@@ -107,6 +167,53 @@ def analysis_request_fingerprint(request: Any) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _default_request_fingerprint(
+    *, scope: Any, year: int, event_window: dict[str, Any] | None
+) -> str:
+    """Fallback fingerprint for a caller that does not pass one explicitly
+    (decision 4). Mirrors router.py's own request-dict construction exactly,
+    including OMITTING ``event_window`` entirely when it is ``None`` rather
+    than setting it — ``analysis_request_fingerprint``'s JSON canonicalization
+    does not treat a present-but-null key the same as an absent one, so a
+    careless recompute here would silently diverge from the router's own
+    fingerprint for the identical request."""
+    request: dict[str, Any] = {
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": year,
+    }
+    if event_window is not None:
+        request["event_window"] = event_window
+    return analysis_request_fingerprint(request)
+
+
+def _reused_outbox_response(
+    row: RainfallOutbox, *, source: dict[str, Any], scope: Any, year: int
+) -> dict[str, Any]:
+    """R2-003 (review-ledger.md "Pre-PR review — PR3"): the two "found an
+    existing pending row for this key" branches in ``queue_missing_analysis``
+    below -- the upfront pre-check hit, and the post-``IntegrityError``
+    re-read after losing a real race -- emitted and returned the identical
+    shape; this is their one implementation.
+    """
+    record_event(
+        "rainfall.outbox.reused",
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        labels=row.work_labels,
+    )
+    return {
+        "status": "queued",
+        "outbox_id": str(row.id),
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": year,
+        "labels": row.work_labels,
+    }
+
+
 def queue_missing_analysis(
     db: Any,
     *,
@@ -115,39 +222,59 @@ def queue_missing_analysis(
     labels: tuple[str, ...] = ("analysis_missing",),
     event_window: dict[str, Any] | None = None,
     requested_role: str | None = None,
+    request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
-    existing = (
-        db.query(RainfallOutbox)
-        .filter_by(
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            status="pending",
-        )
-        .first()
+    from app.domains.geo.rainfall.repository import pending_row_for_key, recent_done
+
+    fingerprint = request_fingerprint or _default_request_fingerprint(
+        scope=scope, year=year, event_window=event_window
     )
-    if existing is not None:
+    source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
+
+    # decision 6: a recent `done` row for this key skips re-enqueue
+    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
+    # the per-poll GEE burn while letting a done-without-revision heal
+    # itself once the cooldown lapses.
+    recent = recent_done(
+        db,
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        since=datetime.now(UTC) - RAINFALL_RECOMPUTE_COOLDOWN,
+    )
+    if recent is not None:
         record_event(
-            "rainfall.outbox.reused",
+            "rainfall.outbox.cooldown",
             source_id=source["source_id"],
             role=source["role"],
             scope_kind=scope.kind,
             scope_id=scope.id,
             scope_version=scope.version,
             year=year,
-            labels=existing.work_labels,
+            outbox_id=str(recent.id),
         )
         return {
             "status": "queued",
-            "outbox_id": str(existing.id),
+            "outbox_id": str(recent.id),
             "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
             "year": year,
-            "labels": existing.work_labels,
+            "labels": recent.work_labels,
         }
+
+    existing = pending_row_for_key(
+        db,
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+    )
+    if existing is not None:
+        return _reused_outbox_response(existing, source=source, scope=scope, year=year)
 
     labels_with_role = tuple({*labels, f"role:{source['role']}"})
     outbox = RainfallOutbox(
@@ -160,10 +287,40 @@ def queue_missing_analysis(
         work_labels=list(labels_with_role),
         interval_start=source["interval_start"],
         interval_end=source["interval_end"],
+        request_fingerprint=fingerprint,
     )
     db.add(outbox)
-    db.flush()
-    db.commit()
+    try:
+        db.flush()
+        db.commit()
+    except IntegrityError:
+        # decision 8's discipline (task 3.18): two identical requests can
+        # both pass the `existing` pre-check above before either commits --
+        # the race window the check alone cannot close. The loser's own
+        # INSERT collides with the winner's now-committed row on
+        # ix_rainfall_outbox_pending_unique; rolling back and re-reading
+        # that row is a reuse, not a failure, so both callers still get a
+        # 202 with the SAME outbox_id.
+        db.rollback()
+        reused = pending_row_for_key(
+            db,
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
+        )
+        if reused is None:
+            # The constraint guarantees a matching row exists; a lost race
+            # that skipped it would mean the constraint itself is wrong.
+            raise RuntimeError(
+                "queue_missing_analysis hit IntegrityError but found no matching "
+                f"pending row (source_id={source['source_id']!r}, role={source['role']!r}, "
+                f"scope={scope.kind}/{scope.id}/{scope.version}, year={year})"
+            ) from None
+        return _reused_outbox_response(reused, source=source, scope=scope, year=year)
+
     record_event(
         "rainfall.outbox.queued",
         source_id=source["source_id"],

@@ -1,0 +1,4466 @@
+"""Rainfall v2 materialization: persistence, supersession, chained compute,
+revisit sweeps, year-rollover finalization and their end-to-end wiring.
+
+Real PostgreSQL throughout (the ``db`` fixture) — the partial unique indexes
+and the advisory-lock concurrency guarantees this change relies on exist
+nowhere else. The append-only *trigger*
+(``trg_rainfall_interval_value_immutable``) is raw SQL created by the
+``lluvia_v2_001_evidence_foundation`` migration, not by ``Base.metadata``,
+so this module's harness (``conftest.py``'s ``create_all`` schema) never
+creates it and this file makes no claim that the trigger fires. Append-only
+enforcement in this harness comes only from the ORM ``before_flush`` guard
+(``models.py`` ``_prevent_rainfall_audit_mutation``), which inspects
+``session.dirty``/``session.deleted`` and therefore never gates an INSERT —
+consistent with every write path exercised here being an ``INSERT ..  ON
+CONFLICT DO NOTHING`` (never an UPDATE or a DELETE). Provider I/O is faked
+at the ``GeeZonalClient`` boundary only (same harness as
+``test_provider_adapters.py``), so the adapter, the zonal batch builder, the
+persistence write path and the compute layer all run for real.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import func, select
+
+from app.db.session import SessionLocal
+from app.domains.geo.rainfall.models import (
+    RainfallBackfillCheckpoint,
+    RainfallIntervalLifecycle,
+    RainfallIntervalValue,
+)
+from app.domains.geo.rainfall.ports import SourceBatch, SourceInterval
+
+ZONE_KWARGS = {"scope_kind": "zone", "scope_id": "z1", "scope_version": "v1"}
+
+
+def _daily_intervals(
+    *, start_day: int, values: list[float], provider_revision: str = "v3-final", month: int = 1
+) -> list[SourceInterval]:
+    """Build consecutive UTC-daily ``SourceInterval`` rows starting at day *start_day*."""
+    intervals = []
+    for offset, value in enumerate(values):
+        day = start_day + offset
+        start = datetime(2024, month, day, tzinfo=UTC)
+        intervals.append(
+            SourceInterval(start, start + timedelta(days=1), value, "mm", provider_revision)
+        )
+    return intervals
+
+
+def _count_interval_rows(
+    db, *, source_id: str = "chirps-v3-final", scope_id: str | None = None
+) -> int:
+    query = (
+        select(func.count())
+        .select_from(RainfallIntervalValue)
+        .where(RainfallIntervalValue.source_id == source_id)
+    )
+    if scope_id is not None:
+        query = query.where(RainfallIntervalValue.scope_id == scope_id)
+    return db.scalar(query)
+
+
+def _hex_fingerprint(label: str) -> str:
+    """A real-shaped (sha256 hex digest) request fingerprint for tests that
+    need a readable label but flow through ``build_analysis``.
+    ``fingerprint_lock_key`` (task 3.2) requires the first 16 chars to be
+    valid hex -- production fingerprints always are
+    (``hashlib.sha256(canonical.encode()).hexdigest()``, service.py:102-107);
+    a human-readable literal like ``"fp-build-analysis"`` is not. Hashing
+    the label keeps the value deterministic and traceable in failures while
+    matching the production shape exactly.
+    """
+    import hashlib
+
+    return hashlib.sha256(label.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Task 1.1 — Interval Persistence on Ingest: re-ingest is idempotent
+# ---------------------------------------------------------------------------
+
+
+def test_reingest_is_idempotent(db):
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[1.5, 0.0, 3.25])
+
+    persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    # Re-running the identical ingest must not raise and must not duplicate.
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    # R3-001: assert the full classification, not just the row count — a
+    # count-only assertion passes even against an implementation whose
+    # window-bound regression silently absorbs a real correction into the
+    # bulk ON-CONFLICT skip (the count would still equal len(rows)).
+    assert result["inserted"] == 0
+    assert result["unchanged"] == len(rows)
+    assert _count_interval_rows(db) == len(rows)
+
+
+def test_persist_intervals_corrects_a_non_first_slot_in_a_multi_slot_batch(db):
+    """R3-001: the idempotence test above only ever exercises an
+    all-unchanged batch. This proves classification distinguishes slots
+    WITHIN one batch — restating day 3 alone must not be absorbed by the
+    other two unchanged slots into a bulk skip."""
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    original = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.9], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["unchanged"] == 2
+    assert result["superseded"] == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[-1].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert [row.value for row in current] == [1.0, 2.0, 3.9]
+    assert [row.provider_revision for row in current] == ["v3-nrt", "v3-nrt", "v3-nrt+r1"]
+
+
+def test_reingest_after_synthetic_supersession_with_no_successor_hits_conflict_path(db):
+    """R3-001: forced-conflict-path regression. A slot whose only row is
+    marked ``superseded`` with no real successor (a state the write
+    algorithm itself never produces — ``record_supersession`` only ever
+    runs for ids ``RETURNING`` confirms landed) makes
+    ``intervals_in_window`` classify the slot as ABSENT even though a row
+    with the identical ``(source_id, scope, window, provider_revision)``
+    tuple already exists on disk. Re-persisting the identical interval must
+    still resolve through the ``ON CONFLICT DO NOTHING`` path without
+    raising, proving the INSERT statement itself — not just the
+    classification read — is conflict-safe."""
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[2.0])
+    persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    original = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        start=rows[0].interval_start,
+        end=rows[0].interval_end,
+        **ZONE_KWARGS,
+    )[0]
+
+    db.add(
+        RainfallIntervalLifecycle(
+            interval_value_id=original.id,
+            superseded_by_id=uuid4(),
+            event_type="superseded",
+            expires_at=None,
+        )
+    )
+    db.flush()
+
+    assert (
+        intervals_in_window(
+            db,
+            source_id="chirps-v3-final",
+            start=rows[0].interval_start,
+            end=rows[0].interval_end,
+            **ZONE_KWARGS,
+        )
+        == []
+    )
+
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    # The classification read said "absent" and the write attempted a
+    # duplicate-tuple INSERT; ON CONFLICT DO NOTHING absorbed it, RETURNING
+    # reported nothing landed, and nothing raised.
+    assert result["inserted"] == 0
+    assert _count_interval_rows(db) == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 — absent slot classifies as an INSERT
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_inserts_absent_slot(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[2.0])
+
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        start=rows[0].interval_start,
+        end=rows[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].provider_revision == "v3-final"
+    assert current[0].value == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4 — a value equal at 6 decimal places is a no-op
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_unchanged_slot_writes_nothing(db):
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    first = _daily_intervals(start_day=1, values=[1.5])
+    persist_intervals(db, source_id="chirps-v3-final", rows=first, **ZONE_KWARGS)
+    db.flush()
+
+    # Re-fetched value differs only past the 6th decimal place.
+    restated = _daily_intervals(start_day=1, values=[1.5000001])
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 0
+    assert result["unchanged"] == 1
+    assert _count_interval_rows(db) == 1
+    lifecycle_count = db.scalar(select(func.count()).select_from(RainfallIntervalLifecycle))
+    assert lifecycle_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 1.5 — a changed slot appends a correction row + lifecycle evidence
+# ---------------------------------------------------------------------------
+
+
+def test_persist_intervals_changed_slot_appends_correction_and_lifecycle_row(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    # CHIRPS pins one revision string per source_id and restates values
+    # behind it (chirps.py:26-29) — both fetches carry the same family.
+    original = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["superseded"] == 1
+    # The original row is retained unchanged — this is append-only evidence.
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 2
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].value == 1.8
+    assert current[0].provider_revision == "v3-nrt+r1"
+
+    lifecycle_rows = list(db.scalars(select(RainfallIntervalLifecycle)))
+    assert len(lifecycle_rows) == 1
+    lifecycle = lifecycle_rows[0]
+    assert lifecycle.event_type == "superseded"
+    assert lifecycle.superseded_by_id == current[0].id
+
+    original_row = db.scalar(
+        select(RainfallIntervalValue).where(RainfallIntervalValue.provider_revision == "v3-nrt")
+    )
+    assert original_row is not None
+    assert original_row.value == 1.0
+    assert lifecycle.interval_value_id == original_row.id
+
+
+# ---------------------------------------------------------------------------
+# Task 1.6 — a second correction chains off the first
+# ---------------------------------------------------------------------------
+
+
+def test_second_correction_chains_off_first(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    first = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=first, **ZONE_KWARGS)
+    db.flush()
+
+    second = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=second, **ZONE_KWARGS)
+    db.flush()
+
+    third = _daily_intervals(start_day=1, values=[2.4], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=third, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["superseded"] == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=third[0].interval_start,
+        end=third[0].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert len(current) == 1
+    assert current[0].provider_revision == "v3-nrt+r2"
+    assert current[0].value == 2.4
+
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 3
+    lifecycle_rows = list(db.scalars(select(RainfallIntervalLifecycle)))
+    assert len(lifecycle_rows) == 2
+
+    superseded_by_map = {row.interval_value_id: row.superseded_by_id for row in lifecycle_rows}
+    r1_row = db.scalar(
+        select(RainfallIntervalValue).where(RainfallIntervalValue.provider_revision == "v3-nrt+r1")
+    )
+    assert r1_row is not None
+    assert superseded_by_map[r1_row.id] == current[0].id
+
+
+# ---------------------------------------------------------------------------
+# Task 1.7 — intervals_in_window anti-joins superseded rows, ordered by
+# interval_start, at most one row per slot
+# ---------------------------------------------------------------------------
+
+
+def test_intervals_in_window_excludes_superseded_rows(db):
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    # Two slots: day 1 gets corrected, day 2 stays untouched.
+    original = _daily_intervals(start_day=1, values=[1.0, 5.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated_day1 = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=restated_day1, **ZONE_KWARGS)
+    db.flush()
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=datetime(2024, 1, 1, tzinfo=UTC),
+        end=datetime(2024, 1, 3, tzinfo=UTC),
+        **ZONE_KWARGS,
+    )
+
+    # At most one non-superseded row per slot, ordered by interval_start —
+    # the corrected day 1 row, then the untouched day 2 row.
+    assert [row.interval_start for row in current] == [
+        datetime(2024, 1, 1, tzinfo=UTC),
+        datetime(2024, 1, 2, tzinfo=UTC),
+    ]
+    assert [row.value for row in current] == [1.8, 5.0]
+    assert [row.provider_revision for row in current] == ["v3-nrt+r1", "v3-nrt"]
+    # The superseded original day-1 row is excluded even though the table
+    # still holds it (append-only evidence): 3 rows on disk, 2 served.
+    assert _count_interval_rows(db, source_id="chirps-v3-sat") == 3
+
+
+# ---------------------------------------------------------------------------
+# R3-004 — "+r" reservation and the provider_revision-family 1:1 invariant
+# ---------------------------------------------------------------------------
+
+
+def test_source_interval_rejects_plus_in_provider_revision():
+    """'+r<n>' is reserved for correction rows persist_intervals mints
+    internally (design.md 'NRT Correction Supersession'); an adapter must
+    never be able to hand one in directly, or it could collide with, or be
+    mistaken for, a correction row the write path itself produced."""
+    from app.domains.geo.rainfall.ports import SourceInterval
+
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    with pytest.raises(ValueError, match=r"\+"):
+        SourceInterval(start, start + timedelta(days=1), 1.0, "mm", "v3-nrt+r1")
+
+
+def test_persist_intervals_raises_on_provider_revision_family_mismatch(db):
+    """persist_intervals's 'changed' branch must not silently re-stamp a
+    foreign-family value with the incumbent's family: one source_id maps
+    to exactly one provider_revision family (design.md decision 7). A
+    caller handing back a different family for an existing slot has a bug
+    and must be told loudly, not have its revision discarded."""
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    original = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    foreign_family = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-final")
+    with pytest.raises(ValueError, match="family mismatch"):
+        persist_intervals(db, source_id="chirps-v3-sat", rows=foreign_family, **ZONE_KWARGS)
+
+
+# ---------------------------------------------------------------------------
+# Task 1.8 — ingest_source_scope threads an optional db without committing
+# ---------------------------------------------------------------------------
+
+
+def _fixture_batch() -> SourceBatch:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    return SourceBatch(
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="z1",
+        scope_version="v1",
+        cadence=timedelta(days=1),
+        intervals=(SourceInterval(start, start + timedelta(days=1), 3.0, "mm", "v3-final"),),
+        coverage=1.0,
+        completeness=1.0,
+        quality={"provider_revision": "v3-final"},
+        discrepancies=(),
+        checksum="sha256:fixture",
+    )
+
+
+def test_ingest_source_scope_writes_without_commit_when_given_db(db, monkeypatch):
+    from app.domains.geo.rainfall import tasks
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    result = tasks.ingest_source_scope(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="z1",
+        scope_version="v1",
+        year=2024,
+        db=db,
+    )
+
+    assert result["persisted"] == 1
+    assert result["superseded"] == 0
+    assert result["intervals"] == 1
+    # Written on the given session but NOT committed — a fresh connection
+    # must not see it yet (decision 2: given a db, write, never commit).
+    assert _count_interval_rows(db, source_id="chirps-v3-final") == 1
+    with SessionLocal() as fresh:
+        assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 0
+
+
+def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(db, monkeypatch):
+    # `db` is unused directly here (this test asserts on a fresh SessionLocal
+    # connection on purpose) but requesting it guarantees test_engine's
+    # create_all() has run — see the note on the transaction-sharing test below.
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.repository import intervals_in_window
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    # R3-002: a dedicated scope_id (like `zone-txn-share` at task 1.9's test
+    # below) keeps this test's real `SessionLocal()` commit — the only
+    # write in this module the `db` fixture's rollback does NOT undo — off
+    # the exact `z1` slot the sibling tests above assert an absolute,
+    # source-only row count over. No DELETE-based cleanup: the dedicated
+    # scope makes the committed row inert to every other test regardless of
+    # execution order, and the previous `finally`-only cleanup never ran
+    # when the preceding assertion raised, which is exactly the leak this
+    # scope isolation removes the need for.
+    result = tasks.ingest_source_scope(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-own-session-commit",
+        scope_version="v1",
+        year=2024,
+    )
+
+    assert result["persisted"] == 1
+    with SessionLocal() as fresh:
+        landed = intervals_in_window(
+            fresh,
+            source_id="chirps-v3-final",
+            scope_kind="zone",
+            scope_id="zone-own-session-commit",
+            scope_version="v1",
+            start=batch.intervals[0].interval_start,
+            end=batch.intervals[0].interval_end,
+        )
+        assert len(landed) == 1
+        assert landed[0].value == batch.intervals[0].value
+
+
+# ---------------------------------------------------------------------------
+# Task 1.9 — backfill_missing shares one transaction with ingest
+# ---------------------------------------------------------------------------
+
+
+def test_backfill_missing_shares_transaction_with_ingest(db, monkeypatch):
+    # `db` is unused directly — backfill_missing opens its own SessionLocal()
+    # — but requesting the fixture guarantees test_engine's create_all() has
+    # run, matching the existing test_ingest_ops.py pattern for SessionLocal-
+    # only tests (e.g. test_backfill_missing_passes_role_to_ingest_source_scope).
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    filters = {
+        "source_id": "chirps-v3-final",
+        "role": "historical",
+        "scope_kind": "zone",
+        "scope_id": "zone-txn-share",
+        "scope_version": "v1",
+        "year": 2024,
+    }
+
+    def failing_ingest(*, db, **_kwargs):
+        # Write through the SAME session backfill_missing opened, then fail
+        # before backfill_missing gets a chance to commit anything.
+        row = _daily_intervals(start_day=1, values=[9.9])[0]
+        persist_intervals(
+            db,
+            source_id="chirps-v3-final",
+            scope_kind="zone",
+            scope_id="zone-txn-share",
+            scope_version="v1",
+            rows=[row],
+        )
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", failing_ingest)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        tasks.backfill_missing(**filters)
+
+    # Neither the checkpoint nor the interval survive — proving both writes
+    # were on the SAME uncommitted transaction (all-or-nothing), not two
+    # independently committed sessions.
+    with SessionLocal() as fresh:
+        assert (
+            fresh.query(RainfallBackfillCheckpoint)
+            .filter_by(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-txn-share",
+                scope_version="v1",
+                year=2024,
+            )
+            .first()
+            is None
+        )
+        # Scoped to this test's own scope_id (R3-002): an absolute,
+        # source_id-only count would also see the row task 1.8's
+        # own-session test commits under a different, unrelated scope.
+        assert (
+            _count_interval_rows(fresh, source_id="chirps-v3-final", scope_id="zone-txn-share") == 0
+        )
+
+
+# ===========================================================================
+# Phase 2 (PR 2) — Compute
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Task 2.2 — RainfallOutbox.request_fingerprint column
+# ---------------------------------------------------------------------------
+
+
+def test_outbox_model_has_request_fingerprint_column(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    now = datetime(2024, 1, 1, tzinfo=UTC)
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-fingerprint-column",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=now,
+        interval_end=now + timedelta(days=365),
+        request_fingerprint="a" * 64,
+    )
+    db.add(row)
+    db.flush()
+
+    fetched = db.get(RainfallOutbox, row.id)
+    assert fetched.request_fingerprint == "a" * 64
+
+    # Nullable: a legacy row (decision 4b) is a valid row with no fingerprint.
+    legacy = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-fingerprint-legacy",
+        scope_version="v1",
+        year=2023,
+        work_labels=["analysis_missing"],
+        interval_start=now,
+        interval_end=now + timedelta(days=365),
+    )
+    db.add(legacy)
+    db.flush()
+    assert db.get(RainfallOutbox, legacy.id).request_fingerprint is None
+
+
+# ---------------------------------------------------------------------------
+# Task 2.3 — queue_missing_analysis stores the router-computed fingerprint
+# ---------------------------------------------------------------------------
+
+
+def test_queue_missing_analysis_stores_router_computed_fingerprint(db):
+    """decision 4: the router already computes ``analysis_request_fingerprint``
+    for its ``get_snapshot`` lookup (router.py:130) — passing that exact
+    value into ``queue_missing_analysis`` removes the drift class a second,
+    independent computation could introduce."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-fp-router", version="v1", regional_estimate=False)
+    fingerprint = "deadbeef" * 8
+
+    result = queue_missing_analysis(
+        db,
+        scope=scope,
+        year=2024,
+        labels=("analysis_missing",),
+        request_fingerprint=fingerprint,
+    )
+    db.flush()
+
+    row = db.get(RainfallOutbox, result["outbox_id"])
+    assert row.request_fingerprint == fingerprint
+
+
+def test_queue_missing_analysis_recomputes_fingerprint_when_not_passed(db):
+    """Backward-compat fallback (decision 4): a caller that does not pass
+    ``request_fingerprint`` still gets a stored fingerprint, computed from
+    the same canonical shape router.py builds — including omitting
+    ``event_window`` entirely rather than setting it to ``None``, because
+    ``analysis_request_fingerprint``'s JSON canonicalization treats a
+    present-but-null key differently from an absent one."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import (
+        analysis_request_fingerprint,
+        queue_missing_analysis,
+    )
+
+    scope = AnalysisScope(kind="zone", id="zone-fp-fallback", version="v1", regional_estimate=False)
+    expected = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": "zone-fp-fallback", "version": "v1"}, "year": 2024}
+    )
+
+    result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+    db.flush()
+
+    row = db.get(RainfallOutbox, result["outbox_id"])
+    assert row.request_fingerprint == expected
+
+
+# ---------------------------------------------------------------------------
+# Task 2.9 — persist_revision is idempotent on an identical data_revision
+# ---------------------------------------------------------------------------
+
+
+def test_persist_revision_is_idempotent_on_identical_data_revision(db):
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.repository import persist_revision
+
+    snapshot = {"scope": {"kind": "zone", "id": "z1", "version": "v1"}, "year": 2024}
+
+    first_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    # Identical (fingerprint, policy_revision, data_revision) -> a no-op
+    # returning the existing id, not a second row.
+    second_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    assert first_id == second_id
+    count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == "fp-persist-revision")
+    )
+    assert count == 1
+
+
+def test_persist_revision_writes_a_new_row_on_changed_data_revision(db):
+    """Triangulation: a different data_revision under the same fingerprint
+    is a genuinely new row, not absorbed by the idempotent path above."""
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.repository import persist_revision
+
+    snapshot = {"scope": {"kind": "zone", "id": "z1", "version": "v1"}, "year": 2024}
+
+    first_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision-2",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    second_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision-2",
+        policy_revision="policy-v1",
+        data_revision="data-v2",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    assert first_id != second_id
+    count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == "fp-persist-revision-2")
+    )
+    assert count == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 2.10 — build_analysis writes one revision that passes normalize_snapshot
+# ---------------------------------------------------------------------------
+
+
+def _fixture_batch_evidence(**overrides) -> dict:
+    payload = {
+        "source_id": "chirps-v3-final",
+        "scope_kind": "zone",
+        "scope_id": "zone-build-analysis",
+        "year": 2024,
+        "intervals": 3,
+        "persisted": 3,
+        "superseded": 0,
+        "provider_revision": "v3-final",
+        "unit": "mm",
+        "cadence_seconds": 86400.0,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {
+            "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_RNL",
+            "band": "precipitation",
+            "reduction": "mean",
+            "scale_m": 5500,
+            "provider_revision": "v3-final",
+        },
+        "discrepancies": [],
+        "checksum": "sha256:fixture",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_build_analysis_writes_one_revision_and_passes_normalize_snapshot(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+    from app.domains.geo.rainfall.service import normalize_snapshot
+
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="zone-build-analysis",
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-build-analysis",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-build-analysis"),
+    )
+    db.add(outbox)
+    db.flush()
+
+    result = tasks.build_analysis(
+        outbox_id=str(outbox.id),
+        batch=_fixture_batch_evidence(),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    assert result["revision_id"]
+
+    revision = RainfallRepository().get_snapshot(db, _hex_fingerprint("fp-build-analysis"))
+    assert revision is not None
+    normalized = normalize_snapshot(
+        revision.snapshot, expected_policy_revision=revision.policy_revision
+    )
+    assert normalized["annual"]["selected"]["state"] in {"available", "unavailable"}
+    assert normalized["scope"] == {"kind": "zone", "id": "zone-build-analysis", "version": "v1"}
+
+
+def test_build_analysis_raises_when_outbox_row_has_no_fingerprint(db):
+    """decision 4b: a legacy null-fingerprint row is the CALLER's
+    (_process_outbox_row, task 2.11) responsibility to derive or skip
+    before ever calling build_analysis; a direct call with none set is a
+    programming error and must be loud, not silently compute nothing."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-no-fingerprint",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(outbox)
+    db.flush()
+
+    with pytest.raises(ValueError, match="request_fingerprint"):
+        tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=_fixture_batch_evidence(),
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 2.11 — _process_outbox_row chains build_analysis before status="done"
+# ---------------------------------------------------------------------------
+
+
+def test_process_outbox_row_chains_build_analysis_before_done(db, monkeypatch):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    fingerprint = _hex_fingerprint("fp-chain-test")
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-chain-test",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(row)
+    db.flush()
+
+    real_build_analysis = tasks.build_analysis
+    status_at_call_time: dict[str, str] = {}
+
+    def spy_build_analysis(**kwargs):
+        # Captured BEFORE delegating to the real implementation: proves
+        # the chain calls build_analysis while the row is still "pending",
+        # not after status="done" is already set (decision 1).
+        status_at_call_time["status"] = row.status
+        return real_build_analysis(**kwargs)
+
+    monkeypatch.setattr(tasks, "build_analysis", spy_build_analysis)
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert row.status == "done"
+    assert row.completed_at is not None
+    assert status_at_call_time["status"] == "pending"
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+
+
+def test_legacy_null_fingerprint_row_skips_compute(db, monkeypatch):
+    """decision 4b: a row whose interval bounds are NOT the year bounds
+    (a legacy or event-window shape) cannot safely derive a full-year
+    fingerprint. It must still reach "done" (ingest itself succeeded) but
+    skip compute entirely, writing no revision."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-legacy-null-fp",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 3, 1, tzinfo=UTC),
+        interval_end=datetime(2024, 3, 2, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(row)
+    db.flush()
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert row.status == "done"
+    assert row.completed_at is not None
+    assert row.request_fingerprint is None
+
+    count = db.scalar(select(func.count()).select_from(RainfallAnalysisRevision))
+    assert count == 0
+
+
+def test_full_year_null_fingerprint_row_derives_and_computes(db, monkeypatch):
+    """Triangulation: the OTHER branch of the same decision — a row whose
+    bounds ARE the year bounds derives its fingerprint and DOES compute."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-derive-fp",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(row)
+    db.flush()
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    expected_fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": "zone-derive-fp", "version": "v1"}, "year": 2024}
+    )
+    assert row.request_fingerprint == expected_fingerprint
+
+    revision = RainfallRepository().get_snapshot(db, expected_fingerprint)
+    assert revision is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 2.12 — claim_outbox_row re-claim + per-row commit
+# ---------------------------------------------------------------------------
+
+
+def test_claim_outbox_row_returns_none_when_not_pending(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-not-pending",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="done",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    assert claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC)) is None
+
+
+def test_claim_outbox_row_returns_none_when_not_yet_due(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    far_future = datetime.now(UTC) + timedelta(hours=1)
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-not-due",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=far_future,
+    )
+    db.add(row)
+    db.flush()
+
+    assert claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC)) is None
+
+
+def test_claim_outbox_row_returns_the_row_when_pending_and_due(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-due",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    claimed = claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC))
+    assert claimed is not None
+    assert claimed.id == row.id
+
+
+def test_claim_outbox_row_uses_python_now_not_frozen_sql_transaction_time(db):
+    """Regression: PostgreSQL's ``now()`` is frozen to *transaction start*
+    within one transaction (``transaction_timestamp()``), not statement
+    time. A row stamped with Python's wall clock via
+    ``next_attempt_at=datetime.now(UTC)`` AFTER the shared ``db`` fixture's
+    transaction already began would read as "in the future" against a
+    frozen SQL ``now()`` and never be claimable within that same
+    transaction — reproduced empirically. ``claim_outbox_row`` must compare
+    against a Python-side ``now``, not ``func.now()``.
+    """
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-same-txn-now",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    claimed = claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC))
+    assert claimed is not None
+    assert claimed.id == row.id
+
+
+def test_per_row_commit_survives_a_later_row_failure(db, monkeypatch):
+    """decision 2c: commit after each row. A row that fails after another
+    succeeded leaves the succeeded row's revision already committed and
+    durable — verified from FRESH connections, since the savepoint-scoped
+    `db` fixture would otherwise fake durability (same reason the
+    Durability Testing Strategy row uses SessionLocal(), not `db`).
+
+    The crash is injected in ``_role_enabled`` — a call OUTSIDE
+    ``_process_outbox_row``'s own try/except, i.e. nothing inside the
+    consumer catches it — so it propagates straight out of
+    ``_process_outbox_batch``, simulating a worker crash mid-batch. Under
+    the OLD single-batch-wide-commit design this would roll back row1's
+    already-succeeded work too (nothing committed until the very end); a
+    per-row commit is what makes this test distinguish the two designs
+    instead of passing trivially against either.
+
+    ``db`` is unused directly — this test asserts on fresh SessionLocal()
+    connections on purpose — but requesting it guarantees test_engine's
+    create_all() has run (same reason task 1.8/1.9's SessionLocal-only
+    tests request it above).
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    role_enabled_calls = {"n": 0}
+
+    def flaky_role_enabled(role, db=None):
+        role_enabled_calls["n"] += 1
+        if role_enabled_calls["n"] == 2:
+            raise RuntimeError("simulated crash processing the second row")
+        return True
+
+    monkeypatch.setattr(tasks, "_role_enabled", flaky_role_enabled)
+
+    def fake_ingest_source_scope(
+        *, source_id, role, scope_kind, scope_id, scope_version, year, db=None
+    ):
+        return _fixture_batch_evidence(scope_id=scope_id, year=year)
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", fake_ingest_source_scope)
+
+    row1_id = row2_id = None
+    try:
+        # Two SEPARATE transactions so `created_at` (server_default now())
+        # genuinely differs, making the batch's `ORDER BY created_at`
+        # deterministic: row1 is claimed and processed before row2.
+        with SessionLocal() as setup_db:
+            row1 = RainfallOutbox(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-commit-survive-1",
+                scope_version="v1",
+                year=2024,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+                interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+                status="pending",
+                next_attempt_at=datetime.now(UTC),
+                request_fingerprint=_hex_fingerprint("fp-commit-survive-1"),
+            )
+            setup_db.add(row1)
+            setup_db.commit()
+            row1_id = row1.id
+
+        with SessionLocal() as setup_db:
+            row2 = RainfallOutbox(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-commit-survive-2",
+                scope_version="v1",
+                year=2024,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+                interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+                status="pending",
+                next_attempt_at=datetime.now(UTC),
+                request_fingerprint=_hex_fingerprint("fp-commit-survive-2"),
+            )
+            setup_db.add(row2)
+            setup_db.commit()
+            row2_id = row2.id
+
+        with SessionLocal() as process_db:
+            with pytest.raises(RuntimeError, match="simulated crash"):
+                tasks._process_outbox_batch(process_db)
+
+        with SessionLocal() as verify_db:
+            fresh_row1 = verify_db.get(RainfallOutbox, row1_id)
+            fresh_row2 = verify_db.get(RainfallOutbox, row2_id)
+            # row1 was committed on its own, BEFORE the crash on row2 —
+            # its success survives the batch aborting.
+            assert fresh_row1.status == "done"
+            assert fresh_row1.completed_at is not None
+            # row2 was never claimed (the crash is in the gate check, before
+            # claim_outbox_row runs for it) — still pending, untouched.
+            assert fresh_row2.status == "pending"
+            assert fresh_row2.retry_count == 0
+
+            revision = RainfallRepository().get_snapshot(
+                verify_db, _hex_fingerprint("fp-commit-survive-1")
+            )
+            assert revision is not None
+    finally:
+        with SessionLocal() as cleanup_db:
+            cleanup_db.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=_hex_fingerprint("fp-commit-survive-1")
+            ).delete()
+            ids = [i for i in (row1_id, row2_id) if i is not None]
+            if ids:
+                cleanup_db.query(RainfallOutbox).filter(RainfallOutbox.id.in_(ids)).delete(
+                    synchronize_session=False
+                )
+            cleanup_db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 2.13 — now seam: drives comparison_end, never the backoff clock
+# ---------------------------------------------------------------------------
+
+
+def test_now_seam_drives_comparison_end_without_moving_backoff_clock(db, monkeypatch):
+    """design.md Interfaces: `now` threads process_outbox ->
+    _process_outbox_batch (resolved once per batch) -> _process_outbox_row
+    -> build_analysis, and feeds ONLY temporal.comparison_end /
+    buenos_aires_date. completed_at, next_attempt_at and the backoff
+    arithmetic stay on the real wall clock."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: _fixture_batch()
+    )
+
+    fingerprint = _hex_fingerprint("fp-now-seam")
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-now-seam",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+        request_fingerprint=fingerprint,
+    )
+    db.add(row)
+    db.flush()
+
+    # Noon UTC = 09:00 Buenos Aires (UTC-3): safely the same calendar day in
+    # both zones, so this isn't fragile to the midnight-UTC boundary skew
+    # buenos_aires_date's conversion is designed to catch.
+    seeded_now = datetime(2024, 3, 10, 12, tzinfo=UTC)
+    before_call = datetime.now(UTC)
+    result = tasks.process_outbox(db=db, now=seeded_now)
+    after_call = datetime.now(UTC)
+
+    assert result["succeeded"] == 1
+    db.refresh(row)
+
+    # The disclosure date follows the SEEDED clock (year is current relative
+    # to 2024, so comparison_end == the seeded now's own date), not the
+    # real wall clock the test actually runs on.
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    assert revision.snapshot["comparison_end"] == "2024-03-10"
+
+    # completed_at is bounded by the REAL wall-clock window this call ran
+    # in, not by the seeded (year-2024) now.
+    assert before_call <= row.completed_at <= after_call
+
+
+def test_now_seam_does_not_move_the_backoff_clock_on_failure(db, monkeypatch):
+    """Triangulation: the failure-path bookkeeping (retry_count,
+    next_attempt_at) must stay on the real wall clock even when a seeded
+    `now` is supplied for the disclosure date."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "ingest_source_scope", lambda **_kwargs: (_ for _ in ()).throw(ValueError("boom"))
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-now-seam-failure",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    seeded_now = datetime(1999, 1, 1, tzinfo=UTC)
+    before_call = datetime.now(UTC)
+    result = tasks.process_outbox(db=db, now=seeded_now)
+    after_call = datetime.now(UTC)
+
+    assert result["failed"] == 0
+    assert result["delayed"] == 1
+    db.refresh(row)
+    assert row.status == "pending"
+    assert row.retry_count == 1
+    # next_attempt_at = real now() + backoff — nowhere near the seeded 1999
+    # date, and bounded by the real wall-clock window this call ran in.
+    assert row.next_attempt_at > before_call
+    assert row.next_attempt_at <= after_call + timedelta(seconds=_expected_backoff_ceiling())
+
+
+def _expected_backoff_ceiling() -> float:
+    from app.domains.geo.rainfall.tasks import _backoff_seconds
+
+    return _backoff_seconds(1) + 1
+
+
+# ---------------------------------------------------------------------------
+# Task 2.14 — E2E: POST -> 202 -> process_outbox -> POST -> 200
+# ---------------------------------------------------------------------------
+
+
+class _FakeGeeClientForE2E:
+    """Minimal :class:`GeeZonalClient` stand-in, local to this E2E test —
+    only the GEE network boundary is faked (design.md Testing Strategy);
+    ``ingest_source_scope`` itself is never monkeypatched, so the real
+    adapter, zonal batch builder, resilient-fetch wrapper, persistence and
+    compute layer all run."""
+
+    def __init__(self, *, series: list[tuple[datetime, float]]) -> None:
+        self.series = series
+        self.scale_meters = 5500
+
+    def geometry(self, *, scope_kind: str, scope_id: str) -> object:
+        return ("asset", scope_kind, scope_id)
+
+    def zonal_series(self, *, collection_id, start, end, geometry, band):
+        return list(self.series)
+
+
+def test_e2e_post_202_then_200_without_monkeypatching_ingest(db, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.router import router
+
+    year = 2024  # leap year: 366 daily slots -> full coverage
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [
+        (year_start + timedelta(days=offset), 1.0 + (offset % 5) * 0.2) for offset in range(366)
+    ]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-final":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    # A past year routes to role="historical"/source_id="chirps-v3-final"
+    # (resolve_missing_work_source) -- the wired adapter. The current year
+    # would route to "daily"/"sqpe-obs", which stays deliberately unwired
+    # until PR 4's flip.
+    payload = {"scope": {"kind": "zone", "id": "zone-e2e-202-200", "version": "v1"}, "year": year}
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+    assert queued.json()["status"] == "queued"
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+
+    body = served.json()
+    assert body["scope"] == {"kind": "zone", "id": "zone-e2e-202-200", "version": "v1"}
+    assert body["year"] == year
+    metric = body["annual"]["selected"]
+    assert metric["state"] == "available"
+    assert metric["value"] is not None
+    assert metric["provenance"]["source_id"] == "chirps-v3-final"
+    assert metric["temporal_state"] == "final"
+
+
+def test_e2e_served_analysis_carries_revision_id_and_csv_export_succeeds(db, monkeypatch):
+    """JDB-301 (review-ledger.md "Judgment Day -- APPLY-PHASE completion"):
+    the frontend CSV export contract (consorcio-web/src/lib/api/rainfall.ts,
+    RainfallDetailPanel.tsx) builds the export URL from the served body's
+    ``analysis_revision_id``. ``build_snapshot`` never sets that field, and
+    pre-fix ``read_analysis`` never injected it -- so every real served
+    analysis carried a body without the field, and the CSV endpoint was
+    unreachable from the client (``GET /analyses/undefined.csv``). This
+    drives the full pipeline (no ingest monkeypatching, same E2E harness as
+    ``test_e2e_post_202_then_200_without_monkeypatching_ingest``) and asserts
+    both halves of the contract end-to-end: the served field and the CSV
+    export it points at.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    year = 2024  # leap year: 366 daily slots -> full coverage
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [
+        (year_start + timedelta(days=offset), 1.0 + (offset % 5) * 0.2) for offset in range(366)
+    ]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-final":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    payload = {
+        "scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"},
+        "year": year,
+    }
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+    body = served.json()
+
+    request = {
+        "scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"},
+        "year": year,
+    }
+    fingerprint = analysis_request_fingerprint(request)
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+
+    assert body["analysis_revision_id"] == str(revision.id)
+
+    csv_response = client.get(f"/rainfall/analyses/{body['analysis_revision_id']}.csv")
+    assert csv_response.status_code == 200
+    assert csv_response.headers["content-type"].startswith("text/csv")
+
+
+# ---------------------------------------------------------------------------
+# R4-001 regression — flush-independent lifecycle writes under production
+# autoflush=False
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def db_autoflush_off(test_engine):
+    """Production-shape session built from the SAME connection
+    infrastructure as the shared ``db`` fixture (``test_engine``), but with
+    ``autoflush=False`` like the real ``SessionLocal`` (``app/db/session.py``
+    ``sessionmaker(bind=engine, autocommit=False, autoflush=False)``).
+
+    Deliberately NOT the shared ``db`` fixture: ``db``'s
+    ``Session(bind=connection)`` defaults to ``autoflush=True``, which
+    silently flushes a pending ORM ``db.add`` before the next read and would
+    hide the exact R4-001 bug class this module regression-tests — a Core
+    write is required precisely because production never flushes for you.
+    """
+    from sqlalchemy.orm import Session
+
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, autoflush=False)
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+def test_restated_slot_survives_chained_compute_without_explicit_flush(
+    db_autoflush_off, monkeypatch
+):
+    """Regression for R4-001: a restated (corrected) slot re-ingested
+    through ``_process_outbox_row`` — ingest and build_analysis chained in
+    ONE transaction, exactly as ``_process_outbox_batch`` runs it in
+    production — must not duplicate the slot just because the session never
+    autoflushes.
+
+    Before the fix, ``record_supersession`` wrote the lifecycle row via ORM
+    ``db.add``, which stays pending in ``session.new`` under
+    ``autoflush=False``. The chained ``build_analysis`` call's
+    ``intervals_in_window`` anti-join then ran against the DB before that
+    pending row ever landed, so it saw BOTH the old and the new revision of
+    the slot as "current" and ``build_snapshot`` raised on the duplicate
+    ``interval_start`` — see ``review-ledger.md`` R4-001.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    db = db_autoflush_off
+    scope_id = "zone-r4-001-regression"
+    slot_start = datetime(2024, 1, 1, tzinfo=UTC)
+    slot_end = datetime(2024, 1, 2, tzinfo=UTC)
+
+    # Leg 1 — baseline ingest (persist_intervals + queue: the accepted
+    # alternative to the outbox path for the FIRST pass). persist_intervals'
+    # own interval write is already a Core INSERT, so this slot is "current"
+    # the instant the call returns — no flush needed to set up the baseline.
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=[SourceInterval(slot_start, slot_end, 1.0, "mm", "v3-final")],
+    )
+
+    fingerprint = _hex_fingerprint("fp-r4-001-regression")
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(outbox)
+    db.flush()  # setup only, to assign outbox.id so build_analysis's
+    # db.get() can find it -- not part of the ingest+build chain the
+    # R4-001 bug lives in.
+
+    # Leg 2 — re-ingest the SAME slot with a restated value, through the
+    # real chained path (``_process_outbox_row``): ingest_source_scope's
+    # persist_intervals (changed branch -> a correction row plus a
+    # record_supersession lifecycle link) runs immediately followed, in the
+    # SAME transaction and with NO intervening flush, by build_analysis's
+    # intervals_in_window anti-join read.
+    restated_batch = SourceBatch(
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        cadence=timedelta(days=1),
+        intervals=(SourceInterval(slot_start, slot_end, 2.0, "mm", "v3-final"),),
+        coverage=1.0,
+        completeness=1.0,
+        quality={"provider_revision": "v3-final"},
+        discrepancies=(),
+        checksum="sha256:restated",
+    )
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: restated_batch
+    )
+
+    result = tasks._process_outbox_row(outbox, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert outbox.status == "done"
+
+    revision_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+    )
+    assert revision_count == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        start=slot_start,
+        end=slot_end,
+    )
+    assert len(current) == 1
+    assert current[0].value == 2.0
+
+
+# ---------------------------------------------------------------------------
+# R4-003 observability — error class/message on failed/delayed events, and a
+# revision-written event distinguishing new-revision vs idempotent no-op
+# ---------------------------------------------------------------------------
+
+
+def _event_payload(caplog, event_name: str) -> dict:
+    """Decode the JSON payload ``record_event`` (metrics.py) attaches to
+    *event_name* -- the same ``"%s %s"`` seam
+    ``test_rainfall_observability_seam_emits_structured_events`` asserts
+    against (test_phase4_verification.py), here parsed instead of
+    substring-matched so field values can be checked precisely."""
+    for record in caplog.records:
+        if record.name == "rainfall" and record.message.startswith(f"{event_name} "):
+            return json.loads(record.message[len(event_name) + 1 :])
+    raise AssertionError(
+        f"no {event_name!r} event captured; got {[r.message for r in caplog.records]}"
+    )
+
+
+def test_outbox_delayed_event_carries_error_type_and_truncated_message(db, monkeypatch, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    long_message = "boom " * 60  # > 200 chars, exercises the truncation
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError(long_message)),
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-delayed",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = tasks.process_outbox(db=db)
+
+    assert result["delayed"] == 1
+    db.refresh(row)
+    assert row.status == "pending"
+
+    payload = _event_payload(caplog, "rainfall.outbox.delayed")
+    assert payload["error_type"] == "ValueError"
+    assert payload["error_message"] == long_message[:200]
+    assert len(payload["error_message"]) <= 200
+
+
+def test_outbox_failed_event_carries_error_type_and_truncated_message(db, monkeypatch, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("kaboom")),
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-failed",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+        retry_count=tasks.MAX_RETRIES - 1,
+    )
+    db.add(row)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = tasks.process_outbox(db=db)
+
+    assert result["failed"] == 1
+    db.refresh(row)
+    assert row.status == "failed"
+
+    payload = _event_payload(caplog, "rainfall.outbox.failed")
+    assert payload["error_type"] == "RuntimeError"
+    assert payload["error_message"] == "kaboom"
+
+
+def test_build_analysis_emits_revision_written_event_distinguishing_created_from_noop(db, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="zone-r4-003-revision-written",
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-revision-written",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-r4-003-revision-written"),
+    )
+    db.add(outbox)
+    db.flush()
+
+    batch = _fixture_batch_evidence(
+        scope_id="zone-r4-003-revision-written", intervals=3, persisted=3
+    )
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        first = tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=batch,
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )
+    db.flush()
+
+    first_payload = _event_payload(caplog, "rainfall.build.revision_written")
+    assert first_payload["created"] is True
+    assert first_payload["data_revision"] == first["data_revision"]
+
+    caplog.clear()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        second = tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=batch,
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )
+
+    assert second["data_revision"] == first["data_revision"]
+    second_payload = _event_payload(caplog, "rainfall.build.revision_written")
+    assert second_payload["created"] is False
+    assert second_payload["data_revision"] == first["data_revision"]
+
+
+# ===========================================================================
+# Phase 3 (PR 3) — Revisit, Finalization, Guards
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Task 3.1 — recent_done + request-path cooldown
+# ---------------------------------------------------------------------------
+
+
+def test_repeated_post_skips_reenqueue_after_recent_done(db, caplog):
+    """decision 6: a `done` row within RAINFALL_RECOMPUTE_COOLDOWN skips
+    re-enqueue REGARDLESS of whether a revision exists, returning the same
+    202 body shape with that row's id."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(
+        kind="zone", id="zone-cooldown-recent", version="v1", regional_estimate=False
+    )
+    done_row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-cooldown-recent",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime.now(UTC) - timedelta(minutes=2),
+        request_fingerprint="fp-cooldown-recent",
+    )
+    db.add(done_row)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    assert result["status"] == "queued"
+    assert result["outbox_id"] == str(done_row.id)
+    pending_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallOutbox)
+        .where(RainfallOutbox.scope_id == "zone-cooldown-recent")
+        .where(RainfallOutbox.status == "pending")
+    )
+    assert pending_count == 0
+
+    # R3-103: the cooldown event payload, not just the return shape.
+    cooldown_payload = _event_payload(caplog, "rainfall.outbox.cooldown")
+    assert cooldown_payload["outbox_id"] == str(done_row.id)
+    assert cooldown_payload["source_id"] == "chirps-v3-final"
+    assert cooldown_payload["role"] == "historical"
+    assert cooldown_payload["scope_id"] == "zone-cooldown-recent"
+    assert cooldown_payload["year"] == 2024
+
+
+def test_stale_done_row_past_cooldown_still_enqueues(db):
+    """Triangulation: a `done` row OLDER than the cooldown window does not
+    suppress a fresh enqueue -- the cooldown is time-bounded, not a
+    forever-skip."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(
+        kind="zone", id="zone-cooldown-stale", version="v1", regional_estimate=False
+    )
+    stale_row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-cooldown-stale",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime.now(UTC) - timedelta(minutes=20),
+        request_fingerprint="fp-cooldown-stale",
+    )
+    db.add(stale_row)
+    db.flush()
+
+    result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    assert result["outbox_id"] != str(stale_row.id)
+    pending = db.scalar(
+        select(RainfallOutbox)
+        .where(RainfallOutbox.scope_id == "zone-cooldown-stale")
+        .where(RainfallOutbox.status == "pending")
+    )
+    assert pending is not None
+    assert str(pending.id) == result["outbox_id"]
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3 — build_analysis locks BEFORE the incumbent get_snapshot read
+# ---------------------------------------------------------------------------
+
+
+def test_build_analysis_locks_before_incumbent_read(db, monkeypatch):
+    from app.domains.geo.rainfall import repository as repo_module
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="zone-lock-order",
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-lock-order",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-lock-order"),
+    )
+    db.add(outbox)
+    db.flush()
+
+    call_order: list[str] = []
+    real_acquire = repo_module.acquire_fingerprint_lock
+
+    def spy_acquire(db_, *, lock_key):
+        call_order.append("lock")
+        return real_acquire(db_, lock_key=lock_key)
+
+    monkeypatch.setattr(repo_module, "acquire_fingerprint_lock", spy_acquire)
+
+    real_get_snapshot = RainfallRepository.get_snapshot
+
+    def spy_get_snapshot(self, db_, fingerprint):
+        call_order.append("get_snapshot")
+        return real_get_snapshot(self, db_, fingerprint)
+
+    monkeypatch.setattr(RainfallRepository, "get_snapshot", spy_get_snapshot)
+
+    tasks.build_analysis(
+        outbox_id=str(outbox.id),
+        batch=_fixture_batch_evidence(scope_id="zone-lock-order"),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+
+    assert call_order == ["lock", "get_snapshot"]
+
+
+# ---------------------------------------------------------------------------
+# Task 3.6 — the write gate refuses a suppressed cross-source candidate
+# without touching the served snapshot
+# ---------------------------------------------------------------------------
+
+
+def test_write_gate_refuses_suppressed_candidate_without_touching_served_snapshot(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+
+    scope_id = "zone-gate-refused"
+    fingerprint = _hex_fingerprint("fp-gate-refused")
+
+    # First build: no incumbent -> "write". Full-year daily/chirps-v3-sat
+    # coverage -> served as provisional. _daily_intervals only advances the
+    # day within a fixed month, so build the real full-2024 series directly.
+    daily_rows = [
+        SourceInterval(
+            datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=offset),
+            datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=offset + 1),
+            1.0,
+            "mm",
+            "v3-nrt",
+        )
+        for offset in range(366)  # 2024 is a leap year
+    ]
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=daily_rows,
+    )
+    db.flush()
+
+    daily_outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(daily_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(daily_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-sat",
+            scope_id=scope_id,
+            intervals=366,
+            persisted=366,
+            provider_revision="v3-nrt",
+            quality={
+                "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                "band": "precipitation",
+                "reduction": "mean",
+                "scale_m": 5500,
+                "provider_revision": "v3-nrt",
+            },
+        ),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    served_before = RainfallRepository().get_snapshot(db, fingerprint)
+    assert served_before is not None
+    assert (
+        served_before.snapshot["annual"]["selected"]["provenance"]["source_id"] == "chirps-v3-sat"
+    )
+    revision_count_before = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+    )
+    assert revision_count_before == 1
+
+    # Second build: a DIFFERENT source_id (cross-source, the finalization
+    # shape). `now=2024-06-15` puts `comparison_end` at 2024-06-14 (year ==
+    # today.year, decision 5c), so the disclosure window is ~166 days wide
+    # -- NOT the full 366. build_snapshot bounds `window_end` by
+    # `min(comparison_end, last_interval_end)` (decision 5c), so a
+    # trailing-truncated series (day 0..N) would shrink the window to match
+    # what's published and read as 100% complete. A SPARSE series (every
+    # 10th day) keeps `last_interval_end` near comparison_end while only
+    # ~10% of expected slots are matched -> well under the 0.8 threshold ->
+    # apply_metric_policy suppresses it -> "gate_refused".
+    poor_rows = [
+        SourceInterval(
+            datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=offset),
+            datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=offset + 1),
+            1.0,
+            "mm",
+            "v3-final",
+        )
+        for offset in range(0, 366, 10)
+    ]
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=poor_rows,
+    )
+    db.flush()
+
+    historical_outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "finalization"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(historical_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(historical_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-final", scope_id=scope_id, intervals=37, persisted=37
+        ),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    revision_count_after = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+    )
+    assert revision_count_after == revision_count_before  # 0 new rows
+
+    served_after = RainfallRepository().get_snapshot(db, fingerprint)
+    assert served_after.id == served_before.id
+    assert served_after.snapshot["annual"]["selected"]["provenance"]["source_id"] == "chirps-v3-sat"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.7 — latch regression: sequential and concurrent (JDA-201)
+# ---------------------------------------------------------------------------
+
+
+def _full_year_rows(*, year: int, provider_revision: str) -> list[SourceInterval]:
+    start = datetime(year, 1, 1, tzinfo=UTC)
+    is_leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    days = 366 if is_leap else 365
+    return [
+        SourceInterval(
+            start + timedelta(days=offset),
+            start + timedelta(days=offset + 1),
+            1.0,
+            "mm",
+            provider_revision,
+        )
+        for offset in range(days)
+    ]
+
+
+_SAT_QUALITY = {
+    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+    "band": "precipitation",
+    "reduction": "mean",
+    "scale_m": 5500,
+    "provider_revision": "v3-nrt",
+}
+
+
+def test_latch_sequential_and_concurrent_two_connections(db, caplog):
+    """Sequential (the 31-December-row-drains-in-January path) AND
+    concurrent (JDA-201 -- the sequential case cannot see it): a stale
+    provisional build over a served final revision must never write, and
+    that guarantee must hold even when the two builds race on independent
+    connections."""
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.compute import fingerprint_lock_key
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+
+    # ---- Sequential case ----
+    seq_year = 2023
+    seq_scope_id = "zone-latch-sequential"
+    seq_fingerprint = _hex_fingerprint("fp-latch-sequential")
+
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        rows=_full_year_rows(year=seq_year, provider_revision="v3-final"),
+    )
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        rows=_full_year_rows(year=seq_year, provider_revision="v3-nrt"),
+    )
+    db.flush()
+
+    seq_final_outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        year=seq_year,
+        work_labels=["analysis_missing", "finalization"],
+        interval_start=datetime(seq_year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(seq_year + 1, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=seq_fingerprint,
+    )
+    db.add(seq_final_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(seq_final_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-final",
+            scope_id=seq_scope_id,
+            year=seq_year,
+            intervals=365,
+            persisted=365,
+        ),
+        db=db,
+        now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
+    )
+    db.flush()
+
+    served_seq = RainfallRepository().get_snapshot(db, seq_fingerprint)
+    assert served_seq is not None
+    assert served_seq.snapshot["annual"]["selected"]["provenance"]["source_id"] == "chirps-v3-final"
+    assert served_seq.snapshot["annual"]["selected"]["temporal_state"] == "final"
+
+    seq_daily_outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        year=seq_year,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(seq_year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(seq_year + 1, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=seq_fingerprint,
+    )
+    db.add(seq_daily_outbox)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        seq_daily_result = tasks.build_analysis(
+            outbox_id=str(seq_daily_outbox.id),
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                scope_id=seq_scope_id,
+                year=seq_year,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+            db=db,
+            now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
+        )
+    db.flush()
+
+    assert seq_daily_result["decision"] == "latched"
+    served_seq_after = RainfallRepository().get_snapshot(db, seq_fingerprint)
+    assert served_seq_after.id == served_seq.id
+
+    # R3-103: the latch event's payload, not just the returned decision.
+    # R2-002: incumbent_source_id now comes through served_state() instead
+    # of a raw dict subscript.
+    latched_payload = _event_payload(caplog, "rainfall.build.latched")
+    assert latched_payload["source_id"] == "chirps-v3-sat"
+    assert latched_payload["incumbent_source_id"] == "chirps-v3-final"
+    assert latched_payload["data_revision"] == seq_daily_result["data_revision"]
+
+    seq_revision_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == seq_fingerprint)
+    )
+    assert seq_revision_count == 1
+
+    # ---- Concurrent case (JDA-201) ----
+    # `db` (the shared fixture) is savepoint-scoped and cannot exhibit two
+    # independent transactions -- it would silently pass. Two REAL
+    # SessionLocal() connections + a worker thread, matching the Durability
+    # row's own reason for a fresh session.
+
+    def run_concurrent_round(
+        *,
+        scope_id: str,
+        fingerprint: str,
+        year: int,
+        now: datetime,
+        first_source_id: str,
+        first_role: str,
+        first_batch: dict,
+        second_source_id: str,
+        second_role: str,
+        second_batch: dict,
+    ) -> tuple[dict, dict]:
+        import threading
+
+        from sqlalchemy import text
+        from sqlalchemy.exc import OperationalError
+
+        with SessionLocal() as setup:
+            persist_intervals(
+                setup,
+                source_id=first_source_id,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                rows=_full_year_rows(year=year, provider_revision=first_batch["provider_revision"]),
+            )
+            persist_intervals(
+                setup,
+                source_id=second_source_id,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                rows=_full_year_rows(
+                    year=year, provider_revision=second_batch["provider_revision"]
+                ),
+            )
+            first_row = RainfallOutbox(
+                source_id=first_source_id,
+                role=first_role,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                year=year,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(year, 1, 1, tzinfo=UTC),
+                interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+                status="pending",
+                request_fingerprint=fingerprint,
+            )
+            second_row = RainfallOutbox(
+                source_id=second_source_id,
+                role=second_role,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                year=year,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(year, 1, 1, tzinfo=UTC),
+                interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+                status="pending",
+                request_fingerprint=fingerprint,
+            )
+            setup.add_all([first_row, second_row])
+            setup.commit()
+            first_row_id, second_row_id = str(first_row.id), str(second_row.id)
+
+        # Session A: build the FIRST sibling synchronously, take the lock,
+        # and hold the transaction open -- never commit until the block on
+        # B is proven. Wrapped in try/finally: an assertion failure below
+        # must not leak an open, uncommitted connection -- that would hang
+        # every later cleanup query waiting on session A's own row locks.
+        session_a = SessionLocal()
+        thread: threading.Thread | None = None
+        try:
+            first_result = tasks.build_analysis(
+                outbox_id=first_row_id, batch=first_batch, db=session_a, now=now
+            )
+
+            second_result_holder: dict = {}
+
+            def run_second():
+                session_b = SessionLocal()
+                try:
+                    second_result_holder["result"] = tasks.build_analysis(
+                        outbox_id=second_row_id, batch=second_batch, db=session_b, now=now
+                    )
+                    session_b.commit()
+                finally:
+                    session_b.close()
+
+            thread = threading.Thread(target=run_second)
+            thread.start()
+            thread.join(timeout=0.5)
+            assert thread.is_alive(), (
+                "the second sibling must BLOCK on the advisory lock while the first "
+                "sibling holds its transaction open -- a missing lock fails this "
+                "assertion instead of the test passing by luck"
+            )
+
+            # Defense-in-depth: prove it is a REAL PostgreSQL-level block on
+            # THIS lock_key, not a coincidence -- a third session with a short
+            # lock_timeout attempting the same key while A holds it must time
+            # out. Raw SQL, deliberately NOT through `acquire_fingerprint_lock`
+            # (R1-001): that function now issues its OWN `SET LOCAL
+            # lock_timeout` (the production 5s default) as its first
+            # statement, which would override this probe's much shorter
+            # window -- and, worse, would push A's total hold time (this
+            # probe's own wait, on the critical path before `session_a.commit()`
+            # below) past session B's own 5s default, making B time out too.
+            # Bypassing the wrapper keeps this probe's bound independent of
+            # the two real siblings' own lock waits.
+            lock_key = fingerprint_lock_key(fingerprint)
+            with SessionLocal() as probe:
+                probe.execute(text("SET LOCAL lock_timeout = '250ms'"))
+                with pytest.raises(OperationalError):
+                    probe.execute(
+                        text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key}
+                    )
+                probe.rollback()
+
+            # Release A -> B unblocks, re-reads a FRESH incumbent (A's now-
+            # visible commit), and decides against it.
+            session_a.commit()
+            session_a.close()
+            thread.join(timeout=10)
+            assert not thread.is_alive()
+
+            return first_result, second_result_holder["result"]
+        finally:
+            # session_a.close() above is a no-op the second time (SQLAlchemy
+            # tolerates closing an already-closed Session); on any failure
+            # path it rolls back A's uncommitted transaction, releasing the
+            # advisory lock so B (and this function's own cleanup queries)
+            # are never left blocked on an abandoned connection.
+            session_a.close()
+            if thread is not None:
+                thread.join(timeout=10)
+
+    try:
+        # Round 1: finalization claimed first, daily second -> daily must
+        # latch, the final revision stays served.
+        year1 = 2023
+        scope_id1 = "zone-latch-concurrent-1"
+        fingerprint1 = _hex_fingerprint("fp-latch-concurrent-1")
+        first_result1, second_result1 = run_concurrent_round(
+            scope_id=scope_id1,
+            fingerprint=fingerprint1,
+            year=year1,
+            now=datetime(year1 + 1, 6, 1, tzinfo=UTC),
+            first_source_id="chirps-v3-final",
+            first_role="historical",
+            first_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-final",
+                scope_id=scope_id1,
+                year=year1,
+                intervals=365,
+                persisted=365,
+            ),
+            second_source_id="chirps-v3-sat",
+            second_role="daily",
+            second_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                scope_id=scope_id1,
+                year=year1,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+        )
+        assert first_result1["decision"] == "write"
+        assert second_result1["decision"] == "latched"
+
+        with SessionLocal() as verify1:
+            served1 = RainfallRepository().get_snapshot(verify1, fingerprint1)
+            assert served1 is not None
+            assert served1.snapshot["annual"]["selected"]["provenance"]["source_id"] == (
+                "chirps-v3-final"
+            )
+            assert served1.snapshot["annual"]["selected"]["temporal_state"] == "final"
+            count1 = verify1.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint1)
+            )
+            assert count1 == 1
+
+        # Round 2: reversed claim order -- daily first, finalization second
+        # -> the finalization revision is the one served.
+        year2 = 2022
+        scope_id2 = "zone-latch-concurrent-2"
+        fingerprint2 = _hex_fingerprint("fp-latch-concurrent-2")
+        first_result2, second_result2 = run_concurrent_round(
+            scope_id=scope_id2,
+            fingerprint=fingerprint2,
+            year=year2,
+            now=datetime(year2 + 1, 6, 1, tzinfo=UTC),
+            first_source_id="chirps-v3-sat",
+            first_role="daily",
+            first_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                scope_id=scope_id2,
+                year=year2,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+            second_source_id="chirps-v3-final",
+            second_role="historical",
+            second_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-final",
+                scope_id=scope_id2,
+                year=year2,
+                intervals=365,
+                persisted=365,
+            ),
+        )
+        assert first_result2["decision"] == "write"
+        assert second_result2["decision"] == "write"
+
+        with SessionLocal() as verify2:
+            served2 = RainfallRepository().get_snapshot(verify2, fingerprint2)
+            assert served2 is not None
+            assert served2.snapshot["annual"]["selected"]["provenance"]["source_id"] == (
+                "chirps-v3-final"
+            )
+            assert served2.snapshot["annual"]["selected"]["temporal_state"] == "final"
+            count2 = verify2.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint2)
+            )
+            assert count2 == 2
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter(
+                RainfallAnalysisRevision.request_fingerprint.in_(
+                    [
+                        _hex_fingerprint("fp-latch-concurrent-1"),
+                        _hex_fingerprint("fp-latch-concurrent-2"),
+                    ]
+                )
+            ).delete(synchronize_session=False)
+            cleanup.query(RainfallOutbox).filter(
+                RainfallOutbox.scope_id.in_(["zone-latch-concurrent-1", "zone-latch-concurrent-2"])
+            ).delete(synchronize_session=False)
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.9 — current_year_done_keys: DISTINCT ON the outbox key, newest
+# `done` row per key (sweep stage 1's source query)
+# ---------------------------------------------------------------------------
+
+
+def test_current_year_done_keys_distinct_on_key(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import current_year_done_keys
+
+    year = 2024
+    key = {
+        "source_id": "chirps-v3-sat",
+        "role": "daily",
+        "scope_kind": "zone",
+        "scope_id": "zone-current-year-distinct",
+        "scope_version": "v1",
+        "year": year,
+    }
+
+    # Two `done` rows for the SAME key (as the daily sweep itself produces
+    # one per day) -- only the newest (by completed_at) must come back.
+    older = RainfallOutbox(
+        **key,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-older"),
+    )
+    newer = RainfallOutbox(
+        **key,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 2, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-newer"),
+    )
+    # A DIFFERENT key, same year -- must appear as its own row.
+    other_key = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-current-year-distinct-other",
+        scope_version="v1",
+        year=year,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-other"),
+    )
+    # A past-year `done` row for the SAME key shape -- must be excluded by
+    # the year filter.
+    past_year = RainfallOutbox(
+        **{**key, "year": year - 1},
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-past"),
+    )
+    db.add_all([older, newer, other_key, past_year])
+    db.commit()
+
+    try:
+        rows = current_year_done_keys(db, year=year, limit=50)
+        by_scope = {row.scope_id: row for row in rows}
+
+        # One row per DISTINCT key, not one row per `done` row -- the two
+        # rows for "zone-current-year-distinct" must collapse to one.
+        assert len(rows) == 2
+        assert set(by_scope) == {
+            "zone-current-year-distinct",
+            "zone-current-year-distinct-other",
+        }
+        assert by_scope["zone-current-year-distinct"].request_fingerprint == _hex_fingerprint(
+            "fp-current-year-distinct-newer"
+        )
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                [
+                    "zone-current-year-distinct",
+                    "zone-current-year-distinct-other",
+                ]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.13 — completed_year_daily_done_keys: a SUPERSET, never the
+# termination condition (sweep stage 2's SQL pre-filter)
+# ---------------------------------------------------------------------------
+
+
+def test_completed_year_daily_done_keys_is_a_superset(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import completed_year_daily_done_keys
+
+    current_year = 2025
+
+    # Matches every predicate: role='daily', done, year < before_year,
+    # fingerprint set -- MUST appear.
+    candidate = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-candidate",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-candidate"),
+    )
+    # role='historical' -- already final-sourced, must NOT appear.
+    historical = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-stage2-historical",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-historical"),
+    )
+    # Current year -- excluded by `year < before_year`.
+    current = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-current",
+        scope_version="v1",
+        year=current_year,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-current"),
+    )
+    # Legacy row: NULL fingerprint (pre-`lluvia_v2_005`) -- must NOT appear.
+    legacy = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-legacy",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=None,
+    )
+    db.add_all([candidate, historical, current, legacy])
+    db.commit()
+
+    try:
+        rows = completed_year_daily_done_keys(db, before_year=current_year, limit=50)
+        scope_ids = {row.scope_id for row in rows}
+
+        assert scope_ids == {"zone-stage2-candidate"}
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                [
+                    "zone-stage2-candidate",
+                    "zone-stage2-historical",
+                    "zone-stage2-current",
+                    "zone-stage2-legacy",
+                ]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.10 — revisit_stale stage 1: enqueue a fresh pending row per
+# current-year done key
+# ---------------------------------------------------------------------------
+
+
+def _make_done_row(
+    *,
+    source_id: str,
+    role: str,
+    scope_id: str,
+    year: int,
+    completed_at: datetime,
+    fingerprint: str,
+    work_labels: list[str] | None = None,
+):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    return RainfallOutbox(
+        source_id=source_id,
+        role=role,
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=year,
+        work_labels=work_labels or ["analysis_missing"],
+        interval_start=datetime(year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+        status="done",
+        completed_at=completed_at,
+        request_fingerprint=fingerprint,
+    )
+
+
+def test_revisit_stage1_enqueues_fresh_pending_row_per_current_year_key(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    year = 2024
+    fingerprint = _hex_fingerprint("fp-revisit-stage1-basic")
+    done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-revisit-stage1-basic",
+        year=year,
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        fingerprint=fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    db.add(done)
+    db.commit()
+
+    try:
+        result = tasks.revisit_stale(db=db, now=datetime(year, 6, 15, tzinfo=UTC))
+
+        assert result["scanned"] == 1
+        assert result["enqueued"] == 1
+        assert result["skipped"] == 0
+
+        fresh_rows = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-basic", status="pending")
+            .all()
+        )
+        assert len(fresh_rows) == 1
+        fresh = fresh_rows[0]
+        assert fresh.source_id == "chirps-v3-sat"
+        assert fresh.role == "daily"
+        assert fresh.year == year
+        assert fresh.interval_start == datetime(year, 1, 1, tzinfo=UTC)
+        assert fresh.interval_end == datetime(year + 1, 1, 1, tzinfo=UTC)
+        assert fresh.request_fingerprint == fingerprint
+        assert set(fresh.work_labels) == {"analysis_missing", "role:daily"}
+    finally:
+        db.query(RainfallOutbox).filter_by(scope_id="zone-revisit-stage1-basic").delete()
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.11 — stage 1 dedup and year filter
+# ---------------------------------------------------------------------------
+
+
+def test_revisit_stage1_dedups_and_exempts_past_years(db, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    current_year = 2024
+    dedup_fingerprint = _hex_fingerprint("fp-revisit-stage1-dedup")
+    dedup_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-revisit-stage1-dedup",
+        year=current_year,
+        completed_at=datetime(current_year, 6, 1, tzinfo=UTC),
+        fingerprint=dedup_fingerprint,
+    )
+    past_fingerprint = _hex_fingerprint("fp-revisit-stage1-past")
+    past_done = _make_done_row(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_id="zone-revisit-stage1-past",
+        year=current_year - 1,
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        fingerprint=past_fingerprint,
+    )
+    db.add_all([dedup_done, past_done])
+    db.commit()
+
+    try:
+        now = datetime(current_year, 6, 15, tzinfo=UTC)
+
+        first = tasks.revisit_stale(db=db, now=now)
+        assert first["scanned"] == 1  # only the current-year key is selected
+        assert first["enqueued"] == 1
+
+        caplog.clear()
+        with caplog.at_level("INFO", logger="rainfall"):
+            second = tasks.revisit_stale(db=db, now=now)
+        assert second["scanned"] == 1
+        assert second["enqueued"] == 0
+        assert second["skipped"] == 1  # pending_in_flight
+
+        # R3-103: the skip event's payload, not just the counter.
+        skipped_payload = _event_payload(caplog, "rainfall.revisit.skipped")
+        assert skipped_payload["reason"] == "pending_in_flight"
+        assert skipped_payload["scope_id"] == "zone-revisit-stage1-dedup"
+        assert skipped_payload["source_id"] == "chirps-v3-sat"
+        assert skipped_payload["role"] == "daily"
+
+        dedup_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-dedup", status="pending")
+            .all()
+        )
+        assert len(dedup_pending) == 1
+
+        past_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-past", status="pending")
+            .all()
+        )
+        assert past_pending == []
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(["zone-revisit-stage1-dedup", "zone-revisit-stage1-past"])
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.12 — E2E: same key, later date (JDA-001 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monkeypatch):
+    """The JDA-001 regression: a current-year key's snapshot is NOT the
+    permanent answer for the rest of the year. Also proves 1.5's
+    supersession becomes a later served revision (decision 3c).
+
+    Uses the REAL current year (`datetime.now(UTC).year`, same pattern as
+    `test_ingest_ops.py::test_resolve_missing_work_source_uses_daily_for_current_year`).
+    PR 4's flip (task 4.1) is live, so `RAINFALL_DAILY_SOURCE` is
+    `chirps-v3-sat` for real -- no monkeypatch needed; this test verifies
+    the sweep/supersession mechanism, not the flip itself.
+
+    Deliberately uses REAL `SessionLocal()` connections throughout (real
+    ``get_db``, `db=None` on every task call) instead of the shared `db`
+    fixture, and never passes `db=db` to a task call: `created_at` is
+    `server_default=func.now()`, which PostgreSQL freezes to *transaction
+    start*, so three builds sharing the `db` fixture's single savepoint-
+    scoped transaction would all land the SAME `created_at` and
+    `get_snapshot`'s `id DESC` tiebreak would then serve an arbitrary one
+    of the three, not the newest -- the same class of bug already fixed
+    for `claim_outbox_row`'s claim predicate (see `test_per_row_commit_
+    survives_a_later_row_failure` and the Durability Testing Strategy
+    row for the same reason with a single fresh `SessionLocal()`).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run; see docstring for why the
+    # actual work below uses fresh SessionLocal() connections instead.
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    fake_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(30)]
+    )
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=fake_client).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-same-key-later-date"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        day_d = datetime(year, 1, 30, 12, tzinfo=UTC)  # noon UTC: same BA calendar day
+        result_d = tasks.process_outbox(now=day_d)
+        # R3-102: `db=None` scans the WHOLE table, so a GLOBAL count is not
+        # scoped to this test's own key -- assert the lower bound (this
+        # test's own row did complete) and let `_revision_count()` below
+        # (scoped to `fingerprint`) carry the exact-count assertion.
+        assert result_d["succeeded"] >= 1
+
+        served_d = client.post("/rainfall/analyses", json=payload)
+        assert served_d.status_code == 200
+        assert served_d.json()["comparison_end"] == f"{year}-01-30"
+        assert _revision_count() == 1
+
+        # A newly published day: extend the fake series by one day.
+        fake_client.series = [*fake_client.series, (year_start + timedelta(days=30), 2.0)]
+
+        day_d1 = datetime(year, 1, 31, 12, tzinfo=UTC)
+        revisit_d1 = tasks.revisit_stale(now=day_d1)
+        assert revisit_d1["enqueued"] >= 1  # R3-102: global count, see above
+        result_d1 = tasks.process_outbox(now=day_d1)
+        assert result_d1["succeeded"] >= 1  # R3-102: global count, see above
+
+        served_d1 = client.post("/rainfall/analyses", json=payload)
+        assert served_d1.status_code == 200
+        body_d1 = served_d1.json()
+        assert body_d1["comparison_end"] == f"{year}-01-31"
+        metric_d1 = body_d1["annual"]["selected"]
+        assert metric_d1["value"] == pytest.approx(32.0)  # 30 days@1.0 + 1 day@2.0
+        assert _revision_count() == 2
+
+        # Repeat with an UNCHANGED series: comparison_end alone advancing
+        # must still produce a new revision (decision 3b).
+        day_d2 = datetime(year, 2, 1, 12, tzinfo=UTC)
+        revisit_d2 = tasks.revisit_stale(now=day_d2)
+        assert revisit_d2["enqueued"] >= 1  # R3-102: global count, see above
+        result_d2 = tasks.process_outbox(now=day_d2)
+        assert result_d2["succeeded"] >= 1  # R3-102: global count, see above
+
+        served_d2 = client.post("/rainfall/analyses", json=payload)
+        assert served_d2.status_code == 200
+        assert served_d2.json()["comparison_end"] == f"{year}-02-01"
+        assert _revision_count() == 3
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# JDA-301 (review-ledger.md "Judgment Day — APPLY-PHASE completion") — a
+# restated slot inside an already-served revision becomes visible as a
+# later revision, end-to-end through the delta spec's own scenario wording
+# ("Corrected value becomes visible as a later revision", :150-155).
+#
+# Deliberately distinct from
+# `test_e2e_same_key_later_date_and_corrected_revision_becomes_visible`
+# (JDA-001): that test proves a NEW day (comparison_end advancing) drives a
+# new revision. This test holds `now` and the day count fixed and changes
+# ONLY an already-ingested slot's value, so the correction alone -- not the
+# clock -- is what is proven to produce and serve a second revision.
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_correction_to_an_already_served_slot_becomes_visible_as_a_later_revision(
+    db, monkeypatch
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run; see JDA-001's sibling
+    # test's docstring for why real fresh SessionLocal() connections are used
+    # below instead of the shared `db` fixture: created_at is
+    # server_default=func.now(), which PostgreSQL freezes to *transaction
+    # start* -- two builds sharing the db fixture's single savepoint-scoped
+    # transaction would land the SAME created_at, and get_snapshot's id DESC
+    # tiebreak would then serve an arbitrary one of the two, not the newer
+    # one -- silently hiding the exact thing this test proves. (Verified
+    # empirically: an earlier version of this test using db=db everywhere
+    # served R1's own revision_id back after R2 was written.)
+
+    # Current real year, same as JDA-001's test, so the request path resolves
+    # role="daily"/source_id="chirps-v3-sat" (task 4.1's flip, live) without
+    # monkeypatching `resolve_missing_work_source`.
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    # Five slots; slot K = day index 2 (Jan 3) starts at v1 = 1.0 and is
+    # restated to v2 = 9.0 below. Day COUNT never changes (5 slots, both
+    # builds) -- no new day is ever appended to the series.
+    original_series = [(year_start + timedelta(days=offset), 1.0) for offset in range(5)]
+    corrected_series = list(original_series)
+    corrected_series[2] = (year_start + timedelta(days=2), 9.0)
+
+    fake_client = _FakeGeeClientForE2E(series=original_series)
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=fake_client).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-correction-visible"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+    # Same instant for both builds -- comparison_end is identical for R1 and
+    # R2, so a second revision can only come from the restated slot.
+    now = datetime(year, 1, 5, 12, tzinfo=UTC)
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        result_r1 = tasks.process_outbox(now=now)
+        # R3-102: db=None scans the WHOLE table -- assert the lower bound and
+        # let _revision_count() (scoped to this key's fingerprint) carry the
+        # exact-count assertion.
+        assert result_r1["succeeded"] >= 1
+
+        served_r1 = client.post("/rainfall/analyses", json=payload)
+        assert served_r1.status_code == 200
+        body_r1 = served_r1.json()
+        assert body_r1["comparison_end"] == f"{year}-01-05"
+        metric_r1 = body_r1["annual"]["selected"]
+        assert metric_r1["value"] == pytest.approx(5.0)  # 5 days @ 1.0
+        revision_id_r1 = body_r1["analysis_revision_id"]
+        assert revision_id_r1
+        assert _revision_count() == 1
+
+        # Re-ingest with slot K RESTATED -- same day count, no new day.
+        # Reuses the identical wired path (ResilientAdapter -> the
+        # monkeypatched `_concrete_fetch` -> the real ChirpsV3Adapter bound
+        # to `fake_client`) process_outbox itself uses. db=None: opens and
+        # commits its own SessionLocal(), same session-boundary contract as
+        # every other real-clock task call in this test.
+        fake_client.series = corrected_series
+        ingest_result = tasks.ingest_source_scope(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+        )
+        assert ingest_result["superseded"] == 1  # exactly one slot corrected
+
+        # Run the chain: the daily sweep enqueues a fresh pending row for
+        # this still-current-year key (design.md "Current-Year Revisit
+        # Cycle"), then process_outbox builds R2 from it.
+        revisit_result = tasks.revisit_stale(now=now)
+        assert revisit_result["enqueued"] >= 1  # R3-102: global count, see above
+
+        result_r2 = tasks.process_outbox(now=now)
+        assert result_r2["succeeded"] >= 1  # R3-102: global count, see above
+
+        served_r2 = client.post("/rainfall/analyses", json=payload)
+        assert served_r2.status_code == 200
+        body_r2 = served_r2.json()
+        assert body_r2["comparison_end"] == f"{year}-01-05"  # unchanged: not date-driven
+        metric_r2 = body_r2["annual"]["selected"]
+        assert metric_r2["value"] == pytest.approx(13.0)  # 4 days@1.0 + 1 day@9.0
+        revision_id_r2 = body_r2["analysis_revision_id"]
+
+        assert revision_id_r2 != revision_id_r1
+        assert _revision_count() == 2
+
+        # get_snapshot -- the router's own lookup -- resolves to the SECOND
+        # revision (delta spec: "it identifies the revision behind the
+        # result being viewed").
+        with SessionLocal() as check:
+            revision = RainfallRepository().get_snapshot(check, fingerprint)
+            assert revision is not None
+            assert str(revision.id) == revision_id_r2
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.14 — revisit_stale stage 2: re-resolve source/role, terminate on
+# an adequate final revision
+# ---------------------------------------------------------------------------
+
+
+def _served_snapshot(*, source_id: str, temporal_state: str) -> dict:
+    """Minimal envelope shape `served_state` reads: `annual.selected.
+    provenance.source_id` and `annual.selected.temporal_state`."""
+    return {
+        "annual": {
+            "selected": {
+                "provenance": {"source_id": source_id},
+                "temporal_state": temporal_state,
+            }
+        }
+    }
+
+
+def test_revisit_stage2_reresolves_source_and_terminates_on_final(db, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+
+    current_year = 2025
+    completed_year = current_year - 1
+    now = datetime(current_year, 6, 15, tzinfo=UTC)
+
+    # Case 1: provisional incumbent -> re-resolve and enqueue.
+    reresolve_fingerprint = _hex_fingerprint("fp-stage2-reresolve")
+    reresolve_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-reresolve",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=reresolve_fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    reresolve_revision = RainfallAnalysisRevision(
+        request_fingerprint=reresolve_fingerprint,
+        policy_revision="p1",
+        data_revision="d1",
+        snapshot=_served_snapshot(source_id="chirps-v3-sat", temporal_state="provisional"),
+    )
+
+    # Case 2: already-final incumbent -> terminate, nothing enqueued.
+    terminate_fingerprint = _hex_fingerprint("fp-stage2-terminate")
+    terminate_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-terminate",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=terminate_fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    terminate_revision = RainfallAnalysisRevision(
+        request_fingerprint=terminate_fingerprint,
+        policy_revision="p1",
+        data_revision="d1",
+        snapshot=_served_snapshot(source_id="chirps-v3-final", temporal_state="final"),
+    )
+
+    # Case 3: NULL fingerprint -- excluded by the repository query itself
+    # (3.13), included here for this task's own direct coverage.
+    legacy_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-legacy-null",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=_hex_fingerprint("fp-stage2-legacy-null-unused"),
+    )
+    legacy_done.request_fingerprint = None
+
+    db.add_all(
+        [
+            reresolve_done,
+            reresolve_revision,
+            terminate_done,
+            terminate_revision,
+            legacy_done,
+        ]
+    )
+    db.commit()
+
+    scope_ids = [
+        "zone-stage2-reresolve",
+        "zone-stage2-terminate",
+        "zone-stage2-legacy-null",
+    ]
+    try:
+        result = tasks.revisit_stale(db=db, now=now)
+
+        # C1 fix: the terminate-scope key is excluded by the SQL query
+        # itself now (its newest revision already discloses
+        # ("chirps-v3-final", "final")), same as the legacy-null key --
+        # only the still-provisional reresolve key is scanned.
+        assert result["finalization_scanned"] == 1
+        assert result["finalization_enqueued"] == 1
+        assert result["finalization_skipped"] == 0
+        assert result["finalization_terminated"] == 0
+
+        reresolved_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-reresolve", status="pending")
+            .all()
+        )
+        assert len(reresolved_pending) == 1
+        fresh = reresolved_pending[0]
+        assert fresh.source_id == "chirps-v3-final"
+        assert fresh.role == "historical"
+        assert fresh.year == completed_year
+        assert fresh.interval_start == datetime(completed_year, 1, 1, tzinfo=UTC)
+        assert fresh.interval_end == datetime(completed_year + 1, 1, 1, tzinfo=UTC)
+        # The fingerprint is the IDENTITY -- copied verbatim, never recomputed.
+        assert fresh.request_fingerprint == reresolve_fingerprint
+        assert "finalization" in fresh.work_labels
+        assert "role:historical" in fresh.work_labels
+
+        terminate_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-terminate", status="pending")
+            .all()
+        )
+        assert terminate_pending == []
+
+        legacy_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-legacy-null", status="pending")
+            .all()
+        )
+        assert legacy_pending == []
+
+        # Running the sweep again must not double-enqueue the re-resolved key.
+        caplog.clear()
+        with caplog.at_level("INFO", logger="rainfall"):
+            second = tasks.revisit_stale(db=db, now=now)
+        assert second["finalization_scanned"] == 1  # C1: same SQL exclusion holds
+        assert second["finalization_enqueued"] == 0
+        assert second["finalization_skipped"] == 1  # pending_in_flight
+        assert second["finalization_terminated"] == 0
+
+        # R3-103: the skip event's payload, not just the counter.
+        skipped_payload = _event_payload(caplog, "rainfall.finalization.skipped")
+        assert skipped_payload["reason"] == "pending_in_flight"
+        assert skipped_payload["scope_id"] == "zone-stage2-reresolve"
+        assert skipped_payload["scope_version"] == "v1"  # R2-008: now present
+
+        reresolved_pending_after = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-reresolve", status="pending")
+            .all()
+        )
+        assert len(reresolved_pending_after) == 1
+    finally:
+        db.query(RainfallAnalysisRevision).filter(
+            RainfallAnalysisRevision.request_fingerprint.in_(
+                [reresolve_fingerprint, terminate_fingerprint]
+            )
+        ).delete(synchronize_session=False)
+        db.query(RainfallOutbox).filter(RainfallOutbox.scope_id.in_(scope_ids)).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.15 — self-extinguishing regression (JDB-101, the test that must
+# not be dropped)
+# ---------------------------------------------------------------------------
+
+
+def test_finalization_is_retried_not_abandoned_then_terminates(db, monkeypatch, caplog):
+    """A refused finalization attempt is retried on every sweep, not
+    abandoned after one try; once an adequate final revision is written
+    and served, the sweep stops enqueueing for that key.
+
+    Real `SessionLocal()` connections throughout (never the shared `db`
+    fixture, never `db=` on a task call) for the same reason as task
+    3.12's fix: multiple real builds sharing one fingerprint need
+    genuinely distinct `created_at` for `get_snapshot`'s ordering to be
+    meaningful, and the shared fixture's single transaction would freeze
+    it.
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+
+    _ = db  # guarantees test_engine's create_all() has run; see 3.12's docstring for why
+    # the actual work below uses fresh SessionLocal() connections instead.
+
+    year = 2023
+    scope_id = "zone-self-extinguish"
+    fingerprint = _hex_fingerprint("fp-self-extinguish")
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    # ---- Setup: an already-served PROVISIONAL incumbent for a completed
+    # year, exactly the "materialized while the year was still running"
+    # shape (built directly, matching the 3.7 sequential-case pattern). ----
+    with SessionLocal() as setup:
+        persist_intervals(
+            setup,
+            source_id="chirps-v3-sat",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            rows=_full_year_rows(year=year, provider_revision="v3-nrt"),
+        )
+        daily_outbox = RainfallOutbox(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+            work_labels=["analysis_missing", "role:daily"],
+            interval_start=year_start,
+            interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+            status="done",
+            completed_at=datetime(year, 12, 31, tzinfo=UTC),
+            request_fingerprint=fingerprint,
+        )
+        setup.add(daily_outbox)
+        setup.commit()
+
+        tasks.build_analysis(
+            outbox_id=str(daily_outbox.id),
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                scope_id=scope_id,
+                year=year,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+            db=setup,
+            now=datetime(year + 1, 6, 1, tzinfo=UTC),
+        )
+        setup.commit()
+
+    # An inadequate final series (every 10th day, ~10% complete) -- kept
+    # mutable so a later cycle can swap in an adequate one.
+    fake_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(0, 365, 10)]
+    )
+
+    def fake_concrete_fetch(source_id):
+        if source_id == "chirps-v3-final":
+            return ChirpsV3Adapter(gee=fake_client).fetch
+        raise NotImplementedError(f"unexpected source_id in this regression test: {source_id!r}")
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    def _served_source_and_state() -> tuple[str, str]:
+        with SessionLocal() as check:
+            revision = RainfallRepository().get_snapshot(check, fingerprint)
+            selected = revision.snapshot["annual"]["selected"]
+            return selected["provenance"]["source_id"], selected["temporal_state"]
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+        assert _revision_count() == 1
+
+        # R3-102: `db=None` scans the WHOLE table, so the sweep's
+        # `finalization_enqueued`/`process_outbox`'s `succeeded` are GLOBAL
+        # counts, not scoped to this test's own key -- assert the lower
+        # bound and let `_revision_count()`/`_served_source_and_state()`
+        # (both scoped to `fingerprint`) carry the exact-outcome assertion.
+
+        # Attempt 1: inadequate final series -> refused, provisional stays served.
+        now1 = datetime(year + 1, 1, 15, 12, tzinfo=UTC)
+        revisit1 = tasks.revisit_stale(now=now1)
+        assert revisit1["finalization_enqueued"] >= 1
+        with caplog.at_level("INFO", logger="rainfall"):
+            process1 = tasks.process_outbox(now=now1)
+        assert process1["succeeded"] >= 1
+        assert _revision_count() == 1  # 0 new -- gate_refused
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+
+        # R3-103: the refusal event's payload, not just the revision count.
+        gate_refused_payload = _event_payload(caplog, "rainfall.finalization.gate_refused")
+        assert gate_refused_payload["scope_id"] == scope_id  # R2-008: flat, not nested
+        assert gate_refused_payload["scope_kind"] == "zone"
+        assert gate_refused_payload["scope_version"] == "v1"
+        assert gate_refused_payload["year"] == year
+        assert 0 <= gate_refused_payload["coverage"] < 1
+
+        # Attempt 2: NOT a one-shot retry -- the sweep enqueues again.
+        now2 = datetime(year + 1, 1, 16, 12, tzinfo=UTC)
+        revisit2 = tasks.revisit_stale(now=now2)
+        assert revisit2["finalization_enqueued"] >= 1
+        process2 = tasks.process_outbox(now=now2)
+        assert process2["succeeded"] >= 1
+        assert _revision_count() == 1
+        assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
+
+        # Supply an adequate final series.
+        fake_client.series = [(year_start + timedelta(days=offset), 1.0) for offset in range(365)]
+
+        now3 = datetime(year + 1, 1, 17, 12, tzinfo=UTC)
+        revisit3 = tasks.revisit_stale(now=now3)
+        assert revisit3["finalization_enqueued"] >= 1
+        process3 = tasks.process_outbox(now=now3)
+        assert process3["succeeded"] >= 1
+        assert _revision_count() == 2  # the final revision is written
+        assert _served_source_and_state() == ("chirps-v3-final", "final")
+
+        # Termination: the next sweep enqueues nothing for THIS key --
+        # checked directly against the DB (scoped to `scope_id`), not the
+        # sweep's global `finalization_enqueued` count.
+        now4 = datetime(year + 1, 1, 18, 12, tzinfo=UTC)
+        tasks.revisit_stale(now=now4)
+        with SessionLocal() as check:
+            still_pending = (
+                check.query(RainfallOutbox).filter_by(scope_id=scope_id, status="pending").all()
+            )
+        assert still_pending == []
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.16 — E2E: year rollover (JDB-101 regression at the API boundary)
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_year_rollover_transitions_to_final(db, monkeypatch):
+    """POST year Y while Y is current -> 200 provisional/chirps-v3-sat.
+    Move the seam to January of Y+1 with an adequate final series, run
+    revisit_stale(now=...) + process_outbox(now=...), POST the SAME
+    payload again -> 200 final/chirps-v3-final, both revisions retained
+    under the one request_fingerprint. The POST itself is never
+    clock-seamed (the router routes on the real clock by design) --
+    the second POST is a get_snapshot hit and never re-resolves anything.
+
+    Same real-SessionLocal()-throughout rationale as tasks 3.12/3.15.
+    PR 4's flip (task 4.1) is live, so `RAINFALL_DAILY_SOURCE` is
+    `chirps-v3-sat` for real -- no monkeypatch needed.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    is_leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    days_in_year = 366 if is_leap else 365
+
+    daily_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(days_in_year)]
+    )
+    # Inadequate final series until the seam moves -- the sweep must not
+    # find it adequate before the test says so (kept mutable).
+    final_client = _FakeGeeClientForE2E(series=[])
+
+    def fake_concrete_fetch(source_id):
+        if source_id == "chirps-v3-sat":
+            return ChirpsV3Adapter(gee=daily_client).fetch
+        if source_id == "chirps-v3-final":
+            return ChirpsV3Adapter(gee=final_client).fetch
+        raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-year-rollover"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        # R3-102: `db=None` scans the WHOLE table, so `succeeded`/
+        # `finalization_enqueued` below are GLOBAL counts -- assert the
+        # lower bound and let `_revision_count()`/the served snapshot's own
+        # fields (both scoped to `fingerprint`) carry the exact assertion.
+        result_provisional = tasks.process_outbox(now=datetime(year, 6, 15, 12, tzinfo=UTC))
+        assert result_provisional["succeeded"] >= 1
+
+        served_provisional = client.post("/rainfall/analyses", json=payload)
+        assert served_provisional.status_code == 200
+        metric_provisional = served_provisional.json()["annual"]["selected"]
+        assert metric_provisional["temporal_state"] == "provisional"
+        assert metric_provisional["provenance"]["source_id"] == "chirps-v3-sat"
+        assert _revision_count() == 1
+
+        # Move the seam to January of Y+1 with an adequate final series.
+        final_client.series = [
+            (year_start + timedelta(days=offset), 1.0) for offset in range(days_in_year)
+        ]
+
+        now_rollover = datetime(year + 1, 1, 15, 12, tzinfo=UTC)
+        revisit = tasks.revisit_stale(now=now_rollover)
+        assert revisit["finalization_enqueued"] >= 1
+        result_final = tasks.process_outbox(now=now_rollover)
+        assert result_final["succeeded"] >= 1
+
+        served_final = client.post("/rainfall/analyses", json=payload)
+        assert served_final.status_code == 200
+        body_final = served_final.json()
+        metric_final = body_final["annual"]["selected"]
+        assert metric_final["temporal_state"] == "final"
+        assert metric_final["provenance"]["source_id"] == "chirps-v3-final"
+        assert _revision_count() == 2  # both revisions retained
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.17 — the rainfall-revisit-stale Beat entry
+# ---------------------------------------------------------------------------
+
+
+def test_revisit_stale_beat_entry_is_registered():
+    from app.core.celery_app import celery_app
+
+    entry = celery_app.conf.beat_schedule.get("rainfall-revisit-stale")
+    assert entry is not None
+    assert entry["task"] == "rainfall.revisit_stale"
+    schedule = entry["schedule"]
+    assert schedule.minute == {30}
+    assert schedule.hour == {3}
+    assert entry["options"] == {"queue": "celery"}
+
+
+# ---------------------------------------------------------------------------
+# Task 3.18 — validation source matches the manifest; concurrent identical
+# POST does not surface a 500
+# ---------------------------------------------------------------------------
+
+
+def test_validation_source_matches_manifest():
+    from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
+    from app.domains.geo.rainfall.service import RAINFALL_VALIDATION_SOURCE
+
+    validation_manifests = [m for m in CANDIDATE_MANIFESTS if m.role == "validation"]
+    assert validation_manifests
+    assert {m.source_id for m in validation_manifests} == {RAINFALL_VALIDATION_SOURCE}
+
+
+def test_concurrent_identical_post_does_not_surface_500(db, monkeypatch):
+    """decision 8's discipline extended to `queue_missing_analysis` itself
+    (task 3.18): a second identical POST whose own "existing pending"
+    pre-check raced past the first caller's not-yet-visible commit must
+    still return 202, not surface the resulting `IntegrityError` on
+    `ix_rainfall_outbox_pending_unique` as a 500.
+
+    Two independent `SessionLocal()` connections, not the shared `db`
+    fixture: `db.rollback()` on the fixture's single savepoint-scoped
+    session undoes the WHOLE test's prior commits, not just the failed
+    statement (empirically confirmed while writing this test -- the
+    first call's row vanished too), so the two-call-on-one-session
+    design cannot exercise this recovery path at all. A genuine race is
+    two DIFFERENT connections regardless.
+
+    JDA-302 (review-ledger.md "Judgment Day — APPLY-PHASE completion"): the
+    original hijack patched ``Session.query`` (the legacy ORM API), but
+    ``queue_missing_analysis``'s actual pre-check and post-``IntegrityError``
+    re-read both go through the single ``repository.pending_row_for_key``
+    (R2-003), which issues ``db.scalar(select(...))`` -- ``Session.query``
+    is never called on this path, so the old hijack never fired and this
+    test passed vacuously via the ordinary "existing row found" reuse
+    branch, never exercising the ``except IntegrityError`` handler at all.
+    Hijacking ``repository.pending_row_for_key`` itself (a module-level
+    function ``queue_missing_analysis`` re-imports by name on every call)
+    fires on the real path: the FIRST call (the pre-check) is forced to
+    report nothing pending, so the second connection's own INSERT proceeds
+    and genuinely collides with the first connection's already-committed
+    row; the SECOND call (the recovery re-read) runs unpatched and must
+    find that real row.
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import repository as rainfall_repository
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    _ = db  # guarantees test_engine's create_all() has run
+
+    scope = AnalysisScope(
+        kind="zone", id="zone-concurrent-post", version="v1", regional_estimate=False
+    )
+    year = 2022  # past year: deterministic historical/chirps-v3-final routing, no `now` dependency
+
+    try:
+        with SessionLocal() as first_session:
+            first = queue_missing_analysis(first_session, scope=scope, year=year)
+            assert first["status"] == "queued"
+
+        with SessionLocal() as second_session:
+            calls = {"n": 0}
+            real_pending_row_for_key = rainfall_repository.pending_row_for_key
+
+            def pending_row_for_key_hijack(db_, **kwargs):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    # The pre-check: report nothing pending, simulating the
+                    # race against the first connection's not-yet-visible
+                    # commit.
+                    return None
+                # The post-IntegrityError recovery re-read: runs for real.
+                return real_pending_row_for_key(db_, **kwargs)
+
+            monkeypatch.setattr(
+                rainfall_repository, "pending_row_for_key", pending_row_for_key_hijack
+            )
+
+            second = queue_missing_analysis(second_session, scope=scope, year=year)
+            assert second["status"] == "queued"
+            assert second["outbox_id"] == first["outbox_id"]
+            # The hijack must actually have fired -- otherwise this
+            # regresses to the same vacuous pass JDA-302 found (future
+            # refactors that route around pending_row_for_key must fail
+            # loudly here, not silently stop exercising the recovery path).
+            assert calls["n"] >= 1
+            assert calls["n"] == 2  # pre-check (hijacked) + recovery re-read (real)
+
+        with SessionLocal() as verify:
+            pending_count = verify.scalar(
+                select(func.count())
+                .select_from(RainfallOutbox)
+                .where(RainfallOutbox.scope_id == "zone-concurrent-post")
+                .where(RainfallOutbox.status == "pending")
+            )
+            assert pending_count == 1
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallOutbox).filter_by(scope_id="zone-concurrent-post").delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# R4-103 (PR2 scoped re-review) — the multi-row lifecycle INSERT with N>1
+# pairs in one batch, the primary NRT-correction shape
+# ---------------------------------------------------------------------------
+
+
+def test_record_supersession_batches_more_than_one_pair_correctly(db):
+    """R4-103: every existing supersession test restates exactly ONE slot
+    per `persist_intervals` call. `record_supersession`'s Core `pg_insert`
+    is a single multi-row `VALUES (...), (...), ...` statement (R4-001);
+    with only ever one row in the batch, a broken row-to-row pairing
+    (e.g. cross-wiring slot A's `superseded_by_id` to slot B's landed row)
+    would never be exercised. Restate TWO slots in one call and verify
+    each lifecycle row points at its OWN slot's new row, not the other
+    one's."""
+    from app.domains.geo.rainfall.models import RainfallIntervalLifecycle, RainfallIntervalValue
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    original = _daily_intervals(
+        start_day=1, values=[1.0, 2.0, 3.0, 4.0], provider_revision="v3-nrt"
+    )
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    # Restate slots 2 and 4 (both non-first, non-adjacent) in ONE call.
+    restated = _daily_intervals(
+        start_day=1, values=[1.0, 2.9, 3.0, 4.9], provider_revision="v3-nrt"
+    )
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 2
+    assert result["unchanged"] == 2
+    assert result["superseded"] == 2
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[-1].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert [row.value for row in current] == [1.0, 2.9, 3.0, 4.9]
+    assert [row.provider_revision for row in current] == [
+        "v3-nrt",
+        "v3-nrt+r1",
+        "v3-nrt",
+        "v3-nrt+r1",
+    ]
+
+    # Original rows, keyed by their (now-superseded) slot value, to check
+    # each lifecycle link points at the RIGHT new row -- not the other
+    # corrected slot's.
+    original_day2 = db.scalar(
+        select(RainfallIntervalValue).where(
+            RainfallIntervalValue.source_id == "chirps-v3-sat",
+            RainfallIntervalValue.scope_id == ZONE_KWARGS["scope_id"],
+            RainfallIntervalValue.interval_start == original[1].interval_start,
+            RainfallIntervalValue.value == 2.0,
+        )
+    )
+    original_day4 = db.scalar(
+        select(RainfallIntervalValue).where(
+            RainfallIntervalValue.source_id == "chirps-v3-sat",
+            RainfallIntervalValue.scope_id == ZONE_KWARGS["scope_id"],
+            RainfallIntervalValue.interval_start == original[3].interval_start,
+            RainfallIntervalValue.value == 4.0,
+        )
+    )
+    new_day2 = next(row for row in current if row.interval_start == original[1].interval_start)
+    new_day4 = next(row for row in current if row.interval_start == original[3].interval_start)
+
+    lifecycle_day2 = db.scalar(
+        select(RainfallIntervalLifecycle).where(
+            RainfallIntervalLifecycle.interval_value_id == original_day2.id
+        )
+    )
+    lifecycle_day4 = db.scalar(
+        select(RainfallIntervalLifecycle).where(
+            RainfallIntervalLifecycle.interval_value_id == original_day4.id
+        )
+    )
+    assert lifecycle_day2.event_type == "superseded"
+    assert lifecycle_day4.event_type == "superseded"
+    # The load-bearing assertion: each old slot's lifecycle row names ITS
+    # OWN new row -- not swapped with the other corrected slot's.
+    assert lifecycle_day2.superseded_by_id == new_day2.id
+    assert lifecycle_day4.superseded_by_id == new_day4.id
+    assert lifecycle_day2.superseded_by_id != new_day4.id
+    assert lifecycle_day4.superseded_by_id != new_day2.id
+
+
+# ---------------------------------------------------------------------------
+# PR3 review fix round 1 -- C1 + C2 (review-ledger.md "Pre-PR review — PR3"):
+# both sweep selection helpers were deterministic ascending prefixes over a
+# monotonically growing set, with termination expressed only as a Python
+# `continue` AFTER the LIMIT -- so once >= MAX_OUTBOX_BATCH keys sorted
+# lexicographically ahead of a still-needy key, that key could never be
+# reached again. These reproduce the reproducibility refuter's literal
+# repro for both stages.
+# ---------------------------------------------------------------------------
+
+
+def test_finalization_sql_exclusion_frees_rotation_slot_for_a_stalled_key(db, caplog):
+    """C1: 50 already-finalized keys ("zone-000".."zone-049", sorted
+    lexicographically ahead of "zone-zzz-stalled") plus one still-provisional
+    key. Before the fix, `completed_year_daily_done_keys`'s DISTINCT ON ...
+    LIMIT 50 (ORDER BY scope_kind, scope_id, scope_version, year ASC) returns
+    exactly the 50 finalized keys and never reaches the stalled one --
+    termination was a Python `continue` for each of the 50, past the LIMIT.
+    After the fix, the finalized keys are excluded IN SQL (a lateral read of
+    each key's own newest revision), freeing the whole MAX_OUTBOX_BATCH
+    budget for the one key that still needs work.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+
+    completed_year = 2023
+    now = datetime(completed_year + 1, 6, 15, tzinfo=UTC)
+
+    finalized_scope_ids = [f"zone-{i:03d}" for i in range(tasks.MAX_OUTBOX_BATCH)]
+    finalized_fingerprints = {
+        scope_id: _hex_fingerprint(f"fp-c1-final-{scope_id}") for scope_id in finalized_scope_ids
+    }
+    rows: list[RainfallOutbox] = []
+    revisions: list[RainfallAnalysisRevision] = []
+    for scope_id in finalized_scope_ids:
+        fingerprint = finalized_fingerprints[scope_id]
+        rows.append(
+            _make_done_row(
+                source_id="chirps-v3-final",
+                role="daily",
+                scope_id=scope_id,
+                year=completed_year,
+                completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+                fingerprint=fingerprint,
+            )
+        )
+        revisions.append(
+            RainfallAnalysisRevision(
+                request_fingerprint=fingerprint,
+                policy_revision="p1",
+                data_revision="d1",
+                snapshot=_served_snapshot(source_id="chirps-v3-final", temporal_state="final"),
+            )
+        )
+
+    stalled_scope_id = "zone-zzz-stalled"
+    stalled_fingerprint = _hex_fingerprint("fp-c1-stalled")
+    stalled_row = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id=stalled_scope_id,
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=stalled_fingerprint,
+    )
+    stalled_revision = RainfallAnalysisRevision(
+        request_fingerprint=stalled_fingerprint,
+        policy_revision="p1",
+        data_revision="d1",
+        snapshot=_served_snapshot(source_id="chirps-v3-sat", temporal_state="provisional"),
+    )
+
+    db.add_all([*rows, *revisions, stalled_row, stalled_revision])
+    db.commit()
+
+    all_scope_ids = [*finalized_scope_ids, stalled_scope_id]
+    try:
+        with caplog.at_level("INFO", logger="rainfall"):
+            result = tasks.revisit_stale(db=db, now=now)
+
+        # The 50 finalized keys never enter the scan (SQL exclusion); only
+        # the one stalled key is scanned -- and it is enqueued.
+        assert result["finalization_scanned"] == 1
+        assert result["finalization_enqueued"] == 1
+        assert result["finalization_skipped"] == 0
+        assert result["finalization_terminated"] == 0
+
+        completed_payload = _event_payload(caplog, "rainfall.finalization.completed")
+        assert completed_payload["finalization_scanned"] == 1
+        assert completed_payload["truncated"] is False
+
+        stalled_pending = (
+            db.query(RainfallOutbox).filter_by(scope_id=stalled_scope_id, status="pending").all()
+        )
+        assert len(stalled_pending) == 1
+        assert stalled_pending[0].source_id == "chirps-v3-final"
+        assert stalled_pending[0].role == "historical"
+        assert stalled_pending[0].request_fingerprint == stalled_fingerprint
+
+        for scope_id in finalized_scope_ids:
+            assert (
+                db.query(RainfallOutbox).filter_by(scope_id=scope_id, status="pending").all() == []
+            )
+    finally:
+        db.query(RainfallAnalysisRevision).filter(
+            RainfallAnalysisRevision.request_fingerprint.in_(
+                [*finalized_fingerprints.values(), stalled_fingerprint]
+            )
+        ).delete(synchronize_session=False)
+        db.query(RainfallOutbox).filter(RainfallOutbox.scope_id.in_(all_scope_ids)).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+def test_revisit_stage1_rotation_reaches_a_lexicographically_last_key_within_two_sweeps(
+    db, monkeypatch, caplog
+):
+    """C2: 51 current-year `done` keys, one of them ("zone-zzz-frozen")
+    sorted lexicographically last. Before the fix,
+    `current_year_done_keys`'s DISTINCT ON ... LIMIT 50 (ORDER BY source_id,
+    role, scope_kind, scope_id, scope_version, year ASC) returns the same 50
+    keys every sweep and never reaches the 51st -- its `comparison_end`
+    freezes for the rest of the year (JDA-001 at scale). After the fix, the
+    OUTER query orders the DISTINCT ON'd candidates by `completed_at` ASC
+    (least-recently-attempted first): day 1 refreshes the 50 keys with the
+    OLDEST `completed_at` (not "zone-zzz-frozen", seeded newest of the 51),
+    which -- once processed -- gives them a fresh `completed_at` and sends
+    them to the back of the rotation; day 2 is then led by
+    "zone-zzz-frozen", still carrying its original (now oldest) timestamp.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    current_year = 2024
+    other_scope_ids = [f"zone-{i:03d}" for i in range(tasks.MAX_OUTBOX_BATCH)]
+    frozen_scope_id = "zone-zzz-frozen"
+    all_scope_ids = [*other_scope_ids, frozen_scope_id]
+
+    base = datetime(current_year, 1, 1, tzinfo=UTC)
+    rows = [
+        _make_done_row(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_id=scope_id,
+            year=current_year,
+            completed_at=base + timedelta(minutes=offset),
+            fingerprint=_hex_fingerprint(f"fp-c2-{scope_id}"),
+        )
+        for offset, scope_id in enumerate(other_scope_ids)
+    ]
+    # Seeded strictly newest of the 51 -- excluded from day 1's oldest-50 cut.
+    rows.append(
+        _make_done_row(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_id=frozen_scope_id,
+            year=current_year,
+            completed_at=base + timedelta(days=1),
+            fingerprint=_hex_fingerprint(f"fp-c2-{frozen_scope_id}"),
+        )
+    )
+    db.add_all(rows)
+    db.commit()
+
+    def fake_fetch(*, source_id, scope_kind, scope_id, scope_version, start, end):
+        return SourceBatch(
+            source_id=source_id,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            scope_version=scope_version,
+            cadence=timedelta(days=1),
+            intervals=(SourceInterval(start, start + timedelta(days=1), 1.0, "mm", "v3-nrt"),),
+            coverage=1.0,
+            completeness=1.0,
+            quality={"provider_revision": "v3-nrt", "scale_m": 5000},
+            discrepancies=(),
+            checksum="sha256:c2-rotation-fixture",
+        )
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: fake_fetch)
+
+    try:
+        with caplog.at_level("INFO", logger="rainfall"):
+            day1 = tasks.revisit_stale(db=db, now=datetime(current_year, 6, 15, tzinfo=UTC))
+        assert day1["scanned"] == tasks.MAX_OUTBOX_BATCH
+        assert day1["enqueued"] == tasks.MAX_OUTBOX_BATCH
+
+        day1_completed = _event_payload(caplog, "rainfall.revisit.completed")
+        assert day1_completed["truncated"] is True
+
+        assert (
+            db.query(RainfallOutbox).filter_by(scope_id=frozen_scope_id, status="pending").all()
+            == []
+        )
+
+        caplog.clear()
+        process1 = tasks.process_outbox(db=db, now=datetime(current_year, 6, 15, tzinfo=UTC))
+        assert process1["succeeded"] == tasks.MAX_OUTBOX_BATCH
+
+        caplog.clear()
+        with caplog.at_level("INFO", logger="rainfall"):
+            day2 = tasks.revisit_stale(db=db, now=datetime(current_year, 6, 16, tzinfo=UTC))
+
+        # Still 51 distinct current-year keys (each of the 50 refreshed
+        # ones now carries a second, newer `done` row -- DISTINCT ON
+        # collapses back to 1 per key) over the same limit=50 budget, so
+        # day 2 is truncated too -- rotation changes WHICH 50 are picked,
+        # not whether the cap is hit. The load-bearing assertion is which
+        # key is now among them.
+        day2_completed = _event_payload(caplog, "rainfall.revisit.completed")
+        assert day2_completed["truncated"] is True
+
+        frozen_pending = (
+            db.query(RainfallOutbox).filter_by(scope_id=frozen_scope_id, status="pending").all()
+        )
+        assert len(frozen_pending) == 1, (
+            f"zone-zzz-frozen was not reached within 2 sweeps: day2={day2}"
+        )
+    finally:
+        db.query(RainfallOutbox).filter(RainfallOutbox.scope_id.in_(all_scope_ids)).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# PR3 review fix round 1 -- remaining approved info fixes with their own
+# focused regression coverage (R2-005, R4-204).
+# ---------------------------------------------------------------------------
+
+
+def test_persist_analysis_revision_raises_on_unrecognized_write_decision(db, monkeypatch):
+    """R2-005: revision_write_decision's return type is
+    Literal["write", "latched", "gate_refused"] (compute.py); the consumer
+    (tasks._persist_analysis_revision) now branches on it explicitly with a
+    fail-loud `else raise` instead of silently falling through into the
+    write path for anything unrecognized."""
+    from app.domains.geo.rainfall import compute, tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    scope_id = "zone-r2-005-unrecognized-decision"
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-r2-005-unrecognized-decision"),
+    )
+    db.add(outbox)
+    db.flush()
+
+    # `_persist_analysis_revision` re-imports `revision_write_decision` from
+    # `compute` on every call (a local import), so patching the source
+    # module is what actually takes effect here.
+    monkeypatch.setattr(compute, "revision_write_decision", lambda *a, **k: "not-a-real-decision")
+
+    batch = _fixture_batch_evidence(scope_id=scope_id, intervals=3, persisted=3)
+
+    with pytest.raises(ValueError, match="unrecognized decision"):
+        tasks.build_analysis(
+            outbox_id=str(outbox.id), batch=batch, db=db, now=datetime(2024, 6, 15, tzinfo=UTC)
+        )
+
+
+def test_acquire_fingerprint_lock_bounds_the_wait(monkeypatch):
+    """R1-001: `SET LOCAL lock_timeout` (mirroring
+    `app/auth/refresh_tokens.py`'s `_LOCK_TIMEOUT_MS` convention) bounds
+    `acquire_fingerprint_lock`'s own wait -- a second connection contending
+    for the SAME key must eventually raise (SQLSTATE 55P03), not block
+    forever. The module constant is shrunk for the test (same technique as
+    `test_refresh_token_rotation.py::test_rotate_returns_none_on_lock_timeout`)
+    so this does not have to wait out the real 5s production default."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import repository
+
+    monkeypatch.setattr(repository, "_FINGERPRINT_LOCK_TIMEOUT_MS", 250)
+
+    lock_key = 424242
+    session_a = SessionLocal()
+    try:
+        repository.acquire_fingerprint_lock(session_a, lock_key=lock_key)
+
+        with SessionLocal() as session_b:
+            with pytest.raises(OperationalError):
+                repository.acquire_fingerprint_lock(session_b, lock_key=lock_key)
+            session_b.rollback()
+    finally:
+        session_a.rollback()
+        session_a.close()
+
+
+def test_process_outbox_batch_stops_cleanly_when_wall_clock_budget_exceeded(
+    db, monkeypatch, caplog
+):
+    """R4-204: celery_app.py's default `task_time_limit=600` applies to
+    `rainfall.process_outbox` (not in `RECOVERABLE_TASK_ANNOTATIONS`); the
+    loop now bails out cleanly BETWEEN rows once
+    `PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS` has elapsed, instead of
+    running until a hard SIGKILL. Decision 2c's per-row commit means
+    nothing already-committed is lost by stopping early -- here, checked
+    on the very first iteration so NO row is even claimed."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    scope_ids = [f"zone-r4-204-{i}" for i in range(3)]
+    rows = [
+        RainfallOutbox(
+            source_id="chirps-v3-final",
+            role="historical",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=2024,
+            work_labels=["analysis_missing"],
+            status="pending",
+            next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+        for scope_id in scope_ids
+    ]
+    db.add_all(rows)
+    db.flush()
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("should never run")),
+    )
+
+    # First call (batch_started) returns a low value; every call after
+    # (the loop's own elapsed-time check) returns a value past the budget
+    # -- deterministic, no real 420s wait.
+    calls = {"n": 0}
+
+    def fake_monotonic() -> float:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return 0.0
+        return float(tasks.PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS + 1)
+
+    monkeypatch.setattr(tasks.time, "monotonic", fake_monotonic)
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = tasks.process_outbox(db=db)
+
+    assert result["processed"] == 0
+    assert result["succeeded"] == 0
+    assert result["failed"] == 0
+    assert result["delayed"] == 0
+
+    payload = _event_payload(caplog, "rainfall.outbox.batch_truncated")
+    assert payload["processed"] == 0
+    assert payload["remaining"] == 3
+
+    still_pending = (
+        db.query(RainfallOutbox)
+        .filter(RainfallOutbox.scope_id.in_(scope_ids))
+        .filter_by(status="pending")
+        .count()
+    )
+    assert still_pending == 3
+
+
+# ---------------------------------------------------------------------------
+# PR4 review fold — R4-302 (review-ledger.md "PR3 scoped re-review (fix
+# round 1)"): the NULL branch of `already_final` (a done daily
+# completed-year key with a fingerprint but NO revision yet — the JDA-002
+# healing case) has its own dedicated regression, independent of
+# `test_completed_year_daily_done_keys_is_a_superset`'s incidental
+# coverage of the same shape. Approval test: pins existing, already-correct
+# `IS NOT TRUE` NULL-safety behavior — no production code changes for this
+# task, disclosed as GREEN-only per strict-tdd's approval-testing pattern
+# (same disclosure as R1-001 in PR3 review fix round 1).
+# ---------------------------------------------------------------------------
+
+
+def test_completed_year_daily_done_keys_keeps_a_revision_missing_key(db):
+    """A `.is_(False)` refactor of `already_final.isnot(True)` would read
+    NULL as "not excluded is unknown -> drop", silently starving a
+    healing key that has never had a chance to disclose its state at all.
+    `IS NOT TRUE` must KEEP it instead."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import completed_year_daily_done_keys, persist_revision
+
+    before_year = 2030
+
+    # No RainfallAnalysisRevision row exists for this fingerprint at all --
+    # `newest_snapshot` reads NULL, `already_final` reads NULL,
+    # `NULL IS NOT TRUE` is TRUE -> the row MUST stay a candidate.
+    revision_missing = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-r4-302-revision-missing",
+        scope_version="v1",
+        year=before_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(before_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-r4-302-revision-missing"),
+    )
+    # Differential control: a key that DOES have a final revision -- must
+    # be excluded, same as test_completed_year_daily_done_keys_is_a_superset
+    # already proves, kept here so this test stands on its own.
+    already_final = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-r4-302-already-final",
+        scope_version="v1",
+        year=before_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(before_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-r4-302-already-final"),
+    )
+    db.add_all([revision_missing, already_final])
+    db.flush()
+
+    persist_revision(
+        db,
+        request_fingerprint=_hex_fingerprint("fp-r4-302-already-final"),
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=_served_snapshot(source_id="chirps-v3-final", temporal_state="final"),
+    )
+    db.commit()
+
+    try:
+        rows = completed_year_daily_done_keys(db, before_year=before_year, limit=50)
+        scope_ids = {row.scope_id for row in rows}
+
+        assert "zone-r4-302-revision-missing" in scope_ids
+        assert "zone-r4-302-already-final" not in scope_ids
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                ["zone-r4-302-revision-missing", "zone-r4-302-already-final"]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 4.1 — daily-source flip: RAINFALL_DAILY_SOURCE -> chirps-v3-sat,
+# fallback_used set for any role whose spec-primary source diverges from
+# the one actually used
+# ---------------------------------------------------------------------------
+
+
+def test_daily_source_flips_to_chirps_v3_sat_with_fallback_flag(db):
+    """RAINFALL_DAILY_SOURCE flips "sqpe-obs" -> "chirps-v3-sat" (TODO(smn),
+    delta spec "Evidence-Gated Source Roles" MODIFIED requirement /
+    design.md decision 7). Every persisted snapshot for a role whose
+    actually-used source diverges from spec.md's named spec-primary
+    candidate carries `fallback_used=True` -- proven end to end through
+    `build_analysis`, not just at the `resolve_missing_work_source` dict
+    level, and triangulated against a role that does NOT diverge so the
+    flag is a real role-vs-source comparison, not a hardcoded constant."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+    from app.domains.geo.rainfall.service import (
+        RAINFALL_DAILY_SOURCE,
+        resolve_missing_work_source,
+    )
+
+    assert RAINFALL_DAILY_SOURCE == "chirps-v3-sat"
+
+    current_year = datetime.now(UTC).year
+    resolved = resolve_missing_work_source(None, current_year)
+    assert resolved["role"] == "daily"
+    assert resolved["source_id"] == "chirps-v3-sat"
+
+    # Case 1: daily role served from chirps-v3-sat -- diverges from
+    # spec.md's daily spec-primary (sqpe-obs) -- fallback_used MUST be True.
+    daily_scope_id = "zone-4-1-daily-fallback"
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=daily_scope_id,
+        scope_version="v1",
+        rows=_daily_intervals(start_day=1, values=[1.0, 2.0, 3.0], provider_revision="v3-nrt"),
+    )
+    db.flush()
+    daily_outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=daily_scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:daily"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-4-1-daily-fallback"),
+    )
+    db.add(daily_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(daily_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-sat",
+            scope_id=daily_scope_id,
+            provider_revision="v3-nrt",
+            quality={
+                "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                "band": "precipitation",
+                "reduction": "mean",
+                "scale_m": 5500,
+                "provider_revision": "v3-nrt",
+            },
+        ),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    daily_revision = RainfallRepository().get_snapshot(
+        db, _hex_fingerprint("fp-4-1-daily-fallback")
+    )
+    assert daily_revision is not None
+    daily_metric = daily_revision.snapshot["annual"]["selected"]
+    assert daily_metric["fallback_used"] is True
+    assert daily_metric["provenance"]["source_id"] == "chirps-v3-sat"
+
+    # Case 2 (triangulation): historical role served from chirps-v3-final --
+    # MATCHES spec.md's historical spec-primary -- fallback_used MUST stay
+    # False, proving the flag is a real comparison, not hardcoded True.
+    historical_scope_id = "zone-4-1-historical-no-fallback"
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=historical_scope_id,
+        scope_version="v1",
+        rows=_daily_intervals(start_day=1, values=[1.0, 2.0, 3.0]),
+    )
+    db.flush()
+    historical_outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=historical_scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-4-1-historical-no-fallback"),
+    )
+    db.add(historical_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(historical_outbox.id),
+        batch=_fixture_batch_evidence(source_id="chirps-v3-final", scope_id=historical_scope_id),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    historical_revision = RainfallRepository().get_snapshot(
+        db, _hex_fingerprint("fp-4-1-historical-no-fallback")
+    )
+    assert historical_revision is not None
+    assert historical_revision.snapshot["annual"]["selected"]["fallback_used"] is False
+
+
+# ---------------------------------------------------------------------------
+# Task 4.2 — first real current-year materialization after the flip
+# ---------------------------------------------------------------------------
+
+
+def test_current_year_key_reaches_done_after_flip_and_sweep_finds_it(db, monkeypatch):
+    """With RAINFALL_DAILY_SOURCE flipped live (task 4.1), a current-year
+    POST is no longer blocked by the unwired sqpe-obs adapter: it reaches
+    `done` through the SAME process_outbox cycle PR 1-3 already exercise
+    for the historical role, and the stage-1 daily sweep (task 3.10) now
+    finds a real role='daily' key to refresh -- PR 3 was inert until this
+    flip landed (design.md "Inert until the flip": before it, no
+    role='daily' `done` row with a non-NULL fingerprint could ever exist).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import pending_row_for_key
+    from app.domains.geo.rainfall.router import router
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [(year_start + timedelta(days=offset), 1.0) for offset in range(30)]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-4-2-current-year-flip"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+
+    outbox_row = db.query(RainfallOutbox).filter_by(scope_id=scope_id).one()
+    assert outbox_row.role == "daily"
+    assert outbox_row.source_id == "chirps-v3-sat"
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    db.refresh(outbox_row)
+    assert outbox_row.status == "done"
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+    metric = served.json()["annual"]["selected"]
+    assert metric["provenance"]["source_id"] == "chirps-v3-sat"
+    assert metric["temporal_state"] == "provisional"
+    assert metric["fallback_used"] is True
+
+    # Stage-1 daily sweep now finds this key -- see the docstring above for
+    # why PR 3's sweep was inert before this flip.
+    revisit = tasks.revisit_stale(db=db, now=datetime(year, 2, 1, tzinfo=UTC))
+    assert revisit["enqueued"] >= 1
+    assert (
+        pending_row_for_key(
+            db,
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+        )
+        is not None
+    )

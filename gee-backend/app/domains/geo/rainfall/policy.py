@@ -170,3 +170,25 @@ def apply_metric_policy(
     if value is None:
         return PolicyMetricResult(None, "unavailable", "metric_value_unavailable")
     return PolicyMetricResult(value, "available", None)
+
+
+# ---------------------------------------------------------------------------
+# Rainfall v2 materialization display thresholds (design.md decision 5d)
+# ---------------------------------------------------------------------------
+
+# A frozen module constant, not settings-driven: service.py's `_metric_policy`
+# rejects a revision mismatch (the display path reads the policy FROM the
+# snapshot, not live), so the policy must be embedded in every snapshot at
+# build time and mirrored into `rainfall_analysis_revision.policy_revision`.
+# 0.8/0.8 are starting thresholds pending the domain lead's number (Open
+# Questions); this same policy is also the write gate PR3's year-rollover
+# finalization reuses verbatim (decision 9b) — the two consumers share one
+# definition of "good enough to show".
+RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08"
+
+RAINFALL_METRIC_POLICY = MetricThresholdPolicy(
+    revision=RAINFALL_METRIC_POLICY_REVISION,
+    minimum_coverage_by_metric={"annual": 0.8},
+    minimum_quality_by_metric={"annual": 0.8},
+    duration_threshold=None,
+)
