@@ -1405,6 +1405,77 @@ def test_e2e_post_202_then_200_without_monkeypatching_ingest(db, monkeypatch):
     assert metric["temporal_state"] == "final"
 
 
+def test_e2e_served_analysis_carries_revision_id_and_csv_export_succeeds(db, monkeypatch):
+    """JDB-301 (review-ledger.md "Judgment Day -- APPLY-PHASE completion"):
+    the frontend CSV export contract (consorcio-web/src/lib/api/rainfall.ts,
+    RainfallDetailPanel.tsx) builds the export URL from the served body's
+    ``analysis_revision_id``. ``build_snapshot`` never sets that field, and
+    pre-fix ``read_analysis`` never injected it -- so every real served
+    analysis carried a body without the field, and the CSV endpoint was
+    unreachable from the client (``GET /analyses/undefined.csv``). This
+    drives the full pipeline (no ingest monkeypatching, same E2E harness as
+    ``test_e2e_post_202_then_200_without_monkeypatching_ingest``) and asserts
+    both halves of the contract end-to-end: the served field and the CSV
+    export it points at.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    year = 2024  # leap year: 366 daily slots -> full coverage
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [
+        (year_start + timedelta(days=offset), 1.0 + (offset % 5) * 0.2) for offset in range(366)
+    ]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-final":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    payload = {"scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"}, "year": year}
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+    body = served.json()
+
+    request = {
+        "scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"},
+        "year": year,
+    }
+    fingerprint = analysis_request_fingerprint(request)
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+
+    assert body["analysis_revision_id"] == str(revision.id)
+
+    csv_response = client.get(f"/rainfall/analyses/{body['analysis_revision_id']}.csv")
+    assert csv_response.status_code == 200
+    assert csv_response.headers["content-type"].startswith("text/csv")
+
+
 # ---------------------------------------------------------------------------
 # R4-001 regression — flush-independent lifecycle writes under production
 # autoflush=False
@@ -2834,6 +2905,165 @@ def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monk
 
 
 # ---------------------------------------------------------------------------
+# JDA-301 (review-ledger.md "Judgment Day — APPLY-PHASE completion") — a
+# restated slot inside an already-served revision becomes visible as a
+# later revision, end-to-end through the delta spec's own scenario wording
+# ("Corrected value becomes visible as a later revision", :150-155).
+#
+# Deliberately distinct from
+# `test_e2e_same_key_later_date_and_corrected_revision_becomes_visible`
+# (JDA-001): that test proves a NEW day (comparison_end advancing) drives a
+# new revision. This test holds `now` and the day count fixed and changes
+# ONLY an already-ingested slot's value, so the correction alone -- not the
+# clock -- is what is proven to produce and serve a second revision.
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_correction_to_an_already_served_slot_becomes_visible_as_a_later_revision(
+    db, monkeypatch
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run; see JDA-001's sibling
+    # test's docstring for why real fresh SessionLocal() connections are used
+    # below instead of the shared `db` fixture: created_at is
+    # server_default=func.now(), which PostgreSQL freezes to *transaction
+    # start* -- two builds sharing the db fixture's single savepoint-scoped
+    # transaction would land the SAME created_at, and get_snapshot's id DESC
+    # tiebreak would then serve an arbitrary one of the two, not the newer
+    # one -- silently hiding the exact thing this test proves. (Verified
+    # empirically: an earlier version of this test using db=db everywhere
+    # served R1's own revision_id back after R2 was written.)
+
+    # Current real year, same as JDA-001's test, so the request path resolves
+    # role="daily"/source_id="chirps-v3-sat" (task 4.1's flip, live) without
+    # monkeypatching `resolve_missing_work_source`.
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    # Five slots; slot K = day index 2 (Jan 3) starts at v1 = 1.0 and is
+    # restated to v2 = 9.0 below. Day COUNT never changes (5 slots, both
+    # builds) -- no new day is ever appended to the series.
+    original_series = [(year_start + timedelta(days=offset), 1.0) for offset in range(5)]
+    corrected_series = list(original_series)
+    corrected_series[2] = (year_start + timedelta(days=2), 9.0)
+
+    fake_client = _FakeGeeClientForE2E(series=original_series)
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=fake_client).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-correction-visible"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+    # Same instant for both builds -- comparison_end is identical for R1 and
+    # R2, so a second revision can only come from the restated slot.
+    now = datetime(year, 1, 5, 12, tzinfo=UTC)
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        result_r1 = tasks.process_outbox(now=now)
+        # R3-102: db=None scans the WHOLE table -- assert the lower bound and
+        # let _revision_count() (scoped to this key's fingerprint) carry the
+        # exact-count assertion.
+        assert result_r1["succeeded"] >= 1
+
+        served_r1 = client.post("/rainfall/analyses", json=payload)
+        assert served_r1.status_code == 200
+        body_r1 = served_r1.json()
+        assert body_r1["comparison_end"] == f"{year}-01-05"
+        metric_r1 = body_r1["annual"]["selected"]
+        assert metric_r1["value"] == pytest.approx(5.0)  # 5 days @ 1.0
+        revision_id_r1 = body_r1["analysis_revision_id"]
+        assert revision_id_r1
+        assert _revision_count() == 1
+
+        # Re-ingest with slot K RESTATED -- same day count, no new day.
+        # Reuses the identical wired path (ResilientAdapter -> the
+        # monkeypatched `_concrete_fetch` -> the real ChirpsV3Adapter bound
+        # to `fake_client`) process_outbox itself uses. db=None: opens and
+        # commits its own SessionLocal(), same session-boundary contract as
+        # every other real-clock task call in this test.
+        fake_client.series = corrected_series
+        ingest_result = tasks.ingest_source_scope(
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+        )
+        assert ingest_result["superseded"] == 1  # exactly one slot corrected
+
+        # Run the chain: the daily sweep enqueues a fresh pending row for
+        # this still-current-year key (design.md "Current-Year Revisit
+        # Cycle"), then process_outbox builds R2 from it.
+        revisit_result = tasks.revisit_stale(now=now)
+        assert revisit_result["enqueued"] >= 1  # R3-102: global count, see above
+
+        result_r2 = tasks.process_outbox(now=now)
+        assert result_r2["succeeded"] >= 1  # R3-102: global count, see above
+
+        served_r2 = client.post("/rainfall/analyses", json=payload)
+        assert served_r2.status_code == 200
+        body_r2 = served_r2.json()
+        assert body_r2["comparison_end"] == f"{year}-01-05"  # unchanged: not date-driven
+        metric_r2 = body_r2["annual"]["selected"]
+        assert metric_r2["value"] == pytest.approx(13.0)  # 4 days@1.0 + 1 day@9.0
+        revision_id_r2 = body_r2["analysis_revision_id"]
+
+        assert revision_id_r2 != revision_id_r1
+        assert _revision_count() == 2
+
+        # get_snapshot -- the router's own lookup -- resolves to the SECOND
+        # revision (delta spec: "it identifies the revision behind the
+        # result being viewed").
+        with SessionLocal() as check:
+            revision = RainfallRepository().get_snapshot(check, fingerprint)
+            assert revision is not None
+            assert str(revision.id) == revision_id_r2
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
 # Task 3.14 — revisit_stale stage 2: re-resolve source/role, terminate on
 # an adequate final revision
 # ---------------------------------------------------------------------------
@@ -3337,15 +3567,24 @@ def test_concurrent_identical_post_does_not_surface_500(db, monkeypatch):
     design cannot exercise this recovery path at all. A genuine race is
     two DIFFERENT connections regardless.
 
-    Simulates the race deterministically (no thread timing luck): the
-    FIRST `db.query(RainfallOutbox)` call inside the second connection's
-    `queue_missing_analysis` invocation -- its own pre-existence check --
-    is hijacked to report an empty result, forcing its `INSERT` to be the
-    one that collides for real with the first connection's already-
-    committed row. Only that first call is hijacked; the recovery
-    re-SELECT task 3.18 adds runs unpatched and must find the real row.
+    JDA-302 (review-ledger.md "Judgment Day — APPLY-PHASE completion"): the
+    original hijack patched ``Session.query`` (the legacy ORM API), but
+    ``queue_missing_analysis``'s actual pre-check and post-``IntegrityError``
+    re-read both go through the single ``repository.pending_row_for_key``
+    (R2-003), which issues ``db.scalar(select(...))`` -- ``Session.query``
+    is never called on this path, so the old hijack never fired and this
+    test passed vacuously via the ordinary "existing row found" reuse
+    branch, never exercising the ``except IntegrityError`` handler at all.
+    Hijacking ``repository.pending_row_for_key`` itself (a module-level
+    function ``queue_missing_analysis`` re-imports by name on every call)
+    fires on the real path: the FIRST call (the pre-check) is forced to
+    report nothing pending, so the second connection's own INSERT proceeds
+    and genuinely collides with the first connection's already-committed
+    row; the SECOND call (the recovery re-read) runs unpatched and must
+    find that real row.
     """
     from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import repository as rainfall_repository
     from app.domains.geo.rainfall.models import RainfallOutbox
     from app.domains.geo.rainfall.scope import AnalysisScope
     from app.domains.geo.rainfall.service import queue_missing_analysis
@@ -3364,22 +3603,31 @@ def test_concurrent_identical_post_does_not_surface_500(db, monkeypatch):
 
         with SessionLocal() as second_session:
             calls = {"n": 0}
-            real_query = second_session.query
+            real_pending_row_for_key = rainfall_repository.pending_row_for_key
 
-            def query_hijack(*args, **kwargs):
-                query = real_query(*args, **kwargs)
-                if args and args[0] is RainfallOutbox:
-                    calls["n"] += 1
-                    if calls["n"] == 1:
-                        return query.filter(RainfallOutbox.id == None)  # noqa: E711
+            def pending_row_for_key_hijack(db_, **kwargs):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    # The pre-check: report nothing pending, simulating the
+                    # race against the first connection's not-yet-visible
+                    # commit.
+                    return None
+                # The post-IntegrityError recovery re-read: runs for real.
+                return real_pending_row_for_key(db_, **kwargs)
 
-                return query
-
-            monkeypatch.setattr(second_session, "query", query_hijack)
+            monkeypatch.setattr(
+                rainfall_repository, "pending_row_for_key", pending_row_for_key_hijack
+            )
 
             second = queue_missing_analysis(second_session, scope=scope, year=year)
             assert second["status"] == "queued"
             assert second["outbox_id"] == first["outbox_id"]
+            # The hijack must actually have fired -- otherwise this
+            # regresses to the same vacuous pass JDA-302 found (future
+            # refactors that route around pending_row_for_key must fail
+            # loudly here, not silently stop exercising the recovery path).
+            assert calls["n"] >= 1
+            assert calls["n"] == 2  # pre-check (hijacked) + recovery re-read (real)
 
         with SessionLocal() as verify:
             pending_count = verify.scalar(
