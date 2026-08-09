@@ -2797,3 +2797,156 @@ def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monk
             ).delete()
             cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.14 — revisit_stale stage 2: re-resolve source/role, terminate on
+# an adequate final revision
+# ---------------------------------------------------------------------------
+
+
+def _served_snapshot(*, source_id: str, temporal_state: str) -> dict:
+    """Minimal envelope shape `served_state` reads: `annual.selected.
+    provenance.source_id` and `annual.selected.temporal_state`."""
+    return {
+        "annual": {
+            "selected": {
+                "provenance": {"source_id": source_id},
+                "temporal_state": temporal_state,
+            }
+        }
+    }
+
+
+def test_revisit_stage2_reresolves_source_and_terminates_on_final(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+
+    current_year = 2025
+    completed_year = current_year - 1
+    now = datetime(current_year, 6, 15, tzinfo=UTC)
+
+    # Case 1: provisional incumbent -> re-resolve and enqueue.
+    reresolve_fingerprint = _hex_fingerprint("fp-stage2-reresolve")
+    reresolve_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-reresolve",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=reresolve_fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    reresolve_revision = RainfallAnalysisRevision(
+        request_fingerprint=reresolve_fingerprint,
+        policy_revision="p1",
+        data_revision="d1",
+        snapshot=_served_snapshot(source_id="chirps-v3-sat", temporal_state="provisional"),
+    )
+
+    # Case 2: already-final incumbent -> terminate, nothing enqueued.
+    terminate_fingerprint = _hex_fingerprint("fp-stage2-terminate")
+    terminate_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-terminate",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=terminate_fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    terminate_revision = RainfallAnalysisRevision(
+        request_fingerprint=terminate_fingerprint,
+        policy_revision="p1",
+        data_revision="d1",
+        snapshot=_served_snapshot(source_id="chirps-v3-final", temporal_state="final"),
+    )
+
+    # Case 3: NULL fingerprint -- excluded by the repository query itself
+    # (3.13), included here for this task's own direct coverage.
+    legacy_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-stage2-legacy-null",
+        year=completed_year,
+        completed_at=datetime(completed_year, 12, 31, tzinfo=UTC),
+        fingerprint=_hex_fingerprint("fp-stage2-legacy-null-unused"),
+    )
+    legacy_done.request_fingerprint = None
+
+    db.add_all(
+        [
+            reresolve_done,
+            reresolve_revision,
+            terminate_done,
+            terminate_revision,
+            legacy_done,
+        ]
+    )
+    db.commit()
+
+    scope_ids = [
+        "zone-stage2-reresolve",
+        "zone-stage2-terminate",
+        "zone-stage2-legacy-null",
+    ]
+    try:
+        result = tasks.revisit_stale(db=db, now=now)
+
+        assert result["finalization_scanned"] == 2  # legacy excluded by the query itself
+        assert result["finalization_enqueued"] == 1
+        assert result["finalization_skipped"] == 0
+
+        reresolved_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-reresolve", status="pending")
+            .all()
+        )
+        assert len(reresolved_pending) == 1
+        fresh = reresolved_pending[0]
+        assert fresh.source_id == "chirps-v3-final"
+        assert fresh.role == "historical"
+        assert fresh.year == completed_year
+        assert fresh.interval_start == datetime(completed_year, 1, 1, tzinfo=UTC)
+        assert fresh.interval_end == datetime(completed_year + 1, 1, 1, tzinfo=UTC)
+        # The fingerprint is the IDENTITY -- copied verbatim, never recomputed.
+        assert fresh.request_fingerprint == reresolve_fingerprint
+        assert "finalization" in fresh.work_labels
+        assert "role:historical" in fresh.work_labels
+
+        terminate_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-terminate", status="pending")
+            .all()
+        )
+        assert terminate_pending == []
+
+        legacy_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-legacy-null", status="pending")
+            .all()
+        )
+        assert legacy_pending == []
+
+        # Running the sweep again must not double-enqueue the re-resolved key.
+        second = tasks.revisit_stale(db=db, now=now)
+        assert second["finalization_scanned"] == 2
+        assert second["finalization_enqueued"] == 0
+        assert second["finalization_skipped"] == 1  # pending_in_flight
+
+        reresolved_pending_after = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-stage2-reresolve", status="pending")
+            .all()
+        )
+        assert len(reresolved_pending_after) == 1
+    finally:
+        db.query(RainfallAnalysisRevision).filter(
+            RainfallAnalysisRevision.request_fingerprint.in_(
+                [reresolve_fingerprint, terminate_fingerprint]
+            )
+        ).delete(synchronize_session=False)
+        db.query(RainfallOutbox).filter(RainfallOutbox.scope_id.in_(scope_ids)).delete(
+            synchronize_session=False
+        )
+        db.commit()
