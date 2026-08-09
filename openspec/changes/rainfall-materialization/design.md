@@ -248,13 +248,22 @@ def build_analysis(*, outbox_id: str, batch: dict[str, Any], db: Session | None 
                    now: datetime | None = None) -> dict
 # `now` is the analysis clock seam (defaults to datetime.now(UTC)); it feeds
 # temporal.comparison_end / buenos_aires_date and nothing else.
-# FIRST database statement, inside the per-row transaction of decision 2c and BEFORE the
-# incumbent `get_snapshot` read:
+# The FIRST database statement AFTER resolving the outbox row and its fingerprint
+# (`db.get(RainfallOutbox, outbox_id)`, which must run first regardless -- the row's own
+# `request_fingerprint` is the lock key's input), inside the per-row transaction of decision 2c
+# and BEFORE the incumbent `get_snapshot` read:
 #     repository.acquire_fingerprint_lock(db, lock_key=fingerprint_lock_key(fp))
 # The lock belongs here and NOT in `revision_write_decision`: that one is pure compute.py and
 # owns no Session, while `build_analysis` is the only layer that both holds the Session and
 # spans the whole read → decide → INSERT sequence the lock has to cover. See "Serializing
 # siblings — the per-fingerprint advisory lock".
+# JDA-303 (review-ledger.md "Judgment Day — APPLY-PHASE completion"): `db.get(RainfallOutbox,
+# str(id))` looks up by the row's str primary key while SQLAlchemy's identity map is keyed by
+# the mapped UUID column type, so this `get()` never hits the identity map and issues its own
+# SELECT even when the row is already loaded -- a verified micro-optimization opportunity
+# (coercing to the mapped UUID before the `get()` call), not a correctness issue and not
+# touched here; the load-bearing order (lock acquired before the incumbent read) holds either
+# way and is what the "Serializing siblings" test covers.
 
 # The seam is threaded end to end so a test can drive a later calendar date through the
 # NORMAL entry point instead of calling build_analysis directly or freezing global time:
