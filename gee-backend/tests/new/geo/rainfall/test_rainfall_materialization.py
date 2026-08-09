@@ -1,10 +1,19 @@
 """Rainfall v2 materialization: persistence, supersession, chained compute,
 revisit sweeps, year-rollover finalization and their end-to-end wiring.
 
-Real PostgreSQL throughout (the ``db`` fixture) — the append-only trigger,
-the partial unique indexes and the advisory-lock concurrency guarantees this
-change relies on exist nowhere else. Provider I/O is faked at the
-``GeeZonalClient`` boundary only (same harness as
+Real PostgreSQL throughout (the ``db`` fixture) — the partial unique indexes
+and the advisory-lock concurrency guarantees this change relies on exist
+nowhere else. The append-only *trigger*
+(``trg_rainfall_interval_value_immutable``) is raw SQL created by the
+``lluvia_v2_001_evidence_foundation`` migration, not by ``Base.metadata``,
+so this module's harness (``conftest.py``'s ``create_all`` schema) never
+creates it and this file makes no claim that the trigger fires. Append-only
+enforcement in this harness comes only from the ORM ``before_flush`` guard
+(``models.py`` ``_prevent_rainfall_audit_mutation``), which inspects
+``session.dirty``/``session.deleted`` and therefore never gates an INSERT —
+consistent with every write path exercised here being an ``INSERT ..  ON
+CONFLICT DO NOTHING`` (never an UPDATE or a DELETE). Provider I/O is faked
+at the ``GeeZonalClient`` boundary only (same harness as
 ``test_provider_adapters.py``), so the adapter, the zonal batch builder, the
 persistence write path and the compute layer all run for real.
 """
@@ -12,6 +21,7 @@ persistence write path and the compute layer all run for real.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -41,12 +51,17 @@ def _daily_intervals(
     return intervals
 
 
-def _count_interval_rows(db, *, source_id: str = "chirps-v3-final") -> int:
-    return db.scalar(
+def _count_interval_rows(
+    db, *, source_id: str = "chirps-v3-final", scope_id: str | None = None
+) -> int:
+    query = (
         select(func.count())
         .select_from(RainfallIntervalValue)
         .where(RainfallIntervalValue.source_id == source_id)
     )
+    if scope_id is not None:
+        query = query.where(RainfallIntervalValue.scope_id == scope_id)
+    return db.scalar(query)
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +78,102 @@ def test_reingest_is_idempotent(db):
     db.flush()
 
     # Re-running the identical ingest must not raise and must not duplicate.
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    # R3-001: assert the full classification, not just the row count — a
+    # count-only assertion passes even against an implementation whose
+    # window-bound regression silently absorbs a real correction into the
+    # bulk ON-CONFLICT skip (the count would still equal len(rows)).
+    assert result["inserted"] == 0
+    assert result["unchanged"] == len(rows)
+    assert _count_interval_rows(db) == len(rows)
+
+
+def test_persist_intervals_corrects_a_non_first_slot_in_a_multi_slot_batch(db):
+    """R3-001: the idempotence test above only ever exercises an
+    all-unchanged batch. This proves classification distinguishes slots
+    WITHIN one batch — restating day 3 alone must not be absorbed by the
+    other two unchanged slots into a bulk skip."""
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    original = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    restated = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.9], provider_revision="v3-nrt")
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 1
+    assert result["unchanged"] == 2
+    assert result["superseded"] == 1
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[-1].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert [row.value for row in current] == [1.0, 2.0, 3.9]
+    assert [row.provider_revision for row in current] == ["v3-nrt", "v3-nrt", "v3-nrt+r1"]
+
+
+def test_reingest_after_synthetic_supersession_with_no_successor_hits_conflict_path(db):
+    """R3-001: forced-conflict-path regression. A slot whose only row is
+    marked ``superseded`` with no real successor (a state the write
+    algorithm itself never produces — ``record_supersession`` only ever
+    runs for ids ``RETURNING`` confirms landed) makes
+    ``intervals_in_window`` classify the slot as ABSENT even though a row
+    with the identical ``(source_id, scope, window, provider_revision)``
+    tuple already exists on disk. Re-persisting the identical interval must
+    still resolve through the ``ON CONFLICT DO NOTHING`` path without
+    raising, proving the INSERT statement itself — not just the
+    classification read — is conflict-safe."""
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[2.0])
     persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
     db.flush()
 
-    assert _count_interval_rows(db) == len(rows)
+    original = intervals_in_window(
+        db,
+        source_id="chirps-v3-final",
+        start=rows[0].interval_start,
+        end=rows[0].interval_end,
+        **ZONE_KWARGS,
+    )[0]
+
+    db.add(
+        RainfallIntervalLifecycle(
+            interval_value_id=original.id,
+            superseded_by_id=uuid4(),
+            event_type="superseded",
+            expires_at=None,
+        )
+    )
+    db.flush()
+
+    assert (
+        intervals_in_window(
+            db,
+            source_id="chirps-v3-final",
+            start=rows[0].interval_start,
+            end=rows[0].interval_end,
+            **ZONE_KWARGS,
+        )
+        == []
+    )
+
+    result = persist_intervals(db, source_id="chirps-v3-final", rows=rows, **ZONE_KWARGS)
+    db.flush()
+
+    # The classification read said "absent" and the write attempted a
+    # duplicate-tuple INSERT; ON CONFLICT DO NOTHING absorbed it, RETURNING
+    # reported nothing landed, and nothing raised.
+    assert result["inserted"] == 0
+    assert _count_interval_rows(db) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +360,40 @@ def test_intervals_in_window_excludes_superseded_rows(db):
 
 
 # ---------------------------------------------------------------------------
+# R3-004 — "+r" reservation and the provider_revision-family 1:1 invariant
+# ---------------------------------------------------------------------------
+
+
+def test_source_interval_rejects_plus_in_provider_revision():
+    """'+r<n>' is reserved for correction rows persist_intervals mints
+    internally (design.md 'NRT Correction Supersession'); an adapter must
+    never be able to hand one in directly, or it could collide with, or be
+    mistaken for, a correction row the write path itself produced."""
+    from app.domains.geo.rainfall.ports import SourceInterval
+
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    with pytest.raises(ValueError, match=r"\+"):
+        SourceInterval(start, start + timedelta(days=1), 1.0, "mm", "v3-nrt+r1")
+
+
+def test_persist_intervals_raises_on_provider_revision_family_mismatch(db):
+    """persist_intervals's 'changed' branch must not silently re-stamp a
+    foreign-family value with the incumbent's family: one source_id maps
+    to exactly one provider_revision family (design.md decision 7). A
+    caller handing back a different family for an existing slot has a bug
+    and must be told loudly, not have its revision discarded."""
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    original = _daily_intervals(start_day=1, values=[1.0], provider_revision="v3-nrt")
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    foreign_family = _daily_intervals(start_day=1, values=[1.8], provider_revision="v3-final")
+    with pytest.raises(ValueError, match="family mismatch"):
+        persist_intervals(db, source_id="chirps-v3-sat", rows=foreign_family, **ZONE_KWARGS)
+
+
+# ---------------------------------------------------------------------------
 # Task 1.8 — ingest_source_scope threads an optional db without committing
 # ---------------------------------------------------------------------------
 
@@ -306,28 +447,43 @@ def test_ingest_source_scope_opens_own_session_and_commits_when_db_is_none(db, m
     # connection on purpose) but requesting it guarantees test_engine's
     # create_all() has run — see the note on the transaction-sharing test below.
     from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.repository import intervals_in_window
 
     batch = _fixture_batch()
     monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
     monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
 
+    # R3-002: a dedicated scope_id (like `zone-txn-share` at task 1.9's test
+    # below) keeps this test's real `SessionLocal()` commit — the only
+    # write in this module the `db` fixture's rollback does NOT undo — off
+    # the exact `z1` slot the sibling tests above assert an absolute,
+    # source-only row count over. No DELETE-based cleanup: the dedicated
+    # scope makes the committed row inert to every other test regardless of
+    # execution order, and the previous `finally`-only cleanup never ran
+    # when the preceding assertion raised, which is exactly the leak this
+    # scope isolation removes the need for.
     result = tasks.ingest_source_scope(
         source_id="chirps-v3-final",
         role="historical",
         scope_kind="zone",
-        scope_id="z1",
+        scope_id="zone-own-session-commit",
         scope_version="v1",
         year=2024,
     )
 
     assert result["persisted"] == 1
-    try:
-        with SessionLocal() as fresh:
-            assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 1
-    finally:
-        with SessionLocal() as cleanup:
-            cleanup.query(RainfallIntervalValue).filter_by(source_id="chirps-v3-final").delete()
-            cleanup.commit()
+    with SessionLocal() as fresh:
+        landed = intervals_in_window(
+            fresh,
+            source_id="chirps-v3-final",
+            scope_kind="zone",
+            scope_id="zone-own-session-commit",
+            scope_version="v1",
+            start=batch.intervals[0].interval_start,
+            end=batch.intervals[0].interval_end,
+        )
+        assert len(landed) == 1
+        assert landed[0].value == batch.intervals[0].value
 
 
 # ---------------------------------------------------------------------------
@@ -388,4 +544,10 @@ def test_backfill_missing_shares_transaction_with_ingest(db, monkeypatch):
             .first()
             is None
         )
-        assert _count_interval_rows(fresh, source_id="chirps-v3-final") == 0
+        # Scoped to this test's own scope_id (R3-002): an absolute,
+        # source_id-only count would also see the row task 1.8's
+        # own-session test commits under a different, unrelated scope.
+        assert (
+            _count_interval_rows(fresh, source_id="chirps-v3-final", scope_id="zone-txn-share")
+            == 0
+        )

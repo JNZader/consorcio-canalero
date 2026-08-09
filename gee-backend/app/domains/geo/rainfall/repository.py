@@ -262,6 +262,19 @@ def persist_intervals(
             unchanged += 1
         else:
             family = revision_family(existing.provider_revision)
+            incoming_family = revision_family(row.provider_revision)
+            if incoming_family != family:
+                # Decision 7's invariant is source_id <-> provider-revision
+                # *family*, 1:1. A caller handing back a different family
+                # for an already-current slot violates that invariant; do
+                # not silently re-stamp the value with the incumbent's
+                # family (that would discard the incoming provider_revision
+                # and hide the bug).
+                raise ValueError(
+                    f"provider_revision family mismatch for source_id={source_id!r} "
+                    f"slot {row.interval_start!r}: existing family {family!r} vs "
+                    f"incoming {row.provider_revision!r} (family {incoming_family!r})"
+                )
             ordinal = _next_correction_ordinal(existing.provider_revision, family)
             candidates.append((row, correction_revision(family, ordinal), existing.id))
 

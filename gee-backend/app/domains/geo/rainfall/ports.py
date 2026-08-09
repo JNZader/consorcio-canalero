@@ -30,6 +30,17 @@ class SourceInterval:
             raise ValueError("source interval unit is not canonical")
         if not self.provider_revision:
             raise ValueError("source interval requires a provider revision")
+        if "+" in self.provider_revision:
+            # "+r" is reserved as the correction separator persist_intervals
+            # writes internally (design.md "NRT Correction Supersession");
+            # an adapter is never allowed to hand one in — that would let a
+            # provider-supplied revision collide with, or be mistaken for,
+            # a correction row the write path itself minted.
+            raise ValueError(
+                "source interval provider_revision must not contain '+' "
+                "('+r<n>' is reserved for correction rows minted by "
+                f"persist_intervals): {self.provider_revision!r}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
