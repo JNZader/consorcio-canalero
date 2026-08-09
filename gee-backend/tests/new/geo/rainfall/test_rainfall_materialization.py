@@ -1197,3 +1197,112 @@ def test_per_row_commit_survives_a_later_row_failure(db, monkeypatch):
                     synchronize_session=False
                 )
             cleanup_db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 2.13 — now seam: drives comparison_end, never the backoff clock
+# ---------------------------------------------------------------------------
+
+
+def test_now_seam_drives_comparison_end_without_moving_backoff_clock(db, monkeypatch):
+    """design.md Interfaces: `now` threads process_outbox ->
+    _process_outbox_batch (resolved once per batch) -> _process_outbox_row
+    -> build_analysis, and feeds ONLY temporal.comparison_end /
+    buenos_aires_date. completed_at, next_attempt_at and the backoff
+    arithmetic stay on the real wall clock."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: _fixture_batch()
+    )
+
+    fingerprint = "fp-now-seam"
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-now-seam",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+        request_fingerprint=fingerprint,
+    )
+    db.add(row)
+    db.flush()
+
+    # Noon UTC = 09:00 Buenos Aires (UTC-3): safely the same calendar day in
+    # both zones, so this isn't fragile to the midnight-UTC boundary skew
+    # buenos_aires_date's conversion is designed to catch.
+    seeded_now = datetime(2024, 3, 10, 12, tzinfo=UTC)
+    before_call = datetime.now(UTC)
+    result = tasks.process_outbox(db=db, now=seeded_now)
+    after_call = datetime.now(UTC)
+
+    assert result["succeeded"] == 1
+    db.refresh(row)
+
+    # The disclosure date follows the SEEDED clock (year is current relative
+    # to 2024, so comparison_end == the seeded now's own date), not the
+    # real wall clock the test actually runs on.
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    assert revision.snapshot["comparison_end"] == "2024-03-10"
+
+    # completed_at is bounded by the REAL wall-clock window this call ran
+    # in, not by the seeded (year-2024) now.
+    assert before_call <= row.completed_at <= after_call
+
+
+def test_now_seam_does_not_move_the_backoff_clock_on_failure(db, monkeypatch):
+    """Triangulation: the failure-path bookkeeping (retry_count,
+    next_attempt_at) must stay on the real wall clock even when a seeded
+    `now` is supplied for the disclosure date."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks, "ingest_source_scope", lambda **_kwargs: (_ for _ in ()).throw(ValueError("boom"))
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-now-seam-failure",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    seeded_now = datetime(1999, 1, 1, tzinfo=UTC)
+    before_call = datetime.now(UTC)
+    result = tasks.process_outbox(db=db, now=seeded_now)
+    after_call = datetime.now(UTC)
+
+    assert result["failed"] == 0
+    assert result["delayed"] == 1
+    db.refresh(row)
+    assert row.status == "pending"
+    assert row.retry_count == 1
+    # next_attempt_at = real now() + backoff — nowhere near the seeded 1999
+    # date, and bounded by the real wall-clock window this call ran in.
+    assert row.next_attempt_at > before_call
+    assert row.next_attempt_at <= after_call + timedelta(seconds=_expected_backoff_ceiling())
+
+
+def _expected_backoff_ceiling() -> float:
+    from app.domains.geo.rainfall.tasks import _backoff_seconds
+
+    return _backoff_seconds(1) + 1

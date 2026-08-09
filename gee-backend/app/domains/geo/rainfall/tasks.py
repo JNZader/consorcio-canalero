@@ -500,12 +500,23 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
 
 
 @celery_app.task(name="rainfall.process_outbox")
-def process_outbox(db: Session | None = None) -> dict[str, int]:
-    """Drain a bounded batch of pending rainfall outbox rows."""
+def process_outbox(db: Session | None = None, now: datetime | None = None) -> dict[str, int]:
+    """Drain a bounded batch of pending rainfall outbox rows.
+
+    ``now`` is the disclosure-date seam (design.md Interfaces): resolved
+    once per batch in ``_process_outbox_batch`` so every row in one batch
+    shares one instant, then threaded down to ``build_analysis`` through
+    ``_process_outbox_row``. Deliberately NOT threaded: ``completed_at``,
+    ``next_attempt_at`` and the backoff arithmetic, plus the
+    ``next_attempt_at <= now`` claim predicate in ``claim_outbox_row`` —
+    those stay on the real wall clock so a test clock can move the
+    disclosure date without manufacturing a due retry or a fake completion
+    timestamp.
+    """
     if db is not None:
-        return _process_outbox_batch(db)
+        return _process_outbox_batch(db, now)
     with SessionLocal() as db:
-        return _process_outbox_batch(db)
+        return _process_outbox_batch(db, now)
 
 
 @celery_app.task(name="rainfall.backfill_missing")
