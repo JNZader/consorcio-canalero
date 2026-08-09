@@ -2349,3 +2349,178 @@ def test_latch_sequential_and_concurrent_two_connections(db):
                 )
             ).delete(synchronize_session=False)
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.9 — current_year_done_keys: DISTINCT ON the outbox key, newest
+# `done` row per key (sweep stage 1's source query)
+# ---------------------------------------------------------------------------
+
+
+def test_current_year_done_keys_distinct_on_key(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import current_year_done_keys
+
+    year = 2024
+    key = {
+        "source_id": "chirps-v3-sat",
+        "role": "daily",
+        "scope_kind": "zone",
+        "scope_id": "zone-current-year-distinct",
+        "scope_version": "v1",
+        "year": year,
+    }
+
+    # Two `done` rows for the SAME key (as the daily sweep itself produces
+    # one per day) -- only the newest (by completed_at) must come back.
+    older = RainfallOutbox(
+        **key,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-older"),
+    )
+    newer = RainfallOutbox(
+        **key,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 2, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-newer"),
+    )
+    # A DIFFERENT key, same year -- must appear as its own row.
+    other_key = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-current-year-distinct-other",
+        scope_version="v1",
+        year=year,
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-other"),
+    )
+    # A past-year `done` row for the SAME key shape -- must be excluded by
+    # the year filter.
+    past_year = RainfallOutbox(
+        **{**key, "year": year - 1},
+        work_labels=["analysis_missing"],
+        status="done",
+        completed_at=datetime(year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-current-year-distinct-past"),
+    )
+    db.add_all([older, newer, other_key, past_year])
+    db.commit()
+
+    try:
+        rows = current_year_done_keys(db, year=year, limit=50)
+        by_scope = {row.scope_id: row for row in rows}
+
+        # One row per DISTINCT key, not one row per `done` row -- the two
+        # rows for "zone-current-year-distinct" must collapse to one.
+        assert len(rows) == 2
+        assert set(by_scope) == {
+            "zone-current-year-distinct",
+            "zone-current-year-distinct-other",
+        }
+        assert (
+            by_scope["zone-current-year-distinct"].request_fingerprint
+            == _hex_fingerprint("fp-current-year-distinct-newer")
+        )
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                [
+                    "zone-current-year-distinct",
+                    "zone-current-year-distinct-other",
+                ]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.13 — completed_year_daily_done_keys: a SUPERSET, never the
+# termination condition (sweep stage 2's SQL pre-filter)
+# ---------------------------------------------------------------------------
+
+
+def test_completed_year_daily_done_keys_is_a_superset(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import completed_year_daily_done_keys
+
+    current_year = 2025
+
+    # Matches every predicate: role='daily', done, year < before_year,
+    # fingerprint set -- MUST appear.
+    candidate = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-candidate",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-candidate"),
+    )
+    # role='historical' -- already final-sourced, must NOT appear.
+    historical = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-stage2-historical",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-historical"),
+    )
+    # Current year -- excluded by `year < before_year`.
+    current = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-current",
+        scope_version="v1",
+        year=current_year,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year, 6, 1, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-stage2-current"),
+    )
+    # Legacy row: NULL fingerprint (pre-`lluvia_v2_005`) -- must NOT appear.
+    legacy = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-stage2-legacy",
+        scope_version="v1",
+        year=current_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=None,
+    )
+    db.add_all([candidate, historical, current, legacy])
+    db.commit()
+
+    try:
+        rows = completed_year_daily_done_keys(db, before_year=current_year, limit=50)
+        scope_ids = {row.scope_id for row in rows}
+
+        assert scope_ids == {"zone-stage2-candidate"}
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                [
+                    "zone-stage2-candidate",
+                    "zone-stage2-historical",
+                    "zone-stage2-current",
+                    "zone-stage2-legacy",
+                ]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
