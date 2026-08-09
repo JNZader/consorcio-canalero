@@ -3320,3 +3320,95 @@ def test_concurrent_identical_post_does_not_surface_500(db, monkeypatch):
         with SessionLocal() as cleanup:
             cleanup.query(RainfallOutbox).filter_by(scope_id="zone-concurrent-post").delete()
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# R4-103 (PR2 scoped re-review) — the multi-row lifecycle INSERT with N>1
+# pairs in one batch, the primary NRT-correction shape
+# ---------------------------------------------------------------------------
+
+
+def test_record_supersession_batches_more_than_one_pair_correctly(db):
+    """R4-103: every existing supersession test restates exactly ONE slot
+    per `persist_intervals` call. `record_supersession`'s Core `pg_insert`
+    is a single multi-row `VALUES (...), (...), ...` statement (R4-001);
+    with only ever one row in the batch, a broken row-to-row pairing
+    (e.g. cross-wiring slot A's `superseded_by_id` to slot B's landed row)
+    would never be exercised. Restate TWO slots in one call and verify
+    each lifecycle row points at its OWN slot's new row, not the other
+    one's."""
+    from app.domains.geo.rainfall.models import RainfallIntervalLifecycle, RainfallIntervalValue
+    from app.domains.geo.rainfall.repository import intervals_in_window, persist_intervals
+
+    original = _daily_intervals(
+        start_day=1, values=[1.0, 2.0, 3.0, 4.0], provider_revision="v3-nrt"
+    )
+    persist_intervals(db, source_id="chirps-v3-sat", rows=original, **ZONE_KWARGS)
+    db.flush()
+
+    # Restate slots 2 and 4 (both non-first, non-adjacent) in ONE call.
+    restated = _daily_intervals(
+        start_day=1, values=[1.0, 2.9, 3.0, 4.9], provider_revision="v3-nrt"
+    )
+    result = persist_intervals(db, source_id="chirps-v3-sat", rows=restated, **ZONE_KWARGS)
+    db.flush()
+
+    assert result["inserted"] == 2
+    assert result["unchanged"] == 2
+    assert result["superseded"] == 2
+
+    current = intervals_in_window(
+        db,
+        source_id="chirps-v3-sat",
+        start=restated[0].interval_start,
+        end=restated[-1].interval_end,
+        **ZONE_KWARGS,
+    )
+    assert [row.value for row in current] == [1.0, 2.9, 3.0, 4.9]
+    assert [row.provider_revision for row in current] == [
+        "v3-nrt",
+        "v3-nrt+r1",
+        "v3-nrt",
+        "v3-nrt+r1",
+    ]
+
+    # Original rows, keyed by their (now-superseded) slot value, to check
+    # each lifecycle link points at the RIGHT new row -- not the other
+    # corrected slot's.
+    original_day2 = db.scalar(
+        select(RainfallIntervalValue).where(
+            RainfallIntervalValue.source_id == "chirps-v3-sat",
+            RainfallIntervalValue.scope_id == ZONE_KWARGS["scope_id"],
+            RainfallIntervalValue.interval_start == original[1].interval_start,
+            RainfallIntervalValue.value == 2.0,
+        )
+    )
+    original_day4 = db.scalar(
+        select(RainfallIntervalValue).where(
+            RainfallIntervalValue.source_id == "chirps-v3-sat",
+            RainfallIntervalValue.scope_id == ZONE_KWARGS["scope_id"],
+            RainfallIntervalValue.interval_start == original[3].interval_start,
+            RainfallIntervalValue.value == 4.0,
+        )
+    )
+    new_day2 = next(row for row in current if row.interval_start == original[1].interval_start)
+    new_day4 = next(row for row in current if row.interval_start == original[3].interval_start)
+
+    lifecycle_day2 = db.scalar(
+        select(RainfallIntervalLifecycle).where(
+            RainfallIntervalLifecycle.interval_value_id == original_day2.id
+        )
+    )
+    lifecycle_day4 = db.scalar(
+        select(RainfallIntervalLifecycle).where(
+            RainfallIntervalLifecycle.interval_value_id == original_day4.id
+        )
+    )
+    assert lifecycle_day2.event_type == "superseded"
+    assert lifecycle_day4.event_type == "superseded"
+    # The load-bearing assertion: each old slot's lifecycle row names ITS
+    # OWN new row -- not swapped with the other corrected slot's.
+    assert lifecycle_day2.superseded_by_id == new_day2.id
+    assert lifecycle_day4.superseded_by_id == new_day4.id
+    assert lifecycle_day2.superseded_by_id != new_day4.id
+    assert lifecycle_day4.superseded_by_id != new_day2.id

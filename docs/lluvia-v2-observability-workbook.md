@@ -44,14 +44,35 @@ column is genuinely absent.
 
 | Event | Emitter | Meaning | Key fields |
 |---|---|---|---|
-| `rainfall.outbox.reused` | `service.py::queue_missing_analysis` | Request matched an existing pending outbox row — no new work enqueued. | `source_id`, `role`, `scope_kind`, `scope_id`, `scope_version`, `year`, `labels` |
-| `rainfall.outbox.queued` | `service.py::queue_missing_analysis` | Missing work for this scope/year/role was enqueued. | same as above |
-| `rainfall.outbox.gated` | `tasks.py::_process_outbox_batch` | A `pending` row was SKIPPED (not processed, not failed, not retried) because its metric-role flag is OFF. The audit row is retained. | same as above |
-| `rainfall.outbox.done` | `tasks.py::_process_outbox_batch` | Row completed and set `status='done'`. | same as above |
-| `rainfall.outbox.failed` | `tasks.py::_process_outbox_batch` | Row reached `MAX_RETRIES` and is terminal `failed`. | same + `retry_count` |
-| `rainfall.outbox.delayed` | `tasks.py::_process_outbox_batch` | Row failed transiently and was rescheduled (`pending`, new `next_attempt_at`). | same + `retry_count` |
+| `rainfall.outbox.reused` | `service.py::queue_missing_analysis` | Request matched an existing pending outbox row — no new work enqueued. Also fires when a concurrent identical request lost a real race on `ix_rainfall_outbox_pending_unique` and recovered by re-reading the winner's row (`IntegrityError` caught, rolled back, re-`SELECT`ed) — both callers still get a 202 with the same `outbox_id`. | `source_id`, `role`, `scope_kind`, `scope_id`, `scope_version`, `year`, `labels` |
+| `rainfall.outbox.cooldown` | `service.py::queue_missing_analysis` | A `done` row for this key completed within `RAINFALL_RECOMPUTE_COOLDOWN` (10 min) — re-enqueue skipped regardless of whether a revision exists. Governs the **request path only**; the scheduled sweeps below are not bound by it. | `source_id`, `role`, `scope_kind`, `scope_id`, `scope_version`, `year`, `outbox_id` |
+| `rainfall.outbox.queued` | `service.py::queue_missing_analysis` | Missing work for this scope/year/role was enqueued. | `source_id`, `role`, `scope_kind`, `scope_id`, `scope_version`, `year`, `labels` |
+| `rainfall.outbox.gated` | `tasks.py::_process_outbox_batch` | A `pending` row was SKIPPED (not processed, not failed, not retried) because its metric-role flag is OFF. The audit row is retained. | `source_id`, `role`, `scope_kind`, `scope_id`, `year` |
+| `rainfall.outbox.done` | `tasks.py::_process_outbox_batch` | Row completed and set `status='done'`. Committed per-row (decision 2c); durable the instant this event fires. | `source_id`, `role`, `scope_kind`, `scope_id`, `year` |
+| `rainfall.outbox.failed` | `tasks.py::_process_outbox_batch` | Row reached `MAX_RETRIES` and is terminal `failed`. | `source_id`, `role`, `scope_kind`, `scope_id`, `year`, `retry_count`, `error_type` (exception class name), `error_message` (truncated to 200 chars) |
+| `rainfall.outbox.delayed` | `tasks.py::_process_outbox_batch` | Row failed transiently and was rescheduled (`pending`, new `next_attempt_at`). | same as `rainfall.outbox.failed` |
+| `rainfall.compute.skipped` | `tasks.py::_process_outbox_row` | A `done` row with a legacy `NULL` `request_fingerprint` whose interval bounds are not exactly the year bounds (decision 4b) — compute cannot be safely derived, so it is skipped rather than guessed. | `reason` (`fingerprint_unavailable`), `source_id`, `role`, `scope_kind`, `scope_id`, `year` |
 
-### 2.3 Metrics drivers — the two numbers that mean the most
+### 2.3 Materialization — revision writes, the latch, and the daily/year-rollover sweep
+
+| Event | Emitter | Meaning | Key fields |
+|---|---|---|---|
+| `rainfall.build.revision_written` | `tasks.py::_persist_analysis_revision` | A `rainfall_analysis_revision` row was written (or would-be-idempotent-no-op) for a fingerprint. **Fires pre-commit**, inside the row's `SAVEPOINT` (decision 2b/2c) — a commit failure AFTER this point still yields this event for work that then rolls back. Bounded: `rainfall.outbox.done` (fired post-commit, above) is the durable signal that the row's work actually landed; do not alert on `revision_written` alone. | `data_revision`, `created` (`true` for a genuinely new row, `false` for `persist_revision`'s own idempotent no-op) |
+| `rainfall.build.latched` | `tasks.py::_persist_analysis_revision` | The write gate (`revision_write_decision`) returned `"latched"`: a provisional candidate over an already-served `final` incumbent was refused, unconditionally, under the per-fingerprint advisory lock (design.md "Serializing siblings"). Zero new revision rows. | `data_revision`, `source_id` (the refused candidate's), `incumbent_source_id` |
+| `rainfall.finalization.gate_refused` | `tasks.py::_persist_analysis_revision` | The write gate returned `"gate_refused"`: a cross-source (finalization) candidate would be `suppressed` under `RAINFALL_METRIC_POLICY` (the SAME function the disclosure path runs). Zero new revision rows; the previously served snapshot is untouched, and the sweep keeps retrying on its normal schedule (not a one-shot refusal). | `scope` (`{kind, id, version}`), `year`, `coverage`, `completeness`, `quality_score` |
+
+### 2.4 Daily revisit sweep — stage 1 (current-year refresh) and stage 2 (year-rollover finalization)
+
+Both stages run inside the single `rainfall.revisit_stale` Beat task (`crontab(minute="30", hour="3")`, `America/Argentina/Cordoba`). Their re-enqueue is a DIFFERENT mechanism from `queue_missing_analysis` and is deliberately not bound by `rainfall.outbox.cooldown` above (see the "GEE Quota Guards on Request-Path Re-enqueue and Poll" spec requirement — the cooldown governs the request path only).
+
+| Event | Emitter | Meaning | Key fields |
+|---|---|---|---|
+| `rainfall.revisit.skipped` | `tasks.py::_revisit_stage1` | Stage 1 skipped a current-year `done` key. `reason="fingerprint_unavailable"`: the newest `done` row has a `NULL` `request_fingerprint` (pre-`lluvia_v2_005` legacy row). `reason="pending_in_flight"`: a refresh for this key is already `pending` (the upfront check, or the `IntegrityError` backstop on `ix_rainfall_outbox_pending_unique` firing the same reason). | `reason`, `source_id`, `role`, `scope_kind`, `scope_id`, `scope_version`, `year` |
+| `rainfall.finalization.skipped` | `tasks.py::_revisit_stage2` | Stage 2 skipped a completed-year `daily`/`done` candidate before enqueueing a transition. `reason="revision_missing"`: the `done` row has no revision at all (the JDA-002 healing case, not a finalization case). `reason="provenance_unavailable"`: the served snapshot's `served_state()` returned `None` (a corrupt or pre-contract row) — treated as unknown, never as finalized. `reason="event_window_key"`: the candidate's interval bounds are not the year bounds (structurally unreachable — `resolve_missing_work_source` routes any `event_window` request to the `intensity` role before the year test — kept as a loud assertion). `reason="pending_in_flight"`: the RE-RESOLVED key (`chirps-v3-final`/`historical`, not the stale `done` row's own key) already has a transition pending. | `reason`, `scope_kind`, `scope_id`, `year` |
+
+Termination for a stage-2 key is silent by design (no event): it stops being selected the moment `completed_year_daily_done_keys`'s SQL pre-filter or the served-state read shows an adequate `("chirps-v3-final", "final")` incumbent — that state is already fully observable via `rainfall.analysis.served`/`get_snapshot`, so no additional event is emitted purely for "nothing happened, on purpose."
+
+### 2.5 Metrics drivers — the two numbers that mean the most
 
 | Alert axis | Derived from | Descripción |
 |---|---|---|
