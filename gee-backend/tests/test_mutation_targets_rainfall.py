@@ -1000,3 +1000,224 @@ class TestRainfallMetricPolicyConstants:
         )
         assert applied.state == "available"
         assert applied.value == 10.0
+
+
+# ===========================================================================
+# compute.py — build_snapshot + data_revision_for (rainfall-materialization
+# PR2, tasks 2.4-2.7)
+# ===========================================================================
+
+
+def _fixture_batch_evidence(**overrides: Any) -> dict[str, Any]:
+    """Matches the JSON-safe shape tasks.py's ``_batch_result`` returns."""
+    payload: dict[str, Any] = {
+        "source_id": "chirps-v3-final",
+        "scope_kind": "zone",
+        "scope_id": "z1",
+        "year": 2024,
+        "intervals": 3,
+        "persisted": 3,
+        "superseded": 0,
+        "provider_revision": "v3-final",
+        "unit": "mm",
+        "cadence_seconds": 86400.0,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {
+            "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_RNL",
+            "band": "precipitation",
+            "reduction": "mean",
+            "scale_m": 5500,
+            "provider_revision": "v3-final",
+        },
+        "discrepancies": [],
+        "checksum": "sha256:fixture",
+    }
+    payload.update(overrides)
+    return payload
+
+
+_ZONE_SCOPE = AnalysisScope(kind="zone", id="z1", version="v1", regional_estimate=False)
+
+
+def _daily_intervals(*, start: date, values: list[float]) -> list[tuple[datetime, datetime, float]]:
+    rows = []
+    for offset, value in enumerate(values):
+        day_start = datetime(start.year, start.month, start.day, tzinfo=UTC) + timedelta(
+            days=offset
+        )
+        rows.append((day_start, day_start + timedelta(days=1), value))
+    return rows
+
+
+class TestBuildSnapshotEnvelope:
+    """Task 2.4: root keys are a subset of SNAPSHOT_ROOT_KEYS, v1 ships only
+    annual.selected, and the metric carries the full extra="forbid" field
+    set with quality["score"] in [0, 1] (decision 5b)."""
+
+    def test_build_snapshot_envelope_contract(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+        from app.domains.geo.rainfall.service import SNAPSHOT_ROOT_KEYS
+
+        now = datetime(2024, 6, 15, tzinfo=UTC)
+        intervals = _daily_intervals(start=date(2024, 1, 1), values=[1.0, 2.0, 3.0])
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="historical",
+            source_id="chirps-v3-final",
+            intervals=intervals,
+            batch=_fixture_batch_evidence(),
+            now=now,
+        )
+
+        assert set(snapshot) <= SNAPSHOT_ROOT_KEYS
+        assert set(snapshot["annual"]) == {"selected"}
+
+        metric = snapshot["annual"]["selected"]
+        expected_fields = {
+            "metric", "value", "unit", "state", "reason", "interval_start", "interval_end",
+            "coverage", "completeness", "quality", "discrepancies", "temporal_state",
+            "revision", "provenance", "fallback_used",
+        }
+        assert set(metric) == expected_fields
+        assert 0 <= metric["quality"]["score"] <= 1
+        assert metric["value"] == 6.0
+        assert metric["state"] == "available"
+
+        provenance = metric["provenance"]
+        assert provenance["source_id"] == "chirps-v3-final"
+        assert provenance["spatial_scope"] == "zone"
+
+    def test_build_snapshot_raises_on_duplicate_interval_start(self) -> None:
+        """Task 2.7: a duplicated slot is a broken invariant, not a sum —
+        intervals_in_window's anti-join is supposed to guarantee at most one
+        row per slot; a violation must be loud."""
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        duplicated = [
+            (start, start + timedelta(days=1), 1.0),
+            (start, start + timedelta(days=1), 5.0),
+        ]
+        with pytest.raises(ValueError, match="duplicat"):
+            build_snapshot(
+                scope=_ZONE_SCOPE,
+                year=2024,
+                role="historical",
+                source_id="chirps-v3-final",
+                intervals=duplicated,
+                batch=_fixture_batch_evidence(),
+                now=datetime(2024, 6, 15, tzinfo=UTC),
+            )
+
+
+class TestBuildSnapshotCoverageWindow:
+    """Task 2.5: coverage/completeness/quality are recomputed over
+    [year_start, min(comparison_end, last_interval_end)), not the raw fetch
+    window — otherwise a current year in progress would report the
+    completeness of a FULL year against a handful of published days."""
+
+    def test_build_snapshot_bounds_coverage_window_to_available_through(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        # 5 days published in a year that (per `now`) has run for far longer
+        # than 5 days — completeness must be measured against the DISCLOSED
+        # window, not the full year, or it would read near zero forever.
+        now = datetime.now(UTC)
+        current_year = now.year
+        intervals = _daily_intervals(
+            start=date(current_year, 1, 1), values=[1.0, 1.0, 1.0, 1.0, 1.0]
+        )
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=current_year,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=intervals,
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat", provider_revision="v3-nrt",
+                quality={
+                    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT", "band": "precipitation",
+                    "reduction": "mean", "scale_m": 5500, "provider_revision": "v3-nrt",
+                },
+            ),
+            now=now,
+        )
+        metric = snapshot["annual"]["selected"]
+        # available_through tracks the last PUBLISHED day, not the calendar
+        # comparison_end (the provider is lagging behind `now` by design).
+        assert metric["provenance"]["available_through"] == (
+            datetime(current_year, 1, 6, tzinfo=UTC).isoformat()
+        )
+        assert metric["completeness"] == 1.0
+        assert metric["coverage"] == 1.0
+        assert metric["value"] == 5.0
+
+    def test_build_snapshot_with_no_data_in_window_is_unavailable(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        now = datetime(2024, 3, 1, tzinfo=UTC)
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=[],
+            batch=_fixture_batch_evidence(intervals=0, persisted=0),
+            now=now,
+        )
+        metric = snapshot["annual"]["selected"]
+        assert metric["state"] == "unavailable"
+        assert metric["value"] is None
+        assert metric["reason"]
+        assert metric["completeness"] == 0.0
+
+
+class TestDataRevisionFor:
+    """Task 2.6: content address stable across an unchanged (intervals,
+    comparison_end) pair, and changes when comparison_end alone advances
+    (decision 3b — this is what makes the daily revisit sweep mint a new
+    revision even when the provider republished nothing new)."""
+
+    def test_data_revision_for_stability_and_advance(self) -> None:
+        from app.domains.geo.rainfall.compute import data_revision_for
+
+        rows = [
+            (datetime(2024, 1, 1, tzinfo=UTC), 1.5),
+            (datetime(2024, 1, 2, tzinfo=UTC), 2.5),
+        ]
+        first = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), rows
+        )
+        same_again = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), list(rows)
+        )
+        assert first == same_again
+
+        advanced = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 3), rows
+        )
+        assert advanced != first
+
+        changed_value = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2),
+            [(datetime(2024, 1, 1, tzinfo=UTC), 9.9), rows[1]],
+        )
+        assert changed_value != first
+
+    def test_data_revision_for_is_order_independent(self) -> None:
+        from app.domains.geo.rainfall.compute import data_revision_for
+
+        rows = [
+            (datetime(2024, 1, 1, tzinfo=UTC), 1.5),
+            (datetime(2024, 1, 2, tzinfo=UTC), 2.5),
+        ]
+        forward = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), rows
+        )
+        reversed_order = data_revision_for(
+            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2),
+            list(reversed(rows)),
+        )
+        assert forward == reversed_order
