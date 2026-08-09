@@ -545,10 +545,35 @@ def completed_year_daily_done_keys(
     Python-side gate -- this exclusion is a superset filter that closes
     the starvation, not a replacement for that check.
 
-    Rotated exactly like stage 1 (see ``current_year_done_keys``): the
-    OUTER query orders the DISTINCT ON'd set by ``completed_at`` ASC so a
-    stalled key past the `limit` cursor is not starved forever by newer
-    keys landing ahead of it in the lexicographic DISTINCT ON order.
+    NOT rotated the way stage 1 is (R4-301 — review-ledger.md "PR3 scoped
+    re-review (fix round 1)"): a candidate row here IS the original
+    ``role='daily'`` ``done`` row for that scope+year, and nothing ever
+    re-stamps its ``completed_at`` — a finalization attempt always INSERTs
+    a SEPARATE ``role='historical'`` row (design.md "Year-Rollover
+    Finalization" step 6) and never touches this one. So a stalled
+    candidate's position in the ``completed_at`` ASC order is FIXED for as
+    long as it stays a candidate at all — unlike stage 1, where a key's own
+    refresh gives its NEXT `done` row a fresh `completed_at` and genuinely
+    rotates it. What actually frees a slot for a key parked past the
+    `limit` cursor is the ``already_final`` exclusion above: once an
+    ahead-of-cursor key's served state genuinely turns final, it drops OUT
+    of this query's candidate set entirely (not merely re-sorted),
+    shrinking the population the cursor has to clear. The outer
+    ``completed_at`` ASC re-sort is a one-time tie-break over whatever set
+    the exclusion leaves, not a rotation mechanism — it exists so a freed
+    slot is backfilled by the next-oldest stalled key rather than an
+    arbitrary one.
+
+    Bound: with up to `limit` (`MAX_OUTBOX_BATCH`) genuinely-stalled keys
+    sorted ahead of a given key, draining the head takes at most
+    ``ceil(N / limit)`` daily sweeps, where N is the count of ahead-of-
+    cursor keys that eventually clear the write gate — a key stuck behind
+    a head that never clears (inadequate final data that never improves)
+    is not bounded by this arithmetic and stays starved until that data
+    improves. Observable via ``rainfall.finalization.completed``'s
+    ``truncated`` flag (true when ``scanned == limit``, tasks.py
+    ``_revisit_stale``); a persistently ``true`` value is the signal the
+    head has not drained.
     """
     newest_snapshot = (
         select(RainfallAnalysisRevision.snapshot)

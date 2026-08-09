@@ -3875,6 +3875,86 @@ def test_process_outbox_batch_stops_cleanly_when_wall_clock_budget_exceeded(
 
 
 # ---------------------------------------------------------------------------
+# PR4 review fold — R4-302 (review-ledger.md "PR3 scoped re-review (fix
+# round 1)"): the NULL branch of `already_final` (a done daily
+# completed-year key with a fingerprint but NO revision yet — the JDA-002
+# healing case) has its own dedicated regression, independent of
+# `test_completed_year_daily_done_keys_is_a_superset`'s incidental
+# coverage of the same shape. Approval test: pins existing, already-correct
+# `IS NOT TRUE` NULL-safety behavior — no production code changes for this
+# task, disclosed as GREEN-only per strict-tdd's approval-testing pattern
+# (same disclosure as R1-001 in PR3 review fix round 1).
+# ---------------------------------------------------------------------------
+
+
+def test_completed_year_daily_done_keys_keeps_a_revision_missing_key(db):
+    """A `.is_(False)` refactor of `already_final.isnot(True)` would read
+    NULL as "not excluded is unknown -> drop", silently starving a
+    healing key that has never had a chance to disclose its state at all.
+    `IS NOT TRUE` must KEEP it instead."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import completed_year_daily_done_keys, persist_revision
+
+    before_year = 2030
+
+    # No RainfallAnalysisRevision row exists for this fingerprint at all --
+    # `newest_snapshot` reads NULL, `already_final` reads NULL,
+    # `NULL IS NOT TRUE` is TRUE -> the row MUST stay a candidate.
+    revision_missing = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-r4-302-revision-missing",
+        scope_version="v1",
+        year=before_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(before_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-r4-302-revision-missing"),
+    )
+    # Differential control: a key that DOES have a final revision -- must
+    # be excluded, same as test_completed_year_daily_done_keys_is_a_superset
+    # already proves, kept here so this test stands on its own.
+    already_final = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id="zone-r4-302-already-final",
+        scope_version="v1",
+        year=before_year - 1,
+        work_labels=["analysis_missing", "role:daily"],
+        status="done",
+        completed_at=datetime(before_year - 1, 12, 31, tzinfo=UTC),
+        request_fingerprint=_hex_fingerprint("fp-r4-302-already-final"),
+    )
+    db.add_all([revision_missing, already_final])
+    db.flush()
+
+    persist_revision(
+        db,
+        request_fingerprint=_hex_fingerprint("fp-r4-302-already-final"),
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=_served_snapshot(source_id="chirps-v3-final", temporal_state="final"),
+    )
+    db.commit()
+
+    try:
+        rows = completed_year_daily_done_keys(db, before_year=before_year, limit=50)
+        scope_ids = {row.scope_id for row in rows}
+
+        assert "zone-r4-302-revision-missing" in scope_ids
+        assert "zone-r4-302-already-final" not in scope_ids
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                ["zone-r4-302-revision-missing", "zone-r4-302-already-final"]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Task 4.1 — daily-source flip: RAINFALL_DAILY_SOURCE -> chirps-v3-sat,
 # fallback_used set for any role whose spec-primary source diverges from
 # the one actually used
