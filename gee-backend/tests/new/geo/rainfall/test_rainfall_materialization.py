@@ -2524,3 +2524,146 @@ def test_completed_year_daily_done_keys_is_a_superset(db):
             )
         ).delete(synchronize_session=False)
         db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.10 — revisit_stale stage 1: enqueue a fresh pending row per
+# current-year done key
+# ---------------------------------------------------------------------------
+
+
+def _make_done_row(
+    *,
+    source_id: str,
+    role: str,
+    scope_id: str,
+    year: int,
+    completed_at: datetime,
+    fingerprint: str,
+    work_labels: list[str] | None = None,
+):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    return RainfallOutbox(
+        source_id=source_id,
+        role=role,
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=year,
+        work_labels=work_labels or ["analysis_missing"],
+        interval_start=datetime(year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+        status="done",
+        completed_at=completed_at,
+        request_fingerprint=fingerprint,
+    )
+
+
+def test_revisit_stage1_enqueues_fresh_pending_row_per_current_year_key(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    year = 2024
+    fingerprint = _hex_fingerprint("fp-revisit-stage1-basic")
+    done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-revisit-stage1-basic",
+        year=year,
+        completed_at=datetime(year, 6, 1, tzinfo=UTC),
+        fingerprint=fingerprint,
+        work_labels=["analysis_missing", "role:daily"],
+    )
+    db.add(done)
+    db.commit()
+
+    try:
+        result = tasks.revisit_stale(db=db, now=datetime(year, 6, 15, tzinfo=UTC))
+
+        assert result["scanned"] == 1
+        assert result["enqueued"] == 1
+        assert result["skipped"] == 0
+
+        fresh_rows = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-basic", status="pending")
+            .all()
+        )
+        assert len(fresh_rows) == 1
+        fresh = fresh_rows[0]
+        assert fresh.source_id == "chirps-v3-sat"
+        assert fresh.role == "daily"
+        assert fresh.year == year
+        assert fresh.interval_start == datetime(year, 1, 1, tzinfo=UTC)
+        assert fresh.interval_end == datetime(year + 1, 1, 1, tzinfo=UTC)
+        assert fresh.request_fingerprint == fingerprint
+        assert set(fresh.work_labels) == {"analysis_missing", "role:daily"}
+    finally:
+        db.query(RainfallOutbox).filter_by(scope_id="zone-revisit-stage1-basic").delete()
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.11 — stage 1 dedup and year filter
+# ---------------------------------------------------------------------------
+
+
+def test_revisit_stage1_dedups_and_exempts_past_years(db):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    current_year = 2024
+    dedup_fingerprint = _hex_fingerprint("fp-revisit-stage1-dedup")
+    dedup_done = _make_done_row(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_id="zone-revisit-stage1-dedup",
+        year=current_year,
+        completed_at=datetime(current_year, 6, 1, tzinfo=UTC),
+        fingerprint=dedup_fingerprint,
+    )
+    past_fingerprint = _hex_fingerprint("fp-revisit-stage1-past")
+    past_done = _make_done_row(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_id="zone-revisit-stage1-past",
+        year=current_year - 1,
+        completed_at=datetime(current_year - 1, 12, 31, tzinfo=UTC),
+        fingerprint=past_fingerprint,
+    )
+    db.add_all([dedup_done, past_done])
+    db.commit()
+
+    try:
+        now = datetime(current_year, 6, 15, tzinfo=UTC)
+
+        first = tasks.revisit_stale(db=db, now=now)
+        assert first["scanned"] == 1  # only the current-year key is selected
+        assert first["enqueued"] == 1
+
+        second = tasks.revisit_stale(db=db, now=now)
+        assert second["scanned"] == 1
+        assert second["enqueued"] == 0
+        assert second["skipped"] == 1  # pending_in_flight
+
+        dedup_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-dedup", status="pending")
+            .all()
+        )
+        assert len(dedup_pending) == 1
+
+        past_pending = (
+            db.query(RainfallOutbox)
+            .filter_by(scope_id="zone-revisit-stage1-past", status="pending")
+            .all()
+        )
+        assert past_pending == []
+    finally:
+        db.query(RainfallOutbox).filter(
+            RainfallOutbox.scope_id.in_(
+                ["zone-revisit-stage1-dedup", "zone-revisit-stage1-past"]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()

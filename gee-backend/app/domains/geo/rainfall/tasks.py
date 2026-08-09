@@ -372,9 +372,8 @@ def build_analysis(
         return result
 
 
-@celery_app.task(name="rainfall.revisit_stale", bind=True, max_retries=2)
-def revisit_stale(
-    self,
+def _pending_row_for_key(
+    db: Session,
     *,
     source_id: str,
     role: str,
@@ -382,15 +381,210 @@ def revisit_stale(
     scope_id: str,
     scope_version: str,
     year: int,
-) -> dict[str, Any]:
-    return ingest_source_scope(
-        source_id=source_id,
-        role=role,
-        scope_kind=scope_kind,
-        scope_id=scope_id,
-        scope_version=scope_version,
-        year=year,
+) -> RainfallOutbox | None:
+    """Pre-check mirroring ``ix_rainfall_outbox_pending_unique`` (decision 8's
+    discipline, same shape as ``queue_missing_analysis``'s own check)."""
+    return (
+        db.query(RainfallOutbox)
+        .filter_by(
+            source_id=source_id,
+            role=role,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            scope_version=scope_version,
+            year=year,
+            status="pending",
+        )
+        .first()
     )
+
+
+def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
+    """Current-Year Revisit Cycle: append a fresh ``pending`` row per
+    current-year ``done`` key so a materialized snapshot never freezes for
+    the rest of the year (design.md "Current-Year Revisit Cycle")."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.domains.geo.rainfall.repository import current_year_done_keys
+
+    scanned = 0
+    enqueued = 0
+    skipped = 0
+    for row in current_year_done_keys(db, year=current_year, limit=MAX_OUTBOX_BATCH):
+        scanned += 1
+        key = {
+            "source_id": row.source_id,
+            "role": row.role,
+            "scope_kind": row.scope_kind,
+            "scope_id": row.scope_id,
+            "scope_version": row.scope_version,
+            "year": row.year,
+        }
+        if row.request_fingerprint is None:
+            record_event("rainfall.revisit.skipped", reason="fingerprint_unavailable", **key)
+            skipped += 1
+            continue
+        if _pending_row_for_key(db, **key) is not None:
+            record_event("rainfall.revisit.skipped", reason="pending_in_flight", **key)
+            skipped += 1
+            continue
+
+        db.add(
+            RainfallOutbox(
+                **key,
+                work_labels=list(row.work_labels),
+                interval_start=row.interval_start,
+                interval_end=row.interval_end,
+                status="pending",
+                request_fingerprint=row.request_fingerprint,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            record_event("rainfall.revisit.skipped", reason="pending_in_flight", **key)
+            skipped += 1
+            continue
+        enqueued += 1
+
+    return {"scanned": scanned, "enqueued": enqueued, "skipped": skipped}
+
+
+def _revisit_stage2(db: Session, *, current_year: int, now: datetime) -> dict[str, int]:
+    """Year-Rollover Finalization: transition a completed-year key off its
+    provisional satellite source once CHIRPS v3 Final is adequate
+    (design.md "Year-Rollover Finalization"). Selection is on the SERVED
+    snapshot's own provenance -- never on outbox history, which
+    self-extinguishes on the first gated refusal."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.domains.geo.rainfall.compute import served_state
+    from app.domains.geo.rainfall.repository import (
+        RainfallRepository,
+        completed_year_daily_done_keys,
+    )
+    from app.domains.geo.rainfall.service import (
+        RAINFALL_HISTORICAL_SOURCE,
+        resolve_missing_work_source,
+    )
+
+    scanned = 0
+    enqueued = 0
+    skipped = 0
+    for row in completed_year_daily_done_keys(db, before_year=current_year, limit=MAX_OUTBOX_BATCH):
+        scanned += 1
+        scope = {"scope_kind": row.scope_kind, "scope_id": row.scope_id, "year": row.year}
+
+        incumbent = RainfallRepository().get_snapshot(db, row.request_fingerprint)
+        if incumbent is None:
+            # A `done` row with no revision is the JDA-002 healing case, not
+            # a finalization case -- nothing for this sweep to transition.
+            record_event("rainfall.finalization.skipped", reason="revision_missing", **scope)
+            skipped += 1
+            continue
+
+        state = served_state(incumbent.snapshot)
+        if state is None:
+            record_event("rainfall.finalization.skipped", reason="provenance_unavailable", **scope)
+            skipped += 1
+            continue
+
+        served_source_id, served_temporal_state = state
+        if (served_source_id, served_temporal_state) == (RAINFALL_HISTORICAL_SOURCE, "final"):
+            # Terminated: an adequate final revision is already served --
+            # stop selecting this key, today and forever (design.md
+            # "Termination, stated as a proof obligation").
+            continue
+
+        year_start = datetime(row.year, 1, 1, tzinfo=UTC)
+        year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
+        if row.interval_start != year_start or row.interval_end != year_end:
+            # Structurally unreachable (resolve_missing_work_source routes
+            # any event_window request to the intensity role before the
+            # year test, so a role='daily' row cannot carry event-window
+            # bounds) -- kept as a loud assertion, not a silent mismatch.
+            record_event("rainfall.finalization.skipped", reason="event_window_key", **scope)
+            skipped += 1
+            continue
+
+        # The source and role are the WORK and must be re-resolved -- the
+        # `done` row's own source_id is exactly the stale provisional value
+        # this stage exists to leave. The fingerprint is the IDENTITY and
+        # is copied verbatim below.
+        work = resolve_missing_work_source(None, row.year, now=now)
+        key = {
+            "source_id": work["source_id"],
+            "role": work["role"],
+            "scope_kind": row.scope_kind,
+            "scope_id": row.scope_id,
+            "scope_version": row.scope_version,
+            "year": row.year,
+        }
+
+        if _pending_row_for_key(db, **key) is not None:
+            record_event("rainfall.finalization.skipped", reason="pending_in_flight", **scope)
+            skipped += 1
+            continue
+
+        db.add(
+            RainfallOutbox(
+                **key,
+                work_labels=list({*row.work_labels, f"role:{work['role']}", "finalization"}),
+                interval_start=work["interval_start"],
+                interval_end=work["interval_end"],
+                status="pending",
+                request_fingerprint=row.request_fingerprint,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            record_event("rainfall.finalization.skipped", reason="pending_in_flight", **scope)
+            skipped += 1
+            continue
+        enqueued += 1
+
+    return {"scanned": scanned, "enqueued": enqueued, "skipped": skipped}
+
+
+def _revisit_stale(db: Session, now: datetime | None) -> dict[str, int]:
+    sweep_now = now or datetime.now(UTC)
+    current_year = sweep_now.year
+
+    stage1 = _revisit_stage1(db, current_year=current_year)
+    stage2 = _revisit_stage2(db, current_year=current_year, now=sweep_now)
+
+    return {
+        "scanned": stage1["scanned"],
+        "enqueued": stage1["enqueued"],
+        "skipped": stage1["skipped"],
+        "finalization_scanned": stage2["scanned"],
+        "finalization_enqueued": stage2["enqueued"],
+        "finalization_skipped": stage2["skipped"],
+    }
+
+
+@celery_app.task(name="rainfall.revisit_stale")
+def revisit_stale(db: Session | None = None, now: datetime | None = None) -> dict[str, int]:
+    """Daily two-stage sweep (design.md "Current-Year Revisit Cycle" +
+    "Year-Rollover Finalization"). Stage 1 refreshes every already-
+    materialized current-year key; stage 2 transitions a completed year
+    off its provisional satellite source once CHIRPS v3 Final is adequate.
+
+    ``now`` is the sweep's own clock seam (design.md Interfaces): supplies
+    ``current_year`` for BOTH stages and is threaded into stage 2's
+    ``resolve_missing_work_source(None, year, now=now)`` re-resolution so
+    the selection and the re-resolution agree on the same calendar --
+    without that last hop the seam dead-ends at ``current_year`` and stage
+    2 would re-resolve against the real clock, routing a completed year
+    back to ``daily``/``chirps-v3-sat`` and inverting its own fix.
+    """
+    if db is not None:
+        return _revisit_stale(db, now)
+    with SessionLocal() as local_db:
+        return _revisit_stale(local_db, now)
 
 
 def _backoff_seconds(retry_count: int) -> int:
