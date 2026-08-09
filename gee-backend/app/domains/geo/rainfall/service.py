@@ -19,11 +19,50 @@ from app.domains.geo.rainfall.schemas import MetricResult
 METRIC_GROUPS = ("annual", "antecedents", "intensity")
 
 RAINFALL_HISTORICAL_SOURCE = "chirps-v3-final"
-RAINFALL_DAILY_SOURCE = "sqpe-obs"
+# TODO(smn): SQPE-OBS has no GEE catalog entry (SMN NetCDF distribution,
+# tasks._concrete_fetch) and no per-role eligibility outcome has been
+# recorded for the daily role under "Source Eligibility Validation Gate".
+# Task 4.1 (rainfall-materialization PR 4, design.md decision 7): interim
+# default under the daily role's MAY-fallback clause (delta spec
+# "Evidence-Gated Source Roles" MODIFIED requirement) -- a deliberate,
+# tracked deviation, not a completed validation. Swap back to "sqpe-obs"
+# once an SMN adapter exists.
+RAINFALL_DAILY_SOURCE = "chirps-v3-sat"
 RAINFALL_INTENSITY_SOURCE = "sinarame-rqpe"
 # Task 3.18: matches adapters/manifests.py's validation-role candidate
 # (`smn-gauge`, singular) -- was `smn-gauges`, a typo that never matched.
 RAINFALL_VALIDATION_SOURCE = "smn-gauge"
+
+# Task 4.1: spec.md's NAMED spec-primary candidate per role -- distinct
+# from the constants above, which are what the system actually resolves to
+# right now. For every role except "daily" the two agree today. "daily"
+# is the one deliberate divergence (RAINFALL_DAILY_SOURCE's TODO(smn)
+# above): spec.md:206 names SQPE-OBS as the daily candidate, but the
+# system serves chirps-v3-sat under the daily MAY-fallback clause until an
+# SMN adapter exists. `fallback_used_for` is the single place this table
+# is read, so a future eligibility change updates exactly one dict entry.
+RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE: dict[str, str] = {
+    "historical": RAINFALL_HISTORICAL_SOURCE,
+    "daily": "sqpe-obs",
+    "intensity": RAINFALL_INTENSITY_SOURCE,
+    "validation": RAINFALL_VALIDATION_SOURCE,
+}
+
+
+def fallback_used_for(role: str, source_id: str) -> bool:
+    """True when *source_id* -- the source actually resolved and used for
+    *role* -- diverges from spec.md's named spec-primary candidate for
+    that role (delta spec "Evidence-Gated Source Roles" MODIFIED
+    requirement). Feeds `provenance.fallback_used` on every persisted
+    snapshot: `compute.build_snapshot`'s `fallback_used` parameter, threaded
+    in from `tasks._persist_analysis_revision`. An unmapped role reports no
+    divergence rather than raising -- `resolve_missing_work_source` is the
+    sole source of truth for which roles exist; this function only compares,
+    it never routes.
+    """
+    primary = RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE.get(role)
+    return primary is not None and primary != source_id
+
 
 # decision 6: skip request-path re-enqueue when a `done` row for the same
 # key completed within this window, regardless of whether a revision

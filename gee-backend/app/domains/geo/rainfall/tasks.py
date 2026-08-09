@@ -219,6 +219,7 @@ def _persist_analysis_revision(
         persist_revision,
     )
     from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import fallback_used_for
 
     row = db.get(RainfallOutbox, outbox_id)
     if row is None:
@@ -275,6 +276,10 @@ def _persist_analysis_revision(
         intervals=resolved,
         batch=batch,
         now=now,
+        # Task 4.1: documents every role/source divergence from spec.md's
+        # named spec-primary candidate, not just the daily flip -- see
+        # service.RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE.
+        fallback_used=fallback_used_for(row.role, row.source_id),
     )
 
     family = revision_family(batch["provider_revision"])
