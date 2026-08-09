@@ -965,3 +965,38 @@ class TestSixDecimalEqualityBoundary:
 
         assert _values_equal_at_6dp(0.0, 0.0000001) is True
         assert _values_equal_at_6dp(0.0000001, 0.0) is True
+
+
+# ===========================================================================
+# policy.py — RAINFALL_METRIC_POLICY constants (rainfall-materialization PR2, task 2.8)
+# ===========================================================================
+
+
+class TestRainfallMetricPolicyConstants:
+    """decision 5d: a frozen module constant, not a settings-driven read —
+    the display path (service.py's ``_metric_policy``) rejects a revision
+    mismatch, so the policy MUST be embedded in every snapshot rather than
+    looked up live."""
+
+    def test_rainfall_metric_policy_constants_shape(self) -> None:
+        from app.domains.geo.rainfall.policy import (
+            RAINFALL_METRIC_POLICY,
+            RAINFALL_METRIC_POLICY_REVISION,
+            MetricThresholdPolicy,
+        )
+
+        assert isinstance(RAINFALL_METRIC_POLICY_REVISION, str)
+        assert RAINFALL_METRIC_POLICY_REVISION
+        assert isinstance(RAINFALL_METRIC_POLICY, MetricThresholdPolicy)
+        assert RAINFALL_METRIC_POLICY.revision == RAINFALL_METRIC_POLICY_REVISION
+        assert RAINFALL_METRIC_POLICY.minimum_coverage_by_metric["annual"] == 0.8
+        assert RAINFALL_METRIC_POLICY.minimum_quality_by_metric["annual"] == 0.8
+        # A well-formed threshold policy the shared apply_metric_policy state
+        # machine can actually evaluate (guards against a policy so broken
+        # every snapshot's annual metric silently comes back suppressed).
+        applied = apply_metric_policy(
+            RAINFALL_METRIC_POLICY, "annual", value=10.0, coverage=0.9, quality_score=0.9,
+            completeness=0.9,
+        )
+        assert applied.state == "available"
+        assert applied.value == 10.0
