@@ -2667,3 +2667,133 @@ def test_revisit_stage1_dedups_and_exempts_past_years(db):
             )
         ).delete(synchronize_session=False)
         db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.12 — E2E: same key, later date (JDA-001 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monkeypatch):
+    """The JDA-001 regression: a current-year key's snapshot is NOT the
+    permanent answer for the rest of the year. Also proves 1.5's
+    supersession becomes a later served revision (decision 3c).
+
+    Uses the REAL current year (`datetime.now(UTC).year`, same pattern as
+    `test_ingest_ops.py::test_resolve_missing_work_source_uses_daily_for_current_year`)
+    with `RAINFALL_DAILY_SOURCE` monkeypatched to `chirps-v3-sat` -- PR 4's
+    flip is not yet live, but this test verifies the sweep/supersession
+    mechanism, not the flip itself, and `chirps-v3-sat` is already wired
+    in `_concrete_fetch`.
+
+    Deliberately uses REAL `SessionLocal()` connections throughout (real
+    ``get_db``, `db=None` on every task call) instead of the shared `db`
+    fixture, and never passes `db=db` to a task call: `created_at` is
+    `server_default=func.now()`, which PostgreSQL freezes to *transaction
+    start*, so three builds sharing the `db` fixture's single savepoint-
+    scoped transaction would all land the SAME `created_at` and
+    `get_snapshot`'s `id DESC` tiebreak would then serve an arbitrary one
+    of the three, not the newest -- the same class of bug already fixed
+    for `claim_outbox_row`'s claim predicate (see `test_per_row_commit_
+    survives_a_later_row_failure` and the Durability Testing Strategy
+    row for the same reason with a single fresh `SessionLocal()`).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import service, tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run; see docstring for why the
+    # actual work below uses fresh SessionLocal() connections instead.
+
+    monkeypatch.setattr(service, "RAINFALL_DAILY_SOURCE", "chirps-v3-sat")
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+
+    fake_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(30)]
+    )
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=fake_client).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-same-key-later-date"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        day_d = datetime(year, 1, 30, 12, tzinfo=UTC)  # noon UTC: same BA calendar day
+        result_d = tasks.process_outbox(now=day_d)
+        assert result_d["succeeded"] == 1
+
+        served_d = client.post("/rainfall/analyses", json=payload)
+        assert served_d.status_code == 200
+        assert served_d.json()["comparison_end"] == f"{year}-01-30"
+        assert _revision_count() == 1
+
+        # A newly published day: extend the fake series by one day.
+        fake_client.series = [*fake_client.series, (year_start + timedelta(days=30), 2.0)]
+
+        day_d1 = datetime(year, 1, 31, 12, tzinfo=UTC)
+        revisit_d1 = tasks.revisit_stale(now=day_d1)
+        assert revisit_d1["enqueued"] == 1
+        result_d1 = tasks.process_outbox(now=day_d1)
+        assert result_d1["succeeded"] == 1
+
+        served_d1 = client.post("/rainfall/analyses", json=payload)
+        assert served_d1.status_code == 200
+        body_d1 = served_d1.json()
+        assert body_d1["comparison_end"] == f"{year}-01-31"
+        metric_d1 = body_d1["annual"]["selected"]
+        assert metric_d1["value"] == pytest.approx(32.0)  # 30 days@1.0 + 1 day@2.0
+        assert _revision_count() == 2
+
+        # Repeat with an UNCHANGED series: comparison_end alone advancing
+        # must still produce a new revision (decision 3b).
+        day_d2 = datetime(year, 2, 1, 12, tzinfo=UTC)
+        revisit_d2 = tasks.revisit_stale(now=day_d2)
+        assert revisit_d2["enqueued"] == 1
+        result_d2 = tasks.process_outbox(now=day_d2)
+        assert result_d2["succeeded"] == 1
+
+        served_d2 = client.post("/rainfall/analyses", json=payload)
+        assert served_d2.status_code == 200
+        assert served_d2.json()["comparison_end"] == f"{year}-02-01"
+        assert _revision_count() == 3
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
