@@ -2009,3 +2009,343 @@ def test_write_gate_refuses_suppressed_candidate_without_touching_served_snapsho
     served_after = RainfallRepository().get_snapshot(db, fingerprint)
     assert served_after.id == served_before.id
     assert served_after.snapshot["annual"]["selected"]["provenance"]["source_id"] == "chirps-v3-sat"
+
+
+# ---------------------------------------------------------------------------
+# Task 3.7 — latch regression: sequential and concurrent (JDA-201)
+# ---------------------------------------------------------------------------
+
+
+def _full_year_rows(*, year: int, provider_revision: str) -> list[SourceInterval]:
+    start = datetime(year, 1, 1, tzinfo=UTC)
+    is_leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    days = 366 if is_leap else 365
+    return [
+        SourceInterval(
+            start + timedelta(days=offset),
+            start + timedelta(days=offset + 1),
+            1.0,
+            "mm",
+            provider_revision,
+        )
+        for offset in range(days)
+    ]
+
+
+_SAT_QUALITY = {
+    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+    "band": "precipitation",
+    "reduction": "mean",
+    "scale_m": 5500,
+    "provider_revision": "v3-nrt",
+}
+
+
+def test_latch_sequential_and_concurrent_two_connections(db):
+    """Sequential (the 31-December-row-drains-in-January path) AND
+    concurrent (JDA-201 -- the sequential case cannot see it): a stale
+    provisional build over a served final revision must never write, and
+    that guarantee must hold even when the two builds race on independent
+    connections."""
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.compute import fingerprint_lock_key
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import (
+        RainfallRepository,
+        acquire_fingerprint_lock,
+        persist_intervals,
+    )
+
+    # ---- Sequential case ----
+    seq_year = 2023
+    seq_scope_id = "zone-latch-sequential"
+    seq_fingerprint = _hex_fingerprint("fp-latch-sequential")
+
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        rows=_full_year_rows(year=seq_year, provider_revision="v3-final"),
+    )
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        rows=_full_year_rows(year=seq_year, provider_revision="v3-nrt"),
+    )
+    db.flush()
+
+    seq_final_outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        year=seq_year,
+        work_labels=["analysis_missing", "finalization"],
+        interval_start=datetime(seq_year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(seq_year + 1, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=seq_fingerprint,
+    )
+    db.add(seq_final_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(seq_final_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-final", scope_id=seq_scope_id, year=seq_year,
+            intervals=365, persisted=365,
+        ),
+        db=db,
+        now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
+    )
+    db.flush()
+
+    served_seq = RainfallRepository().get_snapshot(db, seq_fingerprint)
+    assert served_seq is not None
+    assert served_seq.snapshot["annual"]["selected"]["provenance"]["source_id"] == "chirps-v3-final"
+    assert served_seq.snapshot["annual"]["selected"]["temporal_state"] == "final"
+
+    seq_daily_outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=seq_scope_id,
+        scope_version="v1",
+        year=seq_year,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(seq_year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(seq_year + 1, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=seq_fingerprint,
+    )
+    db.add(seq_daily_outbox)
+    db.flush()
+
+    seq_daily_result = tasks.build_analysis(
+        outbox_id=str(seq_daily_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-sat", scope_id=seq_scope_id, year=seq_year,
+            intervals=365, persisted=365, provider_revision="v3-nrt", quality=_SAT_QUALITY,
+        ),
+        db=db,
+        now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
+    )
+    db.flush()
+
+    assert seq_daily_result["decision"] == "latched"
+    served_seq_after = RainfallRepository().get_snapshot(db, seq_fingerprint)
+    assert served_seq_after.id == served_seq.id
+
+    seq_revision_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == seq_fingerprint)
+    )
+    assert seq_revision_count == 1
+
+    # ---- Concurrent case (JDA-201) ----
+    # `db` (the shared fixture) is savepoint-scoped and cannot exhibit two
+    # independent transactions -- it would silently pass. Two REAL
+    # SessionLocal() connections + a worker thread, matching the Durability
+    # row's own reason for a fresh session.
+
+    def run_concurrent_round(
+        *, scope_id: str, fingerprint: str, year: int, now: datetime,
+        first_source_id: str, first_role: str, first_batch: dict,
+        second_source_id: str, second_role: str, second_batch: dict,
+    ) -> tuple[dict, dict]:
+        import threading
+
+        from sqlalchemy import text
+        from sqlalchemy.exc import OperationalError
+
+        with SessionLocal() as setup:
+            persist_intervals(
+                setup, source_id=first_source_id, scope_kind="zone", scope_id=scope_id,
+                scope_version="v1",
+                rows=_full_year_rows(year=year, provider_revision=first_batch["provider_revision"]),
+            )
+            persist_intervals(
+                setup, source_id=second_source_id, scope_kind="zone", scope_id=scope_id,
+                scope_version="v1",
+                rows=_full_year_rows(year=year, provider_revision=second_batch["provider_revision"]),
+            )
+            first_row = RainfallOutbox(
+                source_id=first_source_id, role=first_role, scope_kind="zone",
+                scope_id=scope_id, scope_version="v1", year=year,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(year, 1, 1, tzinfo=UTC),
+                interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+                status="pending", request_fingerprint=fingerprint,
+            )
+            second_row = RainfallOutbox(
+                source_id=second_source_id, role=second_role, scope_kind="zone",
+                scope_id=scope_id, scope_version="v1", year=year,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(year, 1, 1, tzinfo=UTC),
+                interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+                status="pending", request_fingerprint=fingerprint,
+            )
+            setup.add_all([first_row, second_row])
+            setup.commit()
+            first_row_id, second_row_id = str(first_row.id), str(second_row.id)
+
+        # Session A: build the FIRST sibling synchronously, take the lock,
+        # and hold the transaction open -- never commit until the block on
+        # B is proven. Wrapped in try/finally: an assertion failure below
+        # must not leak an open, uncommitted connection -- that would hang
+        # every later cleanup query waiting on session A's own row locks.
+        session_a = SessionLocal()
+        thread: threading.Thread | None = None
+        try:
+            first_result = tasks.build_analysis(
+                outbox_id=first_row_id, batch=first_batch, db=session_a, now=now
+            )
+
+            second_result_holder: dict = {}
+
+            def run_second():
+                session_b = SessionLocal()
+                try:
+                    second_result_holder["result"] = tasks.build_analysis(
+                        outbox_id=second_row_id, batch=second_batch, db=session_b, now=now
+                    )
+                    session_b.commit()
+                finally:
+                    session_b.close()
+
+            thread = threading.Thread(target=run_second)
+            thread.start()
+            thread.join(timeout=0.5)
+            assert thread.is_alive(), (
+                "the second sibling must BLOCK on the advisory lock while the first "
+                "sibling holds its transaction open -- a missing lock fails this "
+                "assertion instead of the test passing by luck"
+            )
+
+            # Defense-in-depth: prove it is a REAL PostgreSQL-level block on
+            # THIS lock_key, not a coincidence -- a third session with a short
+            # lock_timeout attempting the same key while A holds it must time
+            # out.
+            lock_key = fingerprint_lock_key(fingerprint)
+            with SessionLocal() as probe:
+                probe.execute(text("SET LOCAL lock_timeout = '250ms'"))
+                with pytest.raises(OperationalError):
+                    acquire_fingerprint_lock(probe, lock_key=lock_key)
+                probe.rollback()
+
+            # Release A -> B unblocks, re-reads a FRESH incumbent (A's now-
+            # visible commit), and decides against it.
+            session_a.commit()
+            session_a.close()
+            thread.join(timeout=10)
+            assert not thread.is_alive()
+
+            return first_result, second_result_holder["result"]
+        finally:
+            # session_a.close() above is a no-op the second time (SQLAlchemy
+            # tolerates closing an already-closed Session); on any failure
+            # path it rolls back A's uncommitted transaction, releasing the
+            # advisory lock so B (and this function's own cleanup queries)
+            # are never left blocked on an abandoned connection.
+            session_a.close()
+            if thread is not None:
+                thread.join(timeout=10)
+
+    try:
+        # Round 1: finalization claimed first, daily second -> daily must
+        # latch, the final revision stays served.
+        year1 = 2023
+        scope_id1 = "zone-latch-concurrent-1"
+        fingerprint1 = _hex_fingerprint("fp-latch-concurrent-1")
+        first_result1, second_result1 = run_concurrent_round(
+            scope_id=scope_id1, fingerprint=fingerprint1, year=year1,
+            now=datetime(year1 + 1, 6, 1, tzinfo=UTC),
+            first_source_id="chirps-v3-final", first_role="historical",
+            first_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-final", scope_id=scope_id1, year=year1,
+                intervals=365, persisted=365,
+            ),
+            second_source_id="chirps-v3-sat", second_role="daily",
+            second_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat", scope_id=scope_id1, year=year1,
+                intervals=365, persisted=365, provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+        )
+        assert first_result1["decision"] == "write"
+        assert second_result1["decision"] == "latched"
+
+        with SessionLocal() as verify1:
+            served1 = RainfallRepository().get_snapshot(verify1, fingerprint1)
+            assert served1 is not None
+            assert served1.snapshot["annual"]["selected"]["provenance"]["source_id"] == (
+                "chirps-v3-final"
+            )
+            assert served1.snapshot["annual"]["selected"]["temporal_state"] == "final"
+            count1 = verify1.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint1)
+            )
+            assert count1 == 1
+
+        # Round 2: reversed claim order -- daily first, finalization second
+        # -> the finalization revision is the one served.
+        year2 = 2022
+        scope_id2 = "zone-latch-concurrent-2"
+        fingerprint2 = _hex_fingerprint("fp-latch-concurrent-2")
+        first_result2, second_result2 = run_concurrent_round(
+            scope_id=scope_id2, fingerprint=fingerprint2, year=year2,
+            now=datetime(year2 + 1, 6, 1, tzinfo=UTC),
+            first_source_id="chirps-v3-sat", first_role="daily",
+            first_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat", scope_id=scope_id2, year=year2,
+                intervals=365, persisted=365, provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
+            ),
+            second_source_id="chirps-v3-final", second_role="historical",
+            second_batch=_fixture_batch_evidence(
+                source_id="chirps-v3-final", scope_id=scope_id2, year=year2,
+                intervals=365, persisted=365,
+            ),
+        )
+        assert first_result2["decision"] == "write"
+        assert second_result2["decision"] == "write"
+
+        with SessionLocal() as verify2:
+            served2 = RainfallRepository().get_snapshot(verify2, fingerprint2)
+            assert served2 is not None
+            assert served2.snapshot["annual"]["selected"]["provenance"]["source_id"] == (
+                "chirps-v3-final"
+            )
+            assert served2.snapshot["annual"]["selected"]["temporal_state"] == "final"
+            count2 = verify2.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint2)
+            )
+            assert count2 == 2
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter(
+                RainfallAnalysisRevision.request_fingerprint.in_(
+                    [
+                        _hex_fingerprint("fp-latch-concurrent-1"),
+                        _hex_fingerprint("fp-latch-concurrent-2"),
+                    ]
+                )
+            ).delete(synchronize_session=False)
+            cleanup.query(RainfallOutbox).filter(
+                RainfallOutbox.scope_id.in_(
+                    ["zone-latch-concurrent-1", "zone-latch-concurrent-2"]
+                )
+            ).delete(synchronize_session=False)
+            cleanup.commit()
