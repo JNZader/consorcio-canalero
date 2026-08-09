@@ -147,6 +147,34 @@ def _default_request_fingerprint(
     return analysis_request_fingerprint(request)
 
 
+def _reused_outbox_response(
+    row: RainfallOutbox, *, source: dict[str, Any], scope: Any, year: int
+) -> dict[str, Any]:
+    """R2-003 (review-ledger.md "Pre-PR review — PR3"): the two "found an
+    existing pending row for this key" branches in ``queue_missing_analysis``
+    below -- the upfront pre-check hit, and the post-``IntegrityError``
+    re-read after losing a real race -- emitted and returned the identical
+    shape; this is their one implementation.
+    """
+    record_event(
+        "rainfall.outbox.reused",
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        labels=row.work_labels,
+    )
+    return {
+        "status": "queued",
+        "outbox_id": str(row.id),
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": year,
+        "labels": row.work_labels,
+    }
+
+
 def queue_missing_analysis(
     db: Any,
     *,
@@ -157,7 +185,7 @@ def queue_missing_analysis(
     requested_role: str | None = None,
     request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    from app.domains.geo.rainfall.repository import recent_done
+    from app.domains.geo.rainfall.repository import pending_row_for_key, recent_done
 
     fingerprint = request_fingerprint or _default_request_fingerprint(
         scope=scope, year=year, event_window=event_window
@@ -197,37 +225,17 @@ def queue_missing_analysis(
             "labels": recent.work_labels,
         }
 
-    existing = (
-        db.query(RainfallOutbox)
-        .filter_by(
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            status="pending",
-        )
-        .first()
+    existing = pending_row_for_key(
+        db,
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
     )
     if existing is not None:
-        record_event(
-            "rainfall.outbox.reused",
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            labels=existing.work_labels,
-        )
-        return {
-            "status": "queued",
-            "outbox_id": str(existing.id),
-            "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
-            "year": year,
-            "labels": existing.work_labels,
-        }
+        return _reused_outbox_response(existing, source=source, scope=scope, year=year)
 
     labels_with_role = tuple({*labels, f"role:{source['role']}"})
     outbox = RainfallOutbox(
@@ -255,18 +263,14 @@ def queue_missing_analysis(
         # that row is a reuse, not a failure, so both callers still get a
         # 202 with the SAME outbox_id.
         db.rollback()
-        reused = (
-            db.query(RainfallOutbox)
-            .filter_by(
-                source_id=source["source_id"],
-                role=source["role"],
-                scope_kind=scope.kind,
-                scope_id=scope.id,
-                scope_version=scope.version,
-                year=year,
-                status="pending",
-            )
-            .first()
+        reused = pending_row_for_key(
+            db,
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
         )
         if reused is None:
             # The constraint guarantees a matching row exists; a lost race
@@ -276,23 +280,7 @@ def queue_missing_analysis(
                 f"pending row (source_id={source['source_id']!r}, role={source['role']!r}, "
                 f"scope={scope.kind}/{scope.id}/{scope.version}, year={year})"
             ) from None
-        record_event(
-            "rainfall.outbox.reused",
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            labels=reused.work_labels,
-        )
-        return {
-            "status": "queued",
-            "outbox_id": str(reused.id),
-            "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
-            "year": year,
-            "labels": reused.work_labels,
-        }
+        return _reused_outbox_response(reused, source=source, scope=scope, year=year)
 
     record_event(
         "rainfall.outbox.queued",

@@ -1,5 +1,6 @@
 """Celery tasks for Rainfall v2 ingest, revisit and backfill."""
 
+import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -14,6 +15,20 @@ from app.domains.geo.rainfall.repository import claim_outbox_row, persist_interv
 
 MAX_OUTBOX_BATCH = 50
 MAX_RETRIES = 5
+
+# R4-204 (review-ledger.md "Pre-PR review — PR3"): celery_app.py's default
+# `task_time_limit=600` applies here (this task is not in
+# `RECOVERABLE_TASK_ANNOTATIONS`); a handful of slow rows (adapter-level
+# timeout + retries, tasks.py `ResilientAdapter(..., timeout_seconds=60,
+# max_retries=2)`) can approach it well before MAX_OUTBOX_BATCH rows are
+# drained, and a hard SIGKILL there loses the chance to record a clean
+# `batch_truncated` event or return a partial result. Decision 2c's
+# per-row commit already makes a graceful early exit trivial -- nothing is
+# lost by stopping BETWEEN rows: every prior row in this batch is already
+# committed, and the remaining candidates are simply picked up by next
+# minute's scheduled run (celery_app.py "rainfall-process-outbox"). Margin
+# below the 600s hard limit is one worst-case row's own time budget.
+PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS = 420
 
 RAINFALL_FEATURE_FLAGS_SETTING = "analisis/rainfall_feature_flags"
 
@@ -190,6 +205,7 @@ def _persist_analysis_revision(
         fingerprint_lock_key,
         revision_family,
         revision_write_decision,
+        served_state,
     )
     from app.domains.geo.rainfall.models import RainfallAnalysisRevision
     from app.domains.geo.rainfall.policy import (
@@ -281,27 +297,48 @@ def _persist_analysis_revision(
         # design.md "The latch": a provisional candidate over a final
         # incumbent is never written -- the daily-role sibling that would
         # otherwise shadow a finalized year via created_at DESC ordering.
+        # R2-002: read the incumbent's provenance through served_state()
+        # itself, the single reader compute.py documents, instead of a raw
+        # dict subscript that duplicated its logic and could KeyError on a
+        # shape served_state already treats as merely "unknown". Guaranteed
+        # non-None here: revision_write_decision only returns "latched"
+        # when its own served_state(incumbent) call already succeeded.
+        incumbent_state = (
+            served_state(incumbent_snapshot) if incumbent_snapshot is not None else None
+        )
+        incumbent_source_id = incumbent_state[0] if incumbent_state is not None else None
         record_event(
             "rainfall.build.latched",
             data_revision=data_revision,
             source_id=row.source_id,
-            incumbent_source_id=incumbent_snapshot["annual"]["selected"]["provenance"]["source_id"],
+            incumbent_source_id=incumbent_source_id,
         )
         return {"revision_id": None, "data_revision": data_revision, "decision": decision}
-
-    if decision == "gate_refused":
+    elif decision == "gate_refused":
         # design.md "No backoff in v1": every refusal is instrumented so a
         # future backoff constant has real provider-lag evidence to use.
+        # R2-008: flat scope_kind/scope_id/scope_version/year fields, the
+        # same shape rainfall.finalization.skipped uses (tasks.py
+        # _revisit_stage2) -- was a nested `scope` dict, the only event in
+        # this module that shaped its scope that way.
         metric = snapshot["annual"]["selected"]
         record_event(
             "rainfall.finalization.gate_refused",
-            scope={"kind": row.scope_kind, "id": row.scope_id, "version": row.scope_version},
+            scope_kind=row.scope_kind,
+            scope_id=row.scope_id,
+            scope_version=row.scope_version,
             year=row.year,
             coverage=metric["coverage"],
             completeness=metric["completeness"],
             quality_score=metric["quality"]["score"],
         )
         return {"revision_id": None, "data_revision": data_revision, "decision": decision}
+    elif decision != "write":
+        # R2-005: revision_write_decision's return type is
+        # Literal["write", "latched", "gate_refused"] (compute.py); this is
+        # the explicit fail-loud branch for anything else, replacing what
+        # was previously a silent fall-through into the write path below.
+        raise ValueError(f"revision_write_decision returned unrecognized decision: {decision!r}")
 
     # decision == "write"
     # R4-003: read BEFORE the write to tell a genuinely new revision apart
@@ -372,40 +409,17 @@ def build_analysis(
         return result
 
 
-def _pending_row_for_key(
-    db: Session,
-    *,
-    source_id: str,
-    role: str,
-    scope_kind: str,
-    scope_id: str,
-    scope_version: str,
-    year: int,
-) -> RainfallOutbox | None:
-    """Pre-check mirroring ``ix_rainfall_outbox_pending_unique`` (decision 8's
-    discipline, same shape as ``queue_missing_analysis``'s own check)."""
-    return (
-        db.query(RainfallOutbox)
-        .filter_by(
-            source_id=source_id,
-            role=role,
-            scope_kind=scope_kind,
-            scope_id=scope_id,
-            scope_version=scope_version,
-            year=year,
-            status="pending",
-        )
-        .first()
-    )
-
-
 def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
     """Current-Year Revisit Cycle: append a fresh ``pending`` row per
     current-year ``done`` key so a materialized snapshot never freezes for
-    the rest of the year (design.md "Current-Year Revisit Cycle")."""
+    the rest of the year (design.md "Current-Year Revisit Cycle"). The
+    candidate set is rotated (C2 -- see
+    ``repository.current_year_done_keys``), so a key sorted past the batch
+    cursor still gets reached within a bounded number of sweeps rather than
+    starving forever."""
     from sqlalchemy.exc import IntegrityError
 
-    from app.domains.geo.rainfall.repository import current_year_done_keys
+    from app.domains.geo.rainfall.repository import current_year_done_keys, pending_row_for_key
 
     scanned = 0
     enqueued = 0
@@ -424,7 +438,7 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
             record_event("rainfall.revisit.skipped", reason="fingerprint_unavailable", **key)
             skipped += 1
             continue
-        if _pending_row_for_key(db, **key) is not None:
+        if pending_row_for_key(db, **key) is not None:
             record_event("rainfall.revisit.skipped", reason="pending_in_flight", **key)
             skipped += 1
             continue
@@ -451,30 +465,48 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
     return {"scanned": scanned, "enqueued": enqueued, "skipped": skipped}
 
 
-def _revisit_stage2(db: Session, *, current_year: int, now: datetime) -> dict[str, int]:
+def _revisit_stage2(db: Session, *, now: datetime) -> dict[str, int]:
     """Year-Rollover Finalization: transition a completed-year key off its
     provisional satellite source once CHIRPS v3 Final is adequate
     (design.md "Year-Rollover Finalization"). Selection is on the SERVED
     snapshot's own provenance -- never on outbox history, which
-    self-extinguishes on the first gated refusal."""
+    self-extinguishes on the first gated refusal.
+
+    R2-007: derives ``current_year`` from ``now.year`` internally instead
+    of taking it as a separate parameter -- the caller (``_revisit_stale``)
+    always computed it as ``now.year`` in the first place (design.md
+    "Current-Year Revisit Cycle" step 1: both stages share the same clock),
+    so carrying both was a redundant, driftable pair.
+    """
     from sqlalchemy.exc import IntegrityError
 
     from app.domains.geo.rainfall.compute import served_state
     from app.domains.geo.rainfall.repository import (
         RainfallRepository,
         completed_year_daily_done_keys,
+        pending_row_for_key,
     )
     from app.domains.geo.rainfall.service import (
         RAINFALL_HISTORICAL_SOURCE,
         resolve_missing_work_source,
     )
 
+    current_year = now.year
     scanned = 0
     enqueued = 0
     skipped = 0
+    terminated = 0
     for row in completed_year_daily_done_keys(db, before_year=current_year, limit=MAX_OUTBOX_BATCH):
         scanned += 1
-        scope = {"scope_kind": row.scope_kind, "scope_id": row.scope_id, "year": row.year}
+        # R2-008: flat scope_kind/scope_id/scope_version/year fields, the
+        # same shape rainfall.finalization.gate_refused now uses
+        # (tasks._persist_analysis_revision) -- was missing scope_version.
+        scope = {
+            "scope_kind": row.scope_kind,
+            "scope_id": row.scope_id,
+            "scope_version": row.scope_version,
+            "year": row.year,
+        }
 
         incumbent = RainfallRepository().get_snapshot(db, row.request_fingerprint)
         if incumbent is None:
@@ -492,9 +524,19 @@ def _revisit_stage2(db: Session, *, current_year: int, now: datetime) -> dict[st
 
         served_source_id, served_temporal_state = state
         if (served_source_id, served_temporal_state) == (RAINFALL_HISTORICAL_SOURCE, "final"):
-            # Terminated: an adequate final revision is already served --
-            # stop selecting this key, today and forever (design.md
-            # "Termination, stated as a proof obligation").
+            # C1 (review-ledger.md "Pre-PR review — PR3"): selection now
+            # genuinely stops for this key via
+            # repository.completed_year_daily_done_keys's own SQL
+            # exclusion (a lateral read of the same served-state pair,
+            # relying on the latch's guarantee that a provisional revision
+            # is never written over a final incumbent) -- a terminated key
+            # should no longer even reach this loop. This branch stays as
+            # defense-in-depth for the race the SQL check's docstring
+            # documents (a final revision landing between the SQL scan and
+            # this read) and now counts into the accounting (R2-004)
+            # instead of silently `continue`-ing, so
+            # scanned == enqueued + skipped + terminated closes.
+            terminated += 1
             continue
 
         year_start = datetime(row.year, 1, 1, tzinfo=UTC)
@@ -522,7 +564,7 @@ def _revisit_stage2(db: Session, *, current_year: int, now: datetime) -> dict[st
             "year": row.year,
         }
 
-        if _pending_row_for_key(db, **key) is not None:
+        if pending_row_for_key(db, **key) is not None:
             record_event("rainfall.finalization.skipped", reason="pending_in_flight", **scope)
             skipped += 1
             continue
@@ -546,28 +588,93 @@ def _revisit_stage2(db: Session, *, current_year: int, now: datetime) -> dict[st
             continue
         enqueued += 1
 
-    return {"scanned": scanned, "enqueued": enqueued, "skipped": skipped}
+    return {
+        "scanned": scanned,
+        "enqueued": enqueued,
+        "skipped": skipped,
+        "terminated": terminated,
+    }
 
 
-def _revisit_stale(db: Session, now: datetime | None) -> dict[str, int]:
+def _revisit_stale(db: Session, now: datetime | None, retry: Any = None) -> dict[str, int]:
+    """R2-006: unlike its siblings (``ingest_source_scope``/``build_analysis``,
+    decision 2 -- given a ``db``, write through it and NEVER commit), stage
+    1 and stage 2 both COMMIT PER ROW through the given session, not just
+    when they opened their own. This is a deliberate exception, not an
+    oversight: the sweep's own per-key work has no caller-owned transaction
+    to defer to (there is no "batch" transaction the way
+    ``_process_outbox_batch`` re-claims rows into), so each row commits the
+    moment its own INSERT lands, exactly like decision 2c's per-row commit
+    in the outbox consumer.
+
+    Stage 1 runs inside its own try/except (R4-203 -- review-ledger.md
+    "Pre-PR review — PR3"): an unexpected exception there is recorded via
+    ``rainfall.revisit.failed`` instead of aborting the whole sweep, and
+    stage 2 still runs this cycle -- a completed year's provisional-to-final
+    transition must not go a day late just because stage 1 hit a transient
+    error. When *retry* is supplied (the bound Celery task's ``self.retry``,
+    restored on ``revisit_stale`` below after the two-stage rewrite dropped
+    ``bind=True``/``max_retries`` without an equivalent), the task retries
+    once BOTH stages have already run and their events are recorded, giving
+    stage 1 a near-term second attempt instead of waiting for tomorrow's
+    Beat cycle.
+    """
     sweep_now = now or datetime.now(UTC)
     current_year = sweep_now.year
 
-    stage1 = _revisit_stage1(db, current_year=current_year)
-    stage2 = _revisit_stage2(db, current_year=current_year, now=sweep_now)
+    stage1_exc: Exception | None = None
+    try:
+        stage1 = _revisit_stage1(db, current_year=current_year)
+    except Exception as exc:  # noqa: BLE001 -- stage 1 must not block stage 2
+        db.rollback()
+        stage1_exc = exc
+        stage1 = {"scanned": 0, "enqueued": 0, "skipped": 0}
+        record_event(
+            "rainfall.revisit.failed",
+            error_type=type(exc).__name__,
+            error_message=str(exc)[:200],
+        )
+    else:
+        record_event(
+            "rainfall.revisit.completed",
+            revisit_scanned=stage1["scanned"],
+            revisit_enqueued=stage1["enqueued"],
+            revisit_skipped=stage1["skipped"],
+            truncated=stage1["scanned"] == MAX_OUTBOX_BATCH,
+        )
 
-    return {
+    stage2 = _revisit_stage2(db, now=sweep_now)
+    record_event(
+        "rainfall.finalization.completed",
+        finalization_scanned=stage2["scanned"],
+        finalization_enqueued=stage2["enqueued"],
+        finalization_skipped=stage2["skipped"],
+        finalization_terminated=stage2["terminated"],
+        truncated=stage2["scanned"] == MAX_OUTBOX_BATCH,
+    )
+
+    result = {
         "scanned": stage1["scanned"],
         "enqueued": stage1["enqueued"],
         "skipped": stage1["skipped"],
         "finalization_scanned": stage2["scanned"],
         "finalization_enqueued": stage2["enqueued"],
         "finalization_skipped": stage2["skipped"],
+        "finalization_terminated": stage2["terminated"],
     }
 
+    if stage1_exc is not None and retry is not None:
+        # Both stages already ran and their events are already recorded
+        # above; retry() raises (Celery's own Retry when running through a
+        # worker, or the original exception when called directly, as in
+        # tests) to get stage 1 a near-term second attempt.
+        raise retry(exc=stage1_exc, countdown=300) from stage1_exc
 
-@celery_app.task(name="rainfall.revisit_stale")
-def revisit_stale(db: Session | None = None, now: datetime | None = None) -> dict[str, int]:
+    return result
+
+
+@celery_app.task(name="rainfall.revisit_stale", bind=True, max_retries=2)
+def revisit_stale(self, db: Session | None = None, now: datetime | None = None) -> dict[str, int]:
     """Daily two-stage sweep (design.md "Current-Year Revisit Cycle" +
     "Year-Rollover Finalization"). Stage 1 refreshes every already-
     materialized current-year key; stage 2 transitions a completed year
@@ -580,11 +687,19 @@ def revisit_stale(db: Session | None = None, now: datetime | None = None) -> dic
     without that last hop the seam dead-ends at ``current_year`` and stage
     2 would re-resolve against the real clock, routing a completed year
     back to ``daily``/``chirps-v3-sat`` and inverting its own fix.
+
+    ``bind=True``/``max_retries=2`` restored (R4-203 -- review-ledger.md
+    "Pre-PR review — PR3"): the archived per-key version of this task
+    carried both; PR3's two-stage rewrite dropped them without an
+    equivalent, silencing a stage-1 failure until tomorrow's Beat cycle
+    instead of retrying it. ``self.retry`` is threaded into
+    ``_revisit_stale`` and used only AFTER stage 2 has already run this
+    cycle -- see that function's docstring.
     """
     if db is not None:
-        return _revisit_stale(db, now)
+        return _revisit_stale(db, now, retry=self.retry)
     with SessionLocal() as local_db:
-        return _revisit_stale(local_db, now)
+        return _revisit_stale(local_db, now, retry=self.retry)
 
 
 def _backoff_seconds(retry_count: int) -> int:
@@ -683,8 +798,17 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
     not counted as processed or failed, never retried — because a rollback
     must keep the audit trail of queued work intact until the role is
     re-enabled.
+
+    R4-204 (review-ledger.md "Pre-PR review — PR3"): the loop also bails
+    out cleanly once ``PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS`` has
+    elapsed, checked BETWEEN rows (never mid-row) -- every row already
+    processed this cycle is already committed (decision 2c), so stopping
+    here loses nothing; it only trades a possible hard SIGKILL at
+    celery_app.py's ``task_time_limit=600`` for a clean early return and an
+    observable ``rainfall.outbox.batch_truncated`` event.
     """
     build_now = now or datetime.now(UTC)
+    batch_started = time.monotonic()
     candidate_ids = (
         db.execute(
             select(RainfallOutbox.id)
@@ -701,7 +825,15 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
     failed = 0
     delayed = 0
     skipped = 0
-    for outbox_id in candidate_ids:
+    for index, outbox_id in enumerate(candidate_ids):
+        if time.monotonic() - batch_started > PROCESS_OUTBOX_WALL_CLOCK_BUDGET_SECONDS:
+            record_event(
+                "rainfall.outbox.batch_truncated",
+                processed=index,
+                remaining=len(candidate_ids) - index,
+            )
+            break
+
         row = claim_outbox_row(db, outbox_id=outbox_id, now=datetime.now(UTC))
         if row is None:
             # Another worker already claimed or finished it since the

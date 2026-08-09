@@ -5,10 +5,10 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.domains.geo.models import GeoApprovedZoning
 from app.domains.geo.rainfall.compute import correction_revision, revision_family
@@ -20,6 +20,17 @@ from app.domains.geo.rainfall.models import (
 )
 from app.domains.geo.rainfall.ports import SourceInterval
 from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
+
+# R1-001 (review-ledger.md "Pre-PR review — PR3"): mirrors
+# app/auth/refresh_tokens.py's `_LOCK_TIMEOUT_MS` convention (defense-in-
+# depth bound on an advisory-lock wait, applied via `SET LOCAL` so it never
+# leaks into the global config or any other query). Without it, two
+# siblings sharing a fingerprint (design.md "Serializing siblings") could
+# block each other indefinitely if one worker died holding the lock's
+# transaction open; a bounded wait turns that into a loud SQLSTATE 55P03
+# a caller can retry, rather than a silent hang. 5s is far beyond a
+# legitimate sibling's own per-row work; anything longer is pathological.
+_FINGERPRINT_LOCK_TIMEOUT_MS = 5000
 
 
 class ScopeConfigurationError(ValueError):
@@ -437,10 +448,52 @@ def recent_done(
     return db.scalar(query)
 
 
+def pending_row_for_key(
+    db: Session,
+    *,
+    source_id: str,
+    role: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    year: int,
+) -> RainfallOutbox | None:
+    """The single ``pending``-row-for-this-key query shape (R2-003 --
+    review-ledger.md "Pre-PR review — PR3"): was duplicated three times
+    (``tasks.py``'s own sweep pre-check, plus ``queue_missing_analysis``'s
+    pre-check and its post-``IntegrityError`` re-read, decision 8) against
+    the same predicate ``ix_rainfall_outbox_pending_unique`` mirrors.
+    """
+    query = (
+        select(RainfallOutbox)
+        .where(RainfallOutbox.source_id == source_id)
+        .where(RainfallOutbox.role == role)
+        .where(RainfallOutbox.scope_kind == scope_kind)
+        .where(RainfallOutbox.scope_id == scope_id)
+        .where(RainfallOutbox.scope_version == scope_version)
+        .where(RainfallOutbox.year == year)
+        .where(RainfallOutbox.status == "pending")
+    )
+    return db.scalar(query)
+
+
 def current_year_done_keys(db: Session, *, year: int, limit: int) -> list[RainfallOutbox]:
     """``DISTINCT ON`` the outbox key, newest ``done`` row per key, for
-    sweep stage 1 (Current-Year Revisit Cycle)."""
-    query = (
+    sweep stage 1 (Current-Year Revisit Cycle).
+
+    Rotated (C2 -- review-ledger.md "Pre-PR review — PR3"): the DISTINCT
+    ON'd candidate set is wrapped in a subquery and the OUTER query orders
+    it by ``completed_at`` ASC (least-recently-attempted first), instead of
+    serving the same lexicographic prefix of ``(source_id, role,
+    scope_kind, scope_id, scope_version, year)`` every sweep. Without
+    rotation, a key sorted past position `limit` in that ascending key
+    order never gets selected again once >= `limit` OTHER keys exist --
+    its ``comparison_end`` freezes for the rest of the year, silently
+    (JDA-001 at scale). A key's own refresh gives its NEXT `done` row a
+    fresh ``completed_at`` (task 3.10's cycle), which is what sends it to
+    the back of the rotation on its own -- no separate bookkeeping needed.
+    """
+    inner = (
         select(RainfallOutbox)
         .distinct(
             RainfallOutbox.source_id,
@@ -461,19 +514,57 @@ def current_year_done_keys(db: Session, *, year: int, limit: int) -> list[Rainfa
             RainfallOutbox.year,
             RainfallOutbox.completed_at.desc(),
         )
-        .limit(limit)
+        .subquery()
     )
+    rotated = aliased(RainfallOutbox, inner)
+    query = select(rotated).order_by(rotated.completed_at.asc()).limit(limit)
     return list(db.scalars(query).all())
 
 
 def completed_year_daily_done_keys(
     db: Session, *, before_year: int, limit: int
 ) -> list[RainfallOutbox]:
-    """Sweep stage 2's SQL pre-filter (Year-Rollover Finalization step 2): a
-    SUPERSET of candidates, never the termination condition -- the served
-    snapshot's own provenance (``served_state``) decides that.
+    """Sweep stage 2's candidate selection (Year-Rollover Finalization step
+    2), now WITH the served-state termination pushed into SQL (C1 --
+    review-ledger.md "Pre-PR review — PR3"): a lateral read of each
+    candidate key's own newest revision (``created_at DESC, id DESC`` --
+    the same order ``get_snapshot`` uses) excludes a key whose served state
+    already discloses ``("chirps-v3-final", "final")``. Relies on the latch
+    (design.md "The latch") guaranteeing a provisional revision is never
+    written over a final incumbent, so "newest revision is final" and "a
+    final revision exists" stay equivalent for as long as that guarantee
+    holds -- documented here because that reliance is exactly what makes
+    the equivalence safe rather than incidental.
+
+    The JSON comparison uses ``IS NOT TRUE`` (not a plain boolean negation)
+    so SQL's three-valued logic KEEPS a key whose fingerprint has no
+    revision yet (the JDA-002 healing case) or whose newest revision cannot
+    be read: both read as `NULL`, and `NULL IS NOT TRUE` is true, so the
+    row stays in the candidate set instead of silently vanishing. The
+    caller's own ``served_state`` check (tasks.py) stays the authoritative,
+    Python-side gate -- this exclusion is a superset filter that closes
+    the starvation, not a replacement for that check.
+
+    Rotated exactly like stage 1 (see ``current_year_done_keys``): the
+    OUTER query orders the DISTINCT ON'd set by ``completed_at`` ASC so a
+    stalled key past the `limit` cursor is not starved forever by newer
+    keys landing ahead of it in the lexicographic DISTINCT ON order.
     """
-    query = (
+    newest_snapshot = (
+        select(RainfallAnalysisRevision.snapshot)
+        .where(RainfallAnalysisRevision.request_fingerprint == RainfallOutbox.request_fingerprint)
+        .order_by(RainfallAnalysisRevision.created_at.desc(), RainfallAnalysisRevision.id.desc())
+        .limit(1)
+        .correlate(RainfallOutbox)
+        .scalar_subquery()
+    )
+    already_final = and_(
+        newest_snapshot["annual"]["selected"]["provenance"]["source_id"].astext
+        == "chirps-v3-final",  # service.RAINFALL_HISTORICAL_SOURCE (decision 7)
+        newest_snapshot["annual"]["selected"]["temporal_state"].astext == "final",
+    )
+
+    inner = (
         select(RainfallOutbox)
         .distinct(
             RainfallOutbox.scope_kind,
@@ -485,6 +576,7 @@ def completed_year_daily_done_keys(
         .where(RainfallOutbox.role == "daily")
         .where(RainfallOutbox.year < before_year)
         .where(RainfallOutbox.request_fingerprint.is_not(None))
+        .where(already_final.isnot(True))
         .order_by(
             RainfallOutbox.scope_kind,
             RainfallOutbox.scope_id,
@@ -492,8 +584,10 @@ def completed_year_daily_done_keys(
             RainfallOutbox.year,
             RainfallOutbox.completed_at.desc(),
         )
-        .limit(limit)
+        .subquery()
     )
+    rotated = aliased(RainfallOutbox, inner)
+    query = select(rotated).order_by(rotated.completed_at.asc()).limit(limit)
     return list(db.scalars(query).all())
 
 
@@ -505,7 +599,17 @@ def acquire_fingerprint_lock(db: Session, *, lock_key: int) -> None:
     builds. Released automatically at the per-row COMMIT/ROLLBACK
     (``pg_advisory_xact_lock``, not the session-level variant), so a dead
     worker leaks nothing.
+
+    R1-001: ``SET LOCAL lock_timeout`` is issued in the SAME transaction
+    immediately before the lock wait, so a wait longer than
+    ``_FINGERPRINT_LOCK_TIMEOUT_MS`` raises (SQLSTATE 55P03) instead of
+    blocking forever. The caller (``tasks._persist_analysis_revision``,
+    inside decision 2c's per-row ``SAVEPOINT``) does not need its own
+    SQLSTATE-specific handling: that error falls into the EXISTING generic
+    retry/backoff bookkeeping in ``tasks._process_outbox_batch`` the same
+    way any other row failure does.
     """
+    db.execute(text(f"SET LOCAL lock_timeout = '{_FINGERPRINT_LOCK_TIMEOUT_MS}'"))
     db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
 
 

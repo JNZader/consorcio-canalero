@@ -12,7 +12,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
@@ -246,8 +246,17 @@ def served_state(snapshot: dict[str, Any]) -> tuple[str, str] | None:
     """``(annual.selected.provenance.source_id, annual.selected.temporal_state)``
     from a complete envelope, or ``None`` when either is missing (a corrupt
     or pre-contract row) -- treated as *unknown*, never as *finalized*. The
-    ONE reader of the served envelope, shared by the stage-2 selection and
-    :func:`revision_write_decision`.
+    single Python function that reads it (R2-002 -- review-ledger.md
+    "Pre-PR review — PR3"): called from stage 2's own defense-in-depth
+    check (``tasks._revisit_stage2``), :func:`revision_write_decision`, and
+    the latch branch's own event payload (``tasks._persist_analysis_revision``)
+    -- so there is one place to be wrong, not three raw dict subscripts
+    that could each drift from it independently.
+    ``repository.completed_year_daily_done_keys`` mirrors these same two
+    JSON fields in raw SQL for its own exclusion filter (a SUPERSET, not
+    the authority -- see that function's docstring); it cannot call this
+    function, since it runs inside the database, so it is a deliberate,
+    documented second implementation, not a fourth Python reader.
     """
     annual = snapshot.get("annual")
     if not isinstance(annual, dict):
@@ -269,9 +278,12 @@ def revision_write_decision(
     incumbent: dict[str, Any] | None,
     candidate: dict[str, Any],
     policy: MetricThresholdPolicy,
-) -> str:
+) -> Literal["write", "latched", "gate_refused"]:
     """``"write"`` | ``"latched"`` | ``"gate_refused"`` (design.md
-    "Write gate — no-regression semantics"):
+    "Write gate — no-regression semantics"). R2-005: typed as a
+    ``Literal`` rather than a bare ``str`` so the consumer
+    (``tasks._persist_analysis_revision``) can branch on it exhaustively
+    with an explicit fail-loud ``else`` instead of a silent fall-through.
 
     - No incumbent, or the incumbent's ``served_state`` is ``None`` (an
       envelope the router would 503 on anyway), or incumbent and candidate
