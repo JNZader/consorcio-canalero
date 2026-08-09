@@ -16,6 +16,7 @@ from app.domains.geo.rainfall.models import (
     RainfallAnalysisRevision,
     RainfallIntervalLifecycle,
     RainfallIntervalValue,
+    RainfallOutbox,
 )
 from app.domains.geo.rainfall.ports import SourceInterval
 from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
@@ -371,3 +372,30 @@ def persist_revision(
             f"data_revision={data_revision!r})"
         )
     return existing_id
+
+
+def claim_outbox_row(db: Session, *, outbox_id: UUID, now: datetime) -> RainfallOutbox | None:
+    """Re-claim a candidate row for exclusive per-row processing (decision
+    2c). ``None`` means another worker already owns it (still ``pending``
+    but locked by a concurrent claim, filtered out by ``SKIP LOCKED``) or
+    it already finished (no longer ``pending``) or is not yet due. Blocking
+    is never appropriate here — a worker that cannot claim a row this cycle
+    simply leaves it for the next one.
+
+    ``now`` is a Python-side timestamp, not SQL's ``now()``: within one
+    transaction, PostgreSQL's ``now()`` is frozen to *transaction start*
+    (``transaction_timestamp()``), not statement time. A row whose
+    ``next_attempt_at`` is stamped with Python's wall clock AFTER this
+    session's transaction already began would then read as "in the
+    future" relative to a frozen SQL ``now()`` and never be claimable in
+    that same transaction — reproduced empirically against this exact
+    query shape.
+    """
+    query = (
+        select(RainfallOutbox)
+        .where(RainfallOutbox.id == outbox_id)
+        .where(RainfallOutbox.status == "pending")
+        .where(RainfallOutbox.next_attempt_at <= now)
+        .with_for_update(skip_locked=True)
+    )
+    return db.scalar(query)

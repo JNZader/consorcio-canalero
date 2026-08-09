@@ -10,7 +10,7 @@ from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallBackfillCheckpoint, RainfallOutbox
-from app.domains.geo.rainfall.repository import persist_intervals
+from app.domains.geo.rainfall.repository import claim_outbox_row, persist_intervals
 
 MAX_OUTBOX_BATCH = 50
 MAX_RETRIES = 5
@@ -339,36 +339,30 @@ def _derive_full_year_fingerprint(row: RainfallOutbox) -> str | None:
 
 
 def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
-    """Process one outbox row; return its new status.
+    """Process one outbox row's ingest + compute chain (decision 1: chained
+    in-process, same cycle, before ``status="done"``). Returns ``"done"``.
+
+    Raises on ANY failure — ingest or compute — instead of catching
+    internally. The savepoint boundary (decision 2b) and the retry/backoff
+    bookkeeping live in the caller (``_process_outbox_batch``), because that
+    bookkeeping must be written AFTER the savepoint has rolled a poisoned
+    transaction back to a writable state; catching here and writing the
+    bookkeeping from inside the very transaction a DB-level failure may
+    have aborted is exactly what the savepoint exists to avoid.
 
     ``now`` is the disclosure-date seam (design.md Interfaces), passed
     through to ``build_analysis`` and nothing else here.
     """
-    try:
-        batch = ingest_source_scope(
-            source_id=row.source_id,
-            role=row.role,
-            scope_kind=row.scope_kind,
-            scope_id=row.scope_id,
-            scope_version=row.scope_version,
-            year=row.year,
-            db=db,
-        )
-    except Exception as exc:  # noqa: BLE001 — deliberate broad catch for durable retry
-        row.retry_count += 1
-        row.last_error = str(exc)[:4000]
-        if row.retry_count >= MAX_RETRIES:
-            row.status = "failed"
-        else:
-            row.status = "pending"
-        row.next_attempt_at = datetime.now(UTC) + timedelta(
-            seconds=_backoff_seconds(row.retry_count)
-        )
-        return row.status
+    batch = ingest_source_scope(
+        source_id=row.source_id,
+        role=row.role,
+        scope_kind=row.scope_kind,
+        scope_id=row.scope_id,
+        scope_version=row.scope_version,
+        year=row.year,
+        db=db,
+    )
 
-    # Compute chaining (decision 1): build_analysis runs in-process, in the
-    # SAME cycle and the same per-row transaction as ingest, before
-    # status="done" is ever set.
     if row.request_fingerprint is None:
         derived = _derive_full_year_fingerprint(row)
         if derived is None:
@@ -395,21 +389,33 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
     return "done"
 
 
-def _process_outbox_batch(db: Session) -> dict[str, int]:
-    """Drain a bounded batch of pending rainfall outbox rows.
+def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str, int]:
+    """Drain a bounded batch of pending rainfall outbox rows, committing
+    each row's work individually (decision 2c).
 
-    Rows whose metric-role is gated off by the feature flag are SKIPPED — not
-    counted as processed or failed, never retried — because a rollback must
-    keep the audit trail of queued work intact until the role is re-enabled.
+    A plain, unlocked read selects candidate ids first; each row is then
+    re-claimed with its own ``FOR UPDATE SKIP LOCKED``
+    (``repository.claim_outbox_row``) immediately before its work — this is
+    what restores mutual exclusion across the every-minute overlapping runs
+    (``celery_app.py``) that a naive per-row commit would otherwise break by
+    releasing the old batch-wide lock on rows this worker has not started
+    yet. Each row's work is isolated in a ``SAVEPOINT`` (decision 2b), so a
+    DB-level failure mid-row still leaves the outer transaction writable for
+    the retry/backoff bookkeeping, committed as soon as the row finishes.
+
+    Rows whose metric-role is gated off by the feature flag are SKIPPED —
+    not counted as processed or failed, never retried — because a rollback
+    must keep the audit trail of queued work intact until the role is
+    re-enabled.
     """
-    rows = (
+    build_now = now or datetime.now(UTC)
+    candidate_ids = (
         db.execute(
-            select(RainfallOutbox)
+            select(RainfallOutbox.id)
             .where(RainfallOutbox.status == "pending")
             .where(RainfallOutbox.next_attempt_at <= datetime.now(UTC))
             .order_by(RainfallOutbox.created_at)
             .limit(MAX_OUTBOX_BATCH)
-            .with_for_update(skip_locked=True)
         )
         .scalars()
         .all()
@@ -419,7 +425,13 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
     failed = 0
     delayed = 0
     skipped = 0
-    for row in rows:
+    for outbox_id in candidate_ids:
+        row = claim_outbox_row(db, outbox_id=outbox_id, now=datetime.now(UTC))
+        if row is None:
+            # Another worker already claimed or finished it since the
+            # unlocked candidate read above; nothing to do this cycle.
+            continue
+
         if not _role_enabled(row.role, db):
             record_event(
                 "rainfall.outbox.gated",
@@ -430,11 +442,22 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
                 year=row.year,
             )
             skipped += 1
+            db.commit()  # release the claim's row lock
             continue
-        # TODO(task 2.13): thread the now seam down from process_outbox
-        # instead of reading the wall clock once per row here.
-        status = _process_outbox_row(row, db, datetime.now(UTC))
-        if status == "done":
+
+        try:
+            with db.begin_nested():
+                _process_outbox_row(row, db, build_now)
+        except Exception as exc:  # noqa: BLE001 — deliberate broad catch for durable retry
+            row.retry_count += 1
+            row.last_error = str(exc)[:4000]
+            row.status = "failed" if row.retry_count >= MAX_RETRIES else "pending"
+            row.next_attempt_at = datetime.now(UTC) + timedelta(
+                seconds=_backoff_seconds(row.retry_count)
+            )
+        db.commit()
+
+        if row.status == "done":
             record_event(
                 "rainfall.outbox.done",
                 source_id=row.source_id,
@@ -444,7 +467,7 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
                 year=row.year,
             )
             succeeded += 1
-        elif status == "failed":
+        elif row.status == "failed":
             record_event(
                 "rainfall.outbox.failed",
                 source_id=row.source_id,
@@ -466,7 +489,6 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
                 retry_count=row.retry_count,
             )
             delayed += 1
-    db.commit()
 
     return {
         "processed": succeeded + failed + delayed,

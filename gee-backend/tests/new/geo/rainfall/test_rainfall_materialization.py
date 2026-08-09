@@ -977,3 +977,223 @@ def test_full_year_null_fingerprint_row_derives_and_computes(db, monkeypatch):
 
     revision = RainfallRepository().get_snapshot(db, expected_fingerprint)
     assert revision is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 2.12 — claim_outbox_row re-claim + per-row commit
+# ---------------------------------------------------------------------------
+
+
+def test_claim_outbox_row_returns_none_when_not_pending(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-not-pending",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="done",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    assert claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC)) is None
+
+
+def test_claim_outbox_row_returns_none_when_not_yet_due(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    far_future = datetime.now(UTC) + timedelta(hours=1)
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-not-due",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=far_future,
+    )
+    db.add(row)
+    db.flush()
+
+    assert claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC)) is None
+
+
+def test_claim_outbox_row_returns_the_row_when_pending_and_due(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-due",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    claimed = claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC))
+    assert claimed is not None
+    assert claimed.id == row.id
+
+
+def test_claim_outbox_row_uses_python_now_not_frozen_sql_transaction_time(db):
+    """Regression: PostgreSQL's ``now()`` is frozen to *transaction start*
+    within one transaction (``transaction_timestamp()``), not statement
+    time. A row stamped with Python's wall clock via
+    ``next_attempt_at=datetime.now(UTC)`` AFTER the shared ``db`` fixture's
+    transaction already began would read as "in the future" against a
+    frozen SQL ``now()`` and never be claimable within that same
+    transaction — reproduced empirically. ``claim_outbox_row`` must compare
+    against a Python-side ``now``, not ``func.now()``.
+    """
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import claim_outbox_row
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-claim-same-txn-now",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    claimed = claim_outbox_row(db, outbox_id=row.id, now=datetime.now(UTC))
+    assert claimed is not None
+    assert claimed.id == row.id
+
+
+def test_per_row_commit_survives_a_later_row_failure(db, monkeypatch):
+    """decision 2c: commit after each row. A row that fails after another
+    succeeded leaves the succeeded row's revision already committed and
+    durable — verified from FRESH connections, since the savepoint-scoped
+    `db` fixture would otherwise fake durability (same reason the
+    Durability Testing Strategy row uses SessionLocal(), not `db`).
+
+    The crash is injected in ``_role_enabled`` — a call OUTSIDE
+    ``_process_outbox_row``'s own try/except, i.e. nothing inside the
+    consumer catches it — so it propagates straight out of
+    ``_process_outbox_batch``, simulating a worker crash mid-batch. Under
+    the OLD single-batch-wide-commit design this would roll back row1's
+    already-succeeded work too (nothing committed until the very end); a
+    per-row commit is what makes this test distinguish the two designs
+    instead of passing trivially against either.
+
+    ``db`` is unused directly — this test asserts on fresh SessionLocal()
+    connections on purpose — but requesting it guarantees test_engine's
+    create_all() has run (same reason task 1.8/1.9's SessionLocal-only
+    tests request it above).
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    role_enabled_calls = {"n": 0}
+
+    def flaky_role_enabled(role, db=None):
+        role_enabled_calls["n"] += 1
+        if role_enabled_calls["n"] == 2:
+            raise RuntimeError("simulated crash processing the second row")
+        return True
+
+    monkeypatch.setattr(tasks, "_role_enabled", flaky_role_enabled)
+
+    def fake_ingest_source_scope(
+        *, source_id, role, scope_kind, scope_id, scope_version, year, db=None
+    ):
+        return _fixture_batch_evidence(scope_id=scope_id, year=year)
+
+    monkeypatch.setattr(tasks, "ingest_source_scope", fake_ingest_source_scope)
+
+    row1_id = row2_id = None
+    try:
+        # Two SEPARATE transactions so `created_at` (server_default now())
+        # genuinely differs, making the batch's `ORDER BY created_at`
+        # deterministic: row1 is claimed and processed before row2.
+        with SessionLocal() as setup_db:
+            row1 = RainfallOutbox(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-commit-survive-1",
+                scope_version="v1",
+                year=2024,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+                interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+                status="pending",
+                next_attempt_at=datetime.now(UTC),
+                request_fingerprint="fp-commit-survive-1",
+            )
+            setup_db.add(row1)
+            setup_db.commit()
+            row1_id = row1.id
+
+        with SessionLocal() as setup_db:
+            row2 = RainfallOutbox(
+                source_id="chirps-v3-final",
+                role="historical",
+                scope_kind="zone",
+                scope_id="zone-commit-survive-2",
+                scope_version="v1",
+                year=2024,
+                work_labels=["analysis_missing"],
+                interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+                interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+                status="pending",
+                next_attempt_at=datetime.now(UTC),
+                request_fingerprint="fp-commit-survive-2",
+            )
+            setup_db.add(row2)
+            setup_db.commit()
+            row2_id = row2.id
+
+        with SessionLocal() as process_db:
+            with pytest.raises(RuntimeError, match="simulated crash"):
+                tasks._process_outbox_batch(process_db)
+
+        with SessionLocal() as verify_db:
+            fresh_row1 = verify_db.get(RainfallOutbox, row1_id)
+            fresh_row2 = verify_db.get(RainfallOutbox, row2_id)
+            # row1 was committed on its own, BEFORE the crash on row2 —
+            # its success survives the batch aborting.
+            assert fresh_row1.status == "done"
+            assert fresh_row1.completed_at is not None
+            # row2 was never claimed (the crash is in the gate check, before
+            # claim_outbox_row runs for it) — still pending, untouched.
+            assert fresh_row2.status == "pending"
+            assert fresh_row2.retry_count == 0
+
+            revision = RainfallRepository().get_snapshot(verify_db, "fp-commit-survive-1")
+            assert revision is not None
+    finally:
+        with SessionLocal() as cleanup_db:
+            cleanup_db.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint="fp-commit-survive-1"
+            ).delete()
+            ids = [i for i in (row1_id, row2_id) if i is not None]
+            if ids:
+                cleanup_db.query(RainfallOutbox).filter(RainfallOutbox.id.in_(ids)).delete(
+                    synchronize_session=False
+                )
+            cleanup_db.commit()
