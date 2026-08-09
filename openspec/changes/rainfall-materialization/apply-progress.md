@@ -12,7 +12,12 @@
   folded review items R4-101..104. Strict TDD mode, on branch
   `feat/rainfall-materialization-03-revisit` (base: PR2 branch). Executed
   across two agent runs (a resume after a mid-batch crash) — see "Batch 3 /
-  PR3" below.
+  PR3" below. A follow-on same-batch round (PR3 review fix round 1) fixed
+  C1/C2 (confirmed criticals) plus 10 approved info fixes on the same branch.
+- Batch 4 (FINAL): Phase 4 (PR 4) — Daily-Source Flip. Tasks 4.1-4.2 +
+  folded review items R4-301/R4-302. Strict TDD mode, on branch
+  `feat/rainfall-materialization-04-flip` (base: PR3 branch, after the
+  review fix round). See "Batch 4 / PR4" below.
 
 ## Git
 
@@ -28,6 +33,12 @@
     halves of 3.2/3.9/3.13; see "Batch 3 / PR3" below)
   - Resume run (this run): `8709bce` .. `04b6538` (ledger reconciliation, task 3.7 completion,
     tasks 3.9-3.19, folded review items R4-101..104; see table below)
+  - PR3 review fix round 1: `d9d050c` (prod), `4844c9f` (tests), `48dcdb6` (docs), `6a856da`
+    (ledger/apply-progress) — C1/C2 + 10 approved info fixes, see "PR3 review fix round 1" below.
+- PR4 branch: `feat/rainfall-materialization-04-flip` (checked out from PR3 branch, after `6a856da`)
+  - Batch 4 (flip): `5c9d2a4` (prod: constant flip + `fallback_used_for`), `9b08fcd` (tests: tasks
+    4.1-4.2), `d5674fa` (review fold: R4-301 docs fix + R4-302 regression), `30895c9` (sdd docs:
+    tasks.md `[x]` + ledger addressed notes) — see "Batch 4 / PR4" below.
 - No push, no PR created — local branches only, per protocol.
 
 ## Baseline (before any code change, batch 1)
@@ -207,6 +218,11 @@ Part 1 final counts: `tests/new/geo/rainfall/` 212 passed (195 + 17 new... — s
   `feat/rainfall-materialization-02-compute`.
 - [x] 3.1 through [x] 3.19 — Phase 3 (PR 3), all complete, all committed individually on
   `feat/rainfall-materialization-03-revisit`. See "Batch 3 / PR3" section below.
+- [x] 4.1, [x] 4.2 — Phase 4 (PR 4), both complete, committed on
+  `feat/rainfall-materialization-04-flip`. See "Batch 4 / PR4" section below.
+- [ ] 5.1, [ ] 5.2, [ ] 5.3 — Phase 5 (ops/rollout, non-code) — intentionally NOT executed by
+  apply; out of scope for this phase per tasks.md's own framing ("Post-deploy", ops runbook,
+  staging validation).
 
 ## Files Changed (cumulative, PR1 + PR2 branches)
 
@@ -485,13 +501,104 @@ note); this is disclosed, not silently skipped.
 - `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0 (unchanged count —
   the `_FakeSession` fix has no new test, it repairs an existing one).
 
+## Batch 4 / PR4 (Phase 4 — Daily-Source Flip: tasks 4.1-4.2 + folded R4-301/R4-302)
+
+Final batch. Strict TDD throughout, on branch `feat/rainfall-materialization-04-flip` (base:
+PR3 branch, after the PR3 review fix round). RED confirmed genuinely for every task with a
+production-code change; R4-302 is disclosed GREEN-only (approval test — see below), matching
+the same disclosure class as R1-001 in the PR3 review fix round.
+
+### TDD Cycle Evidence
+
+| Task/Finding | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 4.1 (flip pin) | `test_ingest_ops.py::test_resolve_missing_work_source_uses_daily_for_current_year` | Unit | ✅ pre-existing green (pinned `"sqpe-obs"`) | ✅ updated assertion to `"chirps-v3-sat"`, confirmed failing (`assert 'sqpe-obs' == 'chirps-v3-sat'`) before touching `service.py` | ✅ passes after the constant flip | ➖ single scenario (the pin itself) | ➖ none needed |
+| 4.1 (fallback flag) | `test_rainfall_materialization.py::test_daily_source_flips_to_chirps_v3_sat_with_fallback_flag` | Integration (real PG, `build_analysis`) | ✅ N/A (new test) | ✅ written first, failed on `RAINFALL_DAILY_SOURCE == "chirps-v3-sat"` before the flip | ✅ passes after the flip + `fallback_used_for` wiring into `tasks._persist_analysis_revision` | ✅ 2 cases: daily/chirps-v3-sat (fallback_used=True) vs historical/chirps-v3-final (fallback_used=False) — proves a real comparison, not a hardcoded value | ➖ none needed |
+| 4.2 | `test_rainfall_materialization.py::test_current_year_key_reaches_done_after_flip_and_sweep_finds_it` | E2E (`TestClient` + real outbox/sweep) | ✅ N/A (new test) | ✅ written first, failed on `outbox_row.source_id == "chirps-v3-sat"` (still `"sqpe-obs"` pre-flip) | ✅ passes after the flip: 202 → `process_outbox` → `done` → 200 provisional `chirps-v3-sat` → `revisit_stale` stage 1 finds and re-enqueues the key | ➖ single scenario (task 4.2 is "verifies PR1-3 under the flipped constant", `Files: none`) | ➖ none needed |
+| R4-301 (docs) | N/A — docstring/design.md correction, no test | N/A | N/A | N/A — documentation defect, not a code defect (the code was already correct; only the claim about it was wrong) | N/A | N/A | N/A |
+| R4-302 | `test_rainfall_materialization.py::test_completed_year_daily_done_keys_keeps_a_revision_missing_key` | Integration (real PG, `completed_year_daily_done_keys`) | ✅ N/A (new test) | ⚠️ GREEN-only, disclosed: the `already_final.isnot(True)` NULL-safety was already correct in production code; a genuine RED would require breaking working code first for the sole purpose of a red bar, which strict-tdd's approval-testing pattern treats as unnecessary — same disclosure as R1-001 (PR3 review fix round 1) | ✅ passes on first run: revision-missing key selected, already-final key excluded (differential, not a single assertion) | ✅ 2 cases in one test (the differential control) | ➖ none needed |
+
+### Test Summary
+
+- **Total tests written this batch**: 3 new (`test_daily_source_flips_to_chirps_v3_sat_with_fallback_flag`, `test_current_year_key_reaches_done_after_flip_and_sweep_finds_it`, `test_completed_year_daily_done_keys_keeps_a_revision_missing_key`) + 1 updated pin (`test_resolve_missing_work_source_uses_daily_for_current_year`) + 2 monkeypatch-removal cleanups (no new tests, dead scaffolding removed now that the flip is real).
+- **Total tests passing**: `tests/new/geo/rainfall/` 242 passed, exit 0; `tests/new/` 1915 passed, 5 skipped, exit 0; `tests/test_mutation_targets_rainfall.py` 106 passed, exit 0 (unchanged).
+- **Layers used**: Unit (1 — the pin), Integration (2 — fallback flag + R4-302), E2E (1 — task 4.2).
+- **Approval tests**: 1 (R4-302 — pins already-correct NULL-safety behavior).
+- **Pure functions created**: 1 (`service.fallback_used_for`).
+
+### Deviations / Clarifications
+
+- None — implementation matches design.md decision 7 and the delta spec's "Evidence-Gated
+  Source Roles" MODIFIED requirement exactly. `fallback_used_for` and
+  `RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE` are new (not named in design.md's Interfaces block, which
+  predates this batch), but implement literally what design.md decision 7 and tasks.md task 4.1
+  already specify ("fallback_used=True for any role whose spec-primary source differs from the one
+  actually used") — no behavior invented beyond that sentence.
+- `sqpe-obs`'s `NotImplementedError` contract (`test_provider_adapters.py:436-456`) is unchanged
+  and still green, per the batch's own instruction — the daily role now routes AROUND it
+  (`resolve_missing_work_source` no longer selects it), not through a change to it.
+
+### Issues Found
+
+None.
+
+### Author Counterexample Self-Check (this batch)
+
+| Category | Evidence | Result |
+|----------|----------|--------|
+| Null / absence | R4-302's whole point: a `done` row with a fingerprint but NO revision (`already_final` reads SQL `NULL`) must stay a candidate, not be silently dropped | Pass |
+| Boundaries | N/A — no new numeric/size boundary introduced this batch (the flip is a constant swap; `fallback_used_for` is a two-value dict lookup with no threshold) | N/A — no applicable boundary |
+| Concurrency / idempotency | Task 4.2's E2E reuses the existing per-row-commit/advisory-lock machinery (PR2/PR3) unmodified; no new concurrency surface introduced by the flip itself | N/A — no new concurrency surface, existing guards apply unchanged |
+| Malicious input / security | N/A — no new external input surface (a constant flip + an internal dict lookup, no new endpoint/schema) | N/A — no new input surface |
+| Partial failure / recovery | Task 4.2's E2E exercises the full `process_outbox` per-row commit/claim path (unchanged from PR2/PR3) under the newly-reachable daily role; no new failure path introduced | N/A — no new failure path introduced |
+| State / tenancy / time | Task 4.2 proves the state transition PR3 could only simulate: a REAL `role='daily'` `done` row now exists, and `revisit_stale`'s stage 1 genuinely finds it (not a monkeypatched stand-in) | Pass |
+
+### Files Changed (this batch)
+
+| File | Action | Task/Finding |
+|------|--------|--------------|
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified: `RAINFALL_DAILY_SOURCE` flips to `"chirps-v3-sat"` (`TODO(smn)`); new `RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE` + `fallback_used_for` | 4.1 |
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified: `_persist_analysis_revision` threads `fallback_used_for(row.role, row.source_id)` into `build_snapshot` | 4.1 |
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified: `completed_year_daily_done_keys` docstring corrected (honest drain-bound claim, no behavior change) | R4-301 |
+| `gee-backend/tests/new/geo/rainfall/test_ingest_ops.py` | Modified: daily-routing pin updated `"sqpe-obs"` → `"chirps-v3-sat"` | 4.1 |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_materialization.py` | Modified: 3 new test functions (4.1 fallback flag, 4.2 E2E, R4-302 regression); 2 monkeypatch-removal cleanups in pre-existing PR3 E2E tests | 4.1, 4.2, R4-302 |
+| `openspec/changes/rainfall-materialization/design.md` | Modified: 3 "rotated, same shape as stage 1" claims corrected (Selection algorithm step 2, Interfaces bullet, "Rotation bound" → "Drain bound, corrected") | R4-301 |
+| `openspec/changes/rainfall-materialization/tasks.md` | Tasks 4.1, 4.2 marked `[x]` with file/test evidence | 4.1, 4.2 |
+| `openspec/changes/rainfall-materialization/review-ledger.md` | R4-301/R4-302 rows annotated `**Addressed**` with commit references | R4-301, R4-302 |
+| `openspec/changes/rainfall-materialization/apply-progress.md` | This file — merged with this batch's section + final summary | — |
+
+### Final Verification (this batch)
+
+- `pytest tests/new/geo/rainfall/ -v` → **242 passed**, exit 0 (whole-directory total; 3 new this
+  batch).
+- `pytest tests/new/ -v` → **1915 passed, 5 skipped** (1912 prior + 3 new), exit 0.
+- `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0 (unchanged).
+
+## Apply phase complete (all 4 PRs)
+
+All 47 code tasks (1.1-4.2) across all 4 chained PRs are `[x]` complete. Phase 5 (5.1-5.3,
+ops/rollout, non-code) is intentionally NOT executed by apply and stays unchecked.
+
+| PR | Branch | Base | Scope | Key commits |
+|---|---|---|---|---|
+| 1 — persistence | `feat/rainfall-materialization-01-persistence` | tracker `feat/rainfall-materialization` | Tasks 1.1-1.9 + R3-001..004 hardening | `f19a06e`..`ef82d1a`, `7f892fc`, `70bd040` |
+| 2 — compute | `feat/rainfall-materialization-02-compute` | PR1 branch | Tasks 2.1-2.14 + R4-001..003 review fix | `0fb88fd`..`3a8e0d2`, `da761d9`, `a08fb94` |
+| 3 — revisit + finalization + guards | `feat/rainfall-materialization-03-revisit` | PR2 branch | Tasks 3.1-3.19 + R4-101..104, + review fix round 1 (C1/C2 + 10 info fixes) | `025ed53`..`04b6538`, `d9d050c`, `4844c9f`, `48dcdb6`, `6a856da` |
+| 4 — daily-source flip | `feat/rainfall-materialization-04-flip` | PR3 branch | Tasks 4.1-4.2 + R4-301/R4-302 review fold | `5c9d2a4`, `9b08fcd`, `d5674fa`, `30895c9` |
+
+Total test growth across the whole change: `tests/new/geo/rainfall/` baseline **182 passed**
+(before batch 1) → **242 passed** now; `tests/test_mutation_targets_rainfall.py` baseline **71
+passed** → **106 passed** now; whole-backend `tests/new/` suite currently **1915 passed, 5
+skipped**, exit 0 throughout — no regression introduced at any batch boundary. No push, no PR
+opened at any point — all branches are local only, per protocol; the tracker branch
+(`feat/rainfall-materialization`) is the only one intended to merge to `main`.
+
 ## Next Recommended
 
-`judgment-day` (post-sdd-phase trigger rule) on the PR3 review fix round 1 diff
-(scoped re-review: the persisted ledger + this round's fix diff, not the full PR3 diff again),
-then `sdd-apply` for Phase 4 (PR 4 — Daily-Source Flip: tasks 4.1-4.2), base branch
-`feat/rainfall-materialization-03-revisit`, per the feature-branch-chain strategy. PR 4 is the
-single step that opens current-year traffic (`RAINFALL_DAILY_SOURCE` "sqpe-obs" →
-"chirps-v3-sat"); PR3's entire sweep/finalization/guard machinery ships dark until then (no
-`role='daily'` `done` row with a non-`NULL` fingerprint can exist before the flip). Phase 5
-(ops/rollout, non-code: tasks 5.1-5.3) follows PR4.
+`judgment-day` (post-sdd-phase trigger rule) on the PR4 diff (the daily-source flip — the
+single step that opens real current-year GEE traffic, per design.md decision 10's own
+rationale for isolating it), then `sdd-verify` for the whole `rainfall-materialization` change
+now that all 4 PRs are code-complete. Phase 5 (ops/rollout, non-code: tasks 5.1-5.3 — deleting
+the 2 failed `sqpe-obs` prod outbox rows, the two-tier kill-switch runbook note, and the
+staging `comparison_end` validation with the partner) remains for a human/ops action after
+`sdd-verify`, not for another `sdd-apply` batch.
