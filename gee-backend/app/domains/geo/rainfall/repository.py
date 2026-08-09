@@ -324,3 +324,50 @@ def persist_intervals(
             superseded += 1
 
     return {"inserted": inserted, "unchanged": unchanged, "superseded": superseded}
+
+
+def persist_revision(
+    db: Session,
+    *,
+    request_fingerprint: str,
+    policy_revision: str,
+    data_revision: str,
+    snapshot: dict,
+) -> UUID:
+    """Idempotent revision write (decision 3): ``ON CONFLICT DO NOTHING``
+    keyed on ``uq_rainfall_analysis_snapshot`` (``request_fingerprint``,
+    ``policy_revision``, ``data_revision``), then ``SELECT`` — an identical
+    ``data_revision`` is a no-op that returns the existing id rather than
+    raising or writing a duplicate row.
+    """
+    stmt = (
+        pg_insert(RainfallAnalysisRevision)
+        .values(
+            request_fingerprint=request_fingerprint,
+            policy_revision=policy_revision,
+            data_revision=data_revision,
+            snapshot=snapshot,
+        )
+        .on_conflict_do_nothing(constraint="uq_rainfall_analysis_snapshot")
+        .returning(RainfallAnalysisRevision.id)
+    )
+    landed_id = db.execute(stmt).scalar()
+    if landed_id is not None:
+        return landed_id
+
+    existing_id = db.scalar(
+        select(RainfallAnalysisRevision.id).where(
+            RainfallAnalysisRevision.request_fingerprint == request_fingerprint,
+            RainfallAnalysisRevision.policy_revision == policy_revision,
+            RainfallAnalysisRevision.data_revision == data_revision,
+        )
+    )
+    if existing_id is None:
+        # The conflict target guarantees a matching row exists; a lost
+        # race that skipped it would mean the constraint itself is wrong.
+        raise RuntimeError(
+            "persist_revision hit ON CONFLICT DO NOTHING but found no matching row "
+            f"(fingerprint={request_fingerprint!r}, policy_revision={policy_revision!r}, "
+            f"data_revision={data_revision!r})"
+        )
+    return existing_id

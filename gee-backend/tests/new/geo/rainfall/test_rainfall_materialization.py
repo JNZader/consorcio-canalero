@@ -652,3 +652,78 @@ def test_queue_missing_analysis_recomputes_fingerprint_when_not_passed(db):
 
     row = db.get(RainfallOutbox, result["outbox_id"])
     assert row.request_fingerprint == expected
+
+
+# ---------------------------------------------------------------------------
+# Task 2.9 — persist_revision is idempotent on an identical data_revision
+# ---------------------------------------------------------------------------
+
+
+def test_persist_revision_is_idempotent_on_identical_data_revision(db):
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.repository import persist_revision
+
+    snapshot = {"scope": {"kind": "zone", "id": "z1", "version": "v1"}, "year": 2024}
+
+    first_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    # Identical (fingerprint, policy_revision, data_revision) -> a no-op
+    # returning the existing id, not a second row.
+    second_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    assert first_id == second_id
+    count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == "fp-persist-revision")
+    )
+    assert count == 1
+
+
+def test_persist_revision_writes_a_new_row_on_changed_data_revision(db):
+    """Triangulation: a different data_revision under the same fingerprint
+    is a genuinely new row, not absorbed by the idempotent path above."""
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.repository import persist_revision
+
+    snapshot = {"scope": {"kind": "zone", "id": "z1", "version": "v1"}, "year": 2024}
+
+    first_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision-2",
+        policy_revision="policy-v1",
+        data_revision="data-v1",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    second_id = persist_revision(
+        db,
+        request_fingerprint="fp-persist-revision-2",
+        policy_revision="policy-v1",
+        data_revision="data-v2",
+        snapshot=snapshot,
+    )
+    db.flush()
+
+    assert first_id != second_id
+    count = db.scalar(
+        select(func.count())
+        .select_from(RainfallAnalysisRevision)
+        .where(RainfallAnalysisRevision.request_fingerprint == "fp-persist-revision-2")
+    )
+    assert count == 2
