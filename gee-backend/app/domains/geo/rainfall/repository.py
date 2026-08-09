@@ -161,13 +161,16 @@ def _next_correction_ordinal(current_provider_revision: str, family: str) -> int
     return int(suffix[2:]) + 1
 
 
-def record_supersession(db: Session, *, interval_value_id: UUID, superseded_by_id: UUID) -> None:
-    """Append-only lifecycle link. ``event_type='superseded'`` — deliberately
-    not ``'expired'``: only an expired row with a due ``expires_at`` is ever
-    deletable by ``purge_expired_rainfall_intervals``, so a supersession can
-    never turn into a delete.
+def record_supersession(db: Session, *, pairs: Sequence[tuple[UUID, UUID]]) -> None:
+    """Append-only lifecycle link(s), one multi-row Core ``INSERT`` per call
+    (R4-001/R4-104 — the single implementation ``persist_intervals`` calls;
+    no inlined duplicate of this INSERT shape exists elsewhere).
+    ``event_type='superseded'`` — deliberately not ``'expired'``: only an
+    expired row with a due ``expires_at`` is ever deletable by
+    ``purge_expired_rainfall_intervals``, so a supersession can never turn
+    into a delete.
 
-    Core ``INSERT`` (R4-001), not an ORM ``db.add`` — matching
+    Core ``INSERT``, not an ORM ``db.add`` — matching
     ``persist_intervals``/``persist_revision``. An ORM add stays pending in
     ``session.new`` until the session flushes, and production's
     ``SessionLocal`` is ``autoflush=False`` (``app/db/session.py``): the very
@@ -176,13 +179,22 @@ def record_supersession(db: Session, *, interval_value_id: UUID, superseded_by_i
     after ``persist_intervals`` — would miss an unflushed row and see the
     slot's old and new revisions as two "current" rows at once. A Core
     ``INSERT`` lands at execute time, independent of any flush.
+
+    A no-op on an empty *pairs* — callers do not need to guard.
     """
+    if not pairs:
+        return
     db.execute(
         pg_insert(RainfallIntervalLifecycle).values(
-            interval_value_id=interval_value_id,
-            superseded_by_id=superseded_by_id,
-            event_type="superseded",
-            expires_at=None,
+            [
+                {
+                    "interval_value_id": interval_value_id,
+                    "superseded_by_id": superseded_by_id,
+                    "event_type": "superseded",
+                    "expires_at": None,
+                }
+                for interval_value_id, superseded_by_id in pairs
+            ]
         )
     )
 
@@ -334,23 +346,9 @@ def persist_intervals(
         if superseded_id is not None:
             superseded_pairs.append((superseded_id, landed_id))
 
-    if superseded_pairs:
-        # One multi-row Core INSERT for every lifecycle link this batch
-        # produced (R4-001) — same flush-independence rationale as
-        # record_supersession, batched instead of N single-row executes.
-        db.execute(
-            pg_insert(RainfallIntervalLifecycle).values(
-                [
-                    {
-                        "interval_value_id": superseded_id,
-                        "superseded_by_id": landed_id,
-                        "event_type": "superseded",
-                        "expires_at": None,
-                    }
-                    for superseded_id, landed_id in superseded_pairs
-                ]
-            )
-        )
+    # R4-104: the single implementation — record_supersession itself does
+    # the batched multi-row Core INSERT (R4-001), no duplicate inlined here.
+    record_supersession(db, pairs=superseded_pairs)
 
     return {
         "inserted": inserted,

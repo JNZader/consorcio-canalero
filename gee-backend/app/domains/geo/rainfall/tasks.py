@@ -184,10 +184,24 @@ def ingest_source_scope(
 def _persist_analysis_revision(
     db: Session, *, outbox_id: str, batch: dict[str, Any], now: datetime
 ) -> dict[str, Any]:
-    from app.domains.geo.rainfall.compute import build_snapshot, data_revision_for, revision_family
+    from app.domains.geo.rainfall.compute import (
+        build_snapshot,
+        data_revision_for,
+        fingerprint_lock_key,
+        revision_family,
+        revision_write_decision,
+    )
     from app.domains.geo.rainfall.models import RainfallAnalysisRevision
-    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
-    from app.domains.geo.rainfall.repository import intervals_in_window, persist_revision
+    from app.domains.geo.rainfall.policy import (
+        RAINFALL_METRIC_POLICY,
+        RAINFALL_METRIC_POLICY_REVISION,
+    )
+    from app.domains.geo.rainfall.repository import (
+        RainfallRepository,
+        acquire_fingerprint_lock,
+        intervals_in_window,
+        persist_revision,
+    )
     from app.domains.geo.rainfall.scope import AnalysisScope
 
     row = db.get(RainfallOutbox, outbox_id)
@@ -201,6 +215,16 @@ def _persist_analysis_revision(
             f"rainfall_outbox row {outbox_id!r} has no request_fingerprint; the caller "
             "must derive or skip it before calling build_analysis (decision 4b)"
         )
+
+    # design.md "Serializing siblings — the per-fingerprint advisory lock":
+    # build_analysis's FIRST database statement, inside the per-row
+    # transaction of decision 2c and BEFORE the incumbent get_snapshot read
+    # below. Makes read -> decide -> INSERT atomic per fingerprint across
+    # two sibling builds sharing this fingerprint (task 3.3).
+    acquire_fingerprint_lock(db, lock_key=fingerprint_lock_key(row.request_fingerprint))
+
+    incumbent = RainfallRepository().get_snapshot(db, row.request_fingerprint)
+    incumbent_snapshot = incumbent.snapshot if incumbent is not None else None
 
     year_start = datetime(row.year, 1, 1, tzinfo=UTC)
     year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
@@ -248,6 +272,38 @@ def _persist_analysis_revision(
         [(interval_start, value) for interval_start, _end, value in resolved],
     )
 
+    # decision 9b's write gate, applied on the candidate, before any INSERT,
+    # already serialized against a sibling build by the advisory lock above
+    # (task 3.6).
+    decision = revision_write_decision(incumbent_snapshot, snapshot, RAINFALL_METRIC_POLICY)
+
+    if decision == "latched":
+        # design.md "The latch": a provisional candidate over a final
+        # incumbent is never written -- the daily-role sibling that would
+        # otherwise shadow a finalized year via created_at DESC ordering.
+        record_event(
+            "rainfall.build.latched",
+            data_revision=data_revision,
+            source_id=row.source_id,
+            incumbent_source_id=incumbent_snapshot["annual"]["selected"]["provenance"]["source_id"],
+        )
+        return {"revision_id": None, "data_revision": data_revision, "decision": decision}
+
+    if decision == "gate_refused":
+        # design.md "No backoff in v1": every refusal is instrumented so a
+        # future backoff constant has real provider-lag evidence to use.
+        metric = snapshot["annual"]["selected"]
+        record_event(
+            "rainfall.finalization.gate_refused",
+            scope={"kind": row.scope_kind, "id": row.scope_id, "version": row.scope_version},
+            year=row.year,
+            coverage=metric["coverage"],
+            completeness=metric["completeness"],
+            quality_score=metric["quality"]["score"],
+        )
+        return {"revision_id": None, "data_revision": data_revision, "decision": decision}
+
+    # decision == "write"
     # R4-003: read BEFORE the write to tell a genuinely new revision apart
     # from persist_revision's idempotent no-op (its own ON CONFLICT DO
     # NOTHING branch doesn't surface that distinction to the caller) —
@@ -271,13 +327,17 @@ def _persist_analysis_revision(
         snapshot=snapshot,
     )
 
+    # R4-101: this event fires pre-commit, inside the row's savepoint -- a
+    # commit failure after this point yields an event for rolled-back work.
+    # Bounded: rainfall.outbox.done (post-commit) is the durable signal; see
+    # docs/lluvia-v2-observability-workbook.md.
     record_event(
         "rainfall.build.revision_written",
         data_revision=data_revision,
         created=not already_existed,
     )
 
-    return {"revision_id": str(revision_id), "data_revision": data_revision}
+    return {"revision_id": str(revision_id), "data_revision": data_revision, "decision": decision}
 
 
 @celery_app.task(name="rainfall.build_analysis")

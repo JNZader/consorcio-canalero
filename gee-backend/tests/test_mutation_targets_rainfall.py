@@ -1005,7 +1005,11 @@ class TestRainfallMetricPolicyConstants:
         # machine can actually evaluate (guards against a policy so broken
         # every snapshot's annual metric silently comes back suppressed).
         applied = apply_metric_policy(
-            RAINFALL_METRIC_POLICY, "annual", value=10.0, coverage=0.9, quality_score=0.9,
+            RAINFALL_METRIC_POLICY,
+            "annual",
+            value=10.0,
+            coverage=0.9,
+            quality_score=0.9,
             completeness=0.9,
         )
         assert applied.state == "available"
@@ -1086,9 +1090,21 @@ class TestBuildSnapshotEnvelope:
 
         metric = snapshot["annual"]["selected"]
         expected_fields = {
-            "metric", "value", "unit", "state", "reason", "interval_start", "interval_end",
-            "coverage", "completeness", "quality", "discrepancies", "temporal_state",
-            "revision", "provenance", "fallback_used",
+            "metric",
+            "value",
+            "unit",
+            "state",
+            "reason",
+            "interval_start",
+            "interval_end",
+            "coverage",
+            "completeness",
+            "quality",
+            "discrepancies",
+            "temporal_state",
+            "revision",
+            "provenance",
+            "fallback_used",
         }
         assert set(metric) == expected_fields
         assert 0 <= metric["quality"]["score"] <= 1
@@ -1146,10 +1162,14 @@ class TestBuildSnapshotCoverageWindow:
             source_id="chirps-v3-sat",
             intervals=intervals,
             batch=_fixture_batch_evidence(
-                source_id="chirps-v3-sat", provider_revision="v3-nrt",
+                source_id="chirps-v3-sat",
+                provider_revision="v3-nrt",
                 quality={
-                    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT", "band": "precipitation",
-                    "reduction": "mean", "scale_m": 5500, "provider_revision": "v3-nrt",
+                    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                    "band": "precipitation",
+                    "reduction": "mean",
+                    "scale_m": 5500,
+                    "provider_revision": "v3-nrt",
                 },
             ),
             now=now,
@@ -1211,7 +1231,11 @@ class TestDataRevisionFor:
         assert advanced != first
 
         changed_value = data_revision_for(
-            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2),
+            "chirps-v3-final",
+            "v3-final",
+            _ZONE_SCOPE,
+            2024,
+            date(2024, 1, 2),
             [(datetime(2024, 1, 1, tzinfo=UTC), 9.9), rows[1]],
         )
         assert changed_value != first
@@ -1227,7 +1251,11 @@ class TestDataRevisionFor:
             "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2), rows
         )
         reversed_order = data_revision_for(
-            "chirps-v3-final", "v3-final", _ZONE_SCOPE, 2024, date(2024, 1, 2),
+            "chirps-v3-final",
+            "v3-final",
+            _ZONE_SCOPE,
+            2024,
+            date(2024, 1, 2),
             list(reversed(rows)),
         )
         assert forward == reversed_order
@@ -1280,7 +1308,9 @@ class TestFingerprintLockKey:
         assert fingerprint_lock_key("f" * 16 + "0" * 48) == -1
 
 
-def _snapshot_with(*, source_id: str, temporal_state: str, **metric_overrides: Any) -> dict[str, Any]:
+def _snapshot_with(
+    *, source_id: str, temporal_state: str, **metric_overrides: Any
+) -> dict[str, Any]:
     """Minimal well-formed snapshot for served_state/revision_write_decision
     unit tests -- only the fields those two pure readers touch."""
     metric: dict[str, Any] = {
