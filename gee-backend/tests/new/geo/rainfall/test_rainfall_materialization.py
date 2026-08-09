@@ -1448,7 +1448,10 @@ def test_e2e_served_analysis_carries_revision_id_and_csv_export_succeeds(db, mon
     app.include_router(router)
     client = TestClient(app)
 
-    payload = {"scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"}, "year": year}
+    payload = {
+        "scope": {"kind": "zone", "id": "zone-e2e-csv-export", "version": "v1"},
+        "year": year,
+    }
 
     queued = client.post("/rainfall/analyses", json=payload)
     assert queued.status_code == 202
@@ -2175,8 +2178,11 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
     tasks.build_analysis(
         outbox_id=str(seq_final_outbox.id),
         batch=_fixture_batch_evidence(
-            source_id="chirps-v3-final", scope_id=seq_scope_id, year=seq_year,
-            intervals=365, persisted=365,
+            source_id="chirps-v3-final",
+            scope_id=seq_scope_id,
+            year=seq_year,
+            intervals=365,
+            persisted=365,
         ),
         db=db,
         now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
@@ -2208,8 +2214,13 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
         seq_daily_result = tasks.build_analysis(
             outbox_id=str(seq_daily_outbox.id),
             batch=_fixture_batch_evidence(
-                source_id="chirps-v3-sat", scope_id=seq_scope_id, year=seq_year,
-                intervals=365, persisted=365, provider_revision="v3-nrt", quality=_SAT_QUALITY,
+                source_id="chirps-v3-sat",
+                scope_id=seq_scope_id,
+                year=seq_year,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
+                quality=_SAT_QUALITY,
             ),
             db=db,
             now=datetime(seq_year + 1, 6, 1, tzinfo=UTC),
@@ -2242,9 +2253,17 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
     # row's own reason for a fresh session.
 
     def run_concurrent_round(
-        *, scope_id: str, fingerprint: str, year: int, now: datetime,
-        first_source_id: str, first_role: str, first_batch: dict,
-        second_source_id: str, second_role: str, second_batch: dict,
+        *,
+        scope_id: str,
+        fingerprint: str,
+        year: int,
+        now: datetime,
+        first_source_id: str,
+        first_role: str,
+        first_batch: dict,
+        second_source_id: str,
+        second_role: str,
+        second_batch: dict,
     ) -> tuple[dict, dict]:
         import threading
 
@@ -2253,30 +2272,48 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
 
         with SessionLocal() as setup:
             persist_intervals(
-                setup, source_id=first_source_id, scope_kind="zone", scope_id=scope_id,
+                setup,
+                source_id=first_source_id,
+                scope_kind="zone",
+                scope_id=scope_id,
                 scope_version="v1",
                 rows=_full_year_rows(year=year, provider_revision=first_batch["provider_revision"]),
             )
             persist_intervals(
-                setup, source_id=second_source_id, scope_kind="zone", scope_id=scope_id,
+                setup,
+                source_id=second_source_id,
+                scope_kind="zone",
+                scope_id=scope_id,
                 scope_version="v1",
-                rows=_full_year_rows(year=year, provider_revision=second_batch["provider_revision"]),
+                rows=_full_year_rows(
+                    year=year, provider_revision=second_batch["provider_revision"]
+                ),
             )
             first_row = RainfallOutbox(
-                source_id=first_source_id, role=first_role, scope_kind="zone",
-                scope_id=scope_id, scope_version="v1", year=year,
+                source_id=first_source_id,
+                role=first_role,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                year=year,
                 work_labels=["analysis_missing"],
                 interval_start=datetime(year, 1, 1, tzinfo=UTC),
                 interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
-                status="pending", request_fingerprint=fingerprint,
+                status="pending",
+                request_fingerprint=fingerprint,
             )
             second_row = RainfallOutbox(
-                source_id=second_source_id, role=second_role, scope_kind="zone",
-                scope_id=scope_id, scope_version="v1", year=year,
+                source_id=second_source_id,
+                role=second_role,
+                scope_kind="zone",
+                scope_id=scope_id,
+                scope_version="v1",
+                year=year,
                 work_labels=["analysis_missing"],
                 interval_start=datetime(year, 1, 1, tzinfo=UTC),
                 interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
-                status="pending", request_fingerprint=fingerprint,
+                status="pending",
+                request_fingerprint=fingerprint,
             )
             setup.add_all([first_row, second_row])
             setup.commit()
@@ -2361,17 +2398,28 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
         scope_id1 = "zone-latch-concurrent-1"
         fingerprint1 = _hex_fingerprint("fp-latch-concurrent-1")
         first_result1, second_result1 = run_concurrent_round(
-            scope_id=scope_id1, fingerprint=fingerprint1, year=year1,
+            scope_id=scope_id1,
+            fingerprint=fingerprint1,
+            year=year1,
             now=datetime(year1 + 1, 6, 1, tzinfo=UTC),
-            first_source_id="chirps-v3-final", first_role="historical",
+            first_source_id="chirps-v3-final",
+            first_role="historical",
             first_batch=_fixture_batch_evidence(
-                source_id="chirps-v3-final", scope_id=scope_id1, year=year1,
-                intervals=365, persisted=365,
+                source_id="chirps-v3-final",
+                scope_id=scope_id1,
+                year=year1,
+                intervals=365,
+                persisted=365,
             ),
-            second_source_id="chirps-v3-sat", second_role="daily",
+            second_source_id="chirps-v3-sat",
+            second_role="daily",
             second_batch=_fixture_batch_evidence(
-                source_id="chirps-v3-sat", scope_id=scope_id1, year=year1,
-                intervals=365, persisted=365, provider_revision="v3-nrt",
+                source_id="chirps-v3-sat",
+                scope_id=scope_id1,
+                year=year1,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
                 quality=_SAT_QUALITY,
             ),
         )
@@ -2398,18 +2446,29 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
         scope_id2 = "zone-latch-concurrent-2"
         fingerprint2 = _hex_fingerprint("fp-latch-concurrent-2")
         first_result2, second_result2 = run_concurrent_round(
-            scope_id=scope_id2, fingerprint=fingerprint2, year=year2,
+            scope_id=scope_id2,
+            fingerprint=fingerprint2,
+            year=year2,
             now=datetime(year2 + 1, 6, 1, tzinfo=UTC),
-            first_source_id="chirps-v3-sat", first_role="daily",
+            first_source_id="chirps-v3-sat",
+            first_role="daily",
             first_batch=_fixture_batch_evidence(
-                source_id="chirps-v3-sat", scope_id=scope_id2, year=year2,
-                intervals=365, persisted=365, provider_revision="v3-nrt",
+                source_id="chirps-v3-sat",
+                scope_id=scope_id2,
+                year=year2,
+                intervals=365,
+                persisted=365,
+                provider_revision="v3-nrt",
                 quality=_SAT_QUALITY,
             ),
-            second_source_id="chirps-v3-final", second_role="historical",
+            second_source_id="chirps-v3-final",
+            second_role="historical",
             second_batch=_fixture_batch_evidence(
-                source_id="chirps-v3-final", scope_id=scope_id2, year=year2,
-                intervals=365, persisted=365,
+                source_id="chirps-v3-final",
+                scope_id=scope_id2,
+                year=year2,
+                intervals=365,
+                persisted=365,
             ),
         )
         assert first_result2["decision"] == "write"
@@ -2439,9 +2498,7 @@ def test_latch_sequential_and_concurrent_two_connections(db, caplog):
                 )
             ).delete(synchronize_session=False)
             cleanup.query(RainfallOutbox).filter(
-                RainfallOutbox.scope_id.in_(
-                    ["zone-latch-concurrent-1", "zone-latch-concurrent-2"]
-                )
+                RainfallOutbox.scope_id.in_(["zone-latch-concurrent-1", "zone-latch-concurrent-2"])
             ).delete(synchronize_session=False)
             cleanup.commit()
 
@@ -2518,9 +2575,8 @@ def test_current_year_done_keys_distinct_on_key(db):
             "zone-current-year-distinct",
             "zone-current-year-distinct-other",
         }
-        assert (
-            by_scope["zone-current-year-distinct"].request_fingerprint
-            == _hex_fingerprint("fp-current-year-distinct-newer")
+        assert by_scope["zone-current-year-distinct"].request_fingerprint == _hex_fingerprint(
+            "fp-current-year-distinct-newer"
         )
     finally:
         db.query(RainfallOutbox).filter(
@@ -2766,9 +2822,7 @@ def test_revisit_stage1_dedups_and_exempts_past_years(db, caplog):
         assert past_pending == []
     finally:
         db.query(RainfallOutbox).filter(
-            RainfallOutbox.scope_id.in_(
-                ["zone-revisit-stage1-dedup", "zone-revisit-stage1-past"]
-            )
+            RainfallOutbox.scope_id.in_(["zone-revisit-stage1-dedup", "zone-revisit-stage1-past"])
         ).delete(synchronize_session=False)
         db.commit()
 
@@ -3372,9 +3426,7 @@ def test_finalization_is_retried_not_abandoned_then_terminates(db, monkeypatch, 
         assert _served_source_and_state() == ("chirps-v3-sat", "provisional")
 
         # Supply an adequate final series.
-        fake_client.series = [
-            (year_start + timedelta(days=offset), 1.0) for offset in range(365)
-        ]
+        fake_client.series = [(year_start + timedelta(days=offset), 1.0) for offset in range(365)]
 
         now3 = datetime(year + 1, 1, 17, 12, tzinfo=UTC)
         revisit3 = tasks.revisit_stale(now=now3)
@@ -3928,9 +3980,7 @@ def test_revisit_stage1_rotation_reaches_a_lexicographically_last_key_within_two
         assert day1_completed["truncated"] is True
 
         assert (
-            db.query(RainfallOutbox)
-            .filter_by(scope_id=frozen_scope_id, status="pending")
-            .all()
+            db.query(RainfallOutbox).filter_by(scope_id=frozen_scope_id, status="pending").all()
             == []
         )
 
@@ -4280,7 +4330,9 @@ def test_daily_source_flips_to_chirps_v3_sat_with_fallback_flag(db):
     )
     db.flush()
 
-    daily_revision = RainfallRepository().get_snapshot(db, _hex_fingerprint("fp-4-1-daily-fallback"))
+    daily_revision = RainfallRepository().get_snapshot(
+        db, _hex_fingerprint("fp-4-1-daily-fallback")
+    )
     assert daily_revision is not None
     daily_metric = daily_revision.snapshot["annual"]["selected"]
     assert daily_metric["fallback_used"] is True
