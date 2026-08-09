@@ -1525,3 +1525,167 @@ def test_restated_slot_survives_chained_compute_without_explicit_flush(
     )
     assert len(current) == 1
     assert current[0].value == 2.0
+
+
+# ---------------------------------------------------------------------------
+# R4-003 observability — error class/message on failed/delayed events, and a
+# revision-written event distinguishing new-revision vs idempotent no-op
+# ---------------------------------------------------------------------------
+
+
+def _event_payload(caplog, event_name: str) -> dict:
+    """Decode the JSON payload ``record_event`` (metrics.py) attaches to
+    *event_name* -- the same ``"%s %s"`` seam
+    ``test_rainfall_observability_seam_emits_structured_events`` asserts
+    against (test_phase4_verification.py), here parsed instead of
+    substring-matched so field values can be checked precisely."""
+    for record in caplog.records:
+        if record.name == "rainfall" and record.message.startswith(f"{event_name} "):
+            return json.loads(record.message[len(event_name) + 1 :])
+    raise AssertionError(
+        f"no {event_name!r} event captured; got {[r.message for r in caplog.records]}"
+    )
+
+
+def test_outbox_delayed_event_carries_error_type_and_truncated_message(db, monkeypatch, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    long_message = "boom " * 60  # > 200 chars, exercises the truncation
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError(long_message)),
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-delayed",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    db.add(row)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = tasks.process_outbox(db=db)
+
+    assert result["delayed"] == 1
+    db.refresh(row)
+    assert row.status == "pending"
+
+    payload = _event_payload(caplog, "rainfall.outbox.delayed")
+    assert payload["error_type"] == "ValueError"
+    assert payload["error_message"] == long_message[:200]
+    assert len(payload["error_message"]) <= 200
+
+
+def test_outbox_failed_event_carries_error_type_and_truncated_message(db, monkeypatch, caplog):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(
+        tasks,
+        "ingest_source_scope",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("kaboom")),
+    )
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-failed",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        status="pending",
+        next_attempt_at=datetime(2024, 1, 1, tzinfo=UTC),
+        retry_count=tasks.MAX_RETRIES - 1,
+    )
+    db.add(row)
+    db.flush()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        result = tasks.process_outbox(db=db)
+
+    assert result["failed"] == 1
+    db.refresh(row)
+    assert row.status == "failed"
+
+    payload = _event_payload(caplog, "rainfall.outbox.failed")
+    assert payload["error_type"] == "RuntimeError"
+    assert payload["error_message"] == "kaboom"
+
+
+def test_build_analysis_emits_revision_written_event_distinguishing_created_from_noop(
+    db, caplog
+):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    rows = _daily_intervals(start_day=1, values=[1.0, 2.0, 3.0])
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id="zone-r4-003-revision-written",
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-r4-003-revision-written",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint="fp-r4-003-revision-written",
+    )
+    db.add(outbox)
+    db.flush()
+
+    batch = _fixture_batch_evidence(
+        scope_id="zone-r4-003-revision-written", intervals=3, persisted=3
+    )
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        first = tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=batch,
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )
+    db.flush()
+
+    first_payload = _event_payload(caplog, "rainfall.build.revision_written")
+    assert first_payload["created"] is True
+    assert first_payload["data_revision"] == first["data_revision"]
+
+    caplog.clear()
+
+    with caplog.at_level("INFO", logger="rainfall"):
+        second = tasks.build_analysis(
+            outbox_id=str(outbox.id),
+            batch=batch,
+            db=db,
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+        )
+
+    assert second["data_revision"] == first["data_revision"]
+    second_payload = _event_payload(caplog, "rainfall.build.revision_written")
+    assert second_payload["created"] is False
+    assert second_payload["data_revision"] == first["data_revision"]

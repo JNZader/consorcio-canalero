@@ -185,6 +185,7 @@ def _persist_analysis_revision(
     db: Session, *, outbox_id: str, batch: dict[str, Any], now: datetime
 ) -> dict[str, Any]:
     from app.domains.geo.rainfall.compute import build_snapshot, data_revision_for, revision_family
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
     from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
     from app.domains.geo.rainfall.repository import intervals_in_window, persist_revision
     from app.domains.geo.rainfall.scope import AnalysisScope
@@ -247,12 +248,33 @@ def _persist_analysis_revision(
         [(interval_start, value) for interval_start, _end, value in resolved],
     )
 
+    # R4-003: read BEFORE the write to tell a genuinely new revision apart
+    # from persist_revision's idempotent no-op (its own ON CONFLICT DO
+    # NOTHING branch doesn't surface that distinction to the caller) —
+    # observability only, not the compute decision itself.
+    already_existed = (
+        db.scalar(
+            select(RainfallAnalysisRevision.id).where(
+                RainfallAnalysisRevision.request_fingerprint == row.request_fingerprint,
+                RainfallAnalysisRevision.policy_revision == RAINFALL_METRIC_POLICY_REVISION,
+                RainfallAnalysisRevision.data_revision == data_revision,
+            )
+        )
+        is not None
+    )
+
     revision_id = persist_revision(
         db,
         request_fingerprint=row.request_fingerprint,
         policy_revision=RAINFALL_METRIC_POLICY_REVISION,
         data_revision=data_revision,
         snapshot=snapshot,
+    )
+
+    record_event(
+        "rainfall.build.revision_written",
+        data_revision=data_revision,
+        created=not already_existed,
     )
 
     return {"revision_id": str(revision_id), "data_revision": data_revision}
@@ -445,10 +467,17 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
             db.commit()  # release the claim's row lock
             continue
 
+        # R4-003: captured INSIDE the except block — `except ... as exc`
+        # implicitly unbinds `exc` once the block exits, so these need to
+        # survive into the failed/delayed record_event calls below.
+        error_type: str | None = None
+        error_message: str | None = None
         try:
             with db.begin_nested():
                 _process_outbox_row(row, db, build_now)
         except Exception as exc:  # noqa: BLE001 — deliberate broad catch for durable retry
+            error_type = type(exc).__name__
+            error_message = str(exc)[:200]
             row.retry_count += 1
             row.last_error = str(exc)[:4000]
             row.status = "failed" if row.retry_count >= MAX_RETRIES else "pending"
@@ -476,6 +505,8 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
                 scope_id=row.scope_id,
                 year=row.year,
                 retry_count=row.retry_count,
+                error_type=error_type,
+                error_message=error_message,
             )
             failed += 1
         else:
@@ -487,6 +518,8 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
                 scope_id=row.scope_id,
                 year=row.year,
                 retry_count=row.retry_count,
+                error_type=error_type,
+                error_message=error_message,
             )
             delayed += 1
 
