@@ -1689,3 +1689,85 @@ def test_build_analysis_emits_revision_written_event_distinguishing_created_from
     second_payload = _event_payload(caplog, "rainfall.build.revision_written")
     assert second_payload["created"] is False
     assert second_payload["data_revision"] == first["data_revision"]
+
+
+# ===========================================================================
+# Phase 3 (PR 3) — Revisit, Finalization, Guards
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Task 3.1 — recent_done + request-path cooldown
+# ---------------------------------------------------------------------------
+
+
+def test_repeated_post_skips_reenqueue_after_recent_done(db):
+    """decision 6: a `done` row within RAINFALL_RECOMPUTE_COOLDOWN skips
+    re-enqueue REGARDLESS of whether a revision exists, returning the same
+    202 body shape with that row's id."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-cooldown-recent", version="v1", regional_estimate=False)
+    done_row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-cooldown-recent",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime.now(UTC) - timedelta(minutes=2),
+        request_fingerprint="fp-cooldown-recent",
+    )
+    db.add(done_row)
+    db.flush()
+
+    result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    assert result["status"] == "queued"
+    assert result["outbox_id"] == str(done_row.id)
+    pending_count = db.scalar(
+        select(func.count())
+        .select_from(RainfallOutbox)
+        .where(RainfallOutbox.scope_id == "zone-cooldown-recent")
+        .where(RainfallOutbox.status == "pending")
+    )
+    assert pending_count == 0
+
+
+def test_stale_done_row_past_cooldown_still_enqueues(db):
+    """Triangulation: a `done` row OLDER than the cooldown window does not
+    suppress a fresh enqueue -- the cooldown is time-bounded, not a
+    forever-skip."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-cooldown-stale", version="v1", regional_estimate=False)
+    stale_row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-cooldown-stale",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        status="done",
+        completed_at=datetime.now(UTC) - timedelta(minutes=20),
+        request_fingerprint="fp-cooldown-stale",
+    )
+    db.add(stale_row)
+    db.flush()
+
+    result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+
+    assert result["outbox_id"] != str(stale_row.id)
+    pending = db.scalar(
+        select(RainfallOutbox)
+        .where(RainfallOutbox.scope_id == "zone-cooldown-stale")
+        .where(RainfallOutbox.status == "pending")
+    )
+    assert pending is not None
+    assert str(pending.id) == result["outbox_id"]

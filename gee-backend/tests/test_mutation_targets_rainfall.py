@@ -672,16 +672,26 @@ class _FakeQuery:
 
 class _FakeSession:
     """Session double exposing exactly the surface ``queue_missing_analysis``
-    uses: ``query``, ``add``, ``flush``, ``commit``. No real DB."""
+    uses: ``query``, ``add``, ``flush``, ``commit``, ``scalar``. No real DB.
 
-    def __init__(self, existing: Any | None = None) -> None:
+    ``scalar`` backs task 3.1's ``recent_done`` cooldown lookup
+    (``repository.recent_done`` runs ``db.scalar(select(...))``); the
+    default ``recent_done=None`` keeps every pre-existing test's behavior
+    unchanged (no cooldown row -> the enqueue path runs as before).
+    """
+
+    def __init__(self, existing: Any | None = None, recent_done: Any | None = None) -> None:
         self._existing = existing
+        self._recent_done = recent_done
         self.added: list[Any] = []
         self.flushed = 0
         self.committed = 0
 
     def query(self, _model: Any) -> _FakeQuery:
         return _FakeQuery([self._existing] if self._existing is not None else [])
+
+    def scalar(self, _query: Any) -> Any | None:
+        return self._recent_done
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)

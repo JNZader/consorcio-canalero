@@ -381,7 +381,14 @@ def test_pending_unique_constraint_allows_reenqueue_after_done(db):
         scope_version=scope.version,
         year=2024,
         status="done",
-        completed_at=datetime.now(UTC),
+        # rainfall-materialization PR3 decision 6: a `done` row within
+        # RAINFALL_RECOMPUTE_COOLDOWN (10 min) now skips re-enqueue on
+        # purpose (see test_rainfall_materialization.py's
+        # test_repeated_post_skips_reenqueue_after_recent_done). Backdating
+        # past the cooldown keeps THIS test's own point intact: the
+        # pending-only partial unique index still allows a fresh pending
+        # row once the previous attempt is done.
+        completed_at=datetime.now(UTC) - timedelta(minutes=20),
     )
     db.add(done_row)
     db.commit()
@@ -440,7 +447,9 @@ def test_resolve_missing_work_source_uses_validation_when_explicitly_requested()
     resolved = resolve_missing_work_source(None, year=2024, requested_role="validation")
 
     assert resolved["role"] == "validation"
-    assert resolved["source_id"] == "smn-gauges"
+    # rainfall-materialization PR3 task 3.18: fixed the "smn-gauges" typo to
+    # match adapters/manifests.py's validation-role candidate ("smn-gauge").
+    assert resolved["source_id"] == "smn-gauge"
 
 
 # -----------------------------------------------------------------------------

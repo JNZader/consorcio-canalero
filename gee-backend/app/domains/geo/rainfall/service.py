@@ -156,10 +156,46 @@ def queue_missing_analysis(
     requested_role: str | None = None,
     request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
+    from app.domains.geo.rainfall.repository import recent_done
+
     fingerprint = request_fingerprint or _default_request_fingerprint(
         scope=scope, year=year, event_window=event_window
     )
     source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
+
+    # decision 6: a recent `done` row for this key skips re-enqueue
+    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
+    # the per-poll GEE burn while letting a done-without-revision heal
+    # itself once the cooldown lapses.
+    recent = recent_done(
+        db,
+        source_id=source["source_id"],
+        role=source["role"],
+        scope_kind=scope.kind,
+        scope_id=scope.id,
+        scope_version=scope.version,
+        year=year,
+        since=datetime.now(UTC) - RAINFALL_RECOMPUTE_COOLDOWN,
+    )
+    if recent is not None:
+        record_event(
+            "rainfall.outbox.cooldown",
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
+            outbox_id=str(recent.id),
+        )
+        return {
+            "status": "queued",
+            "outbox_id": str(recent.id),
+            "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+            "year": year,
+            "labels": recent.work_labels,
+        }
+
     existing = (
         db.query(RainfallOutbox)
         .filter_by(

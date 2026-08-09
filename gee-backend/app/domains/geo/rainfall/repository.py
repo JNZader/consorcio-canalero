@@ -406,6 +406,111 @@ def persist_revision(
     return existing_id
 
 
+def recent_done(
+    db: Session,
+    *,
+    source_id: str,
+    role: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    year: int,
+    since: datetime,
+) -> RainfallOutbox | None:
+    """Newest ``done`` row for this key with ``completed_at >= since``
+    (decision 6 request-path cooldown). Seeks
+    ``ix_rainfall_outbox_done_lookup`` (migration ``lluvia_v2_005``) --
+    the existing unique index is ``pending``-only and cannot serve this.
+    """
+    query = (
+        select(RainfallOutbox)
+        .where(RainfallOutbox.source_id == source_id)
+        .where(RainfallOutbox.role == role)
+        .where(RainfallOutbox.scope_kind == scope_kind)
+        .where(RainfallOutbox.scope_id == scope_id)
+        .where(RainfallOutbox.scope_version == scope_version)
+        .where(RainfallOutbox.year == year)
+        .where(RainfallOutbox.status == "done")
+        .where(RainfallOutbox.completed_at.is_not(None))
+        .where(RainfallOutbox.completed_at >= since)
+        .order_by(RainfallOutbox.completed_at.desc())
+        .limit(1)
+    )
+    return db.scalar(query)
+
+
+def current_year_done_keys(db: Session, *, year: int, limit: int) -> list[RainfallOutbox]:
+    """``DISTINCT ON`` the outbox key, newest ``done`` row per key, for
+    sweep stage 1 (Current-Year Revisit Cycle)."""
+    query = (
+        select(RainfallOutbox)
+        .distinct(
+            RainfallOutbox.source_id,
+            RainfallOutbox.role,
+            RainfallOutbox.scope_kind,
+            RainfallOutbox.scope_id,
+            RainfallOutbox.scope_version,
+            RainfallOutbox.year,
+        )
+        .where(RainfallOutbox.status == "done")
+        .where(RainfallOutbox.year == year)
+        .order_by(
+            RainfallOutbox.source_id,
+            RainfallOutbox.role,
+            RainfallOutbox.scope_kind,
+            RainfallOutbox.scope_id,
+            RainfallOutbox.scope_version,
+            RainfallOutbox.year,
+            RainfallOutbox.completed_at.desc(),
+        )
+        .limit(limit)
+    )
+    return list(db.scalars(query).all())
+
+
+def completed_year_daily_done_keys(
+    db: Session, *, before_year: int, limit: int
+) -> list[RainfallOutbox]:
+    """Sweep stage 2's SQL pre-filter (Year-Rollover Finalization step 2): a
+    SUPERSET of candidates, never the termination condition -- the served
+    snapshot's own provenance (``served_state``) decides that.
+    """
+    query = (
+        select(RainfallOutbox)
+        .distinct(
+            RainfallOutbox.scope_kind,
+            RainfallOutbox.scope_id,
+            RainfallOutbox.scope_version,
+            RainfallOutbox.year,
+        )
+        .where(RainfallOutbox.status == "done")
+        .where(RainfallOutbox.role == "daily")
+        .where(RainfallOutbox.year < before_year)
+        .where(RainfallOutbox.request_fingerprint.is_not(None))
+        .order_by(
+            RainfallOutbox.scope_kind,
+            RainfallOutbox.scope_id,
+            RainfallOutbox.scope_version,
+            RainfallOutbox.year,
+            RainfallOutbox.completed_at.desc(),
+        )
+        .limit(limit)
+    )
+    return list(db.scalars(query).all())
+
+
+def acquire_fingerprint_lock(db: Session, *, lock_key: int) -> None:
+    """Transaction-scoped advisory lock keyed on the fingerprint (design.md
+    "Serializing siblings — the per-fingerprint advisory lock"). Blocking
+    wait -- never ``SKIP LOCKED`` -- because blocking is the point: it makes
+    read -> decide -> INSERT atomic per fingerprint across two sibling
+    builds. Released automatically at the per-row COMMIT/ROLLBACK
+    (``pg_advisory_xact_lock``, not the session-level variant), so a dead
+    worker leaks nothing.
+    """
+    db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
+
+
 def claim_outbox_row(db: Session, *, outbox_id: UUID, now: datetime) -> RainfallOutbox | None:
     """Re-claim a candidate row for exclusive per-row processing (decision
     2c). ``None`` means another worker already owns it (still ``pending``
