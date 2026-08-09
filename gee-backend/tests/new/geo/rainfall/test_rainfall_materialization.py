@@ -2713,11 +2713,10 @@ def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monk
     supersession becomes a later served revision (decision 3c).
 
     Uses the REAL current year (`datetime.now(UTC).year`, same pattern as
-    `test_ingest_ops.py::test_resolve_missing_work_source_uses_daily_for_current_year`)
-    with `RAINFALL_DAILY_SOURCE` monkeypatched to `chirps-v3-sat` -- PR 4's
-    flip is not yet live, but this test verifies the sweep/supersession
-    mechanism, not the flip itself, and `chirps-v3-sat` is already wired
-    in `_concrete_fetch`.
+    `test_ingest_ops.py::test_resolve_missing_work_source_uses_daily_for_current_year`).
+    PR 4's flip (task 4.1) is live, so `RAINFALL_DAILY_SOURCE` is
+    `chirps-v3-sat` for real -- no monkeypatch needed; this test verifies
+    the sweep/supersession mechanism, not the flip itself.
 
     Deliberately uses REAL `SessionLocal()` connections throughout (real
     ``get_db``, `db=None` on every task call) instead of the shared `db`
@@ -2736,7 +2735,7 @@ def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monk
 
     from app.auth import require_admin_or_operator
     from app.db.session import SessionLocal, get_db
-    from app.domains.geo.rainfall import service, tasks
+    from app.domains.geo.rainfall import tasks
     from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
     from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
     from app.domains.geo.rainfall.router import router
@@ -2744,8 +2743,6 @@ def test_e2e_same_key_later_date_and_corrected_revision_becomes_visible(db, monk
 
     _ = db  # guarantees test_engine's create_all() has run; see docstring for why the
     # actual work below uses fresh SessionLocal() connections instead.
-
-    monkeypatch.setattr(service, "RAINFALL_DAILY_SOURCE", "chirps-v3-sat")
 
     year = datetime.now(UTC).year
     year_start = datetime(year, 1, 1, tzinfo=UTC)
@@ -3191,21 +3188,21 @@ def test_e2e_year_rollover_transitions_to_final(db, monkeypatch):
     the second POST is a get_snapshot hit and never re-resolves anything.
 
     Same real-SessionLocal()-throughout rationale as tasks 3.12/3.15.
+    PR 4's flip (task 4.1) is live, so `RAINFALL_DAILY_SOURCE` is
+    `chirps-v3-sat` for real -- no monkeypatch needed.
     """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from app.auth import require_admin_or_operator
     from app.db.session import SessionLocal, get_db
-    from app.domains.geo.rainfall import service, tasks
+    from app.domains.geo.rainfall import tasks
     from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
     from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
     from app.domains.geo.rainfall.router import router
     from app.domains.geo.rainfall.service import analysis_request_fingerprint
 
     _ = db  # guarantees test_engine's create_all() has run
-
-    monkeypatch.setattr(service, "RAINFALL_DAILY_SOURCE", "chirps-v3-sat")
 
     year = datetime.now(UTC).year
     year_start = datetime(year, 1, 1, tzinfo=UTC)
@@ -3875,3 +3872,215 @@ def test_process_outbox_batch_stops_cleanly_when_wall_clock_budget_exceeded(
         .count()
     )
     assert still_pending == 3
+
+
+# ---------------------------------------------------------------------------
+# Task 4.1 — daily-source flip: RAINFALL_DAILY_SOURCE -> chirps-v3-sat,
+# fallback_used set for any role whose spec-primary source diverges from
+# the one actually used
+# ---------------------------------------------------------------------------
+
+
+def test_daily_source_flips_to_chirps_v3_sat_with_fallback_flag(db):
+    """RAINFALL_DAILY_SOURCE flips "sqpe-obs" -> "chirps-v3-sat" (TODO(smn),
+    delta spec "Evidence-Gated Source Roles" MODIFIED requirement /
+    design.md decision 7). Every persisted snapshot for a role whose
+    actually-used source diverges from spec.md's named spec-primary
+    candidate carries `fallback_used=True` -- proven end to end through
+    `build_analysis`, not just at the `resolve_missing_work_source` dict
+    level, and triangulated against a role that does NOT diverge so the
+    flag is a real role-vs-source comparison, not a hardcoded constant."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+    from app.domains.geo.rainfall.service import (
+        RAINFALL_DAILY_SOURCE,
+        resolve_missing_work_source,
+    )
+
+    assert RAINFALL_DAILY_SOURCE == "chirps-v3-sat"
+
+    current_year = datetime.now(UTC).year
+    resolved = resolve_missing_work_source(None, current_year)
+    assert resolved["role"] == "daily"
+    assert resolved["source_id"] == "chirps-v3-sat"
+
+    # Case 1: daily role served from chirps-v3-sat -- diverges from
+    # spec.md's daily spec-primary (sqpe-obs) -- fallback_used MUST be True.
+    daily_scope_id = "zone-4-1-daily-fallback"
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=daily_scope_id,
+        scope_version="v1",
+        rows=_daily_intervals(start_day=1, values=[1.0, 2.0, 3.0], provider_revision="v3-nrt"),
+    )
+    db.flush()
+    daily_outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=daily_scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:daily"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-4-1-daily-fallback"),
+    )
+    db.add(daily_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(daily_outbox.id),
+        batch=_fixture_batch_evidence(
+            source_id="chirps-v3-sat",
+            scope_id=daily_scope_id,
+            provider_revision="v3-nrt",
+            quality={
+                "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                "band": "precipitation",
+                "reduction": "mean",
+                "scale_m": 5500,
+                "provider_revision": "v3-nrt",
+            },
+        ),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    daily_revision = RainfallRepository().get_snapshot(db, _hex_fingerprint("fp-4-1-daily-fallback"))
+    assert daily_revision is not None
+    daily_metric = daily_revision.snapshot["annual"]["selected"]
+    assert daily_metric["fallback_used"] is True
+    assert daily_metric["provenance"]["source_id"] == "chirps-v3-sat"
+
+    # Case 2 (triangulation): historical role served from chirps-v3-final --
+    # MATCHES spec.md's historical spec-primary -- fallback_used MUST stay
+    # False, proving the flag is a real comparison, not hardcoded True.
+    historical_scope_id = "zone-4-1-historical-no-fallback"
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="zone",
+        scope_id=historical_scope_id,
+        scope_version="v1",
+        rows=_daily_intervals(start_day=1, values=[1.0, 2.0, 3.0]),
+    )
+    db.flush()
+    historical_outbox = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id=historical_scope_id,
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing", "role:historical"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=_hex_fingerprint("fp-4-1-historical-no-fallback"),
+    )
+    db.add(historical_outbox)
+    db.flush()
+
+    tasks.build_analysis(
+        outbox_id=str(historical_outbox.id),
+        batch=_fixture_batch_evidence(source_id="chirps-v3-final", scope_id=historical_scope_id),
+        db=db,
+        now=datetime(2024, 6, 15, tzinfo=UTC),
+    )
+    db.flush()
+
+    historical_revision = RainfallRepository().get_snapshot(
+        db, _hex_fingerprint("fp-4-1-historical-no-fallback")
+    )
+    assert historical_revision is not None
+    assert historical_revision.snapshot["annual"]["selected"]["fallback_used"] is False
+
+
+# ---------------------------------------------------------------------------
+# Task 4.2 — first real current-year materialization after the flip
+# ---------------------------------------------------------------------------
+
+
+def test_current_year_key_reaches_done_after_flip_and_sweep_finds_it(db, monkeypatch):
+    """With RAINFALL_DAILY_SOURCE flipped live (task 4.1), a current-year
+    POST is no longer blocked by the unwired sqpe-obs adapter: it reaches
+    `done` through the SAME process_outbox cycle PR 1-3 already exercise
+    for the historical role, and the stage-1 daily sweep (task 3.10) now
+    finds a real role='daily' key to refresh -- PR 3 was inert until this
+    flip landed (design.md "Inert until the flip": before it, no
+    role='daily' `done` row with a non-NULL fingerprint could ever exist).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import pending_row_for_key
+    from app.domains.geo.rainfall.router import router
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [(year_start + timedelta(days=offset), 1.0) for offset in range(30)]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-sat":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-4-2-current-year-flip"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+
+    outbox_row = db.query(RainfallOutbox).filter_by(scope_id=scope_id).one()
+    assert outbox_row.role == "daily"
+    assert outbox_row.source_id == "chirps-v3-sat"
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    db.refresh(outbox_row)
+    assert outbox_row.status == "done"
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+    metric = served.json()["annual"]["selected"]
+    assert metric["provenance"]["source_id"] == "chirps-v3-sat"
+    assert metric["temporal_state"] == "provisional"
+    assert metric["fallback_used"] is True
+
+    # Stage-1 daily sweep now finds this key -- see the docstring above for
+    # why PR 3's sweep was inert before this flip.
+    revisit = tasks.revisit_stale(db=db, now=datetime(year, 2, 1, tzinfo=UTC))
+    assert revisit["enqueued"] >= 1
+    assert (
+        pending_row_for_key(
+            db,
+            source_id="chirps-v3-sat",
+            role="daily",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            year=year,
+        )
+        is not None
+    )

@@ -419,13 +419,21 @@ def test_resolve_missing_work_source_uses_intensity_for_event_window():
 
 
 def test_resolve_missing_work_source_uses_daily_for_current_year():
+    """rainfall-materialization PR4 task 4.1: RAINFALL_DAILY_SOURCE flips
+    "sqpe-obs" -> "chirps-v3-sat" (an interim default under the daily MAY
+    fallback clause, delta spec "Evidence-Gated Source Roles" MODIFIED
+    requirement; TODO(smn) marks it tracked technical debt, not a
+    completed validation). Before the flip this pinned "sqpe-obs" -- the
+    unimplemented provider that made the daily role permanently
+    unreachable; PR 3's sweep stayed inert until this assertion (and the
+    constant) changed."""
     from app.domains.geo.rainfall.service import resolve_missing_work_source
 
     current_year = datetime.now(UTC).year
     resolved = resolve_missing_work_source(None, year=current_year)
 
     assert resolved["role"] == "daily"
-    assert resolved["source_id"] == "sqpe-obs"
+    assert resolved["source_id"] == "chirps-v3-sat"
     assert resolved["interval_start"] == datetime(current_year, 1, 1, 0, 0, tzinfo=UTC)
     assert resolved["interval_end"] == datetime(current_year + 1, 1, 1, 0, 0, tzinfo=UTC)
 
