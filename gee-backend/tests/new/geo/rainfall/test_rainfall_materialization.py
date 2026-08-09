@@ -551,3 +551,51 @@ def test_backfill_missing_shares_transaction_with_ingest(db, monkeypatch):
             _count_interval_rows(fresh, source_id="chirps-v3-final", scope_id="zone-txn-share")
             == 0
         )
+
+
+# ===========================================================================
+# Phase 2 (PR 2) — Compute
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Task 2.2 — RainfallOutbox.request_fingerprint column
+# ---------------------------------------------------------------------------
+
+
+def test_outbox_model_has_request_fingerprint_column(db):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+
+    now = datetime(2024, 1, 1, tzinfo=UTC)
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-fingerprint-column",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=now,
+        interval_end=now + timedelta(days=365),
+        request_fingerprint="a" * 64,
+    )
+    db.add(row)
+    db.flush()
+
+    fetched = db.get(RainfallOutbox, row.id)
+    assert fetched.request_fingerprint == "a" * 64
+
+    # Nullable: a legacy row (decision 4b) is a valid row with no fingerprint.
+    legacy = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-fingerprint-legacy",
+        scope_version="v1",
+        year=2023,
+        work_labels=["analysis_missing"],
+        interval_start=now,
+        interval_end=now + timedelta(days=365),
+    )
+    db.add(legacy)
+    db.flush()
+    assert db.get(RainfallOutbox, legacy.id).request_fingerprint is None

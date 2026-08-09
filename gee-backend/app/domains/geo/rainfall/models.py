@@ -155,6 +155,7 @@ class RainfallOutbox(UUIDMixin, TimestampMixin, Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     @validates("status")
     def _validate_status(self, _key: str, value: str) -> str:
@@ -173,6 +174,21 @@ Index(
     RainfallOutbox.year,
     unique=True,
     postgresql_where=(RainfallOutbox.status == "pending"),
+)
+
+# Non-unique done-lookup index (decision 6, migration lluvia_v2_005): the
+# pending-unique index above cannot serve a "most recent done row for this
+# key" seek. Serves `recent_done` (PR3) and gives the current-year revisit
+# sweep its `DISTINCT ON (key) ... ORDER BY key, completed_at DESC` for free.
+Index(
+    "ix_rainfall_outbox_done_lookup",
+    RainfallOutbox.source_id,
+    RainfallOutbox.role,
+    RainfallOutbox.scope_kind,
+    RainfallOutbox.scope_id,
+    RainfallOutbox.scope_version,
+    RainfallOutbox.year,
+    RainfallOutbox.completed_at,
 )
 
 
