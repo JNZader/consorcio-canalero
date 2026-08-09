@@ -1306,3 +1306,82 @@ def _expected_backoff_ceiling() -> float:
     from app.domains.geo.rainfall.tasks import _backoff_seconds
 
     return _backoff_seconds(1) + 1
+
+
+# ---------------------------------------------------------------------------
+# Task 2.14 — E2E: POST -> 202 -> process_outbox -> POST -> 200
+# ---------------------------------------------------------------------------
+
+
+class _FakeGeeClientForE2E:
+    """Minimal :class:`GeeZonalClient` stand-in, local to this E2E test —
+    only the GEE network boundary is faked (design.md Testing Strategy);
+    ``ingest_source_scope`` itself is never monkeypatched, so the real
+    adapter, zonal batch builder, resilient-fetch wrapper, persistence and
+    compute layer all run."""
+
+    def __init__(self, *, series: list[tuple[datetime, float]]) -> None:
+        self.series = series
+        self.scale_meters = 5500
+
+    def geometry(self, *, scope_kind: str, scope_id: str) -> object:
+        return ("asset", scope_kind, scope_id)
+
+    def zonal_series(self, *, collection_id, start, end, geometry, band):
+        return list(self.series)
+
+
+def test_e2e_post_202_then_200_without_monkeypatching_ingest(db, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import get_db
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.router import router
+
+    year = 2024  # leap year: 366 daily slots -> full coverage
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    series = [
+        (year_start + timedelta(days=offset), 1.0 + (offset % 5) * 0.2) for offset in range(366)
+    ]
+
+    def fake_concrete_fetch(source_id):
+        if source_id != "chirps-v3-final":
+            raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+        return ChirpsV3Adapter(gee=_FakeGeeClientForE2E(series=series)).fetch
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = lambda: db
+    app.include_router(router)
+    client = TestClient(app)
+
+    # A past year routes to role="historical"/source_id="chirps-v3-final"
+    # (resolve_missing_work_source) -- the wired adapter. The current year
+    # would route to "daily"/"sqpe-obs", which stays deliberately unwired
+    # until PR 4's flip.
+    payload = {"scope": {"kind": "zone", "id": "zone-e2e-202-200", "version": "v1"}, "year": year}
+
+    queued = client.post("/rainfall/analyses", json=payload)
+    assert queued.status_code == 202
+    assert queued.json()["status"] == "queued"
+
+    result = tasks.process_outbox(db=db)
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+
+    served = client.post("/rainfall/analyses", json=payload)
+    assert served.status_code == 200
+
+    body = served.json()
+    assert body["scope"] == {"kind": "zone", "id": "zone-e2e-202-200", "version": "v1"}
+    assert body["year"] == year
+    metric = body["annual"]["selected"]
+    assert metric["state"] == "available"
+    assert metric["value"] is not None
+    assert metric["provenance"]["source_id"] == "chirps-v3-final"
+    assert metric["temporal_state"] == "final"
