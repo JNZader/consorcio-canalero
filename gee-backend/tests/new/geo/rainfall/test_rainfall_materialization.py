@@ -3215,3 +3215,20 @@ def test_e2e_year_rollover_transitions_to_final(db, monkeypatch):
             ).delete()
             cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.17 — the rainfall-revisit-stale Beat entry
+# ---------------------------------------------------------------------------
+
+
+def test_revisit_stale_beat_entry_is_registered():
+    from app.core.celery_app import celery_app
+
+    entry = celery_app.conf.beat_schedule.get("rainfall-revisit-stale")
+    assert entry is not None
+    assert entry["task"] == "rainfall.revisit_stale"
+    schedule = entry["schedule"]
+    assert schedule.minute == {30}
+    assert schedule.hour == {3}
+    assert entry["options"] == {"queue": "celery"}
