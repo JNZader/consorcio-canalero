@@ -110,3 +110,14 @@ Diff: `feat/rainfall-materialization-01-persistence...feat/rainfall-materializat
 | R4-003 | resilience | tasks.py:451-491, 250-258 | WARNING | info | All failures funneled into row.last_error; events carry no error class; revision-written vs no-op indistinguishable in logs. Decision 1b says compute failures must be loud. Fix: error_type+truncated msg on failed/delayed events; rainfall.build.revision_written event. **Addressed** in `a08fb94`: `rainfall.outbox.failed`/`rainfall.outbox.delayed` now carry `error_type` (exception class name) and a 200-char-truncated `error_message`, captured inside the `except` block since `except ... as exc` unbinds `exc` on exit. `_persist_analysis_revision` emits `rainfall.build.revision_written` with `{data_revision, created}`, `created` derived from a pre-write existence check (persist_revision's own ON CONFLICT DO NOTHING branch doesn't surface new-vs-noop to the caller). 3 new tests assert the decoded event payloads via the `caplog`/`record_event` seam. |
 
 Verified clean by the lens: crash-between-rows recovery (SKIP LOCKED releases on connection death, no claimed-limbo), frozen-now fix complete, normalize_snapshot cannot 503 a build_snapshot envelope (degrades to unavailable), NULL-fingerprint tolerance, downgrade path.
+
+### PR2 scoped re-review (fix round 1) — VERDICT: CLEAN, gate PASS
+
+R4-001 RESOLVED (verified: zero ORM lifecycle writes remain; batched insert per-row uuid4 correct per vendored crud.py; landed_ids-gated linkage; regression test production-shape and revert-sensitive — every _autoflush site gated on the flag). R4-003 verified (capture inside except, per-row init, 200-char bound, created-accuracy vs uq triple). New info rows (folded into PR3 batch):
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| R4-101 | resilience | tasks.py:274-278 | WARNING | info | revision_written fires inside the savepoint pre-commit; a commit failure yields an event for rolled-back work. Bounded: outbox.done (post-commit) is the durable signal. Action: document in workbook. |
+| R4-102 | resilience | docs/lluvia-v2-observability-workbook.md:51-52 vs metrics.py:6-8 | WARNING | info | Workbook catalogue (the declared contract) missing revision_written + error_type/error_message fields. Action: update catalogue in PR3 (which adds more events anyway). |
+| R4-103 | resilience | repository.py:337-353 | WARNING | info | Multi-row lifecycle INSERT never exercised with N>1 pairs — the primary NRT-correction shape. Mechanism verified vs vendored SQLAlchemy; direct coverage zero. Action: N>1 test in PR3. |
+| R4-104 | resilience | repository.py:164-187 | SUGGESTION | info | record_supersession dead (zero callers) with its insert shape duplicated inline; stale comment points at it. Action: single implementation in PR3. |
