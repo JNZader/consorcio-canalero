@@ -599,3 +599,56 @@ def test_outbox_model_has_request_fingerprint_column(db):
     db.add(legacy)
     db.flush()
     assert db.get(RainfallOutbox, legacy.id).request_fingerprint is None
+
+
+# ---------------------------------------------------------------------------
+# Task 2.3 — queue_missing_analysis stores the router-computed fingerprint
+# ---------------------------------------------------------------------------
+
+
+def test_queue_missing_analysis_stores_router_computed_fingerprint(db):
+    """decision 4: the router already computes ``analysis_request_fingerprint``
+    for its ``get_snapshot`` lookup (router.py:130) — passing that exact
+    value into ``queue_missing_analysis`` removes the drift class a second,
+    independent computation could introduce."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-fp-router", version="v1", regional_estimate=False)
+    fingerprint = "deadbeef" * 8
+
+    result = queue_missing_analysis(
+        db,
+        scope=scope,
+        year=2024,
+        labels=("analysis_missing",),
+        request_fingerprint=fingerprint,
+    )
+    db.flush()
+
+    row = db.get(RainfallOutbox, result["outbox_id"])
+    assert row.request_fingerprint == fingerprint
+
+
+def test_queue_missing_analysis_recomputes_fingerprint_when_not_passed(db):
+    """Backward-compat fallback (decision 4): a caller that does not pass
+    ``request_fingerprint`` still gets a stored fingerprint, computed from
+    the same canonical shape router.py builds — including omitting
+    ``event_window`` entirely rather than setting it to ``None``, because
+    ``analysis_request_fingerprint``'s JSON canonicalization treats a
+    present-but-null key differently from an absent one."""
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint, queue_missing_analysis
+
+    scope = AnalysisScope(kind="zone", id="zone-fp-fallback", version="v1", regional_estimate=False)
+    expected = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": "zone-fp-fallback", "version": "v1"}, "year": 2024}
+    )
+
+    result = queue_missing_analysis(db, scope=scope, year=2024, labels=("analysis_missing",))
+    db.flush()
+
+    row = db.get(RainfallOutbox, result["outbox_id"])
+    assert row.request_fingerprint == expected

@@ -127,7 +127,8 @@ def read_analysis(
     }
     if payload.event_window is not None:
         request["event_window"] = payload.event_window.model_dump(mode="json")
-    revision = RainfallRepository().get_snapshot(db, analysis_request_fingerprint(request))
+    fingerprint = analysis_request_fingerprint(request)
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
     if revision is None:
         queued = queue_missing_analysis(
             db,
@@ -137,6 +138,7 @@ def read_analysis(
             event_window=(
                 payload.event_window.model_dump(mode="json") if payload.event_window else None
             ),
+            request_fingerprint=fingerprint,
         )
         return JSONResponse(queued, status_code=202)
     try:

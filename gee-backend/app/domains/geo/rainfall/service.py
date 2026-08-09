@@ -107,6 +107,25 @@ def analysis_request_fingerprint(request: Any) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _default_request_fingerprint(
+    *, scope: Any, year: int, event_window: dict[str, Any] | None
+) -> str:
+    """Fallback fingerprint for a caller that does not pass one explicitly
+    (decision 4). Mirrors router.py's own request-dict construction exactly,
+    including OMITTING ``event_window`` entirely when it is ``None`` rather
+    than setting it — ``analysis_request_fingerprint``'s JSON canonicalization
+    does not treat a present-but-null key the same as an absent one, so a
+    careless recompute here would silently diverge from the router's own
+    fingerprint for the identical request."""
+    request: dict[str, Any] = {
+        "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+        "year": year,
+    }
+    if event_window is not None:
+        request["event_window"] = event_window
+    return analysis_request_fingerprint(request)
+
+
 def queue_missing_analysis(
     db: Any,
     *,
@@ -115,7 +134,11 @@ def queue_missing_analysis(
     labels: tuple[str, ...] = ("analysis_missing",),
     event_window: dict[str, Any] | None = None,
     requested_role: str | None = None,
+    request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
+    fingerprint = request_fingerprint or _default_request_fingerprint(
+        scope=scope, year=year, event_window=event_window
+    )
     source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
     existing = (
         db.query(RainfallOutbox)
@@ -160,6 +183,7 @@ def queue_missing_analysis(
         work_labels=list(labels_with_role),
         interval_start=source["interval_start"],
         interval_end=source["interval_end"],
+        request_fingerprint=fingerprint,
     )
     db.add(outbox)
     db.flush()
