@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from io import StringIO
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -117,10 +118,11 @@ def test_analysis_route_server_resolves_fingerprint_and_revision(monkeypatch):
     from app.domains.geo.rainfall.service import analysis_request_fingerprint
 
     captured: list[str] = []
+    revision_id = uuid4()
 
     def get_snapshot(self, db, request_fingerprint):
         captured.append(request_fingerprint)
-        return SimpleNamespace(policy_revision="v1", snapshot=_snapshot())
+        return SimpleNamespace(id=revision_id, policy_revision="v1", snapshot=_snapshot())
 
     monkeypatch.setattr(RainfallRepository, "get_snapshot", get_snapshot)
     payload = {"scope": {"kind": "zone", "id": "zone-4", "version": "z3"}, "year": 2026}
@@ -130,6 +132,9 @@ def test_analysis_route_server_resolves_fingerprint_and_revision(monkeypatch):
     assert response.status_code == 200, response.text
     assert captured == [analysis_request_fingerprint(payload)]
     assert response.json()["annual"]["selected"]["value"] == 21.0
+    # JDB-301: the served envelope must carry the revision id the CSV export
+    # contract keys off (router.py read_analysis).
+    assert response.json()["analysis_revision_id"] == str(revision_id)
 
 
 def test_chunked_oversized_malformed_analysis_body_is_rejected_before_json_parsing():

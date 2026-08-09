@@ -145,6 +145,15 @@ def read_analysis(
         normalized = normalize_snapshot(
             revision.snapshot, expected_policy_revision=revision.policy_revision
         )
+        # JDB-301 (review-ledger.md "Judgment Day -- APPLY-PHASE completion"):
+        # build_snapshot never sets this field (it does not know its own
+        # persisted revision id yet), so it must be injected here, once the
+        # served revision row is known. Already allow-listed in
+        # SNAPSHOT_ROOT_KEYS (service.py:143); normalize_snapshot copies the
+        # envelope via `dict(snapshot)` and never strips extra/missing root
+        # keys, so setting it post-normalize is safe and does not need to
+        # touch normalize_snapshot itself.
+        normalized["analysis_revision_id"] = str(revision.id)
         record_event(
             "rainfall.analysis.served",
             revision_id=str(getattr(revision, "id", "")),
