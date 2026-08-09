@@ -602,3 +602,62 @@ now that all 4 PRs are code-complete. Phase 5 (ops/rollout, non-code: tasks 5.1-
 the 2 failed `sqpe-obs` prod outbox rows, the two-tier kill-switch runbook note, and the
 staging `comparison_end` validation with the partner) remains for a human/ops action after
 `sdd-verify`, not for another `sdd-apply` batch.
+
+## Apply-phase JD fix round 1 (2026-08-09)
+
+`judgment-day` ran on the whole-chain diff (tracker...04-flip) per "Next Recommended" above.
+Judges A+B (blind, parallel) found no BLOCKER; one single-judge CRITICAL (JDB-301) triaged REAL
+by the orchestrator, plus 3 approved info fixes (JDA-301, JDA-302, JDA-303). Full findings and
+resolutions: `review-ledger.md` "Judgment Day — APPLY-PHASE completion" + "Apply-phase JD fix
+round 1". Branch: `feat/rainfall-materialization-04-flip` (same branch as Batch 4/PR4 — this is
+a fix-forward round on top of it, not a new PR).
+
+- **JDB-301 (CRITICAL, confirmed real, fixed)**: `build_snapshot` never sets
+  `analysis_revision_id`, and `read_analysis` never injected it before returning the served
+  envelope, so the frontend CSV export contract (`consorcio-web/src/lib/api/rainfall.ts:75`,
+  `RainfallDetailPanel.tsx:235` — builds `GET /analyses/{analysis_revision_id}.csv`) was
+  unreachable for every real analysis. Fix: `read_analysis` now sets
+  `normalized["analysis_revision_id"] = str(revision.id)` immediately after
+  `normalize_snapshot` returns — the key was already allow-listed in `SNAPSHOT_ROOT_KEYS` and
+  `normalize_snapshot` never strips extra/missing root keys, so no change to
+  `normalize_snapshot` itself was needed. RED confirmed pre-fix (`KeyError:
+  'analysis_revision_id'`), GREEN post-fix. `gee-backend/` only — no frontend files touched.
+- **JDA-301/JDA-302 (WARNING, info, approved test fixes)**: a new E2E regression proves the
+  delta spec's "Corrected value becomes visible as a later revision" scenario end-to-end
+  (restating an already-served slot, not appending a new day — distinct from the existing
+  JDA-001 date-driven regression); the concurrent-identical-POST regression was repaired to
+  hijack the actual query path (`repository.pending_row_for_key`) instead of the never-called
+  `Session.query`, so it now genuinely exercises the `except IntegrityError` recovery branch
+  instead of passing vacuously via the non-racing reuse path.
+- **JDA-303 (SUGGESTION, info, approved doc fix)**: design.md's `build_analysis` Interfaces
+  block corrected — the advisory lock is the first database statement *after* resolving the
+  outbox row and its fingerprint, not literally the first statement. Doc-only.
+
+### Files Changed (this round)
+
+| File | Action | Finding |
+|------|--------|---------|
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified: `read_analysis` injects `analysis_revision_id` into the served envelope | JDB-301 |
+| `gee-backend/tests/new/geo/rainfall/test_prepr_contract_fixes.py` | Modified: `SimpleNamespace` revision mock carries an `id`; asserts the served field | JDB-301 |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_materialization.py` | Modified: new boundary test (JDB-301), new E2E correction-visibility test (JDA-301), rewritten concurrent-POST test (JDA-302) | JDB-301, JDA-301, JDA-302 |
+| `openspec/changes/rainfall-materialization/design.md` | Modified: `build_analysis` Interfaces "FIRST database statement" claim tightened | JDA-303 |
+| `openspec/changes/rainfall-materialization/review-ledger.md` | JDB-301 → `fixed`; JDA-301/302/303 evidence appended `**Addressed**`; new "Apply-phase JD fix round 1" subsection | JDB-301, JDA-301, JDA-302, JDA-303 |
+| `openspec/changes/rainfall-materialization/apply-progress.md` | This file — new "Apply-phase JD fix round 1" section | — |
+
+### Git (this round)
+
+- `d0b80a5` — fix(rainfall): serve analysis_revision_id in the read_analysis envelope (JDB-301 prod fix + `test_prepr_contract_fixes.py` mock update)
+- `8bf49ee` — test(rainfall): apply-phase JD fix round regressions (JDB-301, JDA-301, JDA-302)
+- `4aeec69` — docs(rainfall): tighten build_analysis's "FIRST database statement" claim (JDA-303)
+- No push, no PR created — local branch only, per protocol.
+
+### Final Verification (this round)
+
+- `pytest tests/new/geo/rainfall/ -v` → **244 passed**, exit 0 (242 prior + 2 new: JDB-301's boundary test, JDA-301's E2E test; JDA-302 rewrote an existing test in place, no count change).
+- `pytest tests/new/ -v` → **1917 passed, 5 skipped**, exit 0 (1915 prior + 2 new, matches).
+- `pytest tests/test_mutation_targets_rainfall.py -v` → **106 passed**, exit 0 (unchanged).
+
+### Next Recommended
+
+A scoped re-judge over this fix round's diff + the updated ledger (per the orchestrator's
+convergence protocol), then `sdd-verify` for the whole `rainfall-materialization` change.
