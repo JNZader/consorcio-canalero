@@ -204,3 +204,9 @@ Judges A+B, blind, parallel, whole-chain diff (tracker...04-flip), scoped to cro
 - Final verification: `pytest tests/new/geo/rainfall/ -v` → 244 passed, exit 0 (243 prior + 1 new test — JDB-301's boundary test; JDA-301/JDA-302 rewrote/added tests within the same file's existing count baseline plus the one net-new JDA-301 test already counted above). `pytest tests/new/ -v` full count recorded in apply-progress.md.
 - Skill Resolution: paths-injected (pytest runner command supplied verbatim in the delegate prompt; no skill file lookup needed for this surgical backend fix).
 - No frontend files touched, per instruction (`consorcio-web/` untouched by this round; the JDB-301 fix is entirely `gee-backend/`).
+
+### Apply-phase JD — scoped re-judge results — TERMINAL: JUDGMENT: APPROVED ✅
+
+Both judges CLEAN. Judge A: JDB-301/JDA-301/JDA-302 resolutions verified statically (injection inside try — 503 path uncontaminated; per-call import makes the hijack real; served-not-just-written assertions). Judge B (original finder): verified empirically — live pytest against real Postgres (boundary test, contract file 20/20, full 244 suite, two runs, leak-free); frontend contract closed end-to-end (RainfallDetailPanel exportCsv ← real UUID). New rows: JDB-405 (doc test-count baselines 243-vs-242 prose inconsistency, both resolve to verified 244 — hygiene only). Round 1 of the apply-phase JD closed within budget; no round 2 needed.
+
+**Apply phase final state**: 4 PRs code-complete (47/47 tasks), suite 1917 passed / 5 skipped, rainfall dir 244, mutation targets 106. Quality history: 4R full fan-out on PR3 (3-lens convergence on the sweep-starvation defect, 3/3 refuter panel), single-lens gates on PR1/PR2 (1 BLOCKER caught+fixed each), apply-phase JD (1 CRITICAL cross-boundary catch: CSV export). All BLOCKER/CRITICAL: fixed+verified. All WARNING/SUGGESTION: info, addressed or tracked. Next: sdd-verify.
