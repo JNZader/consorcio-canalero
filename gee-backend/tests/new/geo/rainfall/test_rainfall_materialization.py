@@ -3102,3 +3102,116 @@ def test_finalization_is_retried_not_abandoned_then_terminates(db, monkeypatch):
             ).delete()
             cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
             cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.16 — E2E: year rollover (JDB-101 regression at the API boundary)
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_year_rollover_transitions_to_final(db, monkeypatch):
+    """POST year Y while Y is current -> 200 provisional/chirps-v3-sat.
+    Move the seam to January of Y+1 with an adequate final series, run
+    revisit_stale(now=...) + process_outbox(now=...), POST the SAME
+    payload again -> 200 final/chirps-v3-final, both revisions retained
+    under the one request_fingerprint. The POST itself is never
+    clock-seamed (the router routes on the real clock by design) --
+    the second POST is a get_snapshot hit and never re-resolves anything.
+
+    Same real-SessionLocal()-throughout rationale as tasks 3.12/3.15.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.auth import require_admin_or_operator
+    from app.db.session import SessionLocal, get_db
+    from app.domains.geo.rainfall import service, tasks
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+    from app.domains.geo.rainfall.router import router
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    _ = db  # guarantees test_engine's create_all() has run
+
+    monkeypatch.setattr(service, "RAINFALL_DAILY_SOURCE", "chirps-v3-sat")
+
+    year = datetime.now(UTC).year
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    is_leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    days_in_year = 366 if is_leap else 365
+
+    daily_client = _FakeGeeClientForE2E(
+        series=[(year_start + timedelta(days=offset), 1.0) for offset in range(days_in_year)]
+    )
+    # Inadequate final series until the seam moves -- the sweep must not
+    # find it adequate before the test says so (kept mutable).
+    final_client = _FakeGeeClientForE2E(series=[])
+
+    def fake_concrete_fetch(source_id):
+        if source_id == "chirps-v3-sat":
+            return ChirpsV3Adapter(gee=daily_client).fetch
+        if source_id == "chirps-v3-final":
+            return ChirpsV3Adapter(gee=final_client).fetch
+        raise NotImplementedError(f"unexpected source_id in this E2E test: {source_id!r}")
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", fake_concrete_fetch)
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.dependency_overrides[get_db] = get_db
+    app.include_router(router)
+    client = TestClient(app)
+
+    scope_id = "zone-e2e-year-rollover"
+    payload = {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+
+    def _revision_count() -> int:
+        with SessionLocal() as check:
+            return check.scalar(
+                select(func.count())
+                .select_from(RainfallAnalysisRevision)
+                .where(RainfallAnalysisRevision.request_fingerprint == fingerprint)
+            )
+
+    try:
+        queued = client.post("/rainfall/analyses", json=payload)
+        assert queued.status_code == 202
+
+        result_provisional = tasks.process_outbox(now=datetime(year, 6, 15, 12, tzinfo=UTC))
+        assert result_provisional["succeeded"] == 1
+
+        served_provisional = client.post("/rainfall/analyses", json=payload)
+        assert served_provisional.status_code == 200
+        metric_provisional = served_provisional.json()["annual"]["selected"]
+        assert metric_provisional["temporal_state"] == "provisional"
+        assert metric_provisional["provenance"]["source_id"] == "chirps-v3-sat"
+        assert _revision_count() == 1
+
+        # Move the seam to January of Y+1 with an adequate final series.
+        final_client.series = [
+            (year_start + timedelta(days=offset), 1.0) for offset in range(days_in_year)
+        ]
+
+        now_rollover = datetime(year + 1, 1, 15, 12, tzinfo=UTC)
+        revisit = tasks.revisit_stale(now=now_rollover)
+        assert revisit["finalization_enqueued"] == 1
+        result_final = tasks.process_outbox(now=now_rollover)
+        assert result_final["succeeded"] == 1
+
+        served_final = client.post("/rainfall/analyses", json=payload)
+        assert served_final.status_code == 200
+        body_final = served_final.json()
+        metric_final = body_final["annual"]["selected"]
+        assert metric_final["temporal_state"] == "final"
+        assert metric_final["provenance"]["source_id"] == "chirps-v3-final"
+        assert _revision_count() == 2  # both revisions retained
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallAnalysisRevision).filter_by(
+                request_fingerprint=fingerprint
+            ).delete()
+            cleanup.query(RainfallOutbox).filter_by(scope_id=scope_id).delete()
+            cleanup.commit()
