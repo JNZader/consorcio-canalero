@@ -107,9 +107,11 @@ Two sweeps for the same key cannot normally overlap — `ix_rainfall_outbox_pend
 Per run:
 
 1. `current_year = (now or datetime.now(UTC)).year` — the same clock `resolve_missing_work_source` uses to route a request to the daily role (service.py:60-62), reached through the `now` seam declared in Interfaces so tests can cross a year boundary. At the sweep's fixed 03:30 local hour the UTC instant is 06:30 the same day (Argentina is UTC-3 and observes no DST), so the UTC year and the policy calendar year (temporal.py:91-95) cannot disagree; picking the hour is what removes the year-boundary skew.
-2. Select the keys: `SELECT DISTINCT ON (source_id, role, scope_kind, scope_id, scope_version, year) … WHERE status = 'done' AND year = :current_year ORDER BY <key>, completed_at DESC`, bounded at `MAX_OUTBOX_BATCH` (50, tasks.py:14). `DISTINCT ON` is mandatory because the sweep itself appends one `done` row per key per day.
+2. Select the keys, **rotated** (C2 — review-ledger.md "Pre-PR review — PR3"; PR3 review fix round 1): `SELECT * FROM (SELECT DISTINCT ON (source_id, role, scope_kind, scope_id, scope_version, year) … WHERE status = 'done' AND year = :current_year ORDER BY <key>, completed_at DESC) AS candidates ORDER BY completed_at ASC LIMIT :limit` (`MAX_OUTBOX_BATCH`, 50, tasks.py:14; `repository.current_year_done_keys`). `DISTINCT ON` is still mandatory because the sweep itself appends one `done` row per key per day. The OUTER `ORDER BY completed_at ASC` is the fix for what a bare `LIMIT` on the `DISTINCT ON` order would otherwise be: a **monotonically growing set with a deterministic, unrotated prefix cursor**. The `DISTINCT ON` columns are a fixed lexicographic key; without the outer re-sort, the same `limit` keys — whichever sort first — are served every single sweep, and any key sorted past position `limit` once `>= limit` OTHER keys exist is **never selected again**, ever: its `comparison_end` freezes for the rest of the year, silently (this is JDA-001's own bug shape, reintroduced at scale by the very mechanism JDA-001's fix built) — and at scale it is exactly the delta spec's own Cadence requirement failing: "the system MUST re-materialize **every** already-materialized analysis key" (specs/rainfall-analysis/spec.md:35, this change's own delta spec — not the main spec.md:167/238 citations used elsewhere in this document for the unrelated display/eligibility MUSTs). Rotation closes it for free: a key's own successful refresh gives its NEXT `done` row a fresh `completed_at` (step 4 below, once the refreshed row is processed), which is exactly what sends it to the back of the least-recently-attempted-first queue — no separate bookkeeping, no additional column.
 3. Skip a key that already has a `pending` row (its refresh is still in flight) or whose newest `done` row has a NULL `request_fingerprint` (the decision-4b legacy shape, which compute cannot address) → `rainfall.revisit.skipped{reason:"pending_in_flight"|"fingerprint_unavailable"}`.
 4. INSERT a fresh `pending` row copying the key, `work_labels`, `interval_start/end` and `request_fingerprint` from that newest `done` row, with `retry_count = 0` and `next_attempt_at = now()`. Catch `IntegrityError` on `ix_rainfall_outbox_pending_unique` → rollback and skip, the same discipline decision 8 applies to `queue_missing_analysis`.
+
+**Sweep-level observability (PR3 review fix round 1, merging R4-203 + R2-004).** Each run emits `rainfall.revisit.completed{revisit_scanned, revisit_enqueued, revisit_skipped, truncated}` after stage 1 finishes, where `truncated = (revisit_scanned == MAX_OUTBOX_BATCH)` — the caller's signal that the candidate set may hold more than this run reached, closed by rotation on the next sweep rather than by raising the limit. Stage 1 runs inside its own `try`/`except`: an unexpected exception is recorded as `rainfall.revisit.failed{error_type, error_message}` and stage 2 still runs this cycle (a completed year's transition must not go a day late because stage 1 hit a transient DB error), and the task — `bind=True, max_retries=2` restored on `revisit_stale` after the two-stage rewrite dropped it without an equivalent — retries via Celery's own mechanism once both stages have run and recorded their events.
 
 The refreshed row then rides the normal cycle: `_process_outbox_row` re-fetches the full year (tasks.py:112-113), `persist_intervals` inserts the days that did not exist yet and supersedes the ones CHIRPS restated (decision 3c), and `build_analysis` writes a **new** revision because `data_revision` covers both the resolved interval values and the advanced disclosure window (decision 3b). `get_snapshot` serves newest-first (repository.py:26-33), so the next poll of the *same* fingerprint returns the newer snapshot — the request fingerprint never changes, only the revision behind it does.
 
@@ -125,6 +127,7 @@ What the exemption does **not** cover is the provisional→final transition. An 
 - **Rows**: `rainfall_outbox` grows by one `done` row per current-year key per day (~365/key/year) and `rainfall_analysis_revision` by at most one row per key per day. Both are small and additive; the outbox has no retention job today — tracked, out of scope.
 - **Kill switch**: a role gated off by `analisis/rainfall_feature_flags` is skipped, not consumed, by `_process_outbox_batch` (tasks.py:215-225), and `ix_rainfall_outbox_pending_unique` caps the backlog at one pending row per key, so a kill-switched deployment accumulates at most one stale pending row per key. Removing the Beat entry is the sweep's own kill switch.
 - **Inert until the flip**: before PR 4, current-year keys route to the daily role and `sqpe-obs` is unwired (tasks.py:66-70), so no current-year key ever reaches `done` and the sweep finds nothing. The machinery ships dark; the flip stays the single step that opens traffic.
+- **Rotation bound (PR3 review fix round 1, C2)**: a key sorted past position `limit` is reached within a bounded number of sweeps proportional to `⌈key_count / MAX_OUTBOX_BATCH⌉`, not never — verified against the reproducibility refuter's own repro (51 current-year keys, one sorted lexicographically last, reached on the second sweep once the first sweep's 50 refreshes are processed and rotate to the back).
 
 ## Year-Rollover Finalization
 
@@ -141,10 +144,9 @@ served_state(snapshot) -> (source_id, temporal_state) | None    # compute.py
 **Selection algorithm** — per run, after stage 1, with its own `MAX_OUTBOX_BATCH` budget:
 
 1. `current_year` comes from the same `now` seam stage 1 uses (see **Current-Year Revisit Cycle** step 1 for why the 03:30 local hour makes the UTC year and the policy calendar year agree).
-2. SQL pre-filter — a cheap **superset**, never the termination condition:
-   `WHERE status = 'done' AND role = 'daily' AND year < :current_year AND request_fingerprint IS NOT NULL`, `DISTINCT ON (scope_kind, scope_id, scope_version, year) … ORDER BY <scope+year>, completed_at DESC`, bounded at `MAX_OUTBOX_BATCH` (tasks.py:14). `role = 'daily'` is exact rather than heuristic: `resolve_missing_work_source` assigns `role="daily"` **only** when `year == datetime.now(UTC).year` (service.py:60-62), so a `daily` row on a completed year is precisely "materialized while the year was still running". A `historical` row was already final-sourced and needs nothing. `request_fingerprint IS NOT NULL` also makes every legacy row inert — the column does not exist before `lluvia_v2_005`, so all pre-change rows are `NULL` (decision 4b).
-3. **Termination condition — the load-bearing step.** For each candidate, read the newest revision with `get_snapshot(db, request_fingerprint)` (repository.py:23-33) and branch on `served_state`:
-   - `("chirps-v3-final", "final")` → **terminate**: an adequate final revision has actually been written and is what staff are being served. Skip this key, today and forever.
+2. SQL pre-filter, **now WITH the served-state termination pushed into it** (C1 — review-ledger.md "Pre-PR review — PR3"; PR3 review fix round 1). Base filter: `WHERE status = 'done' AND role = 'daily' AND year < :current_year AND request_fingerprint IS NOT NULL`. `role = 'daily'` is exact rather than heuristic: `resolve_missing_work_source` assigns `role="daily"` **only** when `year == datetime.now(UTC).year` (service.py:60-62), so a `daily` row on a completed year is precisely "materialized while the year was still running". A `historical` row was already final-sourced and needs nothing. `request_fingerprint IS NOT NULL` also makes every legacy row inert — the column does not exist before `lluvia_v2_005`, so all pre-change rows are `NULL` (decision 4b). **Added exclusion**: a lateral read of each candidate's own newest revision (`created_at DESC, id DESC` — the same order `get_snapshot` uses) that already discloses `("chirps-v3-final", "final")`, via `IS NOT TRUE` on the JSON comparison so SQL's three-valued logic KEEPS (does not silently drop) a key whose fingerprint has no revision yet or whose newest revision cannot be read — both read as `NULL`, and only a `TRUE` disclosure excludes. Rotated exactly like stage 1: `DISTINCT ON (scope_kind, scope_id, scope_version, year) … ORDER BY <scope+year>, completed_at DESC` in an inner query, re-sorted `completed_at ASC` in the outer one, bounded at `MAX_OUTBOX_BATCH` (tasks.py:14; `repository.completed_year_daily_done_keys`) — see **Current-Year Revisit Cycle** step 2 for why the outer re-sort is load-bearing, not cosmetic; the identical starvation shape applied here too (C1), just with `role='daily'` sorting AHEAD of newly-finalized keys in the raw `DISTINCT ON` order instead of behind them.
+3. **Termination — now primarily an SQL exclusion, not a Python branch; the Python read stays as defense-in-depth.** A terminated key is excluded by step 2's own SQL before it ever reaches this loop, relying on the latch (below) guaranteeing a provisional revision is never written over a final incumbent, so "newest revision is final" and "a final revision exists" stay equivalent for as long as that guarantee holds — this reliance is the thing that makes the SQL exclusion sound rather than a heuristic, and it is documented at the point of the query (`repository.completed_year_daily_done_keys`'s own docstring), not asserted here in isolation. For each candidate that DOES reach this loop, read the newest revision with `get_snapshot(db, request_fingerprint)` (repository.py:23-33) and branch on `served_state`:
+   - `("chirps-v3-final", "final")` → **terminated** (counted in `rainfall.finalization.completed{finalization_terminated}`, R2-004): the SQL exclusion should already have caught this — reaching it here means a final revision landed in the race window between the SQL scan and this read. Skip this key for this run; the SQL exclusion catches it on the next sweep once its own read is current.
    - any other `(source_id, temporal_state)` → enqueue the transition.
    - revision missing → skip, `rainfall.finalization.skipped{reason:"revision_missing"}` (a `done` row with no revision is the JDA-002 healing case, not a finalization case).
    - `served_state` returns `None` → skip, `rainfall.finalization.skipped{reason:"provenance_unavailable"}`. Loud, not silent.
@@ -207,7 +209,7 @@ Interaction with decision 2b's savepoint, stated exactly rather than hand-waved:
 
 **Ordering, once written.** `get_snapshot` orders `created_at DESC, id DESC` (repository.py:29-31) and `created_at` is `server_default=func.now()` (models.py:98-100), so the finalization revision — written strictly later, in its own transaction (decision 2c) — sorts first and is served with no further coordination. That argument now rests on the **lock**, not on timing: the lock is what makes "strictly later" a fact instead of a hope, because two builds sharing a fingerprint cannot interleave their read-decide-insert sequences at all, so a provisional build that runs after a finalization commit is `latched` and never writes a row for the ordering to have to sort correctly. The `id DESC` tiebreak is a random-UUID order and would be arbitrary, but a tie needs two revisions for one fingerprint sharing a `now()` value; `now()` is transaction-start time in PostgreSQL, one build writes at most one revision, and the lock serializes the only two builds that could share a fingerprint. Not a live ordering risk.
 
-**Termination, stated as a proof obligation.** Stage 2 stops selecting key K if and only if `get_snapshot(K.fingerprint)` returns a snapshot whose `served_state` is `("chirps-v3-final", "final")`. That snapshot exists only if `revision_write_decision` returned `write` for a final-source candidate, which happens only when the gate passed. Therefore no refused attempt can extinguish the sweep, and no sequence of refused attempts can either — which is the property the outbox-history predicate fails to have.
+**Termination, stated as a proof obligation.** Stage 2 stops selecting key K if and only if `get_snapshot(K.fingerprint)` returns a snapshot whose `served_state` is `("chirps-v3-final", "final")`. That snapshot exists only if `revision_write_decision` returned `write` for a final-source candidate, which happens only when the gate passed. Therefore no refused attempt can extinguish the sweep, and no sequence of refused attempts can either — which is the property the outbox-history predicate fails to have. **This paragraph specified the proof obligation from the start; it did not specify WHERE it is enforced, and an earlier version of this design incorrectly stated that step 2's SQL pre-filter already enforced it (it did not — the pre-filter had no served-state awareness at all, and termination lived entirely in step 3's Python `continue`, past a `LIMIT` with no rotation, which does not bound how long a terminated key keeps being re-scanned once other keys sort ahead of it).** PR3 review fix round 1 (C1) closes that gap by moving the enforcement into step 2's own SQL, exactly as this paragraph's proof already required — the SQL exclusion is the mechanism, step 3's per-row read is the defense-in-depth for the documented race window, and the proof obligation itself is unchanged. Delta spec: specs/rainfall-analysis/spec.md:69, this change's own delta requirement ("Once an adequate final-source revision has been written and is served, the sweep MUST stop enqueueing transitions for that key") — not the main spec.md:167/238 citations used elsewhere in this document for the unrelated display/eligibility MUSTs.
 
 **Bounds and costs.**
 
@@ -216,6 +218,8 @@ Interaction with decision 2b's savepoint, stated exactly rather than hand-waved:
 - **Rows**: one `done` outbox row per stalled key per day and zero revision rows while the gate refuses — a refused attempt is cheaper on storage than a successful one.
 - **Kill switch**: removing the `rainfall-revisit-stale` Beat entry stops stage 2 along with stage 1; the latch lives in `build_analysis` and stays active regardless, which is the correct asymmetry (stopping the sweep must not re-open the downgrade path).
 - **Inert until the flip**: before PR 4 no current-year key can reach `done` (the daily role points at the unwired `sqpe-obs`, tasks.py:66-70), so no `role='daily'` `done` row with a non-`NULL` fingerprint can exist and stage 2's pre-filter matches nothing. The prod rows that exist today (1 `done`, 2 `failed`) all predate `lluvia_v2_005` and therefore have `request_fingerprint IS NULL`.
+- **Rotation bound (PR3 review fix round 1, C1)**: with the SQL exclusion in place, a genuinely stalled key competes only against OTHER stalled keys for the `MAX_OUTBOX_BATCH` budget (finalized keys no longer occupy a slot at all); the outer `completed_at ASC` re-sort (same shape as stage 1's) bounds how long a stalled key can be crowded out by other stalled keys landing ahead of it in the raw `DISTINCT ON` order.
+- **Observability (merges R4-203 + R2-004)**: `rainfall.finalization.completed{finalization_scanned, finalization_enqueued, finalization_skipped, finalization_terminated, truncated}` fires every run; `finalization_scanned == finalization_enqueued + finalization_skipped + finalization_terminated` always closes, and `finalization_terminated` is normally zero in steady state (the SQL exclusion, not this counter, does the real work) — a persistently nonzero value is itself a signal the SQL exclusion and the latch have drifted out of the agreement this design relies on.
 
 **Rejected alternatives.**
 
@@ -266,8 +270,8 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str
 # real wall-clock time. A test clock must be able to move the *disclosure* date; it must not
 # be able to manufacture a due retry or a fake completion timestamp.
 
-@celery_app.task(name="rainfall.revisit_stale")
-def revisit_stale(db: Session | None = None, now: datetime | None = None) -> dict[str, int]
+@celery_app.task(name="rainfall.revisit_stale", bind=True, max_retries=2)
+def revisit_stale(self, db: Session | None = None, now: datetime | None = None) -> dict[str, int]
 # sweep, no key arguments. `now` is the same seam (defaults to datetime.now(UTC)) and supplies
 # `current_year` for both stages, which is what lets the finalization tests cross a year
 # boundary. Stage 2 does NOT stop there: it passes that same instant into
@@ -275,9 +279,16 @@ def revisit_stale(db: Session | None = None, now: datetime | None = None) -> dic
 # re-resolution routes on the same calendar the selection used. Without that last hop the seam
 # dead-ends at `current_year` and stage 2 re-resolves against the real clock (service.py:60),
 # routing a completed year back to `daily`/`chirps-v3-sat` and inverting its own fix.
+# `bind=True`/`max_retries=2` restored (PR3 review fix round 1, R4-203): the archived per-key
+# version of this task carried both; the two-stage rewrite dropped them without an equivalent.
+# `self.retry` is threaded into `_revisit_stale` and used only after BOTH stages have already
+# run and recorded their events this cycle — stage 1's own failure never blocks stage 2.
 # Returns {"scanned", "enqueued", "skipped",
-#          "finalization_scanned", "finalization_enqueued", "finalization_skipped"}
-# — stage 1 in Current-Year Revisit Cycle, stage 2 in Year-Rollover Finalization
+#          "finalization_scanned", "finalization_enqueued", "finalization_skipped",
+#          "finalization_terminated"}
+# — stage 1 in Current-Year Revisit Cycle, stage 2 in Year-Rollover Finalization. The sweep also
+# emits `rainfall.revisit.completed`/`rainfall.revisit.failed`/`rainfall.finalization.completed`
+# — see each section's own "observability" paragraph.
 
 # service.py
 def resolve_missing_work_source(event_window: dict[str, Any] | None, year: int, *,
@@ -304,21 +315,38 @@ def intervals_in_window(db, *, source_id, scope_kind, scope_id, scope_version, s
 #    ordered by interval_start, at most one row per slot. No provider_revision parameter, by
 #    design — see decision 7.
 def recent_done(db, *, key..., since: datetime) -> RainfallOutbox | None   # newest completed_at first
+def pending_row_for_key(db, *, source_id, role, scope_kind, scope_id, scope_version, year)
+    -> RainfallOutbox | None
+# -> (R2-003, PR3 review fix round 1): the single "is there already a pending row for this
+#    key" query, shared by both sweep stages and queue_missing_analysis's pre-check and its
+#    post-IntegrityError re-read (decision 8) — was three copies of the same predicate
 def current_year_done_keys(db, *, year: int, limit: int) -> list[RainfallOutbox]
-# -> DISTINCT ON the outbox key, newest `done` row per key, for sweep stage 1
+# -> DISTINCT ON the outbox key, newest `done` row per key, for sweep stage 1. Rotated (C1/C2,
+#    PR3 review fix round 1): the DISTINCT ON'd candidates are re-sorted `completed_at ASC` by
+#    an OUTER query before the `limit` cursor applies — see Current-Year Revisit Cycle step 2
 def completed_year_daily_done_keys(db, *, before_year: int, limit: int) -> list[RainfallOutbox]
-# -> sweep stage 2's SQL pre-filter: status='done' AND role='daily' AND year < before_year
-#    AND request_fingerprint IS NOT NULL, DISTINCT ON (scope_kind, scope_id, scope_version,
-#    year) ORDER BY <scope+year>, completed_at DESC. A SUPERSET of the candidates — the
-#    termination condition is the served snapshot's provenance, never this query
+# -> sweep stage 2's candidate selection: status='done' AND role='daily' AND year < before_year
+#    AND request_fingerprint IS NOT NULL, AND a lateral read of each candidate's own newest
+#    revision does NOT already disclose ("chirps-v3-final", "final") (C1, PR3 review fix round
+#    1 — was a superset with no served-state awareness at all). DISTINCT ON (scope_kind,
+#    scope_id, scope_version, year) inner, `completed_at ASC` outer re-sort (rotated, same
+#    shape as current_year_done_keys). Still not the SOLE termination authority: the caller's
+#    own served_state read (tasks._revisit_stage2) stays as defense-in-depth — see
+#    Year-Rollover Finalization's "Termination" paragraph
 def claim_outbox_row(db, *, outbox_id: UUID) -> RainfallOutbox | None
 # -> decision 2c re-claim: WHERE id = :id AND status = 'pending' AND next_attempt_at <= now()
 #    FOR UPDATE SKIP LOCKED; None ⇒ another worker owns it
 def acquire_fingerprint_lock(db, *, lock_key: int) -> None
-# -> SELECT pg_advisory_xact_lock(:lock_key). Transaction-scoped by design: released by the
+# -> SET LOCAL lock_timeout = '5000' (R1-001, PR3 review fix round 1 — mirrors
+#    app/auth/refresh_tokens.py's `_LOCK_TIMEOUT_MS` convention; module constant
+#    `_FINGERPRINT_LOCK_TIMEOUT_MS`, not a parameter, same as that convention), THEN
+#    SELECT pg_advisory_xact_lock(:lock_key). Transaction-scoped by design: released by the
 #    per-row COMMIT/ROLLBACK of decision 2c, never explicitly, so a dead worker leaks nothing.
 #    The SQL lives here per the boundary rule; `build_analysis` calls it as its first
-#    database statement. Blocking wait — never SKIP LOCKED — because blocking is the point
+#    database statement. Blocking wait — never SKIP LOCKED — because blocking is the point.
+#    A wait past the timeout raises (SQLSTATE 55P03); the caller needs no SQLSTATE-specific
+#    handling, since that falls into the EXISTING generic retry/backoff bookkeeping in
+#    `_process_outbox_batch` the same way any other row failure does
 
 # compute.py (pure — no Session, no network)
 def revision_family(provider_revision: str) -> str            # "v3-nrt+r2" -> "v3-nrt"
@@ -334,13 +362,21 @@ def build_snapshot(*, scope, year, role, source_id, intervals, batch, now) -> di
 # raises on a repeated interval_start: a duplicated slot is a broken invariant, not a sum
 def served_state(snapshot: dict[str, Any]) -> tuple[str, str] | None
 # -> (annual.selected.provenance.source_id, annual.selected.temporal_state) or None when the
-#    envelope does not disclose them. The ONE reader of the served envelope, shared by the
-#    stage-2 selection and revision_write_decision, so there is a single place to be wrong
+#    envelope does not disclose them. The single Python function that reads it (R2-002, PR3
+#    review fix round 1): called from stage 2's defense-in-depth check
+#    (tasks._revisit_stage2), revision_write_decision, and the latch branch's own event
+#    payload (tasks._persist_analysis_revision) — three call sites, one place to be wrong, not
+#    three raw dict subscripts. repository.completed_year_daily_done_keys mirrors these same
+#    two JSON fields in raw SQL for its own exclusion filter (a deliberate second
+#    implementation, since SQL cannot call back into Python — see that function's own docstring)
 def revision_write_decision(incumbent: dict[str, Any] | None, candidate: dict[str, Any],
-                            policy: MetricThresholdPolicy) -> str
-# -> "write" | "latched" | "gate_refused"; see Year-Rollover Finalization. Pure: it calls
-#    apply_metric_policy (policy.py:148-172), the same function normalize_snapshot applies
-#    on the disclosure path (service.py:256-263)
+                            policy: MetricThresholdPolicy
+                            ) -> Literal["write", "latched", "gate_refused"]
+# -> see Year-Rollover Finalization. Pure: it calls apply_metric_policy (policy.py:148-172),
+#    the same function normalize_snapshot applies on the disclosure path (service.py:256-263).
+#    Typed as a Literal (R2-005, PR3 review fix round 1) so the consumer
+#    (tasks._persist_analysis_revision) branches on it exhaustively — `elif decision == "write":
+#    ...` `else: raise ValueError(decision)` — instead of a silent fall-through for anything else
 ```
 
 ## File Changes
